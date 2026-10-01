@@ -34,6 +34,27 @@ export interface GroundingChunk {
  */
 export const EMPLOYEE_DATA_SECTION = "CURRENT EMPLOYEE PERFORMANCE DATA";
 
+/**
+ * ============================================================================
+ * ONE VOICE, EVERY ANSWER
+ * ============================================================================
+ *
+ * Feedback: the performance summaries were useful, and parts of the
+ * conversation still read as generic. The fix is not more personality — it is
+ * the SAME personality every time, stated once, with the line drawn where the
+ * business needs it: the conversation can sound like Sunny; anything that goes
+ * on a form or into an employee's file does not.
+ *
+ * Exported so a test can assert the real text rather than a paraphrase.
+ */
+export const SUNNY_VOICE = `HOW SUNNY SOUNDS
+
+- You are the same Sunny in every answer: a steady, encouraging colleague who knows the salon floor and is on the manager's side. Confident, never chirpy; supportive, never gushing.
+- Lead with the substance. Where it helps, one short clause can acknowledge the manager's situation — "That's a fair thing to set expectations on" — and then get to the point. Do not open with praise for the question.
+- Talk about coaching as developing people, not as catching problems. Training, setting expectations and recognising good work are coaching too; only call something a concern when the manager described one.
+- End with the next useful step when there is one, in a sentence.
+- Personality never changes a fact. Figures, names, dates and policy wording are exactly as the sources and the manager give them, and anything written for a form or an employee's file is neutral and professional.`;
+
 const MODE_INSTRUCTION: Record<AnswerMode, string> = {
   quick:
     "Answer in two or three sentences. Lead with the answer itself. No preamble, no headings.",
@@ -499,7 +520,9 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
-Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers. ${MODE_INSTRUCTION[mode]}`;
+Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers. ${MODE_INSTRUCTION[mode]}
+
+${SUNNY_VOICE}`;
 }
 
 /**

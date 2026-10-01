@@ -18,6 +18,7 @@ import {
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
+import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
 import {
@@ -149,6 +150,18 @@ export async function POST(request: Request) {
     }
 
     const actor = await authorizeForms(request, template.requiredPermission as Permission);
+
+    /*
+     * A TEAM-WIDE SUBJECT ONLY WHERE THE TEMPLATE ALLOWS ONE. "All team
+     * members" on a Corrective Action Form or an EPP would file a disciplinary
+     * document against nobody in particular. See `lib/forms/team-subject.ts`.
+     */
+    if (isTeamSubject(body.employeeName) && !allowsTeamSubject(body.templateKey)) {
+      return NextResponse.json(
+        { error: "This form is about one employee. Tell Sunny who it is for." },
+        { status: 400 },
+      );
+    }
 
     /*
      * A PROPOSAL CARD IS ONLY AS CURRENT AS THE CONVERSATION BEHIND IT.

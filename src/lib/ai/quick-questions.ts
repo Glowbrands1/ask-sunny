@@ -197,7 +197,12 @@ export const QUICK_QUESTIONS: readonly QuickQuestion[] = [
   { text: "Help me prepare for a coaching conversation.", needs: "create_coaching", levels: null },
   { text: "What does our policy say about attendance?", needs: "view_knowledge", levels: null },
   {
-    text: "Create a coaching form for a performance concern.",
+    /*
+     * NOT "FOR A PERFORMANCE CONCERN". Coaching is training, expectation-
+     * setting and recognition as often as it is correction, and the shortcut
+     * a manager sees every day should not say otherwise.
+     */
+    text: "Create a coaching form.",
     needs: "create_coaching_form",
     levels: null,
   },

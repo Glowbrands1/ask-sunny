@@ -100,6 +100,17 @@ import {
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
 import { priorStepDate } from "@/lib/forms/form-date-answer";
+import {
+  COACHING_CONTEXT_RULES,
+  LANGUAGE_CLEANUP_RULES,
+  guardCoachingFraming,
+} from "@/lib/forms/coaching-framing";
+import {
+  MANAGER_FOLLOW_UP_RULES,
+  guardManagerFollowUp,
+  hasManagerFollowUpKeys,
+} from "@/lib/forms/follow-up-observation";
+import { TEAM_SUBJECT_RULES, isTeamSubject } from "@/lib/forms/team-subject";
 
 /** The Corrective Action Form's "Date of previous corrective action" line. */
 const PREVIOUS_ACTION_DATE_KEY = "previous_action_date";
@@ -479,6 +490,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const hasPlanOfAction = fields.some((field) => field.narrative === PLAN_OF_ACTION);
 
+    const isCoachingFamily = loaded.instance.layoutFamily === "coaching";
+    const hasFollowUpFindings = hasManagerFollowUpKeys([
+      ...fields.map((field) => field.key),
+      ...groups.map((group) => group.key),
+    ]);
+    const teamSubject = isTeamSubject(loaded.instance.employeeName);
+
     const system = [
       `You prepare drafts of ${ACTIVE_BRAND.brandName} management forms for a manager to review.`,
       "You are drafting, not deciding. A manager edits everything you write and signs it.",
@@ -624,12 +642,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       ...(wantsEppPolicy ? EPP_POLICY_RULES : []),
       ...(isExitForm ? EXIT_DRAFT_RULES : []),
+      /*
+       * THE COACHING DOCUMENTS' OWN RULES, by layout family: the register
+       * (coaching is not always a concern), the language cleanup a manager
+       * should not have to ask for, the follow-up findings that stay the
+       * manager's, and a team-wide subject. See `coaching-framing.ts`,
+       * `follow-up-observation.ts` and `team-subject.ts`. No other family
+       * receives any of them.
+       */
+      ...(isCoachingFamily ? COACHING_CONTEXT_RULES : []),
+      ...(isCoachingFamily ? LANGUAGE_CLEANUP_RULES : []),
+      ...(hasFollowUpFindings ? MANAGER_FOLLOW_UP_RULES : []),
+      ...(teamSubject ? TEAM_SUBJECT_RULES : []),
     ].join(" ");
 
     const prompt = [
       `FORM: ${loaded.instance.templateName}`,
       variant ? `REVIEWER: ${variant.role}. SUBJECT: ${variant.roleAbbr}.` : "",
-      `EMPLOYEE: ${loaded.instance.employeeName}`,
+      teamSubject
+        ? "SUBJECT: the whole team. This is team-wide coaching and is not about any one employee."
+        : `EMPLOYEE: ${loaded.instance.employeeName}`,
       loaded.instance.locationName ? `LOCATION: ${loaded.instance.locationName}` : "",
       "",
       "WHAT THE MANAGER DESCRIBED:",
@@ -770,6 +802,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const timeframe = guardFollowUpTimeframe(narrated.values, fields, notes);
 
     /*
+     * THEN THE FOLLOW-UP FINDINGS AND THE COACHING REGISTER.
+     *
+     * A Follow-Up Observation, Progress Level or Next Step survives only when
+     * the manager's notes describe a follow-up that has actually happened —
+     * see `follow-up-observation.ts`. And on the Coaching Form, notes with no
+     * sign of a shortfall do not come back ticked "Underperformance" or
+     * described as a concern — see `coaching-framing.ts`. Both are keyed on
+     * fields only the coaching documents carry, so neither touches any other
+     * template's draft.
+     */
+    const followUp = guardManagerFollowUp(
+      { values: timeframe.values, checked: drafted.checked ?? {} },
+      notes,
+    );
+    const framing = isCoachingFamily
+      ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
+      : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
+
+    /*
      * ========================================================================
      * THEN THE POLICY-FINDING GUARD, ON THE FIELDS THAT ARE NOT POLICY FIELDS
      * ========================================================================
@@ -823,8 +874,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const claims =
       grounding.unverified || wantsEppPolicy
-        ? stripUnsupportedPolicyClaims(timeframe.values, groundedKeys)
-        : { values: timeframe.values, adjusted: [] as string[], emptied: [] as string[] };
+        ? stripUnsupportedPolicyClaims(framing.values, groundedKeys)
+        : { values: framing.values, adjusted: [] as string[], emptied: [] as string[] };
 
     /*
      * ========================================================================
@@ -961,7 +1012,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const sensitive = refuseSensitiveSelections({
       document,
       variantKey,
-      checked: isExitForm ? withoutDerivedKeys(drafted.checked ?? {}) : (drafted.checked ?? {}),
+      checked: isExitForm ? withoutDerivedKeys(framing.checked) : framing.checked,
     });
 
     const exit = isExitForm
@@ -1271,6 +1322,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       policyDerived: derivedPolicy.derived,
       /** Timeframe fields emptied for want of anything to base one on. */
       timeframeEmptied: timeframe.emptied,
+      /** Follow-up findings emptied because no follow-up has been described yet. */
+      followUpEmptied: followUp.emptied,
+      /** Coaching Form fields a concern label was removed from, for notes that described none. */
+      framingAdjusted: framing.adjusted,
       /*
        * All three notices can apply at once — a Corrective Action Form whose
        * policy could not be verified, whose observation lost an unsupported

@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import {
+  checkboxGroupsForVariant,
   fieldsForVariant,
   parseFormDocument,
   parseFormVariants,
@@ -13,7 +14,13 @@ import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   unverifiedPolicyFields,
 } from "./policy-verification";
-import { enforcePersonEdit, enforceResponsibilities, type DraftValues } from "./responsibility";
+import {
+  draftableCheckboxGroups,
+  draftableFields,
+  enforcePersonEdit,
+  enforceResponsibilities,
+  type DraftValues,
+} from "./responsibility";
 import { selectStatedFacts } from "./employment-change";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
@@ -574,6 +581,74 @@ export async function applyAssistantDraft(
     accepted: { values: guarded.values, checked: result.checked },
     rejected: result.rejected,
     policyRefused: guarded.refused,
+  };
+}
+
+/**
+ * ============================================================================
+ * A REVISION OF A DRAFT, REQUESTED IN CHAT
+ * ============================================================================
+ *
+ * The keys in `draft` are written exactly as `applyAssistantDraft` writes them
+ * — the assistant's guard, `filled_by: "ai"`. The keys in `cleared` are
+ * emptied, and only because the manager asked for that field to be removed;
+ * `chat-revision.ts` decides that, and this refuses any key the assistant
+ * could not have written in the first place.
+ *
+ * EVERY OTHER VALUE ON THE FORM IS LEFT EXACTLY AS IT IS, by construction:
+ * the upsert names only these keys. That is what a redraft lost before — it
+ * was a new form, drafted from scratch.
+ */
+export async function applyAssistantRevision(
+  instanceId: string,
+  draft: Partial<DraftValues>,
+  cleared: readonly string[],
+  actor: string,
+): Promise<{ accepted: DraftValues; cleared: string[]; rejected: { key: string; reason: string }[] }> {
+  const loaded = await loadInstance(instanceId);
+  if (!loaded) throw new Error("That form no longer exists.");
+  if (loaded.instance.status !== "draft") {
+    throw new Error("This form is finalized. Create a revision to change it.");
+  }
+
+  const document = parseFormDocument(loaded.version.document);
+  const result = enforceResponsibilities(document, loaded.instance.variantKey, draft);
+  const fields = fieldsForVariant(document, loaded.instance.variantKey);
+  const guarded = refuseUnverifiedPolicyValues(fields, result.values, {});
+
+  const writable = new Set([
+    ...draftableFields(document, loaded.instance.variantKey).map((field) => field.key),
+    ...draftableCheckboxGroups(document, loaded.instance.variantKey).map((group) => group.key),
+  ]);
+  const groupKeys = new Set(
+    checkboxGroupsForVariant(document, loaded.instance.variantKey).map((group) => group.key),
+  );
+  const emptied = cleared.filter(
+    (key) => writable.has(key) && !(key in guarded.values) && !(key in result.checked),
+  );
+
+  await writeValues(instanceId, { values: guarded.values, checked: result.checked }, "ai");
+  if (emptied.length > 0) {
+    await writeValues(
+      instanceId,
+      {
+        values: Object.fromEntries(emptied.filter((key) => !groupKeys.has(key)).map((key) => [key, ""])),
+        checked: Object.fromEntries(emptied.filter((key) => groupKeys.has(key)).map((key) => [key, []])),
+      },
+      "manager",
+    );
+  }
+  await recordEvent(instanceId, "drafted", actor, {
+    revision: true,
+    fields: [...Object.keys(guarded.values), ...Object.keys(result.checked)],
+    cleared: emptied,
+    rejected: result.rejected,
+  });
+
+  return {
+    accepted: { values: guarded.values, checked: result.checked },
+    cleared: emptied,
+    rejected: result.rejected,
   };
 }
 

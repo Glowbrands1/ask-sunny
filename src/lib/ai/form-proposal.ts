@@ -61,6 +61,15 @@ import { businessToday } from "@/lib/business-date";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import {
+  answersNameConfirmation,
+  matchEmployeeName,
+  nameConfirmationQuestion,
+  settledNameQuestions,
+} from "@/lib/forms/employee-match";
+import { loadScopedRoster } from "@/lib/forms/employee-roster";
+import { allowsTeamSubject } from "@/lib/forms/team-subject";
+import type { EmployeeResolution } from "@/lib/forms/proposal";
+import {
   CLARIFIED_TEMPLATE_KEY,
   FORM_OR_GUIDANCE_QUESTION,
   answersFormClarification,
@@ -105,6 +114,9 @@ import type { AskResponse } from "./types";
  * this actor's permissions both allow it.
  */
 const PRIMARY_TEMPLATE_KEY = "coaching";
+
+/** The two coaching documents, whose questions never assume a problem. */
+const COACHING_TEMPLATES: ReadonlySet<string> = new Set(["coaching", "follow-up-coaching"]);
 
 /**
  * ============================================================================
@@ -528,13 +540,22 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
  * its template from the library rather than from a matcher, and a second copy
  * of this assembly is how the two paths would come to pin different things.
  */
-function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskResponse {
+async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Promise<AskResponse> {
   const context = managerContext(input.history, {
     id: input.questionMessageId,
     content: input.question,
   });
 
+  /*
+   * THE TYPED NAME, CHECKED AGAINST THE PEOPLE THIS MANAGER MAY FILE ABOUT.
+   * See `checkTypedEmployee`: an exact match takes the directory's spelling and
+   * salon, a close one is asked about, and nothing is ever autocorrected.
+   */
+  const directory = await checkTypedEmployee(input, match, context);
+
   const proposal = buildProposal({
+    ...(directory.resolution ? { employee: directory.resolution } : {}),
+    employeeSalonIds: directory.salonIds ?? [],
     /*
      * SERVER-GENERATED, never taken from the request. A proposal id is how a
      * later confirmation step will name the thing being confirmed; a
@@ -621,12 +642,98 @@ function proposeTemplate(input: ProposalTurn, match: TemplateSummary): AskRespon
     proposal.sourceMessageIds = scoped.ids;
   }
 
-  return turn(
+  if (directory.question) return turn(directory.question, proposal);
+
+  const content =
     changeKind && facts
       ? employmentChangeContent(changeKind, facts, proposal, context)
-      : proposalContent(proposal, context, match, input.today ?? businessToday()),
-    proposal,
+      : proposalContent(proposal, context, match, input.today ?? businessToday());
+  return turn(directory.note ? `${content}\n\n${directory.note}` : content, proposal);
+}
+
+/**
+ * ============================================================================
+ * THE TYPED NAME AGAINST THE EMPLOYEE DIRECTORY
+ * ============================================================================
+ *
+ * ONLY THE FORMS ABOUT SOMEBODY'S PERFORMANCE — the coaching documents, the
+ * corrective forms and the two plans that can be created in chat. The exit
+ * and employment-change forms keep their own name handling, which has rules
+ * of its own about renaming and leaving employees.
+ *
+ * THE ROSTER IS ALREADY SCOPED (`loadScopedRoster`): only people at this
+ * actor's own salons can be suggested, and an empty roster — no directory, a
+ * read error, a district scope, preview mode — changes nothing at all.
+ */
+const NAME_CHECKED_TEMPLATES: ReadonlySet<string> = new Set([
+  "coaching",
+  "follow-up-coaching",
+  "dpoa",
+  "policy-review",
+  "sdit-epp",
+  "tsd-epp",
+]);
+
+interface DirectoryCheck {
+  /** Replaces the conversation's own reading of the employee. */
+  resolution?: EmployeeResolution;
+  /** The employee's salons, in scope — for `proposeLocation`. */
+  salonIds?: readonly string[];
+  /** Asked INSTEAD of the proposal text: the form is not offered yet. */
+  question?: string;
+  /** Said AFTER the proposal text. */
+  note?: string;
+}
+
+async function checkTypedEmployee(
+  input: ProposalTurn,
+  match: TemplateSummary,
+  context: ManagerContext,
+): Promise<DirectoryCheck> {
+  if (!NAME_CHECKED_TEMPLATES.has(match.key)) return {};
+  const typed = resolveEmployee(context);
+  if (typed.kind !== "resolved") return {};
+
+  const roster = await loadScopedRoster(input.actor.scope);
+  const result = matchEmployeeName(typed.employeeName, roster);
+  if (result.kind === "unchecked") return {};
+  if (result.kind === "exact") {
+    return {
+      resolution: { kind: "resolved", employeeName: result.name },
+      salonIds: result.employee.salonIds,
+    };
+  }
+
+  const settled = settledNameQuestions([...input.history, { role: "user", content: input.question }]);
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (settled.kept.some((name) => same(name, typed.employeeName))) return {};
+
+  if (result.kind === "none") {
+    return {
+      note: `I didn't find **${typed.employeeName}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
+    };
+  }
+
+  /*
+   * THE MANAGER ALREADY SAID WHICH. A name they accepted earlier in this
+   * conversation is used only while it is still one of the candidates for
+   * what they typed — re-checked here, because the history is the browser's.
+   */
+  const accepted = result.candidates.find((candidate) =>
+    settled.accepted.some((name) => same(name, candidate.name)),
   );
+  if (accepted) {
+    return {
+      resolution: { kind: "resolved", employeeName: accepted.name },
+      salonIds: accepted.employee.salonIds,
+    };
+  }
+
+  const names = result.candidates.map((candidate) => candidate.name);
+  return {
+    resolution: { kind: "ambiguous", candidates: names },
+    question: nameConfirmationQuestion(typed.employeeName, names),
+  };
 }
 
 /* ----------------------------------------------------------- proactive -- */
@@ -881,6 +988,15 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
       { role: "user", content: input.question },
     ]);
     if (replied) return { kind: "explicit", templateKey: continued };
+  }
+
+  /*
+   * "YES" TO "DID YOU MEAN KAITLYN SMITH?" names nobody either. A bare yes or
+   * no that answers that question continues the open proposal, which re-checks
+   * the name against the directory itself. See `employee-match.ts`.
+   */
+  if (open && answersNameConfirmation(input.history, input.question)) {
+    return { kind: "explicit", templateKey: continued };
   }
 
   // Does this turn read as part of the intake, or as a new subject?
@@ -1474,10 +1590,15 @@ function proposalContent(
        * saying "I have the salon" would be a small lie on the one card a manager
        * checks before filing an HR record.
        */
+      /*
+       * A TEAM-WIDE FORM HAS NO EMPLOYEE, and saying "I have the employee"
+       * on it would be the card misdescribing itself.
+       */
+      const who = proposal.subject === "team" ? "This one is for the whole team" : "I have the employee";
       lines.push(
         proposal.locationResolution === "not_applicable"
-          ? "I have the employee. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do."
-          : "I have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+          ? `${who}. Your account covers every salon, so this form won't name one. Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do.`
+          : `${who}${proposal.subject === "team" ? ", and I have the salon" : " and the salon"}. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.`,
       );
     } else {
       /*
@@ -1707,7 +1828,16 @@ function openingQuestions(proposal: ChatFormProposal, context: ManagerContext): 
     const names = employee.candidates.map((name) => `**${name}**`);
     return `Which of them is this **${proposal.templateName}** for — ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}?`;
   }
-  const asks = ["The employee's full name."];
+  const coaching = COACHING_TEMPLATES.has(proposal.templateKey);
+  /*
+   * A COACHING FORM MAY BE FOR THE WHOLE TEAM, and the question says so, so a
+   * manager setting a salon-wide expectation is not made to pick one person.
+   */
+  const asks = [
+    allowsTeamSubject(proposal.templateKey)
+      ? "The employee's full name — or tell me it's for the whole team."
+      : "The employee's full name.",
+  ];
   if (proposal.locationResolution === "needs_selection") {
     asks.push("Which of your salons this is about.");
   }
@@ -1715,7 +1845,16 @@ function openingQuestions(proposal: ChatFormProposal, context: ManagerContext): 
     asks.push(`The date for the form (if you say "today," I'll use ${todayInWords()}).`);
   }
   if (!describesIncident(context.text)) {
-    asks.push("A description of the performance concern or observed behavior.");
+    /*
+     * COACHING IS NOT ALWAYS A CONCERN. Training, expectation-setting and
+     * recognition are coaching too, and asking for "the performance concern"
+     * tells the manager every coaching form is a problem being written up.
+     */
+    asks.push(
+      coaching
+        ? "What the coaching covers — what you observed, or the training, expectation or feedback you're giving."
+        : "A description of the performance concern or observed behavior.",
+    );
   }
   if (!proposal.employeeRole) {
     asks.push("The employee's job title (optional but helpful).");

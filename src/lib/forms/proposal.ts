@@ -8,6 +8,7 @@ import { extractFormDate } from "./form-date-answer";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
+import { allowsTeamSubject, readsAsTeamSubject, TEAM_SUBJECT_LABEL } from "./team-subject";
 import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -1264,6 +1265,14 @@ export interface ProposalInput {
    * dates — the last day worked, the notice — that must not become it.
    */
   formDateFromConversation?: boolean;
+  /**
+   * WHO, AS THE CALLER SETTLED IT AGAINST THE EMPLOYEE DIRECTORY — the
+   * directory's spelling, or a question when the typed name was only close.
+   * Absent: the conversation's own reading, as it always was.
+   */
+  employee?: EmployeeResolution;
+  /** The employee's salons, from the directory, already in the actor's scope. */
+  employeeSalonIds?: readonly string[];
 }
 
 /**
@@ -1328,14 +1337,31 @@ export function extractJobTitle(text: string): string | null {
  * to it.
  */
 export function buildProposal(input: ProposalInput): ChatFormProposal {
-  const employee = resolveEmployee(input.context);
+  const employee = input.employee ?? resolveEmployee(input.context);
   /*
-   * THE ACCOUNT FIRST, THEN THE MANAGER'S WORDS. A salon they named is used
-   * only where their scope proves it; see `proposeLocation`.
+   * A TEAM-WIDE COACHING FORM. Only where nobody is named, only on a template
+   * that allows it, and only on the manager's own words — see `team-subject.ts`.
    */
-  const location = proposeLocation(input.scope, input.context.text);
+  const team =
+    employee.kind === "missing" &&
+    allowsTeamSubject(input.templateKey) &&
+    // Per turn: two turns joined ("…for the team" + "coaching form please") are not one phrase.
+    input.context.messages.some((message) => readsAsTeamSubject(message.content));
+  /*
+   * THE MANAGER'S WORDS, THEN THE EMPLOYEE'S SALON, THEN THE ACCOUNT. A salon
+   * is used only where their scope proves it; see `proposeLocation`.
+   */
+  const location = proposeLocation(
+    input.scope,
+    input.context.text,
+    team ? [] : (input.employeeSalonIds ?? []),
+  );
 
-  const employeeName = employee.kind === "resolved" ? employee.employeeName : null;
+  const employeeName = team
+    ? TEAM_SUBJECT_LABEL
+    : employee.kind === "resolved"
+      ? employee.employeeName
+      : null;
   const locationId = location.resolution === "resolved" ? location.locationId : null;
   /*
    * `not_applicable` IS AN ANSWER, NOT A GAP. A global actor is not assigned to
@@ -1371,7 +1397,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
      * FROM THE MANAGER'S TURNS, like the employee name and through the same
      * bounded window — never from the assistant's, and never from the template.
      */
-    employeeRole: extractJobTitle(input.context.text),
+    employeeRole: team ? null : extractJobTitle(input.context.text),
     /* Same rule: the manager's own words, read as U.S. month/day. */
     formDate:
       input.formDateFromConversation === false
@@ -1394,5 +1420,6 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
       : {}),
     status,
     sourceMessageIds: input.context.ids,
+    ...(team ? { subject: "team" as const } : {}),
   };
 }
