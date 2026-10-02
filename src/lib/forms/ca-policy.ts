@@ -228,6 +228,59 @@ export function namesCaPolicy(reply: string): boolean {
   return statedIn(normalize(reply)) !== null;
 }
 
+/*
+ * ============================================================================
+ * A POLICY THE MANAGER NAMED IS THE BOX THAT IS TICKED
+ * ============================================================================
+ *
+ * Not left to the model. "Actually use attendance" after an account that also
+ * mentions unfinished tasks must come back Attendance, whatever the model
+ * would have classified. Attendance is one section with two boxes: the box
+ * follows what the account describes — absence, lateness, or both — and is
+ * Tardiness when it describes neither. The policy fields are then derived and
+ * quoted by the existing code, and fail closed as before where the manual
+ * states no section (Under Performance, Violation of Company Policies).
+ */
+const ABSENCE = /\b(?:absent|absence|absences|absenteeism|no[- ]call|no[- ]show|called (?:out|off)|call[- ]?off|missed (?:her|his|their|a|the) shift)\b/;
+const LATENESS = /\b(?:late|lateness|tardy|tardiness|left early|leaving early|clocked out early)\b/;
+
+export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): string[] | null {
+  switch (reading.stated) {
+    case null:
+      return null;
+    case "attendance": {
+      const text = normalize(rawText);
+      const absent = ABSENCE.test(text);
+      const late = LATENESS.test(text);
+      if (absent && late) return ["tardiness", "absenteeism"];
+      return absent ? ["absenteeism"] : ["tardiness"];
+    }
+    default:
+      return [reading.stated];
+  }
+}
+
+/**
+ * The Type of Offense as the manager named it. Only keys this version offers
+ * are ticked; the model's other ticks and its "Other" write-in give way.
+ */
+export function withStatedOffense(input: {
+  checked: Record<string, string[]>;
+  values: Record<string, string>;
+  keys: readonly string[];
+  offered: readonly string[];
+}): { checked: Record<string, string[]>; values: Record<string, string>; ticked: string[]; replaced: string[] } {
+  const ticked = input.keys.filter((key) => input.offered.includes(key));
+  const before = input.checked.offense_type ?? [];
+  const replaced: string[] = before.filter((key) => !ticked.includes(key));
+  const values = { ...input.values };
+  if (typeof values.other_offense === "string" && values.other_offense.trim() !== "") {
+    delete values.other_offense;
+    replaced.push("other_offense");
+  }
+  return { checked: { ...input.checked, offense_type: ticked }, values, ticked, replaced };
+}
+
 /* ----------------------------------------------------- the proposal line -- */
 
 const TOPIC_WORDS: Record<ConductTopic, string> = {
@@ -259,6 +312,12 @@ export function caPolicyProposalLine(reading: CaPolicyReading): string | null {
   }
   if (reading.suggestion && reading.source === "stated") {
     return "**Policy:** Standards of Conduct, as you said. I'll quote that section from the current policy manual on the draft.";
+  }
+  if (reading.stated === "attendance" || reading.stated === "dress_code") {
+    return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. I'll quote that section from the current policy manual on the draft.`;
+  }
+  if (reading.stated === "under_performance" || reading.stated === "company_policies") {
+    return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. The policy manual has no single section to quote for it, so Direct policy is left for you to complete.`;
   }
   if (reading.suggestion && reading.source === "incident") {
     const what = reading.topics.map((topic) => TOPIC_WORDS[topic]).join(" and ");

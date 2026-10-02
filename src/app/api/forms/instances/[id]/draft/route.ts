@@ -104,7 +104,9 @@ import {
   caPolicyAmbiguousNotice,
   groundConductPolicy,
   readCaPolicy,
+  statedOffenseKeys,
   withConductOffense,
+  withStatedOffense,
 } from "@/lib/forms/ca-policy";
 import { priorStepDate } from "@/lib/forms/form-date-answer";
 import {
@@ -1089,18 +1091,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * Performance and Other give way to Standards of Conduct only when the
      * manual supports it; every other box the model ticked stays.
      */
-    const conduct = caPolicy
-      ? groundConductPolicy({
-          reading: caPolicy,
-          chunks: manual.ok ? manual.chunks : null,
-          jobTitle: loaded.instance.employeeRole,
+    /*
+     * A POLICY THE MANAGER NAMED is ticked as named, whatever the model chose.
+     * Otherwise a conduct incident ticks Standards of Conduct where the manual
+     * supports it.
+     */
+    const statedKeys = caPolicy ? statedOffenseKeys(caPolicy, notes) : null;
+    const statedOffense = statedKeys
+      ? withStatedOffense({
+          checked: enforced.checked,
+          values: enforced.values,
+          keys: statedKeys,
+          offered:
+            groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [],
         })
       : null;
+    const conduct =
+      caPolicy && !statedOffense
+        ? groundConductPolicy({
+            reading: caPolicy,
+            chunks: manual.ok ? manual.chunks : null,
+            jobTitle: loaded.instance.employeeRole,
+          })
+        : null;
     const conductOffense = conduct?.ok
       ? withConductOffense({ checked: enforced.checked, values: enforced.values })
       : null;
-    const validated = conductOffense
-      ? { ...enforced, values: conductOffense.values, checked: conductOffense.checked }
+    const offenseChange = statedOffense ?? conductOffense;
+    const validated = offenseChange
+      ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
       : enforced;
 
     /*
@@ -1418,7 +1437,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       ...(caPolicy
         ? {
-            caPolicy: conduct?.ok
+            caPolicy: statedOffense
+              ? {
+                  applied: true,
+                  source: "stated",
+                  stated: caPolicy.stated,
+                  ticked: statedOffense.ticked,
+                  replaced: statedOffense.replaced,
+                }
+              : conduct?.ok
               ? {
                   applied: true,
                   source: caPolicy.source,

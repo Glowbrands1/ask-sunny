@@ -32,7 +32,7 @@ instances `01c02bf5…`, `29c17ffa…` and `0dd17fad…`). Production was `9cd8d
   - **The draft** (`instances/[id]/draft/route.ts`):
     - Standards of Conduct is ticked only when the pinned official manual's Standards of Conduct section, as it reads now, lists the infraction: "Failing to follow the policies and procedures of The Company", or "Insubordination -the refusal to follow the directions of the manager". Both lines are in the Production manual (Woven copy, chunks 36–37).
     - When ticked, it replaces Under Performance and the Other write-in. Policy Violated and Direct policy are then derived and quoted by the existing code, verbatim with "Source: JBA Policy Manual — Standards of Conduct, p. 12".
-    - A policy the manager named needs only the section.
+    - **A policy the manager named is the box that is ticked**, whatever the model chose (`statedOffenseKeys`, `withStatedOffense`). For example, "actually use attendance" ticks Tardiness or Absenteeism, depending on what the account describes. The policy fields are then derived as usual and fail closed where the manual has no section (Under Performance, Violation of Company Policies). This was added during pre-merge QA: before it, a named non-conduct policy only stopped the suggestion and left the box to the model.
     - No manual, no section, or a section without the line leaves the model's box and a blank policy, as before. Nothing writes a policy.
     - An unresolved two-way account keeps the model's box and adds a notice to check it.
     - The CHECKBOXES prompt also gets one classification line.

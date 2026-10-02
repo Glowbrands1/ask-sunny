@@ -1742,15 +1742,41 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
     expect(state.persisted[0]!.values.policy_language).toBe(
       "The Company expects Employees to follow rules of conduct\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12",
     );
-    expect(payload.caPolicy).toMatchObject({ applied: true, source: "stated", anchor: null });
+    expect(payload.caPolicy).toMatchObject({
+      applied: true,
+      source: "stated",
+      stated: "standards_of_conduct",
+      ticked: ["standards_of_conduct"],
+    });
   });
 
-  it("never overrides a different policy the manager named", async () => {
+  /*
+   * THE MANAGER'S SELECTION WINS, whatever the model ticked. The account also
+   * mentions unfinished tasks, and the model ticked Standards of Conduct; the
+   * manager said attendance, so Attendance is what is ticked and quoted.
+   */
+  it("ticks a different policy the manager named over the model's choice", async () => {
+    state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["standards_of_conduct"] } };
+    const payload = await post(
+      "Create a corrective action for Colene because she came in late and didn't finish her opening tasks.\n\nstandards of conduct\n\nactually use attendance",
+    );
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
+    expect(state.persisted[0]!.values.policy_violated).toBe("Tardiness/Leaving Early");
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "It is the responsibility of each employee to know his or her work schedule\n\nSource: JBA Policy Manual — Attendance, p. 14",
+    );
+    expect(payload.caPolicy).toMatchObject({ applied: true, source: "stated", stated: "attendance", replaced: ["standards_of_conduct"] });
+  });
+
+  it("ticks a named policy with no section, and leaves Direct policy blank rather than inventing one", async () => {
+    state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["standards_of_conduct"] } };
     const payload = await post(
       "Create a corrective action for Colene for missing the Woven deadline.\n\nit's under performance",
     );
     expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
-    expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_suggestion" });
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+    expect(payload.caPolicy).toMatchObject({ applied: true, source: "stated", stated: "under_performance" });
   });
 
   it("leaves a case it does not recognise to the model, as before", async () => {

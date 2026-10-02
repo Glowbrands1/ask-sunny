@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { JOIN } from "./bounded-context";
 import {
+  statedOffenseKeys,
+  withStatedOffense,
   caPolicyAmbiguousNotice,
   caPolicyProposalLine,
   groundConductPolicy,
@@ -197,5 +199,44 @@ describe("the Type of Offense once it is grounded", () => {
     const result = withConductOffense({ checked: { offense_type: ["standards_of_conduct"] }, values: {} });
     expect(result.checked.offense_type).toEqual(["standards_of_conduct"]);
     expect(result.replaced).toEqual([]);
+  });
+});
+
+describe("the box a named policy ticks", () => {
+  it.each([
+    [["She came in late and didn't finish her opening tasks.", "attendance"], ["tardiness"]],
+    [["She was a no call no show Saturday.", "it's attendance"], ["absenteeism"]],
+    [["She was late Friday and absent Saturday.", "attendance"], ["tardiness", "absenteeism"]],
+    [["She missed the Woven deadline.", "under performance"], ["under_performance"]],
+    [["She missed the Woven deadline.", "the policy is standards of conduct"], ["standards_of_conduct"]],
+    [["She wore slippers.", "dress code"], ["dress_code"]],
+  ])("%j -> %j", (turns, keys) => {
+    const text = (turns as string[]).join(JOIN);
+    expect(statedOffenseKeys(readCaPolicy(text), text)).toEqual(keys);
+  });
+
+  it("nothing named, nothing ticked here", () => {
+    expect(statedOffenseKeys(readCaPolicy("She missed the Woven deadline."), "She missed the Woven deadline.")).toBeNull();
+  });
+
+  it("ticks only what the version offers, and the model's choice gives way", () => {
+    const result = withStatedOffense({
+      checked: { offense_type: ["standards_of_conduct"], warning_type: ["verbal"] },
+      values: { other_offense: "Punctuality" },
+      keys: ["tardiness", "not_an_option"],
+      offered: ["tardiness", "absenteeism", "standards_of_conduct"],
+    });
+    expect(result.checked).toEqual({ offense_type: ["tardiness"], warning_type: ["verbal"] });
+    expect(result.values).toEqual({});
+    expect(result.replaced).toEqual(["standards_of_conduct", "other_offense"]);
+  });
+
+  it("the proposal says the named policy back", () => {
+    expect(caPolicyProposalLine(readCaPolicy("attendance"))).toBe(
+      "**Policy:** Attendance, as you said. I'll quote that section from the current policy manual on the draft.",
+    );
+    expect(caPolicyProposalLine(readCaPolicy("it's under performance"))).toBe(
+      "**Policy:** Under Performance, as you said. The policy manual has no single section to quote for it, so Direct policy is left for you to complete.",
+    );
   });
 });

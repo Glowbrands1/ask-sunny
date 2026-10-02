@@ -1906,10 +1906,14 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
     expect(answer.content).not.toMatch(/Which policy applies\?/);
   });
 
-  it("takes a different policy as the answer too, and suggests nothing over it", async () => {
+  it("takes a different policy as the answer too, and says so", async () => {
     const answer = await ask("attendance", { continueTemplateKey: "dpoa", history: ASKED });
     expect(answer.formProposal?.templateKey).toBe("dpoa");
-    expect(answer.content).not.toMatch(/\*\*Policy:\*\*|Which policy applies\?/);
+    expect(answer.formProposal?.employeeName).toBe("Colene");
+    expect(answer.content).toMatch(
+      /\*\*Policy:\*\* Attendance, as you said\. I'll quote that section from the current policy manual on the draft\./,
+    );
+    expect(answer.content).not.toMatch(/Standards of Conduct|Which policy applies\?/);
   });
 
   it("still answers a question about a policy while the question is open", async () => {
