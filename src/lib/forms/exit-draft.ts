@@ -35,7 +35,9 @@ import { datesInText } from "./form-date-answer";
 
 export const EXIT_DRAFT_RULES: readonly string[] = [
   "THIS FORM IS A RESIGNATION/EXIT FORM. The rules in this paragraph override every instruction above about coaching guidance, expectations or what an employee should do next time: the employee is leaving, and there is nothing of that kind to write.",
-  "The Additional Details field is a short, neutral, factual account in the past tense of what the manager described about the departure: the circumstances of how and when the employee left, and any other facts the manager gave. The resignation date, how they resigned, the reason, returned items, the salon key, payroll deduction, minimum wage, bonus and rehire are printed on their own labelled lines above it and are filled separately; do not restate them as a list. Two to four sentences. Keep the manager's specifics and add none.",
+  "The Additional Details field is a short, neutral, factual account in the past tense of what the manager described about the departure: the circumstances of how and when the employee left, and any other facts the manager gave. The resignation date, how they resigned, the reason, returned items, the salon key, payroll deduction, minimum wage, bonus and rehire are printed on their own labelled lines above it and are filled separately; do not restate them as a list. Two to four sentences. Keep the manager's specifics about the departure and add none.",
+  "The employee's name, job title and location are printed in the form's header. Do not restate the job title or location in Additional Details (for example \"worked as a tanning consultant at the Manhattan location\") unless it is part of how the employee left, such as a transfer between salons.",
+  "Refer to the employee by first name, written as a name with a capital letter — \"Colene provided her resignation to management\" — rather than opening sentences with \"She\", \"He\" or \"They\". A pronoun later in a sentence is fine. Never use a name the manager did not give.",
   "Write any date exactly as the manager wrote it.",
   "Never state or imply an answer to any of these questions unless the manager stated it, and then only in the manager's own terms: whether store items were returned, whether a payroll deduction applies, whether a bonus is forfeited, whether pay drops to minimum wage, whether written notice is attached, or whether the employee is eligible for rehire.",
   "Never call the departure a termination, firing, dismissal or involuntary separation unless the manager did. Never give a reason for leaving the manager did not give.",
@@ -102,6 +104,74 @@ function factDates(facts: ExitFacts): string[] {
   );
 }
 
+/*
+ * ============================================================================
+ * THE HEADER, SAID AGAIN IN DETAILS
+ * ============================================================================
+ *
+ * HR feedback, 30 Sep 2026: "Colene Schildt worked as a tanning consultant at
+ * the Manhattan location (THIS CAN BE OMITTED)." The Name, Job Title and
+ * Location lines already say it. The drafting rules ask the model not to; this
+ * is the backstop, and it is deliberately narrow:
+ *
+ *   a sentence that says ONLY that — "<name> worked as a <job title> at the
+ *   <location> location." — is dropped; and
+ *
+ *   an aside that says only that — "Kayla Koehn, a Tanning Consultant at NE
+ *   Kearney, gave notice…" — is cut from its sentence, which keeps the rest.
+ *
+ * It matches the form's OWN job title (and location, when the form has one),
+ * so a sentence about a transfer, a different role, or anything with a date or
+ * a fact in it is never touched.
+ */
+
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+}
+
+/** "KS Manhattan" is also written "Manhattan" and "the Manhattan location". */
+function locationPattern(locationName: string | null | undefined): string {
+  const name = (locationName ?? "").trim();
+  if (name === "") return String.raw`[A-Za-z][\w.'-]*(?:\s+[A-Za-z][\w.'-]*){0,3}?\s+(?:location|salon|store)`;
+  const forms = new Set([name, name.replace(/^[A-Z]{2}\s+/, "")].filter((form) => form !== ""));
+  const names = [...forms].map(escaped).join("|");
+  return String.raw`(?:${names})(?:\s+(?:location|salon|store))?`;
+}
+
+export function dropHeaderRestatement(
+  details: string,
+  header: { jobTitle?: string | null; locationName?: string | null },
+): { value: string; removed: string[] } {
+  const title = (header.jobTitle ?? "").trim();
+  if (title === "") return { value: details, removed: [] };
+  const job = escaped(title);
+  const place = locationPattern(header.locationName);
+  const where = String.raw`(?:\s+(?:at|in|for)\s+(?:the\s+)?${place})?`;
+
+  const onlyTheHeader = new RegExp(
+    String.raw`^(?:[A-Za-z][\w'-]*\s+){0,3}?(?:worked|works|was|is|has been|had been)\s+(?:employed\s+)?(?:as\s+)?(?:a|an|our)\s+${job}${where}\s*\.$`,
+    "i",
+  );
+  const aside = new RegExp(String.raw`,\s+(?:a|an|our)\s+${job}${where},\s+`, "i");
+
+  const removed: string[] = [];
+  const kept: string[] = [];
+  for (const sentence of details.split(/(?<=[.!?])\s+/).filter((part) => part.trim() !== "")) {
+    if (onlyTheHeader.test(sentence.trim())) {
+      removed.push(sentence);
+      continue;
+    }
+    const match = aside.exec(sentence);
+    if (match) {
+      removed.push(match[0].replace(/^,\s+|,\s+$/g, ""));
+      kept.push(sentence.replace(aside, " "));
+      continue;
+    }
+    kept.push(sentence);
+  }
+  return { value: kept.join(" ").trim(), removed };
+}
+
 export interface ExitDraftResult {
   values: Record<string, string>;
   checked: Record<string, string[]>;
@@ -109,7 +179,8 @@ export interface ExitDraftResult {
   derived: string[];
   /** Details sentences the guard removed. */
   detailsRemoved: string[];
-
+  /** What was cut from Details for only repeating the header's job title and location. */
+  headerRestated: string[];
 }
 
 /**
@@ -124,6 +195,8 @@ export function applyExitDraft(input: {
   checked: Record<string, string[]>;
   notes: string;
   today: string;
+  /** The form's own header lines, so Details does not say them again. */
+  header?: { jobTitle?: string | null; locationName?: string | null };
 }): ExitDraftResult {
   const facts = readExitFacts(input.notes, input.today);
   const derived = exitFactValues(facts);
@@ -138,10 +211,13 @@ export function applyExitDraft(input: {
   }
 
   let detailsRemoved: string[] = [];
+  let headerRestated: string[] = [];
   if (typeof values.details === "string") {
     const guarded = guardExitDetails(values.details, input.notes, input.today);
     detailsRemoved = guarded.removed;
-    if (guarded.value) values.details = guarded.value;
+    const trimmed = dropHeaderRestatement(guarded.value, input.header ?? {});
+    headerRestated = trimmed.removed;
+    if (trimmed.value) values.details = trimmed.value;
     else delete values.details;
   }
 
@@ -153,6 +229,7 @@ export function applyExitDraft(input: {
     checked,
     derived: [...Object.keys(derived.values), ...Object.keys(derived.checked)],
     detailsRemoved,
+    headerRestated,
   };
 }
 

@@ -151,7 +151,7 @@ const BEFORE_CUES: { role: ExitDateRole; pattern: RegExp }[] = [
   {
     role: "noticeGiven",
     pattern: new RegExp(
-      String.raw`\b(?:gave|give|gives|giving|given|put in|puts in|putting in|submitted|submits|turned in|handed in|sent)\b[^.;!?\n]{0,30}?\b${NOTICE_NOUN}|\bnotice\s+(?:was\s+)?(?:given|submitted|received|dated)\b|\bresigned\b|\bresignation\s+(?:letter\s+)?(?:was\s+)?(?:dated|received|submitted|on)\b`,
+      String.raw`\b(?:gave|give|gives|giving|given|provided|provides|providing|put in|puts in|putting in|submitted|submits|turned in|handed in|sent)\b[^.;!?\n]{0,30}?\b${NOTICE_NOUN}|\bnotice\s+(?:was\s+)?(?:given|submitted|received|dated)\b|\bresigned\b|\bresignation\s+(?:letter\s+)?(?:was\s+)?(?:dated|received|submitted|on)\b`,
       "g",
     ),
   },
@@ -186,6 +186,19 @@ const AFTER_CUES: { role: ExitDateRole; pattern: RegExp }[] = [
   {
     role: "noticeGiven",
     pattern: /^\s*(?:is|was)\s+when\s+(?:she|he|they)\s+(?:gave|put in|submitted|turned in)\b/,
+  },
+  /*
+   * THE DATE FIRST, THEN WHO HANDED IT IN — "On 9-15-26, she provided her
+   * resignation to management", "on 9/15 colene gave her two weeks". The
+   * subject is a pronoun or the employee's name (one or two words, whatever
+   * its case), never the employer: "on 9/1 we gave her notice" is somebody
+   * else's act and assigns nothing.
+   */
+  {
+    role: "noticeGiven",
+    pattern: new RegExp(
+      String.raw`^\s*,?\s*(?!(?:we|i|management|the manager|my manager|the company)\b)(?:she|he|they|[a-z][a-z'-]*(?:\s+[a-z][a-z'-]*)?)\s+(?:provided|gave|submitted|sent|turned in|handed in|put in)\s+(?:in\s+)?(?:her|his|their|a|an|the)?\s*(?:written\s+)?${NOTICE_NOUN}`,
+    ),
   },
 ];
 
@@ -421,16 +434,25 @@ function readSeparation(text: string): SeparationReading {
     affirmed(
       q,
       new RegExp(
-        String.raw`\b(?:fulfilled|completed|finished|served|worked out)\s+(?:her|his|their|the)?\s*(?:full\s+|entire\s+|whole\s+)?${NOTICE_ONLY}`,
+        String.raw`\b(?:fulfilled|completed|finished|served|worked out)\s+(?:her|his|their|the|a|an)?\s*(?:full\s+|entire\s+|whole\s+)?${NOTICE_ONLY}`,
         "g",
       ),
     ) ||
     affirmed(
       q,
       new RegExp(
-        String.raw`\bworked\s+(?:out\s+)?(?:her|his|their|the)\s+(?:full\s+|entire\s+|whole\s+)?${NOTICE_ONLY}`,
+        String.raw`\bworked\s+(?:out\s+)?(?:her|his|their|the|a|an)\s+(?:full\s+|entire\s+|whole\s+)?${NOTICE_ONLY}`,
         "g",
       ),
+    ) ||
+    /*
+     * NO OWNER, BUT THE WORD "NOTICE" — "gave and worked 2 week notice". A
+     * bare duration is still a tenure ("only worked 2 weeks"); it is the word
+     * notice that makes it the notice period.
+     */
+    affirmed(
+      q,
+      /\bworked\s+(?:out\s+)?(?:(?:two|2)[- ]weeks?'?|(?:14|30)[- ]days?)\s+notice\b/g,
     ) ||
     /\bsubmitted\s*(?:&|and)\s*fulfilled\s+notice\b/.test(q) ||
     affirmed(q, /\bnotice\s+(?:was\s+)?(?:fulfilled|completed|served)\b/g);

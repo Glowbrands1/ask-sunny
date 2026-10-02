@@ -99,6 +99,15 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import {
+  STANDARDS_OF_CONDUCT,
+  caPolicyAmbiguousNotice,
+  groundConductPolicy,
+  readCaPolicy,
+  statedOffenseKeys,
+  withConductOffense,
+  withStatedOffense,
+} from "@/lib/forms/ca-policy";
 import { priorStepDate } from "@/lib/forms/form-date-answer";
 import {
   COACHING_CONTEXT_RULES,
@@ -418,6 +427,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
 
     /*
+     * THE STANDARDS OF CONDUCT, WHERE THE MANAGER'S ACCOUNT POINTS AT IT.
+     *
+     * HR feedback, 30 Sep 2026: a Corrective Action for a missed Woven deadline
+     * came back ticked Under Performance with no policy, until the manager said
+     * "the policy violated is the standards of conduct". The manager's words
+     * are read deterministically — a missed deadline, assigned work or Woven
+     * items not completed, a direction not followed, or the policy named
+     * outright — and Standards of Conduct is ticked ONLY when the pinned
+     * manual's section, as it reads now, lists that infraction. Otherwise the
+     * model's box stands and the policy is left blank, as before. Keyed on a
+     * version whose Type of Offense offers the box and that has the policy
+     * field. See `ca-policy.ts`.
+     */
+    const offersConductPolicy =
+      fields.some((field) => field.key === "policy_language") &&
+      groups.some(
+        (group) =>
+          group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
+      );
+    const caPolicy = offersConductPolicy ? readCaPolicy(notes) : null;
+
+    /*
      * THE SECTIONS THE MANAGER'S OWN WORDS POINT AT — never the model's, so the
      * policy a plan is reasoned against cannot be steered by an earlier
      * hallucination. Empty when the observation raises no topic this manual
@@ -704,6 +735,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       promptGroups.some((group) => group.options.some((option) => option.key === "other"))
         ? 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
+        : "",
+      offersConductPolicy
+        ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
         : "",
     ]
       .filter(Boolean)
@@ -1021,6 +1055,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           checked: sensitive.checked,
           notes,
           today: businessToday(),
+          header: {
+            jobTitle: loaded.instance.employeeRole,
+            locationName: loaded.instance.locationName,
+          },
         })
       : null;
 
@@ -1043,10 +1081,46 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       : null;
     const draftedValues = exit?.values ?? attributions.values;
 
-    const validated = enforceResponsibilities(document, variantKey, {
+    const enforced = enforceResponsibilities(document, variantKey, {
       values: priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
       checked: exit?.checked ?? sensitive.checked,
     });
+
+    /*
+     * THE OFFENSE BOX, GROUNDED BEFORE THE POLICY IS DERIVED FROM IT. Under
+     * Performance and Other give way to Standards of Conduct only when the
+     * manual supports it; every other box the model ticked stays.
+     */
+    /*
+     * A POLICY THE MANAGER NAMED is ticked as named, whatever the model chose.
+     * Otherwise a conduct incident ticks Standards of Conduct where the manual
+     * supports it.
+     */
+    const statedKeys = caPolicy ? statedOffenseKeys(caPolicy, notes) : null;
+    const statedOffense = statedKeys
+      ? withStatedOffense({
+          checked: enforced.checked,
+          values: enforced.values,
+          keys: statedKeys,
+          offered:
+            groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [],
+        })
+      : null;
+    const conduct =
+      caPolicy && !statedOffense
+        ? groundConductPolicy({
+            reading: caPolicy,
+            chunks: manual.ok ? manual.chunks : null,
+            jobTitle: loaded.instance.employeeRole,
+          })
+        : null;
+    const conductOffense = conduct?.ok
+      ? withConductOffense({ checked: enforced.checked, values: enforced.values })
+      : null;
+    const offenseChange = statedOffense ?? conductOffense;
+    const validated = offenseChange
+      ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
+      : enforced;
 
     /*
      * ========================================================================
@@ -1351,14 +1425,49 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
         exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
+        caPolicy ? caPolicyAmbiguousNotice(caPolicy) : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,
       /** Group key -> option keys the leadership-authority guard refused. */
       sensitiveRefused: sensitive.refused,
+      /**
+       * Corrective Action only: whether Standards of Conduct was ticked from
+       * the manager's words, the manual line it rests on, and why not when not.
+       */
+      ...(caPolicy
+        ? {
+            caPolicy: statedOffense
+              ? {
+                  applied: true,
+                  source: "stated",
+                  stated: caPolicy.stated,
+                  ticked: statedOffense.ticked,
+                  replaced: statedOffense.replaced,
+                }
+              : conduct?.ok
+              ? {
+                  applied: true,
+                  source: caPolicy.source,
+                  section: conduct.section.heading,
+                  page: conduct.section.page,
+                  anchor: conduct.anchor,
+                  replaced: conductOffense?.replaced ?? [],
+                }
+              : {
+                  applied: false,
+                  reason: conduct && !conduct.ok ? conduct.reason : "no_suggestion",
+                  ambiguous: caPolicy.ambiguous,
+                },
+          }
+        : {}),
       /** Exit form only: the facts filled from the manager's words, and what Details lost. */
       ...(exit
-        ? { exitDerived: exit.derived, exitDetailsRemoved: exit.detailsRemoved }
+        ? {
+            exitDerived: exit.derived,
+            exitDetailsRemoved: exit.detailsRemoved,
+            exitHeaderRestated: exit.headerRestated,
+          }
         : {}),
       sources: grounding.sources,
       /** Fields filled from the manager's own statements, not by the model. */

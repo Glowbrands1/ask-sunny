@@ -112,8 +112,19 @@ describe("how they resigned", () => {
     ["She walked out mid-shift.", "Walked out"],
     ["She left a voicemail saying she quit.", "Voicemail"],
     ["She texted me and then called.", "Text message and phone call"],
+    // HR feedback 30 Sep 2026: the Colene exit form.
+    ["On 9-15-26, she provided her resignation to management, sending the message via Woven.", "Woven message"],
+    ["colene messaged management her resignation via woven.", "Woven message"],
+    ["She sent the resignation via Woven.", "Woven message"],
+    ["She messaged me on Woven that she was resigning.", "Woven message"],
+    ["She sent a Woven message saying she quit.", "Woven message"],
   ])("%s -> %s", (text, method) => {
     expect(read(text).resignationMethod).toBe(method);
+  });
+
+  it("Woven named for anything but the channel is no method", () => {
+    expect(read("She missed the Woven deadline twice.").resignationMethod).toBeNull();
+    expect(read("Her training in Woven is still open.").resignationMethod).toBeNull();
   });
 
   it("does not read a method that was denied, or a sick call", () => {
@@ -133,6 +144,25 @@ describe("why they resigned", () => {
     ["No reason given.", "No reason given."],
   ])("%s -> %s", (text, reason) => {
     expect(read(text).resignationReason).toBe(reason);
+  });
+
+  /*
+   * One fact per line, as a manager typed it in Production (2 Oct 2026). The
+   * reason ends at its line; it used to run on into "Store items returned
+   * payroll deduction does not apply eligible for rehire".
+   */
+  it("ends the reason at the end of its line", () => {
+    const text = [
+      "Kayla Koehn",
+      "Tanning Consultant ",
+      "NE Kearney",
+      "Gave notice - fulfilled notice",
+      "Gave notice 9/25/26 - date notice fulfilled 10/9/26",
+      "Resigning to pursue other career options",
+      "Store items returned payroll deduction does not apply eligible for rehire",
+    ].join("\n");
+    expect(read(text).resignationReason).toBe("To pursue other career options.");
+    expect(read(text).answers.store_items_returned).toBe("yes");
   });
 
   it("a reason for something else is not a reason for leaving", () => {
