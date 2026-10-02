@@ -26,9 +26,58 @@
  * the follow-up form are untouched.
  */
 
-/** Signs in the manager's own words that something fell short. */
-const SHORTFALL_IN_NOTES =
-  /\b(?:late|tardy|tardiness|missed|missing|forgot|forgets|forgetting|didn'?t|did not|doesn'?t|does not|wasn'?t|was not|weren'?t|isn'?t|is not|aren'?t|haven'?t|hasn'?t|has not|not (?:following|doing|completing|meeting|cleaning|sanitiz\w*|wiping|using|offering|asking|greeting)|failed|failing|fails? to|refus\w*|rude|complain\w*|complaint|mistakes?|errors?|wrong|below|low|poor\w*|struggl\w*|again|keeps|still|issues?|concerns?|problems?|behind|skipp\w*|skips?|ignor\w*|careless|unprofessional|no[- ]call|no[- ]show|absent|left early|incorrect\w*|improper\w*|unsanitary|dirty|underperform\w*|slipping|declin\w*|dropped|violat\w*|warning|written up|write[- ]up)\b/i;
+/*
+ * ============================================================================
+ * SIGNS IN THE MANAGER'S OWN WORDS THAT SOMETHING FELL SHORT — IN CONTEXT
+ * ============================================================================
+ *
+ * PRODUCTION QA OF PR #81: "Quick reminder going over the bed sanitizing steps
+ * again before the new checklist starts" switched this guard off, because
+ * "again" was on the list on its own — as were "still" and "missing". Those
+ * words describe a refresher ("again as a refresher"), a rollout ("still being
+ * rolled out") or a precaution ("make sure she's not missing any steps") at
+ * least as often as a shortfall, and one of them was enough to let a
+ * training session be ticked Underperformance.
+ *
+ * THREE KINDS OF EVIDENCE NOW, and only the first is a word on its own:
+ *
+ *   UNAMBIGUOUS     late, skipped, forgot, refused, rude, violation, written
+ *                   up… — unless the manager negated it ("hasn't missed a
+ *                   shift", "no complaints").
+ *   A DUTY NOT DONE "didn't / doesn't / wasn't …" followed by something a
+ *                   person does at work ("didn't wipe", "isn't following").
+ *                   "The new checklist isn't out yet" is not one.
+ *   CONTEXT WORDS   "still", "again", "keeps" and "missing" count only beside
+ *                   a shortfall: "still missing", "still late", "keeps
+ *                   forgetting", "missing from yesterday's checklist".
+ */
+const UNAMBIGUOUS_SHORTFALL =
+  /\b(?:late|tardy|tardiness|missed|forgot|forgets|forgetting|failed|failing|fails?\s+to|refus\w*|rude|complain\w*|complaints?|mistakes?|errors?|wrong|poor(?:ly)?|struggl\w*|skipp\w*|skips|ignor\w*|careless|unprofessional|unsanitized|uncleaned|no[- ]call|no[- ]show|absent|left\s+early|incorrect\w*|improper\w*|unsanitary|dirty|underperform\w*|slipping|declin\w*|violat\w*|warnings?|written\s+up|write[- ]up|behind|issues?|concerns?|problems?|below\s+(?:standard|expectations?|goal|target)|low\s+(?:sales|numbers|scores?|conversion|performance))\b/gi;
+
+/** "no complaints", "hasn't missed a shift", "never late", "without any issues". */
+const NEGATED_BEFORE =
+  /(?:\b(?:no|not|never|without|zero|nothing|didnt|doesnt|dont|hasnt|havent|hadnt|wasnt|werent|isnt|arent|wont|cant)|n['’]t)\s+(?:\w+\s+)?$/i;
+
+const DUTY_NOT_DONE =
+  /\b(?:didn'?t|did\s+not|doesn'?t|does\s+not|don'?t|do\s+not|wasn'?t|was\s+not|weren'?t|were\s+not|isn'?t|is\s+not|aren'?t|are\s+not|haven'?t|hasn'?t|has\s+not|won'?t|not)\s+(?:\w+\s+)?(?:follow\w*|do(?:ing)?|complet\w*|meet\w*|clean\w*|sanitiz\w*|sanitis\w*|wip\w*|us(?:e|ing)|offer\w*|ask\w*|greet\w*|show(?:ing)?\s+up|clock\w*|call\w*|wear\w*|finish\w*|turn\w*\s+in|initial\w*|sign\w*|record\w*|log\w*|check\w*|tell\w*|answer\w*|respond\w*|arriv\w*|come|coming|stay\w*|return\w*|on\s+time|in\s+uniform|in\s+dress\s+code|listen\w*|mention\w*|engag\w*)\b/i;
+
+const IN_CONTEXT_SHORTFALL: readonly RegExp[] = [
+  /\bstill\s+(?:late|missing|not\b|isn'?t|doesn'?t|hasn'?t|won'?t|forget\w*|skip\w*|struggl\w*|leav\w*|com\w*\s+in\s+late|needs?\s+(?:reminders?|to\s+be\s+reminded|help\s+with)|making\s+(?:the\s+same\s+)?mistakes?|us\w*\s+(?:her|his|their)\s+phone)\b/i,
+  /\b(?:keeps?|kept)\s+(?:on\s+)?(?:forget\w*|skip\w*|miss\w*|com\w*\s+in\s+late|being\s+late|leav\w*|not\b|ignor\w*)/i,
+  /(?<!\b(?:not|never|without)\s)(?<!n't\s)\bmissing\s+from\b/i,
+  /\b(?:is|are|was|were|been|still|keeps?|kept|often|always|left|went)\s+missing\b/i,
+];
+
+/** Whether the manager's notes describe a shortfall, read in context. */
+function describesShortfall(notes: string): boolean {
+  const text = notes ?? "";
+  for (const match of text.matchAll(UNAMBIGUOUS_SHORTFALL)) {
+    const before = text.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
+    if (!NEGATED_BEFORE.test(before)) return true;
+  }
+  if (DUTY_NOT_DONE.test(text)) return true;
+  return IN_CONTEXT_SHORTFALL.some((pattern) => pattern.test(text));
+}
 
 /** Labels that turn a conversation into a finding. */
 const DEFICIT_FRAMING =
@@ -39,7 +88,7 @@ const UNDERPERFORMANCE = "underperformance";
 const FRAMED_TEXT_KEYS: ReadonlySet<string> = new Set(["coaching_details", "other_topic"]);
 
 export function notesDescribeShortfall(notes: string): boolean {
-  return SHORTFALL_IN_NOTES.test(notes ?? "");
+  return describesShortfall(notes);
 }
 
 function splitSentences(line: string): string[] {

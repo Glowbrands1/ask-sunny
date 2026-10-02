@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope } from "@/types";
 
-import type { RosterEmployee } from "./employee-match";
+import { isServiceAccountName, type RosterEmployee } from "./employee-match";
 import { authorizedSalonIds } from "./location-scope";
 
 /**
@@ -35,6 +35,11 @@ import { authorizedSalonIds } from "./location-scope";
  * TERMINATED EMPLOYEES ARE LEFT OUT. A coaching form is about somebody on the
  * team today. `unknown` statuses stay in — the sync never reads `unknown` as
  * terminated, and neither does this.
+ *
+ * SHARED AND SERVICE ACCOUNTS ARE LEFT OUT. "Risk Management", "No Manager"
+ * and "GlowBrands IT Support" are directory rows, not people; a row is left
+ * out only when every word of its name is a department, role or system word.
+ * See `isServiceAccountName`. The directory itself is never changed.
  */
 
 export interface DirectoryRosterRow {
@@ -62,6 +67,8 @@ export function scopeRoster(
     const first = row.firstName?.trim() ?? "";
     const last = row.lastName?.trim() ?? "";
     if (!first || !last) continue;
+    // "Risk Management", "No Manager": a shared or service account, never a suggestion.
+    if (isServiceAccountName(first, last)) continue;
     const salonIds = allowed ? row.salonIds.filter((id) => allowed.has(id)) : [...row.salonIds];
     if (allowed && salonIds.length === 0) continue;
     roster.push({

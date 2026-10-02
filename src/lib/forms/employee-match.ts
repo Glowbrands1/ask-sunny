@@ -48,6 +48,36 @@ export type NameMatch =
   /** No roster to check against — the directory is empty or unavailable. */
   | { kind: "unchecked" };
 
+/*
+ * ============================================================================
+ * DIRECTORY ROWS THAT ARE NOT A PERSON
+ * ============================================================================
+ *
+ * The live Woven directory holds shared and service accounts alongside the
+ * team — "Risk Management", "No Manager", "GlowBrands IT Support" — and the
+ * matcher offered them like anybody else ("Did you mean No Manager?"). Their
+ * position is no guide: "No Manager" is listed as a Tanning Consultant.
+ *
+ * CONSERVATIVE BY CONSTRUCTION. A row is left out only when EVERY word of its
+ * name is a word for a department, a role or a system — so "Risk Management"
+ * goes and "Kim Keller" cannot, and neither can a real person with one such
+ * word in their name ("Hope Office" keeps "Hope"). Nothing is written to the
+ * directory; the row is simply never a name suggestion on a form.
+ */
+const SERVICE_NAME_WORDS = new Set([
+  "no", "none", "risk", "management", "manager", "managers", "it", "support", "help", "helpdesk",
+  "desk", "admin", "administrator", "account", "accounts", "payroll", "hr", "office", "corporate",
+  "franchise", "glowbrands", "glow", "brands", "operations", "ops", "system", "systems", "service",
+  "services", "department", "team", "shared", "general", "front", "store", "salon", "test",
+  "training", "loss", "prevention",
+]);
+
+/** Whether a directory row's name is a department, role or system rather than a person. */
+export function isServiceAccountName(firstName: string, lastName: string): boolean {
+  const words = `${firstName} ${lastName}`.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  return words.length > 0 && words.every((word) => SERVICE_NAME_WORDS.has(word));
+}
+
 /** How many close candidates are ever put to the manager. */
 const MAX_SUGGESTIONS = 3;
 

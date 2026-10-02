@@ -102,6 +102,26 @@ describe("a revision of the open form", () => {
     expect(seen.revised).toHaveLength(1);
   });
 
+  it("is given the business day, so a typed follow-up date can be read", async () => {
+    const { route, seen } = await load({
+      content: "Set the follow-up date to **Thursday, October 15, 2026**.",
+      citations: [],
+      coverage: "not_applicable",
+      recommendedVideoIds: [],
+      formUpdate: { instanceId: INSTANCE, updated: ["follow_up_date"] },
+    });
+    const response = await route.POST(
+      ask({
+        activeFormInstanceId: INSTANCE,
+        history: [],
+        question: "Change the follow-up date to 10/15",
+        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: "2026-10-02" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: "2026-10-02" });
+  });
+
   it("falls through to an ordinary answer when the turn is not a revision", async () => {
     const { route, seen } = await load(null);
     const response = await route.POST(ask({ activeFormInstanceId: INSTANCE, history: [] }));

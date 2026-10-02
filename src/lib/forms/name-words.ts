@@ -89,6 +89,14 @@ export const NOT_A_TYPED_NAME = new Set([
   "bed", "beds", "sanitizing", "sanitising", "sanitize", "sanitise",
   "sanitation", "sanitization", "hygiene", "wiping", "wipe", "wipes",
   /*
+   * PRODUCTION QA OF PR #81. "…coaching form for general training…" became an
+   * employee called "general". The team descriptors are masked before any
+   * name is read (`maskTeamSubjectPhrases`); these are the same words on
+   * their own, so a variant the mask does not cover still names nobody.
+   */
+  "general", "group", "whole", "entire", "refresher", "team-wide", "salon-wide",
+  "store-wide", "company-wide", "teamwide", "everyone's",
+  /*
    * What people ask ABOUT a form rather than who it is for: "coaching tips",
    * "exit process", "transfer policy", "demotion requirements". And the words
    * that begin a form's other details — "…jane smith effective october 5".
