@@ -192,7 +192,7 @@ describe("the audit trail actually records what it claims to", () => {
    * failing, and no runtime logging is needed to notice.
    */
   const MIGRATION = readFileSync(
-    "supabase/migrations/20260905001100_audit_action_vocabulary.sql",
+    "supabase/migrations/20261002001000_auth_revocation_hardening.sql",
     "utf8",
   );
 
@@ -285,10 +285,16 @@ describe("the refusals, exercised against a fake database", () => {
     adminCount: number;
     /** Whether the auth CREDENTIAL has a confirmed email. Decides the email. */
     confirmed?: boolean;
+    banFails?: boolean;
+    sessionsFail?: boolean;
   }) {
     const updates: Record<string, unknown>[] = [];
     const audits: Record<string, unknown>[] = [];
     const sent: string[] = [];
+    const bans: Record<string, unknown>[] = [];
+    const sessionRevocations: string[] = [];
+    /** The order profile writes and auth calls happened in. */
+    const order: string[] = [];
 
     const client = {
       from(table: string) {
@@ -314,6 +320,7 @@ describe("the refusals, exercised against a fake database", () => {
             error: null,
           }),
           update: (patch: Record<string, unknown>) => {
+            order.push("profile_update");
             updates.push(patch);
             return chain;
           },
@@ -335,14 +342,24 @@ describe("the refusals, exercised against a fake database", () => {
             sent.push("invitation");
             return { data: { user: { id: "x" } }, error: null };
           },
+          updateUserById: async (id: string, attributes: Record<string, unknown>) => {
+            order.push(`ban:${String(attributes.ban_duration)}`);
+            bans.push({ id, ...attributes });
+            return { error: options.banFails ? { message: "auth down" } : null };
+          },
         },
         resetPasswordForEmail: async () => {
           sent.push("password_reset");
           return { error: null };
         },
       },
+      rpc: async (fn: string, args: { p_user_id: string }) => {
+        order.push(`rpc:${fn}`);
+        sessionRevocations.push(args.p_user_id);
+        return options.sessionsFail ? { data: null, error: { message: "db down" } } : { data: 1, error: null };
+      },
     };
-    return { client, updates, audits, sent };
+    return { client, updates, audits, sent, bans, sessionRevocations, order };
   }
 
   async function loadWith(fake: ReturnType<typeof fakeAdmin>) {
@@ -416,12 +433,16 @@ describe("the refusals, exercised against a fake database", () => {
   });
 
   it("allows demoting a NON-administrator without counting anything", async () => {
-    const employee = { ...ADMIN_ROW, id: "emp-1", role: "employee" };
+    /* A real (UUID) id: disabling now also bans the auth user, which refuses anything else. */
+    const EMP = "6e0b7c52-8d0a-4e0e-9d1c-2f6a1a0c9e33";
+    const employee = { ...ADMIN_ROW, id: EMP, role: "employee" };
     const fake = fakeAdmin({ row: employee, adminCount: 1 });
     const { patchUser } = await loadWith(fake);
 
-    await patchUser("emp-1", { status: "disabled" }, actor);
+    await patchUser(EMP, { status: "disabled" }, actor);
     expect(fake.updates.at(-1)?.status).toBe("disabled");
+    expect(fake.bans).toEqual([{ id: EMP, ban_duration: "876000h" }]);
+    expect(fake.sessionRevocations).toEqual([EMP]);
   });
 
   it("REFUSES putting an account back to invited", async () => {
@@ -498,5 +519,150 @@ describe("the refusals, exercised against a fake database", () => {
     await expect(
       sendRecovery("admin-1", "https://app.test/auth/callback", actor),
     ).rejects.toThrow(/disabled/i);
+  });
+});
+
+describe("disabling revokes access at the AUTHENTICATION layer too", () => {
+  const MANAGER = {
+    id: "5d0b7c52-8d0a-4e0e-9d1c-2f6a1a0c9e22",
+    email: "manager@suntancity.test",
+    display_name: "A Manager",
+    role: "salon_director",
+    status: "active",
+    scope_level: "salon",
+    scope_primary_area_id: "loc-0307",
+    scope_also_covers_area_ids: [],
+    created_at: "2026-09-01T00:00:00.000Z",
+    updated_at: "2026-09-01T00:00:00.000Z",
+  };
+  const actor = { id: "admin-1", email: "admin@suntancity.test", role: "admin" as const };
+
+  function fakeFor(row: Record<string, unknown>, options: { banFails?: boolean; sessionsFail?: boolean; adminCount?: number } = {}) {
+    const updates: Record<string, unknown>[] = [];
+    const audits: Record<string, unknown>[] = [];
+    const bans: Record<string, unknown>[] = [];
+    const order: string[] = [];
+    const chain: Record<string, unknown> = {
+      select: (_c?: string, opts?: { head?: boolean }) =>
+        opts?.head ? { in: () => ({ eq: async () => ({ count: options.adminCount ?? 5, error: null }) }) } : chain,
+      eq: () => chain,
+      maybeSingle: async () => ({ data: row, error: null }),
+      single: async () => ({ data: { ...row, ...(updates.at(-1) ?? {}) }, error: null }),
+      update: (patch: Record<string, unknown>) => {
+        order.push("profile_update");
+        updates.push(patch);
+        return chain;
+      },
+    };
+    const client = {
+      from: (table: string) =>
+        table === "app_user_audit"
+          ? { insert: async (entry: Record<string, unknown>) => (audits.push(entry), { error: null }) }
+          : chain,
+      auth: {
+        admin: {
+          updateUserById: async (id: string, attributes: Record<string, unknown>) => {
+            order.push(`ban:${String(attributes.ban_duration)}`);
+            bans.push({ id, ...attributes });
+            return { error: options.banFails ? { message: "auth down" } : null };
+          },
+        },
+      },
+      rpc: async (fn: string) => {
+        order.push(`rpc:${fn}`);
+        return options.sessionsFail ? { data: null, error: { message: "db down" } } : { data: 2, error: null };
+      },
+    };
+    return { client, updates, audits, bans, order };
+  }
+
+  async function load(fake: ReturnType<typeof fakeFor>) {
+    vi.resetModules();
+    vi.doMock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fake.client, KNOWLEDGE_BUCKET: "knowledge-documents" }));
+    return import("./user-directory");
+  }
+
+  it("Disable: profile first, then the auth ban, then session revocation — and an access_revoked audit row", async () => {
+    const fake = fakeFor(MANAGER);
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { status: "disabled" }, actor);
+    expect(fake.order).toEqual(["profile_update", "ban:876000h", "rpc:auth_revoke_user_sessions"]);
+    expect(fake.updates[0]).toMatchObject({ status: "disabled" });
+    expect(fake.audits.map((a) => a.action)).toEqual(["status_changed", "access_revoked"]);
+  });
+
+  it("a failed ban leaves the profile disabled, records it, and says so — retrying completes it", async () => {
+    const fake = fakeFor(MANAGER, { banFails: true });
+    const { patchUser } = await load(fake);
+    await expect(patchUser(MANAGER.id, { status: "disabled" }, actor)).rejects.toMatchObject({ code: "auth_revocation_incomplete", status: 502 });
+    expect(fake.updates[0]).toMatchObject({ status: "disabled" });
+    expect(fake.audits.map((a) => a.action)).toEqual(["status_changed", "access_revocation_incomplete"]);
+    expect(fake.audits.at(-1)).toMatchObject({ to_value: "failed:ban" });
+
+    /* Sending Disable again on an already-disabled account re-runs both layers. */
+    const retry = fakeFor({ ...MANAGER, status: "disabled" });
+    const again = await load(retry);
+    await again.patchUser(MANAGER.id, { status: "disabled" }, actor);
+    expect(retry.order).toEqual(["profile_update", "ban:876000h", "rpc:auth_revoke_user_sessions"]);
+    expect(retry.audits.map((a) => a.action)).toEqual(["access_revoked"]);
+  });
+
+  it("a failed session revocation is reported the same way", async () => {
+    const fake = fakeFor(MANAGER, { sessionsFail: true });
+    const { patchUser } = await load(fake);
+    await expect(patchUser(MANAGER.id, { status: "disabled" }, actor)).rejects.toMatchObject({ code: "auth_revocation_incomplete" });
+    expect(fake.audits.at(-1)).toMatchObject({ action: "access_revocation_incomplete", to_value: "failed:sessions" });
+  });
+
+  it("Re-enable: profile first, then the ban is lifted — and an access_restored audit row", async () => {
+    const fake = fakeFor({ ...MANAGER, status: "disabled" });
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { status: "active" }, actor);
+    expect(fake.order).toEqual(["profile_update", "ban:none"]);
+    expect(fake.audits.map((a) => a.action)).toEqual(["status_changed", "access_restored"]);
+  });
+
+  it("a failed unban rolls the profile back to disabled, so the two layers never disagree", async () => {
+    const fake = fakeFor({ ...MANAGER, status: "disabled" }, { banFails: true });
+    const { patchUser } = await load(fake);
+    await expect(patchUser(MANAGER.id, { status: "active" }, actor)).rejects.toMatchObject({ code: "auth_revocation_incomplete", status: 502 });
+    expect(fake.updates.map((u) => u.status)).toEqual(["active", "disabled"]);
+    expect(fake.audits.map((a) => a.action)).toEqual(["status_changed", "access_revocation_incomplete"]);
+  });
+
+  it("a request that names status active on an already-active account never calls the auth layer", async () => {
+    const fake = fakeFor(MANAGER);
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { status: "active", role: "assistant_salon_director" }, actor);
+    expect(fake.order).toEqual(["profile_update"]);
+  });
+
+  it("a refused change (the last administrator) never reaches the auth layer", async () => {
+    const lastAdmin = { ...MANAGER, role: "admin", scope_level: "global", scope_primary_area_id: null };
+    const fake = fakeFor(lastAdmin, { adminCount: 1 });
+    const { patchUser } = await load(fake);
+    await expect(patchUser(MANAGER.id, { status: "disabled" }, actor)).rejects.toThrow(/last active administrator/i);
+    expect(fake.order).toEqual([]);
+  });
+
+  it("a change that names no status never touches the auth layer", async () => {
+    const fake = fakeFor(MANAGER);
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { displayName: "New Name" }, actor);
+    expect(fake.order).toEqual(["profile_update"]);
+  });
+
+  it("a scope change is now audited, old and new", async () => {
+    const fake = fakeFor(MANAGER);
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { scope: { level: "salon", primaryAreaId: "loc-0394", alsoCoversAreaIds: [] } }, actor);
+    expect(fake.audits).toEqual([expect.objectContaining({ action: "scope_changed", from_value: "salon:loc-0307", to_value: "salon:loc-0394" })]);
+  });
+
+  it("re-saving the same scope writes no scope audit row", async () => {
+    const fake = fakeFor(MANAGER);
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { scope: { level: "salon", primaryAreaId: "loc-0307", alsoCoversAreaIds: [] } }, actor);
+    expect(fake.audits).toEqual([]);
   });
 });

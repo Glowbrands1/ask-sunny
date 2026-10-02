@@ -8,6 +8,7 @@ import {
   WOVEN_SYNC_SCHEDULE_ENABLED_ENV,
 } from "@/lib/employees/woven/config";
 import { CRON_REQUESTER, outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/sync";
+import { recordAccessShadowRun } from "@/lib/employees/woven/access/shadow";
 
 /**
  * GET /api/employees/woven/cron — the scheduled Woven employee sync.
@@ -97,5 +98,14 @@ export async function GET(request: Request) {
   }
 
   const outcome = await runWovenEmployeeSync({ requestedBy: CRON_REQUESTER, config });
-  return NextResponse.json(outcome, { status: outcomeHttpStatus(outcome) });
+
+  /*
+   * SHADOW MODE (WOVEN_ACCESS_MODE=shadow) ONLY: after a successful directory
+   * sync, record what the access sync WOULD do. It applies nothing — see
+   * `access/shadow.ts`. Off (the default), this returns at once and the
+   * response is exactly the sync's outcome.
+   */
+  const shadow = outcome.status === "succeeded" ? await recordAccessShadowRun(CRON_REQUESTER) : ({ status: "off" } as const);
+  const body = shadow.status === "off" ? outcome : { ...outcome, accessShadow: shadow };
+  return NextResponse.json(body, { status: outcomeHttpStatus(outcome) });
 }

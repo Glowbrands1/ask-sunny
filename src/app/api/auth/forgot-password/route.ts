@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { supabasePublicConfigured } from "@/lib/config/runtime";
 import { normalizeEmail } from "@/lib/admin/user-directory";
 import { recoveryRedirectTarget } from "@/lib/admin/redirect-target";
+import { recoveryEligibility } from "@/lib/auth/recovery-eligibility";
 import { getSupabaseRecoveryClient } from "@/lib/supabase/recovery-client";
 
 /**
@@ -39,6 +40,16 @@ import { getSupabaseRecoveryClient } from "@/lib/supabase/recovery-client";
  *
  * The redirect target is compiled in (`<site>/reset-password`), never read from
  * the request, so the link cannot be pointed anywhere else.
+ *
+ * ============================================================================
+ * A DISABLED ACCOUNT GETS NO EMAIL
+ * ============================================================================
+ *
+ * A reset link is a fresh sign-in. Before it is requested, the profile is read
+ * server-side (`recoveryEligibility`): only an `active` or `invited` Ask Sunny
+ * account gets an email. A disabled account, an address with no profile, or a
+ * lookup that fails gets NOTHING — and the same `200 { ok: true }`, so the
+ * answer still says nothing about which case applied.
  */
 
 export const runtime = "nodejs";
@@ -73,6 +84,12 @@ export async function POST(request: Request) {
       { error: "Enter a valid email address." },
       { status: 400, headers: NO_STORE },
     );
+  }
+
+  const eligibility = await recoveryEligibility(email);
+  if (eligibility !== "allowed") {
+    if (eligibility === "lookup_failed") console.warn("[forgot-password] account lookup failed; no email sent");
+    return NextResponse.json({ ok: true }, { headers: NO_STORE });
   }
 
   try {

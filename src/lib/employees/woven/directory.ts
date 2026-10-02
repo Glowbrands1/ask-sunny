@@ -85,6 +85,7 @@ export function directoryRowFromView(row: Record<string, unknown>): DirectoryRow
     hireDate: str(row.hire_date),
     terminationDate: str(row.termination_date),
     dataIssues: Array.isArray(row.data_issues) ? row.data_issues.map(String) : [],
+    missingSyncCount: num(row.missing_sync_count),
     lastSeenAt: String(row.last_seen_at ?? ""),
     lastSyncedAt: String(row.last_synced_at ?? ""),
     lastChangeKind: lastKind,

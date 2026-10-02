@@ -192,7 +192,7 @@ export function DryRunDiagnostics({ diagnostics }: { diagnostics: SyncDiagnostic
       <Row label="Status by read">
         default {r.currentRecords} · with terminated {r.withTerminatedRecords} ({r.withTerminatedAdded} added) · terminated-status filter{" "}
         {r.terminatedStatusRead === "read"
-          ? `(Status ${r.terminatedStatusCodes.join(", ")}): ${r.terminatedStatusRecords} returned, ${r.terminatedStatusMatched} also in the lists, ${r.terminatedStatusNotInListReads} only there (not imported)`
+          ? `(Status ${r.terminatedStatusCodes.join(", ")}): ${r.terminatedStatusRecords} returned, ${r.terminatedStatusMatched} also in the lists, ${r.terminatedStatusMatchedOnFile ?? 0} on file and gone from the lists (received as terminated), ${r.terminatedStatusNotInListReads} only there (not imported)`
           : r.terminatedStatusRead === "failed"
             ? "failed"
             : "not run (no Terminated status in /lists/enums)"}{" "}

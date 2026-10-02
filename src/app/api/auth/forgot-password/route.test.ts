@@ -22,7 +22,9 @@ const EMAIL = "manager@suntancity.com";
 
 type Outcome = "ok" | "unknown_user" | "rate_limited" | "provider_error" | "throws";
 
-async function loadRoute(options: { outcome?: Outcome; configured?: boolean } = {}) {
+async function loadRoute(
+  options: { outcome?: Outcome; configured?: boolean; eligibility?: "allowed" | "no_account" | "not_allowed" | "lookup_failed" } = {},
+) {
   vi.resetModules();
   delete process.env.NEXT_PUBLIC_SITE_URL;
   process.env.NEXT_PUBLIC_SUPABASE_URL =
@@ -60,6 +62,11 @@ async function loadRoute(options: { outcome?: Outcome; configured?: boolean } = 
         },
       },
     }),
+  }));
+
+  /* The profile-status read lives in its own module (tested in recovery-eligibility.test.ts). */
+  vi.doMock("@/lib/auth/recovery-eligibility", () => ({
+    recoveryEligibility: async () => options.eligibility ?? "allowed",
   }));
 
   vi.doMock("@/lib/supabase/server", () => ({
@@ -124,7 +131,7 @@ describe("the request Supabase receives", () => {
     });
   });
 
-  it("never touches the secret-key admin client", async () => {
+  it("never SENDS through the secret-key admin client (that client only reads the profile status, in recovery-eligibility.ts)", async () => {
     const { call, seen } = await loadRoute();
     await call({ email: EMAIL });
     expect(seen.adminUsed).toBe(false);
@@ -137,6 +144,41 @@ describe("the request Supabase receives", () => {
     expect(source).not.toMatch(/authorizeRequest|getSupabaseSessionClient|cookies\(|getAppUser/);
     expect(source).not.toMatch(/getSupabaseAdmin|supabase\/server"/);
     expect(source).toContain("getSupabaseRecoveryClient()");
+  });
+});
+
+describe("a disabled account gets no email", () => {
+  it.each(["not_allowed", "no_account", "lookup_failed"] as const)(
+    "%s → no recovery email requested, and the same 200 { ok: true }",
+    async (eligibility) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { call, seen } = await loadRoute({ eligibility });
+      const response = await call({ email: EMAIL });
+      expect(seen.calls).toHaveLength(0);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.json()).toEqual({ ok: true });
+    },
+  );
+
+  it("an allowed (active or invited) account still gets one", async () => {
+    const { call, seen } = await loadRoute({ eligibility: "allowed" });
+    await call({ email: EMAIL });
+    expect(seen.calls).toHaveLength(1);
+  });
+
+  it("a failed lookup logs one fixed line, never the address", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { call } = await loadRoute({ eligibility: "lookup_failed" });
+    await call({ email: EMAIL });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toBe("[forgot-password] account lookup failed; no email sent");
+  });
+
+  it("checks eligibility BEFORE asking Supabase for an email", () => {
+    const source = readFileSync("src/app/api/auth/forgot-password/route.ts", "utf8");
+    expect(source.indexOf("recoveryEligibility(email)")).toBeGreaterThan(-1);
+    expect(source.indexOf("recoveryEligibility(email)")).toBeLessThan(source.indexOf(".resetPasswordForEmail("));
   });
 });
 

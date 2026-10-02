@@ -1,5 +1,12 @@
 # Woven → Ask Sunny employee sync (phase one)
 
+> **2 October 2026 — termination detection fixed (branch `claude/woven-access-sync`).**
+> Production showed that Woven drops terminated employees from both list reads;
+> only the terminated-status filter returns them, and the sync discarded those
+> records, so no `terminated` change had ever fired. The filter is now matched
+> by EmployeeID against the directory on file. See `docs/woven-access-sync.md`,
+> which also covers the access planner built on this directory.
+
 **Status (30 September 2026): live in Production, observe-only.** The
 directory holds 150 employees from the first stored sync (29 September). 15
 Woven locations are mapped to the 15 salons, and JB & Associates - Corporate
@@ -154,7 +161,7 @@ eligibility — although the list and details responses carry many of them.
 | Kind | Recorded when | Classification | Effective date |
 |---|---|---|---|
 | `new_employee` | The EmployeeID has never been seen | `initial_load` on the first sync; `new_hire` when hired or started within 30 days; otherwise `newly_visible` | hire date |
-| `terminated` | Woven now says terminated and did not before | — | termination date (last day worked in details) |
+| `terminated` | Woven now says terminated and did not before — from any read, including the terminated-status filter for an on-file employee absent from both lists (`status_from_terminated_read`) | — | termination date (last day worked in details) |
 | `reactivated` | Terminated → active | `rehire` | new start / hire date, if it changed |
 | `position_changed` | New non-null PositionID differs | `unclassified`, unless both positions are confirmed and ranked: `promotion_confirmed`, `demotion_confirmed`, `lateral` | none from Woven |
 | `primary_location_changed` | New non-null primary differs | `transfer`, or `assigned` | none from Woven |

@@ -2,6 +2,7 @@ import "server-only";
 
 import { AuthError } from "@/lib/auth/types";
 import { APP_USER_COLUMNS, toAppUserProfile } from "@/lib/auth/app-user";
+import { revokeAuthAccess, restoreAuthAccess } from "@/lib/auth/revocation";
 import { ADMIN_CONSOLE_ROLES, ROLES } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope, Role, ScopeLevel } from "@/types";
@@ -69,6 +70,7 @@ export class DirectoryError extends Error {
       | "last_admin"
       | "email_rate_limited"
       | "protected_account"
+      | "auth_revocation_incomplete"
       | "provider_failed",
     message: string,
     readonly status = 400,
@@ -552,9 +554,74 @@ export async function patchUser(
     });
   }
 
+  if (patch.scope_level !== undefined) {
+    const from = scopeLabel(before.scope);
+    const to = scopeLabel({
+      level: patch.scope_level as ScopeLevel,
+      primaryAreaId: patch.scope_primary_area_id as string | null,
+      alsoCoversAreaIds: patch.scope_also_covers_area_ids as string[],
+    });
+    if (from !== to) {
+      await audit({ targetUserId: id, targetEmail: before.email, actor, action: "scope_changed", from, to });
+    }
+  }
+
+  /*
+   * THE SECOND LAYER. The profile change above stops the APPLICATION on the
+   * next request; Supabase Auth has to be told separately, or the password,
+   * the refresh token and a reset link all keep working (see
+   * `src/lib/auth/revocation.ts`). The profile is written FIRST on purpose:
+   * its refusals (self-change, last administrator) run before anything is
+   * banned, so a refused change can never leave a banned administrator behind.
+   *
+   * Both directions are idempotent, and they run whenever the request NAMES
+   * the status — not only when it changes — so sending the same status again
+   * is how a half-finished revocation is completed.
+   */
+  if (input.status === "disabled") {
+    const revoked = await revokeAuthAccess(id);
+    await audit({
+      targetUserId: id,
+      targetEmail: before.email,
+      actor,
+      action: revoked.ok ? "access_revoked" : "access_revocation_incomplete",
+      to: revoked.ok ? "auth_ban,sessions_revoked" : `failed:${revoked.failed.join(",")}`,
+    });
+    if (!revoked.ok) {
+      throw new DirectoryError(
+        "auth_revocation_incomplete",
+        "The account is disabled and can no longer use Ask Sunny, but blocking sign-in at the authentication service did not complete. Sending Disable again (status \"disabled\") finishes it.",
+        502,
+      );
+    }
+  } else if (statusChange?.from === "disabled" && statusChange.to === "active") {
+    const restored = await restoreAuthAccess(id);
+    if (!restored.ok) {
+      /*
+       * NEVER LEAVE THE TWO LAYERS DISAGREEING. The ban could not be lifted, so
+       * the profile goes back to disabled: the account stays consistently
+       * revoked, and pressing Re-enable again retries both steps.
+       */
+      await getSupabaseAdmin().from("app_users").update({ status: "disabled", updated_by: actor.id }).eq("id", id);
+      await audit({ targetUserId: id, targetEmail: before.email, actor, action: "access_revocation_incomplete", to: "failed:unban" });
+      throw new DirectoryError(
+        "auth_revocation_incomplete",
+        "The sign-in block could not be lifted at the authentication service, so the account was left disabled. Re-enable it again to retry.",
+        502,
+      );
+    }
+    await audit({ targetUserId: id, targetEmail: before.email, actor, action: "access_restored", to: "auth_ban_lifted" });
+  }
+
   const user = rowToDirectoryUser(data as Record<string, unknown>);
   if (!user) throw new DirectoryError("provider_failed", "The change was saved but could not be read back.", 502);
   return user;
+}
+
+/** A stable, compact rendering of a scope for the audit trail: level, primary, also-covers. */
+function scopeLabel(scope: { level: string; primaryAreaId: string | null; alsoCoversAreaIds: readonly string[] }): string {
+  const also = [...scope.alsoCoversAreaIds].sort().join(",");
+  return `${scope.level}:${scope.primaryAreaId ?? "-"}${also ? `+${also}` : ""}`;
 }
 
 /**

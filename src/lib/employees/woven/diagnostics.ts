@@ -134,7 +134,12 @@ export interface StatusReadsReport {
   terminatedStatusRecords: number;
   /** Of those, EmployeeIDs the list reads also returned. */
   terminatedStatusMatched: number;
-  /** EmployeeIDs only that read returned — counted, never imported. */
+  /**
+   * EmployeeIDs ON FILE that had left both list reads and that this read
+   * returned with their own Status Terminated: received as terminated.
+   */
+  terminatedStatusMatchedOnFile: number;
+  /** EmployeeIDs only that read returned and not on file — counted, never imported. */
   terminatedStatusNotInListReads: number;
   /** Details reads that carried a readable Status. */
   detailsWithStatus: number;

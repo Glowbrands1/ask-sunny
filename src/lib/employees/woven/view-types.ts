@@ -46,6 +46,8 @@ export interface DirectoryRow {
   hireDate: string | null;
   terminationDate: string | null;
   dataIssues: string[];
+  /** Consecutive stored runs this employee was in no read of. Above 0, their status is not observed (`observedStatus`). */
+  missingSyncCount: number;
   lastSeenAt: string;
   lastSyncedAt: string;
   lastChangeKind: ChangeKind | null;

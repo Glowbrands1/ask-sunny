@@ -411,12 +411,31 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
     const withTerminatedAdded = [...withTerminated].filter((id) => !current.has(id)).length;
 
     /*
-     * ---- 4b. Woven's own terminated-status filter: status evidence ----
-     * Only for EmployeeIDs the list reads returned; anyone it alone returns is
-     * counted, not imported. A failure here never fails the run — it is
-     * evidence, not the read.
+     * ---- 4b. Woven's own terminated-status filter: the termination read ----
+     *
+     * IN PRODUCTION THIS IS THE ONLY READ THAT RETURNS TERMINATED PEOPLE. Woven
+     * drops a terminated employee from BOTH list reads (`includeterminatedemployee`
+     * returns no one extra), so without this read a termination looks exactly
+     * like absence. The filter's records are matched BY EMPLOYEEID against:
+     *
+     *   - this run's list reads: one more version of the same employee
+     *     (a Terminated Status wins, see status-evidence.ts);
+     *   - THE DIRECTORY ON FILE: an employee we hold who has left the list
+     *     reads, and whose OWN Status in this read resolves to Terminated, is
+     *     received as terminated — Woven's authoritative answer, recorded as a
+     *     `terminated` change and flagged `status_from_terminated_read`.
+     *
+     * Anyone it returns who is in neither (years of former staff) is counted,
+     * not imported. A record whose own Status is NOT Terminated proves nothing
+     * and terminates no one. Absence alone is never termination: an on-file
+     * employee in no read at all stays as they are, with a miss counted.
+     *
+     * A failure here never fails the run — but it is recorded, and anyone it
+     * would have answered for stays missing (status not observed this run).
      */
     const listedByTerminatedFilter = new Set<string>();
+    /* On-file EmployeeIDs absent from both list reads that this read confirmed Terminated. */
+    const terminatedFromFilterOnFile = new Set<string>();
     let terminatedReadFailed = false;
     const codes = terminatedStatusCodes(statuses).slice(0, 2);
     if (codes.length === 0) stats.issueCounts.terminated_status_read_skipped_no_code = 1;
@@ -433,6 +452,17 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
           const list = versions.get(id);
           if (!list) {
             bump(stats.issueCounts, "terminated_status_read_not_in_list_reads");
+            if (previousById.has(id)) {
+              if (normalized.employee.employmentStatus === "terminated") {
+                versions.set(id, [{ read: TERMINATED_STATUS_READ, employee: normalized.employee }]);
+                listedByTerminatedFilter.add(id);
+                terminatedFromFilterOnFile.add(id);
+                bump(stats.issueCounts, "terminated_status_read_matched_on_file");
+              } else {
+                /* On file, gone from the lists, returned by the filter with a non-Terminated Status: proves nothing. */
+                bump(stats.issueCounts, "terminated_status_read_on_file_not_terminated");
+              }
+            }
             continue;
           }
           listedByTerminatedFilter.add(id);
@@ -463,6 +493,7 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
         if (codes.length > 0 && !terminatedReadFailed && !listedByTerminatedFilter.has(id)) issues.push("status_read_terminated_status_not_returned");
       }
       if (listedByTerminatedFilter.has(id) && outcome.status !== "terminated") issues.push("terminated_filter_lists_active");
+      if (terminatedFromFilterOnFile.has(id)) issues.push("status_from_terminated_read");
       received.set(id, { ...chosen, issues: [...new Set(issues)] as EmployeeIssue[] });
     }
 
@@ -477,7 +508,15 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
       received: employees.length,
       rejected: stats.recordsRejected,
       activeNow: stats.employeesActive,
-      activeOnFile: directory.filter((row) => row.employmentStatus === "active").length,
+      /*
+       * Actives on file, less those Woven's own Status now says are Terminated:
+       * an explained departure is not a missing record. A burst of explained
+       * terminations is still stored as such here; acting on it is the access
+       * planner's decision, which has its own termination threshold.
+       */
+      activeOnFile: directory.filter(
+        (row) => row.employmentStatus === "active" && received.get(row.externalEmployeeId)?.employmentStatus !== "terminated",
+      ).length,
       minCompletenessPercent: config.minCompletenessPercent,
     });
     if (!verdict.ok) throw new SyncRejected(verdict.code, verdict.reason);
@@ -783,8 +822,10 @@ export async function runWovenEmployeeSync(options: SyncOptions): Promise<SyncOu
             codes.length === 0 ? "skipped_no_terminated_code" : terminatedReadFailed ? "failed" : "read",
           terminatedStatusCodes: codes,
           terminatedStatusRecords: stats.issueCounts.terminated_status_read_records ?? 0,
-          terminatedStatusMatched: listedByTerminatedFilter.size,
-          terminatedStatusNotInListReads: stats.issueCounts.terminated_status_read_not_in_list_reads ?? 0,
+          terminatedStatusMatched: listedByTerminatedFilter.size - terminatedFromFilterOnFile.size,
+          terminatedStatusMatchedOnFile: terminatedFromFilterOnFile.size,
+          terminatedStatusNotInListReads:
+            (stats.issueCounts.terminated_status_read_not_in_list_reads ?? 0) - terminatedFromFilterOnFile.size,
           detailsWithStatus: statusFromDetails.size,
           statusDiffersBetweenReads: stats.issueCounts.status_differs_between_reads ?? 0,
         },

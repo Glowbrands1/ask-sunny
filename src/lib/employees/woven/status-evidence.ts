@@ -74,3 +74,21 @@ export function statusReadCode(read: string, status: EmploymentStatus): StatusRe
 export function hasPastTermination(versions: readonly { terminationDate: string | null }[], today: string): boolean {
   return versions.some((v) => v.terminationDate !== null && v.terminationDate <= today);
 }
+
+/**
+ * THE STATUS ASK SUNNY MAY ACT ON, from one directory row.
+ *
+ *   active      Woven's own Status, read in the latest stored run, is Active.
+ *   terminated  Woven's own Status, read in the latest stored run (a list read,
+ *               the terminated-status filter or details), is Terminated.
+ *   unknown     Woven's Status meant neither — or the employee was in NO read
+ *               of the latest stored run (`missing_sync_count > 0`).
+ *
+ * The stored `employment_status` is the LAST status Woven gave; it is kept as
+ * history and never rewritten by absence. But absence is not an answer, so an
+ * employee nobody read this run is `unknown` here, never still "active" and
+ * never "terminated".
+ */
+export function observedStatus(row: { employmentStatus: EmploymentStatus; missingSyncCount: number }): EmploymentStatus {
+  return row.missingSyncCount > 0 ? "unknown" : row.employmentStatus;
+}
