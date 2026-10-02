@@ -449,6 +449,50 @@ const MULTI: AccessScope = {
 };
 const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } as never;
 
+/*
+ * HR FEEDBACK, 30 SEP 2026. The Colene exit form: the notice was given and
+ * worked, the dates were said, and Woven was the channel — and the proposal
+ * still listed both notice dates and the Resignation Details boxes as blank
+ * and asked how and when she resigned. The turns are the ones typed.
+ */
+describe("HR feedback 30 Sep — the Colene exit form", () => {
+  const FIRST =
+    "create an exit form. employee name is colene schildt. colene was a tanning consultant at manhattan location. on 9-15-26 colene provided her resignation to management and her last day worked was 9-28-26";
+  const FEEDBACK =
+    "Create a resignation form for Colene Schildt. She worked as a tanning consultant at the Manhattan location. On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
+
+  it("lists the notice date, the notice tick and Woven, and asks only what nobody said", async () => {
+    const proposals = await load([exitForm()]);
+    const content = (await proposals.proposeFormForTurn(turn(FEEDBACK)))!.content;
+    expect(content).toMatch(/- \*\*Last Day Worked:\*\* September 28, 2026/);
+    expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 15, 2026/);
+    expect(content).toMatch(/- \*\*Resignation Details:\*\* Submitted & Fulfilled Notice/);
+    expect(content).toMatch(/- \*\*Resignation Date:\*\* September 15, 2026/);
+    expect(content).toMatch(/- \*\*How Employee Resigned:\*\* Woven message/);
+    // The fulfilled date is still the manager's (unchanged rule, pending HR).
+    expect(content).toMatch(/\*\*Left blank for you to review:\*\*[^\n]*Date that notice was fulfilled/);
+    expect(content).not.toMatch(/Left blank for you to review:\*\*[^\n]*(?:Date that notice was given|the Resignation Details boxes)/);
+    expect(content).not.toMatch(/How did they leave|What date did they resign|How did they let you know/);
+  });
+
+  it("reads the same across the two turns the manager actually typed", async () => {
+    const proposals = await load([exitForm()]);
+    const content = (await proposals.proposeFormForTurn({
+      ...turn(
+        "colene gave and worked 2 week notice. colene messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
+        { history: [said("m1", FIRST)] },
+      ),
+      // The open exit-form proposal the reply answers, as in Production.
+      continueTemplateKey: "stc-exit",
+    }))!.content;
+    expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 15, 2026/);
+    expect(content).toMatch(/- \*\*Resignation Details:\*\* Submitted & Fulfilled Notice/);
+    expect(content).toMatch(/- \*\*How Employee Resigned:\*\* Woven message/);
+    expect(content).toMatch(/- \*\*Eligible for Rehire:\*\* Employee is eligible for rehire\./);
+    expect(content).not.toMatch(/How did they leave|What date did they resign|How did they let you know/);
+  });
+});
+
 describe("QA 1 — natural-language retrieval", () => {
   it.each([
     ["pull up the exit form", null],

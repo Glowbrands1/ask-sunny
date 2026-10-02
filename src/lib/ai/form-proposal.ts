@@ -30,6 +30,13 @@ import {
   readCorrectiveActionIntake,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
+import {
+  CA_POLICY_QUESTION,
+  caPolicyProposalLine,
+  namesCaPolicy,
+  readCaPolicy,
+  type CaPolicyReading,
+} from "@/lib/forms/ca-policy";
 import { offeredInChooser } from "@/lib/forms/chooser";
 import { exitDetailsSupplied, readExitDetails } from "@/lib/forms/exit-details";
 import {
@@ -991,6 +998,22 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   }
 
   /*
+   * AND BY ITS POLICY QUESTION. "Which policy applies?" is answered "standards
+   * of conduct" or "attendance", which names nobody either — and "use
+   * attendance instead" corrects the suggested one. Read only after an open
+   * Corrective Action proposal said something about the policy, and never
+   * when the reply is itself a question ("what does the attendance policy
+   * say?" is retrieval).
+   */
+  if (open && isCorrectiveActionForm(open) && !/\?\s*$/.test(input.question)) {
+    const lastAssistant = [...input.history].reverse().find((message) => message.role === "assistant");
+    const raisedPolicy =
+      typeof lastAssistant?.content === "string" &&
+      (lastAssistant.content.includes(CA_POLICY_QUESTION) || lastAssistant.content.includes("**Policy:**"));
+    if (raisedPolicy && namesCaPolicy(input.question)) return { kind: "explicit", templateKey: continued };
+  }
+
+  /*
    * "YES" TO "DID YOU MEAN KAITLYN SMITH?" names nobody either. A bare yes or
    * no that answers that question continues the open proposal, which re-checks
    * the name against the directory itself. See `employee-match.ts`.
@@ -1543,7 +1566,7 @@ function proposalContent(
      * being stopped for it.
      */
     if (proposal.status !== "needs_location") {
-      return correctiveActionReady(proposal, intake, asksPayrollDeduct(match));
+      return correctiveActionReady(proposal, intake, asksPayrollDeduct(match), readCaPolicy(context.text));
     }
   }
 
@@ -1678,6 +1701,7 @@ function correctiveActionReady(
   proposal: ChatFormProposal,
   intake: IntakeReading,
   asksPayroll: boolean,
+  policy: CaPolicyReading,
 ): string {
   const outstanding = intake.missingRequired
     .filter((item) => item.key === "warning_level" || item.key === "previous_action")
@@ -1688,6 +1712,17 @@ function correctiveActionReady(
   const lines = [
     `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
   ];
+
+  /*
+   * THE POLICY, SUGGESTED OR ASKED — never left silently to the drafting
+   * model's offense box. A missed deadline, unfinished assigned work, Woven
+   * items not completed or a direction not followed reads as the Standards of
+   * Conduct, and is named here for the manager to change; the draft applies
+   * it only where the current manual's section supports it. An account that
+   * also reads as attendance or a target is a question. See `ca-policy.ts`.
+   */
+  const policyLine = caPolicyProposalLine(policy);
+  if (policyLine) lines.push("", policyLine);
 
   if (outstanding.length > 0) {
     lines.push(

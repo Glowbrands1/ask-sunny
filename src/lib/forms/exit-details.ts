@@ -360,6 +360,16 @@ const METHODS: { label: string; pattern: RegExp }[] = [
   { label: "In person", pattern: /\b(?:in person|face[- ]to[- ]face|to my face|came in (?:and|to) (?:quit|resign|tell))\b/g },
   { label: "Written letter", pattern: /\b(?:resignation letter|letter of resignation|in writing|written resignation|wrote a letter|handed (?:me |in )?a letter)\b/g },
   { label: "Walked out", pattern: /\bwalked\s+(?:out|off)\b/g },
+  /*
+   * WOVEN, the company's messaging app — "sent the message via Woven",
+   * "messaged management her resignation on woven". Only with a word that
+   * makes Woven the channel: "she missed the Woven deadline" names no method.
+   */
+  {
+    label: "Woven message",
+    pattern:
+      /\b(?:via|through|over|by) woven\b|\bwoven (?:message|msg|chat|dm)\b|\b(?:messaged|sent|wrote|posted)\b[^.;!?\n]{0,40}?\b(?:on|in) woven\b/g,
+  },
 ];
 
 function methodsIn(turn: string): string[] {
@@ -414,7 +424,13 @@ const REASON_START: { pattern: RegExp; keep: boolean }[] = [
 ];
 
 function reasonIn(turn: string): string | null {
-  const text = turn.replace(/\s+/g, " ");
+  /*
+   * LINE BREAKS ARE KEPT. A manager who types one fact per line — "Resigning
+   * to pursue other career options" then "Store items returned" — has ended
+   * the reason at the line, and `REASON_END` stops there. Collapsing them too
+   * ran the reason into every line after it.
+   */
+  const text = turn.replace(/[^\S\n]+/g, " ");
   const lower = text.toLowerCase();
   if (NO_REASON.test(lower)) return "No reason given.";
   for (const { pattern, keep } of REASON_START) {
