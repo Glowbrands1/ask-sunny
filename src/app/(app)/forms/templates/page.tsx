@@ -19,7 +19,8 @@ import { requirePagePermission } from "@/lib/auth/page";
  * FORM TEMPLATES — the authorized administration screen.
  *
  * Read on the server, from the database, with the privileged key that never
- * reaches a browser. The library installs itself on first visit: an empty
+ * reaches a browser. The library installs itself on first visit — on the
+ * Production deployment only, never a Preview, which shares its database: an empty
  * database gets the thirteen templates, and one that already has them is left
  * exactly as it is — except where the business has re-issued a form, which is
  * published as a NEW version rather than as an edit to the old one. See
@@ -77,9 +78,16 @@ export default async function FormTemplatesPage() {
 
   let templates: TemplateSummaryView[] = [];
   let failure: string | null = null;
+  /*
+   * Set on a Vercel Preview, where the library is shown but never installed or
+   * published — Preview shares Production's database. See
+   * `template-sync-policy.ts`.
+   */
+  let syncSkipped: string | null = null;
 
   try {
-    await ensureTemplateLibrary("system");
+    const sync = await ensureTemplateLibrary("system");
+    syncSkipped = sync.skipped?.reason ?? null;
     const summaries = await listTemplateSummaries();
     templates = summaries.map((summary) => {
       const version = summary.currentVersion ?? summary.draftVersion;
@@ -165,6 +173,12 @@ export default async function FormTemplatesPage() {
         notice says what the permission will be; see `forms-gate.tsx`.
       */}
       <FormsAccessNotice permission="manage_form_templates" />
+
+      {syncSkipped ? (
+        <Notice tone="attention" title="Template sync is off on this deployment">
+          {syncSkipped}
+        </Notice>
+      ) : null}
 
       {failure ? (
         <Notice tone="attention" title="The template library could not be read">
