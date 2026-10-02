@@ -60,8 +60,9 @@ describe("pronouns become the first name", () => {
   it.each([
     ["He arrived 20 minutes late.", "Jessica arrived 20 minutes late."],
     ["Moving forward, she should arrive on time.", "Moving forward, Jessica should arrive on time."],
-    ["She did not clock in for her shift.", "Jessica did not clock in for Jessica's shift."],
-    ["He left his station unattended.", "Jessica left Jessica's station unattended."],
+    ["She did not clock in for her shift.", "Jessica did not clock in for the shift."],
+    ["He left his station unattended.", "Jessica left the station unattended."],
+    ["Her last day was Sept 26.", "Jessica's last day was Sept 26."],
     ["The manager spoke with her about it.", "The manager spoke with her about it."], // another person in the sentence: left alone
     ["I spoke to her directly.", "I spoke to Jessica directly."],
     ["She's been late twice this week.", "Jessica has been late twice this week."],
@@ -78,7 +79,7 @@ describe("pronouns become the first name", () => {
     expect(rewrite("They have not completed the task.")).toBe("Jessica has not completed the task.");
     expect(rewrite("They arrived 30 minutes late.")).toBe("Jessica arrived 30 minutes late.");
     expect(rewrite("Moving forward, they should check their schedule.")).toBe(
-      "Moving forward, Jessica should check Jessica's schedule.",
+      "Moving forward, Jessica should check the schedule.",
     );
   });
 
@@ -87,17 +88,69 @@ describe("pronouns become the first name", () => {
       "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time. Moving forward, she should arrive ready to work at the start of her shift. Management will monitor compliance and provide coaching as needed.";
     const result = nameInsteadOfPronouns(plan, "Jessica Moss", ["Sun Tan City"]);
     expect(result.text).toBe(
-      "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time. Moving forward, Jessica should arrive ready to work at the start of Jessica's shift. Management will monitor compliance and provide coaching as needed.",
+      "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time. Moving forward, Jessica should arrive ready to work at the start of the shift. Management will monitor compliance and provide coaching as needed.",
     );
     expect(result.replaced).toBe(2);
     expect(result.text).not.toMatch(/\b(?:she|her|he|his|they|their)\b/i);
   });
 });
 
+describe("natural sentences, not mechanical substitution", () => {
+  /** A sentence that names the employee and then names them again as a possessive. */
+  const repeatsPossessive = (text: string, first: string) =>
+    text
+      .split(/(?<=[.!?])\s+/)
+      .some((sentence) => new RegExp(`\\b${first}\\b.*\\b${first}'s\\b`).test(sentence));
+
+  it.each([
+    ["Colene provided her resignation to management.", "Colene provided a resignation to management.", "Colene Schildt"],
+    ["Colene submitted her resignation.", "Colene submitted a resignation.", "Colene Schildt"],
+    ["Jessica gave her two week notice on 9/1.", "Jessica gave the two week notice on 9/1.", "Jessica Moss"],
+    ["Jessica worked out her notice.", "Jessica worked out the notice.", "Jessica Moss"],
+    ["Jessica returned her keys and uniform.", "Jessica returned the keys and uniform.", "Jessica Moss"],
+    ["Jessica did not clean her own station.", "Jessica did not clean the station.", "Jessica Moss"],
+    ["Jessica arrived late and she did not call.", "Jessica arrived late and did not call.", "Jessica Moss"],
+    ["Jessica arrived late, and she did not call.", "Jessica arrived late and did not call.", "Jessica Moss"],
+    ["Jessica was coached on 9/2, but she was late again.", "Jessica was coached on 9/2 but was late again.", "Jessica Moss"],
+    ["Jessica gave notice and they're working through Friday.", "Jessica gave notice and is working through Friday.", "Jessica Moss"],
+  ])("%s", (before, after, name) => {
+    expect(rewrite(before, name)).toBe(after);
+  });
+
+  it("does not repeat the name as the subject of a later clause", () => {
+    // No natural rewrite exists without restructuring the sentence, so it is
+    // left for the prompt rule — never "Jessica was late because Jessica overslept".
+    expect(rewrite("Jessica was late because she overslept.")).toBe("Jessica was late because she overslept.");
+    expect(rewrite("She should plan her commute so she arrives early.")).toBe(
+      "Jessica should plan the commute so she arrives early.",
+    );
+  });
+
+  it("names the employee once per sentence, never as subject and possessive together", () => {
+    const corpus: [string, string][] = [
+      ["Colene Schildt", "Colene provided her resignation to management. She gave and worked a two week notice, and her last day worked was 9-28-26."],
+      ["Sarah Jones", "Sarah quit on the spot on 9/20. She returned her keys and uniform."],
+      ["Jane Smith", "Jane Smith gave two weeks notice on 9/14 and worked out her notice. Her last day was Sept 26."],
+      ["Jessica Moss", "Observed:\nShe arrived 30 minutes late for her scheduled shift.\n\nGoing Forward:\nShe should plan her commute and leave early."],
+    ];
+    for (const [employee, text] of corpus) {
+      const name = employee.split(" ")[0]!;
+      const result = rewrite(text, employee);
+      expect(repeatsPossessive(result, name), result).toBe(false);
+      expect(result, result).not.toMatch(/\b(?:she|her|hers)\b/i);
+    }
+  });
+
+  it("leaves text that is already natural exactly as it is", () => {
+    const natural = "On 9-15-26, Colene submitted a resignation to management via Woven. Colene gave and worked a two week notice; the last day worked was 9-28-26.";
+    expect(nameInsteadOfPronouns(natural, "Colene Schildt")).toEqual({ text: natural, replaced: 0 });
+  });
+});
+
 describe("what is never rewritten", () => {
   it("text in quotation marks — somebody's words, or the manual's", () => {
     expect(rewrite('She said "he told me I could leave early" before her shift.')).toBe(
-      'Jessica said "he told me I could leave early" before Jessica\'s shift.',
+      'Jessica said "he told me I could leave early" before the shift.',
     );
     const manual = "“An employee must notify her manager before she leaves the salon.”";
     expect(rewrite(manual)).toBe(manual);

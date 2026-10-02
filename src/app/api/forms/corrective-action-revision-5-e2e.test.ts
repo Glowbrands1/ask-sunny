@@ -329,7 +329,7 @@ const count = (text: string, needle: string) => text.replace(/\s+/g, " ").split(
 const PLAN_WITH_PRONOUN =
   "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time for every scheduled shift. Moving forward, she should arrive ready to work at the start of her shift. Management will monitor compliance and provide coaching as needed.";
 const PLAN_NAMED =
-  "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time for every scheduled shift. Moving forward, Jessica should arrive ready to work at the start of Jessica's shift. Management will monitor compliance and provide coaching as needed.";
+  "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time for every scheduled shift. Moving forward, Jessica should arrive ready to work at the start of the shift. Management will monitor compliance and provide coaching as needed.";
 
 const OPENING =
   "Create a CA for Jessica Moss. She was 30 minutes late today, verbal warning. She was coached on 9/2 and got a verbal warning on 9/21. No payroll deduct.";
@@ -359,7 +359,9 @@ describe("creating a Corrective Action from chat", () => {
     expect(byKey).not.toHaveProperty("previous_action_date");
 
     // 2. The first name, never the pronoun, in the generated narrative.
-    expect(byKey.observation).toContain("Jessica arrived 30 minutes late for Jessica's scheduled shift today.");
+    // Named once, and the possessive restructured rather than repeated.
+    expect(byKey.observation).toContain("Jessica arrived 30 minutes late for the scheduled shift today.");
+    expect(byKey.observation).not.toMatch(/Jessica\b[^.]*\bJessica's/);
     expect(byKey.observation).toContain("Jessica should plan to arrive early.");
     expect(byKey.observation).not.toMatch(/\b(?:she|her)\b/i);
 
@@ -373,7 +375,7 @@ describe("creating a Corrective Action from chat", () => {
     expect(text).not.toContain("Previous corrective action for this policy or issue");
     expect(text).not.toContain("Date of previous corrective action");
     expect(count(text, CLOSING)).toBe(1);
-    expect(text.replace(/\s+/g, " ")).toContain(`Jessica's shift. Management will monitor compliance and provide coaching as needed. ${CLOSING}`);
+    expect(text.replace(/\s+/g, " ")).toContain(`the start of the shift. Management will monitor compliance and provide coaching as needed. ${CLOSING}`);
   });
 
   it("asks the intake question the new field answers", async () => {

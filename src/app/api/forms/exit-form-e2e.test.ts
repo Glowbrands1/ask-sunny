@@ -286,8 +286,9 @@ describe("a populated draft", () => {
     expect(byKey.notice_given_date?.value).toBe("2026-09-14");
     expect(byKey.resignation_notice?.checked).toEqual(["submitted_fulfilled_notice"]);
     expect(byKey.details?.value).toBe(
-      // The employee by first name, not by pronoun (HR feedback, 3 Oct 2026).
-      "Jane Smith gave two weeks notice on 9/14 and worked out Jane's notice. Jane's last day was Sept 26.",
+      // The employee by first name, not by pronoun (HR feedback, 3 Oct 2026),
+      // named once per sentence rather than repeated as a possessive.
+      "Jane Smith gave two weeks notice on 9/14 and worked out the notice. Jane's last day was Sept 26.",
     );
     // Nothing a person decides was written, whatever the model sent.
     for (const key of [...YES_NO, "permanent_address", "notice_fulfilled_date", "resignation_type"]) {

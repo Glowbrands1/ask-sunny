@@ -64,7 +64,8 @@ export function employeeNameRules(employeeName: string | null | undefined): stri
   if (!first) return [];
   return [
     `Refer to the employee by their first name, "${first}", every time — never by a pronoun.`,
-    `Do not write he, she, him, her, his, hers, they, them, their, theirs, himself, herself or themselves for the employee; repeat "${first}" instead (for example "${first} failed to follow the attendance policy", not "She failed to follow the attendance policy").`,
+    `Do not write he, she, him, her, his, hers, they, them, their, theirs, himself, herself or themselves for the employee. Use "${first}" as the subject (for example "${first} failed to follow the attendance policy", not "She failed to follow the attendance policy").`,
+    `Write naturally rather than repeating the name: once "${first}" is named in a sentence, write the rest of it so no pronoun is needed — "${first} submitted a resignation", not "${first} provided ${first}'s resignation" or "${first} provided her resignation"; "${first} arrived late and did not call", not "${first} arrived late and she did not call"; "for the scheduled shift", not "for her scheduled shift".`,
     "Text you quote word for word — a policy passage or somebody's own words, in quotation marks — stays exactly as it was written.",
   ];
 }
@@ -173,10 +174,6 @@ const AFTER_OBJECT_HER = new Set([
   "will", "would", "should", "must", "can", "could",
 ]);
 
-function capitalised(text: string, like: string): string {
-  return like[0] === like[0]!.toUpperCase() ? text[0]!.toUpperCase() + text.slice(1) : text;
-}
-
 function words(text: string): string[] {
   return text.match(/[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'’-]*/g) ?? [];
 }
@@ -227,6 +224,49 @@ interface SentenceResult {
   replaced: number;
 }
 
+/**
+ * Nouns that read naturally with "a" rather than "the" once the possessive is
+ * gone — "Colene submitted a resignation", not "the resignation".
+ */
+const INDEFINITE_NOUNS = new Set([
+  "resignation", "request", "complaint", "letter", "apology", "explanation", "statement",
+  "message", "email", "note", "excuse", "reason", "text",
+]);
+
+/** "and she did not call" — a conjunction the pronoun can simply be dropped after. */
+const DROPPABLE_AFTER = /(,\s*)?\b(and|but|then|or)\s+$/i;
+
+/** Every pronoun this module may rewrite, with an optional contraction. */
+const PRONOUN_TOKEN = /\b(she|he|him|his|hers|her|they|them|their|theirs)(?:['’](s|ll|re|ve))?\b/gi;
+
+/**
+ * ============================================================================
+ * NATURAL, NOT MECHANICAL
+ * ============================================================================
+ *
+ * Swapping every pronoun for the name produces "Colene provided Colene's
+ * resignation" — no pronoun, and no person would write it. So the sentence is
+ * read left to right, knowing whether the employee has ALREADY been named in
+ * it, and each pronoun is restructured rather than substituted:
+ *
+ *   POSSESSIVE, name not yet in the sentence   the name, once
+ *     "Her last day was Sept 26."            -> "Jane's last day was Sept 26."
+ *   POSSESSIVE, name already in the sentence   an article — whose it is, is
+ *                                              already said
+ *     "Colene provided her resignation."     -> "Colene provided a resignation."
+ *     "Jessica did not clock in for her shift." -> "... for the shift."
+ *   SUBJECT after "and" / "but" / "then", name already the subject
+ *                                              dropped — one subject, two verbs
+ *     "Jessica arrived late and she did not call." -> "Jessica arrived late and did not call."
+ *   SUBJECT of a later clause that cannot share it  left as written
+ *     "Jessica was late because she overslept."  (the prompt rule prevents it;
+ *     "...because Jessica overslept" is the repetition HR does not want)
+ *   ANY OTHER subject or object               the name
+ *     "She arrived late."                    -> "Jessica arrived late."
+ *
+ * The prompt rule asks the model to write this way in the first place; this is
+ * the same grammar, applied to whatever came back anyway.
+ */
 function rewriteSentence(
   sentence: string,
   first: string,
@@ -241,76 +281,125 @@ function rewriteSentence(
 
   if (otherPeople(sentence, nameParts, known)) return { text: sentence, replaced: 0 };
 
-  let replaced = 0;
-  let text = sentence;
-  const possessive = `${first}'s`;
-
   // TWO GENDERS IN ONE SENTENCE ARE TWO PEOPLE, so neither is rewritten.
-  if ((feminine || masculine) && !(feminine && masculine)) {
-    text = text
-      .replace(/\b(she|he)['’]s(\s+been)\b/gi, (_m, p: string, been: string) => {
-        replaced++;
-        return `${capitalised(first, p)} has${been}`;
-      })
-      .replace(/\b(she|he)['’]s\b/gi, (_m, p: string) => {
-        replaced++;
-        return `${capitalised(first, p)} is`;
-      })
-      .replace(/\b(she|he)['’]ll\b/gi, (_m, p: string) => {
-        replaced++;
-        return `${capitalised(first, p)} will`;
-      })
-      .replace(/\b(she|he)\b(?!['’])/gi, (m: string) => {
-        replaced++;
-        return capitalised(first, m);
-      })
-      .replace(/\b(him)\b/gi, (m: string) => {
-        replaced++;
-        return capitalised(first, m);
-      })
-      .replace(/\b(his|hers)\b/gi, (m: string) => {
-        replaced++;
-        return capitalised(possessive, m);
-      })
-      .replace(/\b(her)\b(\s*)([A-Za-z'’]+|[^A-Za-z]|$)/gi, (m: string, her: string, gap: string, next: string) => {
-        replaced++;
-        const objective = !/^[A-Za-z]/.test(next) || AFTER_OBJECT_HER.has(next.toLowerCase()) || /ly$/i.test(next);
-        return `${capitalised(objective ? first : possessive, her)}${gap}${next}`;
-      });
-  }
-
+  const gendered = (feminine || masculine) && !(feminine && masculine);
   // THE THEY-FAMILY needs no other plural in the sentence, and a verb it can
   // agree with; anything else is left as written.
-  if (plural && !COLLECTIVE.test(sentence) && !pluralReferent(sentence.replace(/\b(?:they|them|their|theirs)\b/gi, ""))) {
-    text = text
-      .replace(/\bthey['’](re|ve|ll)\b/gi, (m: string, contraction: string) => {
-        replaced++;
-        const verb = { re: "is", ve: "has", ll: "will" }[contraction.toLowerCase() as "re" | "ve" | "ll"];
-        return `${capitalised(first, m)} ${verb}`;
-      })
-      .replace(/\bthey(\s+)([A-Za-z'’]+)/gi, (m: string, gap: string, verb: string) => {
-        const key = verb.toLowerCase().replace(/’/g, "'");
-        if (key in THEY_VERB) {
-          replaced++;
-          return `${capitalised(first, m)}${gap}${THEY_VERB[key]}`;
+  const they =
+    plural &&
+    !COLLECTIVE.test(sentence) &&
+    !pluralReferent(sentence.replace(/\b(?:they|them|their|theirs)\b/gi, ""));
+  if (!gendered && !they) return { text: sentence, replaced: 0 };
+
+  const nameWords = [...nameParts].filter((part) => part !== "");
+  const named = (text: string) =>
+    nameWords.some((part) => new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+
+  let out = "";
+  let cursor = 0;
+  let replaced = 0;
+  PRONOUN_TOKEN.lastIndex = 0;
+
+  for (let match = PRONOUN_TOKEN.exec(sentence); match; match = PRONOUN_TOKEN.exec(sentence)) {
+    const token = match[0];
+    const pronoun = match[1]!.toLowerCase();
+    const contraction = match[2]?.toLowerCase() ?? null;
+    const family = ["they", "them", "their", "theirs"].includes(pronoun) ? "they" : "gendered";
+    if ((family === "gendered" && !gendered) || (family === "they" && !they)) continue;
+
+    let prefix = out + sentence.slice(cursor, match.index);
+    const rest = sentence.slice(match.index + token.length);
+    const following = /^(\s*)([A-Za-z'’]+)?/.exec(rest)!;
+    const gap = following[1] ?? "";
+    const nextWord = following[2] ?? "";
+    const next = nextWord.toLowerCase().replace(/’/g, "'");
+    const isNamed = named(prefix);
+    const atStart = prefix.trim() === "" || /[:—–-]\s*$/.test(prefix);
+    const cap = (word: string) => (atStart || token[0] === token[0]!.toUpperCase() ? word[0]!.toUpperCase() + word.slice(1) : word);
+
+    /**
+     * The subject: the name, nothing when the clause can share the earlier
+     * subject, or "keep" when the name is already in the sentence and the
+     * clause cannot share it ("Jessica was late because she overslept") —
+     * repeating the name there is the awkwardness this pass exists to avoid,
+     * so that sentence is left for the prompt rule to have prevented.
+     */
+    const subject = (): string | null | "keep" => {
+      if (isNamed && !DROPPABLE_AFTER.test(prefix)) return "keep";
+      if (isNamed) {
+        // ", and she" -> " and": one subject, two verbs, no comma between.
+        prefix = prefix.replace(DROPPABLE_AFTER, (_m, _comma, conjunction: string) => ` ${conjunction} `).replace(/\s+ (and|but|then|or) $/i, " $1 ");
+        return null;
+      }
+      return first;
+    };
+
+    let replacement: string | null = null;
+    let skip = 0; // characters of `rest` consumed by the replacement
+
+    if (pronoun === "she" || pronoun === "he") {
+      const verb =
+        contraction === "s"
+          ? /^\s+been\b/i.test(rest) ? "has" : "is"
+          : contraction === "ll"
+            ? "will"
+            : null;
+      if (contraction && !verb) continue;
+      const who = subject();
+      if (who === "keep") continue;
+      if (who === null) {
+        replacement = verb ?? "";
+        if (!verb) skip = gap.length;
+      } else {
+        replacement = verb ? `${cap(who)} ${verb}` : cap(who);
+      }
+    } else if (pronoun === "they") {
+      const verb = contraction
+        ? { re: "is", ve: "has", ll: "will" }[contraction as "re" | "ve" | "ll"] ?? null
+        : null;
+      if (contraction && !verb) continue;
+      let agreed: string | null = verb;
+      if (!contraction) {
+        if (next in THEY_VERB) agreed = THEY_VERB[next]!;
+        else if (THEY_SAME.has(next) || /^[a-z]{3,}ed$/.test(next)) agreed = nextWord;
+        else continue; // a verb it cannot agree with: left as written
+        skip = gap.length + nextWord.length;
+      }
+      const who = subject();
+      if (who === "keep") continue;
+      replacement = who === null ? agreed! : `${cap(who)} ${agreed}`;
+    } else if (pronoun === "him" || pronoun === "them") {
+      replacement = first;
+    } else if (pronoun === "hers" || pronoun === "theirs") {
+      replacement = `${first}'s`;
+    } else {
+      // his / her / their: possessive, unless "her" is an object.
+      const objective =
+        pronoun === "her" &&
+        (nextWord === "" || AFTER_OBJECT_HER.has(next) || /ly$/i.test(next) || /^[^\sA-Za-z]/.test(rest));
+      if (objective) {
+        replacement = first;
+      } else if (!isNamed) {
+        replacement = cap(`${first}'s`);
+      } else {
+        // Whose it is is already said: an article, and "own" goes with the possessive.
+        let noun = next;
+        if (next === "own") {
+          skip = gap.length + nextWord.length;
+          noun = (/^\s+([A-Za-z'’]+)/.exec(rest.slice(skip))?.[1] ?? "").toLowerCase();
         }
-        if (THEY_SAME.has(key) || /^[a-z]{3,}ed$/.test(key)) {
-          replaced++;
-          return `${capitalised(first, m)}${gap}${verb}`;
-        }
-        return m;
-      })
-      .replace(/\b(their|theirs)\b/gi, (m: string) => {
-        replaced++;
-        return capitalised(possessive, m);
-      })
-      .replace(/\b(them)\b/gi, (m: string) => {
-        replaced++;
-        return capitalised(first, m);
-      });
+        replacement = cap(INDEFINITE_NOUNS.has(noun) ? (/^[aeiou]/.test(noun) ? "an" : "a") : "the");
+      }
+    }
+
+    replaced++;
+    out = prefix + replacement;
+    cursor = match.index + token.length + skip;
+    PRONOUN_TOKEN.lastIndex = cursor;
   }
 
-  return { text, replaced };
+  if (replaced === 0) return { text: sentence, replaced: 0 };
+  return { text: (out + sentence.slice(cursor)).replace(/ {2,}/g, " "), replaced };
 }
 
 /** Quoted spans — straight or curly double quotes — held out of the rewrite. */
