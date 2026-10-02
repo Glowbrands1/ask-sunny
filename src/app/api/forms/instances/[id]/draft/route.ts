@@ -120,9 +120,20 @@ import {
   hasManagerFollowUpKeys,
 } from "@/lib/forms/follow-up-observation";
 import { TEAM_SUBJECT_RULES, isTeamSubject } from "@/lib/forms/team-subject";
+import { applyEmployeeName, employeeNameRules } from "@/lib/forms/employee-reference";
+import {
+  LEGACY_PREVIOUS_ACTION_DATE_KEY,
+  NO_PRIOR_ACTION,
+  PRIOR_ACTIONS_KEY,
+  groundPriorActions,
+} from "@/lib/forms/prior-actions";
 
-/** The Corrective Action Form's "Date of previous corrective action" line. */
-const PREVIOUS_ACTION_DATE_KEY = "previous_action_date";
+/**
+ * The revision-4 Corrective Action Form's "Date of previous corrective action"
+ * line. Still filled on drafts pinned to that version; revision 5 replaced it
+ * with the prior-actions list (`prior-actions.ts`).
+ */
+const PREVIOUS_ACTION_DATE_KEY = LEGACY_PREVIOUS_ACTION_DATE_KEY;
 import { EXIT_STATED_KEYS, exitDetailValues, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
 import {
@@ -521,6 +532,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const hasPlanOfAction = fields.some((field) => field.narrative === PLAN_OF_ACTION);
 
+    /*
+     * THE PRIOR-ACTIONS LIST (Corrective Action Form, revision 5). Its history
+     * is the manager's: the rules say so, and `groundPriorActions` holds it
+     * after the model answers.
+     */
+    const hasPriorActions = fields.some((field) => field.key === PRIOR_ACTIONS_KEY);
+    const PRIOR_ACTIONS_RULES = [
+      `The field ${PRIOR_ACTIONS_KEY} lists every coaching or corrective action the employee PREVIOUSLY received, as the manager described it — one per line, each written as "<what it was> — signed <MM/DD/YYYY>".`,
+      "List only steps and dates the manager actually gave. Never invent a prior step or a date; a step whose date the manager did not give is listed without one.",
+      `If the manager said this is the first occurrence, write "${NO_PRIOR_ACTION}". If they said nothing about history, leave it empty.`,
+      "A behaviour that happened again is not a prior coaching or corrective action.",
+    ];
+
     const isCoachingFamily = loaded.instance.layoutFamily === "coaching";
     const hasFollowUpFindings = hasManagerFollowUpKeys([
       ...fields.map((field) => field.key),
@@ -627,9 +651,24 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
              */
             `A field marked [${PLAN_OF_ACTION}] is ONE PARAGRAPH — no labels, no bullets, no headings — of exactly three sentences, in this order:`,
             `FIRST: "<employee> is expected to adhere to the ${ACTIVE_BRAND.brandName} <topic> policy by <what meeting it looks like, in general terms>." Use the topic the manager described — dress code, attendance, standards of conduct — and never state what the policy specifically requires.`,
-            "SECOND: \"Moving forward, <he/she/they> should <the practical behaviour, as something they do on a shift>.\"",
+            /*
+             * THE EMPLOYEE'S FIRST NAME, NOT "<he/she/they>". HR feedback, 3
+             * Oct 2026: forms name the employee rather than using a pronoun.
+             */
+            "SECOND: \"Moving forward, <the employee's first name> should <the practical behaviour, as something done on a shift>.\"",
             "THIRD: \"Management will monitor compliance and provide coaching as needed.\"",
             "NOTHING ELSE BELONGS IN THIS PARAGRAPH. No date and no timeframe, no follow-up review, meeting or check-in, no disciplinary level, no consequence of a further occurrence, no quoted or paraphrased policy wording, no named manual, and no bracketed placeholder.",
+            /*
+             * THE CLOSING IS THE FORM'S, NOT THE MODEL'S. A field whose
+             * version requires one gets it from code after every guard (see
+             * `required-closing.ts`); a model paraphrase of it would print
+             * next to the real one.
+             */
+            ...(fields.some((field) => field.narrative === PLAN_OF_ACTION && field.requiredClosing)
+              ? [
+                  "Do not write any sentence about future violations or their consequences: the form adds its own required closing sentence to this paragraph automatically.",
+                ]
+              : []),
           ]
         : []),
       /*
@@ -685,6 +724,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ...(isCoachingFamily ? LANGUAGE_CLEANUP_RULES : []),
       ...(hasFollowUpFindings ? MANAGER_FOLLOW_UP_RULES : []),
       ...(teamSubject ? TEAM_SUBJECT_RULES : []),
+      /*
+       * THE EMPLOYEE BY NAME, ON EVERY FORM. Shared by every template rather
+       * than bolted onto one: the feedback was about form language, not about
+       * the Corrective Action Form. Empty on a team-wide form. The rewrite
+       * after the model answers is the backstop — see `employee-reference.ts`.
+       */
+      ...(teamSubject ? [] : employeeNameRules(loaded.instance.employeeName)),
+      ...(hasPriorActions ? PRIOR_ACTIONS_RULES : []),
     ].join(" ");
 
     const prompt = [
@@ -1079,7 +1126,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const priorDate = fields.some((field) => field.key === PREVIOUS_ACTION_DATE_KEY)
       ? priorStepDate(notes, businessToday())
       : null;
-    const draftedValues = exit?.values ?? attributions.values;
+    /*
+     * REVISION 5'S LIST, held to the manager's words the same way: a dated
+     * step they described is listed even if the model left it out, and a date
+     * they never gave does not survive. See `prior-actions.ts`.
+     */
+    const priorActions = hasPriorActions
+      ? groundPriorActions({
+          drafted: (exit?.values ?? attributions.values)[PRIOR_ACTIONS_KEY] ?? "",
+          notes,
+          today: businessToday(),
+        })
+      : null;
+    const draftedValues = (() => {
+      const base = { ...(exit?.values ?? attributions.values) };
+      if (priorActions) {
+        if (priorActions.value.trim() !== "") base[PRIOR_ACTIONS_KEY] = priorActions.value;
+        else delete base[PRIOR_ACTIONS_KEY];
+      }
+      return base;
+    })();
 
     const enforced = enforceResponsibilities(document, variantKey, {
       values: priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
@@ -1335,9 +1401,39 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     // The policy rule, on validated values, BEFORE anything is stored.
     const policyChecked = dropUngroundedPolicy(gatedFields, derivedPolicy.values, grounding);
 
+    /*
+     * ========================================================================
+     * LAST: THE EMPLOYEE BY FIRST NAME, NOT BY PRONOUN
+     * ========================================================================
+     *
+     * The prompt asks for the name; this replaces a pronoun that came back
+     * anyway, where it can only mean the employee. Never in a policy field or
+     * a value the server derived — those are the manual's words or the form's
+     * own facts — never inside quotation marks, and never on a team-wide form.
+     * Runs last so no guard after it can reintroduce one. See
+     * `employee-reference.ts`.
+     */
+    const named = teamSubject
+      ? { values: policyChecked.values, adjusted: [] as string[] }
+      : applyEmployeeName({
+          values: policyChecked.values,
+          fields,
+          employeeName: loaded.instance.employeeName,
+          skipKeys: new Set<string>([
+            ...DERIVED_POLICY_FIELD_KEYS,
+            EPP_POLICY_REFERENCE_KEY,
+            ...EXIT_DERIVED_KEYS,
+            ...Object.keys(pinnedProvenance),
+          ]),
+          knownWords: [
+            ACTIVE_BRAND.brandName,
+            ...(loaded.instance.locationName ? [loaded.instance.locationName] : []),
+          ],
+        });
+
     const guarded = await applyAssistantDraft(
       id,
-      { values: policyChecked.values, checked: validated.checked },
+      { values: named.values, checked: validated.checked },
       actor.id,
       provenance,
     );
@@ -1400,6 +1496,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       followUpEmptied: followUp.emptied,
       /** Coaching Form fields a concern label was removed from, for notes that described none. */
       framingAdjusted: framing.adjusted,
+      /** Fields where a pronoun for the employee was replaced by their first name. */
+      employeeNamed: named.adjusted,
+      /** The prior-actions list: steps added from the manager's words, lines with an unstated date removed. */
+      ...(priorActions
+        ? { priorActions: { added: priorActions.added, removed: priorActions.removed } }
+        : {}),
       /*
        * All three notices can apply at once — a Corrective Action Form whose
        * policy could not be verified, whose observation lost an unsupported

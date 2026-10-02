@@ -230,8 +230,10 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      * fields to the business's own reading — Policy Violated is the offense
      * category ticked on the form, Direct policy names the approved manual with
      * its section and page. Revision 4 adds "Is payroll deduct applicable?".
+     * Revision 5 (HR feedback, 3 Oct 2026) replaces the two previous-action
+     * lines with one list and gives the Action Plan its required closing.
      */
-    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(4);
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(5);
   });
 });
 

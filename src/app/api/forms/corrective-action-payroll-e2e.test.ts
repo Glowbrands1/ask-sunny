@@ -376,9 +376,14 @@ describe("changing the answer after the form exists", () => {
  * PRODUCTION: the prior warning's date reached the narrative, and the Date of
  * previous corrective action line stayed blank. The form's own date is still
  * today — September 21 is the PRIOR step's date, not this form's.
+ *
+ * FROM REVISION 5 the two previous-action lines are one list — "List
+ * previously received coaching and/or corrective action with date signed" —
+ * and the same fix fills it: the dated step the manager described is an entry
+ * on the list, put there by code, whatever the model wrote.
  */
 describe("\"create ca for Paulyne Test she was late today, got verbal warning on september 21\"", () => {
-  it("fills the previous corrective action date from the manager's words, and keeps today as the form's date", async () => {
+  it("lists the prior warning with its date from the manager's words, and keeps today as the form's date", async () => {
     const question = "create ca for Paulyne Test she was late today, got verbal warning on september 21";
     const { proposal, content, result } = await conversation([question, "no"]);
 
@@ -395,22 +400,27 @@ describe("\"create ca for Paulyne Test she was late today, got verbal warning on
     const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
     expect(byKey.employee_name?.value).toBe("Paulyne Test");
     expect(byKey.form_date?.value).toBe("2026-09-29");
-    expect(byKey.previous_action_date?.value).toBe("2026-09-21");
-    expect(byKey.previous_action_date?.filledBy).toBe("ai");
+    expect(byKey.prior_actions?.value).toBe("Verbal warning — signed 09/21/2026");
+    expect(byKey.prior_actions?.filledBy).toBe("ai");
+    // The revision-4 lines are not on a revision-5 form.
+    expect(byKey.previous_action_date).toBeUndefined();
+    expect(byKey.previous_action).toBeUndefined();
     expect(byKey.payroll_deduct?.checked).toEqual(["no"]);
 
     const { bytes, text } = await download(result.reference.instanceId, "ca-prior-warning-date");
-    expect(text).toContain("Date of previous corrective action");
-    expect(text).toMatch(/09\/21\/2026|September 21, 2026|2026-09-21/);
+    expect(text).toContain("List previously received coaching and/or corrective action with date signed");
+    expect(text).not.toContain("Date of previous corrective action");
+    expect(text).toMatch(/Verbal warning . signed 09\/21\/2026/);
     expect(ticked(bytes)).toEqual(["No"]);
   });
 
-  it("leaves the line blank when no prior date was given", async () => {
+  it("records a first occurrence as one, and invents no prior date", async () => {
     const { result } = await conversation([
       "create ca for Paulyne Test she was late today, verbal warning, first time",
       "no",
     ]);
     const { values } = await review(result.reference.instanceId);
-    expect(values.find((row) => row.fieldKey === "previous_action_date")?.value ?? null).toBeNull();
+    expect(values.find((row) => row.fieldKey === "prior_actions")?.value).toBe("None — first occurrence");
+    expect(values.find((row) => row.fieldKey === "previous_action_date")).toBeUndefined();
   });
 });

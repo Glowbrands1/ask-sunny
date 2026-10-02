@@ -286,7 +286,8 @@ describe("a populated draft", () => {
     expect(byKey.notice_given_date?.value).toBe("2026-09-14");
     expect(byKey.resignation_notice?.checked).toEqual(["submitted_fulfilled_notice"]);
     expect(byKey.details?.value).toBe(
-      "Jane Smith gave two weeks notice on 9/14 and worked out her notice. Her last day was Sept 26.",
+      // The employee by first name, not by pronoun (HR feedback, 3 Oct 2026).
+      "Jane Smith gave two weeks notice on 9/14 and worked out Jane's notice. Jane's last day was Sept 26.",
     );
     // Nothing a person decides was written, whatever the model sent.
     for (const key of [...YES_NO, "permanent_address", "notice_fulfilled_date", "resignation_type"]) {
@@ -299,7 +300,7 @@ describe("a populated draft", () => {
     expect(text).toContain("Jane Smith");
     expect(text).toContain("NE Lincoln O Street");
     expect(text).toContain("Tanning Consultant");
-    expect(text).toContain("Her last day was Sept 26.");
+    expect(text.replace(/\s+/g, " ")).toContain("Jane's last day was Sept 26.");
     expect(text).not.toMatch(/not eligible for rehire|was signed/);
     expect(text).not.toContain("Invented Road");
   });

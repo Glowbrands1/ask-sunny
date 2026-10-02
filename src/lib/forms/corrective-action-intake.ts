@@ -119,11 +119,16 @@ export const CORRECTIVE_ACTION_INTAKE: readonly IntakeItem[] = [
     /*
      * THE SAME QUESTION THE BUSINESS HAS ALWAYS ASKED, in the terminology it
      * now uses. "Previously disciplined" became "previously received corrective
-     * action"; the question, the order and the "and if yes, when" did not move.
+     * action"; the order did not move.
+     *
+     * AND IT ASKS FOR WHAT THE FORM NOW RECORDS. From revision 5 the form's
+     * line is "List previously received coaching and/or corrective action with
+     * date signed" — coaching counts, and each entry carries the date it was
+     * signed — so the question asks for exactly that (HR feedback, 3 Oct 2026).
      */
     key: "previous_action",
     prompt:
-      "Whether the employee has previously received corrective action for this same issue, and if yes, when",
+      "Whether the employee has previously received coaching and/or corrective action, and if yes, what and the date each was signed",
     optional: false,
   },
   {

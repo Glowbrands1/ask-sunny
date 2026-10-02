@@ -1706,7 +1706,7 @@ function correctiveActionReady(
   const outstanding = intake.missingRequired
     .filter((item) => item.key === "warning_level" || item.key === "previous_action")
     .map((item) =>
-      item.key === "warning_level" ? "the verbal/written warning level" : "any prior corrective action",
+      item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
     );
 
   const lines = [

@@ -1047,7 +1047,7 @@ describe("CA-INTAKE. the opening depends on whether the manager has described an
     expect(content).toMatch(/^2\. Date for the form/m);
     expect(content).toMatch(/^3\. What happened/m);
     expect(content).toMatch(/^4\. Whether this is a verbal or written warning$/m);
-    expect(content).toMatch(/^5\. Whether the employee has previously received corrective action/m);
+    expect(content).toMatch(/^5\. Whether the employee has previously received coaching and\/or corrective action/m);
     expect(content).toMatch(/^6\. Is payroll deduct applicable\? \(Yes or No\)$/m);
     expect(content).toMatch(/^7\. The employee's job title/m);
 

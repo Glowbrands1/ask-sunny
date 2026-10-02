@@ -563,7 +563,7 @@ describe("the rest of the library is where it was", () => {
   it("moves no other template's revision", () => {
     const expected: Record<string, number> = {
       coaching: 2,
-      dpoa: 4,
+      dpoa: 5,
       "policy-review": 2,
       "follow-up-coaching": 2,
       "sdit-epp": 3,
