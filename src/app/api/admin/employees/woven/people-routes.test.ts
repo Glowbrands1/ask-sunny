@@ -18,6 +18,7 @@ const MOCKED = [
   "@/lib/employees/woven/locations",
   "@/lib/employees/woven/positions",
   "@/lib/employees/woven/access-preview",
+  "@/lib/employees/woven/access/link-store",
 ];
 
 afterEach(() => {
@@ -79,6 +80,19 @@ async function load(
     },
   }));
   vi.doMock("@/lib/employees/woven/access-preview", () => ({ loadAccessPreviewRows: async () => [] }));
+  vi.doMock("@/lib/employees/woven/access/link-store", () => ({
+    recordLinkReview: async (input: Record<string, unknown>, reviewer: string) => {
+      seen.writes.push({ what: "link", input: { ...input, reviewer } });
+      return {
+        app_user_id: input.appUserId,
+        management: input.decision === "confirm" ? "woven_linked" : "not_woven_managed",
+        external_employee_id: input.decision === "confirm" ? input.externalEmployeeId : null,
+        managed_status: false,
+        managed_location: false,
+        managed_role: false,
+      };
+    },
+  }));
 
   const handlers = (await import(`./${route}/route`)) as Record<string, (req: Request, ctx?: unknown) => Promise<Response>>;
   return { handlers, seen };
@@ -102,6 +116,11 @@ const CASES: { route: string; method: string; body?: unknown; ctx?: unknown }[] 
   { route: "positions", method: "GET" },
   { route: "positions", method: "PATCH", body: { wovenPositionId: "P-1", status: "ignored" } },
   { route: "eligibility", method: "POST", body: { email: "someone@suntancity.test" } },
+  {
+    route: "links",
+    method: "POST",
+    body: { appUserId: "3f9c2a1e-0000-4000-8000-0000000000aa", externalEmployeeId: "E-1", decision: "confirm", samePersonConfirmed: true },
+  },
 ];
 
 describe.each(CASES)("$method /$route", ({ route, method, body, ctx }) => {
@@ -155,6 +174,37 @@ describe("decisions record the verified session as the reviewer, never the body"
     const { handlers, seen } = await load("changes/[id]");
     await handlers.PATCH(req("PATCH", { reviewStatus: "dismissed", reviewedBy: "x" }), { params: Promise.resolve({ id: CHANGE_ID }) });
     expect(seen.writes[0].input).toEqual({ id: CHANGE_ID, reviewStatus: "dismissed", reviewedBy: "admin:admin@suntancity.test" });
+  });
+});
+
+describe("link review", () => {
+  const ACCOUNT = "3f9c2a1e-0000-4000-8000-0000000000aa";
+
+  it("records the verified session as the reviewer, never the body", async () => {
+    const { handlers, seen } = await load("links");
+    const response = await handlers.POST(req("POST", { appUserId: ACCOUNT, externalEmployeeId: "E-1", decision: "confirm", samePersonConfirmed: true, setBy: "someone-else" }));
+    expect(await response.json()).toMatchObject({ status: "linked", link: { appUserId: ACCOUNT, externalEmployeeId: "E-1" } });
+    expect(seen.writes).toEqual([{ what: "link", input: expect.objectContaining({ appUserId: ACCOUNT, reviewer: "admin:admin@suntancity.test" }) }]);
+  });
+
+  it("refuses a confirmation without the explicit same-person tick, writing nothing", async () => {
+    const { handlers, seen } = await load("links");
+    const response = await handlers.POST(req("POST", { appUserId: ACCOUNT, externalEmployeeId: "E-1", decision: "confirm" }));
+    expect(response.status).toBe(400);
+    expect(seen.writes).toEqual([]);
+  });
+
+  it("refuses an unknown decision or a malformed id", async () => {
+    const { handlers, seen } = await load("links");
+    expect((await handlers.POST(req("POST", { appUserId: ACCOUNT, externalEmployeeId: "E-1", decision: "merge" }))).status).toBe(400);
+    expect((await handlers.POST(req("POST", { appUserId: "x", externalEmployeeId: "E-1", decision: "not_woven_managed" }))).status).toBe(400);
+    expect(seen.writes).toEqual([]);
+  });
+
+  it("'different person' is recorded as not Woven-managed", async () => {
+    const { handlers } = await load("links");
+    const response = await handlers.POST(req("POST", { appUserId: ACCOUNT, externalEmployeeId: "E-1", decision: "not_woven_managed" }));
+    expect(await response.json()).toMatchObject({ status: "marked_not_woven_managed" });
   });
 });
 

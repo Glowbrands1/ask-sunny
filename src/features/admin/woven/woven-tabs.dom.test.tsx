@@ -311,6 +311,38 @@ describe("Access Preview", () => {
     }
   });
 
+  it("LINK REVIEW: one card per exact-email match, Ask Sunny account ↔ Woven EmployeeID, everything disabled on sample data", () => {
+    const pending = plan.rows.filter((r) => r.actions.includes("FLAG_LINK_REVIEW"));
+    expect(pending.length).toBeGreaterThan(0);
+    renderView(sampleProps(data));
+    const panel = screen.getByRole("region", { name: "Link review" });
+    expect(within(panel).getByText(`Link review · ${pending.length}`)).toBeTruthy();
+    for (const row of pending) expect(panel.textContent).toContain(`EmployeeID ${row.externalEmployeeId}`);
+    for (const control of [...within(panel).getAllByRole("button"), ...within(panel).getAllByRole("checkbox")]) {
+      expect((control as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it("LINK REVIEW (live): Confirm stays disabled until the same-person box is ticked, then posts the decision in the body", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "linked" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderView({ ...sampleProps(data), sampleLabel: null, liveMode: true });
+    const panel = screen.getByRole("region", { name: "Link review" });
+    const card = within(panel).getAllByRole("listitem")[0]!;
+    const confirm = within(card).getByRole("button", { name: "Confirm link" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(within(card).getByRole("checkbox", { name: /are the same person/ }));
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/admin/employees/woven/links");
+    const body = JSON.parse(String(init.body));
+    expect(body).toMatchObject({ decision: "confirm", samePersonConfirmed: true, managedStatus: false, managedLocation: false, managedRole: false });
+    expect(url).not.toContain("@");
+    vi.unstubAllGlobals();
+  });
+
   it("says plainly when the access-sync migration has not been applied", () => {
     renderView(sampleProps({ ...data, plan: { state: "not_applied" } } as ViewData));
     expect(screen.getByText("The access-sync migration has not been applied")).toBeTruthy();

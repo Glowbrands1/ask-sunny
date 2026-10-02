@@ -5,10 +5,12 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { ScrollTable, SectionHeader } from "@/components/ui/layout";
 import { GUARD_DESCRIPTIONS, type AccessGuardCode } from "@/lib/employees/woven/access/guards";
+import { allowedManagedFlags, pendingLinkReviews } from "@/lib/employees/woven/access/link-review";
 import { ACCESS_ACTIONS, isMutating, type AccessAction, type PlannedRow } from "@/lib/employees/woven/access/types";
 import type { AccessPreviewRow } from "@/lib/employees/woven/view-types";
 import { EligibilityCheck } from "./eligibility-check";
 import { label } from "./format";
+import { LinkReviewPanel, type LinkReviewItem } from "./link-review-panel";
 
 /**
  * ============================================================================
@@ -138,6 +140,26 @@ function AccountCell({ row }: { row: PlannedRow }) {
   );
 }
 
+/** The planner's pending exact-email matches, as review cards. */
+export function linkReviewItems(rows: readonly PlannedRow[]): LinkReviewItem[] {
+  return pendingLinkReviews(rows).map((row) => ({
+    externalEmployeeId: row.externalEmployeeId!,
+    employeeName: row.employeeName,
+    wovenEmail: row.emailAddress,
+    wovenStatus: row.wovenStatus,
+    wovenPosition: row.wovenPosition,
+    wovenPrimaryLocation: row.wovenPrimaryLocation,
+    account: {
+      appUserId: row.account!.appUserId,
+      email: row.account!.email,
+      role: row.account!.role,
+      status: row.account!.status,
+      scope: scopeText(row.account),
+    },
+    allowed: allowedManagedFlags(row.account!, row.account!.isProtected),
+  }));
+}
+
 const hrefFor = (action: string | null) => (action ? `?action=${encodeURIComponent(action)}` : "?");
 const chip = "rounded-full border border-border px-2.5 py-1 aria-[current=page]:bg-surface-muted aria-[current=page]:font-semibold";
 
@@ -171,7 +193,10 @@ export function AccessPreview({
       ) : planState.state === "unavailable" ? (
         <EmptyState title="The access plan could not be read" description={`The database did not answer${planState.code ? ` (${planState.code})` : ""}.`} />
       ) : (
-        <Plan plan={planState.plan} actionFilter={actionFilter} />
+        <>
+          <LinkReviewPanel items={linkReviewItems(planState.plan.rows)} disabled={actionsDisabled} />
+          <Plan plan={planState.plan} actionFilter={actionFilter} />
+        </>
       )}
 
       <div className="min-w-0">
