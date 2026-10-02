@@ -622,6 +622,21 @@ describe("disabling revokes access at the AUTHENTICATION layer too", () => {
     expect(fake.audits.map((a) => a.action)).toEqual(["status_changed", "access_restored"]);
   });
 
+  it("a failed unban rolls the profile back to disabled, so the two layers never disagree", async () => {
+    const fake = fakeFor({ ...MANAGER, status: "disabled" }, { banFails: true });
+    const { patchUser } = await load(fake);
+    await expect(patchUser(MANAGER.id, { status: "active" }, actor)).rejects.toMatchObject({ code: "auth_revocation_incomplete", status: 502 });
+    expect(fake.updates.map((u) => u.status)).toEqual(["active", "disabled"]);
+    expect(fake.audits.map((a) => a.action)).toEqual(["status_changed", "access_revocation_incomplete"]);
+  });
+
+  it("a request that names status active on an already-active account never calls the auth layer", async () => {
+    const fake = fakeFor(MANAGER);
+    const { patchUser } = await load(fake);
+    await patchUser(MANAGER.id, { status: "active", role: "assistant_salon_director" }, actor);
+    expect(fake.order).toEqual(["profile_update"]);
+  });
+
   it("a refused change (the last administrator) never reaches the auth layer", async () => {
     const lastAdmin = { ...MANAGER, role: "admin", scope_level: "global", scope_primary_area_id: null };
     const fake = fakeFor(lastAdmin, { adminCount: 1 });

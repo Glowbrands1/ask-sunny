@@ -590,28 +590,27 @@ export async function patchUser(
     if (!revoked.ok) {
       throw new DirectoryError(
         "auth_revocation_incomplete",
-        "The account is disabled in Ask Sunny, but sign-in could not be fully blocked at the authentication service. Disable it again to finish.",
+        "The account is disabled and can no longer use Ask Sunny, but blocking sign-in at the authentication service did not complete. Sending Disable again (status \"disabled\") finishes it.",
         502,
       );
     }
-  } else if (input.status === "active" && (statusChange?.from === "disabled" || before.status === "active")) {
+  } else if (statusChange?.from === "disabled" && statusChange.to === "active") {
     const restored = await restoreAuthAccess(id);
-    if (statusChange?.from === "disabled") {
-      await audit({
-        targetUserId: id,
-        targetEmail: before.email,
-        actor,
-        action: restored.ok ? "access_restored" : "access_revocation_incomplete",
-        to: restored.ok ? "auth_ban_lifted" : "failed:unban",
-      });
-    }
     if (!restored.ok) {
+      /*
+       * NEVER LEAVE THE TWO LAYERS DISAGREEING. The ban could not be lifted, so
+       * the profile goes back to disabled: the account stays consistently
+       * revoked, and pressing Re-enable again retries both steps.
+       */
+      await getSupabaseAdmin().from("app_users").update({ status: "disabled", updated_by: actor.id }).eq("id", id);
+      await audit({ targetUserId: id, targetEmail: before.email, actor, action: "access_revocation_incomplete", to: "failed:unban" });
       throw new DirectoryError(
         "auth_revocation_incomplete",
-        "The account is active in Ask Sunny, but the sign-in block could not be lifted. Re-enable it again to finish.",
+        "The sign-in block could not be lifted at the authentication service, so the account was left disabled. Re-enable it again to retry.",
         502,
       );
     }
+    await audit({ targetUserId: id, targetEmail: before.email, actor, action: "access_restored", to: "auth_ban_lifted" });
   }
 
   const user = rowToDirectoryUser(data as Record<string, unknown>);
