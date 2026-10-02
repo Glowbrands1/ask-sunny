@@ -1245,7 +1245,7 @@ describe("the fast path — a draft from what the manager already said", () => {
       /2\. Date for the form/,
       /3\. What happened/,
       /4\. Whether this is a verbal or written warning/,
-      /5\. Whether the employee has previously received corrective action/,
+      /5\. Whether the employee has previously received coaching and\/or corrective action/,
       /6\. Is payroll deduct applicable\?/,
       /7\. The employee's job title/,
     ]) {

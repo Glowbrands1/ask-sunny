@@ -56,9 +56,10 @@ describe("1. the seven, and their order", () => {
     expect(optional.map((item) => item.key)).toEqual(["job_title"]);
   });
 
-  it("asks for previous CORRECTIVE ACTION, not for previous discipline", () => {
+  it("asks for previous COACHING AND/OR CORRECTIVE ACTION with the date signed, not for previous discipline", () => {
     const previous = CORRECTIVE_ACTION_INTAKE.find((item) => item.key === "previous_action")!;
-    expect(previous.prompt).toMatch(/previously received corrective action/i);
+    expect(previous.prompt).toMatch(/previously received coaching and\/or corrective action/i);
+    expect(previous.prompt).toMatch(/date each was signed/i);
     expect(previous.prompt).not.toMatch(/disciplin/i);
   });
 });
@@ -404,7 +405,7 @@ describe("5. what Ask Sunny actually says", () => {
         "3. Date for the form (if you say \u201Ctoday,\u201D I'll use September 11, 2026)",
         "4. What happened — a clear description of the incident(s) with dates and specifics",
         "5. Whether this is a verbal or written warning",
-        "6. Whether the employee has previously received corrective action for this same issue, and if yes, when",
+        "6. Whether the employee has previously received coaching and/or corrective action, and if yes, what and the date each was signed",
         // Added at Operations' request, in their wording.
         "7. Is payroll deduct applicable? (Yes or No)",
         "8. The employee's job title (e.g. TC, ASD, SD) if you have it",
@@ -447,7 +448,7 @@ describe("5. what Ask Sunny actually says", () => {
     });
 
     expect(message).toMatch(/^1\. Whether this is a verbal or written warning$/m);
-    expect(message).toMatch(/^2\. Whether the employee has previously received corrective action/m);
+    expect(message).toMatch(/^2\. Whether the employee has previously received coaching and\/or corrective action/m);
     // No opening pleasantries on a follow-up — the manager is mid-task.
     expect(message).not.toMatch(/I can help you create/);
   });

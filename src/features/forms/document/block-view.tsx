@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { LEADING, SIZE, px } from "@/lib/forms/paper";
+import { closingForDisplay } from "@/lib/forms/required-closing";
 import {
   answerStatementText,
   interpolate,
@@ -146,7 +147,7 @@ function FieldSlot({
   onValue?: (key: string, value: string) => void;
 }) {
   const value = values.values[field.key] ?? "";
-  const lines = field.input === "long_text" ? 3 : 1;
+  const lines = field.input === "long_text" ? Math.max(3, field.minLines ?? 0) : 1;
 
   if (mode === "edit") {
     // A template has no values, so the slot shows what WILL fill it. An empty
@@ -169,7 +170,10 @@ function FieldSlot({
         className="block whitespace-pre-wrap"
         style={{ fontSize: px(SIZE.body), minHeight: px(LEADING) * lines }}
       >
-        {interpolate(value, variant)}
+        {interpolate(
+          field.requiredClosing ? closingForDisplay(value, field.requiredClosing) : value,
+          variant,
+        )}
       </span>
     );
   }
@@ -180,7 +184,7 @@ function FieldSlot({
         id={field.key}
         aria-label={interpolate(field.label, variant)}
         value={value}
-        rows={3}
+        rows={lines}
         onChange={(event) => onValue?.(field.key, event.target.value)}
         className="w-full resize-y bg-transparent leading-snug outline-none focus-visible:bg-brand-yellow-soft"
         style={{ fontSize: px(SIZE.body) }}

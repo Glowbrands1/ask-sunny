@@ -13,6 +13,7 @@ import {
 } from "./document";
 import { LEADING, PAGE, SIZE, pageLayout, type PageLayout } from "./paper";
 import { decodePng } from "./png";
+import { closingForDisplay } from "./required-closing";
 
 /**
  * THE STRUCTURED RENDERER — the document engine that produces the actual PDF.
@@ -549,7 +550,16 @@ function drawBlock(
 
     case "field": {
       sheet.ensure(LEADING + 8);
-      const raw = values.values[block.field.key] ?? "";
+      const stored = values.values[block.field.key] ?? "";
+      /*
+       * A CLOSING THE VERSION REQUIRES IS ON THE PAGE, whatever the stored
+       * value says — appended if missing, never twice, and printed alone on a
+       * blank form. Only versions that declare one; every form filed before
+       * that prints byte-identically. See `required-closing.ts`.
+       */
+      const raw = block.field.requiredClosing
+        ? closingForDisplay(stored, block.field.requiredClosing)
+        : stored;
       const value = block.field.input === "date" ? sheet.layout.date(raw) : raw;
       if (block.field.input === "long_text") {
         /*
@@ -564,6 +574,9 @@ function drawBlock(
           sheet.y -= LEADING;
         }
         const lines = value ? wrapText(value, sheet.layout.contentWidth - 8, SIZE.body, VALUE_FONT) : [""];
+        // Room to write by hand: a field that asks for several entries keeps
+        // its ruled lines even when the typed value is shorter.
+        while (block.field.minLines && lines.length < block.field.minLines) lines.push("");
         for (const line of lines) {
           sheet.ensure(LEADING);
           sheet.text(line, sheet.layout.margin.left + 4, SIZE.body, VALUE_FONT);

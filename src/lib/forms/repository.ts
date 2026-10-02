@@ -17,6 +17,7 @@ import {
 } from "./document";
 import { readProposal, type FormProposal } from "./ingest/proposal";
 import { TEMPLATE_SEEDS } from "./library";
+import { templateSyncDecision } from "./template-sync-policy";
 
 /**
  * THE FORMS SYSTEM OF RECORD.
@@ -178,6 +179,12 @@ export interface LibrarySeedResult {
    * is theirs to make.
    */
   heldBack: { key: string; reason: string }[];
+  /**
+   * Set when this deployment may not write the library at all — a Vercel
+   * Preview, which shares Production's database. Nothing was read or written;
+   * the four lists above are empty. See `template-sync-policy.ts`.
+   */
+  skipped?: { environment: string; reason: string };
 }
 
 /**
@@ -208,7 +215,32 @@ export interface LibrarySeedResult {
  * authoritative, and quietly overwriting their work would be exactly the
  * failure the original seeding rule was written to prevent.
  */
-export async function ensureTemplateLibrary(actor = "system"): Promise<LibrarySeedResult> {
+export async function ensureTemplateLibrary(
+  actor = "system",
+  /** The deployment's environment; a parameter so the guard can be tested. */
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<LibrarySeedResult> {
+  /*
+   * ==========================================================================
+   * NOT ON A PREVIEW: IT SHARES PRODUCTION'S DATABASE
+   * ==========================================================================
+   *
+   * Checked HERE, first, rather than at each caller, so the Form Templates
+   * page, `POST /api/forms/templates` and anything that calls this later are
+   * all covered by one decision — and nothing is read or written before it.
+   */
+  const decision = templateSyncDecision(env);
+  if (!decision.allowed) {
+    return {
+      created: [],
+      existing: [],
+      revised: [],
+      renamed: [],
+      heldBack: [],
+      skipped: { environment: decision.environment, reason: decision.reason },
+    };
+  }
+
   const supabase = getSupabaseAdmin();
   const created: string[] = [];
   const existing: string[] = [];

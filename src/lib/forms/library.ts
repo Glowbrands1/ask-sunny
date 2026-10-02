@@ -12,6 +12,8 @@ import {
   PAYROLL_DEDUCT_LABEL,
   PAYROLL_DEDUCT_OPTIONS,
 } from "./payroll-deduct";
+import { PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL } from "./prior-actions";
+import { CA_ACTION_PLAN_CLOSING } from "./required-closing";
 
 /**
  * THE TEMPLATE LIBRARY — nine forms, four layouts.
@@ -466,23 +468,32 @@ export function correctiveActionDocument(): FormDocument {
       },
       {
         /*
-         * "PREVIOUS CORRECTIVE ACTION", NOT "PREVIOUSLY DISCIPLINED". The field
-         * key is unchanged — `previous_action` is what every stored value is
-         * addressed by — and only the words the manager reads have moved.
+         * ====================================================================
+         * ONE LIST OF EVERYTHING PREVIOUSLY RECEIVED — REVISION 5
+         * ====================================================================
          *
-         * The help text is what stops the field reading as an accusation on a
-         * first occurrence: "None — first occurrence" is a real answer, and a
-         * form that leaves this blank instead is one a reader can mistake for a
-         * history nobody checked.
+         * HR feedback, 3 Oct 2026: the two lines "Previous corrective action
+         * for this policy or issue" and "Date of previous corrective action"
+         * are replaced by this one, in the business's words exactly. Two
+         * single lines held one prior step and one date; an employee with a
+         * coaching AND a verbal warning behind them had nowhere to put the
+         * second. So this is a `long_text`, one entry per line, each with the
+         * date it was signed, and it prints with room to write several.
+         *
+         * A NEW KEY, NOT A RENAME. `previous_action` and `previous_action_date`
+         * stay what they are on the versions that have them — every form filed
+         * against revision 4 prints its two lines exactly as signed. A revision
+         * of such a form carries the two old values into this one; see
+         * `prior-actions.ts`.
+         *
+         * "None — first occurrence" is still a real answer, for the reason it
+         * always was: a blank line here reads as a history nobody checked.
          */
         kind: "field",
-        field: field("previous_action", "Previous corrective action for this policy or issue", "ai", "text", {
-          help: 'The prior coaching or corrective action on this same issue. Write "None — first occurrence" when there has been none.',
+        field: field(PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL, "ai", "long_text", {
+          help: 'One per line: each coaching or corrective action previously received, with the date it was signed. Write "None — first occurrence" when there has been none.',
+          minLines: 4,
         }),
-      },
-      {
-        kind: "field",
-        field: field("previous_action_date", "Date of previous corrective action", "ai", "date"),
       },
 
       { kind: "section", label: "Type of Offense" },
@@ -568,8 +579,16 @@ export function correctiveActionDocument(): FormDocument {
           help:
             "One paragraph: what is being done, what the employee does going " +
             "forward, and that the manual's own wording is reviewed with them. " +
-            "No dates, no follow-up meeting, no consequence of a further occurrence.",
+            "No dates and no follow-up meeting. It always ends with the form's " +
+            "closing sentence, which is added automatically.",
           narrative: "plan_of_action",
+          /*
+           * THE CLOSING THE BUSINESS REQUIRES, REVISION 5. Put on by code at
+           * every write and every render — never the model's to write, and
+           * the narrative guard would remove it if it were. See
+           * `required-closing.ts`.
+           */
+          requiredClosing: CA_ACTION_PLAN_CLOSING,
         }),
       },
       {
@@ -1683,9 +1702,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 4,
+    revision: 5,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). The letterhead and the previous-action wording follow the business's current terminology; the template key, the field keys and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

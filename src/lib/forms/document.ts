@@ -139,6 +139,26 @@ export interface FormField {
    * treatment and no code anywhere names a template to decide it.
    */
   semantics?: "follow_up_timeframe";
+  /**
+   * A SENTENCE THE VALUE MUST ALWAYS END WITH, whoever wrote the rest.
+   *
+   * The Corrective Action Form's Action Plan ends with the business's own
+   * closing line on every record. That is a property of the DOCUMENT, not a
+   * suggestion to a model: it is appended by code on every write and on every
+   * render, never duplicated, and re-attached after any edit or redraft. See
+   * `required-closing.ts`.
+   *
+   * Versioned like `narrative`: a version published before the business asked
+   * for the line does not carry it, so a form filed against that version
+   * prints exactly what was signed.
+   */
+  requiredClosing?: string;
+  /**
+   * The fewest ruled lines a `long_text` field prints, filled or not — room
+   * for a list written by hand on a printed copy. Absent means one line for an
+   * empty field, as every version before it.
+   */
+  minLines?: number;
 }
 
 export interface CheckboxOption {
@@ -491,6 +511,15 @@ function readField(raw: unknown, where: string): FormField {
       : {}),
     ...(raw.semantics === "follow_up_timeframe"
       ? { semantics: "follow_up_timeframe" as const }
+      : {}),
+    ...(typeof raw.requiredClosing === "string" && raw.requiredClosing.trim() !== ""
+      ? { requiredClosing: raw.requiredClosing.trim() }
+      : {}),
+    ...(typeof raw.minLines === "number" &&
+    Number.isInteger(raw.minLines) &&
+    raw.minLines >= 1 &&
+    raw.minLines <= 12
+      ? { minLines: raw.minLines }
       : {}),
   };
 }
