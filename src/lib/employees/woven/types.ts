@@ -70,6 +70,12 @@ export type EmployeeIssue =
   | "status_differs_between_reads"
   /* Woven's terminated-status filter returned this employee, but its own Status is not Terminated. */
   | "terminated_filter_lists_active"
+  /*
+   * On file, absent from both list reads, and returned by Woven's
+   * terminated-status filter with its own Status Terminated: terminated on
+   * the strength of that read (Woven drops terminated people from the lists).
+   */
+  | "status_from_terminated_read"
   /* Per-read status evidence (status-evidence.ts): `status_read_<read>_<status>`, and why details gave none. */
   | `status_read_${string}_${EmploymentStatus}`
   | "status_read_terminated_status_not_returned"
@@ -90,6 +96,7 @@ export const EMPLOYEE_ISSUES = [
   "affiliations_not_verified",
   "status_differs_between_reads",
   "terminated_filter_lists_active",
+  "status_from_terminated_read",
 ] as const satisfies readonly EmployeeIssue[];
 
 /**

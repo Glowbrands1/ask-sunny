@@ -34,6 +34,7 @@ const READS: DiagnosticsInput["statusReads"] = {
   terminatedStatusCodes: [2],
   terminatedStatusRecords: 412,
   terminatedStatusMatched: 3,
+  terminatedStatusMatchedOnFile: 0,
   terminatedStatusNotInListReads: 409,
   detailsWithStatus: 16,
   statusDiffersBetweenReads: 3,

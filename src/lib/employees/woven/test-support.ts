@@ -203,6 +203,12 @@ export interface FakeWovenOptions {
   /** Return terminated employees even without includeterminatedemployee. */
   alwaysIncludeTerminated?: boolean;
   /**
+   * PRODUCTION'S SHAPE (observed 29 Sep – 2 Oct 2026): neither list read
+   * returns a terminated employee — not even with includeterminatedemployee —
+   * and only the `employeestatus=<Terminated>` filter does.
+   */
+  listReadsOmitTerminated?: boolean;
+  /**
    * The Status a given read reports for an EmployeeID, overriding the row's
    * own — how a test reproduces Woven reads that disagree. `read` is
    * "current", "with_terminated" or "terminated_status".
@@ -309,7 +315,9 @@ export function createFakeWoven(options: FakeWovenOptions) {
         return status === undefined ? e : { ...e, Status: status };
       });
       const byStatus = call.query.employeestatus !== undefined ? asRead.filter((e) => String(e.Status) === call.query.employeestatus) : asRead;
-      const rows = includeTerminated ? byStatus : byStatus.filter((e) => e.Status !== 2);
+      const isFilterRead = call.query.employeestatus !== undefined;
+      const rows =
+        includeTerminated && (isFilterRead || !options.listReadsOmitTerminated) ? byStatus : byStatus.filter((e) => e.Status !== 2);
       const skip = Number(call.query.queryskip ?? 0);
       const take = Math.min(Number(call.query.querytake ?? 50), options.maxTake ?? Infinity);
       return json(rows.slice(skip, skip + take));
