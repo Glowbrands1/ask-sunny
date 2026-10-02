@@ -339,7 +339,7 @@ describe("the source", () => {
 
   it("uses an audit action the database's CHECK constraint accepts", () => {
     const migration = readFileSync(
-      "supabase/migrations/20260905001100_audit_action_vocabulary.sql",
+      "supabase/migrations/20261002001000_auth_revocation_hardening.sql",
       "utf8",
     );
     const actions = [...CODE.matchAll(/action: "([a-z_]+)"/g)].map((match) => match[1]);

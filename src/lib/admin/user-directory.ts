@@ -2,6 +2,7 @@ import "server-only";
 
 import { AuthError } from "@/lib/auth/types";
 import { APP_USER_COLUMNS, toAppUserProfile } from "@/lib/auth/app-user";
+import { revokeAuthAccess, restoreAuthAccess } from "@/lib/auth/revocation";
 import { ADMIN_CONSOLE_ROLES, ROLES } from "@/lib/permissions";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope, Role, ScopeLevel } from "@/types";
@@ -69,6 +70,7 @@ export class DirectoryError extends Error {
       | "last_admin"
       | "email_rate_limited"
       | "protected_account"
+      | "auth_revocation_incomplete"
       | "provider_failed",
     message: string,
     readonly status = 400,
@@ -552,9 +554,75 @@ export async function patchUser(
     });
   }
 
+  if (patch.scope_level !== undefined) {
+    const from = scopeLabel(before.scope);
+    const to = scopeLabel({
+      level: patch.scope_level as ScopeLevel,
+      primaryAreaId: patch.scope_primary_area_id as string | null,
+      alsoCoversAreaIds: patch.scope_also_covers_area_ids as string[],
+    });
+    if (from !== to) {
+      await audit({ targetUserId: id, targetEmail: before.email, actor, action: "scope_changed", from, to });
+    }
+  }
+
+  /*
+   * THE SECOND LAYER. The profile change above stops the APPLICATION on the
+   * next request; Supabase Auth has to be told separately, or the password,
+   * the refresh token and a reset link all keep working (see
+   * `src/lib/auth/revocation.ts`). The profile is written FIRST on purpose:
+   * its refusals (self-change, last administrator) run before anything is
+   * banned, so a refused change can never leave a banned administrator behind.
+   *
+   * Both directions are idempotent, and they run whenever the request NAMES
+   * the status — not only when it changes — so sending the same status again
+   * is how a half-finished revocation is completed.
+   */
+  if (input.status === "disabled") {
+    const revoked = await revokeAuthAccess(id);
+    await audit({
+      targetUserId: id,
+      targetEmail: before.email,
+      actor,
+      action: revoked.ok ? "access_revoked" : "access_revocation_incomplete",
+      to: revoked.ok ? "auth_ban,sessions_revoked" : `failed:${revoked.failed.join(",")}`,
+    });
+    if (!revoked.ok) {
+      throw new DirectoryError(
+        "auth_revocation_incomplete",
+        "The account is disabled in Ask Sunny, but sign-in could not be fully blocked at the authentication service. Disable it again to finish.",
+        502,
+      );
+    }
+  } else if (input.status === "active" && (statusChange?.from === "disabled" || before.status === "active")) {
+    const restored = await restoreAuthAccess(id);
+    if (statusChange?.from === "disabled") {
+      await audit({
+        targetUserId: id,
+        targetEmail: before.email,
+        actor,
+        action: restored.ok ? "access_restored" : "access_revocation_incomplete",
+        to: restored.ok ? "auth_ban_lifted" : "failed:unban",
+      });
+    }
+    if (!restored.ok) {
+      throw new DirectoryError(
+        "auth_revocation_incomplete",
+        "The account is active in Ask Sunny, but the sign-in block could not be lifted. Re-enable it again to finish.",
+        502,
+      );
+    }
+  }
+
   const user = rowToDirectoryUser(data as Record<string, unknown>);
   if (!user) throw new DirectoryError("provider_failed", "The change was saved but could not be read back.", 502);
   return user;
+}
+
+/** A stable, compact rendering of a scope for the audit trail: level, primary, also-covers. */
+function scopeLabel(scope: { level: string; primaryAreaId: string | null; alsoCoversAreaIds: readonly string[] }): string {
+  const also = [...scope.alsoCoversAreaIds].sort().join(",");
+  return `${scope.level}:${scope.primaryAreaId ?? "-"}${also ? `+${also}` : ""}`;
 }
 
 /**
