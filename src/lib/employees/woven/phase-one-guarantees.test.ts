@@ -359,6 +359,23 @@ describe("8. the access planner (stage 1) applies nothing", () => {
     }
   });
 
+  it("every new object revokes ALL from service_role too, then grants it exactly what the server needs — no inherited default privileges", () => {
+    const code = SQL.replace(/--.*$/gm, "");
+    for (const relation of ["employee_account_links", "employee_access_runs", "employee_access_actions", "employee_access_accounts"]) {
+      expect(code, relation).toMatch(new RegExp(`revoke all on public\\.${relation} from public, anon, authenticated, service_role;`));
+    }
+    const grants = [...code.matchAll(/grant ([a-z, ]+) on (?:function )?public\.([a-z_]+)[^;]* to ([a-z_, ]+);/g)].map((m) => `${m[2]}:${m[1]}:${m[3]}`);
+    expect(grants.sort()).toEqual([
+      "employee_access_accounts:select:service_role",
+      "employee_access_actions:select, insert:service_role",
+      "employee_access_record_shadow_run:execute:service_role",
+      "employee_access_runs:select, insert:service_role",
+      "employee_account_links:select, insert:service_role",
+    ]);
+    expect(code).not.toMatch(/grant [^;]*(update|delete|truncate|all)[^;]* to/i);
+    expect(code).toMatch(/revoke all on function public\.employee_access_actions_guard\(\) from public, anon, authenticated, service_role;/);
+  });
+
   it("the access mode has no apply value", () => {
     const config = readFileSync(join(repo, "src/lib/employees/woven/access/config.ts"), "utf8");
     expect(config).toMatch(/export type WovenAccessMode = "off" \| "shadow";/);
