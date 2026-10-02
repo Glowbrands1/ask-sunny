@@ -57,6 +57,83 @@ export function readsAsTeamSubject(text: string): boolean {
   return TEAM_PHRASES.some((pattern) => pattern.test(text ?? ""));
 }
 
+/**
+ * ============================================================================
+ * THE WORDS THAT DESCRIBE THE TEAM ARE NEVER AN EMPLOYEE'S NAME
+ * ============================================================================
+ *
+ * PRODUCTION QA OF PR #81: "Create a coaching form for general training for
+ * staff on bed sanitizing" produced a form for an employee called "general" —
+ * and "for group training" one for "group", "for team-wide coaching" one for
+ * "team-wide". The name reader reads the word after "coaching form for" as a
+ * person, and a named person (rightly) beats the team, so the team reading
+ * never got a turn.
+ *
+ * So the phrases that describe the team are taken out of the sentence BEFORE
+ * any name is read (`readEmployeeMentions` calls this first). They are
+ * replaced with "the team", which every name reader already rejects, so the
+ * sentence keeps its shape and nothing else in it moves.
+ *
+ * A REAL NAME IS UNTOUCHED. "Create a coaching form for Kaitlyn about how the
+ * whole team should sanitize beds" loses only "whole team" and still names
+ * Kaitlyn — so the form is hers, not the team's.
+ */
+const TEAM_DESCRIPTOR_SPANS: readonly RegExp[] = [
+  /\b(?:team|salon|store|company|location)[-\s]wide\b/gi,
+  /\b(?:whole|entire|full)\s+(?:salon\s+|store\s+)?(?:team|staff|crew)\b/gi,
+  /\ball\s+(?:of\s+)?(?:the\s+|my\s+|our\s+)?(?:team\s+members?|staff|employees|team\s?mates|associates|team)\b/gi,
+  /\b(?:everyone|everybody)(?:\s+(?:at|in|on)\s+(?:the\s+|my\s+|our\s+)?(?:salon|store|team|location))?\b/gi,
+  /\b(?:group|team|general|staff)\s+(?:training|coaching|huddle|meeting|refresher|reminder)s?\b/gi,
+];
+
+/** The sentence with every team descriptor replaced by "the team". Pure. */
+export function maskTeamSubjectPhrases(text: string): string {
+  let masked = text ?? "";
+  for (const pattern of TEAM_DESCRIPTOR_SPANS) masked = masked.replace(pattern, "the team");
+  return masked;
+}
+
+/**
+ * ============================================================================
+ * "I NEED TEAM-WIDE COACHING ABOUT BED SANITIZING" ASKS FOR THE FORM
+ * ============================================================================
+ *
+ * Also from that QA: three natural team requests reached no form at all —
+ * "I need team-wide coaching about bed sanitizing", "Coaching for everyone at
+ * the salon about bed sanitizing", and "General training for staff about bed
+ * sanitizing — can you write up a coaching form?" (the closing question mark
+ * read it as a question ABOUT forms).
+ *
+ * A REQUEST NEEDS ALL THREE, and each removes a class of false positive:
+ *
+ *   THE TEAM as the subject   `readsAsTeamSubject`, unchanged
+ *   COACHING OR TRAINING      what the Coaching Form records
+ *   A REQUEST                 a verb asking for it ("need", "create", "write
+ *                             up", "document"…) or the message opening with
+ *                             "coaching for …"
+ *
+ * AND IT IS NEVER ADVICE. "Tips for team-wide coaching", "how should we run
+ * group training?" and a message that opens as a question stay with the
+ * knowledge base, exactly as "how do I coach someone on tardiness?" does.
+ */
+const TEAM_COACHING_NOUN = /\b(?:coach(?:ing)?|training|huddle)\b/i;
+const TEAM_REQUEST_CUE =
+  /\b(?:need|needs|want|wants|create|make|start|draft|document|log|record|write(?:\s+up)?|put\s+together|prepare|set\s+up|do|file|open)\b/i;
+const OPENS_AS_TEAM_COACHING = /^(?:please\s+)?(?:a\s+)?(?:coaching|training)\s+(?:for|with)\b/i;
+const TEAM_ADVICE =
+  /\b(?:tips?|advice|guidance|ideas?|suggestions?|how\s+(?:do|should|can|would|could)\s+(?:i|we)|what\s+should\s+(?:i|we)|help\s+me\s+(?:plan|prepare|think|figure))\b/i;
+const OPENS_AS_QUESTION =
+  /^(?:so\s+|and\s+)?(?:what|what's|whats|how|when|why|which|who|should|is|are|does|do\s+(?:we|i|you)\s+have)\b/i;
+const DECLINES = /\b(?:don'?t|do\s+not|doesn'?t|does\s+not|no\s+need)\b/i;
+
+/** Whether the manager is asking for a coaching form whose subject is the team. */
+export function asksForTeamCoaching(text: string): boolean {
+  const trimmed = (text ?? "").trim();
+  if (!readsAsTeamSubject(trimmed) || !TEAM_COACHING_NOUN.test(trimmed)) return false;
+  if (TEAM_ADVICE.test(trimmed) || OPENS_AS_QUESTION.test(trimmed) || DECLINES.test(trimmed)) return false;
+  return TEAM_REQUEST_CUE.test(trimmed) || OPENS_AS_TEAM_COACHING.test(trimmed);
+}
+
 export function isTeamSubject(employeeName: string | null | undefined): boolean {
   return (employeeName ?? "").trim().toLowerCase() === TEAM_SUBJECT_LABEL.toLowerCase();
 }

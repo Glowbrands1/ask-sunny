@@ -162,6 +162,7 @@ export async function POST(request: Request) {
               instanceId: parsed.activeFormInstanceId,
               question: parsed.question,
               history: parsed.history,
+              today: parsed.context.todayIso,
             })
           : null;
       answer =

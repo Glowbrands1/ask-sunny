@@ -43,9 +43,34 @@ None. No migration, no new table or column, no RLS change. Team subject uses the
 ## Not done / needs a decision
 
 - Coaching Form has no expected-timeframe field; adding one changes the authoritative docx-derived document (new revision) — a business decision.
-- Typing an explicit calendar date in a revision ("follow up on 10/15") does not set the instance date; the manager sets it with the control.
+- ~~Typing an explicit calendar date in a revision does not set the instance date.~~ Superseded 2 October — see below.
 - District/region scope for forms (above).
 
 ## Tests
 
 `lib/forms/coaching-feedback.test.ts`, `lib/forms/employee-roster.test.ts`, `app/api/forms/coaching-feedback-e2e.test.ts`, `app/api/chat/form-revision-wiring.test.ts`, `features/chat/coaching-feedback.dom.test.tsx`. Ten mutation checks run against them; all ten fail at least one test.
+
+---
+
+# Production QA follow-up — 2 October 2026
+
+Production QA of `9cd8dea` (PR #81) found two failing items and several partial ones. Fixed here; no migration, no schema, RLS, permission, scope, Woven or template change.
+
+| # | Issue | Root cause | Fix |
+|---|---|---|---|
+| P1 | "…coaching form for general training for staff…" became an employee called "general" (also "group", "team-wide"); "I need team-wide coaching…", "Coaching for everyone at the salon…" and "…— can you write up a coaching form?" made no form | The name reader takes the lower-case word after "coaching form for" as a typed name, and a named person beats the team. Intent detection had no reading for a team-subject coaching request without "a coaching" / "form", and a closing "?" read the third as a question about forms | `maskTeamSubjectPhrases` removes team descriptors before any name is read (a real name still wins); `asksForTeamCoaching` reads team + coaching/training + a request as the Coaching Form; defensive stop words |
+| P2 | "Kaitlyn improved and followed the sanitizing procedure correctly during today's observation" went to the knowledge base; with "Add this to the form:" only Follow-Up Observation was written | No edit verb, so not a revision; the follow-up detector needed "has improved". The word "observation" is that field's alias, so the turn was read as an instruction to change that one field | `reportsFollowUpResult` routes a follow-up report on an open Follow-Up Coaching Form; `findingsSupportedBy` decides which findings the words support (observation + evidence; progress only with progress words; next step and additional coaching only when stated); a field restricts a revision only when **instructed** (`instructedFieldsIn`) |
+| P3 | Vague edits let a model rewrite every Sunny-written field; "re-draft a cleaner version…" and "open the form and change…" were not edits | `mayChange` allowed all non-manager fields when nothing was named; `ASKS_FOR_A_FORM` matched "draft a" inside "re-draft a" and any "open" | `scopeRevision` — four modes enforced by the merge: `fields`, `findings`, `additive` (text only, existing content kept), `wording` (reword existing text only, substance kept, no ticks, nothing emptied or newly filled); "keep X" protects X; routing fixed |
+| P4 | "Change the follow-up date to 10/15" never moved the date and could write "10/15" into Next Follow-Up | Date and timeframe were not told apart before the model | Date turns are read first and never reach Next Follow-Up. One real, not-past date is set through `setFollowUpDate` (the same function the date control uses, same `edit` authorization, drafts only); anything else gets "I didn't change the follow-up date. Use the Follow-up date control on the form." Timeframe turns ("follow up again in 10 days") update Next Follow-Up only, and a calendar date the manager never gave is dropped from it |
+| P5 | "…again before the new checklist starts" switched the Underperformance guard off | "again", "still", "missing" were shortfall words on their own | Contextual reading: unambiguous words (unless negated), a duty not done, and "still/keeps/missing" only beside a shortfall |
+| P6 | "Progress Level, ." in the confirmation; a removal stamped `manager`; a capitalised field or option name ("Progress Level", "October 15") read as a different person | Next Step has no group label and `?? ` did not fall back on `""`; clear wrote `filled_by = manager`; person check saw form vocabulary | Label fallback; a removal is written `system` with provenance `{ source: "cleared_on_request" }`; the person check ignores the form's own labels and month-day dates. Inline refresh already worked through `formUpdate` and is now tested, including the date |
+| P7 | "Risk Management", "No Manager", "GlowBrands IT Support" could be suggested | Service rows sit in the Woven directory as active employees | `isServiceAccountName`: a row is left out of the forms roster only when **every** word of its name is a department/role/system word. Woven data untouched |
+
+## Still a business decision
+
+- **Team-wide PDF acknowledgement.** A team-wide Coaching Form prints "I confirm that my supervisor and I have discussed this training and plan for improvement" with one Employee Signature line. That wording is the authoritative template's; changing it needs an approved team wording (and a new template revision).
+- Coaching Form expected-timeframe field; district/region form authorization — unchanged from above.
+
+## Tests
+
+`lib/forms/coaching-qa-fixes.test.ts`, `app/api/forms/coaching-qa-fixes-e2e.test.ts` (every QA phrase, with a deliberately badly behaved model), `features/chat/coaching-qa-fixes.dom.test.tsx` (inline refresh), and a wiring case in `app/api/chat/form-revision-wiring.test.ts`.

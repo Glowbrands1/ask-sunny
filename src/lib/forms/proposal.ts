@@ -8,7 +8,12 @@ import { extractFormDate } from "./form-date-answer";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
-import { allowsTeamSubject, readsAsTeamSubject, TEAM_SUBJECT_LABEL } from "./team-subject";
+import {
+  allowsTeamSubject,
+  maskTeamSubjectPhrases,
+  readsAsTeamSubject,
+  TEAM_SUBJECT_LABEL,
+} from "./team-subject";
 import { proposeLocation } from "./location-scope";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -295,7 +300,9 @@ export interface EmployeeMentions {
 
 export function readEmployeeMentions(typed: string): EmployeeMentions {
   // "pls", "u", "frm" are never names and never end one; read them as words.
-  const text = canonicalShorthand(typed);
+  // "general training", "team-wide", "everyone at the salon" describe the team,
+  // never a person — they are taken out first. See `maskTeamSubjectPhrases`.
+  const text = maskTeamSubjectPhrases(canonicalShorthand(typed));
   /* Names read from a position that says a person is being given on purpose. */
   const strong: string[] = [];
   /* Names read from the narrative: a capitalised pair, "with Jordan". */

@@ -24,6 +24,7 @@
  */
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
+import { asksForTeamCoaching } from "./team-subject";
 
 export type TemplateIntent =
   /** The manager named a template. Still validated against the library. */
@@ -1229,6 +1230,12 @@ function formsNamed(q: string): number {
 /** Somebody the form is for, or a message that opens with making one. */
 function requestsCreation(q: string, original: string): boolean {
   if (OPENS_WITH_MAKING.test(q)) return true;
+  /*
+   * "General training for staff about bed sanitizing — can you write up a
+   * coaching form?" has the team as its subject and asks for the form; the
+   * closing question mark is politeness. See `asksForTeamCoaching`.
+   */
+  if (asksForTeamCoaching(original)) return true;
   const leading = leadingFormRequest(original);
   if (leading && leading.subject.length > 0) return true;
   /*
@@ -1370,6 +1377,13 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   const coaching = coachingRequest(q);
   if (coaching === "form") return { kind: "explicit", templateKey: "coaching" };
   if (coaching === "clarify") return { kind: "clarify", templateKey: "coaching" };
+
+  /*
+   * "I need team-wide coaching about bed sanitizing", "Coaching for everyone
+   * at the salon about …": coaching whose subject is the team, asked for. The
+   * proposal then reads the team as the subject. See `asksForTeamCoaching`.
+   */
+  if (asksForTeamCoaching(question)) return { kind: "explicit", templateKey: "coaching" };
 
   /*
    * THE FAMILY, BEFORE THE GENERIC LIST. "I need a form for an employee

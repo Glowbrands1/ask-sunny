@@ -629,13 +629,20 @@ export async function applyAssistantRevision(
 
   await writeValues(instanceId, { values: guarded.values, checked: result.checked }, "ai");
   if (emptied.length > 0) {
+    /*
+     * A FIELD EMPTIED ON THE MANAGER'S REQUEST WAS NOT WRITTEN BY THEM. This
+     * used to be stamped `manager`, so the record said the manager authored a
+     * value — an empty one — that the app had written. It is the app's write,
+     * made because they asked, and the provenance says exactly that.
+     */
     await writeValues(
       instanceId,
       {
         values: Object.fromEntries(emptied.filter((key) => !groupKeys.has(key)).map((key) => [key, ""])),
         checked: Object.fromEntries(emptied.filter((key) => groupKeys.has(key)).map((key) => [key, []])),
       },
-      "manager",
+      "system",
+      Object.fromEntries(emptied.map((key) => [key, { source: "cleared_on_request", via: "chat_revision" }])),
     );
   }
   await recordEvent(instanceId, "drafted", actor, {
