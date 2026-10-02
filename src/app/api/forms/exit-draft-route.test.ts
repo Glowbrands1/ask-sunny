@@ -202,7 +202,9 @@ describe("what is stored", () => {
     const payload = await post(NOTES);
 
     expect(stored().values).toEqual({
-      details: "Sarah gave two weeks notice on 9/1 and worked through her last day, 9/15.",
+      // The employee by first name, not by pronoun (HR feedback, 3 Oct 2026),
+      // and without repeating the name as a possessive.
+      details: "Sarah gave two weeks notice on 9/1 and worked through the last day, 9/15.",
       notice_given_date: "2026-09-01",
       last_day_worked: "2026-09-15",
     });
@@ -277,7 +279,9 @@ describe("what is stored", () => {
     };
     const payload = await post(NOTES);
 
-    expect(stored().values.details).toBe("Sarah gave notice on 9/1 and her last day was 9/15.");
+    // The employee by first name, not by pronoun (HR feedback, 3 Oct 2026),
+    // and without repeating the name as a possessive.
+    expect(stored().values.details).toBe("Sarah gave notice on 9/1 and the last day was 9/15.");
     expect(payload.exitDetailsRemoved).toHaveLength(5);
     expect(String(payload.notice)).toMatch(/left out of Details/);
   });
@@ -291,7 +295,7 @@ describe("what is stored", () => {
       "Exit form for Sarah Jones. She quit on the spot on 9/20 and returned her keys and uniform.",
     );
     expect(stored().values.details).toBe(
-      "Sarah quit on the spot on 9/20. She returned her keys and uniform.",
+      "Sarah quit on the spot on 9/20. Sarah returned the keys and uniform.",
     );
     // The model's "no" never reaches the store: those are manager lines.
     expect(stored().checked).toEqual({ resignation_type: ["immediate_voluntary_resignation"] });
@@ -410,7 +414,7 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
 
     expect(stored().values).toEqual({
       details:
-        "On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.",
+        "On 9-15-26, Colene provided a resignation to management, sending the message via Woven. Colene gave and worked a two week notice, and the last day worked was 9-28-26.",
       last_day_worked: "2026-09-28",
       notice_given_date: "2026-09-15",
     });
@@ -429,8 +433,10 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
   });
 
   it("keeps a Details paragraph the model wrote the way HR asked", async () => {
+    // HR feedback, 3 Oct 2026: the first name, no pronoun, and no name repeated
+    // as a possessive. Natural text like this passes through byte for byte.
     const written =
-      "On 9-15-26, Colene provided her resignation to management, sending the message via Woven. Colene gave and worked a two week notice, and her last day worked was 9-28-26.";
+      "On 9-15-26, Colene submitted a resignation to management, sending the message via Woven. Colene gave and worked a two week notice, and the last day worked was 9-28-26.";
     state.toolInput = { values: { details: written } };
     const payload = await post(COLENE_NOTES);
     expect(stored().values.details).toBe(written);

@@ -48,6 +48,7 @@ import {
   type RevisionScope,
 } from "./revision";
 import { TEAM_SUBJECT_RULES, isTeamSubject } from "./team-subject";
+import { applyEmployeeName, employeeNameRules } from "./employee-reference";
 import { detectTemplateIntent } from "./template-intent";
 
 /**
@@ -276,6 +277,8 @@ export async function reviseActiveForm(input: {
     ...LANGUAGE_CLEANUP_RULES,
     ...(followUpKeys ? MANAGER_FOLLOW_UP_RULES : []),
     ...(team ? TEAM_SUBJECT_RULES : []),
+    // The same rule every form-drafting prompt carries — see `employee-reference.ts`.
+    ...(team ? [] : employeeNameRules(instance.employeeName)),
     "Never select a termination, demotion or suspension.",
     scopeInstruction(scope, labelOf),
   ].join(" ");
@@ -386,7 +389,20 @@ export async function reviseActiveForm(input: {
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
   const sensitive = refuseSensitiveSelections({ document, variantKey, checked: framing.checked });
 
-  const changed = Object.keys(framing.values).length + Object.keys(sensitive.checked).length;
+  /*
+   * THE EMPLOYEE BY FIRST NAME, the same backstop the first draft runs, on
+   * the fields this revision writes and nothing else.
+   */
+  const byName = team
+    ? { values: framing.values, adjusted: [] as string[] }
+    : applyEmployeeName({
+        values: framing.values,
+        fields,
+        employeeName: instance.employeeName,
+        knownWords: [ACTIVE_BRAND.brandName, ...(instance.locationName ? [instance.locationName] : [])],
+      });
+
+  const changed = Object.keys(byName.values).length + Object.keys(sensitive.checked).length;
   /*
    * FINDINGS THE MODEL OFFERED THAT CANNOT GO ON YET — emptied by the guard,
    * or outside the request's scope — while the manager has not described a
@@ -414,7 +430,7 @@ export async function reviseActiveForm(input: {
 
   const saved = await applyAssistantRevision(
     input.instanceId,
-    { values: framing.values, checked: sensitive.checked },
+    { values: byName.values, checked: sensitive.checked },
     plan.cleared,
     actor.id,
   );

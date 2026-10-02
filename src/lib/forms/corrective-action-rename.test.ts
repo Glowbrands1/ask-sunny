@@ -61,8 +61,10 @@ describe("1. what a manager reads", () => {
           : [],
     );
 
-    expect(labels).toContain("Previous corrective action for this policy or issue");
-    expect(labels).toContain("Date of previous corrective action");
+    // Revision 5: one list in place of the two previous-action lines.
+    expect(labels).toContain("List previously received coaching and/or corrective action with date signed");
+    expect(labels).not.toContain("Previous corrective action for this policy or issue");
+    expect(labels).not.toContain("Date of previous corrective action");
     for (const label of labels) {
       expect(label, label).not.toMatch(/disciplin/i);
     }
@@ -170,8 +172,8 @@ describe("2. what the data addresses, unchanged", () => {
         "job_title",
         "location",
         "warning_type",
-        "previous_action",
-        "previous_action_date",
+        // Revision 5: a NEW key for the list, so revision-4 values keep their meaning.
+        "prior_actions",
         "offense_type",
         "other_offense",
         "observation",

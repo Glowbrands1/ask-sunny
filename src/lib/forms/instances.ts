@@ -22,6 +22,13 @@ import {
   type DraftValues,
 } from "./responsibility";
 import { selectStatedFacts } from "./employment-change";
+import {
+  LEGACY_PREVIOUS_ACTION_DATE_KEY,
+  LEGACY_PREVIOUS_ACTION_KEY,
+  PRIOR_ACTIONS_KEY,
+  legacyPriorActions,
+} from "./prior-actions";
+import { applyRequiredClosings } from "./required-closing";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
 /**
@@ -495,7 +502,11 @@ export async function saveInstanceValues(
   instanceId: string,
   submitted: Partial<DraftValues>,
   actor: string,
-): Promise<{ rejected: { key: string; reason: string }[] }> {
+): Promise<{
+  rejected: { key: string; reason: string }[];
+  /** What was stored, after any required closing was re-attached. */
+  values: Record<string, string>;
+}> {
   const loaded = await loadInstance(instanceId);
   if (!loaded) throw new Error("That form no longer exists.");
   if (loaded.instance.status !== "draft") {
@@ -504,14 +515,20 @@ export async function saveInstanceValues(
 
   const document = parseFormDocument(loaded.version.document);
   const result = enforcePersonEdit(document, loaded.instance.variantKey, submitted);
-  await writeValues(instanceId, { values: result.values, checked: result.checked }, "manager");
+  /*
+   * A CLOSING THE VERSION REQUIRES IS RE-ATTACHED TO THE MANAGER'S EDIT TOO.
+   * Deleting it in the textarea, or typing after it, does not take it off the
+   * record — see `required-closing.ts`. Nothing else they typed is changed.
+   */
+  const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values);
+  await writeValues(instanceId, { values, checked: result.checked }, "manager");
   await recordEvent(instanceId, "edited", actor, {
     fields: Object.keys(result.values).length,
     groups: Object.keys(result.checked).length,
     rejected: result.rejected,
   });
 
-  return { rejected: result.rejected };
+  return { rejected: result.rejected, values };
 }
 
 /**
@@ -563,7 +580,17 @@ export async function applyAssistantDraft(
    * trail instead of the record simply never mentioning it.
    */
   const fields = fieldsForVariant(document, loaded.instance.variantKey);
-  const guarded = refuseUnverifiedPolicyValues(fields, result.values, provenance);
+  const refused = refuseUnverifiedPolicyValues(fields, result.values, provenance);
+  /*
+   * THE VERSION'S REQUIRED CLOSINGS, AT THE WRITE — after every guard, which
+   * is the only place they can go: the narrative guard removes a sentence
+   * naming corrective action or termination, so the Action Plan's closing is
+   * put on here, by code, on whatever survived. See `required-closing.ts`.
+   */
+  const guarded = {
+    ...refused,
+    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values),
+  };
 
   await writeValues(
     instanceId,
@@ -614,7 +641,12 @@ export async function applyAssistantRevision(
   const document = parseFormDocument(loaded.version.document);
   const result = enforceResponsibilities(document, loaded.instance.variantKey, draft);
   const fields = fieldsForVariant(document, loaded.instance.variantKey);
-  const guarded = refuseUnverifiedPolicyValues(fields, result.values, {});
+  const refused = refuseUnverifiedPolicyValues(fields, result.values, {});
+  // A redraft keeps the version's required closings, exactly as a first draft does.
+  const guarded = {
+    ...refused,
+    values: applyRequiredClosings(document, loaded.instance.variantKey, refused.values),
+  };
 
   const writable = new Set([
     ...draftableFields(document, loaded.instance.variantKey).map((field) => field.key),
@@ -820,17 +852,70 @@ export async function reviseInstance(
   if (error || !data) throw new Error(`Could not open the revision: ${error?.message}`);
 
   const carried = loaded.values.filter((value) => value.filledBy !== "signature");
-  if (carried.length > 0) {
-    const { error: valueError } = await supabase.from("form_instance_values").insert(
-      carried.map((value) => ({
-        instance_id: data.id,
-        field_key: value.fieldKey,
-        value: value.value,
-        checked: value.checked,
-        filled_by: value.filledBy,
-        provenance: value.provenance,
-      })),
+  const rows = carried.map((value) => ({
+    instance_id: data.id,
+    field_key: value.fieldKey,
+    value: value.value,
+    checked: value.checked,
+    filled_by: value.filledBy,
+    provenance: value.provenance,
+  }));
+
+  /*
+   * ==========================================================================
+   * A REVISION ONTO A NEWER VERSION KEEPS WHAT THE ORIGINAL SAID
+   * ==========================================================================
+   *
+   * The revision is filled against the CURRENT version, so a Corrective
+   * Action filed on revision 4 is revised onto revision 5 — where its two
+   * previous-action lines are one list, and its Action Plan has a required
+   * closing. The original is untouched; on the revision:
+   *
+   *   the two old lines are carried into the new list as one entry, when the
+   *   new version has the list and the original had something on those lines
+   *   (the old rows are carried too, as every value always was);
+   *   a carried value gets any closing the NEW version requires.
+   */
+  if (version) {
+    const target = parseFormDocument(version.document);
+    const targetKeys = new Set(
+      fieldsForVariant(target, loaded.instance.variantKey).map((field) => field.key),
     );
+    const byKey = new Map(rows.map((row) => [row.field_key, row]));
+    if (targetKeys.has(PRIOR_ACTIONS_KEY) && !(byKey.get(PRIOR_ACTIONS_KEY)?.value ?? "").trim()) {
+      const legacyAction = byKey.get(LEGACY_PREVIOUS_ACTION_KEY);
+      const legacyDate = byKey.get(LEGACY_PREVIOUS_ACTION_DATE_KEY);
+      const combined = legacyPriorActions(legacyAction?.value, legacyDate?.value);
+      if (combined) {
+        const row = {
+          instance_id: data.id,
+          field_key: PRIOR_ACTIONS_KEY,
+          value: combined,
+          checked: [] as string[],
+          filled_by: (legacyAction ?? legacyDate)!.filled_by,
+          provenance: {
+            source: "carried_from_previous_version",
+            fromKeys: [LEGACY_PREVIOUS_ACTION_KEY, LEGACY_PREVIOUS_ACTION_DATE_KEY],
+          } as Record<string, unknown>,
+        };
+        const existing = rows.findIndex((entry) => entry.field_key === PRIOR_ACTIONS_KEY);
+        if (existing >= 0) rows[existing] = row;
+        else rows.push(row);
+      }
+    }
+    const textValues = Object.fromEntries(
+      rows.flatMap((row) => (typeof row.value === "string" ? [[row.field_key, row.value]] : [])),
+    );
+    const closed = applyRequiredClosings(target, loaded.instance.variantKey, textValues);
+    for (const row of rows) {
+      if (typeof row.value === "string" && closed[row.field_key] !== row.value) {
+        row.value = closed[row.field_key]!;
+      }
+    }
+  }
+
+  if (rows.length > 0) {
+    const { error: valueError } = await supabase.from("form_instance_values").insert(rows);
     if (valueError) throw new Error(`Could not carry the values over: ${valueError.message}`);
   }
 

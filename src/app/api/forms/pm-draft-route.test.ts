@@ -492,8 +492,9 @@ describe("the follow-up timeframe field", () => {
       /Do not mention follow-up dates or scheduling at all/,
     );
 
+    // The employee by first name, not by pronoun (HR feedback, 3 Oct 2026).
     expect(state.persisted[0]!.values.next_follow_up).toBe(
-      "In two weeks, at her next closing shift",
+      "In two weeks, at Jordan's next closing shift",
     );
   });
 
@@ -884,7 +885,8 @@ describe("the mini-skirt case, end to end", () => {
       policy_language: "[Verify exact policy language from official manual]",
       action_plan:
         "Sarah must wear pants instead of skirts. Management will monitor compliance and provide coaching as needed.",
-      previous_action: "None - first occurrence",
+      // Revision 5: the prior-actions list replaced `previous_action`.
+      prior_actions: "None - first occurrence",
     },
     checked: { offense_type: ["dress_code"], warning_type: ["verbal"] },
   };
@@ -960,7 +962,7 @@ describe("the mini-skirt case, end to end", () => {
 
     expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
     expect(state.persisted[0]!.checked.warning_type).toEqual(["verbal"]);
-    expect(state.persisted[0]!.values.previous_action).toBe("None - first occurrence");
+    expect(state.persisted[0]!.values.prior_actions).toBe("None - first occurrence");
   });
 
   it("tells the manager everything it removed and why", async () => {

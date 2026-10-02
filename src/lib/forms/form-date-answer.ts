@@ -96,11 +96,24 @@ function isOtherDate(text: string, index: number): boolean {
  * which date is which.
  */
 export function priorStepDate(text: string, today: string): string | null {
-  const prior = datesInText(text, today)
-    .filter((found) => PRIOR_STEP_BEFORE.test(text.slice(0, found.index)))
+  const prior = priorSteps(text, today)
     .map((found) => found.iso)
     .sort();
   return prior.length > 0 ? prior[prior.length - 1]! : null;
+}
+
+/**
+ * EVERY earlier step the manager dated, in the order they wrote them, with the
+ * words that named it — "got verbal warning on september 21" yields the 21st
+ * and "got verbal warning on". The same reading as `priorStepDate`, which is
+ * the latest of these; a list is what a form that records several needs.
+ */
+export function priorSteps(text: string, today: string): { iso: string; named: string }[] {
+  return datesInText(text, today).flatMap((found) => {
+    const before = text.slice(0, found.index);
+    const match = PRIOR_STEP_BEFORE.exec(before);
+    return match ? [{ iso: found.iso, named: match[0] }] : [];
+  });
 }
 
 /** A real `YYYY-MM-DD` on the calendar — no February 30th. */

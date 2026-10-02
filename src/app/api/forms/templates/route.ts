@@ -11,7 +11,8 @@ import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/reposi
  *
  * Both need `manage_form_templates`. Seeding is idempotent by key and never
  * overwrites an existing template — a published version an administrator
- * edited is not something the code's idea of the form may replace.
+ * edited is not something the code's idea of the form may replace. POST is
+ * refused (409) on a Vercel Preview, which shares Production's database.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,17 @@ export async function POST(request: Request) {
     const actor = await authorizeForms(request, "manage_form_templates");
     assertWithinRateLimit(request, "upload");
     const result = await ensureTemplateLibrary(actor.id);
+    /*
+     * REFUSED ON A PREVIEW, AND SAID SO. A 200 with empty lists would read as
+     * "already up to date" — the opposite of what happened. See
+     * `template-sync-policy.ts`: Preview shares Production's database.
+     */
+    if (result.skipped) {
+      return NextResponse.json(
+        { error: result.skipped.reason, code: "template_sync_disabled", environment: result.skipped.environment },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(result);
   } catch (error) {
     return errorResponse(error, "forms/templates/seed");

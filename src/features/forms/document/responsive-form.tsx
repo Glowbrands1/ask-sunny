@@ -497,7 +497,7 @@ function FieldControl({
         <Textarea
           id={id}
           className="min-w-0"
-          rows={4}
+          rows={Math.max(4, field.minLines ?? 0)}
           value={value}
           readOnly={!mayType}
           disabled={!mayType}

@@ -66,6 +66,7 @@ const CASCADES = ["form_instance_values", "form_instance_events"] as const;
 class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
   private op: "select" | "delete" | "update" | "insert" | "upsert" | null = null;
   private upsertRows: Row[] = [];
+  private insertRows: Row[] | null = null;
   private conflictKeys: string[] = [];
   private filters: Predicate[] = [];
   private payload: Row = {};
@@ -105,9 +106,19 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.payload = payload;
     return this;
   }
-  insert(payload: Row) {
+  insert(payload: Row | Row[]) {
     this.op = "insert";
-    this.payload = payload;
+    /*
+     * The array form is a multi-row insert — `reviseInstance` carries a form's
+     * values onto its revision that way — so each element is its own row.
+     */
+    if (Array.isArray(payload)) {
+      this.insertRows = payload;
+      this.payload = payload[0] ?? {};
+    } else {
+      this.insertRows = null;
+      this.payload = payload;
+    }
     return this;
   }
   /**
@@ -197,12 +208,18 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
        * is normal and the fake has to supply it — otherwise the row it returns
        * cannot be loaded back by id.
        */
-      const inserted: Row = {
+      const stamped = (payload: Row): Row => ({
         id: `fake-${(insertCounter += 1)}`,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        ...this.payload,
-      };
+        ...payload,
+      });
+      if (this.insertRows) {
+        const inserted = this.insertRows.map(stamped);
+        rows.push(...inserted);
+        return { data: this.oneRow ? (inserted[0] ?? null) : inserted, error: null };
+      }
+      const inserted = stamped(this.payload);
       rows.push(inserted);
       return { data: this.oneRow ? inserted : null, error: null };
     }
