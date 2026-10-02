@@ -267,10 +267,14 @@ describe("7. no employee-sync UI, route or library code can reach app_users, aut
     "employee_directory_changes", "woven_location_map", "woven_position_map",
     "employee_sync_status", "employee_sync_run_summary", "employee_directory_view",
     "employee_directory_login_matches", "employee_access_preview", "salons",
+    /* The access planner (stage 1): accounts through a read-only VIEW, the links, and the shadow record. */
+    "employee_access_accounts", "employee_account_links", "employee_access_runs", "employee_access_actions",
   ]);
   const RPCS = new Set([
     "employee_sync_claim_run", "employee_sync_commit_run", "employee_sync_abandon_run",
     "woven_location_map_review", "woven_position_map_review",
+    /* Writes ONLY employee_access_runs / employee_access_actions, mode shadow (asserted below against the SQL). */
+    "employee_access_record_shadow_run",
   ]);
 
   it("covers the whole employee-sync surface", () => {
@@ -306,5 +310,54 @@ describe("7. no employee-sync UI, route or library code can reach app_users, aut
     for (const file of files) {
       for (const m of code(file).matchAll(/\.from\(\s*["'`]salons["'`]\)\s*\.(\w+)\(/g)) expect(m[1], file).toBe("select");
     }
+  });
+});
+
+describe("8. the access planner (stage 1) applies nothing", () => {
+  const repo = join(__dirname, "..", "..", "..", "..");
+  const SQL = readFileSync(join(repo, "supabase/migrations/20261002002000_woven_account_links.sql"), "utf8");
+  const fn = SQL.slice(SQL.indexOf("create or replace function public.employee_access_record_shadow_run"));
+  const body = fn.slice(0, fn.indexOf("$$;"));
+
+  it("the shadow recorder writes only the two access-record tables, and records only shadow", () => {
+    const writes = [...body.matchAll(/\b(insert into|update|delete from)\s+public\.([a-z_]+)/gi)].map((m) => m[2]);
+    expect([...new Set(writes)].sort()).toEqual(["employee_access_actions", "employee_access_runs"]);
+    expect(body).not.toMatch(/app_users|auth\.|employee_account_links|app_user_audit/);
+    expect(body).toMatch(/'shadow'/);
+    expect(SQL).toMatch(/mode\s+text not null check \(mode in \('shadow'\)\)/);
+    expect(SQL).toMatch(/result\s+text not null check \(result in \('shadow'\)\)/);
+  });
+
+  it("the migration never writes app_users or auth, and its only data change is the link backfill", () => {
+    const code = SQL.replace(/--.*$/gm, "");
+    expect(code).not.toMatch(/(insert into|update|delete from)\s+(public\.)?app_users\b/i);
+    expect(code).not.toMatch(/(insert into|update|delete from)\s+auth\./i);
+    const inserts = [...code.matchAll(/insert into public\.([a-z_]+)/g)].map((m) => m[1]);
+    expect(inserts.filter((t) => t !== "employee_access_runs" && t !== "employee_access_actions")).toEqual([
+      "employee_account_links",
+      "employee_account_links",
+    ]);
+  });
+
+  it("the backfill links only protected overrides (every managed flag off) and marks only unmatched accounts not-Woven-managed", () => {
+    const backfill = SQL.slice(SQL.indexOf("-- -------------------------------------------------------------- backfill ---"));
+    expect(backfill).toMatch(/'woven_linked', o\.external_employee_id, 'override_backfill'/);
+    expect(backfill).not.toMatch(/managed_(status|location|role)/);
+    expect(backfill).toMatch(/'not_woven_managed', 'unmatched_backfill'/);
+    expect(backfill).toMatch(/not exists \(\s*select 1 from public\.employee_access_directory d/);
+  });
+
+  it("no access-planner module calls the auth API, names app_users, or writes a link", () => {
+    const dir = join(repo, "src/lib/employees/woven/access");
+    for (const name of readdirSync(dir).filter((n) => /\.ts$/.test(n) && !/\.test\./.test(n))) {
+      const code = readFileSync(join(dir, name), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(code, name).not.toMatch(/\.auth\s*\.|auth\.admin|from\(\s*["'`]app_users|revokeAuthAccess|restoreAuthAccess/);
+      expect(code, name).not.toMatch(/\.(insert|update|upsert|delete)\(/);
+    }
+  });
+
+  it("the access mode has no apply value", () => {
+    const config = readFileSync(join(repo, "src/lib/employees/woven/access/config.ts"), "utf8");
+    expect(config).toMatch(/export type WovenAccessMode = "off" \| "shadow";/);
   });
 });

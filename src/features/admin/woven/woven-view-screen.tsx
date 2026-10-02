@@ -53,8 +53,9 @@ export function WovenViewScreen({ props, params }: { props: WovenViewProps; para
         <MappingReview locations={content.data.locations} positions={content.data.positions} actionsDisabled={actionsDisabled} />
       ) : (
         <AccessPreview
-          rows={content.data.rows}
-          drift={content.data.drift}
+          planState={content.data.plan}
+          accessMode={content.data.accessMode}
+          actionFilter={content.data.actionFilter}
           loginEmailDomains={content.data.loginEmailDomains}
           sampleRows={content.data.sampleRows}
           actionsDisabled={actionsDisabled}

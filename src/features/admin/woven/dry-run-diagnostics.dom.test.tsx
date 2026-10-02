@@ -46,7 +46,7 @@ describe("dry-run diagnostics: what each Woven read said about status", () => {
     const row = screen.getByText("Status by read").nextElementSibling!.textContent!;
     expect(row).toContain("default 150");
     expect(row).toContain("with terminated 150 (0 added)");
-    expect(row).toContain("terminated-status filter (Status 2): 412 returned, 3 also in the lists, 409 only there (not imported)");
+    expect(row).toContain("terminated-status filter (Status 2): 412 returned, 3 also in the lists, 0 on file and gone from the lists (received as terminated), 409 only there (not imported)");
     expect(row).toContain("16 details reads carried a Status");
     expect(row).toContain("3 employees whose Status differed between reads");
     expect(screen.getByText("Past TerminationDate")).toBeTruthy();

@@ -4,6 +4,8 @@ import vercelConfig from "../../../../vercel.json";
 import { isDemoMode } from "@/lib/config/runtime";
 import { supabaseReadiness } from "@/lib/config/server-env";
 import { loadAccessPreviewRows } from "@/lib/employees/woven/access-preview";
+import { readWovenAccessMode, type WovenAccessMode } from "@/lib/employees/woven/access/config";
+import { loadAccessPlan, type AccessPlan } from "@/lib/employees/woven/access/load";
 import { readWovenConfig } from "@/lib/employees/woven/config";
 import { validationAccessCodeConfigured } from "@/lib/employees/woven/validation-access";
 import { loadChangePage, loadDirectoryRows, loadRuns } from "@/lib/employees/woven/directory";
@@ -25,13 +27,13 @@ import type {
   RunRow,
 } from "@/lib/employees/woven/view-types";
 import {
-  accessDrift,
   parseChangeQuery,
   parseDirectoryQuery,
   queryChanges,
   queryDirectory,
 } from "@/lib/employees/woven/views";
 import { wovenSampleForThisDeployment } from "./sample";
+import { sampleAccessPlan } from "./sample-plan";
 
 /**
  * Everything the Woven Employee Sync screens show, read on the server.
@@ -145,7 +147,16 @@ export type ViewData =
   | { view: "changes"; page: ChangePage }
   | { view: "runs"; runs: RunRow[] }
   | { view: "mappings"; locations: LocationMappingRow[]; positions: PositionMappingRow[] }
-  | { view: "preview"; rows: AccessPreviewRow[]; drift: AccessPreviewRow[]; loginEmailDomains: string[]; sampleRows: AccessPreviewRow[] | null };
+  | {
+      view: "preview";
+      plan: AccessPlanState;
+      accessMode: WovenAccessMode;
+      actionFilter: string | null;
+      loginEmailDomains: string[];
+      sampleRows: AccessPreviewRow[] | null;
+    };
+
+export type AccessPlanState = { state: "ready"; plan: AccessPlan } | { state: "not_applied" } | { state: "unavailable"; code: string | null };
 
 export type ViewState =
   | { state: "ready"; data: ViewData }
@@ -181,8 +192,9 @@ export async function loadWovenView(view: WovenView, params: Params): Promise<Wo
         case "preview":
           return {
             view,
-            rows: [...sample.accessPreview],
-            drift: accessDrift(sample.accessPreview),
+            plan: { state: "ready", plan: sampleAccessPlan(sample) },
+            accessMode: "off",
+            actionFilter: firstParam(params.action),
             loginEmailDomains: [...sample.loginEmailDomains],
             sampleRows: [...sample.accessPreview],
           };
@@ -208,8 +220,16 @@ export async function loadWovenView(view: WovenView, params: Params): Promise<Wo
         }
         case "preview": {
           const domains = readWovenConfig().loginEmailDomains;
-          const rows = await loadAccessPreviewRows(domains);
-          return { view, rows, drift: accessDrift(rows), loginEmailDomains: domains, sampleRows: null };
+          /* The legacy rows still drive the Active employee check (and prove the directory is there). */
+          await loadAccessPreviewRows(domains);
+          return {
+            view,
+            plan: await loadPlanState(),
+            accessMode: readWovenAccessMode().mode,
+            actionFilter: firstParam(params.action),
+            loginEmailDomains: domains,
+            sampleRows: null,
+          };
         }
       }
     })();
@@ -219,3 +239,21 @@ export async function loadWovenView(view: WovenView, params: Params): Promise<Wo
     return { ...common, content: { state: "unavailable", code: error instanceof WovenStatusError ? error.code : null } };
   }
 }
+
+/* ------------------------------------------------------- access plan -- */
+
+function firstParam(value: string | string[] | undefined): string | null {
+  const v = Array.isArray(value) ? value[0] : value;
+  return typeof v === "string" && /^[A-Za-z_]{1,40}$/.test(v) ? v : null;
+}
+
+/** The plan, or why there is none: the access-sync migration not applied is not the same as a database that did not answer. */
+async function loadPlanState(): Promise<AccessPlanState> {
+  try {
+    return { state: "ready", plan: await loadAccessPlan() };
+  } catch (error) {
+    if (error instanceof WovenStatusError && error.reason === "missing") return { state: "not_applied" };
+    return { state: "unavailable", code: error instanceof WovenStatusError ? error.code : null };
+  }
+}
+

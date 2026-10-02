@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { WOVEN_SAMPLE_DATASET as SAMPLE } from "@/data/demo/woven";
-import { accessDrift, parseChangeQuery, parseDirectoryQuery, queryChanges, queryDirectory } from "@/lib/employees/woven/views";
+import { parseChangeQuery, parseDirectoryQuery, queryChanges, queryDirectory } from "@/lib/employees/woven/views";
 import type { ViewData, WovenViewProps } from "./load";
+import { sampleAccessPlan } from "./sample-plan";
 import { WovenViewScreen } from "./woven-view-screen";
 
 /**
@@ -258,18 +259,61 @@ describe("Mappings", () => {
 });
 
 describe("Access Preview", () => {
+  const plan = sampleAccessPlan(SAMPLE);
   const data: ViewData = {
     view: "preview",
-    rows: [...SAMPLE.accessPreview],
-    drift: accessDrift(SAMPLE.accessPreview),
+    plan: { state: "ready", plan },
+    accessMode: "off",
+    actionFilter: null,
     loginEmailDomains: [...SAMPLE.loginEmailDomains],
     sampleRows: [...SAMPLE.accessPreview],
   };
 
-  it("says it is read-only and counts what each later phase would do", () => {
+  it("says it is read-only, names the access mode, and shows the guard verdict", () => {
     renderView(sampleProps(data));
-    expect(screen.getByText("What later phases would do — read-only")).toBeTruthy();
-    expect(screen.getByText("Logins disabled (phase 3)")).toBeTruthy();
+    expect(screen.getByText("What the access sync would do — read-only")).toBeTruthy();
+    expect(screen.getByText("off (preview only)")).toBeTruthy();
+    expect(screen.getByText(/Safety guards:/)).toBeTruthy();
+  });
+
+  it("shows every column the owner asked for, one row per employee or account", () => {
+    const { container } = renderView(sampleProps(data));
+    for (const header of [
+      "Employee", "Woven ID", "Email", "Woven status", "Woven position", "Woven primary location", "Ask Sunny account",
+      "Current role", "Current scope / salon", "Proposed role", "Proposed salon", "Proposed action", "Reason",
+    ]) {
+      expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
+    }
+    expect(container.querySelectorAll("tbody tr[data-actions]").length).toBe(plan.rows.length);
+  });
+
+  it("filters by action: only rows carrying that action, with a chip per action present", () => {
+    const action = plan.rows.find((r) => r.actions[0] !== "NO_CHANGE")!.actions[0]!;
+    const { container } = renderView(sampleProps({ ...data, actionFilter: action } as ViewData));
+    const shown = [...container.querySelectorAll("tbody tr[data-actions]")];
+    expect(shown.length).toBe(plan.rows.filter((r) => r.actions.includes(action)).length);
+    for (const tr of shown) expect(tr.getAttribute("data-actions")!.split(" ")).toContain(action);
+    expect(screen.getByRole("navigation", { name: "Filter by proposed action" })).toBeTruthy();
+  });
+
+  it("the 'would change access' filter shows only mutating rows", () => {
+    const { container } = renderView(sampleProps({ ...data, actionFilter: "changes" } as ViewData));
+    for (const tr of container.querySelectorAll("tbody tr[data-actions]")) {
+      expect(tr.getAttribute("data-actions")).toMatch(/CREATE_USER|UPDATE_PRIMARY_LOCATION|UPDATE_ROLE|DISABLE_TERMINATED/);
+    }
+  });
+
+  it("an existing login that only shares an email is shown as an unconfirmed link, never as a change", () => {
+    const { container } = renderView(sampleProps({ ...data, actionFilter: "FLAG_LINK_REVIEW" } as ViewData));
+    if (plan.counts.FLAG_LINK_REVIEW > 0) {
+      expect(container.textContent).toContain("email match, unconfirmed");
+      expect(container.textContent).toContain("A person must confirm the link before Woven manages it.");
+    }
+  });
+
+  it("says plainly when the access-sync migration has not been applied", () => {
+    renderView(sampleProps({ ...data, plan: { state: "not_applied" } } as ViewData));
+    expect(screen.getByText("The access-sync migration has not been applied")).toBeTruthy();
   });
 
   it("checks an email against the sample rows, as a preview", async () => {
@@ -278,12 +322,6 @@ describe("Access Preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check" }));
     expect(await screen.findByText("Eligible")).toBeTruthy();
     expect(screen.getByText("Preview only. No account is created in this phase.")).toBeTruthy();
-  });
-
-  it("lists the disagreements with what a later phase would do", () => {
-    const { container } = renderView(sampleProps(data));
-    expect(container.textContent).toContain("Phase 3: disable the login (Woven: terminated)");
-    expect(container.textContent).toContain("Phase 4: change role to salon director");
   });
 
   it("in live mode, posts the email in the body — never the URL", async () => {

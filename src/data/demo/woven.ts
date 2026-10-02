@@ -78,6 +78,7 @@ function person(
     hireDate: "2023-04-17",
     terminationDate: null,
     dataIssues: [],
+    missingSyncCount: 0,
     lastSeenAt: `${DAY}T10:31:00Z`,
     lastSyncedAt: `${DAY}T10:32:00Z`,
     lastChangeKind: null,
