@@ -1834,3 +1834,86 @@ describe("a form's name leading the message, across the library", () => {
     },
   );
 });
+
+/*
+ * ============================================================================
+ * HR FEEDBACK, 30 SEP 2026 — "I HAD TO TELL SUNNY THE APPLICABLE POLICY"
+ * ============================================================================
+ *
+ * The proposal for a missed Woven deadline promised to "check the applicable
+ * company policy" and said nothing else; the manager had to name the Standards
+ * of Conduct themselves. It is now suggested, with what it rests on, for the
+ * manager to change — or asked about, when the account reads two ways.
+ */
+describe("HR feedback 30 Sep — the Corrective Action names or asks the policy", () => {
+  beforeEach(() => {
+    state.templates = realLibrary();
+  });
+
+  it.each([
+    "Create a corrective action for Colene for missing the Woven deadline.",
+    "write a corrective action for colene schildt, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
+  ])("suggests the Standards of Conduct for: %s", async (question) => {
+    // The Manhattan manager, as in Production.
+    const answer = await ask(question, { scope: { level: "salon", primaryAreaId: "loc-0462", alsoCoversAreaIds: [] } });
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.status).toBe("ready");
+    expect(answer.content).toMatch(
+      /\*\*Policy:\*\* this reads as \*\*Standards of Conduct\*\* — a required deadline that was missed\. I'll check it against the current policy manual and quote that section on the draft; if the manual doesn't support it, I'll leave the policy for you\. Tell me if a different policy applies\./,
+    );
+    expect(answer.content).not.toMatch(/Which policy applies\?/);
+  });
+
+  it.each([
+    ["Create a corrective action for Colene, she hasn't completed her required Woven training.", "assigned work that wasn't completed"],
+    ["Create a corrective action for Colene. She was told to restock the lotion wall and refused.", "a manager's direction that wasn't followed"],
+  ])("suggests it for the other conduct cases: %s", async (question, reason) => {
+    const answer = await ask(question);
+    expect(answer.content).toContain(`this reads as **Standards of Conduct** — ${reason}.`);
+  });
+
+  it("asks which, rather than choosing, when the account also reads as attendance", async () => {
+    const answer = await ask("Create a corrective action for Colene. She came in late and didn't finish her opening tasks.");
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.content).toMatch(/\*\*Which policy applies\?\*\* This could fall under \*\*Standards of Conduct\*\*/);
+    expect(answer.content).toMatch(/\*\*Attendance\*\*, if it comes down to being late or absent/);
+    expect(answer.content).toMatch(/I won't pick one for you/);
+    expect(answer.content).not.toMatch(/this reads as/);
+  });
+
+  it("says nothing about a policy it does not recognise", async () => {
+    const answer = await ask("Create a corrective action for Colene. She wore slippers today.");
+    expect(answer.content).not.toMatch(/\*\*Policy:\*\*|Which policy applies\?/);
+  });
+
+  const ASKED = [
+    { id: "h1", role: "user", content: "Create a corrective action for Colene. She came in late and didn't finish her opening tasks." },
+    {
+      id: "h2",
+      role: "assistant",
+      content:
+        "I'll draft a **Corrective Action Form** for **Colene** from what you've described.\n\n**Which policy applies?** This could fall under **Standards of Conduct** (assigned work that wasn't completed) or **Attendance**, if it comes down to being late or absent. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
+    },
+  ];
+
+  it("takes the answer to its policy question as part of the same form", async () => {
+    const answer = await ask("standards of conduct", { continueTemplateKey: "dpoa", history: ASKED });
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.formProposal?.employeeName).toBe("Colene");
+    expect(answer.content).toMatch(
+      /\*\*Policy:\*\* Standards of Conduct, as you said\. I'll quote that section from the current policy manual on the draft\./,
+    );
+    expect(answer.content).not.toMatch(/Which policy applies\?/);
+  });
+
+  it("takes a different policy as the answer too, and suggests nothing over it", async () => {
+    const answer = await ask("attendance", { continueTemplateKey: "dpoa", history: ASKED });
+    expect(answer.formProposal?.templateKey).toBe("dpoa");
+    expect(answer.content).not.toMatch(/\*\*Policy:\*\*|Which policy applies\?/);
+  });
+
+  it("still answers a question about a policy while the question is open", async () => {
+    const answer = await ask("what does the attendance policy say?", { continueTemplateKey: "dpoa", history: ASKED });
+    expect(answer.formProposal).toBeUndefined();
+  });
+});

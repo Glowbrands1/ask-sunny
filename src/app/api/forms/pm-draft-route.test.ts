@@ -1560,3 +1560,203 @@ describe("the approved-policy search", () => {
     ]);
   });
 });
+
+/*
+ * ============================================================================
+ * HR FEEDBACK, 30 SEP 2026 — THE POLICY FOR A MISSED WOVEN DEADLINE
+ * ============================================================================
+ *
+ * "I had to tell Sunny the applicable policy (which was the Standards of
+ * Conduct) for the CA for missing the Woven deadline." In Production the model
+ * ticked Under Performance and Other, which cite no section, and the policy
+ * came back blank. The manager's words are now read for the incident, and
+ * Standards of Conduct is ticked only where the pinned manual's own section —
+ * the Production manual's text, below — lists the infraction.
+ */
+describe("HR feedback 30 Sep — the Corrective Action's policy, from the manager's words", () => {
+  const SOC_OPENING =
+    "The Company expects Employees to follow rules of conduct that will protect the interests and\n" +
+    "safety of all customers, Employees, and The Company.\n" +
+    "The following are examples (non-inclusive list) of infractions that may result in disciplinary\n" +
+    "action, up to and including transfer, suspension with or without pay, demotion, or immediate\n" +
+    "termination of employment, as well as potential civil or criminal prosecution depending on the\n" +
+    "severity and circumstances involved:\n" +
+    "o Failing to follow the policies and procedures of The Company";
+
+  /** The Production manual's Standards of Conduct (chunks 36 and 37), and the sections around it. */
+  const PRODUCTION_MANUAL = {
+    ok: true,
+    documentId: "doc-woven-manual",
+    documentTitle: "JBA Policy Manual Edited 5.2025",
+    matchedBy: "fallback",
+    chunks: [
+      {
+        chunkIndex: 36,
+        page: 13,
+        printedPage: 12,
+        sections: [{ heading: "Standards of Conduct", page: 12 }],
+        section: "Standards of Conduct",
+        content: `Standards of Conduct\n${SOC_OPENING}`,
+      },
+      {
+        chunkIndex: 37,
+        page: 13,
+        printedPage: 12,
+        sections: [],
+        section: "Standards of Conduct",
+        content:
+          "o Lack of sales performance\no Indecent or immoral behavior\n" +
+          "o Insubordination -the refusal to follow the directions of the manager.",
+      },
+      {
+        chunkIndex: 40,
+        page: 15,
+        printedPage: 14,
+        sections: [{ heading: "Attendance", page: 14 }],
+        section: "Attendance",
+        content: "Attendance\nIt is the responsibility of each employee to know his or her work schedule",
+      },
+    ],
+  };
+
+  /** The same section, cut before it lists any infraction. */
+  const SECTION_WITHOUT_INFRACTIONS = {
+    ...PRODUCTION_MANUAL,
+    chunks: [
+      {
+        ...PRODUCTION_MANUAL.chunks[0]!,
+        content: "Standards of Conduct\nThe Company expects Employees to follow rules of conduct",
+      },
+      PRODUCTION_MANUAL.chunks[2]!,
+    ],
+  };
+
+  const CITED = `${SOC_OPENING}\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12`;
+
+  /** What the model ticked for Colene in Production. */
+  const PRODUCTION_TICKS = {
+    values: {
+      observation: "Observed:\nColene did not meet the Woven deadline.",
+      other_offense: "Failure to complete required task — Woven deadline not met",
+    },
+    checked: { offense_type: ["under_performance"], warning_type: ["verbal"] },
+  };
+
+  beforeEach(() => {
+    state.templateKey = "dpoa";
+    state.employeeRole = "Tanning Consultant";
+    state.policyManual = PRODUCTION_MANUAL;
+    state.toolInput = structuredClone(PRODUCTION_TICKS);
+  });
+
+  it.each([
+    "Create a corrective action for Colene for missing the Woven deadline.",
+    "write a corrective action for colene schildt, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
+  ])("cites the Standards of Conduct from the current manual for: %s", async (notes) => {
+    const payload = await post(notes);
+    const stored = state.persisted[0]!;
+
+    expect(stored.checked.offense_type).toEqual(["standards_of_conduct"]);
+    expect(stored.values).not.toHaveProperty("other_offense");
+    expect(stored.values.policy_violated).toBe("Standards of Conduct");
+    expect(stored.values.policy_language).toBe(CITED);
+    expect(stored.provenance.policy_language).toMatchObject({ source: "official_policy_manual", verified: true });
+    expect(payload.caPolicy).toEqual({
+      applied: true,
+      source: "incident",
+      section: "Standards of Conduct",
+      page: 12,
+      anchor: "o Failing to follow the policies and procedures of The Company",
+      replaced: ["under_performance", "other_offense"],
+    });
+    expect(payload.withheld ?? []).not.toContain("policy_language");
+    expect(prompt()).toMatch(/required Woven items or training not completed, and a manager.s direction not followed, are standards_of_conduct/);
+  });
+
+  it("rests a direction not followed on the manual's insubordination line", async () => {
+    const payload = await post("Colene was told to restock the lotion wall before close and refused.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
+    expect(state.persisted[0]!.values.policy_language).toBe(CITED);
+    expect(payload.caPolicy).toMatchObject({
+      applied: true,
+      anchor: "o Insubordination -the refusal to follow the directions of the manager.",
+    });
+  });
+
+  it("keeps every other box the model ticked", async () => {
+    state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["dress_code", "under_performance"] } };
+    await post("Colene missed the Woven deadline and wore flip flops on shift.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct", "dress_code"]);
+  });
+
+  /* ---------------------------------------------------- it fails closed -- */
+
+  it("does not tick it when the manual's section lists no such infraction", async () => {
+    state.policyManual = SECTION_WITHOUT_INFRACTIONS;
+    const payload = await post("Create a corrective action for Colene for missing the Woven deadline.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.withheld).toContain("policy_language");
+    expect(payload.caPolicy).toEqual({ applied: false, reason: "not_supported", ambiguous: null });
+  });
+
+  it("does not tick it when there is no manual to check", async () => {
+    state.policyManual = { ok: false, reason: "not indexed" };
+    const payload = await post("Create a corrective action for Colene for missing the Woven deadline.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_manual" });
+  });
+
+  it("does not tick it when the section is not in the manual at all", async () => {
+    state.policyManual = { ...PRODUCTION_MANUAL, chunks: [PRODUCTION_MANUAL.chunks[2]] };
+    const payload = await post("Create a corrective action for Colene for missing the Woven deadline.");
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_section" });
+  });
+
+  /* ----------------------------------------------- when it is a question -- */
+
+  it("chooses nothing when the account also reads as attendance, and says so", async () => {
+    state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["tardiness"] } };
+    const payload = await post("Colene came in late and didn't finish her opening tasks.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
+    expect(payload.caPolicy).toMatchObject({
+      applied: false,
+      ambiguous: ["standards_of_conduct", "attendance"],
+    });
+    expect(String(payload.notice)).toMatch(
+      /This could fall under Standards of Conduct or Attendance, and you didn't say which/,
+    );
+  });
+
+  /* ------------------------------------------------- what the manager said -- */
+
+  it("ticks it when the manager named it, quoting the section", async () => {
+    // Named outright: the section is quoted for them even where it lists no matching line.
+    state.policyManual = SECTION_WITHOUT_INFRACTIONS;
+    const payload = await post(
+      "Create a corrective action for Colene for missing the Woven deadline.\n\nthe policy violated is the standards of conduct",
+    );
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      "The Company expects Employees to follow rules of conduct\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12",
+    );
+    expect(payload.caPolicy).toMatchObject({ applied: true, source: "stated", anchor: null });
+  });
+
+  it("never overrides a different policy the manager named", async () => {
+    const payload = await post(
+      "Create a corrective action for Colene for missing the Woven deadline.\n\nit's under performance",
+    );
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
+    expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_suggestion" });
+  });
+
+  it("leaves a case it does not recognise to the model, as before", async () => {
+    state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["dress_code"] } };
+    const payload = await post("Colene wore slippers on shift today.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
+    expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_suggestion" });
+  });
+});

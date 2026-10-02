@@ -221,3 +221,79 @@ describe("the values the draft carries", () => {
     });
   });
 });
+
+/*
+ * ============================================================================
+ * HR FEEDBACK, 30 SEP 2026 — THE COLENE EXIT FORM
+ * ============================================================================
+ *
+ * HR's words: "Sunny did not check the box for submitted & fulfilled notice or
+ * fill in the dates for notice given and fulfilled, which were provided." The
+ * manager's turns below are the ones typed in Production. The date came first
+ * and the handing-in after it ("On 9-15-26, she provided her resignation"), and
+ * the notice was "gave and worked a two week notice" — no owner word.
+ */
+describe("HR feedback 30 Sep: the Colene exit form", () => {
+  const PRODUCTION_TURNS = [
+    "create an exit form. employee name is colene schildt. colene was a tanning consultant at manhattan location. on 9-15-26 colene provided her resignation to management and her last day worked was 9-28-26",
+    "colene gave and worked 2 week notice. colene messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
+  ].join("\n\n");
+  const FEEDBACK_WORDING =
+    "On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
+
+  it.each([
+    ["the Production turns", PRODUCTION_TURNS],
+    ["the feedback's own wording", FEEDBACK_WORDING],
+  ])("%s: notice given, Submitted & Fulfilled, last day worked", (_label, text) => {
+    const facts = read(text);
+    expect(facts.noticeGiven).toBe("2026-09-15");
+    expect(facts.resignationDate).toBe("2026-09-15");
+    expect(facts.lastDayWorked).toBe("2026-09-28");
+    expect(facts.noticeOptions).toEqual([EXIT_OPTION.submittedFulfilledNotice]);
+    expect(facts.typeOptions).toEqual([]);
+    expect(facts.ambiguities).toEqual([]);
+  });
+
+  /*
+   * UNCHANGED ON PURPOSE, pending HR: the notice-fulfilled date is never taken
+   * from the last day worked, even when the notice was worked in full. Whether
+   * it should be is HR's decision, not a parsing fix.
+   */
+  it("still leaves the notice-fulfilled date to the manager", () => {
+    expect(read(FEEDBACK_WORDING).noticeFulfilled).toBeNull();
+    expect(read(PRODUCTION_TURNS).noticeFulfilled).toBeNull();
+  });
+
+  it.each([
+    "On 9-15-26, she provided her resignation to management.",
+    "on 9/15 colene provided her resignation",
+    "On 9/15 she gave her two weeks notice.",
+    "She provided her resignation on 9/15.",
+    "Colene provided her two week notice on 9-15-26.",
+  ])("reads the notice date from %s", (text) => {
+    expect(read(text).noticeGiven).toBe("2026-09-15");
+  });
+
+  it("the employer's act is not the employee's notice", () => {
+    expect(read("On 9/1 we gave her notice that her hours were cut.").noticeGiven).toBeNull();
+    expect(read("On 9/1 management sent her a schedule.").noticeGiven).toBeNull();
+  });
+
+  it.each([
+    "She gave and worked a two week notice.",
+    "She worked her two week notice.",
+    "She gave and worked 2 week notice.",
+    "He worked a 2 weeks notice.",
+    "She gave and worked her two weeks.",
+  ])("ticks Submitted & Fulfilled Notice for %s", (text) => {
+    expect(read(text).noticeOptions).toEqual([EXIT_OPTION.submittedFulfilledNotice]);
+  });
+
+  it.each([
+    "she only worked 2 weeks before quitting",
+    "She didn't work a two week notice.",
+    "She never worked her two week notice.",
+  ])("does not tick it for %s", (text) => {
+    expect(read(text).noticeOptions).toEqual([]);
+  });
+});
