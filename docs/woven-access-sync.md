@@ -150,6 +150,24 @@ The old "Active employee check" stays.
 - `shadow`: after each successful scheduled directory sync, the plan is recorded and nothing is applied.
 - Any other value, including `apply`, is treated as off and reported as a problem.
 
+## Stage 2 — Link Review
+
+Admin › Integrations › Woven › Access Preview › **Link review** shows one card per exact-email match the planner proposes. A match qualifies when exactly one Woven employee and exactly one unclassified Ask Sunny account share an email, compared case-insensitively.
+
+Each card shows the Ask Sunny account and the Woven EmployeeID side by side. A person then chooses one of:
+
+- **Confirm link.** This requires ticking "I confirm … are the same person". It stores `woven_linked` with that EmployeeID and `link_method = admin_confirmed_email`. From then on, the account is found by EmployeeID and never matched by email again. Later email changes become `FLAG_EMAIL_CHANGE_REVIEW`.
+- **Different person.** The account is marked `not_woven_managed`.
+
+What Woven may manage is opt-in per field, and all three flags default off:
+
+- **Status:** never available for administrators or protected accounts.
+- **Primary salon and role:** available only for a Salon Director or Assistant Salon Director at a single salon. For anyone else they are stored off, whatever is sent.
+
+Linking changes nobody's access.
+
+`POST /api/admin/employees/woven/links` requires `manage_users` and `manage_integrations`, live mode and the rate limit. The reviewer is taken from the session. The server re-plans from the database and accepts only a match it is proposing at that moment. The table's own keys refuse a second link, so two simultaneous confirmations store exactly one. The only write is one `employee_account_links` row.
+
 ## Verification
 
 ```
@@ -161,6 +179,6 @@ npm run stack:up && npm run test:local-stack && npm run stack:down
 
 1. Apply `20261002001000` and `20261002002000` to the Supabase project (Supabase advisors before and after).
 2. Deploy. The termination fix starts recording `terminated` changes on the next daily sync. Review them, and the 3 employees currently missing, against Woven.
-3. **Stage 2, link review UI:** confirm the ~4 email matches, and set the managed flags per account.
+3. **Stage 2, link review:** built (see above). Confirm the ~4 email matches in Production, and set the managed flags per account.
 4. **Stage 4, shadow:** `WOVEN_ACCESS_MODE=shadow` in Production, then review the recorded runs.
 5. **Stage 5, apply:** not built. One capability at a time (DISABLE_TERMINATED first). Invites remain a separate action.

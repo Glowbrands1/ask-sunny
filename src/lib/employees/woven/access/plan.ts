@@ -67,6 +67,7 @@ function accountView(account: PlannerAccount, via: NonNullable<PlannedRow["accou
     scopeLevel: account.scopeLevel,
     primaryAreaId: account.primaryAreaId,
     management: account.management,
+    isProtected: isProtected(account),
     via,
   };
 }

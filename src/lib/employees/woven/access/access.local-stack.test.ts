@@ -59,6 +59,7 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     candidate: "",
     unmatched: "",
     linkedSd: "",
+    candidate2: "",
   };
   const employee = (suffix: string) => `LS-${run}-${suffix}`;
 
@@ -78,13 +79,15 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     ids.candidate = await make(`candidate-${run}@gmail.test`);
     ids.unmatched = await make(`vendor-${run}@vendor.test`);
     ids.linkedSd = await make(`linked-${run}@gmail.test`);
+    ids.candidate2 = await make(`candidate2-${run}@gmail.test`);
     suiteUserIds = Object.values(ids);
 
     sql(`insert into public.app_users (id, email, display_name, role, status, scope_level, scope_primary_area_id) values
       ('${ids.protectedAdmin}', 'owner-${run}@local.test', 'Owner', 'admin', 'active', 'global', null),
       ('${ids.candidate}', 'candidate-${run}@gmail.test', 'Candidate', 'salon_director', 'active', 'salon', 'loc-0307'),
       ('${ids.unmatched}', 'vendor-${run}@vendor.test', 'Vendor', 'admin', 'active', 'global', null),
-      ('${ids.linkedSd}', 'linked-${run}@gmail.test', 'Linked SD', 'salon_director', 'active', 'salon', 'loc-0307')`);
+      ('${ids.linkedSd}', 'linked-${run}@gmail.test', 'Linked SD', 'salon_director', 'active', 'salon', 'loc-0307'),
+      ('${ids.candidate2}', 'candidate2-${run}@gmail.test', 'Candidate Two', 'district_manager', 'active', 'global', null)`);
 
     sql(`insert into public.salons (salon_number, store_name) values ('0307', 'NE Grand Island'), ('0394', 'KC Liberty') on conflict do nothing`);
     sql(`insert into public.woven_location_map (woven_location_id, woven_location_name, status, salon_id, reviewed_by, reviewed_at)
@@ -104,7 +107,8 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
          ${row("OWNER", `owner-${run}@local.test`, "OWN", "GI")},
          ${row("CAND", `candidate-${run}@gmail.test`, "SD", "GI")},
          ${row("NEWSD", `new-sd-${run}@gmail.test`, "SD", "GI")},
-         ${row("LINKED", `linked-${run}@gmail.test`, "SD", "LIB")}`);
+         ${row("LINKED", `linked-${run}@gmail.test`, "SD", "LIB")},
+         ${row("CAND2", `Candidate2-${run}@Gmail.test`, "SD", "GI")}`);
     sql(`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by)
          values ('${ids.protectedAdmin}', '${employee("OWNER")}', 'admin', 'global', 'Protected owner', 'test')`);
     sql(`insert into public.employee_sync_runs (requested_by, source_mode, status, employees_active, finished_at)
@@ -216,6 +220,54 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     expect(sqlFails(`select public.employee_access_record_shadow_run('test', null, 'access-policy-1', '{}', '{}'::jsonb, '${bad}'::jsonb)`)).toMatch(/check constraint/);
     expect(Number(sql("select count(*) from public.employee_access_runs"))).toBe(runs);
     expect(Number(sql("select count(*) from public.employee_access_actions"))).toBe(actions);
+  });
+
+  it("LINK REVIEW: confirming an exact-email match stores a durable link; the account is then found by EmployeeID, never by email", async () => {
+    const before = fingerprint();
+    const { recordLinkReview } = await import("./link-store");
+    const { loadAccessPlan } = await import("./load");
+    const { LinkReviewError } = await import("./link-review");
+
+    const pendingBefore = (await loadAccessPlan()).rows.filter((r) => r.actions.includes("FLAG_LINK_REVIEW")).map((r) => r.externalEmployeeId);
+    expect(pendingBefore).toEqual(expect.arrayContaining([employee("CAND"), employee("CAND2")]));
+
+    const link = await recordLinkReview(
+      { appUserId: ids.candidate, externalEmployeeId: employee("CAND"), decision: "confirm", managedStatus: true, managedLocation: true, managedRole: true },
+      "admin:test",
+    );
+    expect(link).toMatchObject({ management: "woven_linked", link_method: "admin_confirmed_email", managed_status: true, managed_location: true, managed_role: true });
+    expect(sql(`select management||','||external_employee_id||','||link_method||','||set_by from public.employee_account_links where app_user_id = '${ids.candidate}'`)).toBe(
+      `woven_linked,${employee("CAND")},admin_confirmed_email,admin:test`,
+    );
+
+    const after = await loadAccessPlan();
+    const cand = after.rows.find((r) => r.externalEmployeeId === employee("CAND"))!;
+    expect(cand.account).toMatchObject({ appUserId: ids.candidate, via: "link" });
+    expect(cand.actions).not.toContain("FLAG_LINK_REVIEW");
+
+    /* The same review again is refused: it is no longer pending. */
+    await expect(
+      recordLinkReview({ appUserId: ids.candidate, externalEmployeeId: employee("CAND"), decision: "confirm", managedStatus: false, managedLocation: false, managedRole: false }, "admin:test"),
+    ).rejects.toBeInstanceOf(LinkReviewError);
+    /* Linking changed no account. */
+    expect(fingerprint()).toBe(before);
+  });
+
+  it("LINK REVIEW: two admins confirming the same match at once — exactly one link is stored; a DM's location/role flags stay off", async () => {
+    const { recordLinkReview } = await import("./link-store");
+    const attempt = () =>
+      recordLinkReview(
+        { appUserId: ids.candidate2, externalEmployeeId: employee("CAND2"), decision: "confirm", managedStatus: false, managedLocation: true, managedRole: true },
+        "admin:race",
+      ).then(
+        () => "ok",
+        (e: { code?: string }) => e.code ?? "error",
+      );
+    const results = (await Promise.all([attempt(), attempt()])).sort();
+    expect(results[1]).toBe("ok");
+    expect(["already_linked", "not_pending", "ok"]).toContain(results[0]);
+    expect(Number(sql(`select count(*) from public.employee_account_links where app_user_id = '${ids.candidate2}'`))).toBe(1);
+    expect(sql(`select managed_location::text||managed_role::text from public.employee_account_links where app_user_id = '${ids.candidate2}'`)).toBe("falsefalse");
   });
 
   it("PRIVILEGES ARE EXPLICIT: besides the owner, only service_role holds exactly what the server needs — nothing inherited", () => {

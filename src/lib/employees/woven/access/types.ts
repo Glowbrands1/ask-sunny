@@ -137,6 +137,8 @@ export interface PlannedRow {
     scopeLevel: ScopeLevel;
     primaryAreaId: string | null;
     management: AccountManagement;
+    /** A role override or an administrative role: never managed by Woven. */
+    isProtected: boolean;
     /** How this row found the account: a confirmed link, an unconfirmed email candidate, or nothing. */
     via: "link" | "email_candidate" | "account_only";
   } | null;
