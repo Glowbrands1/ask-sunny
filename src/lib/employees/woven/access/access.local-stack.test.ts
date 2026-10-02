@@ -218,6 +218,54 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     expect(Number(sql("select count(*) from public.employee_access_actions"))).toBe(actions);
   });
 
+  it("PRIVILEGES ARE EXPLICIT: besides the owner, only service_role holds exactly what the server needs — nothing inherited", () => {
+    const tableGrants = (relation: string) =>
+      sql(`select coalesce(string_agg(g, ',' order by g), '') from (
+             select case when a.grantee = 0 then 'PUBLIC' else a.grantee::regrole::text end || ':' || a.privilege_type as g
+             from pg_class c, aclexplode(c.relacl) a
+             where c.oid = 'public.${relation}'::regclass and a.grantee <> c.relowner) x`);
+    const functionGrants = (signature: string) =>
+      sql(`select coalesce(string_agg(g, ',' order by g), '') from (
+             select case when a.grantee = 0 then 'PUBLIC' else a.grantee::regrole::text end || ':' || a.privilege_type as g
+             from pg_proc p, aclexplode(p.proacl) a
+             where p.oid = 'public.${signature}'::regprocedure and a.grantee <> p.proowner) x`);
+
+    expect(tableGrants("employee_account_links")).toBe("service_role:INSERT,service_role:SELECT");
+    expect(tableGrants("employee_access_runs")).toBe("service_role:INSERT,service_role:SELECT");
+    expect(tableGrants("employee_access_actions")).toBe("service_role:INSERT,service_role:SELECT");
+    expect(tableGrants("employee_access_accounts")).toBe("service_role:SELECT");
+    expect(functionGrants("employee_access_record_shadow_run(text, uuid, text, text[], jsonb, jsonb)")).toBe("service_role:EXECUTE");
+    expect(functionGrants("employee_access_actions_guard()")).toBe("");
+    /* Migration 1's session function too. */
+    expect(functionGrants("auth_revoke_user_sessions(uuid)")).toBe("service_role:EXECUTE");
+
+    for (const relation of ["employee_account_links", "employee_access_runs", "employee_access_actions"]) {
+      expect(sql(`select relrowsecurity::text || relforcerowsecurity::text from pg_class where oid = 'public.${relation}'::regclass`), relation).toBe("truetrue");
+      expect(sql(`select count(*) from pg_policies where schemaname = 'public' and tablename = '${relation}'`), relation).toBe("0");
+    }
+  });
+
+  it("service_role can do exactly that: no UPDATE, DELETE or TRUNCATE on links or the shadow record", async () => {
+    const asService = (statement: string) => sqlFails(`begin; set local role service_role; ${statement}; rollback;`);
+    expect(asService("select count(*) from public.employee_access_accounts")).toBeNull();
+    expect(asService("select count(*) from public.employee_account_links")).toBeNull();
+    expect(asService("select count(*) from public.employee_access_runs")).toBeNull();
+    for (const statement of [
+      "update public.employee_account_links set reason = 'x'",
+      "delete from public.employee_account_links",
+      "truncate public.employee_access_actions",
+      "truncate public.employee_access_runs",
+      "insert into public.employee_access_accounts (app_user_id) values (gen_random_uuid())",
+    ]) {
+      expect(asService(statement), statement).toMatch(/permission denied|cannot insert into view/);
+    }
+    /* And through the real API with the service key: a delete is refused. */
+    const service = createClient(URL_, SERVICE, { auth: { persistSession: false } });
+    const { error } = await service.from("employee_account_links").delete().eq("app_user_id", ids.protectedAdmin);
+    expect(error?.message ?? "").toMatch(/permission denied/);
+    expect(sql(`select count(*) from public.employee_account_links where app_user_id = '${ids.protectedAdmin}'`)).toBe("1");
+  });
+
   it("an apply mode does not exist in the database either", () => {
     expect(sqlFails(`insert into public.employee_access_runs (mode, requested_by, policy_version, status) values ('apply', 'x', 'p', 'completed')`)).toMatch(
       /check constraint/,

@@ -36,8 +36,24 @@
 --   Accounts with exactly one email match are left unclassified, for a person
 --   to confirm the link (stage 2). Nothing is linked by email automatically.
 --
--- Every table: RLS enabled and forced, no policies, revoked from the browser
--- roles. Every function and view: revoked from public, anon, authenticated.
+-- PRIVILEGES ARE EXPLICIT, NEVER INHERITED. New objects in `public` would
+-- otherwise receive the project's default privileges — ALL to anon,
+-- authenticated AND service_role (including UPDATE, DELETE and TRUNCATE, the
+-- last of which bypasses the append-only triggers). So every object below
+-- first has ALL revoked from public, anon, authenticated and service_role,
+-- and service_role is then granted exactly what the server needs:
+--
+--   employee_account_links            SELECT, INSERT   (planner read; link review)
+--   employee_access_runs              SELECT, INSERT   (mapping baseline; shadow record)
+--   employee_access_actions           SELECT, INSERT   (shadow record)
+--   employee_access_accounts (view)   SELECT           (planner read)
+--   employee_access_record_shadow_run EXECUTE
+--   employee_access_actions_guard     (trigger function: no one)
+--
+-- No UPDATE, DELETE or TRUNCATE for anyone but the owner. A later stage that
+-- needs more (e.g. recording a revocation on a link) grants it in its own,
+-- reviewed migration. Browser roles get nothing. RLS is enabled and forced on
+-- every table, with no policies.
 --
 -- Applied only with approval, verbatim, in one transaction. Idempotent.
 
@@ -93,7 +109,8 @@ create trigger employee_account_links_touch_updated_at
 
 alter table public.employee_account_links enable row level security;
 alter table public.employee_account_links force row level security;
-revoke all on public.employee_account_links from public, anon, authenticated;
+revoke all on public.employee_account_links from public, anon, authenticated, service_role;
+grant select, insert on public.employee_account_links to service_role;
 
 -- ------------------------------------------------ planned-action record ---
 
@@ -169,8 +186,10 @@ alter table public.employee_access_runs enable row level security;
 alter table public.employee_access_runs force row level security;
 alter table public.employee_access_actions enable row level security;
 alter table public.employee_access_actions force row level security;
-revoke all on public.employee_access_runs from public, anon, authenticated;
-revoke all on public.employee_access_actions from public, anon, authenticated;
+revoke all on public.employee_access_runs from public, anon, authenticated, service_role;
+revoke all on public.employee_access_actions from public, anon, authenticated, service_role;
+grant select, insert on public.employee_access_runs to service_role;
+grant select, insert on public.employee_access_actions to service_role;
 
 -- --------------------------------------------------- the planner's read ---
 --
@@ -207,7 +226,8 @@ left join public.employee_role_overrides o on o.app_user_id = u.id;
 comment on view public.employee_access_accounts is
   'Read-only. Each Ask Sunny account with its Woven link (if any) and protected override (if any), for the access planner. Grants, links and changes nothing.';
 
-revoke all on public.employee_access_accounts from public, anon, authenticated;
+revoke all on public.employee_access_accounts from public, anon, authenticated, service_role;
+grant select on public.employee_access_accounts to service_role;
 
 -- ---------------------------------------------- recording a shadow run ---
 
@@ -266,8 +286,9 @@ $$;
 comment on function public.employee_access_record_shadow_run(text, uuid, text, text[], jsonb, jsonb) is
   'Records one SHADOW access-planning run and its actions in one transaction. Writes only employee_access_runs and employee_access_actions; never app_users, auth or a link. There is no apply mode.';
 
-revoke all on function public.employee_access_record_shadow_run(text, uuid, text, text[], jsonb, jsonb) from public, anon, authenticated;
-revoke all on function public.employee_access_actions_guard() from public, anon, authenticated;
+revoke all on function public.employee_access_record_shadow_run(text, uuid, text, text[], jsonb, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.employee_access_record_shadow_run(text, uuid, text, text[], jsonb, jsonb) to service_role;
+revoke all on function public.employee_access_actions_guard() from public, anon, authenticated, service_role;
 
 -- -------------------------------------------------------------- backfill ---
 
