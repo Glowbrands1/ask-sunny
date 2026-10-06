@@ -1,7 +1,7 @@
-import { ADMIN_CONSOLE_ROLES } from "@/lib/permissions";
 import type { Role } from "@/types";
 
 import { observedStatus } from "../status-evidence";
+import { isProtectedAccount, SALON_TIER_ROLES } from "./managed-policy";
 import type { AccessAction, PlannedRow, PlannerAccount, PlannerEmployee, PlannerInput, PlannerLocation, PlannerPosition } from "./types";
 
 /**
@@ -51,8 +51,8 @@ export const ACCESS_POLICY_VERSION = "access-policy-1";
 
 /** The approved mapped roles that may be provisioned from Woven in this rollout. */
 export const AUTO_PROVISION_ROLES: readonly Role[] = ["salon_director", "assistant_salon_director"];
-/** The roles whose primary salon and role Woven may manage — the salon-level manager tier. */
-export const SALON_MANAGED_ROLES: readonly Role[] = ["salon_director", "assistant_salon_director"];
+/** The roles whose primary salon and role Woven may manage — the salon tier (see managed-policy.ts). */
+export const SALON_MANAGED_ROLES: readonly Role[] = SALON_TIER_ROLES;
 
 const isSalonManagedRole = (role: Role | null): role is Role => role !== null && SALON_MANAGED_ROLES.includes(role);
 const lower = (value: string | null) => (value ?? "").trim().toLowerCase();
@@ -68,6 +68,8 @@ function accountView(account: PlannerAccount, via: NonNullable<PlannedRow["accou
     primaryAreaId: account.primaryAreaId,
     management: account.management,
     isProtected: isProtected(account),
+    managed: { status: account.managedStatus, location: account.managedLocation, role: account.managedRole },
+    extraSalonCount: account.alsoCoversAreaIds.length,
     via,
   };
 }
@@ -81,7 +83,7 @@ function linkedIdOf(account: PlannerAccount): string | null {
 
 /** Protected: a role override, or an administrative role. Never managed by Woven, whatever the flags say. */
 function isProtected(account: PlannerAccount): boolean {
-  return account.override !== null || (ADMIN_CONSOLE_ROLES as readonly Role[]).includes(account.role);
+  return isProtectedAccount(account);
 }
 
 function proposedLocation(employee: PlannerEmployee, locations: Map<string, PlannerLocation>) {
@@ -338,6 +340,16 @@ function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
         reasons.push("location_not_woven_managed");
       }
     }
+  }
+
+  /*
+   * Extra salons are never granted from Woven: only the primary location gives
+   * salon access. Any held by a salon-tier account were granted by hand and are
+   * flagged for review, never removed automatically.
+   */
+  if (linked.alsoCoversAreaIds.length > 0) {
+    if (!actions.includes("FLAG_LOCATION_REVIEW")) actions.push("FLAG_LOCATION_REVIEW");
+    reasons.push("extra_salons_not_granted_by_woven");
   }
 
   if (actions.length === 0) reasons.push("in_sync_with_woven");

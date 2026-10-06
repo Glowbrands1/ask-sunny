@@ -13,8 +13,10 @@
 --   * Default privileges in `public` grant tables, functions and sequences to
 --     anon, authenticated and service_role — which is why Ask Sunny's
 --     migrations revoke explicitly.
---   * `postgres` may DELETE from auth.sessions / auth.refresh_tokens (granted
---     after Supabase Auth has created them; see up.sh).
+--   * `postgres` holds every table privilege (not ownership) on auth.users,
+--     auth.sessions, auth.refresh_tokens and auth.identities, as observed in
+--     the Supabase project (granted after Supabase Auth has created them; see
+--     up.sh).
 --
 -- `storage` is a stub: Ask Sunny's migrations only create buckets in it.
 

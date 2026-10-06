@@ -4,6 +4,7 @@ import { AuthError } from "@/lib/auth/types";
 import { APP_USER_COLUMNS, toAppUserProfile } from "@/lib/auth/app-user";
 import { revokeAuthAccess, restoreAuthAccess } from "@/lib/auth/revocation";
 import { ADMIN_CONSOLE_ROLES, ROLES } from "@/lib/permissions";
+import { escapeLike } from "@/lib/supabase/like";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope, Role, ScopeLevel } from "@/types";
 
@@ -337,9 +338,9 @@ export async function inviteUser(
   const { data: existing } = await admin
     .from("app_users")
     .select("id")
-    .ilike("email", email)
-    .maybeSingle();
-  if (existing) {
+    .ilike("email", escapeLike(email))
+    .limit(1);
+  if (Array.isArray(existing) && existing.length > 0) {
     throw new DirectoryError(
       "duplicate_email",
       "Somebody already has an Ask Sunny account with that email address.",

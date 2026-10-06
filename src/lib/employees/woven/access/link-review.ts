@@ -1,7 +1,5 @@
-import { ADMIN_CONSOLE_ROLES } from "@/lib/permissions";
-import type { Role } from "@/types";
 
-import { SALON_MANAGED_ROLES } from "./plan";
+import { allowedManagedFlags } from "./managed-policy";
 import type { PlannedRow } from "./types";
 
 /**
@@ -27,11 +25,12 @@ import type { PlannedRow } from "./types";
  *   not_woven_managed   the match is a coincidence: the account is marked not
  *                       managed by Woven, and no Woven action ever touches it.
  *
- * WHAT WOVEN MAY MANAGE IS OPT-IN, PER FIELD, AND BOUNDED HERE:
+ * WHAT WOVEN MAY MANAGE IS OPT-IN, PER FIELD, AND BOUNDED by the owner's
+ * policy in `managed-policy.ts`:
  *   - status:   never for an administrative or protected account;
- *   - location and role: only for a Salon Director / Assistant Salon Director
- *     whose scope is a single salon — the only accounts the planner would
- *     ever change. For anyone else the flags are stored OFF whatever is asked.
+ *   - location and role: only for a salon-tier account (employee, assistant
+ *     salon director, salon director) whose scope is a single salon. For
+ *     anyone else the flags are stored OFF whatever is asked.
  * All three default OFF. Linking changes nobody's access by itself.
  */
 
@@ -84,15 +83,8 @@ export function parseLinkReview(body: Record<string, unknown> | null): LinkRevie
   };
 }
 
-/** Which managed flags this account may carry at all. */
-export function allowedManagedFlags(account: { role: Role; scopeLevel: string }, isProtected: boolean) {
-  const salonTier = SALON_MANAGED_ROLES.includes(account.role) && account.scopeLevel === "salon";
-  return {
-    status: !isProtected && !(ADMIN_CONSOLE_ROLES as readonly Role[]).includes(account.role),
-    location: salonTier && !isProtected,
-    role: salonTier && !isProtected,
-  };
-}
+/** Which managed flags this account may carry at all — the owner's policy, `managed-policy.ts`. */
+export { allowedManagedFlags };
 
 /** The pending reviews in a plan: one per FLAG_LINK_REVIEW row. */
 export function pendingLinkReviews(rows: readonly PlannedRow[]): PlannedRow[] {

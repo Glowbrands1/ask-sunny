@@ -15,9 +15,10 @@ import { useRouter } from "next/navigation";
  *
  * Neither changes anybody's access. What Woven may later manage is opt-in per
  * field, all off by default, and only offered where the planner could ever
- * act (status: not for administrators; location and role: Salon Director /
- * Assistant Salon Director at a single salon only). The server re-checks
- * everything against the current plan.
+ * act (status: not for administrators or protected accounts; location and
+ * role: salon-tier accounts — employee, assistant salon director, salon
+ * director — at a single salon only). The server re-checks everything
+ * against the current plan.
  */
 
 export interface LinkReviewItem {

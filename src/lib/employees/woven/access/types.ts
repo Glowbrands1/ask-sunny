@@ -139,6 +139,10 @@ export interface PlannedRow {
     management: AccountManagement;
     /** A role override or an administrative role: never managed by Woven. */
     isProtected: boolean;
+    /** What Woven may manage for this account (all off unless an administrator turned them on). */
+    managed: { status: boolean; location: boolean; role: boolean };
+    /** Salons held beyond the primary (`scope_also_covers_area_ids`). Never granted by Woven. */
+    extraSalonCount: number;
     /** How this row found the account: a confirmed link, an unconfirmed email candidate, or nothing. */
     via: "link" | "email_candidate" | "account_only";
   } | null;

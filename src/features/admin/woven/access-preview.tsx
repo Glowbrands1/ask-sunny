@@ -11,6 +11,7 @@ import type { AccessPreviewRow } from "@/lib/employees/woven/view-types";
 import { EligibilityCheck } from "./eligibility-check";
 import { label } from "./format";
 import { LinkReviewPanel, type LinkReviewItem } from "./link-review-panel";
+import { ManagedFlagsPanel, type ManagedFlagItem } from "./managed-flags-panel";
 
 /**
  * ============================================================================
@@ -160,6 +161,32 @@ export function linkReviewItems(rows: readonly PlannedRow[]): LinkReviewItem[] {
   }));
 }
 
+/** Every account linked to a Woven EmployeeID, with what Woven may manage for it. */
+export function managedFlagItems(rows: readonly PlannedRow[]): ManagedFlagItem[] {
+  return rows
+    .filter((row) => row.account?.via === "link" && row.account.management === "woven_linked")
+    .map((row) => ({
+      appUserId: row.account!.appUserId,
+      email: row.account!.email,
+      role: row.account!.role,
+      scope: scopeText(row.account),
+      status: row.account!.status,
+      wovenPosition: row.wovenPosition,
+      isProtected: row.account!.isProtected,
+      extraSalonCount: row.account!.extraSalonCount,
+      managed: row.account!.managed,
+      allowed: allowedManagedFlags(row.account!, row.account!.isProtected),
+    }))
+    .sort((a, b) => a.role.localeCompare(b.role) || a.email.localeCompare(b.email));
+}
+
+/** Keyed by the saved flags, so the panel's draft resets whenever the server's state changes. */
+function ManagedFlags({ rows, disabled }: { rows: readonly PlannedRow[]; disabled: boolean }) {
+  const items = managedFlagItems(rows);
+  const key = items.map((i) => `${i.appUserId}:${+i.managed.status}${+i.managed.location}${+i.managed.role}`).join("|");
+  return <ManagedFlagsPanel key={key} items={items} disabled={disabled} />;
+}
+
 const hrefFor = (action: string | null) => (action ? `?action=${encodeURIComponent(action)}` : "?");
 const chip = "rounded-full border border-border px-2.5 py-1 aria-[current=page]:bg-surface-muted aria-[current=page]:font-semibold";
 
@@ -195,6 +222,7 @@ export function AccessPreview({
       ) : (
         <>
           <LinkReviewPanel items={linkReviewItems(planState.plan.rows)} disabled={actionsDisabled} />
+          <ManagedFlags rows={planState.plan.rows} disabled={actionsDisabled} />
           <Plan plan={planState.plan} actionFilter={actionFilter} />
         </>
       )}

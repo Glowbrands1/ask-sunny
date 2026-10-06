@@ -64,8 +64,9 @@ for _ in $(seq 1 60); do
 done
 curl -fsS "http://127.0.0.1:$AUTH_PORT/health" >/dev/null || { docker logs ask-sunny-local-auth | tail -30; exit 1; }
 
-# As in the Supabase project: postgres may manage auth sessions (observed DELETE privilege).
-"${PSQL_ADMIN[@]}" -c "grant select, delete on auth.sessions, auth.refresh_tokens to postgres; grant select on auth.users to postgres; grant references on auth.users to postgres;"
+# As in the Supabase project (observed 6 Oct 2026 with has_table_privilege): postgres holds every
+# table privilege on these four auth tables, though not ownership (supabase_auth_admin owns them).
+"${PSQL_ADMIN[@]}" -c "grant select, insert, update, delete, truncate, references, trigger on auth.users, auth.sessions, auth.refresh_tokens, auth.identities to postgres;"
 
 echo "== migrations"
 count=0

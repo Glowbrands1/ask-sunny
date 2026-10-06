@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { allowedAuditActions } from "@/test/audit-actions";
 import { describe, expect, it, vi } from "vitest";
 
 /**
@@ -338,12 +339,9 @@ describe("the source", () => {
   });
 
   it("uses an audit action the database's CHECK constraint accepts", () => {
-    const migration = readFileSync(
-      "supabase/migrations/20261002001000_auth_revocation_hardening.sql",
-      "utf8",
-    );
+    const allowed = allowedAuditActions().actions;
     const actions = [...CODE.matchAll(/action: "([a-z_]+)"/g)].map((match) => match[1]);
     expect(actions).toEqual(["reset_requested"]);
-    for (const action of actions) expect(migration).toContain(`'${action}'`);
+    for (const action of actions) expect(allowed).toContain(action);
   });
 });
