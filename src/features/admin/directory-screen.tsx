@@ -8,6 +8,7 @@ import {
   Loader2,
   MailCheck,
   RefreshCw,
+  RotateCcwKey,
   Search,
   ShieldCheck,
   UserPlus,
@@ -249,6 +250,47 @@ export function DirectoryScreen({
   }
 
   /**
+   * Clears the password and every session, then emails the person a link to
+   * choose their own. For accounts whose password somebody else set. Asks
+   * first: the person is signed out everywhere until they follow the email.
+   */
+  async function resetCredentials(id: string, email: string): Promise<void> {
+    if (
+      !window.confirm(
+        `Reset credentials for ${email}?\n\nTheir current password stops working and they are signed out everywhere. ` +
+          "They choose a new password from the email Supabase sends them.",
+      )
+    ) {
+      return;
+    }
+    setBusyId(id);
+    setActionError(null);
+    setActionNote(null);
+    try {
+      const response = await fetch(`/api/admin/users/${id}/credentials`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; email?: string; sessionsEnded?: number }
+        | null;
+      if (!response.ok) {
+        setActionError(payload?.error ?? "The credentials could not be reset.");
+        return;
+      }
+      const ended = payload?.sessionsEnded ?? 0;
+      setActionNote(
+        `Password cleared and ${ended} session${ended === 1 ? "" : "s"} ended. A link to choose a new password is on its way to ${payload?.email ?? email}.`,
+      );
+    } catch {
+      setActionError("The credentials could not be reset. Check your connection and try again.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /**
    * Asks the server for a reset link. No body: the server looks the person up
    * by id and never accepts an address from here.
    */
@@ -475,6 +517,18 @@ export function DirectoryScreen({
                               </Button>
                             ) : null}
 
+                            {entry.status !== "disabled" && !isMe ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void resetCredentials(entry.id, entry.email)}
+                              >
+                                <RotateCcwKey />
+                                Reset credentials
+                              </Button>
+                            ) : null}
+
                             {entry.status === "disabled" ? (
                               <Button
                                 variant="secondary"
@@ -519,7 +573,10 @@ export function DirectoryScreen({
         link&rdquo; asks Supabase to email the person a single-use link they use
         themselves. &ldquo;Generate reset link&rdquo; shows a single-use link
         once, to you only, for you to send them privately; the person still
-        chooses their own password.
+        chooses their own password. &ldquo;Reset credentials&rdquo; is for an
+        account whose password somebody else set: it clears that password,
+        signs the person out everywhere, and emails them a link to choose
+        their own.
       </Notice>
 
       <ResetLinkDialog

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { allowedAuditActions } from "@/test/audit-actions";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -191,15 +192,8 @@ describe("the audit trail actually records what it claims to", () => {
    * migration — which means the two cannot drift apart again without a test
    * failing, and no runtime logging is needed to notice.
    */
-  const MIGRATION = readFileSync(
-    "supabase/migrations/20261002001000_auth_revocation_hardening.sql",
-    "utf8",
-  );
-
-  /** The action values the CHECK constraint permits. */
-  const allowed = new Set(
-    [...MIGRATION.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]),
-  );
+  /** The action values the newest CHECK constraint permits. */
+  const allowed = allowedAuditActions().actions;
 
   /** Every literal this module passes as an audit action. */
   const emitted = [...SOURCE.matchAll(/action:\s*(?:[^,\n]*\?\s*)?"([a-z_]+)"(?:\s*:\s*"([a-z_]+)")?/g)]

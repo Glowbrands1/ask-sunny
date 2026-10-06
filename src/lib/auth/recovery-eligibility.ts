@@ -1,5 +1,6 @@
 import "server-only";
 
+import { escapeLike } from "@/lib/supabase/like";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 /**
@@ -23,11 +24,6 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
  */
 
 export type RecoveryEligibility = "allowed" | "no_account" | "not_allowed" | "lookup_failed";
-
-/** `%`, `_` and `\` are wildcards to ILIKE; an address may legitimately contain `_`. */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
 
 export async function recoveryEligibility(normalizedEmail: string): Promise<RecoveryEligibility> {
   try {

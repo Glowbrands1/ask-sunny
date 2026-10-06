@@ -293,11 +293,29 @@ describe("primary location", () => {
     const e = employee({ primaryWovenLocationId: LOC.liberty, primaryLocationName: "KC Liberty" });
     const linked = linkedTo(e, { primaryAreaId: "loc-0314", alsoCoversAreaIds: ["loc-0307"] });
     const row = rowOf(plan([e], [linked]), e);
-    expect(row.actions).toEqual(["UPDATE_PRIMARY_LOCATION"]);
+    /* The hand-granted extra salon is flagged, never changed: only the primary moves. */
+    expect(row.actions).toEqual(["UPDATE_PRIMARY_LOCATION", "FLAG_LOCATION_REVIEW"]);
+    expect(row.reasons).toContain("extra_salons_not_granted_by_woven");
     expect(row.before).toEqual({ scope_primary_area_id: "loc-0314" });
     expect(row.after).toEqual({ scope_primary_area_id: "loc-0394" });
     /* The old primary is REPLACED (not added); also-covers and role are not in the change at all. */
     expect(JSON.stringify(row.after)).not.toMatch(/also_covers|role/);
+  });
+
+  it("3b. a primary location change with no extra salons is UPDATE_PRIMARY_LOCATION and nothing else", () => {
+    const e = employee({ primaryWovenLocationId: LOC.liberty, primaryLocationName: "KC Liberty" });
+    const row = rowOf(plan([e], [linkedTo(e, { primaryAreaId: "loc-0314" })]), e);
+    expect(row.actions).toEqual(["UPDATE_PRIMARY_LOCATION"]);
+  });
+
+  it("3c. extra salons on an otherwise in-sync salon-tier account are flagged for review, never removed", () => {
+    const e = employee();
+    const linked = linkedTo(e, { alsoCoversAreaIds: ["loc-0306", "loc-0462"] });
+    const rows = plan([e], [linked]);
+    expect(rowOf(rows, e).actions).toEqual(["FLAG_LOCATION_REVIEW"]);
+    expect(rowOf(rows, e).reasons).toEqual(["extra_salons_not_granted_by_woven"]);
+    expect(rowOf(rows, e).account?.extraSalonCount).toBe(2);
+    expect(mutating(rows)).toEqual([]);
   });
 
   it("4 / 23. additional or temporary locations change → primary salon unchanged, no action", () => {
@@ -361,10 +379,18 @@ describe("role", () => {
     expect(row.reasons).toContain("woven_position_outside_automatic_tier");
   });
 
-  it("15c. a demotion out of the tier (to Tanning Consultant) is review only — never an automatic downgrade", () => {
+  it("15c. Tanning Consultant is in the salon tier (6 Oct policy): SD → employee is an UPDATE_ROLE only when role is Woven-managed", () => {
     const e = employee({ positionId: POS.tc });
-    const rows = plan([e], [linkedTo(e)]);
+    expect(rowOf(plan([e], [linkedTo(e)]), e).actions).toEqual(["UPDATE_ROLE"]);
+    expect(rowOf(plan([e], [linkedTo(e)]), e).after).toEqual({ role: "employee" });
+    expect(rowOf(plan([e], [linkedTo(e, { managedRole: false })]), e).actions).toEqual(["FLAG_ROLE_REVIEW"]);
+  });
+
+  it("15d. a move out of the salon tier (to District Manager) is review only — never automatic, and holds the location", () => {
+    const e = employee({ positionId: POS.dm, primaryWovenLocationId: LOC.liberty });
+    const rows = plan([e], [linkedTo(e, { primaryAreaId: "loc-0314" })]);
     expect(rowOf(rows, e).actions).toEqual(["FLAG_ROLE_REVIEW"]);
+    expect(rowOf(rows, e).reasons).toContain("woven_position_outside_automatic_tier");
     expect(mutating(rows)).toEqual([]);
   });
 

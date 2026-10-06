@@ -1,4 +1,4 @@
-# Woven → Ask Sunny access sync (stages 0–1)
+# Woven → Ask Sunny access sync (stages 0–2)
 
 **Status (2 October 2026): built on `claude/woven-access-sync`, nothing
 applied to Production.** The two migrations are written and verified on a
@@ -162,11 +162,60 @@ Each card shows the Ask Sunny account and the Woven EmployeeID side by side. A p
 What Woven may manage is opt-in per field, and all three flags default off:
 
 - **Status:** never available for administrators or protected accounts.
-- **Primary salon and role:** available only for a Salon Director or Assistant Salon Director at a single salon. For anyone else they are stored off, whatever is sent.
+- **Primary salon and role:** available only for a salon-tier account (employee, Assistant Salon Director, Salon Director) at a single salon. For anyone else they are stored off, whatever is sent.
 
 Linking changes nobody's access.
 
 `POST /api/admin/employees/woven/links` requires `manage_users` and `manage_integrations`, live mode and the rate limit. The reviewer is taken from the session. The server re-plans from the database and accepts only a match it is proposing at that moment. The table's own keys refuse a second link, so two simultaneous confirmations store exactly one. The only write is one `employee_account_links` row.
+
+## Stage 2b — adoption and credential ownership (6 Oct 2026)
+
+**Owner decisions, 6 Oct 2026:**
+
+| Woven position | Ask Sunny | Provisioning |
+|---|---|---|
+| Tanning Consultant | employee, salon | automatic, after testing |
+| Assistant Salon Director | assistant_salon_director, salon | automatic |
+| Salon Director | salon_director, salon | automatic |
+| District Manager | district_manager | not until an admin-selected district flow exists |
+| Regional Director | — | review before mapping to regional_manager |
+| Operations, HR, Owner | — | link / review only |
+| Accounting, Maintenance, Loss Prevention, Franchise Support | — | no access until explicitly mapped |
+
+- Protected accounts (admin, owner, developer, or a role override) are never auto-disabled. A Woven termination flags them for human review.
+- For normal managed accounts, explicit Woven Terminated revokes access.
+- Salon-tier access comes from the Woven **primary** location only. Extra salons are never granted from Woven. The 7 extra-salon grants that manual provisioning had copied from Woven additional locations were removed on 6 Oct (audited `scope_changed`).
+
+**Managed-flag policy** (`access/managed-policy.ts`, the single source for the planner, Link Review and adoption):
+
+| Account | Status | Primary salon | Role |
+|---|---|---|---|
+| employee / ASD / SD at salon scope | yes | yes | yes, within the salon tier |
+| District / Regional Manager, or any wider scope | yes | never | never |
+| Protected | never | never | never |
+
+The planner treats `employee` as part of the salon tier. A move within the tier (for example SD → employee) is an `UPDATE_ROLE` when role is managed. A move out of the tier is `FLAG_ROLE_REVIEW`. A salon-tier account holding extra salons is `FLAG_LOCATION_REVIEW` (`extra_salons_not_granted_by_woven`); they are never removed automatically.
+
+**Adoption.** Access Preview › *Woven management for linked accounts* lists every linked account with its flags. Only the flags the policy allows can be ticked.
+
+- *Apply policy to selected* turns on everything allowed for the chosen accounts.
+- `POST /api/admin/employees/woven/links/flags` handles up to 50 accounts per request. It requires `manage_users` and `manage_integrations`, live mode and the rate limit.
+- The policy is enforced on the server: a disallowed flag is refused, never dropped.
+- A concurrent change is refused, never overwritten.
+- Every change is audited as `managed_flags_changed`.
+- The database (migration `20261006001000`) grants service_role UPDATE on exactly the three flag columns. A trigger refuses any other change to a link, even by the table owner.
+
+Turning a flag on changes nobody's access. It only allows a later, separately enabled apply action to act.
+
+**Credential reset** (user directory › *Reset credentials*). For accounts whose password somebody else set:
+
+1. `auth_clear_user_credentials` clears the password and deletes every session and refresh token, in one transaction. It is server-only.
+2. The existing recovery email is sent.
+3. The action is audited as `credentials_reset`.
+
+It never sets, generates, shows or emails a password. The person chooses their own from the email, and the old password never works again. It refuses your own account and disabled accounts.
+
+**Invite email prerequisites before any mass invite:** custom SMTP confirmed, scanner-safe invite links (the reset template is already scanner-safe), and an invite expiry of at least 24 hours.
 
 ## Verification
 
@@ -179,6 +228,7 @@ npm run stack:up && npm run test:local-stack && npm run stack:down
 
 1. Apply `20261002001000` and `20261002002000` to the Supabase project (Supabase advisors before and after).
 2. Deploy. The termination fix starts recording `terminated` changes on the next daily sync. Review them, and the 3 employees currently missing, against Woven.
-3. **Stage 2, link review:** built (see above). Confirm the ~4 email matches in Production, and set the managed flags per account.
-4. **Stage 4, shadow:** `WOVEN_ACCESS_MODE=shadow` in Production, then review the recorded runs.
-5. **Stage 5, apply:** not built. One capability at a time (DISABLE_TERMINATED first). Invites remain a separate action.
+3. **Stage 2, link review:** done in Production. All 27 accounts are linked or classified.
+4. **Stage 2b, adoption:** apply `20261006001000`, deploy, then set the managed flags per policy. Reset the credentials of the 16 hand-provisioned SD/ASD accounts once the email prerequisites are confirmed.
+5. **Shadow:** `WOVEN_ACCESS_MODE=shadow` in Production (redeploy), then review the recorded runs.
+6. **Apply:** not built. One capability at a time, each behind its own switch: CREATE_USER, SEND_INVITE, auto-resend, DISABLE_TERMINATED, UPDATE_PRIMARY_LOCATION, UPDATE_ROLE, rehire approval.
