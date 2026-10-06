@@ -122,7 +122,11 @@ describe.skipIf(!ENABLED)("adoption and credential reset on the local stack", { 
       sql(`select coalesce(string_agg(a.attname || ':' || x.grantee::regrole::text || ':' || x.privilege_type, ',' order by a.attname), '')
            from pg_attribute a, aclexplode(a.attacl) x
            where a.attrelid = 'public.employee_account_links'::regclass and a.attacl is not null`),
-    ).toBe("managed_location:service_role:UPDATE,managed_role:service_role:UPDATE,managed_status:service_role:UPDATE");
+    ).toBe(
+      /* The three flags (20261006001000) and, since 20261007001000, the three write-once revocation fields. */
+      "access_revoked_at:service_role:UPDATE,managed_location:service_role:UPDATE,managed_role:service_role:UPDATE," +
+        "managed_status:service_role:UPDATE,revoked_woven_status:service_role:UPDATE,terminated_at:service_role:UPDATE",
+    );
     const functionGrants = (signature: string) =>
       sql(`select coalesce(string_agg(g, ',' order by g), '') from (
              select case when a.grantee = 0 then 'PUBLIC' else a.grantee::regrole::text end || ':' || a.privilege_type as g
@@ -145,7 +149,7 @@ describe.skipIf(!ENABLED)("adoption and credential reset on the local stack", { 
     }
     /* The table owner holds every privilege; the trigger still refuses an identity change. */
     expect(sqlFails(`begin; update public.employee_account_links set external_employee_id = 'other' where app_user_id = '${ids.dm}'; rollback;`)).toMatch(
-      /only managed_status, managed_location and managed_role can change/,
+      /only managed_status, managed_location, managed_role and the revocation fields can change/,
     );
     /* A not-Woven-managed account can never have a flag, whoever writes it. */
     expect(sqlFails(`begin; update public.employee_account_links set managed_status = true where app_user_id = '${ids.unmanaged}'; rollback;`)).toMatch(

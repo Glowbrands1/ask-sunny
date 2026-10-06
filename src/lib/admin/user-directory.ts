@@ -54,9 +54,15 @@ export interface DirectoryUser {
   updatedAt: string;
 }
 
-/** Who is performing the change. Resolved by the route, never by this module. */
+/**
+ * Who is performing the change. Resolved by the route, never by this module.
+ *
+ * `id` is null only for an automatic system action (the Woven termination
+ * enforcement), which is recorded under its own `email` label and has no
+ * Ask Sunny account of its own.
+ */
 export interface DirectoryActor {
-  id: string;
+  id: string | null;
   email: string;
   role: Role;
 }

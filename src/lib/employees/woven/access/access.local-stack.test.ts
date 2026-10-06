@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { createClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -116,8 +116,22 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
   });
 
   it("re-applying the migration is idempotent and backfills: override → linked (flags off); no-match → not Woven-managed; email match → unclassified", () => {
-    execFileSync("psql", [PG.replace("supabase_admin@", "postgres:postgres@"), "-q", "-v", "ON_ERROR_STOP=1", "-1", "-f", MIGRATION]);
-    execFileSync("psql", [PG.replace("supabase_admin@", "postgres:postgres@"), "-q", "-v", "ON_ERROR_STOP=1", "-1", "-f", MIGRATION]);
+    /*
+     * Re-apply this migration AND every later one, in order, twice: re-running
+     * this one alone would also revoke the column grants later migrations add
+     * (its explicit `revoke all ... from service_role`), which is not a state
+     * the project is ever in. Doing it in order also proves the later
+     * migrations are idempotent.
+     */
+    const later = readdirSync("supabase/migrations")
+      .filter((name) => name.endsWith(".sql") && name > MIGRATION.split("/").pop()!)
+      .sort()
+      .map((name) => `supabase/migrations/${name}`);
+    for (let i = 0; i < 2; i += 1) {
+      for (const file of [MIGRATION, ...later]) {
+        execFileSync("psql", [PG.replace("supabase_admin@", "postgres:postgres@"), "-q", "-v", "ON_ERROR_STOP=1", "-1", "-f", file]);
+      }
+    }
     const link = (id: string) =>
       sql(`select management||','||coalesce(external_employee_id,'-')||','||link_method||','||managed_status||managed_location||managed_role from public.employee_account_links where app_user_id = '${id}'`);
     expect(link(ids.protectedAdmin)).toBe(`woven_linked,${employee("OWNER")},override_backfill,falsefalsefalse`);
@@ -318,11 +332,16 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     expect(sql(`select count(*) from public.employee_account_links where app_user_id = '${ids.protectedAdmin}'`)).toBe("1");
   });
 
-  it("an apply mode does not exist in the database either", () => {
-    expect(sqlFails(`insert into public.employee_access_runs (mode, requested_by, policy_version, status) values ('apply', 'x', 'p', 'completed')`)).toMatch(
+  it("the shadow recorder still records only shadow; apply runs exist only for DISABLE_TERMINATED (migration 20261007001000)", () => {
+    /* Only the two modes exist. */
+    expect(sqlFails(`insert into public.employee_access_runs (mode, requested_by, policy_version, status) values ('bulk', 'x', 'p', 'completed')`)).toMatch(
       /check constraint/,
     );
+    /* The shadow recorder itself never writes anything but 'shadow'. */
     expect(readFileSync(MIGRATION, "utf8")).not.toMatch(/'applied'/);
+    expect(sql(`select position('applied' in pg_get_functiondef('public.employee_access_record_shadow_run(text, uuid, text, text[], jsonb, jsonb)'::regprocedure))`)).toBe("0");
+    /* The only apply action the database knows. */
+    expect(sql(`select string_agg(action, ',') from public.employee_access_controls`)).toBe("DISABLE_TERMINATED");
     void randomUUID;
   });
 });

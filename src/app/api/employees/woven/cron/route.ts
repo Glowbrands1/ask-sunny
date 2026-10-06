@@ -8,6 +8,7 @@ import {
   WOVEN_SYNC_SCHEDULE_ENABLED_ENV,
 } from "@/lib/employees/woven/config";
 import { CRON_REQUESTER, outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/sync";
+import { applyDisableTerminated } from "@/lib/admin/woven-termination";
 import { recordAccessShadowRun } from "@/lib/employees/woven/access/shadow";
 
 /**
@@ -106,6 +107,19 @@ export async function GET(request: Request) {
    * response is exactly the sync's outcome.
    */
   const shadow = outcome.status === "succeeded" ? await recordAccessShadowRun(CRON_REQUESTER) : ({ status: "off" } as const);
-  const body = shadow.status === "off" ? outcome : { ...outcome, accessShadow: shadow };
+
+  /*
+   * DISABLE_TERMINATED — the one apply action. Off unless BOTH keys are on:
+   * `WOVEN_APPLY_ACTIONS` lists it AND the owner's switch in
+   * `employee_access_controls` is enabled. It re-plans, re-checks every guard
+   * and every account, and records its own run. It never fails this response.
+   */
+  const apply = outcome.status === "succeeded" ? await applyDisableTerminated({ source: "cron" }) : ({ status: "off" } as const);
+
+  const body = {
+    ...outcome,
+    ...(shadow.status === "off" ? {} : { accessShadow: shadow }),
+    ...(apply.status === "off" ? {} : { accessApply: apply }),
+  };
   return NextResponse.json(body, { status: outcomeHttpStatus(outcome) });
 }

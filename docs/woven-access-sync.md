@@ -217,6 +217,70 @@ It never sets, generates, shows or emails a password. The person chooses their o
 
 **Invite email prerequisites before any mass invite:** custom SMTP confirmed, scanner-safe invite links (the reset template is already scanner-safe), and an invite expiry of at least 24 hours.
 
+## DISABLE_TERMINATED — automatic termination enforcement (built, OFF)
+
+The only apply action. When Woven **explicitly** reports a linked employee as Terminated, and their account has status managed and is not protected, the account is disabled through the existing hardened path (`patchUser`): profile `disabled`, Supabase Auth ban, every session and refresh token revoked, audited. Forgot Password stays blocked, and nothing is deleted.
+
+**When it acts.** The planner proposes it only when all of these hold:
+- the account is linked by EmployeeID;
+- status is managed;
+- the account is not protected;
+- the employee's status is Terminated in the latest read (miss count 0).
+
+Every guard must also pass: a fresh, successful read; the Terminated read succeeded; enums resolved; no mass change. The executor (`src/lib/admin/woven-termination.ts`) then re-reads each account twice — immediately before claiming it, and again while holding the claim. Each time it must still be linked, managed, unprotected and not yet revoked, and Terminated in the directory row seen by the latest successful run. Anything else is skipped and recorded.
+
+**Never:**
+- missing from Woven;
+- an old TerminationDate on an Active employee;
+- unknown status;
+- a stale or failed read;
+- a protected account (`FLAG_PROTECTED_ACCOUNT` instead).
+
+A revoked account that is Active again is `FLAG_REHIRE_REVIEW`, and is never re-enabled automatically.
+
+**Two keys, both OFF.**
+
+| Key | Where | Changed by |
+|---|---|---|
+| `WOVEN_APPLY_ACTIONS=DISABLE_TERMINATED` | Vercel environment (redeploy) | owner |
+| `employee_access_controls.enabled` (+ `max_per_run`, default 3) | database, SQL editor only — the server can read it, never write it; every change logged in `employee_access_control_changes` | owner |
+
+**Exactly once.**
+- `employee_access_operations` allows one open attempt per account, written only through `employee_access_claim_operation` / `employee_access_finish_operation`.
+- The link's `terminated_at`, `access_revoked_at` and `revoked_woven_status` are write-once.
+- A repeated run finds "access already revoked".
+- Two runs at once revoke a person exactly once.
+- Every run is recorded in `employee_access_runs` (mode `apply`) with each account's result: applied, skipped, failed or blocked.
+
+**Visible** in Access Preview › *Automatic actions*: both switches, recent apply runs, recent operations, and the disposable-test run.
+
+**Disposable test** (`POST /api/admin/employees/woven/apply/test-termination`, `confirm: true`). It runs the real path for ONE account linked to a test employee whose EmployeeID starts `ASK-SUNNY-TEST-`. Real EmployeeIDs are UUIDs. The switches are not required; every other rule is.
+
+**Enable (owner, after a successful disposable test):**
+1. Vercel → ask-sunny → Environment Variables → Production: `WOVEN_APPLY_ACTIONS` = `DISABLE_TERMINATED`. Redeploy.
+2. SQL editor:
+   ```sql
+   update public.employee_access_controls
+      set enabled = true, max_per_run = 3, changed_by = 'owner:<name>', reason = '<why>'
+    where action = 'DISABLE_TERMINATED';
+   ```
+3. The next 11:17 UTC sync records the shadow plan, then the apply run.
+
+**Roll back.**
+- **Instantly** (next run does nothing):
+  ```sql
+  update public.employee_access_controls
+     set enabled = false, changed_by = 'owner:<name>', reason = '<why>'
+   where action = 'DISABLE_TERMINATED';
+  ```
+- **Fully:** also remove `WOVEN_APPLY_ACTIONS` and redeploy.
+- **One person revoked in error:**
+  1. Users › Re-enable (lifts the ban, restores active).
+  2. In Access Preview › *Woven management*, untick their status management.
+
+  Their link keeps the revocation record (write-once), so the executor skips them on every later run.
+
+## Verification
 ## Verification
 
 ```
@@ -231,4 +295,4 @@ npm run stack:up && npm run test:local-stack && npm run stack:down
 3. **Stage 2, link review:** done in Production. All 27 accounts are linked or classified.
 4. **Stage 2b, adoption:** apply `20261006001000`, deploy, then set the managed flags per policy. Reset the credentials of the 16 hand-provisioned SD/ASD accounts once the email prerequisites are confirmed.
 5. **Shadow:** `WOVEN_ACCESS_MODE=shadow` in Production (redeploy), then review the recorded runs.
-6. **Apply:** not built. One capability at a time, each behind its own switch: CREATE_USER, SEND_INVITE, auto-resend, DISABLE_TERMINATED, UPDATE_PRIMARY_LOCATION, UPDATE_ROLE, rehire approval.
+6. **Apply:** DISABLE_TERMINATED built (above), off. Still to build, one capability at a time, each behind its own switch: CREATE_USER, SEND_INVITE, auto-resend, UPDATE_PRIMARY_LOCATION, UPDATE_ROLE, rehire approval.
