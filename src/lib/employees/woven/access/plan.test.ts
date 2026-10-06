@@ -135,7 +135,7 @@ function simulateApply(rows: PlannedRow[], accounts: PlannerAccount[], employees
 /* --------------------------------------------------------------- cases -- */
 
 describe("provisioning", () => {
-  it("1. active Salon Director, approved mapping, email, mapped salon, no account → CREATE_USER (invite not sent)", () => {
+  it("1. active Salon Director, approved mapping, email, mapped salon, no account → CREATE_USER (invited; status managed; role and salon never)", () => {
     const e = employee({ emailAddress: "Carley.R@Gmail.com" });
     const row = rowOf(plan([e]), e);
     expect(row.actions).toEqual(["CREATE_USER"]);
@@ -149,8 +149,13 @@ describe("provisioning", () => {
       scope_also_covers_area_ids: [],
       provisioned_by_source: "woven",
       external_employee_id: e.externalEmployeeId,
-      invite_email: "not_sent",
+      link_method: "provisioned",
+      managed_status: true,
+      managed_location: false,
+      managed_role: false,
+      invite: "supabase_invitation_to_woven_email",
     });
+    expect(row.lifecycle).toBe("CREATE_USER");
   });
 
   it("an Assistant Salon Director is provisioned too; a personal email is allowed", () => {
@@ -219,14 +224,58 @@ describe("provisioning", () => {
 });
 
 describe("identity and linking", () => {
-  it("19. an existing manually-created account with the same email → FLAG_LINK_REVIEW, no new account, nothing changed", () => {
+  it("19. an existing manually-created account with the same exact email → LINK_EXISTING, never a second account; the account is not changed", () => {
     const e = employee({ emailAddress: "manager@gmail.com", primaryWovenLocationId: LOC.liberty });
     const manual = account({ email: "Manager@Gmail.com", primaryAreaId: "loc-0307" });
     const rows = plan([e], [manual]);
     const row = rowOf(rows, e);
-    expect(row.actions).toEqual(["FLAG_LINK_REVIEW"]);
+    expect(row.actions).toEqual(["LINK_EXISTING"]);
+    expect(row.lifecycle).toBe("LINK_EXISTING");
     expect(row.account).toMatchObject({ appUserId: manual.appUserId, via: "email_candidate" });
+    expect(row.after).toEqual({
+      external_employee_id: e.externalEmployeeId,
+      link_method: "email_discovery",
+      managed_status: true,
+      managed_location: false,
+      managed_role: false,
+    });
+    expect(mutating(rows)).toEqual(["LINK_EXISTING"]);
+  });
+
+  it("19c. LINK_EXISTING manages status only for a salon-level SD/ASD in an approved SD/ASD position; nothing for a DM", () => {
+    const dmEmployee = employee({ emailAddress: "dm@gmail.com", positionId: POS.dm });
+    const dmAccount = account({ email: "dm@gmail.com", role: "district_manager", scopeLevel: "global", primaryAreaId: null });
+    const tcEmployee = employee({ emailAddress: "sd-but-tc@gmail.com", positionId: POS.tc });
+    const sdAccount = account({ email: "sd-but-tc@gmail.com" });
+    const rows = plan([dmEmployee, tcEmployee], [dmAccount, sdAccount]);
+    expect(rowOf(rows, dmEmployee)).toMatchObject({ actions: ["LINK_EXISTING"], after: { managed_status: false, managed_location: false, managed_role: false } });
+    expect(rowOf(rows, tcEmployee)).toMatchObject({ actions: ["LINK_EXISTING"], after: { managed_status: false } });
+  });
+
+  it.each([
+    ["a protected (override) account", { override: { role: "admin" as const, scopeLevel: "global" as const, externalEmployeeId: null }, role: "admin" as const, scopeLevel: "global" as const, primaryAreaId: null }, {}, "FLAG_PROTECTED_ACCOUNT", "email_matches_protected_account"],
+    ["an administrator account", { role: "admin" as const, scopeLevel: "global" as const, primaryAreaId: null }, {}, "FLAG_PROTECTED_ACCOUNT", "email_matches_protected_account"],
+    ["an employee Terminated in Woven", {}, { employmentStatus: "terminated" as const }, "FLAG_LINK_REVIEW", "email_match_terminated_in_woven"],
+    ["an employee not read this run", {}, { missingSyncCount: 2 }, "FLAG_LINK_REVIEW", "email_match_status_not_read_this_run"],
+    ["an Active employee with a past termination date", {}, { issues: ["status_termination_conflict"] }, "FLAG_STATUS_CONFLICT", "email_match_held_for_review"],
+    ["a disabled account", { status: "disabled" as const }, {}, "FLAG_STATUS_CONFLICT", "disabled_in_ask_sunny_active_in_woven"],
+  ])("19d. an exact email match to %s is REVIEW_REQUIRED, never linked", (_name, accountOver, employeeOver, flag, reason) => {
+    const e = employee({ emailAddress: "match@gmail.com", ...employeeOver });
+    const a = account({ email: "match@gmail.com", ...accountOver });
+    const rows = plan([e], [a]);
+    const row = rowOf(rows, e);
+    expect(row.actions).toEqual([flag]);
+    expect(row.reasons).toContain(reason);
+    expect(row.lifecycle).toBe("REVIEW_REQUIRED");
     expect(mutating(rows)).toEqual([]);
+  });
+
+  it("19e. ambiguous: two accounts or two Woven employees with the email → REVIEW_REQUIRED, never linked", () => {
+    const e = employee({ emailAddress: "two@gmail.com" });
+    const twins = [employee({ emailAddress: "twin@gmail.com" }), employee({ emailAddress: "TWIN@gmail.com" })];
+    const rows = plan([e, ...twins], [account({ email: "twin@gmail.com" })]);
+    for (const t of twins) expect(rowOf(rows, t)).toMatchObject({ actions: ["FLAG_DUPLICATE_EMAIL"], lifecycle: "REVIEW_REQUIRED" });
+    expect(mutating(rows)).toEqual(["CREATE_USER"]);
   });
 
   it("19b. once the link is confirmed, the EmployeeID is authoritative and the plan acts on that account", () => {
@@ -610,8 +659,9 @@ describe("the mass-change guards", () => {
 
 describe("the vocabulary matches the database", () => {
   it("every action is in the employee_access_actions CHECK constraint, and nothing else is", () => {
-    const sql = readFileSync("supabase/migrations/20261002002000_woven_account_links.sql", "utf8");
-    const block = sql.slice(sql.indexOf("action                text not null check (action in ("));
+    /* The latest definition of the constraint: the lifecycle migration replaces stage 1's. */
+    const sql = readFileSync("supabase/migrations/20261006002000_woven_account_lifecycle.sql", "utf8");
+    const block = sql.slice(sql.indexOf("add constraint employee_access_actions_action_check"));
     const listed = [...block.slice(0, block.indexOf("))")).matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]).sort();
     expect(listed).toEqual([...ACCESS_ACTIONS].sort());
   });

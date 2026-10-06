@@ -86,9 +86,32 @@ export function parseLinkReview(body: Record<string, unknown> | null): LinkRevie
 /** Which managed flags this account may carry at all — the owner's policy, `managed-policy.ts`. */
 export { allowedManagedFlags };
 
-/** The pending reviews in a plan: one per FLAG_LINK_REVIEW row. */
+/** The planner's reasons for a single exact email match on one unclassified account (`planEmailDiscovery`). */
+const SINGLE_MATCH_REASONS = [
+  "single_exact_email_match",
+  "email_matches_protected_account",
+  "email_match_terminated_in_woven",
+  "email_match_status_not_read_this_run",
+  "email_match_held_for_review",
+  "exact_email_match_awaiting_confirmation",
+];
+
+/**
+ * The pending reviews in a plan: one per single exact-email match on an
+ * unclassified account — LINK_EXISTING (the lifecycle sync would link it on
+ * its own; a person may confirm it sooner or reject it), or a match the
+ * lifecycle holds for a person (protected account, not Active, conflict).
+ * A shared email is never pending: it is ambiguous.
+ */
 export function pendingLinkReviews(rows: readonly PlannedRow[]): PlannedRow[] {
-  return rows.filter((r) => r.actions.includes("FLAG_LINK_REVIEW") && r.account?.via === "email_candidate" && r.externalEmployeeId !== null);
+  return rows.filter(
+    (r) =>
+      r.account?.via === "email_candidate" &&
+      r.account.management === null &&
+      r.externalEmployeeId !== null &&
+      !r.actions.includes("FLAG_DUPLICATE_EMAIL") &&
+      r.reasons.some((reason) => SINGLE_MATCH_REASONS.includes(reason)),
+  );
 }
 
 export interface LinkRowToInsert {

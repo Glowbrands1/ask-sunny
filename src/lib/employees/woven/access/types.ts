@@ -8,10 +8,11 @@ import type { EmploymentStatus, LocationMapStatus, PositionMapStatus } from "../
  * ============================================================================
  *
  * What a Woven → Ask Sunny access sync WOULD do for one employee or account.
- * Four actions would change access (the MUTATING ones); everything else is
- * NO_CHANGE or a FLAG for a person to review. In this stage nothing applies
- * any of them: the Access Preview shows them, and shadow mode only records
- * them (`employee_access_actions`, result = shadow).
+ * Five actions would change something (the MUTATING ones); everything else is
+ * NO_CHANGE or a FLAG for a person to review. Only three are ever APPLIED —
+ * the account lifecycle (`LIFECYCLE_ACTIONS`): CREATE_USER, LINK_EXISTING and
+ * DISABLE_TERMINATED. UPDATE_ROLE and UPDATE_PRIMARY_LOCATION are preview
+ * only; the apply engine refuses them (`apply.ts`).
  *
  * The list is mirrored by the CHECK constraint on
  * `employee_access_actions.action`; `plan.test.ts` keeps the two equal.
@@ -19,6 +20,7 @@ import type { EmploymentStatus, LocationMapStatus, PositionMapStatus } from "../
 export const ACCESS_ACTIONS = [
   "NO_CHANGE",
   "CREATE_USER",
+  "LINK_EXISTING",
   "UPDATE_PRIMARY_LOCATION",
   "UPDATE_ROLE",
   "DISABLE_TERMINATED",
@@ -41,13 +43,27 @@ export const ACCESS_ACTIONS = [
 
 export type AccessAction = (typeof ACCESS_ACTIONS)[number];
 
-/** The four actions that would change somebody's access. */
-export const MUTATING_ACTIONS = ["CREATE_USER", "UPDATE_PRIMARY_LOCATION", "UPDATE_ROLE", "DISABLE_TERMINATED"] as const satisfies readonly AccessAction[];
+/** The actions that would change an account or its link. */
+export const MUTATING_ACTIONS = ["CREATE_USER", "LINK_EXISTING", "UPDATE_PRIMARY_LOCATION", "UPDATE_ROLE", "DISABLE_TERMINATED"] as const satisfies readonly AccessAction[];
 export type MutatingAction = (typeof MUTATING_ACTIONS)[number];
 
 export function isMutating(action: AccessAction): action is MutatingAction {
   return (MUTATING_ACTIONS as readonly string[]).includes(action);
 }
+
+/** The only actions the apply engine may ever perform. Role and location changes are not among them. */
+export const LIFECYCLE_ACTIONS = ["CREATE_USER", "LINK_EXISTING", "DISABLE_TERMINATED"] as const satisfies readonly MutatingAction[];
+export type LifecycleAction = (typeof LIFECYCLE_ACTIONS)[number];
+
+export function isLifecycleAction(action: string): action is LifecycleAction {
+  return (LIFECYCLE_ACTIONS as readonly string[]).includes(action);
+}
+
+/** What the Access Preview shows per person: the lifecycle outcome, with the planner's reasons underneath. */
+export const LIFECYCLE_OUTCOMES = ["CREATE_USER", "LINK_EXISTING", "NO_CHANGE", "DISABLE_TERMINATED", "REVIEW_REQUIRED"] as const;
+export type LifecycleOutcome = (typeof LIFECYCLE_OUTCOMES)[number];
+
+export type InviteDeliveryStatus = "not_sent" | "sent" | "failed";
 
 /** One Woven employee, as the planner needs them (from `employee_directory_view`). */
 export interface PlannerEmployee {
@@ -106,6 +122,8 @@ export interface PlannerAccount {
   terminatedAt: string | null;
   accessRevokedAt: string | null;
   override: { role: Role; scopeLevel: ScopeLevel; externalEmployeeId: string | null } | null;
+  /** Woven-provisioned accounts only; null otherwise. */
+  invite?: { status: InviteDeliveryStatus | null; sentAt: string | null; acceptedAt: string | null; attempts: number; error: string | null } | null;
 }
 
 export interface PlannerInput {
@@ -145,6 +163,8 @@ export interface PlannedRow {
     extraSalonCount: number;
     /** How this row found the account: a confirmed link, an unconfirmed email candidate, or nothing. */
     via: "link" | "email_candidate" | "account_only";
+    linkMethod: string | null;
+    invite: PlannerAccount["invite"] | null;
   } | null;
   proposedRole: Role | null;
   /** A salon area id (`loc-0307`) when a salon follows from Woven's primary location. */
@@ -152,6 +172,10 @@ export interface PlannedRow {
   /** Primary first. */
   actions: AccessAction[];
   reasons: string[];
+  /** The account-lifecycle reading of `actions` — what the Access Preview leads with. See `lifecycle.ts`. */
+  lifecycle: LifecycleOutcome;
+  /** The one reason code behind `lifecycle`. */
+  lifecycleReason: string;
   before: { [key: string]: Json } | null;
   after: { [key: string]: Json } | null;
   wovenSourceAt: string | null;

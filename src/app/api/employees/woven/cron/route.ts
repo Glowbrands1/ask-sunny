@@ -8,6 +8,9 @@ import {
   WOVEN_SYNC_SCHEDULE_ENABLED_ENV,
 } from "@/lib/employees/woven/config";
 import { CRON_REQUESTER, outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/sync";
+import { implicitRedirectTarget } from "@/lib/admin/redirect-target";
+import { readWovenAccessConfig } from "@/lib/employees/woven/access/config";
+import { runAccessLifecycle } from "@/lib/employees/woven/access/apply-run";
 import { recordAccessShadowRun } from "@/lib/employees/woven/access/shadow";
 
 /**
@@ -42,9 +45,18 @@ import { recordAccessShadowRun } from "@/lib/employees/woven/access/shadow";
  *      store is touched.
  *   5. The run lock — at most one sync at a time, enforced by Postgres.
  *
- * WHAT A RUN DOES NOT DO, even when all five are open: change `app_users`, a
- * role, a scope, a salon assignment or a login; delete anybody; or write to
- * Woven. See `src/lib/employees/woven/sync.ts`.
+ * WHAT THE DIRECTORY SYNC DOES NOT DO, even when all five are open: change
+ * `app_users`, a role, a scope, a salon assignment or a login; delete anybody;
+ * or write to Woven. See `src/lib/employees/woven/sync.ts`.
+ *
+ * AFTER A SUCCESSFUL SYNC, WOVEN_ACCESS_MODE decides one more step:
+ *   off     nothing (the default);
+ *   shadow  the access plan is recorded, nothing applied;
+ *   apply   the ACCOUNT LIFECYCLE runs — only the capabilities named in
+ *           WOVEN_ACCESS_APPLY_ACTIONS (CREATE_USER, LINK_EXISTING,
+ *           DISABLE_TERMINATED) and only for WOVEN_ACCESS_APPLY_EMPLOYEE_IDS
+ *           while that is set. Never a role or salon change; never a delete.
+ *           See `src/lib/employees/woven/access/apply.ts`.
  *
  * THE RESPONSE carries codes and counts only — never a name or an email.
  */
@@ -105,7 +117,16 @@ export async function GET(request: Request) {
    * `access/shadow.ts`. Off (the default), this returns at once and the
    * response is exactly the sync's outcome.
    */
-  const shadow = outcome.status === "succeeded" ? await recordAccessShadowRun(CRON_REQUESTER) : ({ status: "off" } as const);
-  const body = shadow.status === "off" ? outcome : { ...outcome, accessShadow: shadow };
+  const succeeded = outcome.status === "succeeded";
+  const mode = readWovenAccessConfig().mode;
+  const shadow = succeeded && mode === "shadow" ? await recordAccessShadowRun(CRON_REQUESTER) : ({ status: "off" } as const);
+  /* Codes and counts only: the lifecycle outcome carries no name and no email. */
+  const lifecycle =
+    succeeded && mode === "apply" ? await runAccessLifecycle(CRON_REQUESTER, implicitRedirectTarget(request)) : ({ status: "off" } as const);
+  const body = {
+    ...outcome,
+    ...(shadow.status === "off" ? {} : { accessShadow: shadow }),
+    ...(lifecycle.status === "off" ? {} : { accessLifecycle: lifecycle }),
+  };
   return NextResponse.json(body, { status: outcomeHttpStatus(outcome) });
 }

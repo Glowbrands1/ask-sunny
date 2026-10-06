@@ -1,5 +1,5 @@
 import { evaluateAccessGuards, type DirectoryRunFacts, type GuardResult, type MappingCounts } from "./guards";
-import { ACCESS_POLICY_VERSION, countActions, planAccess } from "./plan";
+import { ACCESS_POLICY_VERSION, AUTO_PROVISION_ROLES, countActions, planAccess } from "./plan";
 import type { AccessAction, PlannedRow, PlannerInput } from "./types";
 
 export interface AccessPlan {
@@ -21,6 +21,9 @@ export function buildAccessPlan(
   const mappings: MappingCounts = {
     mappedLocations: input.locations.filter((l) => l.status === "mapped").length,
     confirmedPositions: input.positions.filter((p) => p.isConfirmed).length,
+    approvedProvisionPositions: input.positions.filter(
+      (p) => p.isConfirmed && p.status === "mapped" && p.role !== null && AUTO_PROVISION_ROLES.includes(p.role),
+    ).length,
   };
   return {
     rows,

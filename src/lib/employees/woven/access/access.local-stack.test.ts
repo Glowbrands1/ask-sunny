@@ -28,6 +28,7 @@ const ANON = process.env.LOCAL_ANON_KEY ?? "";
 const SERVICE = process.env.LOCAL_SERVICE_ROLE_KEY ?? "";
 const PG = process.env.LOCAL_STACK_PG ?? "";
 const MIGRATION = "supabase/migrations/20261002002000_woven_account_links.sql";
+const LIFECYCLE_MIGRATION = "supabase/migrations/20261006002000_woven_account_lifecycle.sql";
 
 const run = randomBytes(3).toString("hex");
 const sql = (query: string) => execFileSync("psql", [PG, "-At", "-v", "ON_ERROR_STOP=1", "-c", query], { encoding: "utf8" }).trim();
@@ -115,9 +116,20 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
          values ('cron', 'scheduled_poll', 'succeeded', 4, now())`);
   });
 
-  it("re-applying the migration is idempotent and backfills: override → linked (flags off); no-match → not Woven-managed; email match → unclassified", () => {
-    execFileSync("psql", [PG.replace("supabase_admin@", "postgres:postgres@"), "-q", "-v", "ON_ERROR_STOP=1", "-1", "-f", MIGRATION]);
-    execFileSync("psql", [PG.replace("supabase_admin@", "postgres:postgres@"), "-q", "-v", "ON_ERROR_STOP=1", "-1", "-f", MIGRATION]);
+  it("re-applying is idempotent and the backfill classifies: override → linked (flags off); no-match → not Woven-managed; email match → unclassified", () => {
+    /*
+     * Stage 1's backfill, re-run over this suite's accounts, and the lifecycle
+     * migration that superseded stage 1's view and trigger — each twice. (The
+     * whole stage-1 file cannot be re-run after the lifecycle migration: its
+     * view has fewer columns. Production applies each migration once.)
+     */
+    const asPostgres = PG.replace("supabase_admin@", "postgres:postgres@");
+    const stage1 = readFileSync(MIGRATION, "utf8");
+    const backfill = stage1.slice(stage1.indexOf("-- -------------------------------------------------------------- backfill ---"));
+    for (let i = 0; i < 2; i += 1) {
+      execFileSync("psql", [asPostgres, "-q", "-v", "ON_ERROR_STOP=1", "-1", "-c", backfill]);
+      execFileSync("psql", [asPostgres, "-q", "-v", "ON_ERROR_STOP=1", "-1", "-f", LIFECYCLE_MIGRATION], { stdio: "pipe" });
+    }
     const link = (id: string) =>
       sql(`select management||','||coalesce(external_employee_id,'-')||','||link_method||','||managed_status||managed_location||managed_role from public.employee_account_links where app_user_id = '${id}'`);
     expect(link(ids.protectedAdmin)).toBe(`woven_linked,${employee("OWNER")},override_backfill,falsefalsefalse`);
@@ -157,12 +169,12 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     }
   });
 
-  it("the planner plans from the real view: link review, create, location update, protected — and changes nothing", async () => {
+  it("the planner plans from the real view: link existing, create, location update, protected — and changes nothing", async () => {
     const before = fingerprint();
     const { loadAccessPlan } = await import("./load");
     const plan = await loadAccessPlan();
     const of = (suffix: string) => plan.rows.find((r) => r.externalEmployeeId === employee(suffix))!;
-    expect(of("CAND").actions).toEqual(["FLAG_LINK_REVIEW"]);
+    expect(of("CAND").actions).toEqual(["LINK_EXISTING"]);
     expect(of("NEWSD").actions).toEqual(["CREATE_USER"]);
     expect(of("LINKED").actions).toEqual(["UPDATE_PRIMARY_LOCATION"]);
     expect(of("LINKED").after).toEqual({ scope_primary_area_id: "loc-0394" });
@@ -184,7 +196,7 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     const outcome = await recordAccessShadowRun("test");
     expect(outcome.status).toBe("recorded");
     const runId = outcome.status === "recorded" ? outcome.accessRunId : "";
-    expect(sql(`select mode||','||policy_version from public.employee_access_runs where id = '${runId}'`)).toBe("shadow,access-policy-1");
+    expect(sql(`select mode||','||policy_version from public.employee_access_runs where id = '${runId}'`)).toBe("shadow,access-policy-2");
     expect(sql(`select string_agg(distinct result, ',') from public.employee_access_actions where access_run_id = '${runId}'`)).toBe("shadow");
     expect(Number(sql(`select count(*) from public.employee_access_actions where access_run_id = '${runId}' and action = 'CREATE_USER'`))).toBeGreaterThanOrEqual(1);
     expect(fingerprint()).toBe(before);
@@ -228,7 +240,7 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     const { loadAccessPlan } = await import("./load");
     const { LinkReviewError } = await import("./link-review");
 
-    const pendingBefore = (await loadAccessPlan()).rows.filter((r) => r.actions.includes("FLAG_LINK_REVIEW")).map((r) => r.externalEmployeeId);
+    const pendingBefore = (await loadAccessPlan()).rows.filter((r) => r.actions.includes("LINK_EXISTING")).map((r) => r.externalEmployeeId);
     expect(pendingBefore).toEqual(expect.arrayContaining([employee("CAND"), employee("CAND2")]));
 
     const link = await recordLinkReview(
@@ -243,7 +255,7 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     const after = await loadAccessPlan();
     const cand = after.rows.find((r) => r.externalEmployeeId === employee("CAND"))!;
     expect(cand.account).toMatchObject({ appUserId: ids.candidate, via: "link" });
-    expect(cand.actions).not.toContain("FLAG_LINK_REVIEW");
+    expect(cand.actions).not.toContain("LINK_EXISTING");
 
     /* The same review again is refused: it is no longer pending. */
     await expect(
@@ -318,8 +330,8 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     expect(sql(`select count(*) from public.employee_account_links where app_user_id = '${ids.protectedAdmin}'`)).toBe("1");
   });
 
-  it("an apply mode does not exist in the database either", () => {
-    expect(sqlFails(`insert into public.employee_access_runs (mode, requested_by, policy_version, status) values ('apply', 'x', 'p', 'completed')`)).toMatch(
+  it("a SHADOW run can never be left running or edited; the stage-1 migration itself still has no apply path", () => {
+    expect(sqlFails(`insert into public.employee_access_runs (mode, requested_by, policy_version, status) values ('shadow', 'x', 'p', 'running')`)).toMatch(
       /check constraint/,
     );
     expect(readFileSync(MIGRATION, "utf8")).not.toMatch(/'applied'/);
