@@ -138,11 +138,13 @@ export function planAccess(input: PlannerInput): PlannedRow[] {
     if (key) emailHolders.set(key, (emailHolders.get(key) ?? 0) + 1);
   }
 
+  const authOnly = input.authOnly ? new Map(input.authOnly.map((a) => [lower(a.email), a.provisionedExternalEmployeeId])) : undefined;
+
   const covered = new Set<string>();
   const rows: PlannedRow[] = [];
 
   for (const employee of [...input.employees].sort((a, b) => a.externalEmployeeId.localeCompare(b.externalEmployeeId))) {
-    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders });
+    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders, authOnly });
     if (row.account) covered.add(row.account.appUserId);
     rows.push(row);
   }
@@ -190,6 +192,8 @@ interface Context {
   byLinkedEmployee: Map<string, PlannerAccount>;
   byEmail: Map<string, PlannerAccount[]>;
   emailHolders: Map<string, number>;
+  /** email → the EmployeeID stamped on a profile-less auth user (null: not ours). */
+  authOnly: Map<string, string | null> | undefined;
 }
 
 function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
@@ -468,6 +472,12 @@ function planWithoutAccount(
     reasons.push("email_shared_by_several_woven_employees");
     return row();
   }
+  /* A bare Supabase Auth credential already holds this email. Ours for this employee (an interrupted create) resumes; anything else is a person's call. */
+  if (ctx.authOnly?.has(email) && ctx.authOnly.get(email) !== employee.externalEmployeeId) {
+    actions.push("FLAG_AUTH_USER_EXISTS");
+    reasons.push("auth_user_exists_without_profile");
+    return row();
+  }
   if (location.problem) {
     actions.push("FLAG_UNMAPPED_LOCATION");
     reasons.push(location.problem);
@@ -500,6 +510,7 @@ const ORDER: readonly AccessAction[] = [
   "CREATE_USER",
   "LINK_EXISTING",
   "UPDATE_ROLE",
+  "FLAG_AUTH_USER_EXISTS",
   "UPDATE_PRIMARY_LOCATION",
   "FLAG_REHIRE_REVIEW",
   "FLAG_PROTECTED_ACCOUNT",

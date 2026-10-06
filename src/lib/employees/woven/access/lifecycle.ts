@@ -35,6 +35,7 @@ const LINKED_REVIEW: readonly AccessAction[] = [
 
 /** Flags on an employee WITHOUT an account that stop an account being created. */
 const CREATE_BLOCKERS: readonly AccessAction[] = [
+  "FLAG_AUTH_USER_EXISTS",
   "FLAG_DUPLICATE_EMAIL",
   "FLAG_STATUS_CONFLICT",
   "FLAG_UNMAPPED_POSITION",

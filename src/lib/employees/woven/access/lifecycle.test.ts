@@ -130,6 +130,19 @@ describe("account creation", () => {
     expect(outcome(plan([e]), e)).toEqual(["REVIEW_REQUIRED", "woven_shows_past_termination_date"]);
   });
 
+  it("a bare Supabase Auth user already holds the email (created outside the lifecycle) → REVIEW_REQUIRED, never created", () => {
+    const e = employee({ emailAddress: "Kailey.Like@Gmail.com" });
+    const rows = planAccess({ employees: [e], positions, locations, accounts: [], authOnly: [{ email: "kailey.like@gmail.com", provisionedExternalEmployeeId: null }] });
+    expect(outcome(rows, e)).toEqual(["REVIEW_REQUIRED", "auth_user_exists_without_profile"]);
+    expect(of(rows, e).actions).toEqual(["FLAG_AUTH_USER_EXISTS"]);
+  });
+
+  it("a bare Auth user this lifecycle created for THIS employee (an interrupted create) → CREATE_USER resumes it", () => {
+    const e = employee();
+    const rows = planAccess({ employees: [e], positions, locations, accounts: [], authOnly: [{ email: e.emailAddress!, provisionedExternalEmployeeId: e.externalEmployeeId }] });
+    expect(outcome(rows, e)[0]).toBe("CREATE_USER");
+  });
+
   it("terminated employee with no account → NO_CHANGE, never created", () => {
     const e = employee({ employmentStatus: "terminated" });
     expect(outcome(plan([e]), e)).toEqual(["NO_CHANGE", "terminated_no_account"]);

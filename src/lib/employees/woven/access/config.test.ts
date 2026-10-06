@@ -16,10 +16,10 @@ describe("WOVEN_ACCESS_MODE and its apply switches", () => {
     expect(
       readWovenAccessConfig({
         WOVEN_ACCESS_MODE: "APPLY",
-        WOVEN_ACCESS_APPLY_ACTIONS: "create_user, DISABLE_TERMINATED,CREATE_USER",
+        WOVEN_ACCESS_APPLY_ACTIONS: "create_user, DISABLE_TERMINATED,CREATE_USER,send_invite",
         WOVEN_ACCESS_APPLY_EMPLOYEE_IDS: "abc-1, def-2",
       }),
-    ).toEqual({ mode: "apply", applyActions: ["CREATE_USER", "DISABLE_TERMINATED"], employeeAllowlist: ["abc-1", "def-2"], problem: null });
+    ).toEqual({ mode: "apply", applyActions: ["CREATE_USER", "DISABLE_TERMINATED", "SEND_INVITE"], employeeAllowlist: ["abc-1", "def-2"], problem: null });
   });
 
   it.each(["UPDATE_ROLE", "UPDATE_PRIMARY_LOCATION", "CREATE_USER,UPDATE_ROLE", "DELETE_USER"])(
@@ -27,7 +27,7 @@ describe("WOVEN_ACCESS_MODE and its apply switches", () => {
     (actions) => {
       const config = readWovenAccessConfig({ WOVEN_ACCESS_MODE: "apply", WOVEN_ACCESS_APPLY_ACTIONS: actions });
       expect(config).toMatchObject({ mode: "off", applyActions: [] });
-      expect(config.problem).toMatch(/may name only CREATE_USER, LINK_EXISTING and DISABLE_TERMINATED/);
+      expect(config.problem).toMatch(/may name only CREATE_USER, SEND_INVITE, LINK_EXISTING and DISABLE_TERMINATED/);
     },
   );
 

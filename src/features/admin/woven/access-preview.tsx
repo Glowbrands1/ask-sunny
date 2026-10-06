@@ -63,6 +63,7 @@ const ACTION_LABEL: Record<AccessAction, string> = {
   NO_CHANGE: "No change",
   CREATE_USER: "Create account",
   LINK_EXISTING: "Link existing account",
+  FLAG_AUTH_USER_EXISTS: "Auth user exists",
   UPDATE_PRIMARY_LOCATION: "Update primary salon",
   UPDATE_ROLE: "Update role",
   DISABLE_TERMINATED: "Disable (terminated)",
@@ -109,6 +110,8 @@ const REASON: Record<string, string> = {
   email_matches_account_marked_not_woven_managed: "This email belongs to an account marked not managed by Woven.",
   exact_email_match_awaiting_confirmation:
     "One existing account has this exact email. A person must confirm the link before Woven manages it.",
+  auth_user_exists_without_profile:
+    "A Supabase Auth user with this email already exists but has no Ask Sunny profile (created outside this lifecycle). No account is created automatically; a person decides.",
   single_exact_email_match:
     "Exactly one Woven employee and exactly one unprotected Ask Sunny account share this exact email: the EmployeeID link is stored. The account itself is not changed.",
   email_matches_protected_account: "This email belongs to a protected or administrative account. It is never linked automatically.",

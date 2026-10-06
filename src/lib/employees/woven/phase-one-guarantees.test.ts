@@ -277,7 +277,7 @@ describe("7. no employee-sync UI, route or library code can reach app_users, aut
     "employee_access_record_shadow_run",
     /* The account lifecycle (stage 5, `access/apply.ts`): each re-checks its own facts; asserted in section 9. */
     "employee_access_begin_apply_run", "employee_access_finish_apply_run", "employee_access_record_apply_actions",
-    "employee_access_auth_user_by_email", "employee_access_provision_account", "employee_access_link_existing",
+    "employee_access_auth_user_by_email", "employee_access_auth_only_accounts", "employee_access_provision_account", "employee_access_link_existing",
     "employee_access_record_invite", "employee_access_disable_terminated", "employee_access_record_revocation",
   ]);
   /* The only two files that may reach the Auth Admin API: the lifecycle engine and its real wiring. Section 9 bounds them. */
@@ -422,6 +422,14 @@ describe("9. the account lifecycle (stage 5): create + invite, link, revoke — 
     expect(apply).not.toMatch(/scope_primary_area_id"?\s*:\s*row\.after|p_role[^,]*row\.account/);
   });
 
+  it("neither the scheduled sync nor the apply engine can reach the managed-flag writer (role/location can never be switched on by cron or apply)", () => {
+    const cron = strip(readFileSync(join(repo, "src/app/api/employees/woven/cron/route.ts"), "utf8"));
+    for (const [name, c] of [["apply.ts", apply], ["apply-run.ts", applyRun], ["cron/route.ts", cron]] as const) {
+      expect(c, name).not.toMatch(/woven-managed-flags|managed-flags|links\/flags|managed_(role|location)\s*:\s*true/);
+      expect(c, name).not.toMatch(/\.from\(\s*["'`]employee_account_links/);
+    }
+  });
+
   it("nothing in the migration deletes a row or writes auth", () => {
     expect(sqlCode).not.toMatch(/delete\s+from/i);
     expect(sqlCode).not.toMatch(/(insert into|update)\s+auth\./i);
@@ -458,6 +466,7 @@ describe("9. the account lifecycle (stage 5): create + invite, link, revoke — 
       [
         "accept_invitation:execute:authenticated",
         "employee_access_accounts:select:service_role",
+        "employee_access_auth_only_accounts:execute:service_role",
         "employee_access_auth_user_by_email:execute:service_role",
         "employee_access_begin_apply_run:execute:service_role",
         "employee_access_disable_terminated:execute:service_role",

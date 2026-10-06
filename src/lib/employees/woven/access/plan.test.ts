@@ -651,6 +651,14 @@ describe("the mass-change guards", () => {
     ).toContain("mappings_disappeared");
   });
 
+  it("Auth users that could not be read block every CREATE_USER (auth_users_unverified)", async () => {
+    const { buildAccessPlan } = await import("./build");
+    const e = employee();
+    const plan = buildAccessPlan({ employees: [e], positions, locations, accounts: [], authOnly: null }, { runs: [run(), run()], mappingBaseline: null, directoryRunId: null, now: NOW });
+    expect(plan.guard.codes).toContain("auth_users_unverified");
+    expect(plan.guard.mutationsAllowed).toBe(false);
+  });
+
   it("more than the create batch limit → blocked", () => {
     const rows = plan(Array.from({ length: ACCESS_GUARD_LIMITS.maxCreates + 1 }, () => employee()));
     expect(evaluateAccessGuards({ rows, runs: [run()], ...healthy }).codes).toContain("creates_exceed_batch_limit");

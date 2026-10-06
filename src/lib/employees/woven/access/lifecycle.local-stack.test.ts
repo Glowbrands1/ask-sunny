@@ -118,7 +118,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
   let admin: SupabaseClient;
   const OURS = [
     "NEW", "LINKME", "DUP1", "DUP2", "UNMAPPED", "NOEMAIL", "CONFLICT", "GONE", "RACE", "NOINVITE",
-    "LEAVER", "MISSING", "PASTDATE", "READFAIL", "ADMIN", "STEADY",
+    "LEAVER", "MISSING", "PASTDATE", "READFAIL", "ADMIN", "STEADY", "QUIET", "BARE", "ADMINMATCH",
   ].map(id);
   const ids: Record<string, string> = {};
   const leaverPassword = `L-${randomBytes(12).toString("hex")}`;
@@ -133,13 +133,13 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     sql(`insert into public.employee_sync_runs (requested_by, source_mode, status, employees_active, finished_at, issue_counts)
          values ('cron', 'scheduled_poll', 'succeeded', ${latestActive()}, now(), '${JSON.stringify(issues)}'::jsonb)`);
 
-  const configFor = (actions: ("CREATE_USER" | "LINK_EXISTING" | "DISABLE_TERMINATED")[], only: string[] = OURS) => ({
+  const configFor = (actions: ("CREATE_USER" | "SEND_INVITE" | "LINK_EXISTING" | "DISABLE_TERMINATED")[], only: string[] = OURS) => ({
     mode: "apply" as const,
     applyActions: actions,
     employeeAllowlist: only,
     problem: null,
   });
-  async function apply(actions: ("CREATE_USER" | "LINK_EXISTING" | "DISABLE_TERMINATED")[], redirectTo: string | null = REDIRECT, only?: string[]) {
+  async function apply(actions: ("CREATE_USER" | "SEND_INVITE" | "LINK_EXISTING" | "DISABLE_TERMINATED")[], redirectTo: string | null = REDIRECT, only?: string[]) {
     const { applyAccessLifecycle } = await import("./apply");
     const { realApplyDeps } = await import("./apply-run");
     return applyAccessLifecycle({ requestedBy: "local-stack-test", redirectTo, config: configFor(actions, only) }, realApplyDeps());
@@ -190,7 +190,10 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
          ${row("PASTDATE", mail("PASTDATE"), "WPSD", "active", "{status_termination_conflict}|0|2025-01-31")},
          ${row("READFAIL", mail("READFAIL"))},
          ${row("ADMIN", mail("ADMIN"), "WPSD", "terminated")},
-         ${row("STEADY", mail("STEADY"))}`);
+         ${row("STEADY", mail("STEADY"))},
+         ${row("QUIET", mail("QUIET"))},
+         ${row("BARE", mail("BARE"))},
+         ${row("ADMINMATCH", mail("ADMINMATCH"))}`);
 
     /* Existing accounts: one to be discovered by email; four already linked (three status-managed SDs, one administrator). */
     const make = async (email: string, password?: string) => {
@@ -198,7 +201,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
       if (error || !data.user) throw new Error(`createUser: ${error?.message}`);
       return data.user.id;
     };
-    for (const suffix of ["LINKME", "LEAVER", "MISSING", "PASTDATE", "READFAIL", "ADMIN", "STEADY"]) {
+    for (const suffix of ["LINKME", "LEAVER", "MISSING", "PASTDATE", "READFAIL", "ADMIN", "STEADY", "ADMINMATCH"]) {
       ids[suffix] = await make(mail(suffix), suffix === "LEAVER" ? leaverPassword : undefined);
     }
     const profile = (suffix: string, role = "salon_director") =>
@@ -206,7 +209,11 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
         ? `('${ids[suffix]}', '${mail(suffix)}', 'Person ${suffix}', 'admin', 'active', 'global', null)`
         : `('${ids[suffix]}', '${mail(suffix)}', 'Person ${suffix}', '${role}', 'active', 'salon', 'loc-0307')`;
     sql(`insert into public.app_users (id, email, display_name, role, status, scope_level, scope_primary_area_id) values
-         ${["LINKME", "LEAVER", "MISSING", "PASTDATE", "READFAIL", "STEADY"].map((s) => profile(s)).join(",")}, ${profile("ADMIN", "admin")}`);
+         ${["LINKME", "LEAVER", "MISSING", "PASTDATE", "READFAIL", "STEADY"].map((s) => profile(s)).join(",")}, ${profile("ADMIN", "admin")}, ${profile("ADMINMATCH", "admin")}`);
+    /* "Manual silent provisioning": a confirmed Auth user with a password somebody else set, and no Ask Sunny profile. */
+    const bare = await admin.auth.admin.createUser({ email: mail("BARE"), password: `Set-by-someone-${randomBytes(6).toString("hex")}`, email_confirm: true });
+    if (bare.error || !bare.data.user) throw new Error(`bare: ${bare.error?.message}`);
+    ids.BARE = bare.data.user.id;
     const link = (suffix: string, managed = true) =>
       `('${ids[suffix]}', 'woven_linked', '${id(suffix)}', 'admin_manual', ${managed}, false, false, 'test')`;
     sql(`insert into public.employee_account_links (app_user_id, management, external_employee_id, link_method, managed_status, managed_location, managed_role, set_by) values
@@ -247,7 +254,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
   /* ---------------------------------------------- CREATE_USER + invite -- */
 
   it("CREATE_USER: an unconfirmed auth user with NO password, an invited profile, a provisioned link — and one invitation email to the Woven email", async () => {
-    const outcome = await apply(["CREATE_USER"], REDIRECT, [id("NEW")]);
+    const outcome = await apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("NEW")]);
     expect(outcome.status).toBe("completed");
 
     const userId = sql(`select id from auth.users where lower(email) = '${mail("NEW")}'`);
@@ -298,7 +305,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
   });
 
   it("a repeated run creates nothing and sends nothing: the provisioned link is found by EmployeeID", async () => {
-    const outcome = await apply(["CREATE_USER", "LINK_EXISTING"], REDIRECT, [id("NEW")]);
+    const outcome = await apply(["CREATE_USER", "SEND_INVITE", "LINK_EXISTING"], REDIRECT, [id("NEW")]);
     expect(outcome).toMatchObject({ status: "completed", tally: { applied: {}, failed: {} } });
     expect(authUsersWithEmail(mail("NEW"))).toBe(1);
     expect(accountsWithEmail(mail("NEW"))).toBe(1);
@@ -307,7 +314,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
   });
 
   it("blocked creations: duplicate email, unmapped position, missing email, status conflict (Active + historical TerminationDate) and Terminated — no account, no auth user, no email", async () => {
-    await apply(["CREATE_USER"], REDIRECT, [id("DUP1"), id("DUP2"), id("UNMAPPED"), id("NOEMAIL"), id("CONFLICT"), id("GONE")]);
+    await apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("DUP1"), id("DUP2"), id("UNMAPPED"), id("NOEMAIL"), id("CONFLICT"), id("GONE")]);
     for (const suffix of ["DUP", "UNMAPPED", "CONFLICT", "GONE"]) {
       expect(authUsersWithEmail(mail(suffix)), suffix).toBe(0);
       expect(accountsWithEmail(mail(suffix)), suffix).toBe(0);
@@ -323,7 +330,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
   });
 
   it("two runs at once: one takes the lock, the other is refused — exactly ONE account and ONE auth user", async () => {
-    const results = await Promise.all([apply(["CREATE_USER"], REDIRECT, [id("RACE")]), apply(["CREATE_USER"], REDIRECT, [id("RACE")])]);
+    const results = await Promise.all([apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("RACE")]), apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("RACE")])]);
     expect(results.map((r) => r.status).sort()).toEqual(expect.arrayContaining(["completed"]));
     expect(results.filter((r) => r.status === "busy" || r.status === "completed")).toHaveLength(2);
     expect(authUsersWithEmail(mail("RACE"))).toBe(1);
@@ -352,7 +359,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
   });
 
   it("an invitation that cannot be sent leaves a recoverable, invited account; the next run sends it", async () => {
-    await apply(["CREATE_USER"], null, [id("NOINVITE")]);
+    await apply(["CREATE_USER", "SEND_INVITE"], null, [id("NOINVITE")]);
     const userId = sql(`select id from auth.users where lower(email) = '${mail("NOINVITE")}'`);
     expect(sql(`select status from public.app_users where id = '${userId}'`)).toBe("invited");
     expect(sql(`select invite_delivery_status||','||invite_error||','||invite_attempts from public.employee_account_links where app_user_id = '${userId}'`)).toBe(
@@ -361,14 +368,51 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     expect((await messagesTo(mail("NOINVITE"))).length).toBe(0);
     expect(sql(`select count(*) from public.app_user_audit where target_user_id = '${userId}' and action = 'invite_failed'`)).toBe("1");
 
-    const retry = await apply(["CREATE_USER"], REDIRECT, [id("NOINVITE")]);
+    const retry = await apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("NOINVITE")]);
     expect(retry).toMatchObject({ status: "completed", tally: { applied: { INVITE_RETRY: 1 } } });
     expect(sql(`select invite_delivery_status||','||coalesce(invite_error,'-')||','||invite_attempts from public.employee_account_links where app_user_id = '${userId}'`)).toBe("sent,-,2");
     expect(await waitForMail(mail("NOINVITE"), 1)).toBe(1);
     expect(authUsersWithEmail(mail("NOINVITE"))).toBe(1);
   });
 
+  it("SEND_INVITE off: CREATE_USER creates the invited account and emails NOTHING; switching SEND_INVITE on later sends it", async () => {
+    await apply(["CREATE_USER"], REDIRECT, [id("QUIET")]);
+    const userId = sql(`select id from auth.users where lower(email) = '${mail("QUIET")}'`);
+    expect(sql(`select status from public.app_users where id = '${userId}'`)).toBe("invited");
+    expect(sql(`select invite_delivery_status||','||invite_attempts||','||(invite_sent_at is null) from public.employee_account_links where app_user_id = '${userId}'`)).toBe("not_sent,0,true");
+    await new Promise((r) => setTimeout(r, 800));
+    expect((await messagesTo(mail("QUIET"))).length).toBe(0);
+    await apply(["SEND_INVITE"], REDIRECT, [id("QUIET")]);
+    expect(await waitForMail(mail("QUIET"), 1)).toBe(1);
+    expect(sql(`select invite_delivery_status from public.employee_account_links where app_user_id = '${userId}'`)).toBe("sent");
+  });
+
+  it("a bare Auth user someone else created (confirmed, with a password, no profile) → REVIEW_REQUIRED; the lifecycle never touches it", async () => {
+    const before = sql(`select to_jsonb(u) - 'updated_at' from auth.users u where id = '${ids.BARE}'`);
+    expect(await planRow("BARE")).toMatchObject({ lifecycle: "REVIEW_REQUIRED", lifecycleReason: "auth_user_exists_without_profile", actions: ["FLAG_AUTH_USER_EXISTS"] });
+    await apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("BARE")]);
+    expect(authUsersWithEmail(mail("BARE"))).toBe(1);
+    expect(accountsWithEmail(mail("BARE"))).toBe(0);
+    expect(sql(`select count(*) from public.employee_account_links where external_employee_id = '${id("BARE")}'`)).toBe("0");
+    expect(sql(`select to_jsonb(u) - 'updated_at' from auth.users u where id = '${ids.BARE}'`)).toBe(before);
+    expect((await messagesTo(mail("BARE"))).length).toBe(0);
+    /* And the database refuses it directly: the credential was not created for this employee. */
+    expect(sqlFails(`select public.employee_access_provision_account('${ids.BARE}', '${id("BARE")}', '${mail("BARE")}', 'X', 'salon_director', 'loc-0307', 'test')`)).toMatch(/provision_auth_user_mismatch/);
+  });
+
   /* ------------------------------------------------------ LINK_EXISTING -- */
+
+  it("LINK_EXISTING never for a protected or ambiguous match — the planner holds it AND the database refuses it", async () => {
+    expect(await planRow("ADMINMATCH")).toMatchObject({ lifecycle: "REVIEW_REQUIRED", actions: ["FLAG_PROTECTED_ACCOUNT"] });
+    expect(sqlFails(`select public.employee_access_link_existing('${ids.ADMINMATCH}', '${id("ADMINMATCH")}', 'test')`)).toMatch(/link_protected_account/);
+    /* Ambiguous: DUP1 and DUP2 share an email; give one an account with it and try to link it directly. */
+    const { data } = await admin.auth.admin.createUser({ email: mail("DUP"), email_confirm: true });
+    sql(`insert into public.app_users (id, email, display_name, role, status, scope_level, scope_primary_area_id) values ('${data.user!.id}', '${mail("DUP")}', 'Dup', 'salon_director', 'active', 'salon', 'loc-0307')`);
+    expect((await planRow("DUP1")).lifecycle).toBe("REVIEW_REQUIRED");
+    expect(sqlFails(`select public.employee_access_link_existing('${data.user!.id}', '${id("DUP1")}', 'test')`)).toMatch(/link_duplicate_email/);
+    expect(sql(`select count(*) from public.employee_account_links where app_user_id in ('${ids.ADMINMATCH}', '${data.user!.id}')`)).toBe("0");
+  });
+
 
   it("LINK_EXISTING: the exact email match is linked (status managed for a salon SD), and the account itself is untouched", async () => {
     const before = sql(`select to_jsonb(u)::text from public.app_users u where id = '${ids.LINKME}'`);
@@ -486,7 +530,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     freshSync();
     const row = await planRow("LEAVER");
     expect(row).toMatchObject({ lifecycle: "REVIEW_REQUIRED", lifecycleReason: "active_in_woven_after_revocation" });
-    await apply(["CREATE_USER", "LINK_EXISTING", "DISABLE_TERMINATED"], REDIRECT, [id("LEAVER")]);
+    await apply(["CREATE_USER", "SEND_INVITE", "LINK_EXISTING", "DISABLE_TERMINATED"], REDIRECT, [id("LEAVER")]);
     expect(sql(`select status from public.app_users where id = '${ids.LEAVER}'`)).toBe("disabled");
     expect(sql(`select (banned_until > now())::text from auth.users where id = '${ids.LEAVER}'`)).toBe("true");
     expect(authUsersWithEmail(mail("LEAVER"))).toBe(1);

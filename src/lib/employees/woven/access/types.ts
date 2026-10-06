@@ -24,6 +24,7 @@ export const ACCESS_ACTIONS = [
   "UPDATE_PRIMARY_LOCATION",
   "UPDATE_ROLE",
   "DISABLE_TERMINATED",
+  "FLAG_AUTH_USER_EXISTS",
   "FLAG_LINK_REVIEW",
   "FLAG_DUPLICATE_EMAIL",
   "FLAG_MISSING_EMAIL",
@@ -57,6 +58,18 @@ export type LifecycleAction = (typeof LIFECYCLE_ACTIONS)[number];
 
 export function isLifecycleAction(action: string): action is LifecycleAction {
   return (LIFECYCLE_ACTIONS as readonly string[]).includes(action);
+}
+
+/**
+ * What an apply run may be allowed to do: the three lifecycle actions, plus
+ * SEND_INVITE — the invitation email, switched separately so accounts can be
+ * created (invited, no email) before the invitation email is approved.
+ */
+export const APPLY_CAPABILITIES = [...LIFECYCLE_ACTIONS, "SEND_INVITE"] as const;
+export type ApplyCapability = (typeof APPLY_CAPABILITIES)[number];
+
+export function isApplyCapability(value: string): value is ApplyCapability {
+  return (APPLY_CAPABILITIES as readonly string[]).includes(value);
 }
 
 /** What the Access Preview shows per person: the lifecycle outcome, with the planner's reasons underneath. */
@@ -126,11 +139,24 @@ export interface PlannerAccount {
   invite?: { status: InviteDeliveryStatus | null; sentAt: string | null; acceptedAt: string | null; attempts: number; error: string | null } | null;
 }
 
+/** A Supabase Auth user with no Ask Sunny profile. */
+export interface AuthOnlyUser {
+  email: string;
+  /** The EmployeeID this lifecycle stamped on it (an interrupted CREATE_USER), or null. */
+  provisionedExternalEmployeeId: string | null;
+}
+
 export interface PlannerInput {
   employees: readonly PlannerEmployee[];
   positions: readonly PlannerPosition[];
   locations: readonly PlannerLocation[];
   accounts: readonly PlannerAccount[];
+  /**
+   * Auth users without a profile. Omitted: not considered (demo, unit tests).
+   * null: they could not be read — then no account may be created (guard
+   * `auth_users_unverified`).
+   */
+  authOnly?: readonly AuthOnlyUser[] | null;
 }
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };

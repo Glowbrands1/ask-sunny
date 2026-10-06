@@ -28,7 +28,14 @@ export function buildAccessPlan(
   return {
     rows,
     counts: countActions(rows),
-    guard: evaluateAccessGuards({ rows, runs: facts.runs, mappings, mappingBaseline: facts.mappingBaseline, now: facts.now }),
+    guard: evaluateAccessGuards({
+      rows,
+      runs: facts.runs,
+      mappings,
+      mappingBaseline: facts.mappingBaseline,
+      now: facts.now,
+      authUsersVerified: input.authOnly === null ? false : undefined,
+    }),
     policyVersion: ACCESS_POLICY_VERSION,
     directoryRunId: facts.directoryRunId,
     mappings,

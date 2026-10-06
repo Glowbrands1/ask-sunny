@@ -242,9 +242,13 @@ Migration `20261006002000_woven_account_lifecycle.sql` (after `20261006001000`) 
 
 ```
 WOVEN_ACCESS_MODE=apply
-WOVEN_ACCESS_APPLY_ACTIONS=CREATE_USER,LINK_EXISTING,DISABLE_TERMINATED   # any subset; UPDATE_ROLE etc. → OFF
+WOVEN_ACCESS_APPLY_ACTIONS=CREATE_USER,SEND_INVITE,LINK_EXISTING,DISABLE_TERMINATED   # any subset; UPDATE_ROLE etc. → OFF
 WOVEN_ACCESS_APPLY_EMPLOYEE_IDS=<id>,<id>                                 # optional first batch
 ```
+
+`SEND_INVITE` is its own switch. `CREATE_USER` without it creates the invited account, records `invite_delivery_status = not_sent`, and emails nothing. Turning `SEND_INVITE` on later invites the waiting accounts.
+
+**A bare Supabase Auth user** (a credential with no Ask Sunny profile, created outside this lifecycle) holding the employee's email is `FLAG_AUTH_USER_EXISTS` → `REVIEW_REQUIRED`, never `CREATE_USER`. If those users cannot be read, the guard `auth_users_unverified` blocks every create.
 
 The scheduled sync runs the lifecycle after a successful directory sync only. The response carries codes and counts, never names or emails.
 
@@ -262,6 +266,18 @@ The scheduled sync runs the lifecycle after a successful directory sync only. Th
 - missing-only, past TerminationDate, failed terminated read and protected accounts are never revoked;
 - a rehire stays disabled.
 
+## Migration history in Production
+
+`supabase_migrations.schema_migrations` in Production does not mirror the repository:
+
+- Its versions are the timestamps at which each migration was applied, not the file versions.
+- Some rows are named after the file and some are not.
+- `20261002001000`, `20261002002000` and `20261006001000` were applied as plain SQL, so their objects exist but have no history row.
+
+**Do not re-run them** to create history rows. **Do not use `supabase db push` or `supabase migration repair` against this project:** the CLI compares file versions with history versions, and almost none match.
+
+Apply future migrations with the Supabase MCP `apply_migration`, which records a row, and keep this list current. If history rows are wanted for the three above, insert them in one reviewed statement (version = apply time, name = file name), changing no schema.
+
 ## Verification
 
 ```
@@ -278,9 +294,9 @@ npm run stack:up && npm run test:local-stack && npm run stack:down
 5. **Shadow:** `WOVEN_ACCESS_MODE=shadow` in Production (redeploy), then review the recorded runs.
 6. **Stage 5, account lifecycle:** built (above). Each step below needs its own approval:
    1. Apply `20261006002000` (Supabase advisors before and after) and deploy, keeping shadow mode.
-   2. Confirm the invitation email prerequisites above. In particular, the invite template must be scanner-safe: a mail scanner that fetches a `/verify` link spends it.
+   2. Confirm the invitation email prerequisites above in the Supabase dashboard: custom SMTP, invite expiry, the redirect allowlist entry `https://ask-sunny.vercel.app/auth/accept`, and a scanner-safe **Invite user** template. A mail scanner that fetches a `/verify` link spends it, and only the Reset Password template is documented as scanner-safe.
    3. Disposable-user check in Production.
-   4. `apply` + `CREATE_USER` (and `LINK_EXISTING`) for an approved batch (`WOVEN_ACCESS_APPLY_EMPLOYEE_IDS`). Verify.
+   4. `apply` + `CREATE_USER` (no `SEND_INVITE`) for an approved batch (`WOVEN_ACCESS_APPLY_EMPLOYEE_IDS`). Verify. Then `SEND_INVITE` once the email prerequisites are met.
    5. Clear the batch list.
    6. Run the 16-link data change, then add `DISABLE_TERMINATED`. Verify.
    7. UPDATE_PRIMARY_LOCATION, UPDATE_ROLE and rehire approval stay out of scope.

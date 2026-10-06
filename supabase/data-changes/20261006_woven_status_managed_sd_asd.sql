@@ -26,9 +26,12 @@
 -- format ("status:on,location:off,role:off"). The termination lifecycle that
 -- acts on the flag is 20261006002000_woven_account_lifecycle.
 --
--- NOTE (6 Oct 2026, 11:32 UTC): an earlier "adoption batch 1" turned location
--- and role ON for two of these links (Kami Ruckle, Maddie Milazzo). This file
--- sets them OFF, as this lifecycle's approval requires.
+-- NOTE (6 Oct 2026): another workstream's "adoption" batches turned location
+-- and role ON for these links (Kami Ruckle and Maddie Milazzo at 11:32 UTC,
+-- the other 14 at 11:33 UTC). The owner decided this lifecycle's policy wins:
+-- this file sets location and role OFF for all 16 and keeps status ON. It does
+-- NOT touch Rachael Dugan, Colene Schildt, Sarah Cotton or DJ Wade (senior
+-- accounts whose status was also switched on there) — a separate decision.
 --
 -- Run as one transaction:  psql "$DB" -v ON_ERROR_STOP=1 -1 -f <this file>
 

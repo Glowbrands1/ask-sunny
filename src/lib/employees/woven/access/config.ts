@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isLifecycleAction, type LifecycleAction } from "./types";
+import { isApplyCapability, type ApplyCapability } from "./types";
 
 /**
  * ============================================================================
@@ -14,19 +14,22 @@ import { isLifecycleAction, type LifecycleAction } from "./types";
  *           (result = shadow). Nothing is applied.
  *   apply   each successful scheduled directory sync runs the ACCOUNT
  *           LIFECYCLE (`apply.ts`) — but only the capabilities named in
- *           WOVEN_ACCESS_APPLY_ACTIONS, and, while
+ *           WOVEN_ACCESS_APPLY_ACTIONS (CREATE_USER, SEND_INVITE,
+ *           LINK_EXISTING, DISABLE_TERMINATED), and, while
  *           WOVEN_ACCESS_APPLY_EMPLOYEE_IDS is set, only for those Woven
  *           EmployeeIDs (the controlled first batch). Every row of the plan is
  *           recorded; what was not applied is recorded as planned or skipped.
  *
  * THREE SWITCHES, ALL CLOSED BY DEFAULT. `apply` with no capabilities listed
- * applies nothing. A capability that is not one of CREATE_USER, LINK_EXISTING
- * or DISABLE_TERMINATED — UPDATE_ROLE and UPDATE_PRIMARY_LOCATION included —
+ * applies nothing. CREATE_USER without SEND_INVITE creates the account
+ * (invited, no email sent). A capability that is not one of CREATE_USER,
+ * SEND_INVITE, LINK_EXISTING or DISABLE_TERMINATED — UPDATE_ROLE and
+ * UPDATE_PRIMARY_LOCATION included —
  * is refused, reported as a problem, and the mode falls back to OFF: a
  * misconfiguration must never widen what runs. Any unknown mode is OFF too.
  *
  *   WOVEN_ACCESS_MODE=apply
- *   WOVEN_ACCESS_APPLY_ACTIONS=CREATE_USER,LINK_EXISTING,DISABLE_TERMINATED
+ *   WOVEN_ACCESS_APPLY_ACTIONS=CREATE_USER,SEND_INVITE,LINK_EXISTING,DISABLE_TERMINATED
  *   WOVEN_ACCESS_APPLY_EMPLOYEE_IDS=<id>,<id>     (optional; unset = everyone)
  */
 
@@ -39,7 +42,7 @@ export type WovenAccessMode = "off" | "shadow" | "apply";
 export interface WovenAccessConfig {
   mode: WovenAccessMode;
   /** Only meaningful in apply mode. Empty: nothing is applied. */
-  applyActions: LifecycleAction[];
+  applyActions: ApplyCapability[];
   /** null: every eligible employee. A list: only these EmployeeIDs (the first, controlled batch). */
   employeeAllowlist: string[] | null;
   problem: string | null;
@@ -62,10 +65,10 @@ export function readWovenAccessConfig(env: Record<string, string | undefined> = 
   }
 
   const actions = list(env[WOVEN_ACCESS_APPLY_ACTIONS_ENV]).map((a) => a.toUpperCase());
-  const refused = actions.filter((a) => !isLifecycleAction(a));
+  const refused = actions.filter((a) => !isApplyCapability(a));
   if (refused.length > 0) {
     return OFF(
-      `${WOVEN_ACCESS_APPLY_ACTIONS_ENV} may name only CREATE_USER, LINK_EXISTING and DISABLE_TERMINATED; ${refused.join(", ")} is not applied by this sync. Access mode was treated as off.`,
+      `${WOVEN_ACCESS_APPLY_ACTIONS_ENV} may name only CREATE_USER, SEND_INVITE, LINK_EXISTING and DISABLE_TERMINATED; ${refused.join(", ")} is not applied by this sync. Access mode was treated as off.`,
     );
   }
 
@@ -76,7 +79,7 @@ export function readWovenAccessConfig(env: Record<string, string | undefined> = 
 
   return {
     mode: "apply",
-    applyActions: [...new Set(actions)] as LifecycleAction[],
+    applyActions: [...new Set(actions)] as ApplyCapability[],
     employeeAllowlist: ids.length > 0 ? [...new Set(ids)] : null,
     problem: null,
   };

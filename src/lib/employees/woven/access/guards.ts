@@ -46,6 +46,7 @@ export type AccessGuardCode =
   | "links_exceed_batch_limit"
   | "approved_position_mapping_missing"
   | "duplicate_identity"
+  | "auth_users_unverified"
   | "mappings_disappeared";
 
 export interface DirectoryRunFacts {
@@ -69,6 +70,8 @@ export interface GuardInput {
   mappings: MappingCounts;
   /** The mapping counts the last recorded access run saw; null when there is none yet. */
   mappingBaseline: MappingCounts | null;
+  /** false: profile-less Auth users could not be read, so no account may be created. Omitted: not applicable. */
+  authUsersVerified?: boolean;
   now: Date;
 }
 
@@ -163,6 +166,7 @@ export function evaluateAccessGuards(input: GuardInput): GuardResult {
     }
   }
   if (duplicateIdentity) codes.push("duplicate_identity");
+  if (input.authUsersVerified === false && counts.CREATE_USER > 0) codes.push("auth_users_unverified");
 
   details.mappedLocations = input.mappings.mappedLocations;
   details.confirmedPositions = input.mappings.confirmedPositions;
@@ -195,5 +199,6 @@ export const GUARD_DESCRIPTIONS: Record<AccessGuardCode, string> = {
   links_exceed_batch_limit: `More than ${ACCESS_GUARD_LIMITS.maxLinks} existing accounts would be linked in one run.`,
   approved_position_mapping_missing: "No Woven position is mapped to Salon Director or Assistant Salon Director, so no account may be created.",
   duplicate_identity: "The plan names the same Woven employee or the same account twice.",
+  auth_users_unverified: "Existing Supabase Auth users could not be read, so no account may be created.",
   mappings_disappeared: "Location or position mappings have disappeared since the last recorded run.",
 };

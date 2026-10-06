@@ -153,6 +153,7 @@ alter table public.employee_access_actions drop constraint if exists employee_ac
 alter table public.employee_access_actions add constraint employee_access_actions_action_check
   check (action in (
     'NO_CHANGE', 'CREATE_USER', 'LINK_EXISTING', 'UPDATE_PRIMARY_LOCATION', 'UPDATE_ROLE', 'DISABLE_TERMINATED',
+    'FLAG_AUTH_USER_EXISTS',
     'FLAG_LINK_REVIEW', 'FLAG_DUPLICATE_EMAIL', 'FLAG_MISSING_EMAIL', 'FLAG_UNMAPPED_POSITION',
     'FLAG_UNMAPPED_LOCATION', 'FLAG_UNKNOWN_STATUS', 'FLAG_REHIRE_REVIEW', 'FLAG_NOT_WOVEN_MANAGED',
     'FLAG_EMAIL_CHANGE_REVIEW', 'FLAG_MISSING_FROM_WOVEN', 'FLAG_ROLE_REVIEW', 'FLAG_LOCATION_REVIEW',
@@ -430,6 +431,27 @@ as $$
     coalesce(au.banned_until > now(), false)
   from auth.users au
   where lower(au.email) = lower(btrim(p_email));
+$$;
+
+/*
+ * Read-only. Every Supabase Auth user that has NO Ask Sunny profile, with the
+ * EmployeeID this lifecycle stamped on it (null when something else created
+ * it). The planner needs it so an email already held by a bare credential is
+ * REVIEW_REQUIRED, not CREATE_USER: provisioning would refuse it anyway, and
+ * the preview must not promise an account it cannot create.
+ */
+create or replace function public.employee_access_auth_only_accounts()
+returns table (email text, provisioned_external_employee_id text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select lower(btrim(au.email)), au.raw_app_meta_data ->> 'external_employee_id'
+  from auth.users au
+  where au.email is not null
+    and au.deleted_at is null
+    and not exists (select 1 from public.app_users u where u.id = au.id);
 $$;
 
 -- --------------------------------------------------- 8. CREATE_USER ---
@@ -871,6 +893,7 @@ begin
     'public.employee_access_finish_apply_run(uuid, text, text[], jsonb)',
     'public.employee_access_record_apply_actions(uuid, jsonb)',
     'public.employee_access_auth_user_by_email(text)',
+    'public.employee_access_auth_only_accounts()',
     'public.employee_access_provision_account(uuid, text, text, text, text, text, text)',
     'public.employee_access_link_existing(uuid, text, text)',
     'public.employee_access_record_invite(uuid, text, text, text)',
@@ -887,6 +910,7 @@ grant execute on function public.employee_access_begin_apply_run(text, uuid, tex
 grant execute on function public.employee_access_finish_apply_run(uuid, text, text[], jsonb) to service_role;
 grant execute on function public.employee_access_record_apply_actions(uuid, jsonb) to service_role;
 grant execute on function public.employee_access_auth_user_by_email(text) to service_role;
+grant execute on function public.employee_access_auth_only_accounts() to service_role;
 grant execute on function public.employee_access_provision_account(uuid, text, text, text, text, text, text) to service_role;
 grant execute on function public.employee_access_link_existing(uuid, text, text) to service_role;
 grant execute on function public.employee_access_record_invite(uuid, text, text, text) to service_role;

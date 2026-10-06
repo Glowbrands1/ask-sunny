@@ -23,8 +23,10 @@ import { isLifecycleAction, isMutating, type AccessAction, type LifecycleAction,
  *      and in the batch, is applied. Each database step re-checks its own
  *      facts under row locks (the migration's functions) and refuses with a
  *      named code if anything moved since the plan.
- *   5. Provisioned accounts whose invitation failed are retried, at most
+ *   5. Only with SEND_INVITE: provisioned accounts whose invitation was not
+ *      sent (switched off at creation) or failed are invited, at most
  *      MAX_AUTOMATIC_INVITE_ATTEMPTS times in total; then a person is asked.
+ *      CREATE_USER without SEND_INVITE creates the account and sends nothing.
  *   6. Every row is recorded (`employee_access_actions`): applied, failed,
  *      skipped or planned, with a result code. The run is closed.
  *
@@ -214,7 +216,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
 
       const outcome =
         primary === "CREATE_USER"
-          ? await createUser(row, request, deps, setBy)
+          ? await createUser(row, request, deps, setBy, enabled.has("SEND_INVITE"))
           : primary === "LINK_EXISTING"
             ? await linkExisting(row, deps, setBy)
             : await disableTerminated(row, deps, setBy);
@@ -224,8 +226,8 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
       await flush();
     }
 
-    /* 5. invitations that did not go out */
-    if (enabled.has("CREATE_USER")) {
+    /* 5. invitations that did not go out — only when the invitation email itself is switched on */
+    if (enabled.has("SEND_INVITE")) {
       for (const row of rows) {
         const account = row.account;
         const invite = account?.invite;
@@ -241,7 +243,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
         ) {
           continue;
         }
-        const sent = await sendInvite(account.appUserId, account.email, request.redirectTo, deps, setBy);
+        const sent = await sendInviteEmail(account.appUserId, account.email, request.redirectTo, deps, setBy);
         bump(sent.ok ? "applied" : "failed", "INVITE_RETRY");
         recorded.push({
           external_employee_id: row.externalEmployeeId,
@@ -324,7 +326,7 @@ async function authUserFor(email: string, externalEmployeeId: string, deps: Appl
   return { code: "auth_create_conflict" };
 }
 
-async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDeps, setBy: string): Promise<StepOutcome> {
+async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDeps, setBy: string, sendInvite: boolean): Promise<StepOutcome> {
   const after = row.after ?? {};
   const email = typeof after.email === "string" ? after.email : null;
   const role = typeof after.role === "string" ? after.role : null;
@@ -348,10 +350,13 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
     return { result: "failed", code: refusalCode(provisioned.error, "provision_refused"), appUserId: null };
   }
 
-  const sent = await sendInvite(auth.id, email, request.redirectTo, deps, setBy);
+  const created = provisioned.data === "already_provisioned" ? "resumed" : "created";
+  /* SEND_INVITE off: the account waits, invited, with invite_delivery_status 'not_sent'. Nothing is emailed. */
+  if (!sendInvite) return { result: "applied", code: `${created}.invite_not_sent`, appUserId: auth.id };
+  const sent = await sendInviteEmail(auth.id, email, request.redirectTo, deps, setBy);
   return {
     result: "applied",
-    code: `${provisioned.data === "already_provisioned" ? "resumed" : "created"}.${sent.ok ? "invite_sent" : `invite_failed.${sent.code}`}`.slice(0, 80),
+    code: `${created}.${sent.ok ? "invite_sent" : `invite_failed.${sent.code}`}`.slice(0, 80),
     appUserId: auth.id,
   };
 }
@@ -362,7 +367,7 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
  * never passes through this process. A confirmed or banned credential is not
  * invited.
  */
-async function sendInvite(
+async function sendInviteEmail(
   appUserId: string,
   email: string,
   redirectTo: string | null,

@@ -74,7 +74,7 @@ const planOf = planOfAll;
 
 const config = (over: Partial<WovenAccessConfig> = {}): WovenAccessConfig => ({
   mode: "apply",
-  applyActions: ["CREATE_USER", "LINK_EXISTING", "DISABLE_TERMINATED"],
+  applyActions: ["CREATE_USER", "SEND_INVITE", "LINK_EXISTING", "DISABLE_TERMINATED"],
   employeeAllowlist: null,
   problem: null,
   ...over,
@@ -301,6 +301,36 @@ describe("CREATE_USER + invite", () => {
     await run(f);
     expect(f.recorded.find((r) => r.action === "CREATE_USER")).toMatchObject({ result: "failed", result_code: "provision_status_conflict" });
     expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("SEND_INVITE is its own switch", () => {
+  it("CREATE_USER without SEND_INVITE creates the account and emails nothing — no attempt is recorded", async () => {
+    const f = fakes(planOf([employee("E1")]));
+    await run(f, { applyActions: ["CREATE_USER"] });
+    expect(f.auth.createUser).toHaveBeenCalledTimes(1);
+    expect(f.fnsCalled()).toContain("employee_access_provision_account");
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+    expect(f.fnsCalled()).not.toContain("employee_access_record_invite");
+    expect(f.recorded.find((r) => r.action === "CREATE_USER")).toMatchObject({ result: "applied", result_code: "created.invite_not_sent" });
+  });
+
+  it("turning SEND_INVITE on later invites the waiting account (status not_sent) — and only then", async () => {
+    const waiting = account(1, {
+      email: "e1@gmail.com",
+      status: "invited",
+      management: "woven_linked",
+      linkedExternalEmployeeId: "E1",
+      linkMethod: "provisioned",
+      managedStatus: true,
+      invite: { status: "not_sent", sentAt: null, acceptedAt: null, attempts: 0, error: null },
+    });
+    const off = fakes(planOf([employee("E1")], [waiting]));
+    await run(off, { applyActions: ["CREATE_USER"] });
+    expect(off.auth.inviteUserByEmail).not.toHaveBeenCalled();
+    const on = fakes(planOf([employee("E1")], [waiting]));
+    await run(on, { applyActions: ["SEND_INVITE"] });
+    expect(on.auth.inviteUserByEmail).toHaveBeenCalledWith("e1@gmail.com", { redirectTo: REDIRECT });
   });
 });
 
