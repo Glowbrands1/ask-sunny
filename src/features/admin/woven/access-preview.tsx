@@ -4,6 +4,7 @@ import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { ScrollTable, SectionHeader } from "@/components/ui/layout";
+import type { ApplyHistory } from "@/lib/admin/woven-apply-history";
 import { GUARD_DESCRIPTIONS, type AccessGuardCode } from "@/lib/employees/woven/access/guards";
 import { allowedManagedFlags, pendingLinkReviews } from "@/lib/employees/woven/access/link-review";
 import { ACCESS_ACTIONS, isMutating, type AccessAction, type PlannedRow } from "@/lib/employees/woven/access/types";
@@ -11,6 +12,7 @@ import type { AccessPreviewRow } from "@/lib/employees/woven/view-types";
 import { EligibilityCheck } from "./eligibility-check";
 import { label } from "./format";
 import { LinkReviewPanel, type LinkReviewItem } from "./link-review-panel";
+import { ApplyHistoryPanel } from "./apply-history-panel";
 import { ManagedFlagsPanel, type ManagedFlagItem } from "./managed-flags-panel";
 
 /**
@@ -196,6 +198,7 @@ export function AccessPreview({
   actionFilter,
   loginEmailDomains,
   sampleRows,
+  applyHistory,
   actionsDisabled,
 }: {
   planState: AccessPlanState;
@@ -203,6 +206,7 @@ export function AccessPreview({
   actionFilter: string | null;
   loginEmailDomains: string[];
   sampleRows: AccessPreviewRow[] | null;
+  applyHistory?: ApplyHistory | null;
   actionsDisabled: boolean;
 }) {
   return (
@@ -223,6 +227,7 @@ export function AccessPreview({
         <>
           <LinkReviewPanel items={linkReviewItems(planState.plan.rows)} disabled={actionsDisabled} />
           <ManagedFlags rows={planState.plan.rows} disabled={actionsDisabled} />
+          <ApplyHistoryPanel history={applyHistory ?? null} disabled={actionsDisabled} />
           <Plan plan={planState.plan} actionFilter={actionFilter} />
         </>
       )}

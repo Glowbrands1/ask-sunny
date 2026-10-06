@@ -3,6 +3,7 @@ import "server-only";
 import vercelConfig from "../../../../vercel.json";
 import { isDemoMode } from "@/lib/config/runtime";
 import { supabaseReadiness } from "@/lib/config/server-env";
+import { loadApplyHistory, type ApplyHistory } from "@/lib/admin/woven-apply-history";
 import { loadAccessPreviewRows } from "@/lib/employees/woven/access-preview";
 import { readWovenAccessMode, type WovenAccessMode } from "@/lib/employees/woven/access/config";
 import { loadAccessPlan, type AccessPlan } from "@/lib/employees/woven/access/load";
@@ -154,6 +155,8 @@ export type ViewData =
       actionFilter: string | null;
       loginEmailDomains: string[];
       sampleRows: AccessPreviewRow[] | null;
+      /** DISABLE_TERMINATED switches and history; null in sample mode or before the apply migration. */
+      applyHistory: ApplyHistory | null;
     };
 
 export type AccessPlanState = { state: "ready"; plan: AccessPlan } | { state: "not_applied" } | { state: "unavailable"; code: string | null };
@@ -197,6 +200,7 @@ export async function loadWovenView(view: WovenView, params: Params): Promise<Wo
             actionFilter: firstParam(params.action),
             loginEmailDomains: [...sample.loginEmailDomains],
             sampleRows: [...sample.accessPreview],
+            applyHistory: null,
           };
       }
     })();
@@ -229,6 +233,7 @@ export async function loadWovenView(view: WovenView, params: Params): Promise<Wo
             actionFilter: firstParam(params.action),
             loginEmailDomains: domains,
             sampleRows: null,
+            applyHistory: await loadApplyHistory().catch(() => null),
           };
         }
       }

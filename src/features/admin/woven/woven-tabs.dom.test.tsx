@@ -267,6 +267,7 @@ describe("Access Preview", () => {
     actionFilter: null,
     loginEmailDomains: [...SAMPLE.loginEmailDomains],
     sampleRows: [...SAMPLE.accessPreview],
+    applyHistory: null,
   };
 
   it("says it is read-only, names the access mode, and shows the guard verdict", () => {

@@ -58,6 +58,7 @@ export function WovenViewScreen({ props, params }: { props: WovenViewProps; para
           actionFilter={content.data.actionFilter}
           loginEmailDomains={content.data.loginEmailDomains}
           sampleRows={content.data.sampleRows}
+          applyHistory={content.data.applyHistory}
           actionsDisabled={actionsDisabled}
         />
       )}
