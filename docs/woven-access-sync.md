@@ -252,7 +252,17 @@ WOVEN_ACCESS_APPLY_EMPLOYEE_IDS=<id>,<id>                                 # opti
 
 The scheduled sync runs the lifecycle after a successful directory sync only. The response carries codes and counts, never names or emails.
 
-**The 16 existing SD/ASD links** become status-managed (role and location off) through the reviewed one-time file `supabase/data-changes/20261006_woven_status_managed_sd_asd.sql`. It is not a migration, and it is run only with approval. It refuses unless all 16 still qualify. It writes `managed_flags_changed` audits and is safe to run twice.
+**The 16 existing SD/ASD links** become status-managed (role and location off) through the reviewed one-time file `supabase/data-changes/20261006_woven_status_managed_sd_asd.sql`. It is not a migration, and it is run only with approval. It writes only those three flags, writes `managed_flags_changed` audits, and is safe to run twice.
+
+It validates all 16 EmployeeIDs before changing anything, and aborts the whole batch (naming each failure) on any of these:
+
+- **identity:** not exactly one Woven link, not `woven_linked`, not confirmed by a person, or not exactly one Woven record;
+- **account:** not a salon-level SD/ASD;
+- **protection:** a role override or an administrative role;
+- **mapping:** the Woven position is not a confirmed SD/ASD mapping;
+- **status:** Woven status is neither Active nor Terminated.
+
+A Terminated member, even one whose profile is already disabled, does **not** fail the batch (revised 7 Oct). Her flags are normalized and her account is left exactly as it is. The file never writes `app_users`.
 
 **Access Preview** leads with the five outcomes (filter chips), the reason and the invitation state. The planner's detailed actions are under *Details*.
 
@@ -266,13 +276,61 @@ The scheduled sync runs the lifecycle after a successful directory sync only. Th
 - missing-only, past TerminationDate, failed terminated read and protected accounts are never revoked;
 - a rehire stays disabled.
 
+## Reconciling PR #89 (7 Oct 2026)
+
+PR #89 (`claude/woven-disable-terminated`, never merged) is a second DISABLE_TERMINATED implementation. Its migration `20261007001000_woven_disable_terminated_apply.sql` (head `45cbaa4`, SHA-256 `3f6253ab…f0a6`) **was applied to Production** through the SQL editor, with no history row. PR #88's lifecycle (`20261006002000`) was not.
+
+**Where the two collide:**
+
+| Object | #89 | main (#88) |
+|---|---|---|
+| `employee_access_actions_result_check` | adds `blocked` | adds `planned` |
+| `employee_account_links_guard_update` | revocation fields, write-once | invite + revocation columns, written only through the lifecycle functions |
+| `employee_access_runs_mode_check` | shadow / apply | the same |
+| service_role column UPDATE on links | the 3 flags + `terminated_at`, `access_revoked_at`, `revoked_woven_status` | the 3 flags only |
+| apply-run record | `employee_access_record_apply_run` | `begin` / `finish_apply_run` + `record_apply_actions` |
+| executor | operations ledger + controls switch + `employee_access_actions_match_run` trigger | `disable_terminated` + `record_revocation`, switched by `WOVEN_ACCESS_APPLY_ACTIONS` |
+
+#89's guard also blocks `last_synced_at`, which main's `employee_access_disable_terminated` writes. With #89's guard in place, main's termination path would fail.
+
+**The reconciliation (forward only):**
+
+1. Apply `20261006002000_woven_account_lifecycle.sql` verbatim. It re-creates every shared object: the guard, the result check and the mode check.
+2. Then apply `20261007002000_woven_retire_competing_disable_terminated.sql`. It:
+   - refuses unless step 1 is done, and unless #89's tables hold only the OFF seed;
+   - drops #89's three tables, its four functions and its trigger, without CASCADE;
+   - revokes the three revocation-column grants;
+   - asserts the result is main's.
+
+   On a database that never had #89 it is a no-op.
+
+**Proof on the local stack:**
+
+- **Production's path:** main through `20261006001000`, then #89 (applied twice), then step 1, then step 2.
+- **Fresh path:** every migration on main.
+- Both builds produce a byte-identical `pg_dump --schema-only` of `public`.
+- The local-stack suite (73 tests, including `reconcile.local-stack.test.ts`) passes on both.
+
+**#89 rows retired with its tables** (Production, 7 Oct 2026, read before reconciliation):
+
+- `employee_access_controls`: `DISABLE_TERMINATED`, enabled `false`, max_per_run 3, changed_by `migration:20261007001000`, reason "Off until the owner approves automatic revocation", updated_at 2026-10-07 14:08:44 UTC.
+- `employee_access_control_changes`: one row, id `4bbe9558-4de6-4788-a3c9-39ba21b06c13`, enabled null → false, max_per_run null → 3, by `migration:20261007001000`, 2026-10-07 14:17:43 UTC.
+- `employee_access_operations`: empty.
+- No apply run was ever recorded. Production holds 2 shadow runs and 318 shadow actions, all kept.
+
+**Applying it:** the Supabase MCP connector's *destructive SQL confirmation* applies here. Before running SQL in which it detects a statement starting with `drop`, the connector asks the user to confirm through an MCP form. A client that never shows or answers that form waits until its own timeout, and nothing reaches the database.
+
+That is why `apply_migration` of `20261006002000` timed out twice on 7 Oct, with no error, no history row and no lock. Probes confirmed it: the same SQL wrapped in a string literal, or any `…; drop …` text, stalls; equally large neutral text returns at once.
+
+Both files above contain `drop` statements. Apply them from a client that shows the confirmation (the owner confirms each), so history is recorded. The SQL editor is the fallback, without history, and needs separate approval.
+
 ## Migration history in Production
 
 `supabase_migrations.schema_migrations` in Production does not mirror the repository:
 
 - Its versions are the timestamps at which each migration was applied, not the file versions.
 - Some rows are named after the file and some are not.
-- `20261002001000`, `20261002002000` and `20261006001000` were applied as plain SQL, so their objects exist but have no history row.
+- `20261002001000`, `20261002002000`, `20261006001000` and PR #89's `20261007001000` were applied as plain SQL, so their objects exist but have no history row. (#89's objects are retired by `20261007002000`.)
 
 **Do not re-run them** to create history rows. **Do not use `supabase db push` or `supabase migration repair` against this project:** the CLI compares file versions with history versions, and almost none match.
 
@@ -293,7 +351,7 @@ npm run stack:up && npm run test:local-stack && npm run stack:down
 4. **Stage 2b, adoption:** apply `20261006001000`, deploy, then set the managed flags per policy. Reset the credentials of the 16 hand-provisioned SD/ASD accounts once the email prerequisites are confirmed.
 5. **Shadow:** `WOVEN_ACCESS_MODE=shadow` in Production (redeploy), then review the recorded runs.
 6. **Stage 5, account lifecycle:** built (above). Each step below needs its own approval:
-   1. Apply `20261006002000` (Supabase advisors before and after) and deploy, keeping shadow mode.
+   1. Apply `20261006002000`, then `20261007002000` (the #89 reconciliation, above), with Supabase advisors before and after. Keep shadow mode.
    2. Confirm the invitation email prerequisites above in the Supabase dashboard: custom SMTP, invite expiry, the redirect allowlist entry `https://ask-sunny.vercel.app/auth/accept`, and a scanner-safe **Invite user** template. A mail scanner that fetches a `/verify` link spends it, and only the Reset Password template is documented as scanner-safe.
    3. Disposable-user check in Production.
    4. `apply` + `CREATE_USER` (no `SEND_INVITE`) for an approved batch (`WOVEN_ACCESS_APPLY_EMPLOYEE_IDS`). Verify. Then `SEND_INVITE` once the email prerequisites are met.

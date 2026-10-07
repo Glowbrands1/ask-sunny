@@ -561,6 +561,127 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
 });
 
 /* ---------------------------------------------------------------------------
+ * CARLEY'S EXACT STATE, on an invented person. In Production (7 Oct 2026) one
+ * status-managed Salon Director is Terminated in Woven and the owner disabled
+ * her profile BY HAND before the lifecycle existed: no status_changed audit,
+ * the Auth user NOT banned, no sessions, access_revoked_at null. This proves
+ * DISABLE_TERMINATED finishes that revocation exactly once, and only that.
+ * ------------------------------------------------------------------------- */
+describe.skipIf(!ENABLED)("DISABLE_TERMINATED completes a profile disabled by hand (Carley's exact state, local stack)", { timeout: 90_000 }, () => {
+  const EMPLOYEE = id("CARLEYSTATE");
+  const EMAIL = mail("CARLEYSTATE");
+  let userId = "";
+  let conversationId = "";
+  const freshSync = () =>
+    sql(`insert into public.employee_sync_runs (requested_by, source_mode, status, employees_active, finished_at, issue_counts)
+         values ('cron', 'scheduled_poll', 'succeeded', coalesce((select employees_active from public.employee_sync_runs where status = 'succeeded' order by started_at desc limit 1), 10), now(), '{}'::jsonb)`);
+  async function apply() {
+    const { applyAccessLifecycle } = await import("./apply");
+    const { realApplyDeps } = await import("./apply-run");
+    return applyAccessLifecycle(
+      { requestedBy: "local-stack-test", redirectTo: REDIRECT, config: { mode: "apply", applyActions: ["DISABLE_TERMINATED"], employeeAllowlist: [EMPLOYEE], problem: null } },
+      realApplyDeps(),
+    );
+  }
+  async function planRow() {
+    const { loadAccessPlan } = await import("./load");
+    return (await loadAccessPlan()).rows.find((r) => r.key === `employee:${EMPLOYEE}`)!;
+  }
+  /* Everything that must never change about the person: profile, auth identity, history. */
+  const preserved = () =>
+    [
+      sql(`select to_jsonb(u)::text from public.app_users u where id = '${userId}'`),
+      sql(`select id||','||email||','||coalesce(encrypted_password,'')||','||created_at from auth.users where id = '${userId}'`),
+      sql(`select count(*) from public.chat_conversations where id = '${conversationId}'`),
+      sql(`select string_agg(id::text, ',' order by created_at) from public.app_user_audit where target_user_id = '${userId}' and action <> 'access_revoked'`),
+    ].join("\n");
+  const linkState = () =>
+    sql(`select managed_status||','||managed_location||','||managed_role||','||coalesce(terminated_at::text,'-')||','||coalesce(access_revoked_at::text,'-')||','||coalesce(revoked_woven_status,'-') from public.employee_account_links where app_user_id = '${userId}'`);
+  let before = "";
+  let firstBan = "";
+  let firstLink = "";
+
+  beforeAll(async () => {
+    expect(new URL(URL_).hostname).toBe("127.0.0.1");
+    process.env.NEXT_PUBLIC_SUPABASE_URL = URL_;
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = ANON;
+    process.env.SUPABASE_SECRET_KEY = SERVICE;
+    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    const admin = createClient(URL_, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
+
+    sql(`insert into public.salons (salon_number, store_name) values ('0307', 'NE Grand Island') on conflict do nothing`);
+    sql(`insert into public.woven_location_map (woven_location_id, woven_location_name, status, salon_id, reviewed_by, reviewed_at)
+         select 'WL-CS-${run}', 'NE Grand Island', 'mapped', id, 'test', now() from public.salons where salon_number = '0307'`);
+    sql(`insert into public.woven_position_map (woven_position_id, woven_position_name, status, ask_sunny_role, ask_sunny_scope_level, hierarchy_rank, reviewed_by, reviewed_at)
+         values ('WPSD-CS-${run}', 'Salon Director', 'mapped', 'salon_director', 'salon', 30, 'test', now())`);
+    /* Woven: Terminated, read in the latest run. */
+    sql(`insert into public.employee_access_directory (source_system, external_employee_id, email_address, employment_status, position_id, position_name, primary_woven_location_id, primary_location_name, record_hash, first_name, last_name, termination_date)
+         values ('woven', '${EMPLOYEE}', '${EMAIL}', 'terminated', 'WPSD-CS-${run}', 'Salon Director', 'WL-CS-${run}', 'NE Grand Island', '${"0".repeat(64)}', 'Cara', 'Leaver', '2026-10-06')`);
+    /* The account: a real Auth user (confirmed, with a password, never signed in → no sessions), NOT banned. */
+    const created = await admin.auth.admin.createUser({ email: EMAIL, password: `C-${randomBytes(12).toString("hex")}`, email_confirm: true });
+    if (created.error || !created.data.user) throw new Error(`createUser: ${created.error?.message}`);
+    userId = created.data.user.id;
+    sql(`insert into public.app_users (id, email, display_name, role, status, scope_level, scope_primary_area_id) values ('${userId}', '${EMAIL}', 'Cara Leaver', 'salon_director', 'active', 'salon', 'loc-0307')`);
+    sql(`insert into public.app_user_audit (target_user_id, target_email, actor_user_id, actor_email, action, from_value, to_value) values ('${userId}', '${EMAIL}', null, 'test', 'invited', null, null)`);
+    sql(`insert into public.employee_account_links (app_user_id, management, external_employee_id, link_method, managed_status, managed_location, managed_role, set_by)
+         values ('${userId}', 'woven_linked', '${EMPLOYEE}', 'admin_manual', true, false, false, 'test')`);
+    conversationId = randomUUID();
+    sql(`insert into public.chat_conversations (id, user_id, client_conversation_id, title) values ('${conversationId}', '${userId}', 'cs-${run}', 'Weekly numbers')`);
+    /* The owner's manual disable: the profile only, straight in the table — no audit, no ban, no link stamp. */
+    sql(`update public.app_users set status = 'disabled' where id = '${userId}'`);
+    freshSync();
+
+    expect(sql(`select status from public.app_users where id = '${userId}'`)).toBe("disabled");
+    expect(sql(`select (banned_until is null)::text from auth.users where id = '${userId}'`)).toBe("true");
+    expect(sql(`select count(*) from auth.sessions where user_id = '${userId}'`)).toBe("0");
+    expect(linkState()).toBe("true,false,false,-,-,-");
+    before = preserved();
+  });
+
+  it("the planner proposes DISABLE_TERMINATED to complete the revocation", async () => {
+    expect(await planRow()).toMatchObject({ lifecycle: "DISABLE_TERMINATED", lifecycleReason: "terminated_in_woven_completing_revocation" });
+  });
+
+  it("first run: stays disabled, bans the existing Auth user, no sessions or refresh tokens, link stamped, access_revoked audited — nothing recreated", async () => {
+    const outcome = await apply();
+    expect(outcome).toMatchObject({ status: "completed", tally: { applied: { DISABLE_TERMINATED: 1 }, failed: {} } });
+    expect(sql(`select result||','||result_code from public.employee_access_actions where external_employee_id = '${EMPLOYEE}' and action = 'DISABLE_TERMINATED' and result = 'applied'`)).toBe(
+      "applied,already_disabled.auth_revoked",
+    );
+
+    expect(sql(`select status from public.app_users where id = '${userId}'`)).toBe("disabled");
+    expect(sql(`select (banned_until > now() + interval '10 years')::text from auth.users where id = '${userId}'`)).toBe("true");
+    expect(sql(`select count(*) from auth.sessions where user_id = '${userId}'`)).toBe("0");
+    expect(sql(`select count(*) from auth.refresh_tokens where user_id = '${userId}'`)).toBe("0");
+    expect(sql(`select count(*) from auth.users where lower(email) = '${EMAIL}'`)).toBe("1");
+    expect(sql(`select count(*) from public.app_users where lower(email) = '${EMAIL}'`)).toBe("1");
+
+    expect(linkState()).toMatch(/^true,false,false,\d{4}-[^,]+,\d{4}-[^,]+,terminated$/);
+    /* The profile was already disabled: no second status_changed; the revocation itself is audited once. */
+    expect(sql(`select string_agg(action, ',' order by created_at) from public.app_user_audit where target_user_id = '${userId}'`)).toBe("invited,access_revoked");
+    /* Profile, auth identity, conversation and earlier audit rows: exactly as before. */
+    expect(preserved()).toBe(before);
+
+    const signIn = await anonClient().auth.signInWithPassword({ email: EMAIL, password: "not-their-password-1A!" });
+    expect(signIn.data.session).toBeNull();
+    firstBan = sql(`select banned_until::text from auth.users where id = '${userId}'`);
+    firstLink = linkState();
+  });
+
+  it("second run: converged — the planner says NO_CHANGE, nothing is attempted, nothing re-stamped, no new audit, the ban untouched", async () => {
+    expect((await planRow()).lifecycle).toBe("NO_CHANGE");
+    const audits = sql(`select count(*) from public.app_user_audit where target_user_id = '${userId}'`);
+    const outcome = await apply();
+    expect(outcome).toMatchObject({ status: "completed", tally: { applied: {}, failed: {} } });
+    expect(sql(`select count(*) from public.app_user_audit where target_user_id = '${userId}'`)).toBe(audits);
+    expect(sql(`select banned_until::text from auth.users where id = '${userId}'`)).toBe(firstBan);
+    expect(linkState()).toBe(firstLink);
+    expect(preserved()).toBe(before);
+    expect(sql(`select status from public.app_users where id = '${userId}'`)).toBe("disabled");
+  });
+});
+
+/* ---------------------------------------------------------------------------
  * The one-time data change for the 16 approved SD/ASD links, rehearsed on
  * disposable copies of those EmployeeIDs (no real person, no real account).
  * ------------------------------------------------------------------------- */
@@ -599,7 +720,8 @@ describe.skipIf(!ENABLED)("data change: managed_status for the 16 approved SD/AS
       const existing = sql(`select app_user_id from public.employee_account_links where external_employee_id = '${employeeId}'`);
       if (existing) {
         userIds.push(existing);
-        sql(`update public.employee_account_links set managed_status = false where app_user_id = '${existing}'`);
+        sql(`update public.employee_account_links set managed_status = false, managed_location = false, managed_role = false where app_user_id = '${existing}'`);
+        sql(`update public.employee_access_directory set employment_status = 'active' where external_employee_id = '${employeeId}'`);
         sql(`update public.app_users set status = 'active' where id = '${existing}'`);
         continue;
       }
@@ -621,23 +743,72 @@ describe.skipIf(!ENABLED)("data change: managed_status for the 16 approved SD/AS
     sql(`insert into public.employee_account_links (app_user_id, management, external_employee_id, link_method, set_by) values ('${dmUser}', 'woven_linked', 'DC-DM-${run}', 'admin_confirmed_email', 'test')`);
   });
 
-  it("refuses, changing nothing, unless all 16 still qualify (one disabled here)", () => {
-    sql(`update public.app_users set status = 'disabled' where id = '${userIds[0]}'`);
-    expect(runFileFails()).toMatch(/15 of 16 approved links qualify; nothing changed/);
-    expect(flags().split(",").every((f) => f === "falsefalsefalse")).toBe(true);
-    sql(`update public.app_users set status = 'active' where id = '${userIds[0]}'`);
+  const accounts = (ignore = "") => sql(`select string_agg((to_jsonb(u) - '${ignore}')::text, '|' order by id) from public.app_users u where id in (${userIds.map((x) => `'${x}'`).join(",")})`);
+  /* Counted from this run's start: the stack may hold audit rows from an earlier run of the suite. */
+  let since = "";
+  const audits = () =>
+    sql(`select count(*) from public.app_user_audit where action = 'managed_flags_changed' and to_value = 'status:on,location:off,role:off' and created_at >= '${since}' and target_user_id in (${userIds.map((x) => `'${x}'`).join(",")})`);
+
+  it("an identity, mapping or protection conflict on ANY one of the 16 aborts the whole batch, names it, and changes nothing", () => {
+    const [first, second] = [APPROVED[3]!, APPROVED[9]!];
+    const conflicts: [string, string, RegExp][] = [
+      /* account side */
+      [`insert into public.employee_role_overrides (app_user_id, external_employee_id, locked_role, locked_scope_level, reason, set_by) values ('${userIds[3]}', '${first}', 'salon_director', 'salon', 'test', 'test')`,
+        `delete from public.employee_role_overrides where app_user_id = '${userIds[3]}'`, /protected: the account has a role override/],
+      [`update public.app_users set role = 'district_manager', scope_level = 'global', scope_primary_area_id = null where id = '${userIds[3]}'`,
+        `update public.app_users set role = 'salon_director', scope_level = 'salon', scope_primary_area_id = 'loc-0307' where id = '${userIds[3]}'`, /account role district_manager is not/],
+      [`update public.app_users set role = 'admin', scope_level = 'global', scope_primary_area_id = null where id = '${userIds[3]}'`,
+        `update public.app_users set role = 'salon_director', scope_level = 'salon', scope_primary_area_id = 'loc-0307' where id = '${userIds[3]}'`, /protected: administrative account/],
+      /* Woven side */
+      [`update public.employee_access_directory set position_id = 'WPDM-DC-${run}' where external_employee_id = '${second}'`,
+        `update public.employee_access_directory set position_id = 'WPSD-DC-${run}' where external_employee_id = '${second}'`, /not a confirmed, mapped SD\/ASD position/],
+      [`update public.employee_access_directory set employment_status = 'unknown' where external_employee_id = '${second}'`,
+        `update public.employee_access_directory set employment_status = 'active' where external_employee_id = '${second}'`, /Woven status is unknown/],
+      /* identity: the link was not confirmed by a person */
+      [`alter table public.employee_account_links disable trigger employee_account_links_guard_update; update public.employee_account_links set link_method = 'override_backfill' where app_user_id = '${userIds[9]}'; alter table public.employee_account_links enable trigger employee_account_links_guard_update`,
+        `alter table public.employee_account_links disable trigger employee_account_links_guard_update; update public.employee_account_links set link_method = 'admin_manual' where app_user_id = '${userIds[9]}'; alter table public.employee_account_links enable trigger employee_account_links_guard_update`, /not confirmed by a person/],
+    ];
+    since = sql(`select now()::text`);
+    /* The fixture itself edits and restores one account's role (bumping updated_at); the file must change nothing else. */
+    const accountsBefore = accounts("updated_at");
+    for (const [breakIt, fixIt, expected] of conflicts) {
+      sql(breakIt);
+      const error = runFileFails();
+      sql(fixIt);
+      expect(error, String(expected)).toMatch(/1 of 16 approved links failed validation; nothing changed/);
+      expect(error, String(expected)).toMatch(expected);
+      expect(flags().split(",").every((f) => f === "falsefalsefalse"), String(expected)).toBe(true);
+      expect(audits()).toBe("0");
+    }
+    expect(accounts("updated_at")).toBe(accountsBefore);
   });
 
-  it("sets managed_status = true, role and location false, on exactly the 16 — and is safe to run twice", () => {
-    runFile();
+  it("a legitimately Terminated member whose profile is already disabled does NOT fail the batch: all 16 normalized, nobody's account changed, she stays disabled", () => {
+    /* Carley's state on her copy: Terminated in Woven, profile disabled by hand. */
+    sql(`update public.employee_access_directory set employment_status = 'terminated', termination_date = '2026-10-06' where external_employee_id = '${APPROVED[0]}'`);
+    sql(`update public.app_users set status = 'disabled' where id = '${userIds[0]}'`);
+    /* Kami/Maddie-style drift: role and location were switched on by the adoption batch. */
+    sql(`update public.employee_account_links set managed_status = true, managed_location = true, managed_role = true where app_user_id in ('${userIds[2]}', '${userIds[6]}')`);
+    const accountsBefore = accounts();
+
+    const output = execFileSync("psql", [PG.replace("supabase_admin@", "postgres:postgres@"), "-v", "ON_ERROR_STOP=1", "-q", "-1", "-f", FILE], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    void output;
     expect(flags()).toBe(Array(16).fill("truefalsefalse").join(","));
     expect(sql(`select managed_status::text from public.employee_account_links where app_user_id = '${dmUser}'`)).toBe("false");
-    const before = sql(`select string_agg(updated_at::text, ',') from public.employee_account_links where external_employee_id in (${APPROVED.map((x) => `'${x}'`).join(",")})`);
+    /* No account changed — the Terminated one is still disabled, nobody was reactivated. */
+    expect(accounts()).toBe(accountsBefore);
+    expect(sql(`select status from public.app_users where id = '${userIds[0]}'`)).toBe("disabled");
+    expect(audits()).toBe("16");
+    expect(sql(`select from_value from public.app_user_audit where action = 'managed_flags_changed' and created_at >= '${since}' and target_user_id = '${userIds[2]}'`)).toBe("status:on,location:on,role:on");
+  });
+
+  it("is safe to run twice: the second run changes no link and writes no audit", () => {
+    const before = sql(`select string_agg(updated_at::text, ',' order by app_user_id) from public.employee_account_links where external_employee_id in (${APPROVED.map((x) => `'${x}'`).join(",")})`);
+    const accountsBefore = accounts();
     runFile();
-    expect(sql(`select string_agg(updated_at::text, ',') from public.employee_account_links where external_employee_id in (${APPROVED.map((x) => `'${x}'`).join(",")})`)).toBe(before);
-    /* One managed_flags_changed audit per changed link — and none from the second, no-op run. */
-    expect(sql(`select count(*) from public.app_user_audit where action = 'managed_flags_changed' and to_value = 'status:on,location:off,role:off' and target_user_id in (${userIds.map((x) => `'${x}'`).join(",")})`)).toBe("16");
-    /* No account was changed by it. */
-    expect(sql(`select count(*) from public.app_users where id in (${userIds.map((x) => `'${x}'`).join(",")}) and status <> 'active'`)).toBe("0");
+    expect(sql(`select string_agg(updated_at::text, ',' order by app_user_id) from public.employee_account_links where external_employee_id in (${APPROVED.map((x) => `'${x}'`).join(",")})`)).toBe(before);
+    expect(audits()).toBe("16");
+    expect(accounts()).toBe(accountsBefore);
+    expect(flags()).toBe(Array(16).fill("truefalsefalse").join(","));
   });
 });
