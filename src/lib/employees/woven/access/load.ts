@@ -9,6 +9,7 @@ import { classifyStatusError } from "../status";
 import { plannerAccount, plannerEmployee, plannerLocation, plannerPosition } from "./adapters";
 import { buildAccessPlan, type AccessPlan } from "./build";
 import type { DirectoryRunFacts, MappingCounts } from "./guards";
+import type { AuthOnlyUser } from "./types";
 
 export { buildAccessPlan, type AccessPlan } from "./build";
 
@@ -68,14 +69,27 @@ async function loadMappingBaseline(): Promise<MappingCounts | null> {
   return counts && typeof counts.mappedLocations === "number" && typeof counts.confirmedPositions === "number" ? counts : null;
 }
 
+/** Profile-less Supabase Auth users (lifecycle migration). null when they cannot be read: the guards then block creation. */
+async function loadAuthOnly(): Promise<AuthOnlyUser[] | null> {
+  const { data, error } = await getSupabaseAdmin().rpc("employee_access_auth_only_accounts");
+  if (error || !Array.isArray(data)) return null;
+  return (data as { email: unknown; provisioned_external_employee_id: unknown }[])
+    .filter((r) => typeof r.email === "string")
+    .map((r) => ({
+      email: String(r.email),
+      provisionedExternalEmployeeId: typeof r.provisioned_external_employee_id === "string" ? r.provisioned_external_employee_id : null,
+    }));
+}
+
 export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan> {
-  const [directory, locations, positions, accounts, runFacts, mappingBaseline] = await Promise.all([
+  const [directory, locations, positions, accounts, runFacts, mappingBaseline, authOnly] = await Promise.all([
     loadDirectoryRows(),
     listWovenLocations(),
     listWovenPositions(),
     loadAccounts(),
     loadRunFacts(),
     loadMappingBaseline(),
+    loadAuthOnly(),
   ]);
   return buildAccessPlan(
     {
@@ -83,6 +97,7 @@ export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan
       positions: positions.map(plannerPosition),
       locations: locations.map(plannerLocation),
       accounts,
+      authOnly,
     },
     { runs: runFacts.runs, mappingBaseline, directoryRunId: runFacts.latestSuccessId, now },
   );

@@ -142,7 +142,7 @@ function googleReviewFiles(): { name: string; sql: string }[] {
  * number — the "do not invent a second salon roster" rule obeyed once more. It
  * may read a reporting table and may never create, alter or drop one.
  */
-const EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS = ["woven_employee_directory", "woven_employee_role_overrides"] as const;
+const EMPLOYEE_DIRECTORY_MIGRATION_FRAGMENTS = ["woven_employee_directory", "woven_employee_role_overrides", "woven_account_lifecycle"] as const;
 
 function employeeDirectoryFiles(): { name: string; sql: string }[] {
   return migrationFiles().filter((file) =>

@@ -5,8 +5,16 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { EmptyState, Notice } from "@/components/ui/feedback";
 import { ScrollTable, SectionHeader } from "@/components/ui/layout";
 import { GUARD_DESCRIPTIONS, type AccessGuardCode } from "@/lib/employees/woven/access/guards";
+import { MAX_AUTOMATIC_INVITE_ATTEMPTS } from "@/lib/employees/woven/access/lifecycle";
 import { allowedManagedFlags, pendingLinkReviews } from "@/lib/employees/woven/access/link-review";
-import { ACCESS_ACTIONS, isMutating, type AccessAction, type PlannedRow } from "@/lib/employees/woven/access/types";
+import {
+  ACCESS_ACTIONS,
+  isMutating,
+  LIFECYCLE_OUTCOMES,
+  type AccessAction,
+  type LifecycleOutcome,
+  type PlannedRow,
+} from "@/lib/employees/woven/access/types";
 import type { AccessPreviewRow } from "@/lib/employees/woven/view-types";
 import { EligibilityCheck } from "./eligibility-check";
 import { label } from "./format";
@@ -19,9 +27,12 @@ import { ManagedFlagsPanel, type ManagedFlagItem } from "./managed-flags-panel";
  * ============================================================================
  *
  * Every row is the access planner's answer for one Woven employee, or for an
- * Ask Sunny account no employee explains. Nothing on this tab creates an
- * account, sends an invite, disables anyone, or changes a role or salon. The
- * guards say whether a run would even be allowed to apply its changes.
+ * Ask Sunny account no employee explains, led by its ACCOUNT-LIFECYCLE outcome
+ * — CREATE_USER, LINK_EXISTING, NO_CHANGE, DISABLE_TERMINATED or
+ * REVIEW_REQUIRED — with the reason. The planner's detailed actions stay
+ * available under "Details". Nothing on this tab changes anything; the access
+ * mode (off / shadow / apply, set in the deployment) decides what the
+ * scheduled sync does, and the guards say whether a run may apply at all.
  */
 
 export interface AccessPlanView {
@@ -33,9 +44,26 @@ export interface AccessPlanView {
 
 export type AccessPlanState = { state: "ready"; plan: AccessPlanView } | { state: "not_applied" } | { state: "unavailable"; code: string | null };
 
+const LIFECYCLE_LABEL: Record<LifecycleOutcome, string> = {
+  CREATE_USER: "Create account + invite",
+  LINK_EXISTING: "Link existing account",
+  NO_CHANGE: "No change",
+  DISABLE_TERMINATED: "Disable (terminated)",
+  REVIEW_REQUIRED: "Review required",
+};
+
+function lifecycleTone(outcome: LifecycleOutcome): BadgeTone {
+  if (outcome === "DISABLE_TERMINATED") return "failed";
+  if (outcome === "CREATE_USER" || outcome === "LINK_EXISTING") return "primary";
+  if (outcome === "REVIEW_REQUIRED") return "attention";
+  return "outline";
+}
+
 const ACTION_LABEL: Record<AccessAction, string> = {
   NO_CHANGE: "No change",
   CREATE_USER: "Create account",
+  LINK_EXISTING: "Link existing account",
+  FLAG_AUTH_USER_EXISTS: "Auth user exists",
   UPDATE_PRIMARY_LOCATION: "Update primary salon",
   UPDATE_ROLE: "Update role",
   DISABLE_TERMINATED: "Disable (terminated)",
@@ -82,6 +110,21 @@ const REASON: Record<string, string> = {
   email_matches_account_marked_not_woven_managed: "This email belongs to an account marked not managed by Woven.",
   exact_email_match_awaiting_confirmation:
     "One existing account has this exact email. A person must confirm the link before Woven manages it.",
+  auth_user_exists_without_profile:
+    "A Supabase Auth user with this email already exists but has no Ask Sunny profile (created outside this lifecycle). No account is created automatically; a person decides.",
+  single_exact_email_match:
+    "Exactly one Woven employee and exactly one unprotected Ask Sunny account share this exact email: the EmployeeID link is stored. The account itself is not changed.",
+  email_matches_protected_account: "This email belongs to a protected or administrative account. It is never linked automatically.",
+  email_match_terminated_in_woven: "This email names an account, but Woven shows the employee Terminated. Not linked automatically.",
+  email_match_status_not_read_this_run: "This email names an account, but the employee was not read in Woven's latest sync. Not linked automatically.",
+  email_match_held_for_review: "The email match is held for a person.",
+  email_in_use_by_account_marked_not_woven_managed:
+    "An eligible Salon Director / Assistant Salon Director, but the email already belongs to an account marked not Woven-managed.",
+  terminated_in_woven_completing_revocation:
+    "Already disabled in Ask Sunny; the sign-in block at the authentication service did not finish last time and will be completed.",
+  role_and_location_not_managed_by_lifecycle:
+    "Role or salon differs from Woven. The account lifecycle never changes roles or salons; nothing is done.",
+  invite_delivery_failed: `The invitation could not be sent after ${MAX_AUTOMATIC_INVITE_ATTEMPTS} attempts. Resend it from Users, or check the email.`,
   terminated_in_woven: "Woven's own status for this employee is Terminated.",
   terminated_in_woven_protected_account:
     "Terminated in Woven, but this is a protected or administrative account — never disabled automatically.",
@@ -199,7 +242,7 @@ export function AccessPreview({
   actionsDisabled,
 }: {
   planState: AccessPlanState;
-  accessMode: "off" | "shadow";
+  accessMode: "off" | "shadow" | "apply";
   actionFilter: string | null;
   loginEmailDomains: string[];
   sampleRows: AccessPreviewRow[] | null;
@@ -209,7 +252,14 @@ export function AccessPreview({
     <section aria-label="Access Preview" className="flex flex-col gap-6">
       <Notice tone="primary" icon={<ShieldCheck />} title="What the access sync would do — read-only">
         Nothing on this tab creates an account, sends an invite, disables anyone, or changes a role or salon. Access mode:{" "}
-        <strong>{accessMode === "shadow" ? "shadow (plans are recorded, never applied)" : "off (preview only)"}</strong>.
+        <strong>
+          {accessMode === "apply"
+            ? "apply (the scheduled sync applies the enabled lifecycle actions)"
+            : accessMode === "shadow"
+              ? "shadow (plans are recorded, never applied)"
+              : "off (preview only)"}
+        </strong>
+        .
       </Notice>
 
       {planState.state === "not_applied" ? (
@@ -238,21 +288,47 @@ export function AccessPreview({
   );
 }
 
+function InviteCell({ row }: { row: PlannedRow }) {
+  const invite = row.account?.invite;
+  if (row.lifecycle === "CREATE_USER") return <span className="text-muted-foreground">sent on create</span>;
+  if (!invite || !invite.status) return <span className="text-muted-foreground">—</span>;
+  if (invite.acceptedAt) return <>accepted</>;
+  if (invite.status === "sent") return <>sent</>;
+  if (invite.status === "failed") {
+    return (
+      <span>
+        failed ({invite.attempts}){invite.error ? <span className="block font-mono text-[11px] text-muted-foreground">{invite.error}</span> : null}
+      </span>
+    );
+  }
+  return <>not sent</>;
+}
+
 function Plan({ plan, actionFilter }: { plan: AccessPlanView; actionFilter: string | null }) {
-  const filter: AccessAction | "changes" | null = (ACCESS_ACTIONS as readonly string[]).includes(actionFilter ?? "")
-    ? (actionFilter as AccessAction)
-    : actionFilter === "changes"
-      ? "changes"
-      : null;
-  const matches = (r: PlannedRow) => (filter === null ? true : filter === "changes" ? r.actions.some(isMutating) : r.actions.includes(filter));
+  /* The filter is a lifecycle outcome, or (for the detail view) one of the planner's actions. */
+  const filter = (LIFECYCLE_OUTCOMES as readonly string[]).includes(actionFilter ?? "")
+    ? { kind: "lifecycle" as const, value: actionFilter as LifecycleOutcome }
+    : (ACCESS_ACTIONS as readonly string[]).includes(actionFilter ?? "")
+      ? { kind: "action" as const, value: actionFilter as AccessAction }
+      : actionFilter === "changes"
+        ? { kind: "changes" as const }
+        : null;
+  const matches = (r: PlannedRow) =>
+    filter === null
+      ? true
+      : filter.kind === "lifecycle"
+        ? r.lifecycle === filter.value
+        : filter.kind === "action"
+          ? r.actions.includes(filter.value)
+          : r.actions.some(isMutating);
   const rows = plan.rows.filter(matches);
-  const changes = plan.rows.filter((r) => r.actions.some(isMutating)).length;
+  const lifecycleCount = (o: LifecycleOutcome) => plan.rows.filter((r) => r.lifecycle === o).length;
 
   return (
     <>
       {plan.guard.mutationsAllowed ? (
         <Notice tone="neutral" icon={<ShieldCheck />} title="Safety guards: clear">
-          A run on today&apos;s data would be allowed to apply its changes — once applying is approved and built. Policy {plan.policyVersion}.
+          A run on today&apos;s data would be allowed to apply the enabled lifecycle actions. Policy {plan.policyVersion}.
         </Notice>
       ) : (
         <Notice tone="attention" icon={<ShieldAlert />} title="Safety guards: a run on today's data would apply nothing">
@@ -264,16 +340,18 @@ function Plan({ plan, actionFilter }: { plan: AccessPlanView; actionFilter: stri
         </Notice>
       )}
 
-      <nav aria-label="Filter by proposed action" className="flex flex-wrap gap-2 text-[12px]">
+      <nav aria-label="Filter by lifecycle action" className="flex flex-wrap gap-2 text-[12px]">
         <Link href={hrefFor(null)} aria-current={filter === null ? "page" : undefined} className={chip}>
           All · {plan.rows.length}
         </Link>
-        <Link href={hrefFor("changes")} aria-current={filter === "changes" ? "page" : undefined} className={chip}>
-          Would change access · {changes}
-        </Link>
-        {ACCESS_ACTIONS.filter((a) => plan.counts[a] > 0).map((action) => (
-          <Link key={action} href={hrefFor(action)} aria-current={filter === action ? "page" : undefined} className={chip}>
-            {ACTION_LABEL[action]} · {plan.counts[action]}
+        {LIFECYCLE_OUTCOMES.map((outcome) => (
+          <Link
+            key={outcome}
+            href={hrefFor(outcome)}
+            aria-current={filter?.kind === "lifecycle" && filter.value === outcome ? "page" : undefined}
+            className={chip}
+          >
+            {LIFECYCLE_LABEL[outcome]} · {lifecycleCount(outcome)}
           </Link>
         ))}
       </nav>
@@ -288,17 +366,15 @@ function Plan({ plan, actionFilter }: { plan: AccessPlanView; actionFilter: stri
                 {[
                   "Employee",
                   "Woven ID",
-                  "Email",
+                  "Woven email",
                   "Woven status",
                   "Woven position",
-                  "Woven primary location",
+                  "Mapped Ask Sunny role",
                   "Ask Sunny account",
-                  "Current role",
-                  "Current scope / salon",
-                  "Proposed role",
-                  "Proposed salon",
-                  "Proposed action",
+                  "Lifecycle action",
                   "Reason",
+                  "Invite",
+                  "Details",
                 ].map((h) => (
                   <th key={h} scope="col" className="px-3 py-2 font-semibold whitespace-nowrap">
                     {h}
@@ -308,42 +384,51 @@ function Plan({ plan, actionFilter }: { plan: AccessPlanView; actionFilter: stri
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((row) => (
-                <tr key={row.key} className="align-top" data-actions={row.actions.join(" ")}>
+                <tr key={row.key} className="align-top" data-lifecycle={row.lifecycle} data-actions={row.actions.join(" ")}>
                   <td className="px-3 py-2 font-semibold whitespace-nowrap text-foreground">{row.employeeName}</td>
                   <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">{row.externalEmployeeId ?? "—"}</td>
                   <td className="px-3 py-2">{row.emailAddress ?? "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{row.wovenStatus ?? "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{row.wovenPosition ?? "—"}</td>
-                  <td className="px-3 py-2">
-                    {row.wovenPrimaryLocation ?? "—"}
-                    {row.wovenAdditionalLocations.length > 0 ? (
+                  <td className="px-3 py-2 whitespace-nowrap">{label(row.proposedRole)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <AccountCell row={row} />
+                    {row.account ? (
                       <span className="block text-[11px] text-muted-foreground">
-                        + {row.wovenAdditionalLocations.join(", ")} (not used for access)
+                        {label(row.account.role)} · {scopeText(row.account)}
                       </span>
                     ) : null}
                   </td>
+                  <td className="px-3 py-2">
+                    <Badge tone={lifecycleTone(row.lifecycle)} size="sm">
+                      {LIFECYCLE_LABEL[row.lifecycle]}
+                    </Badge>
+                  </td>
+                  <td className="min-w-64 px-3 py-2 whitespace-normal">{reasonText(row.lifecycleReason)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <AccountCell row={row} />
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.account ? label(row.account.role) : "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{scopeText(row.account)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{label(row.proposedRole)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">{row.proposedPrimaryAreaId ?? "—"}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex min-w-36 flex-col items-start gap-1">
-                      {row.actions.map((action) => (
-                        <Badge key={action} tone={actionTone(action)} size="sm">
-                          {ACTION_LABEL[action]}
-                        </Badge>
-                      ))}
-                    </div>
+                    <InviteCell row={row} />
                   </td>
                   <td className="px-3 py-2">
-                    <ul className="min-w-64 list-disc pl-4 whitespace-normal">
-                      {row.reasons.map((code) => (
-                        <li key={code}>{reasonText(code)}</li>
-                      ))}
-                    </ul>
+                    <details>
+                      <summary className="cursor-pointer text-[11.5px] text-muted-foreground">Planner detail</summary>
+                      <div className="mt-1 flex min-w-36 flex-col items-start gap-1">
+                        {row.actions.map((action) => (
+                          <Badge key={action} tone={actionTone(action)} size="sm">
+                            {ACTION_LABEL[action]}
+                          </Badge>
+                        ))}
+                      </div>
+                      <ul className="mt-1 min-w-64 list-disc pl-4 whitespace-normal">
+                        {row.reasons.map((code) => (
+                          <li key={code}>{reasonText(code)}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Woven primary: {row.wovenPrimaryLocation ?? "—"}
+                        {row.wovenAdditionalLocations.length > 0 ? ` (+ ${row.wovenAdditionalLocations.join(", ")}, not used for access)` : ""}
+                        {row.proposedPrimaryAreaId ? ` · salon ${row.proposedPrimaryAreaId}` : ""}
+                      </p>
+                    </details>
                   </td>
                 </tr>
               ))}

@@ -275,7 +275,14 @@ describe("7. no employee-sync UI, route or library code can reach app_users, aut
     "woven_location_map_review", "woven_position_map_review",
     /* Writes ONLY employee_access_runs / employee_access_actions, mode shadow (asserted below against the SQL). */
     "employee_access_record_shadow_run",
+    /* The account lifecycle (stage 5, `access/apply.ts`): each re-checks its own facts; asserted in section 9. */
+    "employee_access_begin_apply_run", "employee_access_finish_apply_run", "employee_access_record_apply_actions",
+    "employee_access_auth_user_by_email", "employee_access_auth_only_accounts", "employee_access_provision_account", "employee_access_link_existing",
+    "employee_access_record_invite", "employee_access_disable_terminated", "employee_access_record_revocation",
   ]);
+  /* The only two files that may reach the Auth Admin API: the lifecycle engine and its real wiring. Section 9 bounds them. */
+  const LIFECYCLE_FILES = [join("access", "apply.ts"), join("access", "apply-run.ts")];
+  const isLifecycleFile = (file: string) => LIFECYCLE_FILES.some((f) => file.endsWith(f));
 
   it("covers the whole employee-sync surface", () => {
     expect(files.length).toBeGreaterThan(40);
@@ -295,11 +302,12 @@ describe("7. no employee-sync UI, route or library code can reach app_users, aut
     }
   });
 
-  it("no auth client, and the only direct write is a person's change review", () => {
+  it("no auth client outside the lifecycle engine, and the only direct write is a person's change review", () => {
     const writers: string[] = [];
     for (const file of files) {
       const c = code(file);
-      expect(c, file).not.toMatch(/\.auth\s*\.|auth\.admin|app_user_audit|from\(\s*["'`]app_users/);
+      expect(c, file).not.toMatch(/app_user_audit|from\(\s*["'`]app_users/);
+      if (!isLifecycleFile(file)) expect(c, file).not.toMatch(/\.auth\s*\.|auth\.admin/);
       /* A Supabase write verb on a query chain (not crypto's hash.update). */
       for (const m of c.matchAll(/\.from\(\s*["'`]([a-z_]+)["'`]\)\s*\.(insert|update|upsert|delete)\(/g)) writers.push(`${m[1]}.${m[2]}`);
     }
@@ -314,7 +322,7 @@ describe("7. no employee-sync UI, route or library code can reach app_users, aut
   });
 });
 
-describe("8. the access planner (stage 1) applies nothing", () => {
+describe("8. the access planner (stage 1) applies nothing — only the lifecycle engine (section 9) acts", () => {
   const repo = join(__dirname, "..", "..", "..", "..");
   const SQL = readFileSync(join(repo, "supabase/migrations/20261002002000_woven_account_links.sql"), "utf8");
   const fn = SQL.slice(SQL.indexOf("create or replace function public.employee_access_record_shadow_run"));
@@ -350,7 +358,7 @@ describe("8. the access planner (stage 1) applies nothing", () => {
 
   it("no access-planner module calls the auth API or names app_users; only link-store.ts writes, and only a link", () => {
     const dir = join(repo, "src/lib/employees/woven/access");
-    for (const name of readdirSync(dir).filter((n) => /\.ts$/.test(n) && !/\.test\./.test(n))) {
+    for (const name of readdirSync(dir).filter((n) => /\.ts$/.test(n) && !/\.test\./.test(n) && n !== "apply.ts" && n !== "apply-run.ts")) {
       const code = readFileSync(join(dir, name), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
       expect(code, name).not.toMatch(/\.auth\s*\.|auth\.admin|from\(\s*["'`]app_users|revokeAuthAccess|restoreAuthAccess/);
       /* The one write: link-store.ts records a person's link review. */
@@ -376,8 +384,108 @@ describe("8. the access planner (stage 1) applies nothing", () => {
     expect(code).toMatch(/revoke all on function public\.employee_access_actions_guard\(\) from public, anon, authenticated, service_role;/);
   });
 
-  it("the access mode has no apply value", () => {
+  it("the access mode's only applying value is bounded to the three lifecycle actions", () => {
     const config = readFileSync(join(repo, "src/lib/employees/woven/access/config.ts"), "utf8");
-    expect(config).toMatch(/export type WovenAccessMode = "off" \| "shadow";/);
+    expect(config).toMatch(/export type WovenAccessMode = "off" \| "shadow" \| "apply";/);
+    const types = readFileSync(join(repo, "src/lib/employees/woven/access/types.ts"), "utf8");
+    expect(types).toMatch(/export const LIFECYCLE_ACTIONS = \["CREATE_USER", "LINK_EXISTING", "DISABLE_TERMINATED"\] as const/);
+  });
+});
+
+describe("9. the account lifecycle (stage 5): create + invite, link, revoke — and nothing else", () => {
+  const repo = join(__dirname, "..", "..", "..", "..");
+  const SQL = readFileSync(join(repo, "supabase/migrations/20261006002000_woven_account_lifecycle.sql"), "utf8");
+  const sqlCode = SQL.replace(/--.*$/gm, "");
+  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const apply = strip(readFileSync(join(repo, "src/lib/employees/woven/access/apply.ts"), "utf8"));
+  const applyRun = strip(readFileSync(join(repo, "src/lib/employees/woven/access/apply-run.ts"), "utf8"));
+  const fnBody = (name: string) => {
+    const from = sqlCode.indexOf(`create or replace function public.${name}(`);
+    expect(from, name).toBeGreaterThan(-1);
+    const body = sqlCode.slice(from);
+    return body.slice(0, body.indexOf("$$;"));
+  };
+
+  it("no password is ever set, read, stored or emailed by the lifecycle code", () => {
+    for (const c of [apply, applyRun]) {
+      expect(c).not.toMatch(/password/i);
+      expect(c).not.toMatch(/generateLink|deleteUser|updateUserById|resetPasswordForEmail/);
+    }
+    /* The three Auth Admin calls it may make, and createUser always unconfirmed. */
+    const calls = [...applyRun.matchAll(/admin\.auth\.admin\.([a-zA-Z]+)\(/g)].map((m) => m[1]).sort();
+    expect(calls).toEqual(["createUser", "getUserById", "inviteUserByEmail"]);
+    expect(apply).toMatch(/email_confirm: false/);
+  });
+
+  it("the engine dispatches only lifecycle actions; role and salon changes are recorded as skipped", () => {
+    expect(apply).toMatch(/if \(!isLifecycleAction\(primary\)\) \{[\s\S]*?"not_a_lifecycle_action"/);
+    expect(apply).not.toMatch(/scope_primary_area_id"?\s*:\s*row\.after|p_role[^,]*row\.account/);
+  });
+
+  it("neither the scheduled sync nor the apply engine can reach the managed-flag writer (role/location can never be switched on by cron or apply)", () => {
+    const cron = strip(readFileSync(join(repo, "src/app/api/employees/woven/cron/route.ts"), "utf8"));
+    for (const [name, c] of [["apply.ts", apply], ["apply-run.ts", applyRun], ["cron/route.ts", cron]] as const) {
+      expect(c, name).not.toMatch(/woven-managed-flags|managed-flags|links\/flags|managed_(role|location)\s*:\s*true/);
+      expect(c, name).not.toMatch(/\.from\(\s*["'`]employee_account_links/);
+    }
+  });
+
+  it("nothing in the migration deletes a row or writes auth", () => {
+    expect(sqlCode).not.toMatch(/delete\s+from/i);
+    expect(sqlCode).not.toMatch(/(insert into|update)\s+auth\./i);
+    expect(sqlCode).not.toMatch(/truncate/i);
+  });
+
+  it("role and location are never managed: no function sets managed_role or managed_location true", () => {
+    for (const fn of ["employee_access_provision_account", "employee_access_link_existing"]) {
+      const body = fnBody(fn);
+      expect(body, fn).toMatch(/managed_status, managed_location, managed_role/);
+      /* Values follow the column list: status (true or computed), then false, false. */
+      expect(body, fn).toMatch(/(true|v_managed), false, false/);
+    }
+    expect(sqlCode).not.toMatch(/managed_(role|location)\s*=\s*true/);
+  });
+
+  it("only an EXISTING account is disabled, never one created or changed in role, scope or salon", () => {
+    const disable = fnBody("employee_access_disable_terminated");
+    expect(disable).toMatch(/update public\.app_users set status = 'disabled', updated_by = null where id = p_app_user_id/);
+    expect(disable).not.toMatch(/role\s*=|scope_level\s*=|scope_primary_area_id\s*=/);
+    expect(disable).toMatch(/employee_access_observed_status\(p_external_employee_id\) <> 'terminated'/);
+    expect(disable).toMatch(/if not v_link\.managed_status/);
+    expect(disable).toMatch(/employee_access_is_protected/);
+    const link = fnBody("employee_access_link_existing");
+    expect(link).not.toMatch(/update public\.app_users/);
+  });
+
+  it("every new function is SECURITY DEFINER with an empty search_path, and only service_role may execute the entry points", () => {
+    const definers = [...sqlCode.matchAll(/create or replace function public\.([a-z_]+)\([\s\S]*?\$\$/g)];
+    expect(definers.length).toBeGreaterThan(10);
+    for (const m of definers) expect(m[0], m[1]).toMatch(/set search_path = ''/);
+    const grants = [...sqlCode.matchAll(/grant ([a-z, ]+) on (?:function )?public\.([a-z_]+)[^;]* to ([a-z_, ]+);/g)].map((m) => `${m[2]}:${m[1]}:${m[3]}`);
+    expect(grants.sort()).toEqual(
+      [
+        "accept_invitation:execute:authenticated",
+        "employee_access_accounts:select:service_role",
+        "employee_access_auth_only_accounts:execute:service_role",
+        "employee_access_auth_user_by_email:execute:service_role",
+        "employee_access_begin_apply_run:execute:service_role",
+        "employee_access_disable_terminated:execute:service_role",
+        "employee_access_finish_apply_run:execute:service_role",
+        "employee_access_link_existing:execute:service_role",
+        "employee_access_provision_account:execute:service_role",
+        "employee_access_record_apply_actions:execute:service_role",
+        "employee_access_record_invite:execute:service_role",
+        "employee_access_record_revocation:execute:service_role",
+      ].sort(),
+    );
+    expect(sqlCode).not.toMatch(/grant [^;]*(update|delete|truncate|all)[^;]* to/i);
+  });
+
+  it("accept_invitation still takes no arguments and changes status only; the one addition stamps invite_accepted_at", () => {
+    const accept = fnBody("accept_invitation");
+    expect(sqlCode).toMatch(/create or replace function public\.accept_invitation\(\)\s+returns jsonb/);
+    expect(accept).toMatch(/set status = 'active'\s+where id = v_uid\s+and status = 'invited'/);
+    expect(accept).toMatch(/update public\.employee_account_links\s+set invite_accepted_at = now\(\)/);
+    expect(accept).not.toMatch(/role\s*=|scope_level\s*=|email\s*=\s*[^v]/);
   });
 });

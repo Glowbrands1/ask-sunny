@@ -25,8 +25,10 @@ export const ACCESS_GUARD_LIMITS = {
   /** Primary-salon moves: at most max(absolute, percent of salon-tier linked accounts). */
   maxLocationMoves: { absolute: 3, percent: 10 },
   maxRoleChanges: { absolute: 3, percent: 10 },
-  /** Accounts created in one run. Invites are a separate, later action. */
+  /** Accounts created (and invited) in one run. */
   maxCreates: 25,
+  /** Existing accounts linked by email discovery in one run. */
+  maxLinks: 25,
 } as const;
 
 export type AccessGuardCode =
@@ -41,6 +43,10 @@ export type AccessGuardCode =
   | "location_moves_exceed_threshold"
   | "role_changes_exceed_threshold"
   | "creates_exceed_batch_limit"
+  | "links_exceed_batch_limit"
+  | "approved_position_mapping_missing"
+  | "duplicate_identity"
+  | "auth_users_unverified"
   | "mappings_disappeared";
 
 export interface DirectoryRunFacts {
@@ -53,6 +59,8 @@ export interface DirectoryRunFacts {
 export interface MappingCounts {
   mappedLocations: number;
   confirmedPositions: number;
+  /** Confirmed positions mapped to a role this lifecycle may provision (Salon Director, Assistant Salon Director). */
+  approvedProvisionPositions?: number;
 }
 
 export interface GuardInput {
@@ -62,6 +70,8 @@ export interface GuardInput {
   mappings: MappingCounts;
   /** The mapping counts the last recorded access run saw; null when there is none yet. */
   mappingBaseline: MappingCounts | null;
+  /** false: profile-less Auth users could not be read, so no account may be created. Omitted: not applicable. */
+  authUsersVerified?: boolean;
   now: Date;
 }
 
@@ -131,6 +141,32 @@ export function evaluateAccessGuards(input: GuardInput): GuardResult {
   if (counts.UPDATE_PRIMARY_LOCATION > moveLimit) codes.push("location_moves_exceed_threshold");
   if (counts.UPDATE_ROLE > roleLimit) codes.push("role_changes_exceed_threshold");
   if (counts.CREATE_USER > L.maxCreates) codes.push("creates_exceed_batch_limit");
+  details.links = counts.LINK_EXISTING;
+  details.linkLimit = L.maxLinks;
+  if (counts.LINK_EXISTING > L.maxLinks) codes.push("links_exceed_batch_limit");
+
+  /* Account creation depends on the approved mapping; without it, nothing may be created. */
+  if (input.mappings.approvedProvisionPositions !== undefined) {
+    details.approvedProvisionPositions = input.mappings.approvedProvisionPositions;
+    if (counts.CREATE_USER > 0 && input.mappings.approvedProvisionPositions === 0) codes.push("approved_position_mapping_missing");
+  }
+
+  /* One EmployeeID, one account; one account, one EmployeeID. The database enforces it; a plan that says otherwise is broken. */
+  const seenEmployees = new Set<string>();
+  const seenAccounts = new Set<string>();
+  let duplicateIdentity = false;
+  for (const row of input.rows) {
+    if (row.externalEmployeeId && row.key.startsWith("employee:")) {
+      if (seenEmployees.has(row.externalEmployeeId)) duplicateIdentity = true;
+      seenEmployees.add(row.externalEmployeeId);
+    }
+    if (row.account && row.account.via !== "email_candidate") {
+      if (seenAccounts.has(row.account.appUserId)) duplicateIdentity = true;
+      seenAccounts.add(row.account.appUserId);
+    }
+  }
+  if (duplicateIdentity) codes.push("duplicate_identity");
+  if (input.authUsersVerified === false && counts.CREATE_USER > 0) codes.push("auth_users_unverified");
 
   details.mappedLocations = input.mappings.mappedLocations;
   details.confirmedPositions = input.mappings.confirmedPositions;
@@ -160,5 +196,9 @@ export const GUARD_DESCRIPTIONS: Record<AccessGuardCode, string> = {
   location_moves_exceed_threshold: "More primary salons would move than the safety threshold allows.",
   role_changes_exceed_threshold: "More roles would change than the safety threshold allows.",
   creates_exceed_batch_limit: `More than ${ACCESS_GUARD_LIMITS.maxCreates} accounts would be created in one run.`,
+  links_exceed_batch_limit: `More than ${ACCESS_GUARD_LIMITS.maxLinks} existing accounts would be linked in one run.`,
+  approved_position_mapping_missing: "No Woven position is mapped to Salon Director or Assistant Salon Director, so no account may be created.",
+  duplicate_identity: "The plan names the same Woven employee or the same account twice.",
+  auth_users_unverified: "Existing Supabase Auth users could not be read, so no account may be created.",
   mappings_disappeared: "Location or position mappings have disappeared since the last recorded run.",
 };

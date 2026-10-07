@@ -5,6 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { WOVEN_SAMPLE_DATASET as SAMPLE } from "@/data/demo/woven";
 import { parseChangeQuery, parseDirectoryQuery, queryChanges, queryDirectory } from "@/lib/employees/woven/views";
 import type { ViewData, WovenViewProps } from "./load";
+import { pendingLinkReviews } from "@/lib/employees/woven/access/link-review";
+
 import { sampleAccessPlan } from "./sample-plan";
 import { WovenViewScreen } from "./woven-view-screen";
 
@@ -276,43 +278,49 @@ describe("Access Preview", () => {
     expect(screen.getByText(/Safety guards:/)).toBeTruthy();
   });
 
-  it("shows every column the owner asked for, one row per employee or account", () => {
+  it("leads with the lifecycle: every column the owner asked for, one row per employee or account", () => {
     const { container } = renderView(sampleProps(data));
     for (const header of [
-      "Employee", "Woven ID", "Email", "Woven status", "Woven position", "Woven primary location", "Ask Sunny account",
-      "Current role", "Current scope / salon", "Proposed role", "Proposed salon", "Proposed action", "Reason",
+      "Employee", "Woven ID", "Woven email", "Woven status", "Woven position", "Mapped Ask Sunny role", "Ask Sunny account",
+      "Lifecycle action", "Reason", "Invite", "Details",
     ]) {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     }
-    expect(container.querySelectorAll("tbody tr[data-actions]").length).toBe(plan.rows.length);
+    expect(container.querySelectorAll("tbody tr[data-lifecycle]").length).toBe(plan.rows.length);
+    for (const tr of container.querySelectorAll("tbody tr[data-lifecycle]")) {
+      expect(["CREATE_USER", "LINK_EXISTING", "NO_CHANGE", "DISABLE_TERMINATED", "REVIEW_REQUIRED"]).toContain(tr.getAttribute("data-lifecycle"));
+    }
   });
 
-  it("filters by action: only rows carrying that action, with a chip per action present", () => {
-    const action = plan.rows.find((r) => r.actions[0] !== "NO_CHANGE")!.actions[0]!;
-    const { container } = renderView(sampleProps({ ...data, actionFilter: action } as ViewData));
-    const shown = [...container.querySelectorAll("tbody tr[data-actions]")];
-    expect(shown.length).toBe(plan.rows.filter((r) => r.actions.includes(action)).length);
-    for (const tr of shown) expect(tr.getAttribute("data-actions")!.split(" ")).toContain(action);
-    expect(screen.getByRole("navigation", { name: "Filter by proposed action" })).toBeTruthy();
+  it("filters by lifecycle outcome, with a chip for each of the five", () => {
+    const outcome = plan.rows.find((r) => r.lifecycle !== "NO_CHANGE")!.lifecycle;
+    const { container } = renderView(sampleProps({ ...data, actionFilter: outcome } as ViewData));
+    const shown = [...container.querySelectorAll("tbody tr[data-lifecycle]")];
+    expect(shown.length).toBe(plan.rows.filter((r) => r.lifecycle === outcome).length);
+    for (const tr of shown) expect(tr.getAttribute("data-lifecycle")).toBe(outcome);
+    const nav = screen.getByRole("navigation", { name: "Filter by lifecycle action" });
+    for (const label of ["Create account + invite", "Link existing account", "No change", "Disable (terminated)", "Review required"]) {
+      expect(nav.textContent).toContain(label);
+    }
   });
 
   it("the 'would change access' filter shows only mutating rows", () => {
     const { container } = renderView(sampleProps({ ...data, actionFilter: "changes" } as ViewData));
     for (const tr of container.querySelectorAll("tbody tr[data-actions]")) {
-      expect(tr.getAttribute("data-actions")).toMatch(/CREATE_USER|UPDATE_PRIMARY_LOCATION|UPDATE_ROLE|DISABLE_TERMINATED/);
+      expect(tr.getAttribute("data-actions")).toMatch(/CREATE_USER|LINK_EXISTING|UPDATE_PRIMARY_LOCATION|UPDATE_ROLE|DISABLE_TERMINATED/);
     }
   });
 
-  it("an existing login that only shares an email is shown as an unconfirmed link, never as a change", () => {
-    const { container } = renderView(sampleProps({ ...data, actionFilter: "FLAG_LINK_REVIEW" } as ViewData));
-    if (plan.counts.FLAG_LINK_REVIEW > 0) {
+  it("an existing login that shares exactly one email is LINK_EXISTING — the link only, the account unchanged", () => {
+    const { container } = renderView(sampleProps({ ...data, actionFilter: "LINK_EXISTING" } as ViewData));
+    if (plan.rows.some((r) => r.lifecycle === "LINK_EXISTING")) {
       expect(container.textContent).toContain("email match, unconfirmed");
-      expect(container.textContent).toContain("A person must confirm the link before Woven manages it.");
+      expect(container.textContent).toContain("the EmployeeID link is stored. The account itself is not changed.");
     }
   });
 
   it("LINK REVIEW: one card per exact-email match, Ask Sunny account ↔ Woven EmployeeID, everything disabled on sample data", () => {
-    const pending = plan.rows.filter((r) => r.actions.includes("FLAG_LINK_REVIEW"));
+    const pending = pendingLinkReviews(plan.rows);
     expect(pending.length).toBeGreaterThan(0);
     renderView(sampleProps(data));
     const panel = screen.getByRole("region", { name: "Link review" });

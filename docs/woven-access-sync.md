@@ -217,6 +217,67 @@ It never sets, generates, shows or emails a password. The person chooses their o
 
 **Invite email prerequisites before any mass invite:** custom SMTP confirmed, scanner-safe invite links (the reset template is already scanner-safe), and an invite expiry of at least 24 hours.
 
+## Stage 5 — the account lifecycle (built 6 Oct 2026; Production apply OFF)
+
+**Scope, and only this** (owner instruction, 6 Oct 2026): create + invite eligible Salon Directors / Assistant Salon Directors; link an existing account by one exact email match; revoke access on Woven's explicit Terminated. No role changes, no salon moves, no district/region sync, no rehire reactivation.
+
+Migration `20261006002000_woven_account_lifecycle.sql` (after `20261006001000`) and `access/apply.ts`:
+
+| Lifecycle outcome | When | What applying it does |
+|---|---|---|
+| `CREATE_USER` | Active in the latest read, confirmed SD/ASD mapping, valid email held by nobody else, mapped salon, no account or link, no status conflict | Auth user created **unconfirmed with no password from us** (`app_metadata` names the EmployeeID) → profile `invited` (mapped role, salon scope) + link `provisioned`, `managed_status` on, role/location **off** → Supabase emails the invitation to the Woven email → the person chooses their own password on `/auth/accept` → `accept_invitation()` activates them and stamps `invite_accepted_at` |
+| `LINK_EXISTING` | Exactly one Woven employee and exactly one unclassified, unprotected, not-disabled account share an exact email; employee Active, no conflict | Stores the link (`email_discovery`). Status managed only for a salon-level SD/ASD in an SD/ASD position; role/location off. The account is not changed |
+| `DISABLE_TERMINATED` | Woven's own Terminated read in the latest run, link status-managed, not protected, directory current | Profile `disabled` → Auth ban + every session/refresh token revoked → `access_revoked_at`. A partial failure is retried next run |
+| `REVIEW_REQUIRED` | Duplicate/ambiguous email, unmapped position, missing email, status conflict, protected match, missing from Woven, unknown status, rehire, invite failed 3 times | Nothing. Shown with the reason |
+| `NO_CHANGE` | Everything else, including role or salon differences (never applied here) | Nothing |
+
+- **Every database step re-checks its own facts** under row locks and refuses with a named code: the Woven status in the latest read, the approved position, the email, the link, protection. The planner's view is never trusted alone.
+- **One apply run at a time:** a unique index on running runs. Each row's result is recorded as `applied`, `failed`, `skipped` or `planned`. Runs are closed once and stay append-only otherwise.
+- **Nothing is deleted.** An interrupted create leaves an unconfirmed auth user that the next run resumes, identified by its `app_metadata` EmployeeID.
+- **Invitations** are tracked on the link: `invite_delivery_status`, `invite_sent_at`, `invite_accepted_at`, `invite_error`, `invite_attempts`. A failed invitation is retried automatically, up to 3 attempts in total.
+- **Supabase stores a random hash** for a user created without a password; nobody ever sees it. Until the person accepts the invitation, no password signs in (proven on the local stack).
+- **The link-update guard** from `20261006001000` now also allows the invitation and termination columns, through these functions only. The link's identity still never changes.
+
+**Switches** (`access/config.ts`). All closed by default. A misconfiguration falls back to OFF.
+
+```
+WOVEN_ACCESS_MODE=apply
+WOVEN_ACCESS_APPLY_ACTIONS=CREATE_USER,SEND_INVITE,LINK_EXISTING,DISABLE_TERMINATED   # any subset; UPDATE_ROLE etc. → OFF
+WOVEN_ACCESS_APPLY_EMPLOYEE_IDS=<id>,<id>                                 # optional first batch
+```
+
+`SEND_INVITE` is its own switch. `CREATE_USER` without it creates the invited account, records `invite_delivery_status = not_sent`, and emails nothing. Turning `SEND_INVITE` on later invites the waiting accounts.
+
+**A bare Supabase Auth user** (a credential with no Ask Sunny profile, created outside this lifecycle) holding the employee's email is `FLAG_AUTH_USER_EXISTS` → `REVIEW_REQUIRED`, never `CREATE_USER`. If those users cannot be read, the guard `auth_users_unverified` blocks every create.
+
+The scheduled sync runs the lifecycle after a successful directory sync only. The response carries codes and counts, never names or emails.
+
+**The 16 existing SD/ASD links** become status-managed (role and location off) through the reviewed one-time file `supabase/data-changes/20261006_woven_status_managed_sd_asd.sql`. It is not a migration, and it is run only with approval. It refuses unless all 16 still qualify. It writes `managed_flags_changed` audits and is safe to run twice.
+
+**Access Preview** leads with the five outcomes (filter chips), the reason and the invitation state. The planner's detailed actions are under *Details*.
+
+**Proven on the local stack** (`lifecycle.local-stack.test.ts`, real Supabase Auth + Mailpit, disposable users):
+
+- invite → own password → accept route → active, with `invite_accepted_at` recorded;
+- repeated and concurrent runs leave exactly one account;
+- every blocked case creates nothing;
+- an invite failure is recoverable;
+- an explicit Terminated revokes sign-in, refresh, Forgot Password and knowledge, and history stays;
+- missing-only, past TerminationDate, failed terminated read and protected accounts are never revoked;
+- a rehire stays disabled.
+
+## Migration history in Production
+
+`supabase_migrations.schema_migrations` in Production does not mirror the repository:
+
+- Its versions are the timestamps at which each migration was applied, not the file versions.
+- Some rows are named after the file and some are not.
+- `20261002001000`, `20261002002000` and `20261006001000` were applied as plain SQL, so their objects exist but have no history row.
+
+**Do not re-run them** to create history rows. **Do not use `supabase db push` or `supabase migration repair` against this project:** the CLI compares file versions with history versions, and almost none match.
+
+Apply future migrations with the Supabase MCP `apply_migration`, which records a row, and keep this list current. If history rows are wanted for the three above, insert them in one reviewed statement (version = apply time, name = file name), changing no schema.
+
 ## Verification
 
 ```
@@ -231,4 +292,11 @@ npm run stack:up && npm run test:local-stack && npm run stack:down
 3. **Stage 2, link review:** done in Production. All 27 accounts are linked or classified.
 4. **Stage 2b, adoption:** apply `20261006001000`, deploy, then set the managed flags per policy. Reset the credentials of the 16 hand-provisioned SD/ASD accounts once the email prerequisites are confirmed.
 5. **Shadow:** `WOVEN_ACCESS_MODE=shadow` in Production (redeploy), then review the recorded runs.
-6. **Apply:** not built. One capability at a time, each behind its own switch: CREATE_USER, SEND_INVITE, auto-resend, DISABLE_TERMINATED, UPDATE_PRIMARY_LOCATION, UPDATE_ROLE, rehire approval.
+6. **Stage 5, account lifecycle:** built (above). Each step below needs its own approval:
+   1. Apply `20261006002000` (Supabase advisors before and after) and deploy, keeping shadow mode.
+   2. Confirm the invitation email prerequisites above in the Supabase dashboard: custom SMTP, invite expiry, the redirect allowlist entry `https://ask-sunny.vercel.app/auth/accept`, and a scanner-safe **Invite user** template. A mail scanner that fetches a `/verify` link spends it, and only the Reset Password template is documented as scanner-safe.
+   3. Disposable-user check in Production.
+   4. `apply` + `CREATE_USER` (no `SEND_INVITE`) for an approved batch (`WOVEN_ACCESS_APPLY_EMPLOYEE_IDS`). Verify. Then `SEND_INVITE` once the email prerequisites are met.
+   5. Clear the batch list.
+   6. Run the 16-link data change, then add `DISABLE_TERMINATED`. Verify.
+   7. UPDATE_PRIMARY_LOCATION, UPDATE_ROLE and rehire approval stay out of scope.

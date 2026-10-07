@@ -76,7 +76,8 @@ describe("credential reset: the owner chooses their own password", () => {
 describe("audit vocabulary", () => {
   it("both modules emit only actions the newest CHECK constraint accepts, and the migration adds them", () => {
     const { file, actions } = allowedAuditActions();
-    expect(file).toBe("20261006001000_woven_adoption_and_credentials.sql");
+    /* This migration, or a later one that keeps its vocabulary (the account lifecycle does — asserted below). */
+    expect(["20261006001000_woven_adoption_and_credentials.sql", "20261006002000_woven_account_lifecycle.sql"]).toContain(file);
     for (const code of [FLAGS, RESET]) {
       for (const match of code.matchAll(/action:\s*"([a-z_]+)"/g)) expect(actions).toContain(match[1]);
     }

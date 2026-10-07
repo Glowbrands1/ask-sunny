@@ -1,6 +1,7 @@
 import type { Role } from "@/types";
 
 import { observedStatus } from "../status-evidence";
+import { lifecycleOf } from "./lifecycle";
 import { isProtectedAccount, SALON_TIER_ROLES } from "./managed-policy";
 import type { AccessAction, PlannedRow, PlannerAccount, PlannerEmployee, PlannerInput, PlannerLocation, PlannerPosition } from "./types";
 
@@ -16,10 +17,14 @@ import type { AccessAction, PlannedRow, PlannerAccount, PlannerEmployee, Planner
  *
  * THE POLICY (owner decisions, 2 Oct 2026)
  *
- *   IDENTITY. A confirmed link (Woven EmployeeID → account) is authoritative.
- *     Without one, an exact, case-insensitive email match to exactly ONE
- *     unclassified account is only PROPOSED (FLAG_LINK_REVIEW) — never acted
- *     on, never merged. Email is never used to re-match a linked account.
+ *   IDENTITY (owner decision, 6 Oct 2026). A stored link (Woven EmployeeID →
+ *     account) is authoritative. Without one, an exact, case-insensitive
+ *     email match may be used ONCE, for discovery: exactly one Woven employee
+ *     and exactly one unclassified, unprotected, not-disabled account, the
+ *     employee Active in the latest read with no status conflict →
+ *     LINK_EXISTING (the link is stored; the account is not changed). Anything
+ *     ambiguous, duplicated, protected or conflicting is held for a person.
+ *     No fuzzy matching. Email is never used to re-match a linked account.
  *
  *   ACCOUNTS. Only a Woven position whose APPROVED mapping is Salon Director
  *     or Assistant Salon Director may get an account automatically, and only
@@ -47,7 +52,7 @@ import type { AccessAction, PlannedRow, PlannerAccount, PlannerEmployee, Planner
  *     email is never changed.
  */
 
-export const ACCESS_POLICY_VERSION = "access-policy-1";
+export const ACCESS_POLICY_VERSION = "access-policy-2";
 
 /** The approved mapped roles that may be provisioned from Woven in this rollout. */
 export const AUTO_PROVISION_ROLES: readonly Role[] = ["salon_director", "assistant_salon_director"];
@@ -71,7 +76,21 @@ function accountView(account: PlannerAccount, via: NonNullable<PlannedRow["accou
     managed: { status: account.managedStatus, location: account.managedLocation, role: account.managedRole },
     extraSalonCount: account.alsoCoversAreaIds.length,
     via,
+    linkMethod: account.linkMethod,
+    invite: account.invite ?? null,
   };
+}
+
+/**
+ * Whether Woven manages EMPLOYMENT STATUS ONLY for an account linked by email
+ * discovery: a salon-level Salon Director / Assistant Salon Director whose
+ * approved Woven position is one of those two. Mirrors
+ * `employee_access_link_existing` in the database. Role and location are never
+ * managed by this lifecycle.
+ */
+export function discoveredLinkManagesStatus(account: Pick<PlannerAccount, "role" | "scopeLevel">, wovenRole: Role | null): boolean {
+  const sdAsd = (role: Role | null) => role !== null && AUTO_PROVISION_ROLES.includes(role);
+  return sdAsd(account.role) && account.scopeLevel === "salon" && sdAsd(wovenRole);
 }
 
 /** The Woven EmployeeID an account is linked to: its link row, or (protected accounts) its override. */
@@ -119,11 +138,13 @@ export function planAccess(input: PlannerInput): PlannedRow[] {
     if (key) emailHolders.set(key, (emailHolders.get(key) ?? 0) + 1);
   }
 
+  const authOnly = input.authOnly ? new Map(input.authOnly.map((a) => [lower(a.email), a.provisionedExternalEmployeeId])) : undefined;
+
   const covered = new Set<string>();
   const rows: PlannedRow[] = [];
 
   for (const employee of [...input.employees].sort((a, b) => a.externalEmployeeId.localeCompare(b.externalEmployeeId))) {
-    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders });
+    const row = planEmployee(employee, { positions, locations, byLinkedEmployee, byEmail, emailHolders, authOnly });
     if (row.account) covered.add(row.account.appUserId);
     rows.push(row);
   }
@@ -147,6 +168,8 @@ export function planAccess(input: PlannerInput): PlannedRow[] {
       proposedPrimaryAreaId: null,
       actions: [],
       reasons: [],
+      lifecycle: "NO_CHANGE",
+      lifecycleReason: "",
       before: null,
       after: null,
       wovenSourceAt: null,
@@ -160,7 +183,7 @@ export function planAccess(input: PlannerInput): PlannedRow[] {
     }
   }
 
-  return rows;
+  return rows.map((r) => ({ ...r, ...lifecycleOf(r) }));
 }
 
 interface Context {
@@ -169,6 +192,8 @@ interface Context {
   byLinkedEmployee: Map<string, PlannerAccount>;
   byEmail: Map<string, PlannerAccount[]>;
   emailHolders: Map<string, number>;
+  /** email → the EmployeeID stamped on a profile-less auth user (null: not ours). */
+  authOnly: Map<string, string | null> | undefined;
 }
 
 function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
@@ -196,6 +221,8 @@ function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
     proposedPrimaryAreaId: location.areaId,
     actions: actions.length > 0 ? sortActions(actions) : ["NO_CHANGE"],
     reasons,
+    lifecycle: "NO_CHANGE",
+    lifecycleReason: "",
     before,
     after,
     wovenSourceAt: employee.lastSyncedAt,
@@ -216,10 +243,8 @@ function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
       if ((ctx.emailHolders.get(email) ?? 0) > 1 || employee.issues.includes("duplicate_email")) {
         actions.push("FLAG_DUPLICATE_EMAIL");
         reasons.push("email_shared_by_several_woven_employees");
-      } else if (unclassified.length === 1) {
-        actions.push("FLAG_LINK_REVIEW");
-        reasons.push("exact_email_match_awaiting_confirmation");
-        if (status === "terminated") reasons.push("terminated_in_woven");
+      } else if (unclassified.length === 1 && notManaged.length === 0 && linkedElsewhere.length === 0) {
+        planEmailDiscovery(employee, unclassified[0]!, status, role, actions, reasons, (b, a) => ((before = b), (after = a)));
       } else if (unclassified.length > 1) {
         actions.push("FLAG_DUPLICATE_EMAIL");
         reasons.push("email_shared_by_several_accounts");
@@ -356,6 +381,52 @@ function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
   return row();
 }
 
+/**
+ * One exact email match, one unclassified account: LINK_EXISTING when it is
+ * clean, otherwise held for a person with the reason. Never fuzzy, never a
+ * merge, and the account itself is not changed — only the link is stored.
+ */
+function planEmailDiscovery(
+  employee: PlannerEmployee,
+  candidate: PlannerAccount,
+  status: ReturnType<typeof observedStatus>,
+  role: Role | null,
+  actions: AccessAction[],
+  reasons: string[],
+  setValues: (before: PlannedRow["before"], after: PlannedRow["after"]) => void,
+): void {
+  if (isProtected(candidate)) {
+    actions.push("FLAG_PROTECTED_ACCOUNT");
+    reasons.push("email_matches_protected_account");
+    return;
+  }
+  if (status !== "active") {
+    actions.push("FLAG_LINK_REVIEW");
+    reasons.push(status === "terminated" ? "email_match_terminated_in_woven" : "email_match_status_not_read_this_run");
+    return;
+  }
+  if (employee.issues.includes("status_termination_conflict")) {
+    actions.push("FLAG_STATUS_CONFLICT");
+    reasons.push("woven_shows_past_termination_date", "email_match_held_for_review");
+    return;
+  }
+  if (candidate.status === "disabled") {
+    actions.push("FLAG_STATUS_CONFLICT");
+    reasons.push("disabled_in_ask_sunny_active_in_woven", "email_match_held_for_review");
+    return;
+  }
+  const managedStatus = discoveredLinkManagesStatus(candidate, role);
+  actions.push("LINK_EXISTING");
+  reasons.push("single_exact_email_match");
+  setValues(null, {
+    external_employee_id: employee.externalEmployeeId,
+    link_method: "email_discovery",
+    managed_status: managedStatus,
+    managed_location: false,
+    managed_role: false,
+  });
+}
+
 function planWithoutAccount(
   employee: PlannerEmployee,
   status: ReturnType<typeof observedStatus>,
@@ -401,6 +472,12 @@ function planWithoutAccount(
     reasons.push("email_shared_by_several_woven_employees");
     return row();
   }
+  /* A bare Supabase Auth credential already holds this email. Ours for this employee (an interrupted create) resumes; anything else is a person's call. */
+  if (ctx.authOnly?.has(email) && ctx.authOnly.get(email) !== employee.externalEmployeeId) {
+    actions.push("FLAG_AUTH_USER_EXISTS");
+    reasons.push("auth_user_exists_without_profile");
+    return row();
+  }
   if (location.problem) {
     actions.push("FLAG_UNMAPPED_LOCATION");
     reasons.push(location.problem);
@@ -418,7 +495,11 @@ function planWithoutAccount(
     scope_also_covers_area_ids: [],
     provisioned_by_source: "woven",
     external_employee_id: employee.externalEmployeeId,
-    invite_email: "not_sent",
+    link_method: "provisioned",
+    managed_status: true,
+    managed_location: false,
+    managed_role: false,
+    invite: "supabase_invitation_to_woven_email",
   });
   return row();
 }
@@ -427,7 +508,9 @@ function planWithoutAccount(
 const ORDER: readonly AccessAction[] = [
   "DISABLE_TERMINATED",
   "CREATE_USER",
+  "LINK_EXISTING",
   "UPDATE_ROLE",
+  "FLAG_AUTH_USER_EXISTS",
   "UPDATE_PRIMARY_LOCATION",
   "FLAG_REHIRE_REVIEW",
   "FLAG_PROTECTED_ACCOUNT",

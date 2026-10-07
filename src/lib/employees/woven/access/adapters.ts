@@ -3,7 +3,7 @@ import type { Role, ScopeLevel } from "@/types";
 
 import type { DirectoryRow, LocationMappingRow, PositionMappingRow } from "../view-types";
 import { employeeName } from "../views";
-import type { PlannerAccount, PlannerEmployee, PlannerLocation, PlannerPosition } from "./types";
+import type { InviteDeliveryStatus, PlannerAccount, PlannerEmployee, PlannerLocation, PlannerPosition } from "./types";
 
 /**
  * The planner's inputs, from the same read models the other Woven tabs use —
@@ -14,6 +14,7 @@ import type { PlannerAccount, PlannerEmployee, PlannerLocation, PlannerPosition 
 const SCOPE_LEVELS: readonly ScopeLevel[] = ["global", "region", "district", "salon"];
 const asRole = (v: unknown): Role | null => ((ROLES as readonly string[]).includes(String(v)) ? (v as Role) : null);
 const asScope = (v: unknown): ScopeLevel | null => (SCOPE_LEVELS.includes(v as ScopeLevel) ? (v as ScopeLevel) : null);
+const INVITE_STATUSES: readonly InviteDeliveryStatus[] = ["not_sent", "sent", "failed"];
 const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : null);
 
 export function plannerEmployee(row: DirectoryRow): PlannerEmployee {
@@ -80,5 +81,14 @@ export function plannerAccount(row: Record<string, unknown>): PlannerAccount | n
     terminatedAt: str(row.terminated_at),
     accessRevokedAt: str(row.access_revoked_at),
     override: lockedRole && lockedScope ? { role: lockedRole, scopeLevel: lockedScope, externalEmployeeId: str(row.override_external_employee_id) } : null,
+    invite: INVITE_STATUSES.includes(row.invite_delivery_status as InviteDeliveryStatus)
+      ? {
+          status: row.invite_delivery_status as InviteDeliveryStatus,
+          sentAt: str(row.invite_sent_at),
+          acceptedAt: str(row.invite_accepted_at),
+          attempts: typeof row.invite_attempts === "number" ? row.invite_attempts : 0,
+          error: str(row.invite_error),
+        }
+      : null,
   };
 }
