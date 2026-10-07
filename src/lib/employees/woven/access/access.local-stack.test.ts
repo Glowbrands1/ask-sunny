@@ -138,6 +138,8 @@ describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 6
     expect(link(ids.unmatched)).toBe("not_woven_managed,-,unmatched_backfill,falsefalsefalse");
     expect(link(ids.candidate)).toBe("");
     expect(link(ids.linkedSd)).toBe("");
+    /* Re-running 20261007001000 logs no phantom switch change: its seed row is logged exactly once. */
+    expect(sql(`select count(*) from public.employee_access_control_changes where changed_by = 'migration:20261007001000'`)).toBe("1");
   });
 
   it("the link constraints refuse ambiguity", () => {

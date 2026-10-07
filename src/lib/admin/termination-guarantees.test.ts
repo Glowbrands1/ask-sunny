@@ -198,4 +198,16 @@ describe("migration 20261007001000", () => {
   it("a shadow run can hold only shadow results and an apply run never does", () => {
     expect(MIGRATION).toMatch(/if \(v_mode = 'shadow'\) <> \(new\.result = 'shadow'\) then/);
   });
+
+  it("pastes cleanly into the Supabase SQL editor: no comments or SELECT … INTO inside function bodies", () => {
+    /* The editor's checks scan $$ bodies as top-level SQL: SELECT … INTO read as a new table, and a
+       comment inside a body cut the statement there (7 Oct 2026). Keep bodies to plain statements. */
+    const raw = readFileSync("supabase/migrations/20261007001000_woven_disable_terminated_apply.sql", "utf8");
+    const bodies = [...raw.matchAll(/\$\$([\s\S]*?)\$\$/g)].map((m) => m[1]!);
+    expect(bodies).toHaveLength(6);
+    for (const body of bodies) {
+      expect(body).not.toMatch(/\/\*|--/);
+      expect(body).not.toMatch(/\bselect\b[^;]*\binto\b/i);
+    }
+  });
 });

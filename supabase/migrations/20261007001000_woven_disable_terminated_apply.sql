@@ -49,8 +49,13 @@ create table if not exists public.employee_access_controls (
 comment on table public.employee_access_controls is
   'One switch per Woven apply action. OFF by default. Changed only by the owner in the SQL editor (service_role may read, never write); every change is logged in employee_access_control_changes.';
 
+-- Seeded only when absent: a BEFORE INSERT trigger fires even for a row that
+-- ON CONFLICT then discards, so a re-run must not attempt the insert at all.
 insert into public.employee_access_controls (action, enabled, max_per_run, changed_by, reason)
-values ('DISABLE_TERMINATED', false, 3, 'migration:20261007001000', 'Off until the owner approves automatic revocation')
+select v.action, v.enabled, v.max_per_run, v.changed_by, v.reason
+from (values ('DISABLE_TERMINATED', false, 3, 'migration:20261007001000', 'Off until the owner approves automatic revocation'))
+  as v (action, enabled, max_per_run, changed_by, reason)
+where not exists (select 1 from public.employee_access_controls c where c.action = v.action)
 on conflict (action) do nothing;
 
 create table if not exists public.employee_access_control_changes (
@@ -133,6 +138,9 @@ create index if not exists employee_access_operations_recent on public.employee_
 comment on table public.employee_access_operations is
   'Idempotency ledger for Woven apply actions: one row per attempt, written only through employee_access_claim_operation / employee_access_finish_operation.';
 
+-- A pending attempt older than 15 minutes belongs to a run that died: it is
+-- abandoned so this run can finish the work. A unique violation means another
+-- run holds this account right now, and the claim returns null.
 create or replace function public.employee_access_claim_operation(
   p_action                text,
   p_app_user_id           uuid,
@@ -147,7 +155,6 @@ as $$
 declare
   v_id uuid;
 begin
-  /* A pending attempt older than 15 minutes belongs to a run that died: abandon it so this run can finish the work. */
   update public.employee_access_operations
      set status = 'abandoned', finished_at = now(), error_code = 'abandoned_after_timeout'
    where action = p_action and app_user_id = p_app_user_id and status = 'pending'
@@ -158,7 +165,7 @@ begin
     values (p_action, p_app_user_id, p_external_employee_id, p_trigger_source)
     returning id into v_id;
   exception when unique_violation then
-    return null;  -- another run holds this account right now
+    return null;
   end;
   return v_id;
 end;
@@ -218,7 +225,7 @@ as $$
 declare
   v_mode text;
 begin
-  select mode into v_mode from public.employee_access_runs where id = new.access_run_id;
+  v_mode := (select r.mode from public.employee_access_runs r where r.id = new.access_run_id);
   if (v_mode = 'shadow') <> (new.result = 'shadow') then
     raise exception 'employee_access_actions: a % run cannot hold a % result', v_mode, new.result
       using errcode = 'check_violation';
@@ -236,6 +243,9 @@ revoke all on function public.employee_access_actions_match_run() from public, a
 
 -- ------------------------------ 4. revocation fields on the link, write-once ---
 
+-- Everything except the three flags, the three revocation fields (and the
+-- touched timestamp) is the link's identity. The revocation fields are
+-- write-once in this version: recorded, never rewritten or cleared.
 create or replace function public.employee_account_links_guard_update()
 returns trigger
 language plpgsql
@@ -243,7 +253,6 @@ security invoker
 set search_path = ''
 as $$
 begin
-  /* Everything except the three flags, the three revocation fields (and the touched timestamp) is the link's identity. */
   if (to_jsonb(new) - array['managed_status', 'managed_location', 'managed_role',
                             'terminated_at', 'access_revoked_at', 'revoked_woven_status', 'updated_at'])
      is distinct from
@@ -252,7 +261,6 @@ begin
     raise exception 'employee_account_links: only managed_status, managed_location, managed_role and the revocation fields can change'
       using errcode = 'check_violation';
   end if;
-  /* Revocation fields are write-once in this version: recorded, never rewritten or cleared. */
   if (old.terminated_at is not null and new.terminated_at is distinct from old.terminated_at)
      or (old.access_revoked_at is not null and new.access_revoked_at is distinct from old.access_revoked_at)
      or (old.revoked_woven_status is not null and new.revoked_woven_status is distinct from old.revoked_woven_status) then
