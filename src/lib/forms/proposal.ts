@@ -216,8 +216,28 @@ const ROSTER_NAME_KEYS: ReadonlySet<string> = new Set(
   }),
 );
 
+/*
+ * "OMAHA CENTER" IS NE OMAHA 144TH AND CENTER. Ask Sunny feedback, 7 October
+ * 2026: "primary salon is Omaha Center" made the salon a second employee
+ * candidate. Managers shorten a salon to its city and the word they know it
+ * by, so a shortening is a place when it opens with a roster salon's city and
+ * every other word is in that salon's name. "Lawrence Smith" opens with a
+ * city and is still a person: "smith" is in no salon's name.
+ */
+const ROSTER_NAME_WORDS: readonly (readonly string[])[] = PRODUCTION_SALONS.map((salon) =>
+  storeNameKey(salon.name).split(" ").slice(1),
+);
+
+function isRosterSalonShorthand(candidate: string): boolean {
+  const words = storeNameKey(candidate).replace(/^[a-z]{2} (?=\S+ \S)/, "").split(" ");
+  if (words.length < 2) return false;
+  return ROSTER_NAME_WORDS.some(
+    (name) => words[0] === name[0] && words.every((word) => name.includes(word)),
+  );
+}
+
 function isRosterSalonName(candidate: string): boolean {
-  return ROSTER_NAME_KEYS.has(storeNameKey(candidate));
+  return ROSTER_NAME_KEYS.has(storeNameKey(candidate)) || isRosterSalonShorthand(candidate);
 }
 
 function opensWithRosterState(candidate: string): boolean {
