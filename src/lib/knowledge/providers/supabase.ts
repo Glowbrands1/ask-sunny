@@ -17,8 +17,10 @@ import {
   type KnowledgeDocumentRole,
 } from "../document-roles";
 import {
+  OFFICIAL_POLICY_MANUAL,
   resolvePolicyManual,
   type ManualChunk,
+  type PolicyManualIdentity,
 } from "@/lib/forms/official-policy-manual";
 import {
   buildRoleGrounding,
@@ -26,6 +28,7 @@ import {
   type RoleGroundingResult,
 } from "../role-grounding";
 import type { KnowledgeProvider, KnowledgeQuery } from "../types";
+import { fuseRankings, keywordQuery, type KeywordChunkRow } from "../hybrid";
 
 /** The manual's rows, or why none could be cited. */
 export type OfficialPolicyManualResult =
@@ -161,23 +164,60 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
     }
 
     const queryEmbedding = await embeddings.embedQuery(trimmed);
+    const limit = query.limit ?? RETRIEVAL.topK;
+    const filterCategories = query.categories?.length ? query.categories : null;
 
-    const { data, error } = await getSupabaseAdmin().rpc("match_knowledge_chunks", {
-      query_embedding: queryEmbedding,
-      scope_id: query.scopeId,
-      match_count: query.limit ?? RETRIEVAL.topK,
-      min_similarity: RETRIEVAL.minSimilarity,
-      filter_categories: query.categories?.length ? query.categories : null,
-    });
+    /*
+     * BOTH LEGS AT ONCE, and the keyword leg may fail alone. Before its
+     * migration is applied — or if it ever errors — retrieval is exactly the
+     * vector search it was, never an outage. See `knowledge/hybrid.ts`.
+     */
+    const [vector, keyword] = await Promise.all([
+      getSupabaseAdmin().rpc("match_knowledge_chunks", {
+        query_embedding: queryEmbedding,
+        scope_id: query.scopeId,
+        match_count: limit,
+        min_similarity: RETRIEVAL.minSimilarity,
+        filter_categories: filterCategories,
+      }),
+      query.hybrid
+        ? this.matchKeywords(trimmed, query.scopeId, limit, filterCategories)
+        : Promise.resolve([]),
+    ]);
 
-    if (error) {
+    if (vector.error) {
       // The Supabase error can carry the query payload; only the message is
       // kept, and the question text is never re-logged here.
-      throw new Error(`Knowledge retrieval failed: ${error.message}`);
+      throw new Error(`Knowledge retrieval failed: ${vector.error.message}`);
     }
 
-    this.lastRows = (data ?? []) as MatchedChunkRow[];
+    const vectorRows = (vector.data ?? []) as MatchedChunkRow[];
+    this.lastRows = query.hybrid ? fuseRankings(vectorRows, keyword, limit) : vectorRows;
     return this.lastRows;
+  }
+
+  /** The lexical leg, or nothing when it is unavailable. */
+  private async matchKeywords(
+    question: string,
+    scopeId: string,
+    limit: number,
+    filterCategories: string[] | null,
+  ): Promise<KeywordChunkRow[]> {
+    const { terms, phrases } = keywordQuery(question);
+    if (terms.length === 0) return [];
+    try {
+      const { data, error } = await getSupabaseAdmin().rpc("match_knowledge_chunks_keyword", {
+        query_terms: terms,
+        query_phrases: phrases,
+        scope_id: scopeId,
+        match_count: limit,
+        filter_categories: filterCategories,
+      });
+      if (error) return [];
+      return (data ?? []) as KeywordChunkRow[];
+    } catch {
+      return [];
+    }
   }
 
   toCitations(results: SearchResult[]): SourceCitation[] {
@@ -233,6 +273,11 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
    */
   async fetchOfficialPolicyManual(
     scopeId: string,
+    /*
+     * WHICH DOCUMENT, BY IDENTITY. The manual by default; the Ask Sunny app
+     * knowledge document reuses the same lookup (`ai/app-knowledge.ts`).
+     */
+    identity: PolicyManualIdentity = OFFICIAL_POLICY_MANUAL,
   ): Promise<OfficialPolicyManualResult> {
     const client = getSupabaseAdmin();
 
@@ -251,7 +296,7 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
       return { ok: false, reason: "The official policy manual could not be looked up." };
     }
 
-    const resolution = resolvePolicyManual(documents);
+    const resolution = resolvePolicyManual(documents, identity);
     if (!resolution.ok) {
       return {
         ok: false,
