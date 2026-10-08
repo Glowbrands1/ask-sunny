@@ -521,7 +521,30 @@ export async function saveInstanceValues(
    * record — see `required-closing.ts`. Nothing else they typed is changed.
    */
   const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values);
-  await writeValues(instanceId, { values, checked: result.checked }, "manager");
+  /*
+   * ONLY WHAT THE MANAGER CHANGED IS REWRITTEN AS THEIRS.
+   *
+   * The form card submits every field on each save. Writing them all as
+   * `filled_by: "manager"` with no provenance stripped the verified provenance
+   * off Policy Language the moment a manager corrected a job title — and the
+   * finalize then demanded a policy acknowledgement for wording Ask Sunny had
+   * sourced and nobody had touched. A value that matches what is stored keeps
+   * its row, and with it whoever really wrote it.
+   */
+  const stored = new Map(loaded.values.map((row) => [row.fieldKey, row]));
+  const changedValues = Object.fromEntries(
+    Object.entries(values).filter(
+      ([key, value]) => (stored.get(key)?.value ?? "") !== (value ?? ""),
+    ),
+  );
+  const changedChecked = Object.fromEntries(
+    Object.entries(result.checked).filter(([key, checked]) => {
+      // A selection is a set: the same ticks in another order are not an edit.
+      const before = new Set(stored.get(key)?.checked ?? []);
+      return before.size !== new Set(checked).size || checked.some((option) => !before.has(option));
+    }),
+  );
+  await writeValues(instanceId, { values: changedValues, checked: changedChecked }, "manager");
   await recordEvent(instanceId, "edited", actor, {
     fields: Object.keys(result.values).length,
     groups: Object.keys(result.checked).length,

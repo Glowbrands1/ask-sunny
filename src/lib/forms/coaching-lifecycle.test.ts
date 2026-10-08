@@ -168,6 +168,29 @@ describe("a new coaching form", () => {
     expect(values.form_date).toBe("2026-09-07");
   });
 
+  /*
+   * CODE REVIEW, 8 OCTOBER. A selection is a set: the same ticks resubmitted
+   * in another order are not the manager's edit, and must not take Ask
+   * Sunny's draft away from it. A changed selection still is.
+   */
+  it("keeps Ask Sunny's ticks when the same selection comes back in another order", async () => {
+    const instance = await startCoachingForm();
+    await applyAssistantDraft(
+      instance.id,
+      { values: {}, checked: { coaching_topics: ["store_tours", "cleaning_tasks"] } },
+      "sunny",
+    );
+
+    await saveInstanceValues(instance.id, { checked: { coaching_topics: ["cleaning_tasks", "store_tours"] } }, "dana");
+    let topics = (await loadInstance(instance.id))!.values.find((value) => value.fieldKey === "coaching_topics");
+    expect(topics?.filledBy).toBe("ai");
+
+    await saveInstanceValues(instance.id, { checked: { coaching_topics: ["cleaning_tasks"] } }, "dana");
+    topics = (await loadInstance(instance.id))!.values.find((value) => value.fieldKey === "coaching_topics");
+    expect(topics?.filledBy).toBe("manager");
+    expect(topics?.checked).toEqual(["cleaning_tasks"]);
+  });
+
   it("saves ticks, text and details, and reads them all back", async () => {
     const instance = await startCoachingForm();
 
@@ -317,6 +340,48 @@ describe("a new coaching form", () => {
     const detail = finalizedEvent((await loadInstance(instance.id))!.events).detail;
     expect(detail.unverifiedPolicy).toBeUndefined();
     expect(detail.policyVerificationOverride).toBeUndefined();
+  });
+
+  /*
+   * THE FORM CARD SAVES EVERY FIELD AT ONCE. A manager correcting the job
+   * title resubmits the sourced policy wording untouched, and that must not
+   * turn it into an unverified, hand-typed value.
+   */
+  it("A. keeps the policy verified when a save resubmits it unchanged", async () => {
+    const instance = await correctiveFormWithVerifiedPolicy();
+    const before = (await loadInstance(instance.id))!.values;
+    const unchanged = Object.fromEntries(
+      before.filter((row) => row.value !== null).map((row) => [row.fieldKey, row.value!]),
+    );
+
+    await saveInstanceValues(
+      instance.id,
+      { values: { ...unchanged, job_title: "Tanning Consultant" } },
+      "dana",
+    );
+
+    const after = (await loadInstance(instance.id))!.values;
+    const language = after.find((row) => row.fieldKey === "policy_language");
+    expect(language?.filledBy).toBe("ai");
+    expect(language?.provenance).toEqual(VERIFIED);
+    expect(after.find((row) => row.fieldKey === "job_title")?.filledBy).toBe("manager");
+
+    const finalized = await finalizeInstance(instance.id, "dana", null);
+    expect(finalized.status).toBe("finalized");
+  });
+
+  it("A. still un-verifies the policy once the manager rewrites it", async () => {
+    const instance = await correctiveFormWithVerifiedPolicy();
+
+    await saveInstanceValues(
+      instance.id,
+      { values: { policy_language: "My own summary of the dress code." } },
+      "dana",
+    );
+
+    await expect(finalizeInstance(instance.id, "dana", null)).rejects.toBeInstanceOf(
+      UnverifiedPolicyError,
+    );
   });
 
   /* -- B/C. unverified policy is refused until somebody says so ------------ */

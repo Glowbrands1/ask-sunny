@@ -52,6 +52,25 @@ describe("P1 — team descriptors are never an employee's name", () => {
     expect(maskTeamSubjectPhrases(`coaching form for ${phrase}`)).not.toContain(phrase);
   });
 
+  /*
+   * ASK SUNNY FEEDBACK, 6 OCTOBER 2026. "coacing form based on uniform"
+   * created a Coaching Form for an employee called "based". The words that
+   * tie a form to its topic are never who it is for.
+   */
+  it.each([
+    "coacing form based on uniform",
+    "coaching form based on uniform",
+    "coaching form related to cell phones",
+    "CA due to tardiness",
+    "coaching form according to the dress code",
+  ])("%j names nobody", (text) => {
+    expect(extractEmployeeNames(text)).toEqual([]);
+  });
+
+  it("still reads the person after a topic connector's form request", () => {
+    expect(extractEmployeeNames("coaching form for jane doe based on uniform")).toEqual(["jane doe"]);
+  });
+
   it("keeps a real named employee — the form is hers, not the team's", () => {
     expect(extractEmployeeNames("Create a coaching form for Kaitlyn about how the whole team should sanitize beds.")).toEqual([
       "Kaitlyn",
