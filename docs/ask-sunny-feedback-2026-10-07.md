@@ -43,7 +43,8 @@ column** to `knowledge_chunks`, a GIN index and one function.
 
 - **Lock timeout 5 s.** Verified on Postgres 16: behind a long open reader, the
   migration gives up after 5.03 s and leaves nothing behind (no column, no
-  function). Retry in a quieter minute.
+  function). **A failed migration is never retried automatically:** stop,
+  investigate and request approval (Deployment, step 2).
 - **Statement timeout 10 min** (production role default is 2 min).
 - **Measured:** 3.6 s on 13,455 rows without the vector index (native
   Postgres 16); about 17 s with the HNSW rebuild (PGlite). **Expect 5–20 s of
@@ -90,8 +91,17 @@ database (some without a history row, see `docs/woven-access-sync.md`);
    - a ten-common-word call returns in well under a second, and the
      checking-account call returns the TC Mastery chunk;
    - the advisors show nothing new.
-   If any check fails: `drop function public.match_knowledge_chunks_keyword(text[], text[], text, integer, text[]);`
-   chat falls back to vector search at once, with no redeploy.
+
+   **If the migration fails** (lock timeout, statement timeout or any other
+   error): **stop. Do not retry it.** Record the error; check which of the
+   column, index and function exist, whether anything is still waiting on
+   `knowledge_chunks`, and whether a history row was written; report all of
+   it and request approval before running it again. Do not merge.
+
+   **If it succeeds but a check fails:** stop and report before anything else.
+   The prepared remedy, run only with approval, is
+   `drop function public.match_knowledge_chunks_keyword(text[], text[], text, integer, text[]);`
+   chat then falls back to vector search at once, with no redeploy.
 3. **Merge**: squash-merge PR #90; Vercel builds Production from the squash
    commit. Confirm it is Ready and `NEXT_PUBLIC_DEMO_MODE` is still `false`.
    (The code also tolerates the opposite order: without the function, chat is

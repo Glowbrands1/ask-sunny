@@ -45,7 +45,14 @@
 -- LOCK TIMEOUT. A lock request queues behind any open transaction on the
 -- table, and every reader that arrives after it queues behind IT — a waiting
 -- ALTER stalls the whole application as surely as a running one. Five seconds,
--- then fail cleanly with nothing changed, and retry in a quieter minute.
+-- then fail cleanly with nothing changed.
+--
+-- A FAILED MIGRATION IS NOT RETRIED. Whatever the error (lock timeout,
+-- statement timeout or anything else): stop, investigate (the error, which of
+-- the column, index and function exist, what held the lock, whether a history
+-- row was written) and request approval before running it again. Nothing is
+-- merged or deployed until it has succeeded. See
+-- docs/ask-sunny-feedback-2026-10-07.md.
 --
 -- STATEMENT TIMEOUT. The role default (2 min in production) is raised so the
 -- rewrite and HNSW rebuild cannot be cut off half way; ten minutes is a
