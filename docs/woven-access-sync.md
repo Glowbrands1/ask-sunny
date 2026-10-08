@@ -331,6 +331,12 @@ Both files above contain `drop` statements. Apply them from a client that shows 
 - Its versions are the timestamps at which each migration was applied, not the file versions.
 - Some rows are named after the file and some are not.
 - `20261002001000`, `20261002002000`, `20261006001000` and PR #89's `20261007001000` were applied as plain SQL, so their objects exist but have no history row. (#89's objects are retired by `20261007002000`.)
+- `20261006002000` and `20261007002000` were applied on 7 Oct 2026 in that order through the SQL editor, so they also have no history row. They were verified read-only on 8 Oct against a fresh build of main:
+  - constraints, columns, view, indexes, triggers, grants and RLS are identical (130 inventory lines);
+  - all 18 lifecycle functions are identical in code and string literals, and in settings and execute rights;
+  - all #89 objects are gone.
+
+  The editor stored the function bodies re-laid out, with in-body comments removed and CRLF line endings, so a byte-level hash of `prosrc` will not match the files. Compare with comments and whitespace stripped instead.
 
 **Do not re-run them** to create history rows. **Do not use `supabase db push` or `supabase migration repair` against this project:** the CLI compares file versions with history versions, and almost none match.
 
