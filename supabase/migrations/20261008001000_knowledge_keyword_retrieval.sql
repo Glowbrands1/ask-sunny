@@ -94,25 +94,34 @@ stable
 security invoker
 set search_path = public, extensions
 as $$
-  with units as (
-    select distinct q
+  -- MATERIALIZED, EACH SET ONCE. Postgres cannot estimate how many chunks a
+  -- tsquery built at run time will match, so it guesses one; given that guess
+  -- it inlined the weights into a nested loop and recomputed them, corpus
+  -- count included, once per candidate chunk. That is quadratic: a few ms for
+  -- a rare phrase, past the 8 s statement timeout for common words. Each set
+  -- below is computed once, and each chunk is tested against each unit once.
+  with units as materialized (
+    select q, row_number() over () as unit_id
     from (
-      select plainto_tsquery('english'::regconfig, t) as q
-        from unnest(coalesce(query_terms, '{}'::text[])) with ordinality as x(t, n)
-        where n <= 24
-      union all
-      select phraseto_tsquery('english'::regconfig, p)
-        from unnest(coalesce(query_phrases, '{}'::text[])) with ordinality as y(p, n)
-        where n <= 16
-    ) parsed
-    where numnode(q) > 0
+      select distinct q
+      from (
+        select plainto_tsquery('english'::regconfig, t) as q
+          from unnest(coalesce(query_terms, '{}'::text[])) with ordinality as x(t, n)
+          where n <= 24
+        union all
+        select phraseto_tsquery('english'::regconfig, p)
+          from unnest(coalesce(query_phrases, '{}'::text[])) with ordinality as y(p, n)
+          where n <= 16
+      ) parsed
+      where numnode(q) > 0
+    ) distinct_units
   ),
   -- Any unit at all, so the candidate scan can use the GIN index. Built from
   -- tsquery values' own text, never from the caller's.
-  any_unit as (
+  any_unit as materialized (
     select string_agg('(' || q::text || ')', ' | ')::tsquery as q from units
   ),
-  candidates as (
+  candidates as materialized (
     select c.id, c.content_tsv
     from public.knowledge_chunks c
     join public.knowledge_documents d
@@ -124,7 +133,7 @@ as $$
       and (filter_categories is null or d.category = any (filter_categories))
       and c.content_tsv @@ (select q from any_unit)
   ),
-  corpus as (
+  corpus as materialized (
     select count(*)::double precision as total
     from public.knowledge_chunks c
     join public.knowledge_documents d
@@ -135,20 +144,31 @@ as $$
       and c.version = d.version
       and (filter_categories is null or d.category = any (filter_categories))
   ),
+  -- Which unit each candidate contains: the one pass of tsquery matching.
+  hits as materialized (
+    select v.id, u.unit_id
+    from candidates v
+    join units u on v.content_tsv @@ u.q
+  ),
   -- A chunk containing a unit is a candidate, so counting candidates is
   -- counting the visible corpus.
-  weighted as (
-    select u.q, ln((corpus.total + 1) / (count(v.id) + 0.5)) as idf
-    from units u
+  weighted as materialized (
+    select h.unit_id, ln((corpus.total + 1) / (count(*) + 0.5)) as idf
+    from hits h
     cross join corpus
-    join candidates v on v.content_tsv @@ u.q
-    group by u.q, corpus.total
+    group by h.unit_id, corpus.total
   ),
-  scored as (
-    select v.id, sum(w.idf) as score, count(*)::integer as matched
-    from candidates v
-    join weighted w on v.content_tsv @@ w.q
-    group by v.id
+  scored as materialized (
+    select h.id, sum(w.idf) as score, count(*)::integer as matched
+    from hits h
+    join weighted w on w.unit_id = h.unit_id
+    group by h.id
+  ),
+  top as (
+    select id, score, matched
+    from scored
+    order by score desc, id
+    limit greatest(1, least(match_count, 50))
   )
   select
     c.id          as chunk_id,
@@ -161,11 +181,10 @@ as $$
     c.content     as content,
     s.score       as keyword_score,
     s.matched     as matched_units
-  from scored s
+  from top s
   join public.knowledge_chunks c on c.id = s.id
   join public.knowledge_documents d on d.id = c.document_id
-  order by s.score desc, c.id
-  limit greatest(1, least(match_count, 50));
+  order by s.score desc, c.id;
 $$;
 
 comment on function public.match_knowledge_chunks_keyword is

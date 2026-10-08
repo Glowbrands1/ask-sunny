@@ -247,6 +247,46 @@ describe("the keyword leg on its own", () => {
   });
 });
 
+/*
+ * PRODUCTION ROLLOUT PREPARATION, 8 OCTOBER 2026. The first version of the
+ * function recomputed its word weights, corpus count included, once per
+ * candidate chunk: Postgres guesses that a run-time tsquery matches one row and
+ * planned a nested loop on that guess. Fast on a rare phrase, past the 8 s
+ * statement timeout once common words ("client", "tanning", "salon") reached a
+ * few thousand chunks, which a real question does. Its own corpus id, so no
+ * other test sees these rows.
+ */
+describe("the keyword leg when common words match most of the corpus", () => {
+  it("answers in time, in work that grows with the matches rather than their square", async () => {
+    const scope = "load-test";
+    const manual = await document({ title: "Load test manual", scope });
+    await h.db.query(
+      `insert into public.knowledge_chunks (document_id, knowledge_scope_id, chunk_index, version, content, locator, embedding_model, embedding)
+       select $1, $2, g, 1, 'Client team salon tanning membership sales coaching manager, note ' || g, 'Load ' || g, 'semantic-test', $3::extensions.vector
+       from generate_series(1, 1500) g`,
+      [manual, scope, `[${bagOfWordsEmbedding("load test", EMBEDDING_DIMENSIONS).join(",")}]`],
+    );
+    const terms = ["client", "team", "salon", "tanning", "membership", "sales", "coaching", "manager"];
+    const phrases = terms.slice(1).map((word, index) => `${terms[index]} ${word}`);
+
+    const started = performance.now();
+    const { data, error } = await h.client.rpc("match_knowledge_chunks_keyword", {
+      query_terms: terms,
+      query_phrases: phrases,
+      scope_id: scope,
+      match_count: 8,
+      filter_categories: null,
+    });
+    const elapsed = performance.now() - started;
+
+    expect(error).toBeNull();
+    const rows = data as { matched_units: number }[];
+    expect(rows).toHaveLength(8);
+    expect(rows.every((row) => row.matched_units === terms.length + phrases.length)).toBe(true);
+    expect(elapsed).toBeLessThan(10_000);
+  }, 60_000);
+});
+
 describe("before the migration is applied", () => {
   it("falls back to vector search rather than failing the answer", async () => {
     await h.db.exec("alter function public.match_knowledge_chunks_keyword(text[], text[], text, integer, text[]) rename to match_knowledge_chunks_keyword_off");

@@ -50,46 +50,76 @@ column** to `knowledge_chunks`, a GIN index and one function.
   paused retrieval in production.**
 - **Apply it as one transaction** (Supabase `apply_migration`). If a tool runs
   it statement by statement, wrap it in `begin; … commit;`.
+- **Keyword search cost.** Rollout preparation found the first version of the
+  function quadratic in the number of matching chunks: Postgres guesses that a
+  run-time tsquery matches one row and recomputed the word weights, corpus count
+  included, once per candidate. In production a question with ten common words
+  ("client", "tanning", "salon"…) reaches about 5,000 of the 13,455 chunks and
+  would have hit the 8 s statement timeout on every such chat. Each step is now
+  computed once (`MATERIALIZED`). 1,500 matching chunks on PGlite: 25 s before,
+  0.46 s after; the integration suite now fails above 10 s.
 
-**Window:** 23:05–23:25 US Central. Over the 14 days to 8 October there were no
-chat messages between 23:00 and 04:59 Central, and the Woven knowledge sync
-runs at :40 past the hour (finishing within 40 s). Never start it between :35
-and :45. The other scheduled jobs run at 11:00–12:17 UTC.
+**Window:** 23:05–23:25 US Central. While daylight saving time lasts (until
+1 November 2026) that is CDT, UTC−5: 04:05–04:25 UTC and 12:05–12:25 Philippine
+time the next day. After 1 November (CST, UTC−6) it is 05:05–05:25 UTC and
+13:05–13:25 Philippine time. Over the 30 days to 8 October there were no chat
+messages and no activity events between 23:00 and 23:59 Central. The Woven
+knowledge sync runs at :40 past the hour (finishing within 40 s); never start
+between :35 and :45. The other scheduled jobs run at 11:00–12:17 UTC.
 
 ## Deployment — Ask Sunny
 
-Supabase project `rbkylaavthsjepsczccv`; Vercel project `ask-sunny`. Every
-migration already on `main` is present in this database; `20261008001000` is
-the only new one. **No environment variables change.**
+Supabase project `rbkylaavthsjepsczccv` (Preview and Production share it);
+Vercel project `ask-sunny`. Every earlier migration on `main` is present in this
+database (some without a history row, see `docs/woven-access-sync.md`);
+`20261008001000` is the only new one. **No environment variables change.**
 
-1. **Approve and squash-merge PR #90** (squash keeps the branch's intermediate
-   history out of `main`; see the privacy note in the review report).
-2. **Migration, in the window above**, with Supabase `apply_migration` (never
-   `supabase db push` here; see `docs/woven-access-sync.md`). Then verify:
-   - `content_tsv` exists and is populated on every chunk;
-   - `knowledge_chunks_content_tsv_idx` exists;
-   - `has_function_privilege('anon', 'public.match_knowledge_chunks_keyword(text[], text[], text, integer, text[])', 'execute')` is false;
-   - add the row to "Migration history in Production" in `docs/woven-access-sync.md`.
-   The application tolerates either order; the migration first keeps the
-   disruption inside the window.
-3. **Deploy**: merging to `main` triggers the Vercel Production build. Confirm
-   it builds from the squash commit and that `NEXT_PUBLIC_DEMO_MODE` is still
-   `false` for Production.
-4. **Smoke test** as a Salon Director (it writes only that tester's own chat history): a checking-account question
-   cites the TC Mastery material; "how do I change my password on this
-   platform" describes "Forgot your password?"; "how do I change my password"
-   does not quote a default password.
+1. **Before the window.** Run the Supabase security and performance advisors
+   for a baseline. Note the current Production deployment in Vercel (the
+   rollback target). An administrator downloads the current app guide from the
+   Knowledge Base (document → Download): only the current version can be
+   downloaded through the app, and it is the only rollback copy.
+2. **Migration, in the window**, with Supabase `apply_migration` (never
+   `supabase db push` here). Not between :35 and :45 past the hour. Then verify:
+   - every chunk has `content_tsv`, none null;
+   - `knowledge_chunks_content_tsv_idx` is a valid, ready GIN index;
+   - the function is security invoker, stable, `search_path = public, extensions`;
+   - execute: `anon` no, `authenticated` yes, `service_role` yes (the app calls
+     it as the service role), matching `match_knowledge_chunks`;
+   - no lock is still waiting on `knowledge_chunks`; a history row exists;
+   - a ten-common-word call returns in well under a second, and the
+     checking-account call returns the TC Mastery chunk;
+   - the advisors show nothing new.
+   If any check fails: `drop function public.match_knowledge_chunks_keyword(text[], text[], text, integer, text[]);`
+   chat falls back to vector search at once, with no redeploy.
+3. **Merge**: squash-merge PR #90; Vercel builds Production from the squash
+   commit. Confirm it is Ready and `NEXT_PUBLIC_DEMO_MODE` is still `false`.
+   (The code also tolerates the opposite order: without the function, chat is
+   vector-only.)
+4. **Smoke test with a dedicated test account**, never a manager's: a Salon
+   Director scoped to one salon, invited by an administrator to a mailbox the
+   team controls. Chat only: no form proposals, no form picker, no ratings.
+   It writes that account's own chat history and analytics events, nothing
+   else. A checking-account question cites the TC Mastery material; "how do I
+   change my password on this platform" describes "Forgot your password?";
+   "how do I change my password" does not quote a default password. Disable
+   the account afterwards (nothing is deleted).
 5. **Re-upload the app guide, after it is approved.** Knowledge Base → Upload,
-   as an administrator: file `ask-sunny-app-knowledge.txt`, title exactly
-   `ask sunny app knowledge` (same title = a new version of the existing
-   document, not a duplicate; a different title would create a second document
-   and the guide would no longer be pinned). Confirm version 2 is indexed.
+   as an administrator: file `ask-sunny-app-knowledge.txt`; the title field
+   fills in `ask sunny app knowledge` from the file name; keep it exactly;
+   category **Other**; tags empty, as now. The same title in the same corpus
+   becomes version 2 of the existing document (same id, version 1 recorded
+   under previous versions), never a second document. The document is not
+   retrievable for the few seconds it is re-indexed. Confirm version 2 is
+   indexed, then ask the password question again.
 
-**Rollback:** redeploy the previous Production build (the migration can stay;
-nothing else calls it). To remove the migration:
+**Rollback:** in Vercel, promote the previous Production deployment (Instant
+Rollback); the migration can stay, nothing else calls it. To remove the
+migration:
 `drop function public.match_knowledge_chunks_keyword(text[], text[], text, integer, text[]); drop index public.knowledge_chunks_content_tsv_idx; alter table public.knowledge_chunks drop column content_tsv;`
-(2 ms measured; the column drop is metadata-only). Restore the guide from its
-version history.
+(2 ms measured; the column drop is metadata-only). The app has no "restore
+version": to undo the guide, re-upload the copy downloaded in step 1 under the
+same title (it becomes version 3).
 
 ## Deployment — Ask Bubbles
 
