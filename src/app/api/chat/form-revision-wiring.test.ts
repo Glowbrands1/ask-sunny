@@ -77,6 +77,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.env = { ...ORIGINAL };
   for (const path of ["@/lib/auth/server", "@/lib/ai/server-ask", "@/lib/forms/chat-correction", "@/lib/forms/chat-revision", "@/lib/supabase/server"]) {
     vi.doUnmock(path);
@@ -103,6 +104,13 @@ describe("a revision of the open form", () => {
   });
 
   it("is given the business day, so a typed follow-up date can be read", async () => {
+    /*
+     * The route takes "today" from the server's clock (`businessToday()`), never
+     * from the caller's `todayIso`. So the clock is pinned, and the caller sends
+     * a stale day that must NOT win. Unpinned, this only passed on 2 Oct 2026.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T16:00:00Z"));
     const { route, seen } = await load({
       content: "Set the follow-up date to **Thursday, October 15, 2026**.",
       citations: [],
@@ -115,7 +123,7 @@ describe("a revision of the open form", () => {
         activeFormInstanceId: INSTANCE,
         history: [],
         question: "Change the follow-up date to 10/15",
-        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: "2026-10-02" },
+        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: "2026-08-26" },
       }),
     );
     expect(response.status).toBe(200);
