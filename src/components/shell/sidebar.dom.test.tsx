@@ -36,7 +36,8 @@ vi.mock("next/navigation", () => ({
 // That is not what is under test here, and mounting the whole store to check
 // which links exist would make the test about the store instead.
 vi.mock("./user-menu", () => ({
-  UserMenu: () => null,
+  // A marker only, so the footer's order can be checked.
+  UserMenu: () => <div data-testid="profile-card" />,
 }));
 
 /** The session values the rail actually reads. */
@@ -227,6 +228,41 @@ describe("what an Employee sees on the rail with real authentication", () => {
 
     for (const label of ["Overview", "Ask Sunny", "Form Templates", "User Management"]) {
       expect(links, label).toContain(label);
+    }
+  });
+});
+
+describe("the app switcher on the rail", () => {
+  /*
+   * ADMINISTRATORS ONLY, and the decision is the server's (`pageShowsAppSwitcher`
+   * in the layout). The rail never decides it from the browser's role: even an
+   * owner session renders no switcher unless the server said so.
+   */
+  const switcher = () => screen.queryByRole("button", { name: /switch app/i });
+
+  it.each(["desktop", "drawer"] as const)("is absent on the %s rail unless the server allows it", (variant) => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant={variant} />);
+    expect(switcher()).toBeNull();
+  });
+
+  it.each(["desktop", "drawer"] as const)("is present on the %s rail when the server allows it", (variant) => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant={variant} showAppSwitcher />);
+    expect(switcher()).not.toBeNull();
+  });
+
+  it.each(["desktop", "drawer"] as const)("sits directly below the profile card, last on the %s rail", (variant) => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant={variant} showAppSwitcher onToggleCollapse={() => {}} />);
+    const profile = screen.getByTestId("profile-card");
+    const sw = switcher()!;
+    expect(profile.nextElementSibling).toBe(sw);
+    expect(sw.nextElementSibling).toBeNull();
+    // Same order as Ask Bubbles: Collapse sidebar, profile, Switch app.
+    const collapse = screen.queryByRole("button", { name: /collapse sidebar/i });
+    if (collapse) {
+      expect(collapse.compareDocumentPosition(profile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
   });
 });

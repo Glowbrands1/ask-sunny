@@ -25,9 +25,12 @@ export function AppShell({
    * cannot disagree with the page it links to. Zero hides it.
    */
   overdueFollowUps = 0,
+  /** Administrators only, decided on the server by the layout. */
+  showAppSwitcher = false,
 }: {
   children: ReactNode;
   overdueFollowUps?: number;
+  showAppSwitcher?: boolean;
 }) {
   const { hydrated, signedIn, demoMode } = useSession();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -141,6 +144,7 @@ export function AppShell({
           collapsed={collapsed}
           onToggleCollapse={toggleCollapse}
           overdueFollowUps={overdueFollowUps}
+          showAppSwitcher={showAppSwitcher}
         />
       </aside>
 
@@ -168,6 +172,7 @@ export function AppShell({
                 variant="drawer"
                 onNavigate={() => setDrawerOpen(false)}
                 overdueFollowUps={overdueFollowUps}
+                showAppSwitcher={showAppSwitcher}
               />
             </div>
           </div>
