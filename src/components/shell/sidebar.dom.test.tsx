@@ -252,9 +252,17 @@ describe("the app switcher on the rail", () => {
     expect(switcher()).not.toBeNull();
   });
 
-  it.each(["desktop", "drawer"] as const)("sits directly below the profile card on the %s rail", (variant) => {
+  it.each(["desktop", "drawer"] as const)("sits directly below the profile card, last on the %s rail", (variant) => {
     mocked.value = session("owner", false);
     render(<SidebarNav variant={variant} showAppSwitcher onToggleCollapse={() => {}} />);
-    expect(screen.getByTestId("profile-card").nextElementSibling).toBe(switcher());
+    const profile = screen.getByTestId("profile-card");
+    const sw = switcher()!;
+    expect(profile.nextElementSibling).toBe(sw);
+    expect(sw.nextElementSibling).toBeNull();
+    // Same order as Ask Bubbles: Collapse sidebar, profile, Switch app.
+    const collapse = screen.queryByRole("button", { name: /collapse sidebar/i });
+    if (collapse) {
+      expect(collapse.compareDocumentPosition(profile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 });

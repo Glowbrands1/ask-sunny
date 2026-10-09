@@ -215,15 +215,12 @@ export function SidebarNav({
       </nav>
 
       <div className="shrink-0 border-t border-border p-3">
-        <UserMenu collapsed={isCollapsed} onNavigate={onNavigate} />
-        {/* Directly below the profile: administrators only. */}
-        {showAppSwitcher ? <AppSwitcher collapsed={isCollapsed} className="mt-1.5" /> : null}
         {variant === "desktop" && onToggleCollapse ? (
           <button
             type="button"
             onClick={onToggleCollapse}
             className={cn(
-              "mt-2 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-xs font-medium text-sidebar-muted transition-colors hover:bg-hover-surface hover:text-foreground",
+              "mb-2 flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-xs font-medium text-sidebar-muted transition-colors hover:bg-hover-surface hover:text-foreground",
               isCollapsed && "justify-center px-0",
             )}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -238,6 +235,9 @@ export function SidebarNav({
             {!isCollapsed ? "Collapse sidebar" : null}
           </button>
         ) : null}
+        <UserMenu collapsed={isCollapsed} onNavigate={onNavigate} />
+        {/* Last on the rail, below the profile: administrators only. */}
+        {showAppSwitcher ? <AppSwitcher collapsed={isCollapsed} className="mt-1.5" /> : null}
       </div>
     </div>
   );
