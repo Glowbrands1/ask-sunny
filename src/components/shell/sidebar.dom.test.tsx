@@ -230,3 +230,24 @@ describe("what an Employee sees on the rail with real authentication", () => {
     }
   });
 });
+
+describe("the app switcher on the rail", () => {
+  /*
+   * ADMINISTRATORS ONLY, and the decision is the server's (`pageShowsAppSwitcher`
+   * in the layout). The rail never decides it from the browser's role: even an
+   * owner session renders no switcher unless the server said so.
+   */
+  const switcher = () => screen.queryByRole("button", { name: /switch app/i });
+
+  it.each(["desktop", "drawer"] as const)("is absent on the %s rail unless the server allows it", (variant) => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant={variant} />);
+    expect(switcher()).toBeNull();
+  });
+
+  it.each(["desktop", "drawer"] as const)("is present on the %s rail when the server allows it", (variant) => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant={variant} showAppSwitcher />);
+    expect(switcher()).not.toBeNull();
+  });
+});

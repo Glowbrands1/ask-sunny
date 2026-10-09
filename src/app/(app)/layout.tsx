@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary } from "@/lib/forms/follow-up";
+import { pageShowsAppSwitcher } from "@/lib/auth/app-switcher";
 import { pageCan } from "@/lib/auth/page";
 import { withoutUnreadable } from "@/lib/forms/instance-scope";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
@@ -42,5 +43,13 @@ async function overdueCount(): Promise<number> {
 }
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  return <AppShell overdueFollowUps={await overdueCount()}>{children}</AppShell>;
+  const [overdueFollowUps, showAppSwitcher] = await Promise.all([
+    overdueCount(),
+    pageShowsAppSwitcher(),
+  ]);
+  return (
+    <AppShell overdueFollowUps={overdueFollowUps} showAppSwitcher={showAppSwitcher}>
+      {children}
+    </AppShell>
+  );
 }

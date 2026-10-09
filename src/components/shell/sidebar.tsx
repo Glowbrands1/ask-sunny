@@ -8,6 +8,7 @@ import { BrandMark, SunMark } from "@/components/brand-mark";
 import { Tooltip } from "@/components/ui/overlays";
 import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
+import { AppSwitcher } from "./app-switcher";
 import { NAV_SECTIONS, isActivePath } from "./navigation";
 import { UserMenu } from "./user-menu";
 
@@ -17,6 +18,7 @@ export function SidebarNav({
   onNavigate,
   variant = "desktop",
   overdueFollowUps = 0,
+  showAppSwitcher = false,
 }: {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -24,6 +26,8 @@ export function SidebarNav({
   variant?: "desktop" | "drawer";
   /** Counted on the server by the (app) layout. Zero hides the badge. */
   overdueFollowUps?: number;
+  /** Decided on the server by the (app) layout: administrators only. */
+  showAppSwitcher?: boolean;
 }) {
   const pathname = usePathname();
   const { can, isAdmin, demoMode } = useSession();
@@ -211,6 +215,7 @@ export function SidebarNav({
       </nav>
 
       <div className="shrink-0 border-t border-border p-3">
+        {showAppSwitcher ? <AppSwitcher collapsed={isCollapsed} className="mb-1.5" /> : null}
         <UserMenu collapsed={isCollapsed} onNavigate={onNavigate} />
         {variant === "desktop" && onToggleCollapse ? (
           <button
