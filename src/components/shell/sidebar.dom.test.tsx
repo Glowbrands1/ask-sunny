@@ -36,7 +36,8 @@ vi.mock("next/navigation", () => ({
 // That is not what is under test here, and mounting the whole store to check
 // which links exist would make the test about the store instead.
 vi.mock("./user-menu", () => ({
-  UserMenu: () => null,
+  // A marker only, so the footer's order can be checked.
+  UserMenu: () => <div data-testid="profile-card" />,
 }));
 
 /** The session values the rail actually reads. */
@@ -249,5 +250,11 @@ describe("the app switcher on the rail", () => {
     mocked.value = session("owner", false);
     render(<SidebarNav variant={variant} showAppSwitcher />);
     expect(switcher()).not.toBeNull();
+  });
+
+  it.each(["desktop", "drawer"] as const)("sits directly below the profile card on the %s rail", (variant) => {
+    mocked.value = session("owner", false);
+    render(<SidebarNav variant={variant} showAppSwitcher onToggleCollapse={() => {}} />);
+    expect(screen.getByTestId("profile-card").nextElementSibling).toBe(switcher());
   });
 });

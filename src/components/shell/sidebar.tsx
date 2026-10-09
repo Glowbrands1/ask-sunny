@@ -215,8 +215,9 @@ export function SidebarNav({
       </nav>
 
       <div className="shrink-0 border-t border-border p-3">
-        {showAppSwitcher ? <AppSwitcher collapsed={isCollapsed} className="mb-1.5" /> : null}
         <UserMenu collapsed={isCollapsed} onNavigate={onNavigate} />
+        {/* Directly below the profile: administrators only. */}
+        {showAppSwitcher ? <AppSwitcher collapsed={isCollapsed} className="mt-1.5" /> : null}
         {variant === "desktop" && onToggleCollapse ? (
           <button
             type="button"
