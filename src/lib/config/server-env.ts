@@ -121,12 +121,40 @@ export const SUPABASE_SECRET_KEY_ENV_LEGACY = "SUPABASE_SERVICE_ROLE_KEY";
 export const SUPABASE_ENV = [SUPABASE_URL_ENV, SUPABASE_SECRET_KEY_ENV];
 
 /**
+ * DEMO MODE NEVER HOLDS THE PRIVILEGED KEY.
+ *
+ * Demo mode has no verified identity: page guards stand down and API requests
+ * resolve to whichever role the `x-ask-sunny-demo-role` header names. That is
+ * only safe while nothing behind them is real. A Preview deployment that
+ * inherited the Production key broke that assumption — anonymous visitors were
+ * served Production rows through the service-role client, which bypasses row
+ * level security.
+ *
+ * So the key is refused here, the one place every privileged client obtains
+ * it, whatever the environment holds. A demo deployment then reads as "not
+ * configured" and falls back to its seeded browser data, the same as one with
+ * no key at all. It is a MissingConfigurationError so every caller that
+ * already degrades gracefully on a missing key keeps doing so.
+ */
+export class DemoModeRefusesPrivilegedKeyError extends MissingConfigurationError {
+  constructor() {
+    super([SUPABASE_SECRET_KEY_ENV]);
+    this.name = "DemoModeRefusesPrivilegedKeyError";
+    this.message =
+      "Demo mode has no verified identity, so it never uses the privileged Supabase key. Turn demo mode off (NEXT_PUBLIC_DEMO_MODE=false) to read the database.";
+  }
+}
+
+/**
  * The privileged key, preferring the current name over the legacy one.
+ * Refused in demo mode (see DemoModeRefusesPrivilegedKeyError).
  *
  * Throws naming SUPABASE_SECRET_KEY — the variable a new project should set —
  * rather than the legacy name, so the error points at the right thing.
  */
 export function supabaseSecretKey(): string {
+  if (isDemoMode()) throw new DemoModeRefusesPrivilegedKeyError();
+
   const current = process.env[SUPABASE_SECRET_KEY_ENV]?.trim();
   if (current) return current;
 
@@ -137,6 +165,7 @@ export function supabaseSecretKey(): string {
 }
 
 export function supabaseSecretKeyConfigured(): boolean {
+  if (isDemoMode()) return false;
   return Boolean(
     process.env[SUPABASE_SECRET_KEY_ENV]?.trim() ||
       process.env[SUPABASE_SECRET_KEY_ENV_LEGACY]?.trim(),

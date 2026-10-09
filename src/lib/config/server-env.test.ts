@@ -327,3 +327,66 @@ describe("requireEnv", () => {
     expect(requireEnv("ANTHROPIC_API_KEY")).toBe("value");
   });
 });
+
+describe("demo mode never holds the privileged key", () => {
+  /*
+   * A Preview deployment in demo mode inherited the Production key, and its
+   * unguarded pages served Production rows to anonymous visitors through the
+   * service-role client. Demo mode has no verified identity, so the key is
+   * refused whatever the environment holds.
+   */
+  beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_VERCEL_ENV;
+    delete process.env.NEXT_PUBLIC_ALLOW_DEMO_IN_PRODUCTION;
+  });
+
+  it.each(["SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"])(
+    "refuses %s in demo mode, as a missing-configuration error",
+    async (name) => {
+      process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+      process.env[name] = "placeholder-not-a-real-value";
+      const env = await import("./server-env");
+
+      expect(env.supabaseSecretKeyConfigured()).toBe(false);
+      expect(() => env.supabaseSecretKey()).toThrow(env.DemoModeRefusesPrivilegedKeyError);
+      expect(() => env.supabaseSecretKey()).toThrow(env.MissingConfigurationError);
+    },
+  );
+
+  it("never builds the service-role client in demo mode", async () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+    configureAll();
+    const { getSupabaseAdmin } = await import("@/lib/supabase/server");
+    const { DemoModeRefusesPrivilegedKeyError } = await import("./server-env");
+
+    expect(() => getSupabaseAdmin()).toThrow(DemoModeRefusesPrivilegedKeyError);
+  });
+
+  it("refuses it in a Production deployment deliberately switched to demo", async () => {
+    process.env.NEXT_PUBLIC_VERCEL_ENV = "production";
+    process.env.NEXT_PUBLIC_ALLOW_DEMO_IN_PRODUCTION = "true";
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+    configureAll();
+    const env = await import("./server-env");
+
+    expect(() => env.supabaseSecretKey()).toThrow(env.DemoModeRefusesPrivilegedKeyError);
+  });
+
+  it("still returns it in live mode", async () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+    configureAll();
+    const env = await import("./server-env");
+
+    expect(env.supabaseSecretKeyConfigured()).toBe(true);
+    expect(env.supabaseSecretKey()).toBe("placeholder-not-a-real-value");
+  });
+
+  it("still returns it on a Production deployment carrying a stale demo flag", async () => {
+    process.env.NEXT_PUBLIC_VERCEL_ENV = "production";
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+    configureAll();
+    const env = await import("./server-env");
+
+    expect(env.supabaseSecretKey()).toBe("placeholder-not-a-real-value");
+  });
+});
