@@ -447,6 +447,23 @@ describe("the salon leaderboard", () => {
     });
   });
 
+  it("carries the previous period's QUALIFYING count, for a like-for-like comparison", () => {
+    expect(locations.find((row) => row.storeCode === "306")?.qualifyingLastWeek).toBe(2);
+    expect(locations.find((row) => row.storeCode === "143")?.qualifyingLastWeek).toBe(0);
+  });
+
+  it("reads month to date from the map it is handed, zero for a listing absent from it", () => {
+    const withMonth = locationRollups(listings, rows, held, {
+      currentPeriodId: CURRENT_ID,
+      previousPeriodId: PREVIOUS_ID,
+      monthToDate: new Map([["306", 7]]),
+    });
+    expect(withMonth.find((row) => row.storeCode === "306")?.qualifyingMonthToDate).toBe(7);
+    expect(withMonth.find((row) => row.storeCode === "409")?.qualifyingMonthToDate).toBe(0);
+    /* Without a map, nothing is invented. */
+    expect(locations.every((row) => row.qualifyingMonthToDate === 0)).toBe(true);
+  });
+
   it("carries the anchor so the page can name who it is", () => {
     expect(locations.find((row) => row.storeCode === "306")).toMatchObject({
       anchorReviewId: "QA-ANCHOR",

@@ -108,6 +108,14 @@ export const DEFAULT_REVIEWS_TAB: ReviewsTab = "overview";
  */
 export const WEEK_ALL = "all";
 export const WEEK_CURRENT = "current";
+/**
+ * THIS CALENDAR MONTH TO DATE, CENTRAL — the drill-down behind every
+ * month-to-date figure. Counted reviews from the reporting weeks that began on
+ * or after the 1st, plus those in the week straddling the 1st that were first
+ * seen on or after it: the same rule `qualifyingMonthToDate` sums. Resolved at
+ * read time, like `current`.
+ */
+export const WEEK_MONTH = "month";
 
 export interface ReviewFilters {
   /**
@@ -115,7 +123,8 @@ export interface ReviewFilters {
    */
   tab: ReviewsTab;
   /**
-   * `current`, `all`, or the `yyyy-mm-dd` Sunday of one reporting period.
+   * `current`, `month`, `all`, or the `yyyy-mm-dd` Sunday of one reporting
+   * period.
    *
    * IT FILTERS ON THE PERIOD A REVIEW WAS ASSIGNED TO, not on when it was
    * first seen — so a backlog imported this morning is absent from
@@ -197,7 +206,9 @@ export function parseReviewFilters(
 ): ReviewFilters {
   const weekRaw = first(params.week);
   const week =
-    weekRaw === WEEK_CURRENT || (weekRaw && ISO_DATE_PATTERN.test(weekRaw))
+    weekRaw === WEEK_CURRENT ||
+    weekRaw === WEEK_MONTH ||
+    (weekRaw && ISO_DATE_PATTERN.test(weekRaw))
       ? weekRaw
       : WEEK_ALL;
 

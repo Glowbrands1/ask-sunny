@@ -13,14 +13,23 @@ import { formatReviewsInstant } from "@/lib/reviews/display-time";
 import {
   reviewSetupHref,
   reviewsHref,
+  WEEK_CURRENT,
+  WEEK_MONTH,
   type ReviewFilters,
   type ReviewsTab,
 } from "@/lib/reviews/filters";
+import {
+  districtGoalRollups,
+  formatGoalMonth,
+  formatMonthToDate,
+  goalSummary,
+  type DistrictGoalRollup,
+  type ReviewGoalContext,
+} from "@/lib/reviews/goal";
 import { formatWeekRange } from "@/lib/reviews/reporting-week";
 import type { ReviewTimeline } from "@/lib/reviews/timeline";
 import type {
   DashboardReview,
-  DistrictRollup,
   LocationRollup,
   RatingDistribution,
   ReviewSummary,
@@ -28,7 +37,6 @@ import type {
 import type { ReviewFeed as ReviewFeedData, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
-import { reviewWaitingFor } from "./review-age";
 import { ReviewDetail } from "./review-detail";
 import { ReviewFeed } from "./review-feed";
 import { ReviewQueue } from "./review-queue";
@@ -37,7 +45,8 @@ import {
   ReviewsFilterBar,
   type ReviewFilterControl,
 } from "./reviews-filter-bar";
-import { RATING_FLOOR } from "./rating-floor";
+import { WindowTag } from "./review-goal-parts";
+import { ReviewGoalTable } from "./reviews-goal-table";
 import { ReviewsLeaderboard } from "./reviews-leaderboard";
 import { ReviewsTabs } from "./reviews-tabs";
 import { ReviewsTimeline } from "./reviews-timeline";
@@ -60,10 +69,11 @@ import { Stars } from "./review-stars";
  * districts, the holdings and every review record — arranged as four views
  * instead of six screens of scrolling:
  *
- *   OVERVIEW            what the week did, and how many reviews are arriving
+ *   OVERVIEW            the month's goal, every salon's progress toward it,
+ *                       and how many reviews are arriving
  *   GOOGLE REVIEWS      the records, filtered
  *   NEEDS RESPONSE      the work, and only the work
- *   SALON LEADERBOARD   the per-salon reporting table
+ *   SALON LEADERBOARD   the salons ranked against the monthly goal
  *
  * ALL FOUR READ THE SAME SERVER-RENDERED SNAPSHOT. Switching views costs a
  * render, not a query, so the leaderboard and the feed cannot end up describing
@@ -140,13 +150,23 @@ import { Stars } from "./review-stars";
  * changed; a chart stopped being drawn.
  *
  * ============================================================================
- * WHAT IS NOT ON THIS PAGE, AND WHY
+ * THE MONTHLY GOAL, AND WHAT LEFT THE REPORTING TABLES TO MAKE ROOM FOR IT
  * ============================================================================
  *
- * A WEEKLY GOAL PER SALON. The seeded screen carried one and it was invented:
- * nothing in Supabase holds a review goal, and a progress bar against a number
- * nobody agreed to is a figure a manager would quote in a meeting. When the
- * business sets goals they arrive as data and the meter comes back with them.
+ * TEN QUALIFYING REVIEWS PER SALON PER MONTH, set by the business (Madeline
+ * Patterson, October 2026). Until then this page deliberately drew no goal,
+ * because none had been agreed; now one has, and `lib/reviews/goal.ts` holds it
+ * as one app-wide default. Every goal figure is measured over the salons that
+ * have a baseline — a salon with none is shown as "Not counting", never ranked
+ * and never summed.
+ *
+ * REMOVED FROM THE REPORTING VIEWS at the same request: Unanswered, the
+ * "Replies waiting" status, All this week and Last week. The Needs Response
+ * view, its count on the tab and the reply workflow are untouched.
+ *
+ * ============================================================================
+ * WHAT IS NOT ON THIS PAGE, AND WHY
+ * ============================================================================
  *
  * GOOGLE'S LIFETIME REVIEW COUNT. The Business Profile page does not expose a
  * per-listing lifetime total in a form this parser can read, so "Total" here
@@ -244,13 +264,16 @@ export function ReviewsScreen({
         title="Google Reviews"
         description={
           scoped
-            ? `The weekly review count and the response queue for ${scoped}`
-            : "The weekly review count and the response queue across every salon you cover"
+            ? `Qualifying reviews and the ${snapshot.goal.target}-a-month goal for ${scoped}`
+            : `Qualifying reviews and the ${snapshot.goal.target}-a-month goal across every salon you cover`
         }
         provenance={
           <ProvenanceChips>
             <ProvenanceChip emphasis>
               Week of {formatWeekRange(snapshot.currentWeek)}
+            </ProvenanceChip>
+            <ProvenanceChip emphasis>
+              Month to date {formatMonthToDate(snapshot.goal)}
             </ProvenanceChip>
             <ProvenanceChip>
               {locations.length} {locations.length === 1 ? "salon" : "salons"}
@@ -317,7 +340,6 @@ export function ReviewsScreen({
             snapshot={snapshot}
             timeline={timeline}
             ratingDistribution={ratingDistribution}
-            oldestOpen={oldestOpen ?? null}
             scoped={scoped}
             canManageAnchors={canManageAnchors}
           />
@@ -346,18 +368,18 @@ export function ReviewsScreen({
 /* ----------------------------------------------------------- the views --- */
 
 /**
- * THE DEFAULT VIEW: what the week did, and how many reviews are arriving.
+ * THE DEFAULT VIEW: the month's goal, every salon's progress toward it, then
+ * how many reviews are arriving and what ASK Sunny holds.
  *
- * The four weekly measures, then the over-time chart, then what ASK Sunny holds
- * in total. No table, no queue and no records — each of those has a view of its
- * own now, and every tile here links into the one that answers it.
+ * The goal section is what Madeline Patterson asked for: qualifying reviews
+ * this week and month to date, against ten per salon. The over-time chart, the
+ * holdings and the rating breakdown below it are unchanged.
  */
 function OverviewView({
   filters,
   snapshot,
   timeline,
   ratingDistribution,
-  oldestOpen,
   scoped,
   canManageAnchors,
 }: {
@@ -365,37 +387,17 @@ function OverviewView({
   snapshot: ReviewsSnapshot;
   timeline: ReviewTimeline & { truncated: boolean };
   ratingDistribution: RatingDistribution;
-  oldestOpen: DashboardReview | null;
   scoped: string | null;
   canManageAnchors: boolean;
 }) {
-  const { summary, locations } = snapshot;
-
-  /*
-   * SALONS NEEDING ATTENTION, ON A PREDICATE THE RECORDS CAN SUPPORT. The
-   * seeded screen counted salons under a percentage of a weekly goal; no goal
-   * exists in Supabase, so the measure is rebuilt from what does: an open 1- or
-   * 2-star review, or an average below the floor the leaderboard already
-   * colours against. Both are facts about stored reviews.
-   */
-  const attention = locations
-    .filter(
-      (location) =>
-        location.criticalOpen > 0 ||
-        (location.averageRating !== null && location.averageRating < RATING_FLOOR),
-    )
-    .sort(
-      (a, b) =>
-        b.criticalOpen - a.criticalOpen ||
-        (a.averageRating ?? 5) - (b.averageRating ?? 5) ||
-        a.locationName.localeCompare(b.locationName),
-    );
+  const { summary, locations, goal } = snapshot;
+  const month = formatGoalMonth(goal);
 
   return (
     <>
-      {/* ----------------------------------------------------- this week -- */}
+      {/* -------------------------------------------------- the month goal -- */}
       <SectionRule
-        label="This week"
+        label={`${month} review goal`}
         className="mt-1"
         action={
           canManageAnchors
@@ -406,129 +408,33 @@ function OverviewView({
             : undefined
         }
       />
+      <p className="-mt-2 text-[11.5px] text-muted-foreground">
+        Every salon&rsquo;s target is {goal.target} qualifying Google reviews a month.
+        Weekly figures cover {formatWeekRange(snapshot.currentWeek)}; monthly figures
+        cover {formatMonthToDate(goal)}.
+      </p>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {/*
-          THE ONLY CORAL TILE ON THE PAGE, and the only one with a button: it
-          is the one thing here a Salon Director can act on today.
+      <GoalTiles filters={filters} snapshot={snapshot} />
 
-          IT IS A QUEUE OVER EVERYTHING HELD, NOT OVER THIS WEEK, and its link
-          carries `week: "all"` to say so. An unanswered review does not stop
-          needing an answer because a reporting period closed.
-        */}
-        <AlarmTile
-          label="Need a response"
-          value={summary.unanswered}
-          detail={
-            oldestOpen
-              ? `Oldest is a ${oldestOpen.rating}-star · ${reviewWaitingFor(oldestOpen)}`
-              : "Every review in view has a reply"
-          }
-          href={reviewsHref(
-            { ...filters, tab: "needs", status: "needs_response", week: "all" },
-            "response-queue",
-          )}
-          actionLabel="Open the queue"
-        />
+      {/*
+        NO BASELINE BANNER HERE, deliberately — see "WHERE THE UNANCHORED-LISTING
+        NOTICE WENT" above. Each unanchored row says "No anchor — counting
+        nothing" itself, and the leaderboard carries the one-line count.
+      */}
+      <ReviewGoalTable
+        locations={locations}
+        filters={filters}
+        goal={goal}
+        currentWeek={snapshot.currentWeek}
+        canManageAnchors={canManageAnchors}
+      />
 
-        <MeasureTile
-          label="Qualifying reviews gained"
-          value={formatNumber(summary.qualifyingThisWeek)}
-          detail={`3–5 stars counted into ${formatWeekRange(
-            snapshot.currentWeek,
-          )} · ${describeDelta(
-            summary.qualifyingThisWeek,
-            summary.qualifyingLastWeek,
-          )}`}
-          href={reviewsHref({
-            ...filters,
-            tab: "reviews",
-            week: "current",
-            qualifying: "yes",
-            assignment: "counted",
-          })}
-          /*
-            NO METER, AND THE CAPTION EXPLAINS THE ABSENCE RATHER THAN LEAVING
-            A GAP. The seeded tile ran a progress bar against a combined
-            weekly goal; nothing in Supabase holds a review goal, and a
-            percentage against a number nobody agreed to is a figure a manager
-            would quote in a meeting. What goes here instead is the fact the
-            week actually produced: how many arrived in total, and how many of
-            those do not raise this number.
-          */
-          list={
-            <p className="mt-2.5 border-t border-border-hairline pt-2.5 text-[11px] text-muted-foreground">
-              {summary.allNewThisWeek === 0
-                ? "No review has been counted into this period yet."
-                : `${formatNumber(summary.allNewThisWeek)} counted in total; ${formatNumber(
-                    summary.allNewThisWeek - summary.qualifyingThisWeek,
-                  )} of them are 1- or 2-star and raise no weekly count.`}
-            </p>
-          }
-        />
-
-        <MeasureTile
-          label="Average rating"
-          value={summary.averageRating === null ? "—" : summary.averageRating.toFixed(2)}
-          detail={`Across all ${formatNumber(summary.totalReviews)} ${
-            summary.totalReviews === 1 ? "review" : "reviews"
-          } held, counted and historical alike`}
-          adornment={
-            summary.averageRating === null ? null : (
-              <Stars rating={summary.averageRating} showNumber={false} />
-            )
-          }
-        />
-
-        <MeasureTile
-          label="Salons needing attention"
-          value={formatNumber(attention.length)}
-          detail={`An open 1- or 2-star review, or an average below ${RATING_FLOOR.toFixed(2)}`}
-          flagged={attention.length > 0}
-          list={
-            attention.length > 0 ? (
-              /*
-                EVERY SALON THE MEASURE COUNTS, not the first three. The count
-                and the list read the same array, so the tile cannot say four
-                and show three.
-              */
-              <ul className="mt-2.5 space-y-1 border-t border-border-hairline pt-2.5">
-                {attention.map((location) => (
-                  <li key={location.storeCode}>
-                    <Link
-                      href={reviewsHref({
-                        ...filters,
-                        tab: "reviews",
-                        storeCode: location.storeCode,
-                        week: "all",
-                      })}
-                      className="flex items-baseline justify-between gap-2 text-[11px] hover:underline"
-                    >
-                      <span className="truncate text-foreground">
-                        {location.locationName}
-                      </span>
-                      <span className="shrink-0 font-bold text-measure-flagged-foreground tabular-nums">
-                        {location.criticalOpen > 0
-                          ? `${location.criticalOpen} open 1–2★`
-                          : "—"}
-                        {location.averageRating === null
-                          ? ""
-                          : ` · ${location.averageRating.toFixed(2)}`}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2.5 border-t border-border-hairline pt-2.5 text-[11px] text-muted-foreground">
-                {locations.length === 0
-                  ? "No salon is in view."
-                  : "No salon has an open 1- or 2-star review or a low average."}
-              </p>
-            )
-          }
-        />
-      </div>
+      {(() => {
+        const districts = districtGoalRollups(locations, goal);
+        return districts.length > 1 ? (
+          <DistrictGoalTable districts={districts} filters={filters} goal={goal} />
+        ) : null;
+      })()}
 
       {/*
         ---------------------------------------------------------- over time --
@@ -543,15 +449,23 @@ function OverviewView({
         ------------------------------------- everything ASK Sunny holds --
 
         NO ACTION LINK ON THIS RULE, and its absence is deliberate twice over.
-        The four tiles under it each link into the records already, so a fifth
-        link saying the same thing is noise — and `SectionRule` lays its action
-        out `whitespace-nowrap` beside the heading, which at 390px pushed this
+        The tiles under it each link into the records already, so another link
+        saying the same thing is noise — and `SectionRule` lays its action out
+        `whitespace-nowrap` beside the heading, which at 390px pushed this
         particular pair 32px past the viewport and gave the page a horizontal
         scrollbar. Found by measuring the real page in a browser at phone width.
+
+        THREE TILES WHERE THERE WERE FOUR, AND THE AVERAGE MOVED HERE. The old
+        "Month to date" tile summed every review in the weeks that began this
+        month; the goal section above now carries the real month-to-date figure,
+        and two different "month to date" numbers on one page would be one too
+        many. "1–2 star, needing attention" counted unanswered reviews, which
+        left the reporting view with the Unanswered column; the Needs Response
+        view still counts and lists them.
       */}
       <SectionRule label="Everything ASK Sunny holds" />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <MeasureTile
           label="All imported reviews"
           value={formatNumber(summary.totalReviews)}
@@ -576,29 +490,16 @@ function OverviewView({
         />
 
         <MeasureTile
-          label="1–2 star, needing attention"
-          value={formatNumber(summary.criticalNeedingAttention)}
-          detail="Stored and shown, and never counted toward the weekly total"
-          href={reviewsHref({
-            ...filters,
-            tab: "needs",
-            rating: "1-2",
-            status: "needs_response",
-            week: "all",
-          })}
-          flagged={summary.criticalNeedingAttention > 0}
-        />
-
-        <MeasureTile
-          label="Month to date"
-          value={formatNumber(summary.monthToDate)}
-          /*
-            OVER PERIODS, NOT OVER DAYS, and the caption says so. Reporting
-            weeks straddle month boundaries, so "counted between the 1st and
-            today" is not a figure this model can produce honestly.
-          */
-          detail="Counted across the reporting weeks that began this month"
-          href={reviewsHref({ ...filters, tab: "reviews", week: "all", assignment: "counted" })}
+          label="Average rating"
+          value={summary.averageRating === null ? "—" : summary.averageRating.toFixed(2)}
+          detail={`Across all ${formatNumber(summary.totalReviews)} ${
+            summary.totalReviews === 1 ? "review" : "reviews"
+          } held, counted and historical alike`}
+          adornment={
+            summary.averageRating === null ? null : (
+              <Stars rating={summary.averageRating} showNumber={false} />
+            )
+          }
         />
       </div>
 
@@ -722,7 +623,7 @@ function NeedsResponseView({
   );
 }
 
-/** The per-salon reporting table, plus the districts it rolls up into. */
+/** The salons ranked against the monthly goal. */
 function LeaderboardView({
   filters,
   snapshot,
@@ -732,7 +633,7 @@ function LeaderboardView({
   snapshot: ReviewsSnapshot;
   canManageAnchors: boolean;
 }) {
-  const { locations, districts } = snapshot;
+  const { locations, goal } = snapshot;
 
   return (
     <>
@@ -746,14 +647,8 @@ function LeaderboardView({
         }
       />
       <p className="-mt-2 text-[11.5px] text-muted-foreground">
-        {/*
-          THE MISSING COLUMN IS NAMED. The seeded leaderboard ran a goal and a
-          progress bar per salon; those figures were invented, and removing
-          them silently would leave a reader wondering where the column went.
-        */}
-        Ordered by qualifying reviews this week. There is no goal column: no weekly
-        review goal is configured for any salon, and a progress bar against a number
-        nobody agreed to is a figure that ends up in a meeting.
+        Ranked by qualifying reviews this month. The goal is {goal.target} per salon in{" "}
+        {formatGoalMonth(goal)}; salons on the same count share a rank.
       </p>
 
       {snapshot.awaitingAnchor.length > 0 ? (
@@ -766,15 +661,9 @@ function LeaderboardView({
       <ReviewsLeaderboard
         locations={locations}
         filters={filters}
+        goal={goal}
         canManageAnchors={canManageAnchors}
       />
-
-      {districts.length > 0 ? (
-        <>
-          <SectionRule label="Districts" />
-          <DistrictTable districts={districts} filters={filters} />
-        </>
-      ) : null}
 
       {snapshot.verificationRequired.length > 0 ? (
         <Notice tone="attention" icon={<Info />} title="Google verification on two listings">
@@ -877,35 +766,209 @@ function NothingSyncedYet() {
   );
 }
 
-function AlarmTile({
+/**
+ * ============================================================================
+ * THE MONTH'S GOAL IN FOUR FIGURES
+ * ============================================================================
+ *
+ * The week, the month, how many salons are at goal, and what is still needed.
+ * Every figure is summed over the salons IN VIEW THAT HAVE A BASELINE: a salon
+ * counting nothing has no week and no month, and adding its zero to a target
+ * would make the estate look further behind than anything measured says.
+ *
+ * THE WEEKLY COMPARISON IS LIKE FOR LIKE. "+3 vs last week" compares qualifying
+ * reviews counted into this reporting period with those counted into the last
+ * one, over the same salons.
+ *
+ * ONE YELLOW TILE. The direction allows brand yellow two filled blocks a
+ * screen; this is the one the page spends, on the figure the goal is about.
+ */
+function GoalTiles({
+  filters,
+  snapshot,
+}: {
+  filters: ReviewFilters;
+  snapshot: ReviewsSnapshot;
+}) {
+  const { goal, locations } = snapshot;
+  const summary = goalSummary(locations, goal);
+  const single = locations.length === 1;
+  const only = single ? locations[0] : null;
+  const daysLeft = goal.daysInMonth - goal.dayOfMonth;
+  const month = formatGoalMonth(goal);
+  const atGoalShare =
+    single && only
+      ? Math.min(100, (only.qualifyingMonthToDate / goal.target) * 100)
+      : summary.counting === 0
+        ? 0
+        : (summary.atGoal / summary.counting) * 100;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <GoalTile
+        tag={<WindowTag window="week">This week · {formatWeekRange(snapshot.currentWeek)}</WindowTag>}
+        label="Qualifying reviews"
+        value={formatNumber(summary.qualifyingThisWeek)}
+        detail={`3–5★ reviews counted this week · ${describeDelta(
+          summary.qualifyingThisWeek,
+          summary.qualifyingLastWeek,
+        )}`}
+        href={reviewsHref({
+          ...filters,
+          tab: "reviews",
+          week: WEEK_CURRENT,
+          qualifying: "yes",
+          assignment: "counted",
+        })}
+      />
+
+      <GoalTile
+        tag={<WindowTag window="month">Month to date · {formatMonthToDate(goal)}</WindowTag>}
+        label="Qualifying reviews"
+        value={formatNumber(summary.qualifyingMonthToDate)}
+        suffix={`/ ${formatNumber(summary.combinedTarget)}`}
+        detail={
+          summary.counting === 0
+            ? "No salon in view has a baseline yet, so nothing is being counted"
+            : summary.counting === 1
+              ? `Against a target of ${goal.target} this month`
+              : `Against a target of ${goal.target} per salon × ${summary.counting} counting`
+        }
+        href={reviewsHref({
+          ...filters,
+          tab: "reviews",
+          week: WEEK_MONTH,
+          qualifying: "yes",
+        })}
+      />
+
+      <GoalTile
+        yellow
+        tag={<WindowTag window="month">Month to date</WindowTag>}
+        label={single ? "Monthly goal" : "Salons at goal"}
+        value={
+          single && only
+            ? formatNumber(only.anchorReviewId === null ? 0 : only.qualifyingMonthToDate)
+            : formatNumber(summary.atGoal)
+        }
+        suffix={single ? `/ ${goal.target}` : `of ${formatNumber(summary.counting)}`}
+        meter={atGoalShare}
+        detail={
+          daysLeft === 0
+            ? `Last day of ${month}`
+            : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left in ${month}`
+        }
+        href={reviewsHref({ ...filters, tab: "leaderboard" })}
+      />
+
+      <GoalTile
+        tag={<WindowTag window="month">Month to date</WindowTag>}
+        label="Reviews still needed"
+        value={formatNumber(summary.stillNeeded)}
+        detail={
+          summary.counting === 0
+            ? "Nothing is being counted yet"
+            : summary.stillNeeded === 0
+              ? `Every salon in view has reached ${goal.target}`
+              : single
+                ? `To reach ${goal.target} this month`
+                : `To bring every salon in view to ${goal.target}. One salon's overage doesn't cover another's shortfall.`
+        }
+      />
+    </div>
+  );
+}
+
+function GoalTile({
+  tag,
   label,
   value,
+  suffix,
   detail,
   href,
-  actionLabel,
+  yellow,
+  meter,
 }: {
+  tag: React.ReactNode;
   label: string;
-  value: number;
+  value: string;
+  suffix?: string;
   detail: string;
-  href: string;
-  actionLabel: string;
+  href?: string;
+  yellow?: boolean;
+  /** 0–100. Drawn only on the yellow tile, in its own ink. */
+  meter?: number;
 }) {
-  return (
-    <div className="rounded-[var(--radius-lg)] bg-status-under p-[18px] shadow-attention">
-      <p className="eyebrow text-status-under-foreground opacity-90">{label}</p>
-      <p className="display-figure mt-2 text-[36px] text-status-under-foreground">
-        {formatNumber(value)}
+  const body = (
+    <>
+      {tag}
+      <p className={cn("eyebrow mt-2", yellow && "text-brand-yellow-soft-foreground")}>{label}</p>
+      <p className="mt-2 flex items-baseline gap-1.5">
+        <span
+          className={cn(
+            "display-figure text-[36px]",
+            yellow ? "text-brand-yellow-foreground" : "text-foreground",
+          )}
+        >
+          {value}
+        </span>
+        {suffix ? (
+          <span
+            className={cn(
+              "display-figure text-[19px]",
+              yellow ? "text-brand-yellow-soft-foreground" : "text-muted-foreground",
+            )}
+          >
+            {suffix}
+          </span>
+        ) : null}
       </p>
-      <p className="mt-1.5 text-[10.5px] leading-snug text-status-under-foreground opacity-90">
+      {typeof meter === "number" ? (
+        <span aria-hidden className="mt-2 block h-1.5 overflow-hidden rounded-[4px] bg-[var(--meter-track-on-yellow)]">
+          <span
+            className="block h-full bg-brand-yellow-foreground"
+            style={{ width: `${Math.max(0, Math.min(100, meter))}%` }}
+          />
+        </span>
+      ) : null}
+      <p
+        className={cn(
+          "mt-1.5 text-[10.5px] leading-snug",
+          yellow ? "text-brand-yellow-soft-foreground" : "text-muted-foreground",
+        )}
+      >
         {detail}
       </p>
-      {value > 0 ? (
-        /* Near-black inside the alarm: pressing and alarming must not look alike. */
-        <Link href={href} className="pill-action mt-3 bg-chrome text-primary-foreground">
-          {actionLabel}
-        </Link>
+      {href ? (
+        <p
+          className={cn(
+            "mt-2.5 text-[10px] font-black tracking-[0.07em] uppercase",
+            yellow ? "text-brand-yellow-foreground" : "text-accent-foreground",
+          )}
+        >
+          {yellow ? "Open the leaderboard →" : "See these reviews →"}
+        </p>
       ) : null}
-    </div>
+    </>
+  );
+
+  const className = cn(
+    "block rounded-[var(--radius-lg)] border p-[18px] shadow-raised",
+    yellow ? "border-brand-yellow bg-brand-yellow" : "border-border bg-surface",
+  );
+
+  if (!href) return <div className={className}>{body}</div>;
+  return (
+    <Link
+      href={href}
+      className={cn(
+        className,
+        "transition-colors",
+        yellow ? "hover:bg-accent-hover" : "hover:bg-surface-muted",
+      )}
+    >
+      {body}
+    </Link>
   );
 }
 
@@ -1051,58 +1114,85 @@ function RatingBreakdown({
   );
 }
 
-function DistrictTable({
+/**
+ * The goal figures per district. Every column is summed over the district's
+ * salons that have a baseline, so the target and the count cover the same
+ * salons.
+ */
+function DistrictGoalTable({
   districts,
   filters,
+  goal,
 }: {
-  districts: DistrictRollup[];
+  districts: DistrictGoalRollup[];
   filters: ReviewFilters;
+  goal: ReviewGoalContext;
 }) {
   return (
-    <ScrollTable>
-      <table className="data-table min-w-[40rem]">
-        <thead>
-          <tr>
-            <th scope="col">District</th>
-            <th scope="col" data-align="right">Salons</th>
-            <th scope="col" data-align="right">Qualifying this week</th>
-            <th scope="col" data-align="right">All this week</th>
-            <th scope="col" data-align="right">Unanswered</th>
-            <th scope="col" data-align="right">Average</th>
-            <th scope="col" data-align="right">Held</th>
-          </tr>
-        </thead>
-        <tbody>
-          {districts.map((district) => (
-            <tr key={district.district}>
-              <td>
-                <Link
-                  href={reviewsHref({
-                    ...filters,
-                    district: district.district,
-                    storeCode: null,
-                    week: "current",
-                  })}
-                  className="text-[12px] font-bold text-foreground hover:underline"
-                >
-                  {district.district}
-                </Link>
-              </td>
-              <td data-align="right">{district.locations}</td>
-              <td data-align="right" className="font-black">
-                {district.qualifyingThisWeek}
-              </td>
-              <td data-align="right">{district.reviewsThisWeek}</td>
-              <td data-align="right">{district.unanswered}</td>
-              <td data-align="right">
-                {district.averageRating === null ? "—" : district.averageRating.toFixed(2)}
-              </td>
-              <td data-align="right">{formatNumber(district.total)}</td>
+    <section className="min-w-0 rounded-[var(--radius-lg)] border border-border bg-surface shadow-raised">
+      <ScrollTable>
+        <table aria-label="Goal progress by district" className="data-table min-w-[40rem]">
+          <thead>
+            <tr>
+              <th scope="col">District</th>
+              <th scope="col" data-align="right">
+                Salons
+              </th>
+              <th
+                scope="col"
+                data-align="right"
+                className="shadow-[inset_0_3px_0_var(--status-at-market-edge)]"
+              >
+                Qualifying
+                <small className="text-muted-foreground">This week</small>
+              </th>
+              <th
+                scope="col"
+                data-align="right"
+                className="shadow-[inset_0_3px_0_var(--selected)]"
+              >
+                Qualifying
+                <small className="text-muted-foreground">Month to date</small>
+              </th>
+              <th scope="col" data-align="right">
+                Target
+                <small className="text-muted-foreground">{goal.target} × counting salons</small>
+              </th>
+              <th scope="col" data-align="right">
+                Salons at goal
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </ScrollTable>
+          </thead>
+          <tbody>
+            {districts.map((district) => (
+              <tr key={district.district}>
+                <td>
+                  <Link
+                    href={reviewsHref({
+                      ...filters,
+                      district: district.district,
+                      storeCode: null,
+                    })}
+                    className="text-[12px] font-bold text-foreground hover:underline"
+                  >
+                    {district.district}
+                  </Link>
+                </td>
+                <td data-align="right">{district.locations}</td>
+                <td data-align="right">{district.qualifyingThisWeek}</td>
+                <td data-align="right" className="font-black text-foreground">
+                  {district.qualifyingMonthToDate}
+                </td>
+                <td data-align="right">{district.combinedTarget}</td>
+                <td data-align="right">
+                  {district.atGoal} of {district.counting}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ScrollTable>
+    </section>
   );
 }
 

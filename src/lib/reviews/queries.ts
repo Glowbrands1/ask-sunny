@@ -11,6 +11,16 @@ import {
   type LocationDirectoryRow,
   type LocationPeriodRow,
 } from "./aggregate";
+import {
+  goalContext,
+  isCounting,
+  monthlyReviewGoal,
+  MONTHLY_REVIEW_GOAL_ENV,
+  qualifyingMonthToDate,
+  straddlingPeriod,
+  type ReportingPeriodRow,
+  type ReviewGoalContext,
+} from "./goal";
 import { ratingDistribution } from "./rating-distribution";
 import {
   currentWeekStart,
@@ -18,11 +28,12 @@ import {
   recentWeekStarts,
   weekEndOf,
 } from "./reporting-week";
-import { googleReviewsToday } from "./timezone";
+import { googleReviewsDayStartUtc, googleReviewsToday } from "./timezone";
 import {
   ratingBounds,
   WEEK_ALL,
   WEEK_CURRENT,
+  WEEK_MONTH,
   type ReviewFilters,
 } from "./filters";
 import {
@@ -85,6 +96,14 @@ export const TREND_WEEKS = 12;
  */
 export const TIMELINE_LIMIT = 5000;
 
+/**
+ * THE CEILING ON THE MONTH-TO-DATE READ of the week that straddles the 1st.
+ *
+ * One week's qualifying reviews across the estate — tens of rows. Exceeding it
+ * fails the read loudly rather than truncating it into a low total.
+ */
+export const MONTH_STRADDLE_LIMIT = 1000;
+
 export interface ReviewsSnapshot {
   /** True when this deployment holds no Google review at all yet. */
   empty: boolean;
@@ -108,6 +127,8 @@ export interface ReviewsSnapshot {
   currentWeek: string;
   previousWeek: string;
   lastSyncAt: string | null;
+  /** The monthly goal, and where today sits in the month. */
+  goal: ReviewGoalContext;
 }
 
 export interface ReviewFeed {
@@ -250,13 +271,13 @@ export async function loadReviewsSnapshot(
   if (periodResult.error) throw periodResult.error;
   if (directoryResult.error) throw directoryResult.error;
 
-  const periods = (periodResult.data ?? []) as unknown as {
-    id: string;
-    period_start: string;
-  }[];
+  const periods = (periodResult.data ?? []) as unknown as ReportingPeriodRow[];
   const periodIdByStart = new Map(periods.map((period) => [period.period_start, period.id]));
 
-  const [countResult, backlogResult] = await Promise.all([
+  const goal = goalContext(today, monthlyReviewGoal(process.env[MONTHLY_REVIEW_GOAL_ENV]));
+  const straddle = straddlingPeriod(periods, goal.monthStart);
+
+  const [countResult, backlogResult, straddleResult] = await Promise.all([
     periods.length === 0
       ? Promise.resolve({ data: [], error: null })
       : supabase
@@ -277,10 +298,42 @@ export async function loadReviewsSnapshot(
         "location_id,store_code,historical_reviews,historical_qualifying," +
           "historical_unanswered,historical_critical_unanswered,rating_sum",
       ),
+
+    /*
+     * THE WEEK THAT STRADDLES THE 1ST, DATED REVIEW BY REVIEW. Only its
+     * qualifying, counted reviews first seen on or after Central midnight on
+     * the 1st belong to this month — see `qualifyingMonthToDate` in `goal.ts`.
+     * One reporting week of qualifying reviews is tens of rows, not thousands.
+     */
+    straddle === null
+      ? Promise.resolve({ data: [], error: null, count: 0 })
+      : supabase
+          .from("google_reviews_enriched")
+          .select("id,store_code", { count: "exact" })
+          .eq("reporting_period_id", straddle.id)
+          .eq("eligible_for_weekly_count", true)
+          .gte("first_seen_at", googleReviewsDayStartUtc(goal.monthStart))
+          .limit(MONTH_STRADDLE_LIMIT),
   ]);
 
   if (countResult.error) throw countResult.error;
   if (backlogResult.error) throw backlogResult.error;
+  if (straddleResult.error) throw straddleResult.error;
+
+  const straddleRows = (straddleResult.data ?? []) as unknown as {
+    id: string;
+    store_code: string;
+  }[];
+  /*
+   * A PARTIAL READ WOULD BE A WRONG TOTAL, so it is refused rather than
+   * shown. At the limit, the month-to-date figure is not knowable from this
+   * read and the page says it could not load rather than printing a low one.
+   */
+  if ((straddleResult.count ?? straddleRows.length) > straddleRows.length) {
+    throw new Error(
+      `Month-to-date read for period ${straddle?.id} exceeded ${MONTH_STRADDLE_LIMIT} reviews.`,
+    );
+  }
 
   const directoryAll = (directoryResult.data ?? []) as unknown as LocationDirectoryRow[];
   const periodRowsAll = (countResult.data ?? []) as unknown as LocationPeriodRow[];
@@ -305,21 +358,33 @@ export async function loadReviewsSnapshot(
   const previousPeriodId = periodIdByStart.get(previousStart) ?? null;
 
   /*
-   * MONTH TO DATE, OVER PERIODS RATHER THAN OVER DAYS. Reporting weeks straddle
-   * month boundaries, so there is no honest "reviews counted between the 1st
-   * and today" — what there is, and what the caption says, is the reporting
-   * weeks that BEGAN this month. Computed from rows already in hand rather than
-   * by a second round trip.
+   * MONTH TO DATE: QUALIFYING REVIEWS FROM THE 1ST, CENTRAL, THROUGH TODAY.
+   *
+   * It used to be every review (1- and 2-star included) in the reporting weeks
+   * that BEGAN this month, which left out the first days of any month that
+   * does not open on a Sunday. Whole weeks that began this month come from the
+   * rollup; the one week that straddles the 1st comes from the dated read
+   * above, de-duplicated on the review id. `goal.ts` explains why neither part
+   * can count a review the other already has.
    */
-  const firstOfMonth = monthStart(today);
-  const monthToDate = periodRows
-    .filter((row) => row.period_start >= firstOfMonth)
-    .reduce((total, row) => total + row.all_reviews, 0);
+  const visibleStores = new Set(directory.map((entry) => entry.store_code));
+  const straddleCounts = new Map<string, number>();
+  for (const row of new Map(straddleRows.map((entry) => [entry.id, entry])).values()) {
+    if (!visibleStores.has(row.store_code)) continue;
+    straddleCounts.set(row.store_code, (straddleCounts.get(row.store_code) ?? 0) + 1);
+  }
+  const monthToDateByStore = qualifyingMonthToDate(periodRows, goal.monthStart, straddleCounts);
 
   const locations = locationRollups(directory, periodRows, backlog, {
     currentPeriodId,
     previousPeriodId,
+    monthToDate: monthToDateByStore,
   });
+
+  /* Over the listings that are counting: an unanchored listing has no month. */
+  const monthToDate = locations
+    .filter(isCounting)
+    .reduce((total, location) => total + location.qualifyingMonthToDate, 0);
 
   return {
     /* Emptiness is judged on the WHOLE estate, not on the filtered slice: a
@@ -373,6 +438,7 @@ export async function loadReviewsSnapshot(
       syncResult.error || !syncResult.data?.length
         ? null
         : (syncResult.data[0] as { started_at: string }).started_at,
+    goal,
   };
 }
 
@@ -463,6 +529,19 @@ export async function loadReviewFeed(
 
   if (filters.week === WEEK_CURRENT) {
     query = query.eq("period_start", currentWeekStart(today));
+  } else if (filters.week === WEEK_MONTH) {
+    /*
+     * THE MONTH-TO-DATE RULE, AS ONE PREDICATE: counted, in a week that ends on
+     * or after the 1st, and either that week began on or after the 1st or the
+     * review was first seen on or after Central midnight on it. Equivalent to
+     * `qualifyingMonthToDate` in `goal.ts`, so the figure and the list it opens
+     * cannot disagree. A second `or` group (the search) is ANDed with this one.
+     */
+    const first = monthStart(today);
+    query = query
+      .not("reporting_period_id", "is", null)
+      .gte("period_start", shiftDays(first, -6))
+      .or(`period_start.gte.${first},first_seen_at.gte.${googleReviewsDayStartUtc(first)}`);
   } else if (filters.week !== WEEK_ALL) {
     query = query.eq("period_start", filters.week);
   }

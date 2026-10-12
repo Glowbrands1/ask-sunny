@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 
 import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
+import { goalContext } from "@/lib/reviews/goal";
 import { EMPTY_REVIEW_TIMELINE, type ReviewTimeline } from "@/lib/reviews/timeline";
 import type {
   DashboardReview,
@@ -79,6 +80,8 @@ function location(overrides: Partial<LocationRollup> = {}): LocationRollup {
     reviewsThisWeek: 4,
     qualifyingThisWeek: 3,
     lastWeek: 2,
+    qualifyingLastWeek: 2,
+    qualifyingMonthToDate: 6,
     unanswered: 0,
     criticalOpen: 0,
     averageRating: 4.8,
@@ -172,6 +175,7 @@ function snapshotWith(
     currentWeek: "2026-09-13",
     previousWeek: "2026-09-06",
     lastSyncAt: "2026-09-17T09:00:00.000Z",
+    goal: goalContext("2026-09-17", 10),
     ...overrides,
   };
 }
@@ -298,13 +302,20 @@ describe("each section lives in exactly one view", () => {
     expect(document.getElementById("review-feed")).toBeNull();
   });
 
-  it("puts the leaderboard in Salon Leaderboard and nowhere else", () => {
+  it("puts the ranked leaderboard in Salon Leaderboard and nowhere else", () => {
     draw({ tab: "leaderboard" });
 
-    const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("row").length).toBeGreaterThan(1);
+    const list = screen.getByRole("list", { name: /Salons ranked/ });
+    expect(within(list).getAllByRole("listitem").length).toBeGreaterThan(0);
     expect(document.getElementById("review-feed")).toBeNull();
     expect(document.getElementById("response-queue")).toBeNull();
+
+    cleanup();
+    for (const tab of ["overview", "reviews", "needs"] as const) {
+      draw({ tab, reviews: [review()] });
+      expect(screen.queryByRole("list", { name: /Salons ranked/ }), tab).toBeNull();
+      cleanup();
+    }
   });
 
   it("DRAWS NO TWELVE-WEEK REPORTING CHART, on any view", () => {
@@ -511,36 +522,54 @@ describe("the record lists reveal rather than dumping", () => {
   });
 });
 
-/* -------------------------------------------------------- the leaderboard -- */
+/* ------------------------------------------------------ the goal table -- */
 
-describe("the leaderboard's own controls", () => {
+describe("the Overview's goal table and its own controls", () => {
   const rows = [
-    location({ storeCode: "306", locationName: "KS Manhattan", qualifyingThisWeek: 3 }),
+    location({
+      storeCode: "306",
+      locationName: "KS Manhattan",
+      qualifyingThisWeek: 3,
+      qualifyingMonthToDate: 4,
+      averageRating: 4.9,
+    }),
     location({
       storeCode: "314",
       locationName: "KS Lawrence",
       district: "District 5",
-      qualifyingThisWeek: 9,
+      qualifyingThisWeek: 2,
+      qualifyingMonthToDate: 12,
       unanswered: 4,
       averageRating: 4.2,
+      historical: 7,
+      total: 31,
     }),
   ];
 
+  function goalTable(): HTMLElement {
+    return screen.getByRole("table", { name: "Salon goal progress" });
+  }
+
   function salonOrder(): string[] {
-    const body = screen.getByRole("table").querySelector("tbody") as HTMLElement;
+    const body = goalTable().querySelector("tbody") as HTMLElement;
     return within(body)
       .getAllByRole("row")
       .map((row) => (row.querySelector("a")?.textContent ?? "").trim());
   }
 
-  it("keeps the order it has always opened in: qualifying this week", () => {
-    draw({ tab: "leaderboard", locations: rows });
+  it("opens ordered by qualifying reviews month to date", () => {
+    draw({ tab: "overview", locations: rows });
 
     expect(salonOrder()).toEqual(["KS Lawrence", "KS Manhattan"]);
+    expect(
+      within(goalTable())
+        .getByRole("columnheader", { name: /Month to date/ })
+        .getAttribute("aria-sort"),
+    ).toBe("descending");
   });
 
   it("finds a salon by name, store code or district", () => {
-    draw({ tab: "leaderboard", locations: rows });
+    draw({ tab: "overview", locations: rows });
 
     const search = screen.getByLabelText(/Find a salon/);
 
@@ -557,56 +586,211 @@ describe("the leaderboard's own controls", () => {
   });
 
   it("filters the table by district", () => {
-    draw({ tab: "leaderboard", locations: rows });
+    draw({ tab: "overview", locations: rows });
 
-    fireEvent.change(screen.getByLabelText("Filter the table by district"), {
+    fireEvent.change(screen.getByLabelText("Filter the goal table by district"), {
       target: { value: "District 5" },
     });
 
     expect(salonOrder()).toEqual(["KS Lawrence"]);
   });
 
-  it("sorts by a column, and says so in the markup", () => {
-    draw({ tab: "leaderboard", locations: rows });
+  it("sorts by this week, and says so in the markup", () => {
+    draw({ tab: "overview", locations: rows });
 
-    const header = screen.getByRole("button", { name: /Average/ });
-    fireEvent.click(header);
+    const week = within(goalTable()).getByRole("columnheader", { name: /This week/ });
+    fireEvent.click(within(week).getByRole("button"));
 
-    /* Numeric columns open descending: the best average first. */
     expect(salonOrder()).toEqual(["KS Manhattan", "KS Lawrence"]);
-    expect(
-      screen.getByRole("columnheader", { name: /Average/ }).getAttribute("aria-sort"),
-    ).toBe("descending");
+    expect(week.getAttribute("aria-sort")).toBe("descending");
 
-    fireEvent.click(header);
+    fireEvent.click(within(week).getByRole("button"));
     expect(salonOrder()).toEqual(["KS Lawrence", "KS Manhattan"]);
-    expect(
-      screen.getByRole("columnheader", { name: /Average/ }).getAttribute("aria-sort"),
-    ).toBe("ascending");
+    expect(week.getAttribute("aria-sort")).toBe("ascending");
   });
 
   it("sorts by salon name alphabetically", () => {
-    draw({ tab: "leaderboard", locations: rows });
+    draw({ tab: "overview", locations: rows });
 
-    fireEvent.click(screen.getByRole("button", { name: /Salon/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Salon/ }));
     expect(salonOrder()).toEqual(["KS Lawrence", "KS Manhattan"]);
   });
 
-  it("does not move a figure on the way: the row reads what it was given", () => {
-    draw({ tab: "leaderboard", locations: rows });
+  it("reads each row as it was given: code, week, month, target, progress, status", () => {
+    draw({ tab: "overview", locations: rows });
 
-    const body = screen.getByRole("table").querySelector("tbody") as HTMLElement;
+    const body = goalTable().querySelector("tbody") as HTMLElement;
     const lawrence = within(body).getAllByRole("row")[0];
     const cells = within(lawrence)
       .getAllByRole("cell")
       .map((cell) => (cell.textContent ?? "").trim());
 
-    /* store code, qualifying, all this week, last week, unanswered, average */
     expect(cells[1]).toBe("314");
-    expect(cells[2]).toBe("9");
-    expect(cells[3]).toBe("4");
-    expect(cells[4]).toBe("2");
-    expect(cells[5]).toBe("4");
-    expect(cells[6]).toBe("4.20");
+    expect(cells[2]).toBe("2");
+    expect(cells[3]).toBe("12");
+    expect(cells[4]).toBe("10");
+    /* Past 100%, and the overage named. */
+    expect(cells[5]).toContain("120%");
+    expect(cells[5]).toContain("+2 over");
+    expect(cells[6]).toContain("Goal met");
+    /* Seven columns: nothing for Unanswered, All this week or Last week. */
+    expect(cells).toHaveLength(7);
+  });
+
+  it("links the month figure to exactly the reviews it counts", () => {
+    draw({ tab: "overview", locations: rows });
+
+    const link = screen.getByRole("link", { name: "12" });
+    const href = link.getAttribute("href") ?? "";
+    expect(href).toContain("store=314");
+    expect(href).toContain("week=month");
+    expect(href).toContain("qualifying=yes");
+    expect(href).toContain("tab=reviews");
+  });
+
+  it("keeps Average, Historical and Held one press away", () => {
+    draw({ tab: "overview", locations: rows });
+
+    expect(screen.queryByRole("columnheader", { name: /Average/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More columns" }));
+
+    expect(screen.getByRole("columnheader", { name: /Average/ })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: /Historical/ })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: /Held/ })).toBeTruthy();
+    expect(screen.getByText("4.20")).toBeTruthy();
+    expect(screen.getByText("31")).toBeTruthy();
+  });
+
+  it("keeps a salon with no reviews this month on the table, at zero", () => {
+    draw({
+      tab: "overview",
+      locations: [...rows, location({ storeCode: "410", locationName: "NE Omaha Pacific" , qualifyingThisWeek: 0, qualifyingMonthToDate: 0 })],
+    });
+
+    expect(salonOrder()).toContain("NE Omaha Pacific");
+    const row = screen.getByRole("link", { name: "NE Omaha Pacific" }).closest("tr") as HTMLElement;
+    expect(row.textContent).toContain("0%");
+    expect(row.textContent).toContain("10 to go");
+    expect(row.textContent).toContain("Behind pace");
+  });
+
+  it("shows a salon with no baseline as Not counting, with no figures", () => {
+    draw({
+      tab: "overview",
+      locations: [location({ anchorReviewId: null, anchorReviewer: null, qualifyingMonthToDate: 0 })],
+    });
+
+    const row = goalTable().querySelector("tbody tr") as HTMLElement;
+    expect(row.textContent).toContain("Not counting");
+    expect(row.textContent).toContain("No anchor — counting nothing");
+    expect(row.textContent).not.toContain("0%");
+  });
+});
+
+/* ------------------------------------------------------- the leaderboard -- */
+
+describe("the ranked leaderboard", () => {
+  const board = [
+    location({ storeCode: "309", locationName: "NE Kearney", district: "Dugan", qualifyingThisWeek: 2, qualifyingMonthToDate: 8 }),
+    location({ storeCode: "307", locationName: "NE Grand Island", district: "Dugan", qualifyingThisWeek: 3, qualifyingMonthToDate: 12 }),
+    location({ storeCode: "313", locationName: "NE Omaha 132nd and Maple", district: "Cotton", qualifyingThisWeek: 3, qualifyingMonthToDate: 8 }),
+    location({ storeCode: "306", locationName: "MO Kansas City Wornall", district: "Patterson", qualifyingThisWeek: 4, qualifyingMonthToDate: 10 }),
+    location({ storeCode: "310", locationName: "NE Lincoln 27th Street", district: "Dugan", qualifyingThisWeek: 5, qualifyingMonthToDate: 5 }),
+    location({ storeCode: "410", locationName: "NE Omaha Pacific", district: "Cotton", qualifyingThisWeek: 0, qualifyingMonthToDate: 0 }),
+    location({ storeCode: "495", locationName: "MO St Joseph", district: "Cotton", anchorReviewId: null, anchorReviewer: null }),
+  ];
+
+  function ranking(): { salon: string; rank: string }[] {
+    const list = screen.getByRole("list", { name: /Salons ranked/ });
+    return within(list)
+      .getAllByRole("listitem")
+      .map((item) => ({
+        salon: (item.querySelector("a")?.textContent ?? "").trim(),
+        rank: item.querySelector("[aria-label^='Rank'], [aria-label='Not ranked']")?.getAttribute("aria-label") ?? "",
+      }));
+  }
+
+  it("ranks by month to date, ties sharing a rank, unbaselined salons last and unranked", () => {
+    draw({ tab: "leaderboard", locations: board });
+
+    expect(ranking()).toEqual([
+      { salon: "NE Grand Island", rank: "Rank 1" },
+      { salon: "MO Kansas City Wornall", rank: "Rank 2" },
+      { salon: "NE Omaha 132nd and Maple", rank: "Rank 3, tied" },
+      { salon: "NE Kearney", rank: "Rank 3, tied" },
+      { salon: "NE Lincoln 27th Street", rank: "Rank 5" },
+      { salon: "NE Omaha Pacific", rank: "Rank 6" },
+      { salon: "MO St Joseph", rank: "Not ranked" },
+    ]);
+  });
+
+  it("marks goal achievement apart from pace", () => {
+    draw({ tab: "leaderboard", locations: board });
+
+    const row = (name: string) =>
+      screen.getByRole("link", { name }).closest("li") as HTMLElement;
+    /* 17 September: 6 by now to finish on 10. */
+    expect(row("NE Grand Island").textContent).toContain("Goal met");
+    expect(row("NE Grand Island").textContent).toContain("120%");
+    expect(row("MO Kansas City Wornall").textContent).toContain("Goal met");
+    expect(row("MO Kansas City Wornall").textContent).toContain("100%");
+    expect(row("NE Kearney").textContent).toContain("On pace");
+    expect(row("NE Kearney").textContent).not.toContain("Goal met");
+    expect(row("NE Lincoln 27th Street").textContent).toContain("Behind pace");
+    expect(row("MO St Joseph").textContent).toContain("Not counting");
+  });
+
+  it("ranks by this week on request", () => {
+    draw({ tab: "leaderboard", locations: board });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rank by this week" }));
+
+    expect(ranking()[0]).toEqual({ salon: "NE Lincoln 27th Street", rank: "Rank 1" });
+    expect(screen.getByRole("button", { name: "Rank by this week" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("filters by status, counting each one", () => {
+    draw({ tab: "leaderboard", locations: board });
+
+    const met = screen.getByRole("button", { name: /^Goal met/ });
+    expect(met.textContent).toContain("2");
+    fireEvent.click(met);
+
+    expect(ranking().map((entry) => entry.salon)).toEqual([
+      "NE Grand Island",
+      "MO Kansas City Wornall",
+    ]);
+  });
+
+  it("keeps each salon's place on the whole board when a filter narrows the rows", () => {
+    draw({ tab: "leaderboard", locations: board });
+
+    fireEvent.change(screen.getByLabelText("Filter the leaderboard by district"), {
+      target: { value: "Cotton" },
+    });
+
+    expect(ranking()).toEqual([
+      { salon: "NE Omaha 132nd and Maple", rank: "Rank 3, tied" },
+      { salon: "NE Omaha Pacific", rank: "Rank 6" },
+      { salon: "MO St Joseph", rank: "Not ranked" },
+    ]);
+  });
+
+  it("finds a salon by name or store code", () => {
+    draw({ tab: "leaderboard", locations: board });
+
+    fireEvent.change(screen.getByLabelText(/Find a salon/), { target: { value: "410" } });
+    expect(ranking().map((entry) => entry.salon)).toEqual(["NE Omaha Pacific"]);
+  });
+
+  it("says where the month is", () => {
+    const { container } = draw({ tab: "leaderboard", locations: board });
+
+    expect(container.textContent).toContain("September · day 17 of 30");
+    expect(container.textContent).toContain("2 of 6");
+    expect(container.textContent).toContain("13 days left");
+    expect(container.textContent).toContain("Pace mark: 6 by now finishes on 10");
   });
 });

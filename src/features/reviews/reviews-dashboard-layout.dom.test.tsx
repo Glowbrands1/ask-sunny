@@ -5,6 +5,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 
 import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
+import { goalContext } from "@/lib/reviews/goal";
 import { EMPTY_REVIEW_TIMELINE } from "@/lib/reviews/timeline";
 import type {
   DashboardReview,
@@ -83,6 +84,8 @@ function location(overrides: Partial<LocationRollup> = {}): LocationRollup {
     reviewsThisWeek: 4,
     qualifyingThisWeek: 3,
     lastWeek: 2,
+    qualifyingLastWeek: 2,
+    qualifyingMonthToDate: 6,
     unanswered: 0,
     criticalOpen: 0,
     averageRating: 4.8,
@@ -177,6 +180,7 @@ function snapshotWith(
     currentWeek: "2026-09-13",
     previousWeek: "2026-09-06",
     lastSyncAt: "2026-09-17T09:00:00.000Z",
+    goal: goalContext("2026-09-17", 10),
     ...snapshotOverrides,
   };
 }
@@ -228,28 +232,22 @@ function headingOrder(): string[] {
 /* ------------------------------------------------------------------ order -- */
 
 describe("the page's shape", () => {
-  it("opens on the week, then how many reviews are arriving, then the holdings", () => {
+  it("opens on the month's goal, then how many reviews are arriving, then the holdings", () => {
     /*
-     * THE OVERVIEW IS THE WEEK AND THE VOLUME, AND NOTHING ELSE. The queue, the
-     * leaderboard, the districts and the records each have a view of their own
-     * now; what stayed is what a Salon Director opens the page to read — what
-     * happened this week, how many reviews are coming in, and what is held.
+     * THE OVERVIEW LEADS WITH THE MONTHLY GOAL, at Madeline Patterson's request:
+     * qualifying reviews this week and month to date, against ten per salon.
+     * The volume chart and what ASK Sunny holds follow, as before.
      */
     draw();
 
     const order = headingOrder();
     const at = (label: string) => order.findIndex((text) => text.includes(label));
 
-    expect(at("This week")).toBeGreaterThanOrEqual(0);
-    expect(at("This week")).toBeLessThan(at("Everything ASK Sunny holds"));
+    expect(at("September review goal")).toBeGreaterThanOrEqual(0);
+    expect(at("September review goal")).toBeLessThan(at("Everything ASK Sunny holds"));
   });
 
-  it("keeps the queue, the leaderboard and the records off the Overview", () => {
-    /*
-     * THE WHOLE POINT OF THE RESTRUCTURE. Each of these is still on the page —
-     * behind its own tab, verified below — and none of them is on the view
-     * somebody lands on.
-     */
+  it("keeps the queue, the ranked leaderboard and the records off the Overview", () => {
     draw({ reviews: [review()] });
 
     const order = headingOrder();
@@ -258,56 +256,75 @@ describe("the page's shape", () => {
     expect(order.some((text) => text.includes("Google reviews"))).toBe(false);
     expect(document.getElementById("response-queue")).toBeNull();
     expect(document.getElementById("review-feed")).toBeNull();
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("list", { name: /Salons ranked/ })).toBeNull();
   });
 
-  it("opens on the four weekly measures the design draws", () => {
-    draw();
+  it("opens on the four goal measures the approved design draws", () => {
+    draw({ locations: [location(), location({ storeCode: "307", locationName: "NE Grand Island" })] });
 
-    expect(screen.getByText("Need a response")).toBeTruthy();
-    expect(screen.getByText("Qualifying reviews gained")).toBeTruthy();
-    expect(screen.getByText("Average rating")).toBeTruthy();
-    expect(screen.getByText("Salons needing attention")).toBeTruthy();
+    expect(screen.getAllByText("Qualifying reviews")).toHaveLength(2);
+    expect(screen.getByText("Salons at goal")).toBeTruthy();
+    expect(screen.getByText("Reviews still needed")).toBeTruthy();
+  });
+
+  it("tells the week and the month apart in words on every goal figure", () => {
+    const { container } = draw();
+
+    expect(container.textContent).toContain("This week · Sep 13 – Sep 19");
+    expect(container.textContent).toContain("Month to date · Sep 1 – Sep 17");
   });
 });
 
-/* ------------------------------------------------------- invented figures -- */
+/* ---------------------------------------------- what Madeline asked for -- */
 
-describe("the figures the design supplied and the data cannot", () => {
-  it("DRAWS NO GOAL, NO METER AND NO PERCENTAGE, because no goal is stored", () => {
-    const { container } = draw();
-
-    /*
-     * The seeded tile ran `gained / goal` as a bar. Nothing in Supabase holds a
-     * review goal, so the bar is not drawn dim or at zero — it is absent, and
-     * the tile says what the week produced instead.
-     */
-    expect(container.textContent).not.toContain("combined weekly goal");
-    expect(container.textContent).not.toContain("% of goal");
-    expect(container.querySelector(".bg-measure-benchmark")).toBeNull();
-  });
-
-  it("gives the leaderboard no Goal column and no progress column", () => {
-    draw({ tab: "leaderboard" });
+describe("the reporting views, as Madeline Patterson asked for them", () => {
+  it("DRAWS THE MONTHLY TARGET THE BUSINESS SET, against every salon", () => {
+    draw();
 
     const headers = screen
       .getAllByRole("columnheader")
       .map((node) => (node.textContent ?? "").replace(/[↕▲▼]/g, "").trim());
-    expect(headers).not.toContain("Goal");
-    expect(headers).not.toContain("Progress");
+    expect(headers).toContain("Monthly target");
+    expect(headers.some((text) => text.startsWith("Progress toward target"))).toBe(true);
   });
 
-  it("says out loud that the goal column is missing on purpose", () => {
-    /*
-     * REMOVING IT SILENTLY WOULD LEAVE A READER WONDERING WHERE IT WENT. The
-     * seeded leaderboard had one; anybody who saw that screen needs to be told
-     * the column is gone because the number was never real, not because the
-     * page is broken.
-     */
-    draw({ tab: "leaderboard" });
+  it("removes Unanswered, Replies waiting, All this week and Last week from the Overview", () => {
+    const { container } = draw({
+      locations: [location({ unanswered: 4, criticalOpen: 1 })],
+      summaryOverrides: { unanswered: 4 },
+    });
 
-    const note = screen.getByText(/no goal column/i);
-    expect(note.textContent).toContain("no weekly review goal is configured");
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((node) => (node.textContent ?? "").replace(/[↕▲▼]/g, "").trim().toLowerCase());
+    for (const removed of ["unanswered", "all this week", "last week"]) {
+      expect(headers.some((text) => text.startsWith(removed)), removed).toBe(false);
+    }
+    /* The old status chip, its alarm tile and its attention tile are gone. */
+    expect(container.textContent).not.toContain("Replies waiting");
+    expect(container.textContent).not.toContain("Need a response");
+    expect(container.textContent).not.toContain("Salons needing attention");
+    expect(screen.queryByRole("link", { name: /Open the queue/ })).toBeNull();
+  });
+
+  it("removes them from the leaderboard too", () => {
+    const { container } = draw({
+      tab: "leaderboard",
+      locations: [location({ unanswered: 4 })],
+    });
+
+    expect(container.textContent).not.toContain("Unanswered");
+    expect(container.textContent).not.toContain("Replies waiting");
+    expect(container.textContent).not.toContain("All this week");
+    expect(container.textContent).not.toMatch(/\bLast week\b/);
+  });
+
+  it("KEEPS THE NEEDS RESPONSE VIEW AND ITS COUNT, which is where that work lives", () => {
+    draw({ summaryOverrides: { unanswered: 9 } });
+
+    const tab = screen.getByRole("link", { name: /Needs Response/ });
+    expect(tab.textContent).toContain("(9)");
+    expect(tab.getAttribute("href")).toContain("tab=needs");
   });
 
   it("never prints the connection chip as a constant", () => {
@@ -337,54 +354,113 @@ describe("the figures the design supplied and the data cannot", () => {
 
     expect(screen.getByText("No sync recorded yet")).toBeTruthy();
   });
+
+  it("names the month-to-date window in the band", () => {
+    const { container } = draw();
+    expect(container.textContent).toContain("Month to date Sep 1 – Sep 17");
+  });
 });
 
-/* --------------------------------------------------- salons needing help -- */
+/* ------------------------------------------------------- the goal tiles -- */
 
-describe("salons needing attention", () => {
-  const healthy = location({ storeCode: "140", locationName: "MO Wornall" });
-  const critical = location({
-    storeCode: "145",
-    locationName: "NE Lincoln O Street",
-    criticalOpen: 2,
-    unanswered: 3,
-    averageRating: 4.9,
+describe("the goal tiles", () => {
+  /* 17 September: 16 of 30 days finished, so the pace mark is ceil(5.33) = 6. */
+  const salons = [
+    location({
+      storeCode: "306",
+      locationName: "KS Manhattan",
+      qualifyingThisWeek: 4,
+      qualifyingLastWeek: 2,
+      qualifyingMonthToDate: 12,
+    }),
+    location({
+      storeCode: "307",
+      locationName: "NE Grand Island",
+      qualifyingThisWeek: 2,
+      qualifyingLastWeek: 1,
+      qualifyingMonthToDate: 10,
+    }),
+    location({
+      storeCode: "309",
+      locationName: "NE Kearney",
+      qualifyingThisWeek: 1,
+      qualifyingLastWeek: 1,
+      qualifyingMonthToDate: 3,
+    }),
+    location({
+      storeCode: "495",
+      locationName: "MO St Joseph",
+      anchorReviewId: null,
+      anchorReviewer: null,
+      qualifyingThisWeek: 5,
+      qualifyingLastWeek: 5,
+      qualifyingMonthToDate: 9,
+    }),
+  ];
+
+  /* The tag also heads a table column, so the tile is the one inside a link. */
+  function tile(tag: RegExp): HTMLElement {
+    return screen
+      .getAllByText(tag)
+      .map((node) => node.closest("a"))
+      .find((node): node is HTMLAnchorElement => node !== null) as HTMLElement;
+  }
+
+  it("sums the week over the salons that are counting, and compares like with like", () => {
+    draw({ locations: salons });
+
+    const week = tile(/^This week · /);
+    /* 4 + 2 + 1, with St Joseph's 5 left out: it has no baseline. */
+    expect(week.textContent).toContain("7");
+    expect(week.textContent).toContain("+3 versus last week");
+    expect(week.getAttribute("href")).toContain("week=current");
+    expect(week.getAttribute("href")).toContain("qualifying=yes");
   });
-  const lowRated = location({
-    storeCode: "254",
-    locationName: "NE Omaha Pacific",
-    averageRating: 4.1,
+
+  it("sums the month over the counting salons, against their combined target", () => {
+    draw({ locations: salons });
+
+    const month = tile(/^Month to date · /);
+    expect(month.textContent).toContain("25");
+    expect(month.textContent).toContain("/ 30");
+    expect(month.textContent).toContain("× 3 counting");
+    /* Its drill-down is the month-to-date predicate, not "all counted". */
+    expect(month.getAttribute("href")).toContain("week=month");
+    expect(month.getAttribute("href")).toContain("qualifying=yes");
   });
 
-  it("counts a salon for an open 1- or 2-star review OR a low average", () => {
-    draw({ locations: [healthy, critical, lowRated] });
+  it("counts the salons at goal — exactly ten counts, and so does more", () => {
+    draw({ locations: salons });
 
-    const tile = screen.getByText("Salons needing attention").closest("div") as HTMLElement;
-    expect(within(tile).getByText("2")).toBeTruthy();
+    const atGoal = screen.getByText("Salons at goal").closest("a") as HTMLElement;
+    expect(atGoal.textContent).toContain("2");
+    expect(atGoal.textContent).toContain("of 3");
+    expect(atGoal.getAttribute("href")).toContain("tab=leaderboard");
   });
 
-  it("LISTS EVERY SALON IT COUNTS, so the figure and the rows cannot disagree", () => {
-    /*
-     * The seeded tile counted every salon and listed the first three. That is
-     * the one contradiction a reader will always find, because they count the
-     * rows.
-     */
-    draw({ locations: [healthy, critical, lowRated] });
+  it("adds up each salon's own shortfall, not the estate's", () => {
+    draw({ locations: salons });
 
-    const tile = screen.getByText("Salons needing attention").closest("div") as HTMLElement;
-    const rows = within(tile).getAllByRole("listitem");
-
-    expect(rows).toHaveLength(2);
-    expect(tile.textContent).toContain("NE Lincoln O Street");
-    expect(tile.textContent).toContain("NE Omaha Pacific");
-    expect(tile.textContent).not.toContain("MO Wornall");
+    const needed = screen.getByText("Reviews still needed").closest("div") as HTMLElement;
+    /* Kearney's 7. Manhattan's two over do not cover it. */
+    expect(needed.textContent).toContain("7");
   });
 
-  it("says so plainly when no salon qualifies", () => {
-    draw({ locations: [healthy] });
+  it("speaks about one salon when the page is narrowed to one", () => {
+    draw({ locations: [salons[2]] });
 
-    const tile = screen.getByText("Salons needing attention").closest("div") as HTMLElement;
-    expect(tile.textContent).toContain("No salon has an open 1- or 2-star review");
+    expect(screen.getByText("Monthly goal")).toBeTruthy();
+    const goal = screen.getByText("Monthly goal").closest("a") as HTMLElement;
+    expect(goal.textContent).toContain("3");
+    expect(goal.textContent).toContain("/ 10");
+  });
+
+  it("prints zeroes, not an error, when no salon is counting yet", () => {
+    draw({ locations: [salons[3]] });
+
+    const month = tile(/^Month to date · /);
+    expect(month.textContent).toContain("0");
+    expect(month.textContent).toContain("nothing is being counted");
   });
 });
 
@@ -454,7 +530,7 @@ describe("the response queue", () => {
   });
 
   it("keeps the anchor reachable when the filters leave the queue empty", () => {
-    /* The alarm tile links here whether or not anything matches. */
+    /* The Needs Response tab links here whether or not anything matches. */
     draw({ tab: "needs", reviews: [], summaryOverrides: { unanswered: 4 } });
 
     const empty = document.getElementById("response-queue") as HTMLElement;
@@ -463,40 +539,9 @@ describe("the response queue", () => {
   });
 });
 
-/* -------------------------------------------------------- the alarm tile -- */
+/* ------------------------------------------------------------ the holdings -- */
 
-describe("the one coral tile", () => {
-  it("names the oldest waiting review from the records, not an example", () => {
-    draw({
-      reviews: [review({ rating: 2, relativeDateText: "6 days ago" })],
-    });
-
-    const tile = screen.getByText("Need a response").closest("div") as HTMLElement;
-    expect(tile.textContent).toContain("Oldest is a 2-star");
-    expect(tile.textContent).toContain("6 days ago");
-  });
-
-  it("says the queue is clear rather than inventing an oldest", () => {
-    draw({ reviews: [], summaryOverrides: { unanswered: 0 } });
-
-    const tile = screen.getByText("Need a response").closest("div") as HTMLElement;
-    expect(tile.textContent).toContain("Every review in view has a reply");
-  });
-});
-
-/* ---------------------------------------------------- the weekly measures -- */
-
-describe("the weekly measures", () => {
-  it("reports the qualifying count and what else the week brought", () => {
-    draw();
-
-    const tile = screen.getByText("Qualifying reviews gained").closest("a") as HTMLElement;
-    expect(tile.textContent).toContain("12");
-    expect(tile.textContent).toContain("+3 versus last week");
-    /* 14 arrived, 12 qualify, so 2 raise nothing — arithmetic, not a guess. */
-    expect(tile.textContent).toContain("2 of them are 1- or 2-star");
-  });
-
+describe("the average rating, now among the holdings", () => {
   it("draws the average from every review held and shows its stars", () => {
     draw();
 
@@ -510,6 +555,13 @@ describe("the weekly measures", () => {
 
     const tile = screen.getByText("Average rating").closest("div") as HTMLElement;
     expect(tile.textContent).toContain("—");
+  });
+
+  it("no longer carries the old month tile, which summed every review by week", () => {
+    const { container } = draw();
+    expect(container.textContent).not.toContain(
+      "Counted across the reporting weeks that began this month",
+    );
   });
 });
 
