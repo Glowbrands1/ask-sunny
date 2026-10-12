@@ -84,10 +84,12 @@ describe("the demo Google Reviews screen", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("keeps the Needs Response queue", () => {
+  it("has no Needs Response tab, and an old link to it opens the Overview", () => {
     search = "tab=needs";
     render(<ReviewsDemoScreen />);
 
-    expect(document.getElementById("response-queue")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Needs Response/ })).toBeNull();
+    expect(document.getElementById("response-queue")).toBeNull();
+    expect(screen.getByRole("heading", { name: /October review goal/i })).toBeTruthy();
   });
 });

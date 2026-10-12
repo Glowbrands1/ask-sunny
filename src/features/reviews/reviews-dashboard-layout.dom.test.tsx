@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 
 import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
@@ -319,12 +319,10 @@ describe("the reporting views, as Madeline Patterson asked for them", () => {
     expect(container.textContent).not.toMatch(/\bLast week\b/);
   });
 
-  it("KEEPS THE NEEDS RESPONSE VIEW AND ITS COUNT, which is where that work lives", () => {
+  it("HAS NO NEEDS RESPONSE TAB, removed at the business's request", () => {
     draw({ summaryOverrides: { unanswered: 9 } });
 
-    const tab = screen.getByRole("link", { name: /Needs Response/ });
-    expect(tab.textContent).toContain("(9)");
-    expect(tab.getAttribute("href")).toContain("tab=needs");
+    expect(screen.queryByRole("link", { name: /Needs Response/ })).toBeNull();
   });
 
   it("never prints the connection chip as a constant", () => {
@@ -461,81 +459,6 @@ describe("the goal tiles", () => {
     const month = tile(/^Month to date · /);
     expect(month.textContent).toContain("0");
     expect(month.textContent).toContain("nothing is being counted");
-  });
-});
-
-/* ------------------------------------------------------------- the queue -- */
-
-describe("the response queue", () => {
-  const waiting = Array.from({ length: 9 }, (_, index) =>
-    review({
-      id: `review-${index}`,
-      externalReviewId: `ext-${index}`,
-      reviewerName: `Customer ${index}`,
-      rating: index < 2 ? 1 : 3,
-    }),
-  );
-
-  it("holds the whole queue now that it has a view of its own", () => {
-    /*
-     * IT USED TO SHOW SIX OF NINE AND SAY SO, because a dashboard that long
-     * could not carry the rest. With its own tab it carries all of them, in the
-     * same order, decided by the same response status — and the caption states
-     * the count rather than a slice of it.
-     */
-    draw({ tab: "needs", reviews: waiting });
-
-    const queue = document.getElementById("response-queue") as HTMLElement;
-    expect(within(queue).getAllByRole("article")).toHaveLength(9);
-
-    expect(screen.getByText(/9 reviews need a response/)).toBeTruthy();
-  });
-
-  it("says what the server could not send rather than implying it holds it all", () => {
-    /* The feed read is bounded. When it caps, the caption names both figures. */
-    draw({ tab: "needs", reviews: waiting, feedTotal: 140 });
-
-    expect(screen.getByText(/140 reviews need a response/)).toBeTruthy();
-    expect(screen.getByText(/The first 9 are loaded/)).toBeTruthy();
-  });
-
-  it("USES GOOGLE'S OWN WORDING FOR THE WAIT, not the date we first saw it", () => {
-    /*
-     * `first_seen_at` is when ASK Sunny imported the review, not when the
-     * customer wrote it. Printing it as an age would have the page assert a
-     * review date it does not have — so Google's relative text is carried
-     * verbatim when Google gave one.
-     */
-    draw({ tab: "needs", reviews: [review({ relativeDateText: "6 days ago" })] });
-
-    const queue = document.getElementById("response-queue") as HTMLElement;
-    expect(queue.textContent).toContain("6 days ago");
-    expect(queue.textContent).not.toContain("First seen");
-  });
-
-  it("labels first-seen as first-seen when Google gave no date at all", () => {
-    draw({
-      tab: "needs",
-      reviews: [
-        review({
-          relativeDateText: null,
-          googleAbsoluteDate: null,
-          googleEstimatedAt: null,
-        }),
-      ],
-    });
-
-    const queue = document.getElementById("response-queue") as HTMLElement;
-    expect(queue.textContent).toContain("First seen");
-  });
-
-  it("keeps the anchor reachable when the filters leave the queue empty", () => {
-    /* The Needs Response tab links here whether or not anything matches. */
-    draw({ tab: "needs", reviews: [], summaryOverrides: { unanswered: 4 } });
-
-    const empty = document.getElementById("response-queue") as HTMLElement;
-    expect(empty).toBeTruthy();
-    expect(empty.textContent).toContain("No unanswered review matches");
   });
 });
 

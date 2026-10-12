@@ -32,14 +32,12 @@ import type {
   DashboardReview,
   LocationRollup,
   RatingDistribution,
-  ReviewSummary,
 } from "@/lib/reviews/types";
 import type { ReviewFeed as ReviewFeedData, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
 import { ReviewDetail } from "./review-detail";
 import { ReviewFeed } from "./review-feed";
-import { ReviewQueue } from "./review-queue";
 import { ReviewsAskBar } from "./reviews-ask-bar";
 import {
   ReviewsFilterBar,
@@ -188,7 +186,6 @@ import { Stars } from "./review-stars";
 const CONTROLS_BY_TAB: Record<ReviewsTab, ReviewFilterControl[]> = {
   overview: ["location", "rating"],
   reviews: ["location", "rating", "status", "search"],
-  needs: ["location", "rating"],
   /*
    * THE LEADERBOARD LEADS WITH LOCATION AND NOTHING ELSE, and the omission is
    * deliberate. Its table carries its own search, district and status controls,
@@ -240,7 +237,7 @@ export function ReviewsScreen({
    */
   canManageAnchors?: boolean;
 }) {
-  const { summary, locations, districts } = snapshot;
+  const { locations, districts } = snapshot;
 
   const scoped =
     filters.district !== null || filters.storeCode !== null
@@ -316,12 +313,7 @@ export function ReviewsScreen({
         }
       />
 
-      {/*
-        THE COUNT ON THE TAB IS THE SAME `summary.unanswered` the alarm tile and
-        the queue caption read. A badge computed a second way is how a tab and
-        the page behind it start disagreeing.
-      */}
-      <ReviewsTabs filters={filters} counts={{ needs: summary.unanswered }} />
+      <ReviewsTabs filters={filters} />
 
       <ReviewsFilterBar
         filters={filters}
@@ -347,10 +339,6 @@ export function ReviewsScreen({
 
         {filters.tab === "reviews" ? (
           <RecordsView filters={filters} feed={feed} openReview={openReview} />
-        ) : null}
-
-        {filters.tab === "needs" ? (
-          <NeedsResponseView filters={filters} feed={feed} summary={summary} />
         ) : null}
 
         {filters.tab === "leaderboard" ? (
@@ -569,56 +557,6 @@ function RecordsView({
           review, so an imported backlog never raises this week&rsquo;s number.
         </p>
       </Notice>
-    </>
-  );
-}
-
-/**
- * THE WORK, AND ONLY THE WORK.
- *
- * The queue used to be six cards on the dashboard with a link to "the rest in
- * the feed", because a page that long could not carry the whole of it. With a
- * view of its own it carries all of them — the same records, in the same order,
- * decided by the same `response_status` — revealed twenty at a time.
- */
-function NeedsResponseView({
-  filters,
-  feed,
-  summary,
-}: {
-  filters: ReviewFilters;
-  feed: ReviewFeedData;
-  summary: ReviewSummary;
-}) {
-  return (
-    <>
-      <SectionRule label="Needs a response" className="mt-1" />
-      <p className="-mt-2 text-[11.5px] text-muted-foreground">
-        {feed.total === 0 ? (
-          "Nothing in view is waiting for a reply."
-        ) : (
-          <>
-            {formatNumber(feed.total)}{" "}
-            {feed.total === 1 ? "review needs" : "reviews need"} a response. Unanswered
-            first, then the lowest rating, then the longest waiting — a 2-star sitting
-            three days is worse than a 3-star sitting two.
-            {feed.truncated
-              ? ` The first ${feed.reviews.length} are loaded; narrow by location or rating to reach the rest.`
-              : ""}
-          </>
-        )}
-      </p>
-      <ReviewQueue
-        reviews={feed.reviews}
-        filters={filters}
-        paginate
-        total={feed.total}
-        emptyLabel={
-          summary.unanswered === 0
-            ? "Every review matching the current filters has an owner response."
-            : "No unanswered review matches the current filters."
-        }
-      />
     </>
   );
 }

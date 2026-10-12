@@ -5,7 +5,6 @@ import { googleReviewsToday } from "@/lib/reviews/timezone";
 import { supabaseReadiness } from "@/lib/config/server-env";
 import {
   parseReviewFilters,
-  WEEK_ALL,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
 import {
@@ -99,34 +98,6 @@ export async function loadReviewsPage(
   const filters = parseReviewFilters(searchParams);
   const today = googleReviewsToday();
 
-  /*
-   * ==========================================================================
-   * THE NEEDS-RESPONSE TAB IS A SCOPE ON THE FEED, NOT A SECOND IDEA OF "OPEN"
-   * ==========================================================================
-   *
-   * The tab shows the reviews still waiting for a reply, and it decides that by
-   * the same `response_status` every other part of this page reads — it simply
-   * asks the feed for those rows rather than filtering a page of mixed ones in
-   * the browser, which would have the tab's count disagree with its list.
-   *
-   * IT IS OVER EVERYTHING HELD, NOT OVER THE OPEN WEEK, for the reason the
-   * alarm tile's link already records: an unanswered review does not stop
-   * needing an answer because a reporting period closed. The week and the
-   * assignment are therefore widened here, exactly as that link widens them.
-   *
-   * NOTHING ABOUT RESPONSE DETECTION CHANGES. This narrows a query; it does not
-   * decide what "responded" means, which the database does.
-   */
-  const feedFilters: ReviewFilters =
-    filters.tab === "needs"
-      ? {
-          ...filters,
-          status: "needs_response",
-          week: WEEK_ALL,
-          assignment: "all",
-          qualifying: "all",
-        }
-      : filters;
 
   /*
    * THE SNAPSHOT, THE FEED AND THE TIMELINE GO TOGETHER. They share the
@@ -142,7 +113,7 @@ export async function loadReviewsPage(
   const [snapshot, feed, timeline, distribution, openReview, canManageAnchors] =
     await Promise.all([
       loadReviewsSnapshot(filters, today),
-      loadReviewFeed(feedFilters, today),
+      loadReviewFeed(filters, today),
       loadReviewTimeline(filters),
       /*
        * THE SAME PAIR OF FILTERS THE SNAPSHOT TAKES, and no more. The rating

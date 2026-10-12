@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { MessageSquare } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/feedback";
 import { reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
@@ -92,7 +91,6 @@ function ReviewRow({
   review: DashboardReview;
   filters: ReviewFilters;
 }) {
-  const critical = review.rating <= 2;
   const open = review.responseStatus === "needs_response";
 
   /*
@@ -194,37 +192,17 @@ function ReviewRow({
         </div>
 
         <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-[var(--radius-xs)] px-2.5 py-1 text-[8.5px] font-black tracking-[0.07em] uppercase",
-              open
-                ? critical
-                  ? "bg-status-under text-status-under-foreground"
-                  : "bg-status-below-market text-status-below-market-foreground"
-                : "bg-status-outperforming text-status-outperforming-foreground",
-            )}
-          >
-            {open ? "Needs Response" : "Responded"}
-          </span>
-
-          {open ? (
-            /*
-             * The reply is drafted in Ask Sunny, on the same chat path every
-             * other screen uses, so it is a real turn in the same history and
-             * audit trail rather than a second assistant nobody can review.
-             */
-            <Link
-              href={`/chat?q=${encodeURIComponent(
-                `Draft a reply to this ${review.rating}-star Google review at Sun Tan City ${
-                  review.locationName
-                } from ${review.reviewerName}: "${review.reviewText ?? "(rating only, no comment)"}"`,
-              )}`}
-              className="pill-action bg-selected text-selected-foreground transition-colors hover:bg-selected-hover"
-            >
-              <MessageSquare className="mr-1 inline size-3" aria-hidden />
-              Draft a reply
-            </Link>
-          ) : null}
+          {/*
+            NO "NEEDS RESPONSE" BADGE AND NO "DRAFT A REPLY" BUTTON, at the
+            business's request (October 2026): the reply workflow is not run
+            from this page. A review that already has an owner response still
+            says so.
+          */}
+          {open ? null : (
+            <span className="inline-flex items-center rounded-[var(--radius-xs)] bg-status-outperforming px-2.5 py-1 text-[8.5px] font-black tracking-[0.07em] text-status-outperforming-foreground uppercase">
+              Responded
+            </span>
+          )}
 
           <Link
             href={detailHref}
