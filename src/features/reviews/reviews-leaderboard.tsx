@@ -2,610 +2,395 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
 
-import { ScrollTable } from "@/components/ui/layout";
-import { StatusChip, type StatusTone } from "@/components/ui/marquee";
-import { reviewSetupHref, reviewsHref, type ReviewFilters } from "@/lib/reviews/filters";
+import {
+  formatGoalMonth,
+  GOAL_STATUS_LABEL,
+  goalStatus,
+  goalSummary,
+  rankLocations,
+  type GoalStatus,
+  type RankMetric,
+  type ReviewGoalContext,
+} from "@/lib/reviews/goal";
+import {
+  reviewsHref,
+  WEEK_CURRENT,
+  WEEK_MONTH,
+  type ReviewFilters,
+} from "@/lib/reviews/filters";
 import type { LocationRollup } from "@/lib/reviews/types";
 import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
-import { RATING_FLOOR } from "./rating-floor";
+import {
+  AnchorMarker,
+  districtsOf,
+  GoalProgressBar,
+  GoalStatusChip,
+  matchesSalon,
+  SalonSearch,
+  TableSelect,
+} from "./review-goal-parts";
 
 /**
  * ============================================================================
- * THE SALON LEADERBOARD
+ * THE SALON LEADERBOARD — WHO IS CLOSEST TO TEN THIS MONTH
  * ============================================================================
  *
- * EVERY FIGURE AND EVERY DRILL-DOWN IS THE ONE THAT WAS ALREADY HERE. Nothing
- * in this file computes a salon's numbers: the rollups arrive from the read
- * layer exactly as they did when this table lived at the bottom of a very long
- * page, and qualifying-this-week, all-this-week, last week, unanswered, the
- * average, historical, held and the anchor status all render what they are
- * given. What changed is that the table has a view of its own, and therefore
- * room for the two things a fifteen-row table needs: a way to find a salon, and
- * a way to order the rows by the column somebody is actually asking about.
+ * Asked for by Madeline Patterson (October 2026): "I want the team to be able
+ * to hop on the leaderboard and see how many each store has gotten to their
+ * required 10 reviews/month." So the leaderboard is now a RANKING by qualifying
+ * reviews month to date, each salon drawn against the monthly target, with the
+ * week's figure beside it and a toggle to rank by the week instead.
  *
- * THE SEARCH AND THE SORT ARE LOCAL, AND THAT IS THE RIGHT PLACE FOR THEM. They
- * do not change which reviews were read — the page's own filters do that, in
- * the URL, and they still narrow this table's rows before it ever sees them.
- * Reordering a table that is already on screen is a rendering decision, so it
- * costs no round trip and puts nothing in a link that would read as a filter.
+ * WHAT IT NO LONGER SHOWS: Unanswered, "Replies waiting", All this week and
+ * Last week. The response queue is the Needs Response view's job.
  *
- * THE DEFAULT ORDER IS UNCHANGED: qualifying this week, then all this week,
- * then the salon name. A leaderboard that opened on a different order than the
- * one it has always had would be answering a question nobody asked.
+ * THE RANK IS A COMPETITION RANK and a salon with no baseline has none — see
+ * `rankLocations`. Nothing on this screen computes a salon's figures; the
+ * rollups arrive from the read layer exactly as the Overview's table reads them.
+ *
+ * WHO SEES WHICH SALONS IS UNCHANGED. The rows are whatever the page's
+ * snapshot holds for this reader, under the same `view_google_reviews` gate
+ * and the same toolbar filters as before; this file narrows nothing and
+ * widens nothing.
  */
 
-/**
- * A LISTING'S RUNG ON THE SHARED STATUS LADDER.
- *
- * The same four tones the report tabs use, so a chip means the same thing
- * wherever a DM sees it. What it says is what the records can actually support:
- * an open 1- or 2-star review needs attention; anything else unanswered is
- * behind; a listing with everything answered is at goal; a listing with no
- * reviews at all is "quiet", which is a fact rather than a judgement.
- */
-export function listingStatus(location: LocationRollup): {
-  tone: StatusTone;
-  label: string;
-} {
-  /*
-   * NOT COUNTING comes FIRST, ahead of every performance state. A listing with
-   * no anchor cannot be described as at goal or behind, because nothing about
-   * its week has been measured — and a green chip on an unmeasured salon is the
-   * page asserting something nobody has established.
-   */
-  if (location.anchorReviewId === null && location.total > 0) {
-    return { tone: "capacity", label: "No anchor" };
-  }
-  if (location.criticalOpen > 0) return { tone: "under", label: "Needs attention" };
-  if (location.unanswered > 0) return { tone: "belowMarket", label: "Replies waiting" };
-  if (location.total === 0) return { tone: "capacity", label: "Nothing synced" };
-  return { tone: "outperforming", label: "All answered" };
-}
-
-/**
- * ============================================================================
- * WHETHER THIS SALON IS BEING COUNTED, AND HOW TO FIX IT IF IT IS NOT
- * ============================================================================
- *
- * THE MOST IMPORTANT WORDS IN THE TABLE when the answer is no. A listing with
- * no anchor is not having a quiet week — it is not being counted at all, and
- * only saying so stops the zero beside it from being read as news about the
- * salon. For an administrator the sentence is also the way to resolve it: it
- * links to that listing's own baseline setup, with its picker already open.
- *
- * ONCE AN ANCHOR EXISTS IT SAYS SO BRIEFLY AND NAMES A PERSON. "Tracking active
- * · counting after Tarissa Barry" is what an operator needs to confirm the
- * boundary is where they left it. THE GOOGLE REVIEW ID IS NEVER RENDERED — it
- * is an internal key, it means nothing to a reader, and putting it on a screen
- * is how it starts being copied into emails and spreadsheets.
- *
- * THE LINK IS A LINK, not a control. Following it opens a page; it cannot move
- * an anchor, and no filter or sync action on this dashboard can either. Moving
- * one is a POST from the setup screen, made deliberately.
- */
-function AnchorMarker({
-  location,
-  canManageAnchors,
-}: {
-  location: LocationRollup;
-  canManageAnchors: boolean;
-}) {
-  if (location.anchorReviewId === null) {
-    const text = "No anchor — counting nothing";
-    return canManageAnchors ? (
-      <Link
-        href={reviewSetupHref(location.storeCode)}
-        className="font-bold text-measure-flagged-foreground underline decoration-dotted underline-offset-2 hover:decoration-solid"
-        title={`Set the review baseline for ${location.locationName}`}
-      >
-        {text}
-      </Link>
-    ) : (
-      <span className="font-bold text-measure-flagged-foreground">{text}</span>
-    );
-  }
-
-  const label = location.anchorReviewer
-    ? `Tracking active · counting after ${location.anchorReviewer}`
-    : "Tracking active";
-
-  return canManageAnchors ? (
-    <Link
-      href={reviewSetupHref(location.storeCode)}
-      className="text-status-outperforming hover:underline"
-      title={`Review the baseline for ${location.locationName}`}
-    >
-      {label}
-    </Link>
-  ) : (
-    <span className="text-status-outperforming">{label}</span>
-  );
-}
-
-/* --------------------------------------------------------------- sorting -- */
-
-type SortKey =
-  | "salon"
-  | "storeCode"
-  | "qualifying"
-  | "allThisWeek"
-  | "lastWeek"
-  | "unanswered"
-  | "average"
-  | "historical"
-  | "held";
-
-const NUMERIC_DESC_FIRST: SortKey[] = [
-  "qualifying",
-  "allThisWeek",
-  "lastWeek",
-  "unanswered",
-  "average",
-  "historical",
-  "held",
+const STATUS_FILTERS: { key: "all" | GoalStatus; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "met", label: GOAL_STATUS_LABEL.met },
+  { key: "on_pace", label: GOAL_STATUS_LABEL.on_pace },
+  { key: "behind_pace", label: GOAL_STATUS_LABEL.behind_pace },
+  { key: "not_counting", label: GOAL_STATUS_LABEL.not_counting },
 ];
 
-function valueFor(location: LocationRollup, key: SortKey): number | string {
-  switch (key) {
-    case "salon":
-      return location.locationName.toLowerCase();
-    case "storeCode":
-      return location.storeCode;
-    case "qualifying":
-      return location.qualifyingThisWeek;
-    case "allThisWeek":
-      return location.reviewsThisWeek;
-    case "lastWeek":
-      return location.lastWeek;
-    case "unanswered":
-      return location.unanswered;
-    /* A salon with nothing rated sorts last in either direction rather than
-       masquerading as a zero-star salon. */
-    case "average":
-      return location.averageRating ?? -1;
-    case "historical":
-      return location.historical;
-    case "held":
-      return location.total;
-  }
-}
-
-/* ----------------------------------------------------------- the table --- */
+/*
+ * ONE GRID FOR THE HEADER AND EVERY ROW, so a figure sits under its heading.
+ * On a phone the row restacks into a card: rank down the left, then the salon,
+ * its status, the two figures side by side, and the bar across the width.
+ */
+const ROW_GRID =
+  "grid gap-x-3 gap-y-2 px-4 grid-cols-[2.75rem_minmax(0,1fr)_minmax(0,1fr)] " +
+  "[grid-template-areas:'rank_salon_salon'_'rank_status_status'_'rank_week_month'_'rank_bar_bar'] " +
+  "lg:grid-cols-[3.5rem_minmax(0,1.5fr)_5.5rem_7rem_minmax(11rem,1.5fr)_7.5rem] " +
+  "lg:[grid-template-areas:'rank_salon_week_month_bar_status'] lg:items-center";
 
 export function ReviewsLeaderboard({
   locations,
   filters,
+  goal,
   canManageAnchors,
 }: {
   locations: LocationRollup[];
   filters: ReviewFilters;
+  goal: ReviewGoalContext;
   canManageAnchors: boolean;
 }) {
-  const [search, setSearch] = useState("");
+  const [metric, setMetric] = useState<RankMetric>("month");
+  const [status, setStatus] = useState<"all" | GoalStatus>("all");
   const [district, setDistrict] = useState("all");
-  const [status, setStatus] = useState("all");
-  const [sort, setSort] = useState<{ key: SortKey; descending: boolean } | null>(null);
+  const [search, setSearch] = useState("");
 
-  const districts = useMemo(
-    () =>
-      [
-        ...new Set(
-          locations
-            .map((entry) => entry.district)
-            .filter((entry): entry is string => Boolean(entry)),
-        ),
-      ].sort(),
-    [locations],
-  );
+  const districts = useMemo(() => districtsOf(locations), [locations]);
+  const ranked = useMemo(() => rankLocations(locations, metric), [locations, metric]);
+  const summary = useMemo(() => goalSummary(locations, goal), [locations, goal]);
 
-  const statuses = useMemo(
-    () => [...new Set(locations.map((entry) => listingStatus(entry).label))].sort(),
-    [locations],
-  );
-
-  const rows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-
-    const matching = locations.filter((location) => {
-      if (district !== "all" && location.district !== district) return false;
-      if (status !== "all" && listingStatus(location).label !== status) return false;
-      if (term === "") return true;
-      /* Salon, store code and district: the three ways somebody names a row. */
-      return (
-        location.locationName.toLowerCase().includes(term) ||
-        location.storeCode.toLowerCase().includes(term) ||
-        (location.district ?? "").toLowerCase().includes(term)
-      );
-    });
-
-    if (!sort) {
-      /* THE ORDER THIS TABLE HAS ALWAYS OPENED IN. */
-      return [...matching].sort(
-        (a, b) =>
-          b.qualifyingThisWeek - a.qualifyingThisWeek ||
-          b.reviewsThisWeek - a.reviewsThisWeek ||
-          a.locationName.localeCompare(b.locationName),
-      );
-    }
-
-    return [...matching].sort((a, b) => {
-      const left = valueFor(a, sort.key);
-      const right = valueFor(b, sort.key);
-      const compared =
-        typeof left === "number" && typeof right === "number"
-          ? left - right
-          : String(left).localeCompare(String(right));
-      /* Ties fall back to the salon name so the order never wobbles. */
-      const settled = compared !== 0 ? compared : a.locationName.localeCompare(b.locationName);
-      return sort.descending ? -settled : settled;
-    });
-  }, [locations, search, district, status, sort]);
-
-  const toggle = (key: SortKey) => {
-    setSort((current) => {
-      if (current?.key !== key) {
-        return { key, descending: NUMERIC_DESC_FIRST.includes(key) };
-      }
-      return { key, descending: !current.descending };
-    });
+  const counts: Record<"all" | GoalStatus, number> = {
+    all: locations.length,
+    met: summary.atGoal,
+    on_pace: summary.onPace,
+    behind_pace: summary.behindPace,
+    not_counting: summary.notCounting,
   };
 
+  /*
+   * THE RANK IS DECIDED BEFORE ANY FILTER. Narrowing to one district shows
+   * each salon's place on the whole board, so "4th" means the same thing
+   * whichever rows happen to be on screen.
+   */
+  const shown = ranked.filter(
+    ({ location }) =>
+      (status === "all" || goalStatus(location, goal) === status) &&
+      (district === "all" || location.district === district) &&
+      matchesSalon(location, search),
+  );
+
+  const month = formatGoalMonth(goal);
+  const daysLeft = goal.daysInMonth - goal.dayOfMonth;
+
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="leaderboard-search" className="sr-only">
-          Find a salon, store code or district
-        </label>
-        <span className="relative flex items-center">
-          <Search
-            className="pointer-events-none absolute left-2.5 size-3 text-muted-foreground"
+    <div className="flex min-w-0 flex-col gap-4">
+      {/* -------------------------------------------- where the month is -- */}
+      <section className="grid min-w-0 gap-4 rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-raised md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:items-center">
+        <div className="min-w-0">
+          <p className="eyebrow">
+            {month} · day {goal.dayOfMonth} of {goal.daysInMonth}
+          </p>
+          <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <span className="display-figure text-[30px] text-foreground">
+              {summary.atGoal} of {summary.counting}
+            </span>
+            <span className="text-[12px] text-muted-foreground">
+              {summary.counting === 1 ? "salon has" : "salons have"} reached {goal.target} ·{" "}
+              {daysLeft === 0
+                ? "last day of the month"
+                : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}
+            </span>
+          </p>
+          <span
             aria-hidden
-          />
-          <input
-            id="leaderboard-search"
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Find a salon, store code or district"
-            className="w-[17rem] max-w-full rounded-[22px] border border-border-strong bg-surface py-[7px] pr-3 pl-7 text-[11.5px] text-foreground shadow-soft placeholder:text-placeholder-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </span>
+            className="mt-2.5 block h-2 overflow-hidden rounded-[4px] bg-surface-muted"
+          >
+            <span
+              className="block h-full bg-selected"
+              style={{ width: `${(goal.dayOfMonth / goal.daysInMonth) * 100}%` }}
+            />
+          </span>
+        </div>
+        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-muted-foreground">
+          <li className="flex items-center gap-1.5">
+            <span aria-hidden className="h-2 w-3.5 rounded-[2px] bg-measure-data" />
+            Month to date vs {goal.target}
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span aria-hidden className="h-2 w-3.5 rounded-[2px] bg-status-outperforming" />
+            Goal met
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span aria-hidden className="h-3 w-0 border-l-2 border-dashed border-measure-goal" />
+            {goal.paceTarget > 0
+              ? `Pace mark: ${goal.paceTarget} by now finishes on ${goal.target}`
+              : "Pace mark appears from the 2nd"}
+          </li>
+        </ul>
+      </section>
 
-        <TableSelect
-          label="District"
-          /*
-            A DISTINCT ACCESSIBLE NAME FROM THE TOOLBAR'S OWN DISTRICT PILL.
-            Both can be on screen at once — the toolbar's narrows what was READ,
-            this reorders what is DRAWN — and two controls announcing themselves
-            as "District" is a screen reader describing them as the same thing.
-          */
-          ariaLabel="Filter the table by district"
-          value={district}
-          onChange={setDistrict}
-          options={[
-            { value: "all", label: "All districts" },
-            ...districts.map((entry) => ({ value: entry, label: entry })),
-          ]}
-        />
+      {/* -------------------------------------------------- the ranking -- */}
+      <section className="min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-raised">
+        <div className="flex flex-col gap-2.5 border-b border-border-hairline px-4 py-3.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="Rank by"
+              className="inline-flex rounded-[22px] border border-border-strong bg-surface p-0.5 shadow-soft"
+            >
+              {(
+                [
+                  ["month", "Rank by month to date"],
+                  ["week", "Rank by this week"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={metric === key}
+                  onClick={() => setMetric(key)}
+                  className={cn(
+                    "rounded-[20px] px-3 py-[5px] text-[11.5px] font-bold whitespace-nowrap transition-colors",
+                    metric === key
+                      ? "bg-selected text-selected-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {districts.length > 1 ? (
+              <TableSelect
+                label="District"
+                ariaLabel="Filter the leaderboard by district"
+                value={district}
+                onChange={setDistrict}
+                options={[
+                  { value: "all", label: "All districts" },
+                  ...districts.map((entry) => ({ value: entry, label: entry })),
+                ]}
+              />
+            ) : null}
+            {locations.length > 1 ? (
+              <SalonSearch id="leaderboard-search" value={search} onChange={setSearch} />
+            ) : null}
+          </div>
 
-        <TableSelect
-          label="Status"
-          ariaLabel="Filter the table by status"
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: "all", label: "All statuses" },
-            ...statuses.map((entry) => ({ value: entry, label: entry })),
-          ]}
-        />
+          {locations.length > 1 ? (
+            <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
+              {STATUS_FILTERS.filter((entry) => entry.key === "all" || counts[entry.key] > 0).map(
+                (entry) => (
+                  <button
+                    key={entry.key}
+                    type="button"
+                    aria-pressed={status === entry.key}
+                    onClick={() => setStatus(entry.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-[22px] border px-3 py-[5px] text-[11.5px] transition-colors",
+                      status === entry.key
+                        ? "border-selected bg-selected text-selected-foreground"
+                        : "border-border-strong bg-surface text-foreground hover:bg-surface-muted",
+                    )}
+                  >
+                    {entry.label}
+                    <b className="font-black tabular-nums">{counts[entry.key]}</b>
+                  </button>
+                ),
+              )}
+            </div>
+          ) : null}
+        </div>
 
-        <p className="ml-auto text-[11px] text-muted-foreground">
-          {rows.length === locations.length
-            ? `${formatNumber(locations.length)} ${
-                locations.length === 1 ? "salon" : "salons"
-              }`
-            : `${formatNumber(rows.length)} of ${formatNumber(locations.length)} salons`}
-        </p>
-      </div>
+        <div
+          aria-hidden
+          className={cn(
+            ROW_GRID,
+            "hidden border-b border-border bg-surface-muted py-2.5 text-[8px] font-black tracking-[0.14em] text-subtle-foreground uppercase lg:grid",
+          )}
+        >
+          <span className="[grid-area:rank]">Rank</span>
+          <span className="[grid-area:salon]">Salon</span>
+          <span className="text-right [grid-area:week]">This week</span>
+          <span className="text-right [grid-area:month]">Month to date</span>
+          <span className="[grid-area:bar]">Progress to {goal.target}</span>
+          <span className="[grid-area:status]">Status</span>
+        </div>
 
-      <ScrollTable>
-        <table className="data-table min-w-[58rem]">
-          <thead>
-            <tr>
-              <SortableHeader label="Salon" sortKey="salon" sort={sort} onSort={toggle} />
-              <SortableHeader
-                label="Store code"
-                sortKey="storeCode"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="Qualifying this week"
-                sortKey="qualifying"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="All this week"
-                sortKey="allThisWeek"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="Last week"
-                sortKey="lastWeek"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="Unanswered"
-                sortKey="unanswered"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="Average"
-                sortKey="average"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="Historical"
-                sortKey="historical"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <SortableHeader
-                label="Held"
-                sortKey="held"
-                sort={sort}
-                onSort={toggle}
-                align="right"
-              />
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((location) => {
-              const chip = listingStatus(location);
-              return (
-                <tr key={location.storeCode}>
-                  <td>
-                    {/*
-                      THE SALON NAME IS THE DRILL-DOWN. "KS Manhattan = 12
-                      reviews this week" opens exactly those twelve, in the
-                      Google Reviews view where the records live.
-                    */}
-                    <Link
-                      href={reviewsHref({
-                        ...filters,
-                        tab: "reviews",
-                        storeCode: location.storeCode,
-                        week: "current",
-                      })}
-                      className="block text-[12px] font-bold text-foreground hover:underline"
-                    >
-                      {location.locationName}
-                    </Link>
-                    <span className="block text-[10.5px] text-muted-foreground">
-                      {location.district ?? "District not on record"}
-                      {location.listingState === "verification_required"
-                        ? " · Google verification required"
-                        : ""}
-                      {" · "}
-                      <AnchorMarker
-                        location={location}
-                        canManageAnchors={canManageAnchors}
-                      />
+        <ol aria-label={`Salons ranked by qualifying reviews ${metric === "month" ? "month to date" : "this week"}`}>
+          {shown.map(({ location, rank, tied }) => {
+            const state = goalStatus(location, goal);
+            const counting = rank !== null;
+            return (
+              <li
+                key={location.storeCode}
+                className={cn(
+                  ROW_GRID,
+                  "border-b border-border-row py-3 last:border-b-0",
+                  state === "met" &&
+                    "bg-[linear-gradient(90deg,color-mix(in_srgb,var(--status-outperforming)_7%,transparent),transparent_45%)]",
+                )}
+              >
+                <div className="flex flex-col items-center gap-0.5 self-start [grid-area:rank] lg:self-center">
+                  <span
+                    aria-label={counting ? `Rank ${rank}${tied ? ", tied" : ""}` : "Not ranked"}
+                    className={cn(
+                      "display-figure grid size-10 place-items-center rounded-full text-[24px] lg:size-11 lg:text-[26px]",
+                      rank === 1 ? "bg-brand-yellow text-brand-yellow-foreground" : "text-foreground",
+                      !counting && "text-muted-foreground",
+                    )}
+                  >
+                    {counting ? rank : "—"}
+                  </span>
+                  {tied ? (
+                    <span className="text-[8px] font-black tracking-[0.1em] text-muted-foreground uppercase">
+                      Tied
                     </span>
-                  </td>
-                  <td data-align="right" className="tabular-nums">
-                    {location.storeCode}
-                  </td>
-                  <td data-align="right">
+                  ) : null}
+                </div>
+
+                <div className="min-w-0 [grid-area:salon]">
+                  <Link
+                    href={reviewsHref({
+                      ...filters,
+                      tab: "reviews",
+                      storeCode: location.storeCode,
+                      week: WEEK_CURRENT,
+                    })}
+                    className="block text-[12.5px] font-black text-foreground hover:underline"
+                  >
+                    {location.locationName}
+                  </Link>
+                  <span className="block text-[10.5px] text-muted-foreground">
+                    #{location.storeCode}
+                    {location.district ? ` · ${location.district}` : ""}
+                    {location.listingState === "verification_required"
+                      ? " · Google verification required"
+                      : ""}
+                    {counting ? null : (
+                      <>
+                        {" · "}
+                        <AnchorMarker location={location} canManageAnchors={canManageAnchors} />
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                <div className="[grid-area:week] lg:text-right">
+                  <span className="block text-[8px] font-black tracking-[0.1em] text-muted-foreground uppercase lg:hidden">
+                    This week
+                  </span>
+                  {counting ? (
                     <Link
                       href={reviewsHref({
                         ...filters,
                         tab: "reviews",
                         storeCode: location.storeCode,
-                        week: "current",
+                        week: WEEK_CURRENT,
                         qualifying: "yes",
                       })}
-                      className="text-[13px] font-black text-foreground hover:underline"
-                    >
-                      {location.qualifyingThisWeek}
-                    </Link>
-                  </td>
-                  <td data-align="right">{location.reviewsThisWeek}</td>
-                  <td data-align="right">{location.lastWeek}</td>
-                  <td data-align="right">
-                    {location.unanswered > 0 ? (
-                      <Link
-                        href={reviewsHref({
-                          ...filters,
-                          tab: "needs",
-                          storeCode: location.storeCode,
-                          status: "needs_response",
-                          week: "all",
-                        })}
-                        className={cn(
-                          "font-black hover:underline",
-                          location.criticalOpen > 0
-                            ? "text-measure-flagged-foreground"
-                            : "text-foreground",
-                        )}
-                      >
-                        {location.unanswered}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">0</span>
-                    )}
-                  </td>
-                  <td data-align="right">
-                    <span
                       className={cn(
-                        "text-[12.5px] font-black",
-                        location.averageRating !== null &&
-                          location.averageRating < RATING_FLOOR
-                          ? "text-measure-flagged-foreground"
-                          : "text-foreground",
+                        "text-[15px] font-black tabular-nums hover:underline",
+                        location.qualifyingThisWeek > 0 ? "text-foreground" : "text-muted-foreground",
                       )}
                     >
-                      {location.averageRating === null
-                        ? "—"
-                        : location.averageRating.toFixed(2)}
+                      {location.qualifyingThisWeek > 0 ? `+${location.qualifyingThisWeek}` : "0"}
+                    </Link>
+                  ) : (
+                    <span className="text-[15px] font-black text-muted-foreground">—</span>
+                  )}
+                </div>
+
+                <div className="[grid-area:month] lg:text-right">
+                  <span className="block text-[8px] font-black tracking-[0.1em] text-muted-foreground uppercase lg:hidden">
+                    Month to date
+                  </span>
+                  {counting ? (
+                    <Link
+                      href={reviewsHref({
+                        ...filters,
+                        tab: "reviews",
+                        storeCode: location.storeCode,
+                        week: WEEK_MONTH,
+                        qualifying: "yes",
+                      })}
+                      className="display-figure text-[30px] text-foreground hover:underline"
+                    >
+                      {location.qualifyingMonthToDate}
+                      <span className="text-[16px] text-muted-foreground"> / {goal.target}</span>
+                    </Link>
+                  ) : (
+                    <span className="display-figure text-[30px] text-muted-foreground">
+                      —<span className="text-[16px]"> / {goal.target}</span>
                     </span>
-                  </td>
-                  <td data-align="right">
-                    {location.historical > 0 ? (
-                      <Link
-                        href={reviewsHref({
-                          ...filters,
-                          tab: "reviews",
-                          storeCode: location.storeCode,
-                          week: "all",
-                          assignment: "historical",
-                        })}
-                        className="text-muted-foreground hover:underline"
-                      >
-                        {formatNumber(location.historical)}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">0</span>
-                    )}
-                  </td>
-                  <td data-align="right">{formatNumber(location.total)}</td>
-                  <td>
-                    <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </ScrollTable>
+                  )}
+                </div>
 
-      {rows.length === 0 ? (
-        <p className="rounded-[var(--radius-lg)] border border-border bg-surface px-5 py-6 text-center text-[12.5px] text-muted-foreground shadow-soft">
-          No salon matches that search. Clear it to see every salon in view.
+                <div className="min-w-0 [grid-area:bar]">
+                  <GoalProgressBar location={location} goal={goal} />
+                </div>
+
+                <div className="[grid-area:status]">
+                  <GoalStatusChip location={location} goal={goal} />
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        {shown.length === 0 ? (
+          <p className="px-5 py-6 text-center text-[12.5px] text-muted-foreground">
+            {locations.length === 0
+              ? "No salon is in view."
+              : "No salon matches these filters. Choose All to see every salon in view."}
+          </p>
+        ) : null}
+
+        <p className="border-t border-border-hairline px-4 py-3 text-[11px] text-muted-foreground">
+          Salons on the same count share a rank. Progress can pass 100%: the bar stops at
+          full width and the overage shows as &ldquo;+N over&rdquo;. A salon without a
+          review baseline isn&rsquo;t ranked, because nothing is being counted for it yet.{" "}
+          {formatNumber(summary.qualifyingMonthToDate)} qualifying{" "}
+          {summary.qualifyingMonthToDate === 1 ? "review" : "reviews"} so far in {month}{" "}
+          across the salons that are counting.
         </p>
-      ) : null}
+      </section>
     </div>
-  );
-}
-
-/**
- * A column header that sorts.
- *
- * `aria-sort` IS THE MARKUP, not a class. A screen reader announcing "Average,
- * sorted descending" is the whole of what a sighted reader gets from the arrow,
- * and a button inside the header keeps it reachable from the keyboard.
- */
-function SortableHeader({
-  label,
-  sortKey,
-  sort,
-  onSort,
-  align,
-}: {
-  label: string;
-  sortKey: SortKey;
-  sort: { key: SortKey; descending: boolean } | null;
-  onSort: (key: SortKey) => void;
-  align?: "right";
-}) {
-  const active = sort?.key === sortKey;
-
-  return (
-    <th
-      scope="col"
-      data-align={align}
-      aria-sort={active ? (sort.descending ? "descending" : "ascending") : "none"}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={cn(
-          "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground",
-          align === "right" && "flex-row-reverse",
-          active && "text-foreground",
-        )}
-      >
-        {label}
-        <span aria-hidden className={cn("text-[9px]", active ? "opacity-100" : "opacity-35")}>
-          {active ? (sort.descending ? "▼" : "▲") : "↕"}
-        </span>
-      </button>
-    </th>
-  );
-}
-
-function TableSelect({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  const active = value !== "all";
-  const current = options.find((option) => option.value === value)?.label ?? "";
-
-  return (
-    <span
-      className={cn(
-        "relative inline-flex items-baseline gap-1.5 rounded-[22px] border px-3.5 py-[7px] text-[11.5px] shadow-soft transition-colors",
-        active
-          ? "border-selected bg-selected text-selected-foreground"
-          : "border-border-strong bg-surface text-foreground hover:bg-surface-muted",
-      )}
-    >
-      <span
-        className={cn(
-          "eyebrow shrink-0",
-          active ? "text-selected-foreground opacity-70" : "text-subtle-foreground",
-        )}
-      >
-        {label}
-      </span>
-      <span className="max-w-[11rem] truncate font-bold whitespace-nowrap">{current}</span>
-      <svg aria-hidden viewBox="0 0 16 16" className="size-3 shrink-0 self-center opacity-60">
-        <path
-          d="M4 6.5 8 10.5 12 6.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={ariaLabel}
-        className="reviews-filter-select absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </span>
   );
 }

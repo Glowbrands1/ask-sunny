@@ -177,7 +177,18 @@ export interface LocationRollup {
   reviewsThisWeek: number;
   /** Of those, the 3-, 4- and 5-star ones. */
   qualifyingThisWeek: number;
+  /** All reviews assigned to the previous reporting period. */
   lastWeek: number;
+  /** The 3-, 4- and 5-star reviews assigned to the previous reporting period. */
+  qualifyingLastWeek: number;
+  /**
+   * QUALIFYING REVIEWS COUNTED SINCE THE 1ST OF THIS MONTH, CENTRAL.
+   *
+   * The figure the monthly goal is measured against. Calendar days, not whole
+   * reporting weeks — see `qualifyingMonthToDate` in `goal.ts` for how the week
+   * that straddles the 1st is split without counting anything twice.
+   */
+  qualifyingMonthToDate: number;
   unanswered: number;
   criticalOpen: number;
   averageRating: number | null;
@@ -265,6 +276,11 @@ export interface ReviewSummary {
   averageRatingThisWeek: number | null;
   /** Index 0 is 1 star, index 4 is 5 stars. Over the window, not all time. */
   byRating: [number, number, number, number, number];
+  /**
+   * QUALIFYING REVIEWS SINCE THE 1ST OF THE MONTH, CENTRAL, across the
+   * listings in view that have an anchor. The same figure the month-to-date
+   * tile and the goal table add up; see `qualifyingMonthToDate` in `goal.ts`.
+   */
   monthToDate: number;
   qualifyingLastWeek: number;
   allNewLastWeek: number;

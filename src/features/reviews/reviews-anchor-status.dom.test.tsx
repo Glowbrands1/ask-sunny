@@ -5,6 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
+import { goalContext } from "@/lib/reviews/goal";
 import { EMPTY_REVIEW_TIMELINE } from "@/lib/reviews/timeline";
 import type {
   LocationRollup,
@@ -79,6 +80,8 @@ function location(overrides: Partial<LocationRollup> = {}): LocationRollup {
     reviewsThisWeek: 0,
     qualifyingThisWeek: 0,
     lastWeek: 0,
+    qualifyingLastWeek: 2,
+    qualifyingMonthToDate: 6,
     unanswered: 0,
     criticalOpen: 0,
     averageRating: 4.6,
@@ -144,6 +147,7 @@ function snapshotWith(
     currentWeek: "2026-09-13",
     previousWeek: "2026-09-06",
     lastSyncAt: "2026-09-17T09:00:00.000Z",
+    goal: goalContext("2026-09-17", 10),
   };
 }
 
@@ -236,7 +240,10 @@ describe("holdings and weekly counting are two different questions", () => {
     /* The rule is unchanged. Nothing counts until a baseline is set. */
     draw([unanchored], false, {}, "overview");
 
-    const tile = screen.getByText("Qualifying reviews gained").closest("a");
+    const tile = screen
+      .getAllByText(/^This week · /)
+      .map((node) => node.closest("a"))
+      .find((node) => node !== null);
     expect(tile?.textContent).toContain("0");
     expect(tile?.getAttribute("href")).toContain("assignment=counted");
   });
@@ -279,26 +286,20 @@ describe("holdings and weekly counting are two different questions", () => {
     expect(link.getAttribute("href")).toBe("/reviews/setup");
   });
 
-  it("still offers the response queue over everything held, not just this week", () => {
+  it("still offers the response queue over everything held, from its own view", () => {
     /*
      * The queue is a fact about every review ASK Sunny holds, not about the
      * open week — an unanswered 1-star imported as history is still somebody
-     * waiting, whatever period it counts in.
+     * waiting, whatever period it counts in. The Overview's alarm tile left
+     * with the Unanswered column; the Needs Response tab, its count and the
+     * queue behind it did not.
      */
     draw([unanchored], false, { unanswered: 6, criticalNeedingAttention: 2 }, "overview");
 
-    const link = screen.getByRole("link", { name: /Open the queue/ }) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toContain("status=needs_response");
-    expect(link.getAttribute("href")).not.toContain("week=current");
-    /* And on the view that is nothing but that work. */
-    expect(link.getAttribute("href")).toContain("tab=needs");
-    /*
-     * AND IT LANDS ON THE QUEUE RATHER THAN THE FEED. The button has to do both
-     * things — narrow the page to the unanswered reviews and put the reader in
-     * front of them — because a link that only scrolled would leave the filters
-     * describing a different set from the one on screen.
-     */
-    expect(link.getAttribute("href")).toContain("#response-queue");
+    const tab = screen.getByRole("link", { name: /Needs Response/ }) as HTMLAnchorElement;
+    expect(tab.textContent).toContain("(6)");
+    expect(tab.getAttribute("href")).toContain("tab=needs");
+    expect(tab.getAttribute("href")).not.toContain("week=current");
   });
 });
 
@@ -340,6 +341,9 @@ describe("the dashboard's anchor status", () => {
         }),
       ],
       true,
+      {},
+      /* The goal table names the baseline; the ranked board names only its absence. */
+      "overview",
     );
 
     expect(screen.getByText(/Tracking active · counting after Marla Quist/)).toBeTruthy();

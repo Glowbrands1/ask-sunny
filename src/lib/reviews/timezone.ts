@@ -78,3 +78,49 @@ export function googleReviewsToday(now: Date = new Date()): string {
     day: "2-digit",
   }).format(now);
 }
+
+/** How far the Google Reviews zone's wall clock is from UTC at an instant, in ms. */
+function zoneOffsetMs(at: number): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: GOOGLE_REVIEWS_TIMEZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(at));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+  const wall = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
+    part("second"),
+  );
+  return wall - at;
+}
+
+/**
+ * The UTC instant at which a Google Reviews calendar day BEGINS, as ISO.
+ *
+ * `2026-10-01` is `2026-10-01T05:00:00.000Z` — midnight Central in daylight
+ * time. The month-to-date read compares `first_seen_at` against this, so a
+ * review first seen at 8pm Central on the 30th belongs to the 30th, exactly as
+ * `google_review_week_start()` would place it.
+ *
+ * The offset is read a second time AT the candidate instant, so a day whose
+ * midnight falls on the other side of a daylight-saving change from the UTC
+ * guess still lands on the right hour. (US transitions happen at 2am, so
+ * midnight itself always exists and is never ambiguous.)
+ */
+export function googleReviewsDayStartUtc(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const guess = Date.UTC(year, month - 1, day);
+  const first = guess - zoneOffsetMs(guess);
+  const settled = guess - zoneOffsetMs(first);
+  return new Date(settled).toISOString();
+}

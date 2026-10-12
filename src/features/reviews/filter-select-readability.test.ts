@@ -32,8 +32,7 @@ const globals = readFileSync("src/app/globals.css", "utf8");
 /** The components whose selects rely on the shared rule below. */
 const PILL_SELECTS = [
   "src/features/reviews/reviews-filter-bar.tsx",
-  "src/features/reviews/reviews-leaderboard.tsx",
-  "src/features/reviews/reviews-demo-screen.tsx",
+  "src/features/reviews/review-goal-parts.tsx",
 ];
 
 describe("the native select menu states its own colours", () => {

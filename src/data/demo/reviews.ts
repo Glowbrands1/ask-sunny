@@ -1,13 +1,12 @@
-import type { CustomerReview, ReviewMetric } from "@/types";
+import type { CustomerReview } from "@/types";
 import { isoDaysFromAnchor } from "@/lib/utils/date";
 
 /**
  * Google review demo data.
  *
- * The workload this screen removes: today someone opens every location's Google
- * listing once a week, writes down the total review count, and subtracts last
- * week's number to get "reviews gained." `reviewsGainedThisWeek` is that exact
- * figure — computed here instead of counted by hand.
+ * Drawn by the LIVE Google Reviews screen in a demo deployment, which never
+ * reads the database (see `reviews-demo-screen.tsx`): qualifying reviews this
+ * week and month to date, against the goal of ten a month.
  *
  * DEMO CONTENT. Nothing is scraped and no Google API is called in this phase.
  * The SALON NAMES AND NUMBERS ARE REAL — all fifteen of them, the same roster
@@ -15,181 +14,49 @@ import { isoDaysFromAnchor } from "@/lib/utils/date";
  * be read for sense. Every figure attached to them is invented.
  */
 
-export const DEMO_REVIEW_METRICS: ReviewMetric[] = [
-  {
-    locationId: "loc-0306",
-    locationName: "MO Kansas City Wornall",
-    districtName: "District 3 — Kansas & Kansas City",
-    totalReviews: 1284,
-    reviewsGainedThisWeek: 19,
-    reviewsGainedLastWeek: 14,
-    averageRating: 4.8,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0394",
-    locationName: "MO Kansas City Liberty",
-    districtName: "District 3 — Kansas & Kansas City",
-    totalReviews: 946,
-    reviewsGainedThisWeek: 11,
-    reviewsGainedLastWeek: 12,
-    averageRating: 4.7,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0462",
-    locationName: "KS Manhattan",
-    districtName: "District 3 — Kansas & Kansas City",
-    totalReviews: 712,
-    reviewsGainedThisWeek: 4,
-    reviewsGainedLastWeek: 9,
-    averageRating: 4.4,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0463",
-    locationName: "KS Shawnee Mission Pkwy",
-    districtName: "District 3 — Kansas & Kansas City",
-    totalReviews: 1103,
-    reviewsGainedThisWeek: 16,
-    reviewsGainedLastWeek: 15,
-    averageRating: 4.8,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0468",
-    locationName: "KS Lawrence",
-    districtName: "District 3 — Kansas & Kansas City",
-    totalReviews: 838,
-    reviewsGainedThisWeek: 7,
-    reviewsGainedLastWeek: 10,
-    averageRating: 4.5,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0476",
-    locationName: "KS Overland Park",
-    districtName: "District 3 — Kansas & Kansas City",
-    totalReviews: 604,
-    reviewsGainedThisWeek: 3,
-    reviewsGainedLastWeek: 8,
-    averageRating: 4.2,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0313",
-    locationName: "NE Omaha 132nd and Maple",
-    districtName: "District 1 — Omaha & St Joseph",
-    totalReviews: 1421,
-    reviewsGainedThisWeek: 22,
-    reviewsGainedLastWeek: 18,
-    averageRating: 4.9,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0314",
-    locationName: "NE Omaha 144th and Center",
-    districtName: "District 1 — Omaha & St Joseph",
-    totalReviews: 1657,
-    reviewsGainedThisWeek: 24,
-    reviewsGainedLastWeek: 21,
-    averageRating: 4.8,
-    weeklyGoal: 20,
-  },
-  {
-    locationId: "loc-0410",
-    locationName: "NE Omaha Pacific",
-    districtName: "District 1 — Omaha & St Joseph",
-    totalReviews: 889,
-    reviewsGainedThisWeek: 9,
-    reviewsGainedLastWeek: 11,
-    averageRating: 4.6,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0495",
-    locationName: "MO St Joseph",
-    districtName: "District 1 — Omaha & St Joseph",
-    totalReviews: 1146,
-    reviewsGainedThisWeek: 15,
-    reviewsGainedLastWeek: 16,
-    averageRating: 4.8,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0307",
-    locationName: "NE Grand Island",
-    districtName: "District 2 — Lincoln & Central Nebraska",
-    totalReviews: 1192,
-    reviewsGainedThisWeek: 14,
-    reviewsGainedLastWeek: 13,
-    averageRating: 4.7,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0309",
-    locationName: "NE Kearney",
-    districtName: "District 2 — Lincoln & Central Nebraska",
-    totalReviews: 763,
-    reviewsGainedThisWeek: 6,
-    reviewsGainedLastWeek: 7,
-    averageRating: 4.3,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0310",
-    locationName: "NE Lincoln 27th Street",
-    districtName: "District 2 — Lincoln & Central Nebraska",
-    totalReviews: 1035,
-    reviewsGainedThisWeek: 13,
-    reviewsGainedLastWeek: 12,
-    averageRating: 4.6,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0311",
-    locationName: "NE Lincoln O Street",
-    districtName: "District 2 — Lincoln & Central Nebraska",
-    totalReviews: 874,
-    reviewsGainedThisWeek: 12,
-    reviewsGainedLastWeek: 13,
-    averageRating: 4.7,
-    weeklyGoal: 15,
-  },
-  {
-    locationId: "loc-0312",
-    locationName: "NE Lincoln Pine Lake",
-    districtName: "District 2 — Lincoln & Central Nebraska",
-    totalReviews: 731,
-    reviewsGainedThisWeek: 14,
-    reviewsGainedLastWeek: 12,
-    averageRating: 4.6,
-    weeklyGoal: 15,
-  },
-];
-
 /**
- * Twelve weeks of aggregate "reviews gained" — the trend nobody can see today.
+ * ONE SALON'S MONTHLY GOAL FIGURES, AS THE DEMO PRESENTS THEM.
  *
- * SCALED UP WITH THE ROSTER. These are fifteen salons' weekly totals now, not
- * twelve, so the old series would have drawn a chart whose last point disagreed
- * with the figure printed directly above it. Weeks 11 and 12 are the estate's
- * real last-week and this-week sums, which is what makes "two fewer than last
- * week" readable off the chart as well as the tile.
+ * The same quantities the live `/reviews` page reads off its rollups —
+ * qualifying reviews this week, last week and month to date — so the seeded
+ * screen can be drawn by the live screen itself. Keyed by salon number; the
+ * name, district and Google store code come from the production roster.
  */
-export const DEMO_REVIEW_TREND = [
-  { label: "Wk 1", gained: 151, rating: 4.54 },
-  { label: "Wk 2", gained: 161, rating: 4.56 },
-  { label: "Wk 3", gained: 139, rating: 4.55 },
-  { label: "Wk 4", gained: 170, rating: 4.58 },
-  { label: "Wk 5", gained: 180, rating: 4.59 },
-  { label: "Wk 6", gained: 162, rating: 4.57 },
-  { label: "Wk 7", gained: 176, rating: 4.6 },
-  { label: "Wk 8", gained: 185, rating: 4.61 },
-  { label: "Wk 9", gained: 169, rating: 4.6 },
-  { label: "Wk 10", gained: 190, rating: 4.62 },
-  { label: "Wk 11", gained: 191, rating: 4.63 },
-  { label: "Wk 12", gained: 189, rating: 4.63 },
+export interface DemoReviewGoalRow {
+  salonNumber: string;
+  qualifyingThisWeek: number;
+  qualifyingLastWeek: number;
+  qualifyingMonthToDate: number;
+  averageRating: number;
+  /** Reviews held in total, counted and historical alike. */
+  held: number;
+  /** Held and counted nowhere. */
+  historical: number;
+  /** False for a listing with no review baseline: it is "Not counting". */
+  counting: boolean;
+}
+
+/*
+ * The figures from the approved design artifact (October 2026): one salon over
+ * the goal, one exactly on it, one at zero and one with no baseline, so every
+ * state the leaderboard draws is on screen. Invented, every one of them.
+ */
+export const DEMO_REVIEW_METRICS: DemoReviewGoalRow[] = [
+  { salonNumber: "0306", qualifyingThisWeek: 4, qualifyingLastWeek: 3, qualifyingMonthToDate: 10, averageRating: 4.71, held: 241, historical: 212, counting: true },
+  { salonNumber: "0307", qualifyingThisWeek: 3, qualifyingLastWeek: 5, qualifyingMonthToDate: 12, averageRating: 4.82, held: 214, historical: 188, counting: true },
+  { salonNumber: "0309", qualifyingThisWeek: 2, qualifyingLastWeek: 4, qualifyingMonthToDate: 8, averageRating: 4.66, held: 171, historical: 154, counting: true },
+  { salonNumber: "0310", qualifyingThisWeek: 1, qualifyingLastWeek: 2, qualifyingMonthToDate: 5, averageRating: 4.58, held: 109, historical: 97, counting: true },
+  { salonNumber: "0311", qualifyingThisWeek: 2, qualifyingLastWeek: 3, qualifyingMonthToDate: 7, averageRating: 4.74, held: 146, historical: 131, counting: true },
+  { salonNumber: "0312", qualifyingThisWeek: 0, qualifyingLastWeek: 2, qualifyingMonthToDate: 3, averageRating: 4.49, held: 95, historical: 88, counting: true },
+  { salonNumber: "0313", qualifyingThisWeek: 3, qualifyingLastWeek: 3, qualifyingMonthToDate: 8, averageRating: 4.77, held: 190, historical: 176, counting: true },
+  { salonNumber: "0314", qualifyingThisWeek: 1, qualifyingLastWeek: 1, qualifyingMonthToDate: 2, averageRating: 4.31, held: 148, historical: 143, counting: true },
+  { salonNumber: "0394", qualifyingThisWeek: 2, qualifyingLastWeek: 2, qualifyingMonthToDate: 5, averageRating: 4.69, held: 130, historical: 119, counting: true },
+  { salonNumber: "0410", qualifyingThisWeek: 0, qualifyingLastWeek: 0, qualifyingMonthToDate: 0, averageRating: 4.52, held: 66, historical: 64, counting: true },
+  { salonNumber: "0462", qualifyingThisWeek: 5, qualifyingLastWeek: 4, qualifyingMonthToDate: 11, averageRating: 4.88, held: 226, historical: 201, counting: true },
+  { salonNumber: "0463", qualifyingThisWeek: 2, qualifyingLastWeek: 3, qualifyingMonthToDate: 6, averageRating: 4.61, held: 122, historical: 110, counting: true },
+  { salonNumber: "0468", qualifyingThisWeek: 3, qualifyingLastWeek: 4, qualifyingMonthToDate: 9, averageRating: 4.79, held: 181, historical: 165, counting: true },
+  { salonNumber: "0476", qualifyingThisWeek: 1, qualifyingLastWeek: 2, qualifyingMonthToDate: 4, averageRating: 4.55, held: 99, historical: 92, counting: true },
+  { salonNumber: "0495", qualifyingThisWeek: 0, qualifyingLastWeek: 0, qualifyingMonthToDate: 0, averageRating: 4.63, held: 77, historical: 77, counting: false },
 ];
 
 export const DEMO_CUSTOMER_REVIEWS: CustomerReview[] = [
@@ -274,10 +141,3 @@ export const DEMO_CUSTOMER_REVIEWS: CustomerReview[] = [
     responded: true,
   },
 ];
-
-export function reviewGoalProgress(metric: ReviewMetric): number {
-  return Math.min(
-    100,
-    Math.round((metric.reviewsGainedThisWeek / metric.weeklyGoal) * 100),
-  );
-}

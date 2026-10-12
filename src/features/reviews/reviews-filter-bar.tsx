@@ -16,6 +16,7 @@ import {
   reviewsTabHref,
   WEEK_ALL,
   WEEK_CURRENT,
+  WEEK_MONTH,
   type ReviewFilters,
 } from "@/lib/reviews/filters";
 import { formatWeekRange } from "@/lib/reviews/reporting-week";
@@ -110,6 +111,7 @@ export function ReviewsFilterBar({
   const weekOptions = [
     { value: WEEK_ALL, label: "All time" },
     { value: WEEK_CURRENT, label: "This week" },
+    { value: WEEK_MONTH, label: "This month to date" },
     ...[...weekStarts]
       .reverse()
       .slice(1)

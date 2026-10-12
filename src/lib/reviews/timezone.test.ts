@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { BUSINESS_TIMEZONE, businessToday } from "@/lib/business-date";
-import { GOOGLE_REVIEWS_TIMEZONE, googleReviewsToday } from "./timezone";
+import {
+  GOOGLE_REVIEWS_TIMEZONE,
+  googleReviewsDayStartUtc,
+  googleReviewsToday,
+} from "./timezone";
 
 /**
  * THE FEATURE'S OWN ZONE, AND THE PROMISE THAT IT STAYS ITS OWN.
@@ -95,5 +99,31 @@ describe("today, in the reviews zone", () => {
     /* 05:30Z is 11:30 p.m. Saturday in CST but 12:30 a.m. Sunday in CDT. */
     expect(googleReviewsToday(new Date("2026-01-18T05:30:00Z"))).toBe("2026-01-17");
     expect(googleReviewsToday(new Date("2026-07-19T05:30:00Z"))).toBe("2026-07-19");
+  });
+});
+
+describe("where a Central calendar day begins", () => {
+  it("is 05:00 UTC in daylight time", () => {
+    expect(googleReviewsDayStartUtc("2026-10-01")).toBe("2026-10-01T05:00:00.000Z");
+  });
+
+  it("is 06:00 UTC in standard time", () => {
+    expect(googleReviewsDayStartUtc("2026-12-01")).toBe("2026-12-01T06:00:00.000Z");
+  });
+
+  it("is still daylight time at midnight on the night the clocks go back", () => {
+    /* 1 Nov 2026: CDT until 2am, so midnight is 05:00 UTC. */
+    expect(googleReviewsDayStartUtc("2026-11-01")).toBe("2026-11-01T05:00:00.000Z");
+  });
+
+  it("is still standard time at midnight on the night the clocks go forward", () => {
+    /* 8 Mar 2026: CST until 2am. */
+    expect(googleReviewsDayStartUtc("2026-03-08")).toBe("2026-03-08T06:00:00.000Z");
+  });
+
+  it("agrees with googleReviewsToday on both sides of the boundary", () => {
+    const start = new Date(googleReviewsDayStartUtc("2026-10-01")).getTime();
+    expect(googleReviewsToday(new Date(start))).toBe("2026-10-01");
+    expect(googleReviewsToday(new Date(start - 1))).toBe("2026-09-30");
   });
 });

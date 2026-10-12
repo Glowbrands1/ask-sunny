@@ -238,7 +238,12 @@ export function locationRollups(
   directory: LocationDirectoryRow[],
   periodRows: LocationPeriodRow[],
   backlog: LocationBacklogRow[],
-  options: { currentPeriodId: string | null; previousPeriodId: string | null },
+  options: {
+    currentPeriodId: string | null;
+    previousPeriodId: string | null;
+    /** Qualifying reviews this calendar month, by store code. See `goal.ts`. */
+    monthToDate?: ReadonlyMap<string, number>;
+  },
 ): LocationRollup[] {
   return directory.map((entry) => {
     const rows = periodRows.filter((row) => row.location_id === entry.location_id);
@@ -266,6 +271,8 @@ export function locationRollups(
       reviewsThisWeek: sum(current, (row) => row.all_reviews),
       qualifyingThisWeek: sum(current, (row) => row.qualifying_reviews),
       lastWeek: sum(previous, (row) => row.all_reviews),
+      qualifyingLastWeek: sum(previous, (row) => row.qualifying_reviews),
+      qualifyingMonthToDate: options.monthToDate?.get(entry.store_code) ?? 0,
       unanswered:
         sum(rows, (row) => row.unanswered) + sum(held, (row) => row.historical_unanswered),
       criticalOpen:
