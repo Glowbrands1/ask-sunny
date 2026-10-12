@@ -7,6 +7,7 @@ import { loadReviewsPage } from "@/features/reviews/load";
 import { demoRuntime } from "@/lib/demo/runtime";
 import { ReviewsScreen } from "@/features/reviews/reviews-screen";
 import { requirePagePermission } from "@/lib/auth/page";
+import { isDemoMode } from "@/lib/config/runtime";
 
 export const metadata: Metadata = {
   title: "Google Reviews",
@@ -61,14 +62,29 @@ export default async function ReviewsPage({
             */}
             <div className="px-5 pt-5 sm:px-6">
               <Notice tone="attention" title="Showing seeded content, not real reviews">
-                <p>
-                  Supabase is not configured in this deployment, so the real Google
-                  review records cannot be read. Missing:{" "}
-                  <span className="font-mono text-[12px]">
-                    {props.missing.join(", ")}
-                  </span>
-                  . Everything below this line is invented demo content.
-                </p>
+                {/*
+                  DEMO MODE IS NOT A MISCONFIGURATION, so it is not described as
+                  one. A demo deployment refuses the privileged key on purpose
+                  (`DemoModeRefusesPrivilegedKeyError`), and the screen below is
+                  the live Google Reviews page drawn over seeded figures.
+                */}
+                {isDemoMode() ? (
+                  <p>
+                    This is a demo deployment, and demo deployments never read the
+                    review database. The page below is the live Google Reviews
+                    screen; every salon figure and review on it is invented demo
+                    content.
+                  </p>
+                ) : (
+                  <p>
+                    Supabase is not configured in this deployment, so the real Google
+                    review records cannot be read. Missing:{" "}
+                    <span className="font-mono text-[12px]">
+                      {props.missing.join(", ")}
+                    </span>
+                    . Everything below this line is invented demo content.
+                  </p>
+                )}
               </Notice>
             </div>
             {ReviewsDemoScreen ? <ReviewsDemoScreen /> : null}

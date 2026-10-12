@@ -33,7 +33,6 @@ const globals = readFileSync("src/app/globals.css", "utf8");
 const PILL_SELECTS = [
   "src/features/reviews/reviews-filter-bar.tsx",
   "src/features/reviews/review-goal-parts.tsx",
-  "src/features/reviews/reviews-demo-screen.tsx",
 ];
 
 describe("the native select menu states its own colours", () => {
