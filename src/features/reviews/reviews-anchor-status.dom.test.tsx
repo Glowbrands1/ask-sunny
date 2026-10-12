@@ -285,22 +285,6 @@ describe("holdings and weekly counting are two different questions", () => {
     }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/reviews/setup");
   });
-
-  it("still offers the response queue over everything held, from its own view", () => {
-    /*
-     * The queue is a fact about every review ASK Sunny holds, not about the
-     * open week — an unanswered 1-star imported as history is still somebody
-     * waiting, whatever period it counts in. The Overview's alarm tile left
-     * with the Unanswered column; the Needs Response tab, its count and the
-     * queue behind it did not.
-     */
-    draw([unanchored], false, { unanswered: 6, criticalNeedingAttention: 2 }, "overview");
-
-    const tab = screen.getByRole("link", { name: /Needs Response/ }) as HTMLAnchorElement;
-    expect(tab.textContent).toContain("(6)");
-    expect(tab.getAttribute("href")).toContain("tab=needs");
-    expect(tab.getAttribute("href")).not.toContain("week=current");
-  });
 });
 
 describe("the dashboard's anchor status", () => {

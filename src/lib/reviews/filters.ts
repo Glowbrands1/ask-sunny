@@ -93,7 +93,6 @@ export type QualifyingFilter = (typeof QUALIFYING_FILTERS)[number]["key"];
 export const REVIEW_TABS = [
   { key: "overview", label: "Overview" },
   { key: "reviews", label: "Google Reviews" },
-  { key: "needs", label: "Needs Response" },
   { key: "leaderboard", label: "Salon Leaderboard" },
 ] as const;
 

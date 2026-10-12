@@ -3,7 +3,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { EMPTY_REVIEW_FILTERS, type ReviewsTab } from "@/lib/reviews/filters";
+import { EMPTY_REVIEW_FILTERS, parseReviewFilters, type ReviewsTab } from "@/lib/reviews/filters";
 import type { ReviewFeed, ReviewsSnapshot } from "@/lib/reviews/queries";
 import { goalContext } from "@/lib/reviews/goal";
 import { EMPTY_REVIEW_TIMELINE, type ReviewTimeline } from "@/lib/reviews/timeline";
@@ -226,17 +226,18 @@ function tabLink(name: RegExp): HTMLAnchorElement {
 /* -------------------------------------------------------------- the strip -- */
 
 describe("the tab strip", () => {
-  it("offers the four views", () => {
+  it("offers three views, with no Needs Response tab", () => {
     draw();
 
     const labels = within(tabStrip())
       .getAllByRole("link")
       .map((node) => (node.textContent ?? "").trim());
 
-    expect(labels[0]).toBe("Overview");
-    expect(labels[1]).toBe("Google Reviews");
-    expect(labels[2]).toContain("Needs Response");
-    expect(labels[3]).toBe("Salon Leaderboard");
+    expect(labels).toEqual(["Overview", "Google Reviews", "Salon Leaderboard"]);
+  });
+
+  it("sends an old Needs Response link to the Overview rather than an error", () => {
+    expect(parseReviewFilters({ tab: "needs" }).tab).toBe("overview");
   });
 
   it("marks the open view with aria-current rather than with a class alone", () => {
@@ -246,18 +247,11 @@ describe("the tab strip", () => {
     expect(tabLink(/^Overview$/).getAttribute("aria-current")).toBeNull();
   });
 
-  it("prints the unanswered count the summary reports, not a recount", () => {
-    draw();
-
-    expect(tabLink(/Needs Response/).textContent).toContain("(21)");
-  });
-
   it("is ordinary links, so a view is something somebody can send", () => {
     draw();
 
     expect(tabLink(/^Overview$/).getAttribute("href")).toBe("/reviews");
     expect(tabLink(/^Google Reviews$/).getAttribute("href")).toBe("/reviews?tab=reviews");
-    expect(tabLink(/Needs Response/).getAttribute("href")).toBe("/reviews?tab=needs");
     expect(tabLink(/^Salon Leaderboard$/).getAttribute("href")).toBe(
       "/reviews?tab=leaderboard",
     );
@@ -295,11 +289,12 @@ describe("each section lives in exactly one view", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it("puts the queue in Needs Response and nowhere else", () => {
-    draw({ tab: "needs", reviews: [review()] });
-
-    expect(document.getElementById("response-queue")).toBeTruthy();
-    expect(document.getElementById("review-feed")).toBeNull();
+  it("draws no response queue on any view", () => {
+    for (const tab of ["overview", "reviews", "leaderboard"] as const) {
+      cleanup();
+      draw({ tab, reviews: [review()] });
+      expect(document.getElementById("response-queue"), tab).toBeNull();
+    }
   });
 
   it("puts the ranked leaderboard in Salon Leaderboard and nowhere else", () => {
@@ -311,7 +306,7 @@ describe("each section lives in exactly one view", () => {
     expect(document.getElementById("response-queue")).toBeNull();
 
     cleanup();
-    for (const tab of ["overview", "reviews", "needs"] as const) {
+    for (const tab of ["overview", "reviews"] as const) {
       draw({ tab, reviews: [review()] });
       expect(screen.queryByRole("list", { name: /Salons ranked/ }), tab).toBeNull();
       cleanup();
@@ -345,7 +340,7 @@ describe("each section lives in exactly one view", () => {
       unanswered: 1,
     }));
 
-    for (const tab of ["overview", "reviews", "needs", "leaderboard"] as ReviewsTab[]) {
+    for (const tab of ["overview", "reviews", "leaderboard"] as ReviewsTab[]) {
       cleanup();
       draw({ tab, snapshotOverrides: { trend } });
 
@@ -361,7 +356,7 @@ describe("each section lives in exactly one view", () => {
 
 describe("the filter toolbar", () => {
   it("leads with location and rating on every view that lists reviews", () => {
-    for (const tab of ["overview", "reviews", "needs"] as ReviewsTab[]) {
+    for (const tab of ["overview", "reviews"] as ReviewsTab[]) {
       cleanup();
       draw({ tab });
       expect(screen.getByLabelText("Location")).toBeTruthy();
@@ -500,25 +495,25 @@ describe("the record lists reveal rather than dumping", () => {
     expect(screen.getByText(/Showing 20 of 100 reviews loaded, from 412 matching/)).toBeTruthy();
   });
 
-  it("reveals the response queue the same way", () => {
-    draw({ tab: "needs", reviews: manyReviews(30) });
-
-    const queue = document.getElementById("response-queue") as HTMLElement;
-    expect(within(queue).getAllByRole("article")).toHaveLength(20);
-
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-    expect(within(queue).getAllByRole("article")).toHaveLength(30);
-  });
-
-  it("keeps Draft a reply on every unanswered record it draws", () => {
-    /* The reply workflow is untouched: the same link to the same chat path. */
+  it("draws no Needs Response badge and no Draft a reply button on a record", () => {
+    /* Removed at the business's request, October 2026. */
     draw({ tab: "reviews", reviews: [review({ responseStatus: "needs_response" })] });
 
-    const link = screen.getByRole("link", { name: /Draft a reply/ }) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toContain("/chat?q=");
-    expect(decodeURIComponent(link.getAttribute("href") ?? "")).toContain(
-      "Marguerite Ndiaye",
-    );
+    const feed = document.getElementById("review-feed") as HTMLElement;
+    expect(feed.textContent).not.toMatch(/Needs Response/i);
+    expect(within(feed).queryByRole("link", { name: /Draft a reply/ })).toBeNull();
+    /* The rest of the card is untouched. */
+    expect(within(feed).getByRole("link", { name: "Full detail" })).toBeTruthy();
+  });
+
+  it("still says Responded on a record that has an owner response", () => {
+    draw({
+      tab: "reviews",
+      reviews: [review({ responseStatus: "responded", hasOwnerResponse: true })],
+    });
+
+    const feed = document.getElementById("review-feed") as HTMLElement;
+    expect(feed.textContent).toContain("Responded");
   });
 });
 

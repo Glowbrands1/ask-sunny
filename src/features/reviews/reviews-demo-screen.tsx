@@ -179,12 +179,8 @@ export function ReviewsDemoScreen() {
     );
     const unanswered = inScope.filter((review) => review.responseStatus === "needs_response");
 
-    const feedFilters: ReviewFilters =
-      filters.tab === "needs"
-        ? { ...filters, status: "needs_response", week: WEEK_ALL, assignment: "all", qualifying: "all" }
-        : filters;
     const feedRows = reviews
-      .filter((review) => matchesFeed(review, feedFilters, today))
+      .filter((review) => matchesFeed(review, filters, today))
       .sort(
         (a, b) =>
           a.responseStatus.localeCompare(b.responseStatus) ||
