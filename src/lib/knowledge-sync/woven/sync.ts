@@ -5,7 +5,7 @@ import { MemoryKnowledgeSyncStore } from "../memory-store";
 import { SinkError, type KnowledgeSink, type KnowledgeSyncStore } from "../ports";
 import { createSupabaseKnowledgeSink } from "../sink";
 import { createSupabaseKnowledgeSyncStore, KnowledgeSyncStoreError } from "../store";
-import { CONTENT_TYPES, type ContentType, type KnowledgeSourceConnector, type ManifestItem, type RunMode, type RunTrigger, type SyncSettings } from "../types";
+import { AUTOMATIC_SYNC_INTERVAL_DAYS, CONTENT_TYPES, type ContentType, type KnowledgeSourceConnector, type ManifestItem, type RunMode, type RunTrigger, type SyncSettings } from "../types";
 import { parseHandbookList } from "./adapters";
 import { readWovenKnowledgeConfig, WOVEN_KNOWLEDGE_SYNC_ENABLED_ENV, type WovenKnowledgeConfig } from "./config";
 import { COMPANY_WIDE_AUDIENCE_LABELS, HANDBOOK_LIST_PATH } from "./contract";
@@ -177,7 +177,7 @@ export type ScheduledWork =
 export function nextAutomaticSyncAt(settings: SyncSettings): string | null {
   if (!settings.initialSyncCompletedAt) return null;
   const from = settings.lastFullScanAt ?? settings.initialSyncCompletedAt;
-  return new Date(Date.parse(from) + settings.intervalDays * 24 * 60 * 60 * 1000).toISOString();
+  return new Date(Date.parse(from) + AUTOMATIC_SYNC_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
 /**
@@ -187,23 +187,32 @@ export function nextAutomaticSyncAt(settings: SyncSettings): string | null {
 export const FULL_SYNC_HOUR_UTC = 9;
 
 /**
+ * A scan is stamped when it FINISHES, a few minutes after the 09:40 tick that
+ * started it, so "exactly 7 days later" falls a few minutes after the next
+ * 09:40 tick and would push every weekly scan back a day. A full scan is
+ * therefore due this long before its nominal time; the 09:xx slot still decides
+ * the hour, so it never runs early by more than the tolerance.
+ */
+export const FULL_SYNC_DUE_TOLERANCE_MS = 12 * 60 * 60 * 1000;
+
+/**
  * What the hourly tick should do.
  *
- *   FULL SCAN     only when 30 days have passed since the last complete scan,
+ *   FULL SCAN     only when 7 days have passed since the last complete scan,
  *                 and only in the daily 09:xx UTC slot (a failed scan is tried
  *                 again the next day);
  *   CONTINUE      every hour, whenever work is due: items a run could not
  *                 reach in its time budget, and failed items whose retry time
  *                 has come. A continuation lists nothing — it does not rescan
  *                 Woven — and addresses the same documents, so nothing is
- *                 ingested twice. Deferred work never waits for the monthly scan;
+ *                 ingested twice. Deferred work never waits for the weekly scan;
  *   NOTHING       otherwise, without even signing in to Woven.
  */
 export function decideScheduledWork(settings: SyncSettings, manifest: ManifestItem[], now: Date): ScheduledWork {
   if (!settings.initialSyncCompletedAt) return { run: "none", reason: "initial_sync_not_done" };
   if (!settings.autoSyncEnabled) return { run: "none", reason: "auto_sync_off" };
   const next = nextAutomaticSyncAt(settings)!;
-  if (now.getTime() >= Date.parse(next) && now.getUTCHours() === FULL_SYNC_HOUR_UTC) return { run: "sync" };
+  if (now.getTime() >= Date.parse(next) - FULL_SYNC_DUE_TOLERANCE_MS && now.getUTCHours() === FULL_SYNC_HOUR_UTC) return { run: "sync" };
   if (manifest.some((item) => isDueForContinue(item, now))) return { run: "continue" };
   return { run: "none", reason: "not_due" };
 }

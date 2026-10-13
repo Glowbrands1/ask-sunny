@@ -278,7 +278,7 @@ describe("Scan Woven after setup: a preview that changes nothing", () => {
 
     const status = await h.status();
     expect(status.latestPreview?.totals).toMatchObject({ new: 1, updated: 1, unpublished: 1 });
-    expect(status.nextSyncAt).toBe(settingsBefore.lastFullScanAt ? new Date(Date.parse(settingsBefore.lastFullScanAt) + 30 * 86_400_000).toISOString() : null);
+    expect(status.nextSyncAt).toBe(settingsBefore.lastFullScanAt ? new Date(Date.parse(settingsBefore.lastFullScanAt) + 7 * 86_400_000).toISOString() : null);
 
     /* The Content view shows the items under the scan: the new policy, and the handbook as updated. */
     const content = await readWovenKnowledgeContent({ store: h.store });
