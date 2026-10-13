@@ -1,10 +1,12 @@
 import "server-only";
 
 import { canAccessAdminConsole } from "@/lib/permissions";
+import { subjectHasSwitchGrant } from "./app-switch-grant";
 import { pageAuthorizationEnforced, pageIdentity } from "./page";
 
 /**
- * WHETHER THIS RENDER OFFERS THE APP SWITCHER — administrators only.
+ * WHETHER THIS RENDER OFFERS THE APP SWITCHER — administrators, plus anyone
+ * individually granted it (`app_users.can_switch_apps`).
  *
  * Decided here, on the server, from the VERIFIED identity: the role comes from
  * the auth provider and this app's own profile record, never from the browser.
@@ -23,7 +25,10 @@ export async function pageShowsAppSwitcher(): Promise<boolean> {
   try {
     if (!pageAuthorizationEnforced()) return false;
     const identity = await pageIdentity();
-    return Boolean(identity?.verified) && canAccessAdminConsole(identity!.role);
+    if (!identity?.verified) return false;
+    if (canAccessAdminConsole(identity.role)) return true;
+    // Not an administrator: only a named, per-person grant (fails closed).
+    return await subjectHasSwitchGrant(identity.subject);
   } catch {
     return false;
   }
