@@ -290,6 +290,14 @@ export interface AudienceDecision {
   decidedAt: string;
 }
 
+/**
+ * How often the automatic Woven knowledge sync runs a full scan: once a week.
+ * The scheduler's only authority on this — the `interval_days` column is
+ * ignored when scheduling (see `loadSettings`), so a row saved when the
+ * cadence was 30 days cannot hold production to the old schedule.
+ */
+export const AUTOMATIC_SYNC_INTERVAL_DAYS = 7;
+
 export interface SyncSettings {
   source: SourceSystem;
   autoSyncEnabled: boolean;

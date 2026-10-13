@@ -12,7 +12,7 @@ import { runWovenKnowledgeSync } from "@/lib/knowledge-sync/woven/sync";
  *
  *   `{ "mode": "preview" }`  the initial scan / dry run: reads Woven, counts,
  *                            writes nothing but the run's own report.
- *   `{ "mode": "sync" }`     Sync Now: exactly the engine the monthly schedule
+ *   `{ "mode": "sync" }`     Sync Now: exactly the engine the weekly schedule
  *                            runs. The very first one is refused unless a
  *                            preview ran in the last seven days.
  *   `"confirmLargeRemoval": true` releases removals the mass-removal guard held.

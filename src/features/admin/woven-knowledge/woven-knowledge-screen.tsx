@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/controls";
 import { Notice } from "@/components/ui/feedback";
 import { PageHeader, PageShell, SectionHeader } from "@/components/ui/layout";
-import { CONTENT_TYPES, CONTENT_TYPE_LABEL, type SyncReport } from "@/lib/knowledge-sync/types";
+import { AUTOMATIC_SYNC_INTERVAL_DAYS, CONTENT_TYPES, CONTENT_TYPE_LABEL, type SyncReport } from "@/lib/knowledge-sync/types";
 import { CONTENT_SYNC_STATE_LABEL } from "@/lib/knowledge-sync/inventory";
 import type { AttentionDetail, AttentionItem } from "@/lib/knowledge-sync/types";
 import type { AudienceReview, HeadlineState, WovenKnowledgeStatus } from "@/lib/knowledge-sync/woven/status";
@@ -150,7 +150,7 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
     act("auto", async () => {
       const r = await call("/api/admin/knowledge-sync/woven", { method: "PATCH", body: JSON.stringify({ autoSyncEnabled: enabled }) });
       if (!r.ok) return { tone: "attention", text: reasonOf(r.body, "The setting could not be saved.") };
-      return { tone: "accent", text: enabled ? "Automatic sync is on. Ask Sunny will check Woven every 30 days." : "Automatic sync is off." };
+      return { tone: "accent", text: enabled ? "Automatic sync is on. Ask Sunny will check Woven every week." : "Automatic sync is off." };
     });
 
   const decide = (audience: AudienceReview, decision: AudienceReview["decision"]) =>
@@ -177,7 +177,7 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
       <PageHeader
         eyebrow="Admin · Integrations"
         title="Woven Knowledge Sync"
-        description="Woven is where policies, handbooks and training live. Ask Sunny checks it every 30 days and keeps its own knowledge base current — no uploads, no comparing versions."
+        description="Woven is where policies, handbooks and training live. Ask Sunny checks it every week and keeps its own knowledge base current — no uploads, no comparing versions."
       />
 
       {!liveMode ? (
@@ -240,7 +240,7 @@ export function WovenKnowledgeScreen({ liveMode, status: initial }: WovenKnowled
               <SetupPanel status={status} busy={busy} canAct={liveMode} onTest={testConnection} onScan={() => runSync("preview")} onInitialSync={() => runSync("sync")} onEnableAuto={() => setAuto(true)} />
             ) : (
               <div className="mb-8 flex flex-wrap items-center gap-3 text-[13px] text-muted-foreground">
-                <span>Automatic sync is on — every {status.settings?.intervalDays ?? 30} days.</span>
+                <span>Automatic sync is on — every {status.settings?.intervalDays ?? AUTOMATIC_SYNC_INTERVAL_DAYS} days.</span>
                 <Button variant="ghost" size="sm" disabled={busy !== null || !liveMode} onClick={() => setAuto(false)}>
                   Turn off
                 </Button>
@@ -703,7 +703,7 @@ function SetupPanel(props: {
           </div>
         </SetupStep>
         <SetupStep n={4} title="Turn on automatic sync" state={stateOf(3)}>
-          <p>Ask Sunny will check Woven every 30 days and keep itself current. You only hear from it if something needs you.</p>
+          <p>Ask Sunny will check Woven every week and keep itself current. You only hear from it if something needs you.</p>
           <Button className="mt-2" size="sm" onClick={props.onEnableAuto} disabled={disabled}>
             Enable Automatic Sync
           </Button>
@@ -853,7 +853,7 @@ function AdvancedPanel({ status }: { status: WovenKnowledgeStatus }) {
         <p className="mb-1 font-semibold">Schedule</p>
         <p className="mb-3 text-muted-foreground">
           {status.advanced.scheduleDeployed
-            ? "The hourly check is deployed. It runs a full scan and sync once 30 days have passed (in its 09:40 UTC run), and every hour in between it finishes unfinished work and retries failed items — without rescanning Woven."
+            ? "The hourly check is deployed. It runs a full scan and sync once 7 days have passed (in its 09:40 UTC run), and every hour in between it finishes unfinished work and retries failed items — without rescanning Woven."
             : "The hourly check is not deployed in this build yet, so automatic sync will not run until it is."}
         </p>
         {status.advanced.problems.length > 0 ? (
