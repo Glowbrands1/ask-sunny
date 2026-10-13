@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Role } from "@/types";
 import type { AuthenticatedIdentity } from "./types";
 
+const grant = vi.hoisted(() => ({ value: false as boolean | Error }));
+
+vi.mock("./app-switch-grant", () => ({
+  subjectHasSwitchGrant: async () => {
+    if (grant.value instanceof Error) throw grant.value;
+    return grant.value;
+  },
+}));
+
 const page = vi.hoisted(() => ({
   enforced: true,
   identity: null as Partial<AuthenticatedIdentity> | null | Error,
@@ -25,6 +34,7 @@ function signedInAs(role: Role, verified = true) {
 beforeEach(() => {
   page.enforced = true;
   page.identity = null;
+  grant.value = false;
 });
 
 describe("who is offered the app switcher", () => {
@@ -59,5 +69,40 @@ describe("who is offered the app switcher", () => {
   it("a failed identity lookup is not", async () => {
     page.identity = new Error("auth provider down");
     expect(await pageShowsAppSwitcher()).toBe(false);
+  });
+
+  describe("a per-person grant (can_switch_apps)", () => {
+    it("offers the switcher to a granted non-administrator, whatever their role", async () => {
+      grant.value = true;
+      const { ROLES } = await import("@/lib/permissions");
+      for (const role of ROLES) {
+        signedInAs(role);
+        expect(await pageShowsAppSwitcher(), role).toBe(true);
+      }
+    });
+
+    it("does not offer it without the grant", async () => {
+      signedInAs("regional_manager");
+      expect(await pageShowsAppSwitcher()).toBe(false);
+    });
+
+    it("a grant on an unverified identity does nothing", async () => {
+      grant.value = true;
+      signedInAs("regional_manager", false);
+      expect(await pageShowsAppSwitcher()).toBe(false);
+    });
+
+    it("a grant never applies in demo mode", async () => {
+      grant.value = true;
+      page.enforced = false;
+      signedInAs("regional_manager");
+      expect(await pageShowsAppSwitcher()).toBe(false);
+    });
+
+    it("a failed grant lookup fails closed", async () => {
+      grant.value = new Error("db down");
+      signedInAs("regional_manager");
+      expect(await pageShowsAppSwitcher()).toBe(false);
+    });
   });
 });

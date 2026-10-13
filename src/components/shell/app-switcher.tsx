@@ -21,10 +21,11 @@ import { cn } from "@/lib/utils/cn";
  * destination's own sign-in and access checks decide what happens next, so
  * someone without an Ask Bubbles account simply lands on its login screen.
  *
- * ADMINISTRATORS ONLY. Whether to render this at all is decided on the server
+ * ADMINISTRATORS, AND ANYONE INDIVIDUALLY GRANTED IT. Whether to render this at all is decided on the server
  * from the verified identity (`pageShowsAppSwitcher`, src/lib/auth); the sidebar
- * simply does not mount it otherwise. This app holds no record of who may use
- * the other one, so an administrator here is offered the link, and the other
+ * simply does not mount it otherwise. The grant is `app_users.can_switch_apps`
+ * (link only; no role or permission). This app holds no record of who may use
+ * the other one, so anyone offered the link here still depends on the other
  * app's own login and roles decide whether it lets them in.
  *
  * Mirrored in Ask Bubbles (src/components/shell/app-switcher.tsx) with only
