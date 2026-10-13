@@ -6,7 +6,7 @@ Production credentials are set, no scan or sync has run, automatic sync is off,
 and the schedule is not in `vercel.json`. The rollout steps are in §9. QA:
 `docs/woven-knowledge-sync-qa.md`.
 
-**The goal:** configure Woven once. After that, Ask Sunny checks Woven every 30
+**The goal:** configure Woven once. After that, Ask Sunny checks Woven every 7
 days and keeps its knowledge base current. Managers only get involved when
 something genuinely needs them.
 
@@ -47,10 +47,10 @@ daily tick (not yet scheduled) ─┐      Sync Now / Initial Scan ─┐
 | `sync` | Sync Now, and the monthly run. Scans, saves the scan, then applies it: downloads only what is new or changed, ingests or updates, and retires what left. |
 | `continue` | Makes no list requests. Finishes work a sync did not reach in its time budget, and retries failed items. This is how a large first sync finishes unattended. |
 
-**Every 30 days, without cron syntax.** Vercel cron cannot say "every 30 days",
+**Every 7 days, without cron syntax.** Vercel cron cannot say "every 7 days",
 so the daily tick decides what to do (`decideScheduledWork`):
 
-- A full sync when 30 days have passed since the last **complete** scan. A scan in which a content type could not be read does not count as complete, so the next day tries again.
+- A full sync when 7 days have passed since the last **complete** scan. A scan in which a content type could not be read does not count as complete, so the next day tries again.
 - Otherwise, a `continue` run if work is waiting or due a retry.
 - Otherwise nothing. It does not even sign in to Woven.
 
@@ -158,7 +158,7 @@ the replacement, the old upload is **not** brought back.
 | `src/lib/knowledge-sync/woven/sync.ts` | Service entry points, Test Connection, the schedule decision |
 | `src/lib/knowledge-sync/woven/status.ts` | What the admin screen shows |
 | `src/app/api/admin/knowledge-sync/woven/**` | Status and settings, run, test, audiences (`manage_integrations`) |
-| `src/app/api/knowledge-sync/woven/cron/route.ts` | The hourly tick (`CRON_SECRET`), `40 * * * *` in `vercel.json`: a full sync in the 09:40 UTC run once 30 days have passed; otherwise it continues or retries unfinished work. Inert while automatic sync is off. |
+| `src/app/api/knowledge-sync/woven/cron/route.ts` | The hourly tick (`CRON_SECRET`), `40 * * * *` in `vercel.json`: a full sync in the 09:40 UTC run once 7 days have passed; otherwise it continues or retries unfinished work. Inert while automatic sync is off. |
 | `src/features/admin/woven-knowledge/`, `src/app/(app)/admin/integrations/woven-knowledge/` | The admin screen |
 | `src/lib/ingestion/pipeline.ts` | Now accepts an explicit `documentId` and `source`; uploads are unchanged |
 | `src/lib/ingestion/lifecycle.ts` | Adds `retireDocument` (refuses uploaded documents) and `updateDocumentMetadata` |
@@ -173,7 +173,7 @@ The first migration creates five tables; `20260930001000_woven_knowledge_invento
 
 | Table | Holds |
 |---|---|
-| `knowledge_sync_settings` | Auto-sync switch, off by default; interval 30 days |
+| `knowledge_sync_settings` | Auto-sync switch, off by default; interval 7 days (fixed in code; the column is ignored) |
 | `knowledge_sync_runs` | One row per run; the partial unique index is the run lock |
 | `knowledge_sync_items` | The manifest |
 | `knowledge_sync_events` | Per-item audit log |
@@ -265,7 +265,7 @@ It can be filtered by title, type, sync state, published or draft, and audience 
 - **Scan Woven** is on the Overview for good, next to Sync Now. It signs in, lists everything, classifies it (new, updated, unchanged, removed or unpublished, unsupported, waiting for an audience) and saves the scan's inventory for the Content tab. It never ingests, retires, supersedes or changes a document, the manifest, or the next automatic sync date. While a scan is newer than the last sync, the Overview shows **what Sync Now would do** (counts, plus plain sentences for anything the scan could not read), and the Content tab shows each item under that scan. **Sync Now** applies it.
 - **Audience groups name their items.** Each undecided group has **View items**: every affected Woven item by title, with its type, Woven status and sync state, and a **Preview** for each readable part. **Show in Content** opens the Content tab filtered to exactly that group (the new "Audience group" filter). Only items the choice actually decides are listed.
 - **Preview** (`POST /api/admin/knowledge-sync/woven/preview-part`, `manage_integrations`) shows what Ask Sunny would read in one item. An item already in Ask Sunny opens its existing document page. Otherwise the part is fetched from Woven the way a sync fetches it and run through the same extractor **in memory only** — nothing is stored, indexed or recorded — and the page gets the title, type, source name, file name and the text with its page and section labels. The request names the part by an opaque hash (`partRef`), and the locator comes from the manifest or a fresh listing, never from the browser. No Woven or storage URL, no stored file name.
-- **Cadence.** The cron runs **hourly** (`40 * * * *`). A full scan and sync starts only once 30 days have passed since the last complete scan, and only in the 09:40 UTC run (a failed scan is retried the next day). Every other hour it continues deferred work and retries failed items that are due, without rescanning Woven, and it signs in to Woven only when there is such work. A run finishes about 50 files in its four-minute budget, so a backlog of 350 clears in roughly seven hours rather than a week. Documents are addressed by their derived id, so nothing is ingested twice.
+- **Cadence.** The cron runs **hourly** (`40 * * * *`). A full scan and sync starts only once 7 days have passed since the last complete scan, and only in the 09:40 UTC run (a failed scan is retried the next day). Every other hour it continues deferred work and retries failed items that are due, without rescanning Woven, and it signs in to Woven only when there is such work. A run finishes about 50 files in its four-minute budget, so a backlog of 350 clears in roughly seven hours rather than a week. Documents are addressed by their derived id, so nothing is ingested twice.
 - **Needs attention is specific.** "N items are still being processed" is counted from the manifest at that moment and says when they continue (the next hourly check, or Sync Now if automatic sync is off). A document that keeps failing is listed by title, with its type, a plain reason (for example, a scanned PDF with no readable text), its retry status and a link into the Content tab. Codes stay under Advanced.
 - **Procedure attachments listed twice.** The management view lists each attachment again without a file name. An entry is now matched to the page's downloadable attachments by name, or failing that by count within its step; only a surplus is reported as blocked (`procedure_attachment_unlocated`).
 
@@ -292,7 +292,7 @@ Remaining, in order:
 1. **Run Initial Scan again** so the inventory is saved (scans before this release saved counts only).
 2. **Audience choices** on the Overview tab, one per Woven audience ("Share with everyone" / "Keep out of Ask Sunny"). Items whose audience has no choice are simply held.
 3. **Start Initial Sync.** This is the first ingestion. Anything not reached within one run's time limit is finished by a later run.
-4. **Enable Automatic Sync.** From then on the daily check runs a full sync every 30 days, and on other days only finishes or retries work.
+4. **Enable Automatic Sync.** From then on the daily check runs a full sync every 7 days, and on other days only finishes or retries work.
 
 **Fixed before the first ingestion (found by the database-backed tests):** a new item's Ask Sunny document id used to be random and saved to the manifest before ingestion. `knowledge_document_id` is a foreign key to `knowledge_documents`, which did not have the row yet, so the first save of the initial sync would have failed the whole run. The id is now derived from the item's identity (`knowledgeDocumentIdFor`) and recorded only once the document exists; a retry addresses the same document, so nothing is duplicated.
 

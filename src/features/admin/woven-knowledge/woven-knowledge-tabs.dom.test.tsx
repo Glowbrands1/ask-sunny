@@ -45,7 +45,7 @@ function afterScan(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledg
     previewTestMode: false,
     headline: "needs_attention",
     setupStep: "initial_sync",
-    settings: { source: "woven", autoSyncEnabled: false, intervalDays: 30, initialSyncCompletedAt: null, lastFullScanAt: null, lastSuccessAt: null },
+    settings: { source: "woven", autoSyncEnabled: false, intervalDays: 7, initialSyncCompletedAt: null, lastFullScanAt: null, lastSuccessAt: null },
     running: null,
     lastSuccessAt: null,
     lastCheckedAt: null,
@@ -375,7 +375,7 @@ describe("after setup: Scan Woven is always there, and it is only a preview", ()
     afterScan({
       setupStep: "done",
       headline: "up_to_date",
-      settings: { source: "woven", autoSyncEnabled: true, intervalDays: 30, initialSyncCompletedAt: "2026-09-29T23:46:54Z", lastFullScanAt: "2026-09-30T11:54:29Z", lastSuccessAt: "2026-09-30T11:54:29Z" },
+      settings: { source: "woven", autoSyncEnabled: true, intervalDays: 7, initialSyncCompletedAt: "2026-09-29T23:46:54Z", lastFullScanAt: "2026-09-30T11:54:29Z", lastSuccessAt: "2026-09-30T11:54:29Z" },
       attention: [],
       audienceReviews: [],
       awaitingAudience: 0,

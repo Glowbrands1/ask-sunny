@@ -1,5 +1,6 @@
 import { manifestKey } from "./reconcile";
 import type { ClaimResult, KnowledgeSink, KnowledgeSyncStore, RunRecord, SinkDocument, SinkMetadata } from "./ports";
+import { AUTOMATIC_SYNC_INTERVAL_DAYS } from "./types";
 import type { AudienceDecision, InventoryItem, ManifestItem, SourceSystem, SyncEvent, SyncSettings } from "./types";
 
 /**
@@ -40,7 +41,7 @@ export function defaultSettings(source: SourceSystem): SyncSettings {
   return {
     source,
     autoSyncEnabled: false,
-    intervalDays: 30,
+    intervalDays: AUTOMATIC_SYNC_INTERVAL_DAYS,
     initialSyncCompletedAt: null,
     lastFullScanAt: null,
     lastSuccessAt: null,

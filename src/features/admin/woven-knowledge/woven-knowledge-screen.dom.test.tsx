@@ -28,7 +28,7 @@ function status(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledgeSt
     settings: {
       source: "woven",
       autoSyncEnabled: true,
-      intervalDays: 30,
+      intervalDays: 7,
       initialSyncCompletedAt: "2026-09-29T12:00:00Z",
       lastFullScanAt: "2026-09-29T12:00:00Z",
       lastSuccessAt: "2026-09-29T12:00:00Z",
@@ -36,7 +36,7 @@ function status(overrides: Partial<WovenKnowledgeStatus> = {}): WovenKnowledgeSt
     running: null,
     lastSuccessAt: "2026-09-29T12:00:00Z",
     lastCheckedAt: "2026-09-29T12:00:00Z",
-    nextSyncAt: "2026-10-29T12:00:00Z",
+    nextSyncAt: "2026-10-06T12:00:00Z",
     documentsInSync: 642,
     lastSync: { new: 4, updated: 2, removed: 0 },
     needsAttention: 0,
@@ -57,7 +57,9 @@ describe("Woven Knowledge Sync screen", () => {
     expect(screen.getByTestId("headline").textContent).toContain("Up to date");
     expect(screen.getByText("Company: JB & Associates")).toBeTruthy();
     expect(screen.getAllByText("Sep 29, 2026")).toHaveLength(2);
-    expect(screen.getByText("Oct 29, 2026")).toBeTruthy();
+    expect(screen.getByText("Oct 6, 2026")).toBeTruthy();
+    /* The effective schedule is weekly, whatever interval an older settings row carries. */
+    expect(screen.getByText("Automatic sync is on — every 7 days.")).toBeTruthy();
     expect(screen.getByText("642")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Sync Now/ })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: /View Sync Details/ })).toBeTruthy();

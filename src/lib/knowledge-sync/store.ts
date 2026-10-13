@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { defaultSettings, toInventoryItem } from "./memory-store";
+import { AUTOMATIC_SYNC_INTERVAL_DAYS } from "./types";
 import type { ClaimResult, KnowledgeSyncStore, RunRecord } from "./ports";
 import type {
   AudienceDecision,
@@ -286,7 +287,8 @@ export function createSupabaseKnowledgeSyncStore(db: SupabaseClient = getSupabas
       return {
         source,
         autoSyncEnabled: r.auto_sync_enabled === true,
-        intervalDays: Number(r.interval_days ?? 30),
+        /* The stored column is not authoritative: rows written under the old 30-day cadence still say 30. */
+        intervalDays: AUTOMATIC_SYNC_INTERVAL_DAYS,
         initialSyncCompletedAt: str(r.initial_sync_completed_at),
         lastFullScanAt: str(r.last_full_scan_at),
         lastSuccessAt: str(r.last_success_at),

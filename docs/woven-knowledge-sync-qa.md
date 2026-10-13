@@ -3,7 +3,7 @@
 **What is being tested:** the automatic Woven → Ask Sunny knowledge sync
 (`docs/woven-knowledge-sync.md`): it reads Woven Team content, compares it
 with the last successful sync, and adds, updates or retires Ask Sunny
-knowledge documents. It checks Woven every 30 days without anyone having to
+knowledge documents. It checks Woven every 7 days without anyone having to
 do anything.
 
 **Status:** built and covered by automated tests. **Not deployed.** The
@@ -56,7 +56,7 @@ PGlite migration check.
 | One adapter failing while others succeed | Unit: `a failed listing leaves that type untouched while the others sync` | — |
 | Retry | Unit: `…retried by the next continue run`, `stops retrying automatically after repeated failures` | — |
 | Dry run | Unit: `dry run: counts everything, writes nothing…` | B3 |
-| Scheduled run | Unit: `the daily tick does a full sync only when 30 days have passed` | B9 |
+| Scheduled run | Unit: `the daily tick does a full sync only when 7 days have passed` | B9 |
 | Manual Sync Now | Unit: `manual Sync Now runs the same engine as the schedule`; DOM: `Sync Now calls the one sync engine` | B6 |
 | Empty list treated as suspicious | Unit: `an EMPTY policy list is not believed: nothing is removed` | — |
 | Mass removal held for confirmation | Unit: `holds a mass removal until an administrator confirms it` | — |
@@ -108,8 +108,8 @@ Open **Admin → Integrations → Woven Knowledge Sync**.
 | B5 | If "Needs attention" lists audiences, decide each one: **Share with everyone** or **Keep out of Ask Sunny** | The choice saves and moves under "Audience choices already made". Re-open the page: the choice is still there. | ☐ |
 | B6 | Click **Start Initial Sync** | Finishes. "Documents in sync" equals B3's "Will sync" total plus anything shared in B5. The Knowledge Base screen shows the new documents, tagged `woven`. Click **Sync Now** straight away: New 0, Updated 0. No new documents and no duplicates. | ☐ |
 | B7 | Ask Sunny a question answered by a synced handbook or policy attachment | The answer cites that document. The citation opens it. | ☐ |
-| B8 | Click **Enable Automatic Sync** | Setup disappears. "Next automatic sync" is 30 days after the last check. The headline reads **Up to date**, unless something needs attention. | ☐ |
-| B9 | Scheduled tick. Only once the schedule is approved and deployed; otherwise call `GET /api/knowledge-sync/woven/cron` with `Authorization: Bearer $CRON_SECRET` | Before 30 days: `{"status":"skipped","reason":"not_due"}`. Nothing reaches Woven. | ☐ |
+| B8 | Click **Enable Automatic Sync** | Setup disappears. "Next automatic sync" is 7 days after the last check. The headline reads **Up to date**, unless something needs attention. | ☐ |
+| B9 | Scheduled tick. Only once the schedule is approved and deployed; otherwise call `GET /api/knowledge-sync/woven/cron` with `Authorization: Bearer $CRON_SECRET` | Before 7 days: `{"status":"skipped","reason":"not_due"}`. Nothing reaches Woven. | ☐ |
 | B10 | Security spot-check in the Supabase SQL editor (queries below) | Every query returns **0**. | ☐ |
 | B11 | Sign in as a District Manager or Salon Director and open `/admin/integrations/woven-knowledge` | Access refused, the same as other integration screens. | ☐ |
 | B12 | Open the screen on a phone-width window | No horizontal scrolling of the page (tables scroll inside their box). Every button can be reached. | ☐ |

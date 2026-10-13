@@ -153,7 +153,7 @@ describe("setup safety", () => {
   });
 });
 
-describe("the monthly cycle", () => {
+describe("the sync cycle", () => {
   it("initial discovery ingests only published, company-wide, downloadable content", async () => {
     const h = new Harness();
     const r = report(await h.initial());
@@ -525,17 +525,17 @@ describe("nothing secret is kept", () => {
   });
 });
 
-describe("scheduling every 30 days", () => {
-  it("the daily tick does a full sync only when 30 days have passed", async () => {
+describe("scheduling every 7 days", () => {
+  it("the daily tick does a full sync only when 7 days have passed", async () => {
     const h = new Harness();
     await h.initial();
     await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
-    expect(nextAutomaticSyncAt(h.store.settings)).toBe("2026-10-29T12:00:00.000Z");
+    expect(nextAutomaticSyncAt(h.store.settings)).toBe("2026-10-06T12:00:00.000Z");
 
-    h.advanceDays(10);
+    h.advanceDays(3);
     expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "not_due" });
 
-    h.advanceDays(20);
+    h.advanceDays(4);
     h.fake.state.handbooks[0]!.currentVersionId = uuid(2105);
     /* Due since 12:00, but a full scan starts only in the 09:40 slot: the hourly ticks until then do not scan. */
     expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "not_due" });
@@ -544,28 +544,42 @@ describe("scheduling every 30 days", () => {
     const outcome = await runScheduledWovenKnowledgeTick(h.overrides());
     expect(outcome.status).toBe("succeeded");
     expect(h.store.runs.at(-1)).toMatchObject({ mode: "sync", trigger: "schedule", requestedBy: "schedule" });
-    expect(nextAutomaticSyncAt(h.store.settings)).toBe("2026-11-29T09:40:00.000Z");
+    expect(nextAutomaticSyncAt(h.store.settings)).toBe("2026-10-14T09:40:00.000Z");
   });
 
   it("does nothing while automatic sync is off, and never before the initial sync", async () => {
     const h = new Harness();
     expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "initial_sync_not_done" });
     await h.initial();
-    h.advanceDays(40);
+    h.advanceDays(10);
     expect(await runScheduledWovenKnowledgeTick(h.overrides())).toEqual({ status: "skipped", reason: "auto_sync_off" });
   });
 
-  it("between monthly syncs it only continues or retries unfinished work", () => {
-    const settings = { source: "woven" as const, autoSyncEnabled: true, intervalDays: 30, initialSyncCompletedAt: "2026-09-01T00:00:00Z", lastFullScanAt: "2026-09-01T00:00:00Z", lastSuccessAt: null };
+  it("between weekly syncs it only continues or retries unfinished work", () => {
+    const settings = { source: "woven" as const, autoSyncEnabled: true, intervalDays: 7, initialSyncCompletedAt: "2026-09-01T00:00:00Z", lastFullScanAt: "2026-09-01T00:00:00Z", lastSuccessAt: null };
     const pending = { pendingAction: "ingest", retryCount: 1, nextRetryAt: "2026-09-02T00:00:00Z" } as ManifestItem;
     expect(decideScheduledWork(settings, [pending], new Date("2026-09-03T00:00:00Z"))).toEqual({ run: "continue" });
     expect(decideScheduledWork(settings, [], new Date("2026-09-03T00:00:00Z"))).toEqual({ run: "none", reason: "not_due" });
     /* Due, but outside the daily 09:xx UTC slot: the hourly tick waits for it. */
-    expect(decideScheduledWork(settings, [], new Date("2026-10-01T00:00:00Z"))).toEqual({ run: "none", reason: "not_due" });
-    expect(decideScheduledWork(settings, [], new Date("2026-10-01T09:40:00Z"))).toEqual({ run: "sync" });
-    /* Deferred work continues on the hour, whatever the monthly date. */
+    expect(decideScheduledWork(settings, [], new Date("2026-09-08T00:00:00Z"))).toEqual({ run: "none", reason: "not_due" });
+    expect(decideScheduledWork(settings, [], new Date("2026-09-08T09:40:00Z"))).toEqual({ run: "sync" });
+    /* Deferred work continues on the hour, whatever the weekly date. */
     const deferred = { pendingAction: "ingest", retryCount: 0, nextRetryAt: null } as ManifestItem;
     expect(decideScheduledWork(settings, [deferred], new Date("2026-09-03T15:40:00Z"))).toEqual({ run: "continue" });
+  });
+
+  it("is weekly whatever interval an older settings row still carries", () => {
+    const stale = { source: "woven" as const, autoSyncEnabled: true, intervalDays: 30, initialSyncCompletedAt: "2026-09-01T00:00:00Z", lastFullScanAt: "2026-09-01T09:45:00Z", lastSuccessAt: null };
+    expect(nextAutomaticSyncAt(stale)).toBe("2026-09-08T09:45:00.000Z");
+    expect(decideScheduledWork(stale, [], new Date("2026-09-07T09:40:00Z"))).toEqual({ run: "none", reason: "not_due" });
+    expect(decideScheduledWork(stale, [], new Date("2026-09-08T09:40:00Z"))).toEqual({ run: "sync" });
+  });
+
+  it("a scan stamped minutes after the 09:40 tick still recurs on the same weekday, not a day late", () => {
+    const settings = { source: "woven" as const, autoSyncEnabled: true, intervalDays: 7, initialSyncCompletedAt: "2026-09-01T00:00:00Z", lastFullScanAt: "2026-09-01T09:46:00Z", lastSuccessAt: null };
+    expect(decideScheduledWork(settings, [], new Date("2026-09-08T09:40:00Z"))).toEqual({ run: "sync" });
+    /* Never early: six days on is not due. */
+    expect(decideScheduledWork(settings, [], new Date("2026-09-07T09:40:00Z"))).toEqual({ run: "none", reason: "not_due" });
   });
 
   it("does not sign in to Woven on a day when nothing is due", async () => {
@@ -580,18 +594,18 @@ describe("scheduling every 30 days", () => {
     expect(h.fake.logins).toBe(logins);
   });
 
-  it("a scheduled month with one failing file: the run succeeds with warnings, the file retries daily, nothing is duplicated", async () => {
+  it("a scheduled week with one failing file: the run succeeds with warnings, the file retries daily, nothing is duplicated", async () => {
     const h = new Harness();
     await h.initial();
     await h.store.saveSettings({ ...h.store.settings, autoSyncEnabled: true });
     const documents = h.sink.documents.size;
 
-    h.advanceDays(31);
+    h.advanceDays(8);
     h.at(9);
     Object.assign(h.fake.state.handbooks[0]!, { currentVersionId: uuid(2106), bytes: "%PDF v6" });
     h.sink.failNextIngest = new SinkError("ingest_embedding_failed", "Embedding failed.");
-    const month = await runScheduledWovenKnowledgeTick(h.overrides());
-    expect(month.status).toBe("succeeded_with_warnings");
+    const week = await runScheduledWovenKnowledgeTick(h.overrides());
+    expect(week.status).toBe("succeeded_with_warnings");
     expect(h.item(HANDBOOK)).toMatchObject({ state: "ERROR", retryCount: 1 });
 
     h.advanceDays(1);

@@ -17,7 +17,7 @@ import { DEFAULT_WOVEN_COMPANY, DEFAULT_WOVEN_TEAM_BASE_URL } from "./contract";
  * app, which is where knowledge content lives.
  *
  * OFF UNTIL SWITCHED ON. With `WOVEN_KNOWLEDGE_SYNC_ENABLED` off nothing
- * reaches Woven — not a test, not a preview, not a scheduled tick. The monthly
+ * reaches Woven — not a test, not a preview, not a scheduled tick. The weekly
  * schedule has its own switch, which an administrator turns on from the admin
  * screen after the initial sync (stored in `knowledge_sync_settings`), so no
  * cron syntax or variable is needed for it.
