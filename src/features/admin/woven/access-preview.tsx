@@ -95,8 +95,15 @@ function actionTone(action: AccessAction): BadgeTone {
 /** Plain sentences for the planner's reason codes. Unknown codes fall back to the code itself. */
 const REASON: Record<string, string> = {
   eligible_salon_manager_without_account:
-    "Active Salon Director or Assistant Salon Director with a usable email and a mapped salon, and no Ask Sunny account.",
-  position_not_auto_provisioned: "This Woven position does not get an Ask Sunny account automatically in this rollout.",
+    "Active Assistant Salon Director, Salon Director, District Manager or Regional Manager (approved position mapping) with a usable work email and every assigned location mapped, and no Ask Sunny account.",
+  position_not_auto_provisioned: "This role is not one of Assistant Salon Director, Salon Director, District Manager or Regional Manager, so no account or invitation is created automatically. An administrator can still invite them by hand.",
+  additional_location_unmapped: "One of this employee's additional Woven locations is not mapped to a salon yet. No invitation is sent until it is.",
+  additional_location_not_a_salon: "One of this employee's additional Woven locations is not a salon. No invitation is sent.",
+  locations_span_several_districts: "This District Manager's salons are in more than one district. A person decides which district they cover; no invitation is sent.",
+  locations_span_several_regions: "This Regional Manager's salons are in more than one region. A person decides which region they cover; no invitation is sent.",
+  salon_areas_unavailable: "Reporting could not say which district or region the salons belong to, so no District or Regional Manager account is created.",
+  salon_district_unknown: "Reporting has no district for one of this manager's salons. No invitation is sent.",
+  salon_region_unknown: "Reporting has no region for one of this manager's salons. No invitation is sent.",
   woven_position_not_confirmed: "The Woven position has no approved mapping, so no role is assigned.",
   woven_position_missing: "Woven has no position for this employee.",
   primary_location_missing: "Woven has no primary location for this employee.",

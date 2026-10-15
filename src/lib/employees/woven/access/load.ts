@@ -2,6 +2,8 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+import { currentSalonAreas } from "@/lib/reporting/scope/reporting-areas";
+
 import { loadDirectoryRows } from "../directory";
 import { listWovenLocations } from "../locations";
 import { listWovenPositions } from "../positions";
@@ -9,7 +11,7 @@ import { classifyStatusError } from "../status";
 import { plannerAccount, plannerEmployee, plannerLocation, plannerPosition } from "./adapters";
 import { buildAccessPlan, type AccessPlan } from "./build";
 import type { DirectoryRunFacts, MappingCounts } from "./guards";
-import type { AuthOnlyUser } from "./types";
+import type { AuthOnlyUser, SalonAreaFact } from "./types";
 
 export { buildAccessPlan, type AccessPlan } from "./build";
 
@@ -81,8 +83,17 @@ async function loadAuthOnly(): Promise<AuthOnlyUser[] | null> {
     }));
 }
 
+/** null when reporting cannot be read: District / Regional Managers then cannot be provisioned. */
+async function loadSalonAreas(): Promise<SalonAreaFact[] | null> {
+  try {
+    return await currentSalonAreas();
+  } catch {
+    return null;
+  }
+}
+
 export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan> {
-  const [directory, locations, positions, accounts, runFacts, mappingBaseline, authOnly] = await Promise.all([
+  const [directory, locations, positions, accounts, runFacts, mappingBaseline, authOnly, salonAreas] = await Promise.all([
     loadDirectoryRows(),
     listWovenLocations(),
     listWovenPositions(),
@@ -90,6 +101,7 @@ export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan
     loadRunFacts(),
     loadMappingBaseline(),
     loadAuthOnly(),
+    loadSalonAreas(),
   ]);
   return buildAccessPlan(
     {
@@ -98,6 +110,7 @@ export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan
       locations: locations.map(plannerLocation),
       accounts,
       authOnly,
+      salonAreas,
     },
     { runs: runFacts.runs, mappingBaseline, directoryRunId: runFacts.latestSuccessId, now },
   );

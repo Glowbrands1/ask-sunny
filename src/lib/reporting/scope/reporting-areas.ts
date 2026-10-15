@@ -49,7 +49,7 @@ import { districtIdOf, regionIdOf } from "./area-ids";
  */
 
 /** One salon's current area membership, as reporting last reported it. */
-interface SalonArea {
+export interface SalonArea {
   readonly salonNumber: string;
   readonly districtId: string;
   readonly regionId: string;
@@ -69,7 +69,7 @@ interface AttributeRow {
  * Newest-per-salon rather than a union across periods: a union would include
  * the district a salon has LEFT, which is the exposure this module closes.
  */
-async function currentSalonAreas(): Promise<SalonArea[]> {
+export async function currentSalonAreas(): Promise<SalonArea[]> {
   const { data, error } = await getSupabaseAdmin()
     .from("salon_period_attributes")
     .select("period_id, district_label, region_label, salons!inner(salon_number)")

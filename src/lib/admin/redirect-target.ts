@@ -118,3 +118,31 @@ export function recoveryStartUrlFor(request: Request, tokenHash: string): string
   url.searchParams.set("type", "recovery");
   return url.toString();
 }
+
+/**
+ * Where an AUTOMATIC (Woven-triggered) invitation lands — pinned, never inferred.
+ *
+ * The manual paths above may fall back to the request's own origin. An
+ * automatic invitation is sent by a scheduled job whose "request" is a cron
+ * call, possibly on a preview or alias hostname, so it must name the production
+ * site explicitly: `NEXT_PUBLIC_SITE_URL`, an https origin (http only for
+ * localhost, so the local-stack tests can run). Anything else returns null and
+ * the lifecycle sends NO invitation (`redirect_not_configured`) — it fails
+ * closed rather than mailing a link that lands somewhere unexpected.
+ *
+ * The origin must still be on Supabase Auth's redirect allowlist; this only
+ * refuses to guess.
+ */
+export function automaticInviteRedirectTarget(env: Record<string, string | undefined> = process.env): string | null {
+  const configured = env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (url.protocol !== "https:" && !(local && url.protocol === "http:")) return null;
+    if (url.username || url.password) return null;
+    return `${url.origin}${ACCEPT_PATH}`;
+  } catch {
+    return null;
+  }
+}

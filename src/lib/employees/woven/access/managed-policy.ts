@@ -65,3 +65,21 @@ export function disallowedFlags(requested: ManagedFlags, allowed: ManagedFlags):
 export function flagsLabel(flags: ManagedFlags): string {
   return `status:${flags.status ? "on" : "off"},location:${flags.location ? "on" : "off"},role:${flags.role ? "on" : "off"}`;
 }
+
+/**
+ * THE ONLY ROLES A WOVEN SYNC MAY CREATE AN ACCOUNT FOR AND INVITE (owner
+ * instruction, 15 Oct 2026): Assistant Salon Director, Salon Director,
+ * District Manager, Regional Manager — by the CONFIRMED position mapping.
+ * Every other role, and every unmapped or unconfirmed position, is never
+ * invited automatically. This restricts the AUTOMATIC path only: an
+ * administrator may still invite anyone by hand (`admin/user-directory.ts`).
+ * Mirrored in SQL by `employee_access_provision_account`.
+ */
+export const AUTO_PROVISION_ROLES: readonly Role[] = ["assistant_salon_director", "salon_director", "district_manager", "regional_manager"];
+/** The scope level an automatically provisioned role receives. */
+export const PROVISION_SCOPE_LEVEL: Partial<Record<Role, "salon" | "district" | "region">> = {
+  assistant_salon_director: "salon",
+  salon_director: "salon",
+  district_manager: "district",
+  regional_manager: "region",
+};

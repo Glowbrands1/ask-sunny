@@ -29,6 +29,8 @@ export function plannerEmployee(row: DirectoryRow): PlannerEmployee {
     primaryWovenLocationId: row.primaryLocationId,
     primaryLocationName: row.primaryLocationName,
     additionalLocationNames: [...row.additionalLocations, ...row.temporaryOrExpiringLocations].map((l) => l.name ?? l.wovenLocationId),
+    additionalLocationIds: row.additionalLocations.map((l) => l.wovenLocationId),
+    temporaryLocationIds: row.temporaryOrExpiringLocations.map((l) => l.wovenLocationId),
     issues: row.dataIssues,
     terminationDate: row.terminationDate,
     lastSyncedAt: row.lastSyncedAt || null,

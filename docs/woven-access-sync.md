@@ -266,6 +266,32 @@ The scheduled sync runs the lifecycle after a successful directory sync only. Th
 - missing-only, past TerminationDate, failed terminated read and protected accounts are never revoked;
 - a rehire stays disabled.
 
+## Stage 6 — automatic invitations restricted to ASD, SD, DM, RM (15 Oct 2026; Production apply OFF)
+
+**Owner instruction.** A Woven-synced new hire is invited automatically **only** when their position resolves, through the existing confirmed position mapping, to **Assistant Salon Director, Salon Director, District Manager or Regional Manager**. Every other role — and every unmapped, unconfirmed, ignored or unknown position — is never invited automatically. This restricts the **automatic Woven path only**: administrators can still invite any role by hand (`inviteUser`, "Send sign-in link"), and nothing here revokes existing access. It supersedes the 6 Oct table rows "Tanning Consultant → automatic" and "District Manager → not until a district flow exists"; Regional Manager is newly eligible.
+
+**There is still one pipeline.** The existing lifecycle (`CREATE_USER` → `SEND_INVITE`, run only after a successful scheduled sync, in `WOVEN_ACCESS_MODE=apply`) was extended, not duplicated.
+
+| Role | Scope the account receives | Area | Also covers |
+|---|---|---|---|
+| Assistant Salon Director / Salon Director | salon | `loc-<primary salon>` | never written |
+| District Manager | district | the one district reporting assigns to all of the manager's salons | never written |
+| Regional Manager | region | the one region reporting assigns to all of the manager's salons | never written |
+
+**Locations — every assigned location must resolve before anyone is invited.** Primary: a mapped salon. Each *additional* location: a mapped salon, or one a person marked `ignored` (e.g. Corporate; grants nothing). An unmapped, unknown or non-salon additional location holds the employee (`FLAG_UNMAPPED_LOCATION`, nothing created, nothing emailed). Temporary/expiring locations neither grant nor block. District/region come from reporting (`salon_period_attributes`) — never the checked-in roster — and fail closed: if reporting cannot say, or the salons span several districts (DM) / regions (RM), the employee is held (`FLAG_LOCATION_REVIEW`) for a person. **Open decision for the owner:** for an SD/ASD, additional salons are validated and recorded in the audit (`salons:` list on `woven_provisioned`) but **not granted** (decision 4 of 2 Oct stands). Say so if they should be.
+
+**Where it is enforced (three layers).** (1) the planner (`AUTO_PROVISION_ROLES`, `inviteScope` in `plan.ts`); (2) the apply engine refuses any role/scope pair outside the four (`role_not_auto_provisioned`) and never retries an invitation for an accepted account or a role outside the four; (3) migration `20261015001000` — `employee_access_provision_account` takes the role from the confirmed position map, re-reads every location from the database, re-derives the district/region from reporting, and refuses anything that disagrees (`provision_role_not_auto_provisioned`, `provision_scope_not_valid_for_role`, `provision_additional_location_not_mapped`, `provision_locations_span_several_areas`, `provision_area_mismatch`). The old 7-argument function is dropped.
+
+**Resend and duplicates.** A repeated sync plans no `CREATE_USER` (the link is found by EmployeeID), so it creates and mails nothing. A *resumed* creation never mails from the create step. Automatic retry covers only `not_sent`/`failed` (max 3 attempts) and never an accepted account. A sent-but-unanswered or **expired** invitation is **not** re-sent automatically (that would be a duplicate on every sync); recovery is (a) the administrator's existing **Send sign-in link** (a fresh invitation for an unconfirmed account, a password reset for an activated one — never a second invitation), or (b) the person's own **Forgot your password?**, which works for an `invited` account and activates it (proven on real Supabase Auth). Passwords are never set or touched: the person chooses their own.
+
+**Pinned landing page.** The cron passes `automaticInviteRedirectTarget()` — `NEXT_PUBLIC_SITE_URL` as an https origin (http only for localhost) plus `/auth/accept`. Missing or invalid → no invitation, no attempt counted, the account waits `not_sent`.
+
+**Logging.** Each invitation outcome is on the link (`invite_delivery_status`, `invite_sent_at`, `invite_error` code, `invite_attempts`, `invite_accepted_at`) and in `app_user_audit`; each held employee is an `employee_access_actions` row with its reason code. No token, link or password is stored or logged (asserted in the local-stack suite).
+
+**Proven on the local stack** (`auto-invite.local-stack.test.ts`, real Supabase Auth + Mailpit, `@example.test` addresses): all four roles, single and multiple locations; ASD/SD/DM/RM sign-in with the effective role and scope the application resolves; excluded roles, missing email, unknown/unmapped position or location, an existing active account — nothing created, nothing mailed; repeated syncs; expired and reused real links; administrator and self-service recovery; termination of an automatically created DM; the manual path unchanged.
+
+**Conditions before `SEND_INVITE` is enabled in Production** — see the release report: migration applied, `NEXT_PUBLIC_SITE_URL` pinned and on Supabase's redirect allowlist, custom SMTP, invite expiry ≥ 24 h, scanner-safe invite template, a one-person canary with an authorized test identity, then an owner-approved batch via `WOVEN_ACCESS_APPLY_EMPLOYEE_IDS`.
+
 ## Migration history in Production
 
 `supabase_migrations.schema_migrations` in Production does not mirror the repository:

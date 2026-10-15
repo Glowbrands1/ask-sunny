@@ -325,7 +325,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
 
   it("the database re-checks too: provisioning a status-conflict employee directly is refused, whatever the caller sends", () => {
     expect(
-      sqlFails(`select public.employee_access_provision_account(gen_random_uuid(), '${id("CONFLICT")}', '${mail("CONFLICT")}', 'X', 'assistant_salon_director', 'loc-0307', 'test')`),
+      sqlFails(`select public.employee_access_provision_account(gen_random_uuid(), '${id("CONFLICT")}', '${mail("CONFLICT")}', 'X', 'assistant_salon_director', 'salon', 'loc-0307', 'test')`),
     ).toMatch(/provision_auth_user_mismatch|provision_status_conflict/);
   });
 
@@ -350,6 +350,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
         p_email: mail("TWIN"),
         p_display_name: "Pat Twin",
         p_role: "salon_director",
+        p_scope_level: "salon",
         p_primary_area_id: "loc-0307",
         p_set_by: "test",
       });
@@ -358,19 +359,17 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     expect(accountsWithEmail(mail("TWIN"))).toBe(1);
   });
 
-  it("an invitation that cannot be sent leaves a recoverable, invited account; the next run sends it", async () => {
+  it("no pinned redirect: the account waits invited with nothing mailed and no attempt burned; the next run with a redirect sends it", async () => {
     await apply(["CREATE_USER", "SEND_INVITE"], null, [id("NOINVITE")]);
     const userId = sql(`select id from auth.users where lower(email) = '${mail("NOINVITE")}'`);
     expect(sql(`select status from public.app_users where id = '${userId}'`)).toBe("invited");
-    expect(sql(`select invite_delivery_status||','||invite_error||','||invite_attempts from public.employee_account_links where app_user_id = '${userId}'`)).toBe(
-      "failed,redirect_not_configured,1",
-    );
+    expect(sql(`select invite_delivery_status||','||coalesce(invite_error,'-')||','||invite_attempts from public.employee_account_links where app_user_id = '${userId}'`)).toBe("not_sent,-,0");
     expect((await messagesTo(mail("NOINVITE"))).length).toBe(0);
-    expect(sql(`select count(*) from public.app_user_audit where target_user_id = '${userId}' and action = 'invite_failed'`)).toBe("1");
+    expect(sql(`select count(*) from public.app_user_audit where target_user_id = '${userId}' and action = 'invite_failed'`)).toBe("0");
 
     const retry = await apply(["CREATE_USER", "SEND_INVITE"], REDIRECT, [id("NOINVITE")]);
     expect(retry).toMatchObject({ status: "completed", tally: { applied: { INVITE_RETRY: 1 } } });
-    expect(sql(`select invite_delivery_status||','||coalesce(invite_error,'-')||','||invite_attempts from public.employee_account_links where app_user_id = '${userId}'`)).toBe("sent,-,2");
+    expect(sql(`select invite_delivery_status||','||coalesce(invite_error,'-')||','||invite_attempts from public.employee_account_links where app_user_id = '${userId}'`)).toBe("sent,-,1");
     expect(await waitForMail(mail("NOINVITE"), 1)).toBe(1);
     expect(authUsersWithEmail(mail("NOINVITE"))).toBe(1);
   });
@@ -397,7 +396,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     expect(sql(`select to_jsonb(u) - 'updated_at' from auth.users u where id = '${ids.BARE}'`)).toBe(before);
     expect((await messagesTo(mail("BARE"))).length).toBe(0);
     /* And the database refuses it directly: the credential was not created for this employee. */
-    expect(sqlFails(`select public.employee_access_provision_account('${ids.BARE}', '${id("BARE")}', '${mail("BARE")}', 'X', 'salon_director', 'loc-0307', 'test')`)).toMatch(/provision_auth_user_mismatch/);
+    expect(sqlFails(`select public.employee_access_provision_account('${ids.BARE}', '${id("BARE")}', '${mail("BARE")}', 'X', 'salon_director', 'salon', 'loc-0307', 'test')`)).toMatch(/provision_auth_user_mismatch/);
   });
 
   /* ------------------------------------------------------ LINK_EXISTING -- */
@@ -549,7 +548,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     const asAnon = await anonClient().rpc("employee_access_disable_terminated", { p_app_user_id: ids.STEADY, p_external_employee_id: id("STEADY"), p_set_by: "x" });
     expect(asAnon.error).not.toBeNull();
     for (const fn of [
-      "employee_access_provision_account(uuid, text, text, text, text, text, text)",
+      "employee_access_provision_account(uuid, text, text, text, text, text, text, text)",
       "employee_access_link_existing(uuid, text, text)",
       "employee_access_disable_terminated(uuid, text, text)",
       "employee_access_auth_user_by_email(text)",

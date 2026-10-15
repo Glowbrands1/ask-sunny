@@ -37,6 +37,8 @@ const employee = (id: string, over: Partial<PlannerEmployee> = {}): PlannerEmplo
   primaryWovenLocationId: "L-GI",
   primaryLocationName: "NE Grand Island",
   additionalLocationNames: [],
+  additionalLocationIds: [],
+  temporaryLocationIds: [],
   issues: [],
   terminationDate: null,
   lastSyncedAt: "2026-10-06T11:17:50Z",
@@ -236,11 +238,12 @@ describe("CREATE_USER + invite", () => {
     expect(exhausted.auth.inviteUserByEmail).not.toHaveBeenCalled();
   });
 
-  it("no site URL for the link → the account is created but no invitation is sent; recorded as redirect_not_configured", async () => {
+  it("no pinned site URL for the link → the account is created but NOTHING is mailed and no attempt is burned", async () => {
     const f = fakes(planOf([employee("E1")]));
     await run(f, {}, null);
     expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
-    expect(f.callOf("employee_access_record_invite")).toMatchObject({ p_outcome: "failed", p_error_code: "redirect_not_configured" });
+    expect(f.calls.some((c) => c.fn === "employee_access_record_invite")).toBe(false);
+    expect(f.recorded.find((r) => r.action === "CREATE_USER")).toMatchObject({ result: "applied", result_code: "created.invite_not_sent" });
   });
 
   it("resumes an interrupted attempt: an unconfirmed auth user created for THIS EmployeeID is reused, never duplicated", async () => {
@@ -291,7 +294,9 @@ describe("CREATE_USER + invite", () => {
       } as never,
     });
     await run(f);
-    expect(f.recorded.find((r) => r.action === "CREATE_USER")).toMatchObject({ result: "applied", result_code: "resumed.invite_sent" });
+    expect(f.recorded.find((r) => r.action === "CREATE_USER")).toMatchObject({ result: "applied", result_code: "resumed.invite_left_to_retry_step" });
+    /* a resumed account is never mailed from the create step: no duplicate on a racing or repeated sync */
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
   });
 
   it("the database's re-check refuses (e.g. a status conflict appeared since the plan) → failed with its code; nothing created in app_users", async () => {

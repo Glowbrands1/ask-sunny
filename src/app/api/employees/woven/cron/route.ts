@@ -8,7 +8,7 @@ import {
   WOVEN_SYNC_SCHEDULE_ENABLED_ENV,
 } from "@/lib/employees/woven/config";
 import { CRON_REQUESTER, outcomeHttpStatus, runWovenEmployeeSync } from "@/lib/employees/woven/sync";
-import { implicitRedirectTarget } from "@/lib/admin/redirect-target";
+import { automaticInviteRedirectTarget } from "@/lib/admin/redirect-target";
 import { readWovenAccessConfig } from "@/lib/employees/woven/access/config";
 import { runAccessLifecycle } from "@/lib/employees/woven/access/apply-run";
 import { recordAccessShadowRun } from "@/lib/employees/woven/access/shadow";
@@ -122,7 +122,7 @@ export async function GET(request: Request) {
   const shadow = succeeded && mode === "shadow" ? await recordAccessShadowRun(CRON_REQUESTER) : ({ status: "off" } as const);
   /* Codes and counts only: the lifecycle outcome carries no name and no email. */
   const lifecycle =
-    succeeded && mode === "apply" ? await runAccessLifecycle(CRON_REQUESTER, implicitRedirectTarget(request)) : ({ status: "off" } as const);
+    succeeded && mode === "apply" ? await runAccessLifecycle(CRON_REQUESTER, automaticInviteRedirectTarget()) : ({ status: "off" } as const);
   const body = {
     ...outcome,
     ...(shadow.status === "off" ? {} : { accessShadow: shadow }),
