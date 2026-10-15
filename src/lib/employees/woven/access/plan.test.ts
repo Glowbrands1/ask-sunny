@@ -367,6 +367,28 @@ describe("primary location", () => {
     expect(mutating(rows)).toEqual([]);
   });
 
+  it("3d. a Woven sync never writes, replaces or removes manually granted additional locations", () => {
+    /*
+     * Across every shape a linked account with extras can take — in sync, primary
+     * moved, role moved — no planned change ever names `scope_also_covers_area_ids`.
+     * Manual assignments survive a sync because the plan cannot express touching them.
+     */
+    const extras = ["loc-0394", "loc-0468"];
+    const cases: [PlannerEmployee, PlannerAccount][] = [];
+    const inSync = employee();
+    cases.push([inSync, linkedTo(inSync, { alsoCoversAreaIds: extras })]);
+    const moved = employee({ primaryWovenLocationId: LOC.liberty, primaryLocationName: "KC Liberty" });
+    cases.push([moved, linkedTo(moved, { primaryAreaId: "loc-0314", alsoCoversAreaIds: extras })]);
+
+    for (const [e, linked] of cases) {
+      const row = rowOf(plan([e], [linked]), e);
+      expect(JSON.stringify(row.before ?? {})).not.toContain("also_covers");
+      expect(JSON.stringify(row.after ?? {})).not.toContain("also_covers");
+      expect(row.actions.filter(isMutating).every((a) => a !== "CREATE_USER" && a !== "LINK_EXISTING")).toBe(true);
+      expect(linked.alsoCoversAreaIds).toEqual(extras);
+    }
+  });
+
   it("4 / 23. additional or temporary locations change → primary salon unchanged, no action", () => {
     const e = employee({ additionalLocationNames: ["KC Liberty", "NE Omaha Center"] });
     const row = rowOf(plan([e], [linkedTo(e)]), e);

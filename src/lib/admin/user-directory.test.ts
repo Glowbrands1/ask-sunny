@@ -143,19 +143,75 @@ describe("scope normalization fails closed", () => {
   it("drops non-string entries from the also-covers list", () => {
     const scope = normalizeScope({
       level: "district",
-      primaryAreaId: "dist-1",
-      alsoCoversAreaIds: ["dist-2", 7, null, "dist-3"],
+      primaryAreaId: "dist-patterson-madeline",
+      alsoCoversAreaIds: ["dist-cotton-sarah", 7, null, "dist-dugan-rachael"],
     });
-    expect(scope.alsoCoversAreaIds).toEqual(["dist-2", "dist-3"]);
+    expect(scope.alsoCoversAreaIds).toEqual(["dist-cotton-sarah", "dist-dugan-rachael"]);
   });
 
-  it("caps the also-covers list rather than accepting an unbounded array", () => {
+  it("refuses an over-long also-covers list rather than accepting an unbounded array", () => {
+    expect(() =>
+      normalizeScope({
+        level: "region",
+        primaryAreaId: "reg-patterson-madeline",
+        alsoCoversAreaIds: Array.from({ length: 500 }, (_, index) => `loc-${index}`),
+      }),
+    ).toThrow(DirectoryError);
+  });
+});
+
+describe("additional locations", () => {
+  const salonScope = { level: "salon", primaryAreaId: "loc-0306" } as const;
+
+  it("keeps explicitly chosen salons, in order", () => {
+    const scope = normalizeScope({ ...salonScope, alsoCoversAreaIds: ["loc-0394", "loc-0468"] });
+    expect(scope.primaryAreaId).toBe("loc-0306");
+    expect(scope.alsoCoversAreaIds).toEqual(["loc-0394", "loc-0468"]);
+  });
+
+  it("is empty for somebody with one location", () => {
+    expect(normalizeScope({ ...salonScope }).alsoCoversAreaIds).toEqual([]);
+    expect(normalizeScope({ ...salonScope, alsoCoversAreaIds: [] }).alsoCoversAreaIds).toEqual([]);
+  });
+
+  it("prevents duplicates and removes the primary location", () => {
     const scope = normalizeScope({
-      level: "region",
-      primaryAreaId: "reg-1",
-      alsoCoversAreaIds: Array.from({ length: 500 }, (_, index) => `reg-${index}`),
+      ...salonScope,
+      alsoCoversAreaIds: ["loc-0394", "loc-0306", "loc-0394", " loc-0468 "],
     });
-    expect(scope.alsoCoversAreaIds.length).toBeLessThanOrEqual(60);
+    expect(scope.alsoCoversAreaIds).toEqual(["loc-0394", "loc-0468"]);
+  });
+
+  it("refuses an id that is not a known salon, instead of storing a grant that does nothing", () => {
+    expect(() => normalizeScope({ ...salonScope, alsoCoversAreaIds: ["loc-9999"] })).toThrow(
+      /not a location Ask Sunny knows/,
+    );
+    expect(() => normalizeScope({ ...salonScope, alsoCoversAreaIds: ["Liberty"] })).toThrow(
+      DirectoryError,
+    );
+  });
+
+  it("refuses a district id on a salon scope, where it would be stored and ignored", () => {
+    expect(() =>
+      normalizeScope({ ...salonScope, alsoCoversAreaIds: ["dist-cotton-sarah"] }),
+    ).toThrow(DirectoryError);
+  });
+
+  it("allows a salon beside a district or region primary", () => {
+    for (const [level, primaryAreaId] of [
+      ["district", "dist-dugan-rachael"],
+      ["region", "reg-patterson-madeline"],
+    ] as const) {
+      expect(
+        normalizeScope({ level, primaryAreaId, alsoCoversAreaIds: ["loc-0394"] }).alsoCoversAreaIds,
+        level,
+      ).toEqual(["loc-0394"]);
+    }
+  });
+
+  it("clears them for a global scope, which already covers everything", () => {
+    const scope = normalizeScope({ level: "global", alsoCoversAreaIds: ["loc-0394"] });
+    expect(scope.alsoCoversAreaIds).toEqual([]);
   });
 });
 

@@ -120,6 +120,21 @@ export function authorizedSalonNumbers(
 
   const numbers = new Set<string>();
 
+  /*
+   * AN EXPLICITLY ASSIGNED SALON IS A SALON AT ANY LEVEL. An "also covers" id
+   * that is a salon id (`loc-0394`) grants exactly that salon, whatever the
+   * primary's level — otherwise a district or region manager given one extra
+   * salon would have it stored and never honoured, which is an assignment that
+   * LOOKS saved and does nothing. It adds one named salon and never widens to
+   * an area. The PRIMARY is still read by its own level only: a `loc-` primary
+   * on a district scope stays meaningless, exactly as before.
+   */
+  for (const id of alsoCovers) {
+    if (typeof id !== "string") continue;
+    const number = salonNumberOf(id);
+    if (number) numbers.add(number);
+  }
+
   for (const areaId of areaIds) {
     if (scope.level === "salon") {
       const number = salonNumberOf(areaId);
