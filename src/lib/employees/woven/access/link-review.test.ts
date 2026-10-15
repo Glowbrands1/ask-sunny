@@ -30,6 +30,8 @@ const employee = (id: string, over: Partial<PlannerEmployee> = {}): PlannerEmplo
   primaryWovenLocationId: "L-GI",
   primaryLocationName: "NE Grand Island",
   additionalLocationNames: [],
+  additionalLocationIds: [],
+  temporaryLocationIds: [],
   issues: [],
   terminationDate: null,
   lastSyncedAt: "2026-10-03T11:17:50Z",

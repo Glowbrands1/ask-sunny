@@ -50,6 +50,8 @@ function employee(overrides: Partial<PlannerEmployee> = {}): PlannerEmployee {
     primaryWovenLocationId: LOC.grandIsland,
     primaryLocationName: "NE Grand Island",
     additionalLocationNames: [],
+    additionalLocationIds: [],
+    temporaryLocationIds: [],
     issues: [],
     terminationDate: null,
     lastSyncedAt: "2026-10-02T11:17:50Z",
@@ -147,6 +149,11 @@ describe("provisioning", () => {
       scope_level: "salon",
       scope_primary_area_id: "loc-0307",
       scope_also_covers_area_ids: [],
+      woven_position: "Salon Director",
+      primary_location_salon: "loc-0307",
+      salon_numbers: ["0307"],
+      additional_salon_numbers: [],
+      locations_ignored_or_temporary: 0,
       provisioned_by_source: "woven",
       external_employee_id: e.externalEmployeeId,
       link_method: "provisioned",
@@ -163,10 +170,7 @@ describe("provisioning", () => {
     expect(rowOf(plan([e]), e).actions).toEqual(["CREATE_USER"]);
   });
 
-  it.each([
-    ["Tanning Consultant", POS.tc],
-    ["District Manager", POS.dm],
-  ])("a %s gets NO account from Woven in this rollout", (_name, positionId) => {
+  it.each([["Tanning Consultant", POS.tc]])("a %s gets NO account from Woven (only ASD, SD, DM, RM do)", (_name, positionId) => {
     const e = employee({ positionId });
     const row = rowOf(plan([e]), e);
     expect(row.actions).toEqual(["NO_CHANGE"]);

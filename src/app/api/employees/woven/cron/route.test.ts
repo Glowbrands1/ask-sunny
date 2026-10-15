@@ -18,6 +18,8 @@ const ENV_KEYS = [
   "WOVEN_SUBSCRIPTION_KEY",
   "WOVEN_USERNAME",
   "WOVEN_PASSWORD",
+  "WOVEN_ACCESS_MODE",
+  "NEXT_PUBLIC_SITE_URL",
 ] as const;
 
 const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -29,6 +31,8 @@ afterEach(() => {
   }
   vi.doUnmock("@/lib/employees/woven/sync");
   vi.doUnmock("@/lib/employees/woven/store");
+  vi.doUnmock("@/lib/employees/woven/access/apply-run");
+  vi.doUnmock("@/lib/employees/woven/access/shadow");
   vi.unstubAllGlobals();
 });
 
@@ -128,6 +132,56 @@ describe("GET /api/employees/woven/cron", () => {
     expect(response.status).toBe(200);
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ requestedBy: "cron" });
+  });
+
+  describe("the account lifecycle (automatic invitations) after the sync", () => {
+    async function loadWithLifecycle(env: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>, syncStatus: "succeeded" | "failed" = "succeeded") {
+      const lifecycleCalls: { requestedBy: string; redirectTo: string | null }[] = [];
+      vi.resetModules();
+      for (const key of ENV_KEYS) delete process.env[key];
+      for (const [key, value] of Object.entries({ NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co", SUPABASE_SECRET_KEY: "sb_secret_test", ...env })) {
+        if (value !== undefined) process.env[key] = value;
+      }
+      vi.doMock("@/lib/employees/woven/sync", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("@/lib/employees/woven/sync")>()),
+        runWovenEmployeeSync: async () => (syncStatus === "failed" ? { status: "failed", code: "woven_unavailable", runId: "run-1" } : { status: "succeeded", runId: "run-1", summary: {} }),
+      }));
+      vi.doMock("@/lib/employees/woven/access/shadow", () => ({ recordAccessShadowRun: async () => ({ status: "off" }) }));
+      vi.doMock("@/lib/employees/woven/access/apply-run", () => ({
+        runAccessLifecycle: async (requestedBy: string, redirectTo: string | null) => {
+          lifecycleCalls.push({ requestedBy, redirectTo });
+          return { status: "completed", accessRunId: "a1", tally: { applied: {}, failed: {}, skipped: 0 } };
+        },
+      }));
+      const route = await import("./route");
+      return { GET: route.GET, lifecycleCalls };
+    }
+
+    it("runs ONLY after a successful sync, and ONLY in apply mode", async () => {
+      for (const mode of [undefined, "off", "shadow"]) {
+        const { GET, lifecycleCalls } = await loadWithLifecycle({ ...ALL_ON, WOVEN_ACCESS_MODE: mode, NEXT_PUBLIC_SITE_URL: "https://ask-sunny.vercel.app" });
+        await GET(request(SECRET));
+        expect(lifecycleCalls, String(mode)).toHaveLength(0);
+      }
+      const failed = await loadWithLifecycle({ ...ALL_ON, WOVEN_ACCESS_MODE: "apply", NEXT_PUBLIC_SITE_URL: "https://ask-sunny.vercel.app" }, "failed");
+      await failed.GET(request(SECRET));
+      expect(failed.lifecycleCalls).toHaveLength(0);
+      const ok = await loadWithLifecycle({ ...ALL_ON, WOVEN_ACCESS_MODE: "apply", NEXT_PUBLIC_SITE_URL: "https://ask-sunny.vercel.app" });
+      await ok.GET(request(SECRET));
+      expect(ok.lifecycleCalls).toHaveLength(1);
+    });
+
+    it("the invitation lands on the PINNED production site — never on the host the cron request happened to arrive on", async () => {
+      const { GET, lifecycleCalls } = await loadWithLifecycle({ ...ALL_ON, WOVEN_ACCESS_MODE: "apply", NEXT_PUBLIC_SITE_URL: "https://ask-sunny.vercel.app" });
+      await GET(request(SECRET));
+      expect(lifecycleCalls[0]).toEqual({ requestedBy: "cron", redirectTo: "https://ask-sunny.vercel.app/auth/accept" });
+    });
+
+    it("with no pinned site URL the lifecycle gets NO redirect, so no invitation can be sent", async () => {
+      const { GET, lifecycleCalls } = await loadWithLifecycle({ ...ALL_ON, WOVEN_ACCESS_MODE: "apply" });
+      await GET(request(SECRET));
+      expect(lifecycleCalls[0]?.redirectTo).toBeNull();
+    });
   });
 
   it("refuses when Supabase is not configured", async () => {

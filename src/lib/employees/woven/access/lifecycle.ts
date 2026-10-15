@@ -1,3 +1,4 @@
+import { AUTO_PROVISION_ROLES } from "./managed-policy";
 import type { AccessAction, LifecycleOutcome, PlannedRow } from "./types";
 
 /**
@@ -40,10 +41,11 @@ const CREATE_BLOCKERS: readonly AccessAction[] = [
   "FLAG_STATUS_CONFLICT",
   "FLAG_UNMAPPED_POSITION",
   "FLAG_UNMAPPED_LOCATION",
+  "FLAG_LOCATION_REVIEW",
   "FLAG_MISSING_EMAIL",
 ];
 
-const AUTO_ROLES = ["salon_director", "assistant_salon_director"];
+const AUTO_ROLES: readonly string[] = AUTO_PROVISION_ROLES;
 
 const code = (action: AccessAction) => action.replace(/^FLAG_/, "").toLowerCase();
 

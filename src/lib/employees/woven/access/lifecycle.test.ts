@@ -40,6 +40,8 @@ const employee = (over: Partial<PlannerEmployee> = {}): PlannerEmployee => {
     primaryWovenLocationId: "L-GI",
     primaryLocationName: "NE Grand Island",
     additionalLocationNames: [],
+    additionalLocationIds: [],
+    temporaryLocationIds: [],
     issues: [],
     terminationDate: null,
     lastSyncedAt: "2026-10-06T11:17:50Z",
@@ -148,12 +150,10 @@ describe("account creation", () => {
     expect(outcome(plan([e]), e)).toEqual(["NO_CHANGE", "terminated_no_account"]);
   });
 
-  it("positions outside the approved pair get no account and are not reviews (Tanning Consultant, District Manager)", () => {
+  it("a Tanning Consultant gets no account and is not a review (outside ASD / SD / DM / RM)", () => {
     const tc = employee({ positionId: "P-TC" });
-    const dm = employee({ positionId: "P-DM" });
-    const rows = plan([tc, dm]);
+    const rows = plan([tc]);
     expect(outcome(rows, tc)).toEqual(["NO_CHANGE", "position_not_auto_provisioned"]);
-    expect(outcome(rows, dm)).toEqual(["NO_CHANGE", "position_not_auto_provisioned"]);
   });
 
   it("repeated run after creation → NO_CHANGE (the provisioned link is found by EmployeeID)", () => {

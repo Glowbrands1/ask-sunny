@@ -90,8 +90,12 @@ export interface PlannerEmployee {
   positionName: string | null;
   primaryWovenLocationId: string | null;
   primaryLocationName: string | null;
-  /** Names only, for display. Additional and temporary locations never change access in this version. */
+  /** Names only, for display. */
   additionalLocationNames: string[];
+  /** Woven location ids of the ADDITIONAL assignments (not temporary/expiring). Each must be mapped before an automatic invitation is sent. */
+  additionalLocationIds: string[];
+  /** Woven location ids of temporary / expiring assignments. They never grant access and never block an invitation. */
+  temporaryLocationIds: string[];
   issues: string[];
   terminationDate: string | null;
   lastSyncedAt: string | null;
@@ -157,6 +161,21 @@ export interface PlannerInput {
    * `auth_users_unverified`).
    */
   authOnly?: readonly AuthOnlyUser[] | null;
+  /**
+   * Each salon's CURRENT district and region from reporting (`salon_period_attributes`) —
+   * the same source the authorization path trusts, never the checked-in roster.
+   * Omitted or null: a District or Regional Manager cannot be provisioned (no area can be proven).
+   */
+  salonAreas?: readonly SalonAreaFact[] | null;
+}
+
+export interface SalonAreaFact {
+  salonNumber: string;
+  districtId: string;
+  regionId: string;
+  /** False when reporting's previous period put this salon in a different district / region. Omitted: treated as stable. */
+  districtStable?: boolean;
+  regionStable?: boolean;
 }
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };

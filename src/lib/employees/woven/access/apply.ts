@@ -1,4 +1,5 @@
 import { MAX_AUTOMATIC_INVITE_ATTEMPTS } from "./lifecycle";
+import { AUTO_PROVISION_ROLES, PROVISION_SCOPE_LEVEL } from "./managed-policy";
 import type { AccessPlan } from "./build";
 import type { WovenAccessConfig } from "./config";
 import { isLifecycleAction, isMutating, type AccessAction, type LifecycleAction, type PlannedRow } from "./types";
@@ -171,6 +172,8 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
     /* 2. the plan, after the lock */
     const plan = await deps.loadPlan(now);
     const enabled = new Set<string>(config.applyActions);
+    /* No pinned redirect, no invitation: nothing is mailed and no attempt is burned. The account waits, `not_sent`. */
+    const mayInvite = enabled.has("SEND_INVITE") && request.redirectTo !== null;
     const inBatch = (row: PlannedRow) => config.employeeAllowlist === null || (row.externalEmployeeId !== null && config.employeeAllowlist.includes(row.externalEmployeeId));
     const rows = [...plan.rows].sort((a, b) => a.key.localeCompare(b.key));
 
@@ -216,7 +219,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
 
       const outcome =
         primary === "CREATE_USER"
-          ? await createUser(row, request, deps, setBy, enabled.has("SEND_INVITE"))
+          ? await createUser(row, request, deps, setBy, mayInvite)
           : primary === "LINK_EXISTING"
             ? await linkExisting(row, deps, setBy)
             : await disableTerminated(row, deps, setBy);
@@ -227,7 +230,7 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
     }
 
     /* 5. invitations that did not go out — only when the invitation email itself is switched on */
-    if (enabled.has("SEND_INVITE")) {
+    if (mayInvite) {
       for (const row of rows) {
         const account = row.account;
         const invite = account?.invite;
@@ -239,6 +242,8 @@ export async function applyAccessLifecycle(request: ApplyRequest, deps: ApplyDep
           invite.status === "sent" ||
           invite.attempts >= MAX_AUTOMATIC_INVITE_ATTEMPTS ||
           row.wovenStatus !== "active" ||
+          invite.acceptedAt !== null ||
+          !(AUTO_PROVISION_ROLES as readonly string[]).includes(account.role) ||
           !inBatch(row)
         ) {
           continue;
@@ -331,7 +336,13 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
   const email = typeof after.email === "string" ? after.email : null;
   const role = typeof after.role === "string" ? after.role : null;
   const area = typeof after.scope_primary_area_id === "string" ? after.scope_primary_area_id : null;
-  if (!row.externalEmployeeId || !email || !role || !area) return { result: "failed", code: "create_input_incomplete" };
+  const level = typeof after.scope_level === "string" ? after.scope_level : null;
+  const alsoCovers = Array.isArray(after.scope_also_covers_area_ids) && after.scope_also_covers_area_ids.every((a) => typeof a === "string") ? (after.scope_also_covers_area_ids as string[]) : null;
+  if (!row.externalEmployeeId || !email || !role || !area || !level || !alsoCovers) return { result: "failed", code: "create_input_incomplete" };
+  /* Defence in depth: the planner only proposes these four, the database re-checks, and so does this. */
+  if (!(AUTO_PROVISION_ROLES as readonly string[]).includes(role) || PROVISION_SCOPE_LEVEL[role as keyof typeof PROVISION_SCOPE_LEVEL] !== level) {
+    return { result: "failed", code: "role_not_auto_provisioned" };
+  }
 
   const auth = await authUserFor(email, row.externalEmployeeId, deps);
   if ("code" in auth) return { result: "failed", code: auth.code };
@@ -342,7 +353,9 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
     p_email: email,
     p_display_name: typeof after.display_name === "string" ? after.display_name : email,
     p_role: role,
+    p_scope_level: level,
     p_primary_area_id: area,
+    p_also_covers: alsoCovers,
     p_set_by: setBy,
   });
   if (provisioned.error) {
@@ -353,6 +366,12 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
   const created = provisioned.data === "already_provisioned" ? "resumed" : "created";
   /* SEND_INVITE off: the account waits, invited, with invite_delivery_status 'not_sent'. Nothing is emailed. */
   if (!sendInvite) return { result: "applied", code: `${created}.invite_not_sent`, appUserId: auth.id };
+  /*
+   * A RESUMED account (its profile already existed) is never invited from here:
+   * its invitation state is on the link, and step 5 of the run sends one only if
+   * none went out. That is what keeps a repeated or racing sync from mailing twice.
+   */
+  if (created === "resumed") return { result: "applied", code: "resumed.invite_left_to_retry_step", appUserId: auth.id };
   const sent = await sendInviteEmail(auth.id, email, request.redirectTo, deps, setBy);
   return {
     result: "applied",

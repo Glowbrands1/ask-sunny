@@ -110,6 +110,10 @@ describe.skipIf(!ENABLED)("month to date on the local stack", { timeout: 60_000 
                public.google_review_sync_runs cascade;
       delete from public.google_review_locations;
       delete from public.salon_period_attributes where ingestion_id = '00000000-0000-0000-0000-00000000a11a';
+      /* Other local-stack suites map Woven locations to the same salons; those mappings must go first or the salon rows cannot. */
+      delete from public.woven_location_map where salon_id in (select id from public.salons where salon_number in (${Object.values(STORES)
+        .map((store) => `'${store.salon}'`)
+        .join(",")}));
       delete from public.salons where salon_number in (${Object.values(STORES)
         .map((store) => `'${store.salon}'`)
         .join(",")});`);

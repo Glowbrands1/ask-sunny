@@ -19,7 +19,8 @@
     "verify:woven-knowledge-migration": "node scripts/verify-woven-knowledge-migration.mjs",
     "stack:up": "bash scripts/local-stack/up.sh",
     "stack:down": "bash scripts/local-stack/down.sh",
-    "test:local-stack": "bash -c 'set -a && . ${LOCAL_STACK_DIR:-/tmp/ask-sunny-local-stack}/env && set +a && vitest run --no-file-parallelism src/lib/auth/revocation.local-stack.test.ts src/lib/employees/woven/access/access.local-stack.test.ts src/lib/admin/adoption.local-stack.test.ts src/lib/reviews/month-to-date.local-stack.test.ts src/lib/employees/woven/access/lifecycle.local-stack.test.ts'"
+    "test:local-stack": "bash -c 'set -a && . ${LOCAL_STACK_DIR:-/tmp/ask-sunny-local-stack}/env && set +a && vitest run --no-file-parallelism src/lib/auth/revocation.local-stack.test.ts src/lib/employees/woven/access/access.local-stack.test.ts src/lib/admin/adoption.local-stack.test.ts src/lib/reviews/month-to-date.local-stack.test.ts src/lib/employees/woven/access/lifecycle.local-stack.test.ts src/lib/employees/woven/access/auto-invite.local-stack.test.ts'",
+    "test:e2e": "bash -c 'set -a && . ${LOCAL_STACK_DIR:-/tmp/ask-sunny-local-stack}/env && set +a && PLAYWRIGHT_CHROMIUM_PATH=${PLAYWRIGHT_CHROMIUM_PATH:-} playwright test'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
@@ -57,6 +58,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@electric-sql/pglite-pgvector": "^0.0.9",
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.6",
