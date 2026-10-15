@@ -629,6 +629,7 @@ describe.skipIf(!ENABLED)("data change: managed_status for the 16 approved SD/AS
   });
 
   it("sets managed_status = true, role and location false, on exactly the 16 — and is safe to run twice", () => {
+    const dataChangeStartedAt = sql("select clock_timestamp()::text");
     runFile();
     expect(flags()).toBe(Array(16).fill("truefalsefalse").join(","));
     expect(sql(`select managed_status::text from public.employee_account_links where app_user_id = '${dmUser}'`)).toBe("false");
@@ -636,7 +637,8 @@ describe.skipIf(!ENABLED)("data change: managed_status for the 16 approved SD/AS
     runFile();
     expect(sql(`select string_agg(updated_at::text, ',') from public.employee_account_links where external_employee_id in (${APPROVED.map((x) => `'${x}'`).join(",")})`)).toBe(before);
     /* One managed_flags_changed audit per changed link — and none from the second, no-op run. */
-    expect(sql(`select count(*) from public.app_user_audit where action = 'managed_flags_changed' and to_value = 'status:on,location:off,role:off' and target_user_id in (${userIds.map((x) => `'${x}'`).join(",")})`)).toBe("16");
+    /* Counted from this test's own start, so a rerun on the same stack (which reuses these accounts) is not confused by the earlier run's audits. */
+    expect(sql(`select count(*) from public.app_user_audit where action = 'managed_flags_changed' and to_value = 'status:on,location:off,role:off' and created_at >= '${dataChangeStartedAt}' and target_user_id in (${userIds.map((x) => `'${x}'`).join(",")})`)).toBe("16");
     /* No account was changed by it. */
     expect(sql(`select count(*) from public.app_users where id in (${userIds.map((x) => `'${x}'`).join(",")}) and status <> 'active'`)).toBe("0");
   });
