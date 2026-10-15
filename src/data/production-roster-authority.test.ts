@@ -110,6 +110,30 @@ describe("the production roster", () => {
     }
   });
 
+  it("puts KS Manhattan with Rachael Dugan, not Madeline Patterson", () => {
+    const manhattan = PRODUCTION_SALONS.find((s) => s.salonNumber === "0462");
+    expect(manhattan?.districtName).toBe("Dugan, Rachael");
+    expect(manhattan?.districtId).toBe("dist-dugan-rachael");
+
+    const names = (district: string) =>
+      PRODUCTION_SALONS.filter((s) => s.districtName === district).map((s) => s.name).sort();
+    expect(names("Dugan, Rachael")).toEqual([
+      "KS Manhattan",
+      "NE Grand Island",
+      "NE Kearney",
+      "NE Lincoln 27th Street",
+      "NE Lincoln O Street",
+      "NE Lincoln Pine Lake",
+    ]);
+    expect(names("Patterson, Madeline")).toEqual([
+      "KS Lawrence",
+      "KS Overland Park",
+      "KS Shawnee Mission Pkwy",
+      "MO Kansas City Liberty",
+      "MO Kansas City Wornall",
+    ]);
+  });
+
   it("holds no retired demo salon or demo id", () => {
     const names = PRODUCTION_SALONS.map((s) => s.name.toLowerCase());
     const ids = PRODUCTION_SALONS.map((s) => s.id);
