@@ -111,7 +111,7 @@ describe("each eligible role, on its own", () => {
 });
 
 describe("employees with several locations", () => {
-  it("SD / ASD: additional salons are validated and RECORDED, never granted — salon scope stays the primary", () => {
+  it("SD / ASD: every approved ADDITIONAL salon is granted as also-covers (temporary ones are not); the primary stays the primary", () => {
     for (const positionId of ["P-SD", "P-ASD"]) {
       const e = employee({ positionId, additionalLocationIds: ["L-0309", "L-0394"], temporaryLocationIds: ["L-0313"] });
       const row = rowOf(plan([e]), e);
@@ -119,13 +119,24 @@ describe("employees with several locations", () => {
       expect(row.after).toMatchObject({
         scope_level: "salon",
         scope_primary_area_id: "loc-0307",
-        scope_also_covers_area_ids: [],
+        scope_also_covers_area_ids: ["loc-0309", "loc-0394"],
         salon_numbers: ["0307", "0309", "0394"],
         additional_salon_numbers: ["0309", "0394"],
-        additional_locations_not_granted: ["0309", "0394"],
         locations_ignored_or_temporary: 1,
       });
     }
+  });
+
+  it("DM / RM whose salon reporting moved between its two newest periods are HELD, not granted a whole district / region", () => {
+    const moved: SalonAreaFact[] = salonAreas.map((a) => (a.salonNumber === "0307" ? { ...a, districtStable: false, regionStable: false } : a));
+    const dm = employee({ positionId: "P-DM" });
+    const rm = employee({ positionId: "P-RM" });
+    const rows = plan([dm, rm], { salonAreas: moved });
+    expect(rowOf(rows, dm)).toMatchObject({ actions: ["FLAG_LOCATION_REVIEW"], reasons: ["salon_district_changed_recently"] });
+    expect(rowOf(rows, rm)).toMatchObject({ actions: ["FLAG_LOCATION_REVIEW"], reasons: ["salon_region_changed_recently"] });
+    /* An unmoved salon in the same fixture is fine; a Salon Director never needs reporting's areas. */
+    const sd = employee({ primaryWovenLocationId: "L-0307" });
+    expect(rowOf(plan([sd], { salonAreas: moved }), sd).actions).toEqual(["CREATE_USER"]);
   });
 
   it("DM with several salons in ONE district → district scope; spanning districts → held for a person, nothing invited", () => {
@@ -224,6 +235,45 @@ describe("excluded roles NEVER receive an automatic invitation", () => {
   });
 });
 
+describe("EXISTING accounts keep their manually assigned extra salons — nothing is added, removed or flagged for removal", () => {
+  const linkedSd = (e: PlannerEmployee, alsoCoversAreaIds: string[]): PlannerAccount => ({
+    appUserId: "00000000-0000-4000-8000-0000000000aa",
+    email: e.emailAddress!,
+    displayName: e.name,
+    role: "salon_director",
+    status: "active",
+    scopeLevel: "salon",
+    primaryAreaId: "loc-0307",
+    alsoCoversAreaIds,
+    management: "woven_linked",
+    linkedExternalEmployeeId: e.externalEmployeeId,
+    linkMethod: "admin_manual",
+    managedStatus: true,
+    managedLocation: false,
+    managedRole: false,
+    terminatedAt: null,
+    accessRevokedAt: null,
+    override: null,
+    invite: null,
+  });
+
+  it("extras beyond Woven's approved additional salons are preserved (flagged for visibility only); there is no action that changes them", () => {
+    const e = employee({ additionalLocationIds: ["L-0309"] });
+    const rows = plan([e], { accounts: [linkedSd(e, ["loc-0309", "loc-0394"])] });
+    const row = rowOf(rows, e);
+    expect(row.actions.filter((a) => ["UPDATE_PRIMARY_LOCATION", "UPDATE_ROLE", "CREATE_USER"].includes(a))).toEqual([]);
+    expect(row.reasons).toContain("extra_salons_not_granted_by_woven");
+    expect(row.lifecycle).toBe("NO_CHANGE");
+  });
+
+  it("extras that equal Woven's approved additional salons raise no flag at all", () => {
+    const e = employee({ additionalLocationIds: ["L-0309", "L-0394"] });
+    const row = rowOf(plan([e], { accounts: [linkedSd(e, ["loc-0309", "loc-0394"])] }), e);
+    expect(row.reasons).not.toContain("extra_salons_not_granted_by_woven");
+    expect(row.actions).toEqual(["NO_CHANGE"]);
+  });
+});
+
 describe("the apply layer has its own role gate (defence in depth)", () => {
   const healthy = [
     { status: "succeeded" as const, finishedAt: "2026-10-15T11:30:00Z", employeesActive: 150, issueCounts: {} },
@@ -255,7 +305,7 @@ describe("the apply layer has its own role gate (defence in depth)", () => {
     externalEmployeeId: "EX",
     key: "employee:EX",
     actions: ["CREATE_USER"],
-    after: { email: "forced@example.test", display_name: "Forced", role, scope_level: level, scope_primary_area_id: "loc-0307" },
+    after: { email: "forced@example.test", display_name: "Forced", role, scope_level: level, scope_primary_area_id: "loc-0307", scope_also_covers_area_ids: [] },
   });
   const run = (deps: ApplyDeps) => applyAccessLifecycle({ requestedBy: "cron", redirectTo: "https://ask-sunny.example/auth/accept", config: cfg, now: NOW }, deps);
 

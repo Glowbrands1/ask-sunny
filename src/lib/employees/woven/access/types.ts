@@ -173,6 +173,9 @@ export interface SalonAreaFact {
   salonNumber: string;
   districtId: string;
   regionId: string;
+  /** False when reporting's previous period put this salon in a different district / region. Omitted: treated as stable. */
+  districtStable?: boolean;
+  regionStable?: boolean;
 }
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };

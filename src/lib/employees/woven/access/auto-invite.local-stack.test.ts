@@ -105,8 +105,8 @@ async function cookiesFor(session: { access_token: string; refresh_token: string
 
 describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)", { timeout: 120_000 }, () => {
   let admin: SupabaseClient;
-  const S = { a: `91${run.slice(0, 2)}`, b: `92${run.slice(0, 2)}`, c: `93${run.slice(0, 2)}`, d: `94${run.slice(0, 2)}` };
-  const PEOPLE = ["ASD", "SD", "SDMULTI", "DM", "DMMULTI", "DMSPAN", "RM", "RMMULTI", "TC", "ADMINPOS", "UNMAPPEDPOS", "NOEMAIL", "BADLOC", "BADEXTRA", "EXISTING", "EXPIRED", "TERM", "SELFSERVE"].map(id);
+  const S = { a: `91${run.slice(0, 2)}`, b: `92${run.slice(0, 2)}`, c: `93${run.slice(0, 2)}`, d: `94${run.slice(0, 2)}`, e: `95${run.slice(0, 2)}` };
+  const PEOPLE = ["ASD", "SD", "SDMULTI", "DM", "DMMULTI", "DMSPAN", "RM", "RMMULTI", "TC", "ADMINPOS", "UNMAPPEDPOS", "NOEMAIL", "BADLOC", "BADEXTRA", "EXISTING", "EXPIRED", "TERM", "SELFSERVE", "DMMOVED"].map(id);
   const chosen: Record<string, string> = {};
   const userIdOf = (s: string) => sql(`select id from auth.users where lower(email) = '${mail(s)}'`);
   const authUsers = (s: string) => Number(sql(`select count(*) from auth.users where lower(email) = '${mail(s)}'`));
@@ -157,13 +157,21 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
     admin = createClient(URL_, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } });
 
     /* Four synthetic salons: a and b in district Alpha, c in district Beta (same region), d in another region. */
-    const district = { a: `Alpha ${run}`, b: `Alpha ${run}`, c: `Beta ${run}`, d: `Gamma ${run}` };
-    const region = { a: `Region One ${run}`, b: `Region One ${run}`, c: `Region One ${run}`, d: `Region Two ${run}` };
+    const district = { a: `Alpha ${run}`, b: `Alpha ${run}`, c: `Beta ${run}`, d: `Gamma ${run}`, e: `Beta ${run}` };
+    const region = { a: `Region One ${run}`, b: `Region One ${run}`, c: `Region One ${run}`, d: `Region Two ${run}`, e: `Region One ${run}` };
     sql(`insert into public.salons (salon_number, store_name) values ${Object.entries(S).map(([k, n]) => `('${n}', 'Synthetic ${k}')`).join(",")} on conflict do nothing`);
     /* A period far in the future so it is the NEWEST for these synthetic salons; (grain, period_end) is unique, so the day varies per run. */
     sql(`insert into public.report_periods (grain, period_start, period_end, fiscal_year, label_raw)
          select 'mtd', d, d, 2090, 'synthetic ${run}' from (select date '2090-01-01' + (${Number.parseInt(run, 16)} % 300) as d) x
          where not exists (select 1 from public.report_periods where label_raw = 'synthetic ${run}')`);
+    /* Salon e moved district between its two newest periods (an OLDER period under Alpha, the newer under Beta). */
+    sql(`insert into public.report_periods (grain, period_start, period_end, fiscal_year, label_raw)
+         select 'mtd', d, d, 2089, 'synthetic-old ${run}' from (select date '2089-01-01' + (${Number.parseInt(run, 16)} % 300) as d) x
+         where not exists (select 1 from public.report_periods where label_raw = 'synthetic-old ${run}')`);
+    sql(`set session_replication_role = replica;
+         insert into public.salon_period_attributes (salon_id, period_id, ingestion_id, district_label, region_label)
+         select s.id, (select id from public.report_periods where label_raw = 'synthetic-old ${run}'), gen_random_uuid(), 'Alpha ${run}', 'Region One ${run}'
+           from public.salons s where s.salon_number = '${S.e}';`);
     for (const [k, n] of Object.entries(S)) {
       sql(`set session_replication_role = replica;
            insert into public.salon_period_attributes (salon_id, period_id, ingestion_id, district_label, region_label)
@@ -192,7 +200,7 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
          ${[
            emp("ASD", "ASD", "a"), emp("SD", "SD", "a"), emp("SDMULTI", "SD", "a"), emp("DM", "DM", "a"), emp("DMMULTI", "DM", "a"), emp("DMSPAN", "DM", "a"),
            emp("RM", "RM", "a"), emp("RMMULTI", "RM", "a"), emp("TC", "TC", "a"), emp("ADMINPOS", "ADMIN", "a"), emp("UNMAPPEDPOS", "UNM", "a"),
-           emp("NOEMAIL", "SD", "a", null), emp("BADLOC", "SD", "UNMAPPED"), emp("BADEXTRA", "SD", "a"), emp("EXISTING", "SD", "a"), emp("EXPIRED", "ASD", "b"), emp("TERM", "DM", "b"), emp("SELFSERVE", "SD", "b"),
+           emp("NOEMAIL", "SD", "a", null), emp("BADLOC", "SD", "UNMAPPED"), emp("BADEXTRA", "SD", "a"), emp("EXISTING", "SD", "a"), emp("EXPIRED", "ASD", "b"), emp("TERM", "DM", "b"), emp("SELFSERVE", "SD", "b"), emp("DMMOVED", "DM", "e"),
          ].join(",")}`);
     const affiliate = (s: string, loc: string, type: "additional" | "temporary_or_expiring_access") =>
       sql(`insert into public.employee_location_affiliations (employee_id, woven_location_id, location_name, is_primary, access_type, expires_on)
@@ -216,6 +224,7 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
   it("PLAN: every eligible role is CREATE_USER; every excluded or incomplete case is held, with its reason", async () => {
     const rows = Object.fromEntries(await Promise.all(PEOPLE.map(async (p) => [p.slice(`AI-${run}-`.length), await planRow(p.slice(`AI-${run}-`.length))] as const)));
     for (const s of ["ASD", "SD", "SDMULTI", "DM", "DMMULTI", "RM", "RMMULTI", "EXPIRED", "TERM", "SELFSERVE"]) expect(rows[s]!.lifecycle, s).toBe("CREATE_USER");
+    expect(rows.DMMOVED).toMatchObject({ lifecycle: "REVIEW_REQUIRED", lifecycleReason: "salon_district_changed_recently" });
     expect(rows.DMSPAN).toMatchObject({ lifecycle: "REVIEW_REQUIRED", lifecycleReason: "locations_span_several_districts" });
     expect(rows.TC).toMatchObject({ lifecycle: "NO_CHANGE", lifecycleReason: "position_not_auto_provisioned" });
     expect(rows.ADMINPOS).toMatchObject({ lifecycle: "NO_CHANGE", lifecycleReason: "position_not_auto_provisioned" });
@@ -243,7 +252,7 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
       expect(await waitForMail(mail(s), 1), s).toBe(1);
       expect(sql(`select invite_delivery_status||','||invite_attempts from public.employee_account_links where external_employee_id = '${id(s)}'`), s).toBe("sent,1");
     }
-    for (const s of ["DMSPAN", "TC", "ADMINPOS", "UNMAPPEDPOS", "NOEMAIL", "BADLOC", "BADEXTRA"]) {
+    for (const s of ["DMSPAN", "DMMOVED", "TC", "ADMINPOS", "UNMAPPEDPOS", "NOEMAIL", "BADLOC", "BADEXTRA"]) {
       expect(authUsers(s), `${s} must have no auth user`).toBe(0);
       expect((await messagesTo(mail(s))).length, `${s} must receive nothing`).toBe(0);
       expect(sql(`select count(*) from public.app_users where lower(email) = '${mail(s)}'`), s).toBe("0");
@@ -256,8 +265,8 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
   it("FIELD MAPPING: email, EmployeeID, role, scope, primary area — and no extra area is ever written", () => {
     expect(profile("ASD")).toBe(`assistant_salon_director,invited,salon,loc-${S.a},`);
     expect(profile("SD")).toBe(`salon_director,invited,salon,loc-${S.a},`);
-    /* Additional salons are validated and recorded in the audit, NOT granted. */
-    expect(profile("SDMULTI")).toBe(`salon_director,invited,salon,loc-${S.a},`);
+    /* Approved additional salons are granted as also-covers; the TEMPORARY location (d) is not. */
+    expect(profile("SDMULTI")).toBe(`salon_director,invited,salon,loc-${S.a},loc-${S.b}|loc-${S.c}`);
     expect(profile("DM")).toBe(`district_manager,invited,district,dist-alpha-${run},`);
     expect(profile("DMMULTI")).toBe(`district_manager,invited,district,dist-alpha-${run},`);
     expect(profile("RM")).toBe(`regional_manager,invited,region,reg-region-one-${run},`);
@@ -285,12 +294,14 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
 
   it("the database refuses what the planner never proposes: an excluded role, a wrong scope, a wrong area, a position that is not approved", async () => {
     const call = (over: Record<string, unknown>) =>
-      admin.rpc("employee_access_provision_account", { p_app_user_id: crypto.randomUUID(), p_external_employee_id: id("TC"), p_email: mail("TC"), p_display_name: "x", p_role: "salon_director", p_scope_level: "salon", p_primary_area_id: `loc-${S.a}`, p_set_by: "t", ...over });
+      admin.rpc("employee_access_provision_account", { p_app_user_id: crypto.randomUUID(), p_external_employee_id: id("TC"), p_email: mail("TC"), p_display_name: "x", p_role: "salon_director", p_scope_level: "salon", p_primary_area_id: `loc-${S.a}`, p_also_covers: [], p_set_by: "t", ...over });
     for (const role of ["employee", "admin", "owner", "developer", "someone_else"]) {
       expect((await call({ p_role: role, p_scope_level: "global" })).error?.message, role).toMatch(/provision_role_not_auto_provisioned|provision_scope_not_valid_for_role|invalid input value/);
     }
     expect((await call({ p_role: "district_manager", p_scope_level: "salon" })).error?.message).toMatch(/provision_scope_not_valid_for_role/);
     expect((await call({ p_role: "salon_director", p_scope_level: "global" })).error?.message).toMatch(/provision_scope_not_valid_for_role/);
+    /* An also-covers list the database does not derive itself is refused (SDMULTI is not yet created here, so use a fresh auth user path: the error must name the mismatch or an earlier guard). */
+    expect((await call({ p_also_covers: [`loc-${S.d}`] })).error).not.toBeNull();
     /* An eligible role asked for an employee whose APPROVED position is Tanning Consultant → refused (before anything is written). */
     const attempt = await call({});
     expect(attempt.error).not.toBeNull();
@@ -306,12 +317,15 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
     expect(sql(`select (invite_accepted_at is not null)::text from public.employee_account_links where external_employee_id = '${id("ASD")}'`)).toBe("true");
   });
 
-  it("ACTIVATION + EFFECTIVE ACCESS — SD with several locations: still ONLY the primary salon (additional salons are not granted)", async () => {
+  it("ACTIVATION + EFFECTIVE ACCESS — SD with several locations: the primary AND each approved additional salon, and not the temporary one", async () => {
     const cookie = await activate("SDMULTI");
     const { identity } = await identityFor(cookie);
-    expect(identity).toMatchObject({ role: "salon_director", scope: { level: "salon", primaryAreaId: `loc-${S.a}`, alsoCoversAreaIds: [] } });
+    expect(identity).toMatchObject({ role: "salon_director", scope: { level: "salon", primaryAreaId: `loc-${S.a}`, alsoCoversAreaIds: [`loc-${S.b}`, `loc-${S.c}`] } });
     const { authorizedSalonNumbers } = await import("@/lib/reporting/scope/authorized-salons");
-    expect(authorizedSalonNumbers(identity.scope)).toEqual([S.a]);
+    expect(authorizedSalonNumbers(identity.scope)).toEqual([S.a, S.b, S.c].sort());
+    expect(authorizedSalonNumbers(identity.scope)).not.toContain(S.d);
+    const { authorizedSalonIds } = await import("@/lib/forms/location-scope");
+    expect(authorizedSalonIds(identity.scope).sort()).toEqual([`loc-${S.a}`, `loc-${S.b}`, `loc-${S.c}`].sort());
     await expect(identityFor(cookie, "manage_users")).rejects.toThrow();
   });
 
@@ -330,7 +344,7 @@ describe.skipIf(!ENABLED)("automatic Woven invitations, end to end (local stack)
     expect(identity).toMatchObject({ role: "regional_manager", scope: { level: "region", primaryAreaId: `reg-region-one-${run}`, alsoCoversAreaIds: [] } });
     const { areaSalonNumbersFromReporting } = await import("@/lib/reporting/scope/reporting-areas");
     const salons = await areaSalonNumbersFromReporting("region", [identity.scope.primaryAreaId!]);
-    expect(salons).toEqual([S.a, S.b, S.c].sort());
+    expect(salons).toEqual([S.a, S.b, S.c, S.e].sort());
     expect(salons).not.toContain(S.d);
     await expect(identityFor(cookie, "manage_users")).rejects.toThrow();
   });

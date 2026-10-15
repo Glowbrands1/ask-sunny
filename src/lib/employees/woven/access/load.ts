@@ -86,7 +86,13 @@ async function loadAuthOnly(): Promise<AuthOnlyUser[] | null> {
 /** null when reporting cannot be read: District / Regional Managers then cannot be provisioned. */
 async function loadSalonAreas(): Promise<SalonAreaFact[] | null> {
   try {
-    return await currentSalonAreas();
+    return (await currentSalonAreas()).map((a) => ({
+      salonNumber: a.salonNumber,
+      districtId: a.districtId,
+      regionId: a.regionId,
+      districtStable: !a.previousDistrictId || a.previousDistrictId === a.districtId,
+      regionStable: !a.previousRegionId || a.previousRegionId === a.regionId,
+    }));
   } catch {
     return null;
   }

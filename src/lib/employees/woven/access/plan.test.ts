@@ -153,7 +153,6 @@ describe("provisioning", () => {
       primary_location_salon: "loc-0307",
       salon_numbers: ["0307"],
       additional_salon_numbers: [],
-      additional_locations_not_granted: [],
       locations_ignored_or_temporary: 0,
       provisioned_by_source: "woven",
       external_employee_id: e.externalEmployeeId,

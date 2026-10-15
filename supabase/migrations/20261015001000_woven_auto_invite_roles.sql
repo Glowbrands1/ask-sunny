@@ -9,8 +9,8 @@
 -- decided:
 --
 --   role                       scope      primary area               also covers
---   assistant_salon_director   salon      loc-<primary salon>        none
---   salon_director             salon      loc-<primary salon>        none
+--   assistant_salon_director   salon      loc-<primary salon>        loc-<each approved additional salon>
+--   salon_director             salon      loc-<primary salon>        loc-<each approved additional salon>
 --   district_manager           district   dist-<slug(district)>      none
 --   regional_manager           region     reg-<slug(region)>         none
 --
@@ -18,10 +18,13 @@
 -- location must be a mapped salon (or a location a person marked `ignored`,
 -- which grants nothing). Temporary / expiring locations neither grant nor
 -- block. A District / Regional Manager's salons must ALL sit in the one
--- district / region reporting currently assigns — otherwise the function
--- refuses and a person decides. `scope_also_covers_area_ids` is never written.
--- Additional salons of a Salon Director / Assistant Salon Director are NOT
--- granted (owner decision 4, 2 Oct 2026).
+-- district / region reporting currently assigns, and reporting must not have
+-- moved any of them between its two newest periods — otherwise the function
+-- refuses and a person decides.
+-- Additional salons of a Salon Director / Assistant Salon Director ARE granted,
+-- for NEW accounts only (owner instruction, 16 Oct 2026, superseding decision 4
+-- of 2 Oct); this function never touches an existing account. The caller's
+-- list must equal the list the database derives, or nothing is created.
 --
 -- A role outside the four, or an unmapped / unconfirmed position, raises
 -- `provision_role_not_auto_provisioned` — nothing is created and (because the
@@ -31,6 +34,7 @@
 -- The previous 7-argument function is dropped: there is exactly one door.
 
 drop function if exists public.employee_access_provision_account(uuid, text, text, text, text, text, text);
+drop function if exists public.employee_access_provision_account(uuid, text, text, text, text, text, text, text);
 
 /* Same slug as src/lib/reporting/scope/area-ids.ts: lower-case, runs of non [a-z0-9] become '-', trimmed. */
 create or replace function public.employee_access_area_slug(p_label text)
@@ -42,23 +46,33 @@ as $$
   select trim(both '-' from regexp_replace(lower(btrim(coalesce(p_label, ''))), '[^a-z0-9]+', '-', 'g'));
 $$;
 
-/* A salon's CURRENT district / region label: its newest non-superseded reporting period. */
+drop function if exists public.employee_access_salon_area(text);
+
+/*
+ * A salon's CURRENT district / region label (its newest non-superseded reporting
+ * period) and the labels of the period BEFORE it, so a recent move is visible.
+ */
 create or replace function public.employee_access_salon_area(p_salon_number text)
-returns table (district_label text, region_label text)
+returns table (district_label text, region_label text, previous_district_label text, previous_region_label text)
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select a.district_label, a.region_label
-    from public.salon_period_attributes a
-    join public.salons s on s.id = a.salon_id
-    join public.report_periods rp on rp.id = a.period_id
-   where s.salon_number = p_salon_number
-     and a.superseded_by_ingestion_id is null
-     and (a.district_label is not null or a.region_label is not null)
-   order by rp.period_end desc, rp.period_start desc
-   limit 1;
+  with ranked as (
+    select a.district_label, a.region_label,
+           row_number() over (order by rp.period_end desc, rp.period_start desc) as rn
+      from public.salon_period_attributes a
+      join public.salons s on s.id = a.salon_id
+      join public.report_periods rp on rp.id = a.period_id
+     where s.salon_number = p_salon_number
+       and a.superseded_by_ingestion_id is null
+       and (a.district_label is not null or a.region_label is not null)
+  )
+  select c.district_label, c.region_label, p.district_label, p.region_label
+    from ranked c
+    left join ranked p on p.rn = 2
+   where c.rn = 1;
 $$;
 
 create or replace function public.employee_access_provision_account(
@@ -69,6 +83,7 @@ create or replace function public.employee_access_provision_account(
   p_role                 text,
   p_scope_level          text,
   p_primary_area_id      text,
+  p_also_covers          text[],
   p_set_by               text
 )
 returns text
@@ -89,6 +104,8 @@ declare
   v_aff       record;
   v_area      record;
   v_expected  text;
+  v_also      text[];
+  v_moved     boolean;
 begin
   if p_app_user_id is null or p_external_employee_id is null or v_email = '' then
     raise exception 'provision_invalid_input' using errcode = 'invalid_parameter_value';
@@ -213,13 +230,20 @@ begin
   else
     foreach v_salon in array v_numbers loop
       select case when p_scope_level = 'district' then 'dist-' || public.employee_access_area_slug(a.district_label)
-                  else 'reg-' || public.employee_access_area_slug(a.region_label) end
-        into v_expected
+                  else 'reg-' || public.employee_access_area_slug(a.region_label) end,
+             case when p_scope_level = 'district' then a.previous_district_label is not null
+                       and public.employee_access_area_slug(a.previous_district_label) <> public.employee_access_area_slug(a.district_label)
+                  else a.previous_region_label is not null
+                       and public.employee_access_area_slug(a.previous_region_label) <> public.employee_access_area_slug(a.region_label) end
+        into v_expected, v_moved
         from public.employee_access_salon_area(v_salon) a
        where (p_scope_level = 'district' and a.district_label is not null)
           or (p_scope_level = 'region' and a.region_label is not null);
       if v_expected is null then
         raise exception 'provision_area_unknown' using errcode = 'check_violation';
+      end if;
+      if v_moved then
+        raise exception 'provision_area_changed_recently' using errcode = 'check_violation';
       end if;
       if not (v_expected = any (v_areas)) then
         v_areas := v_areas || v_expected;
@@ -234,11 +258,21 @@ begin
     raise exception 'provision_area_mismatch' using errcode = 'check_violation';
   end if;
 
+  /* ALSO COVERS: a salon-level account holds each approved additional salon; a district / region account holds nothing extra. */
+  if p_scope_level = 'salon' then
+    select coalesce(array_agg('loc-' || n order by n), '{}') into v_also from unnest(v_numbers) as n where n <> v_primary;
+  else
+    v_also := '{}';
+  end if;
+  if coalesce((select array_agg(x order by x) from unnest(coalesce(p_also_covers, '{}')) as x), '{}') is distinct from v_also then
+    raise exception 'provision_also_covers_mismatch' using errcode = 'check_violation';
+  end if;
+
   insert into public.app_users (
     id, email, display_name, role, status, scope_level, scope_primary_area_id, scope_also_covers_area_ids, created_by, updated_by
   ) values (
     p_app_user_id, v_email, left(coalesce(nullif(btrim(p_display_name), ''), v_email), 120),
-    p_role::public.app_user_role, 'invited', p_scope_level::public.app_scope_level, p_primary_area_id, '{}', null, null
+    p_role::public.app_user_role, 'invited', p_scope_level::public.app_scope_level, p_primary_area_id, v_also, null, null
   );
 
   insert into public.employee_account_links (
@@ -261,5 +295,5 @@ $$;
 
 revoke all on function public.employee_access_area_slug(text) from public, anon, authenticated, service_role;
 revoke all on function public.employee_access_salon_area(text) from public, anon, authenticated, service_role;
-revoke all on function public.employee_access_provision_account(uuid, text, text, text, text, text, text, text) from public, anon, authenticated, service_role;
-grant execute on function public.employee_access_provision_account(uuid, text, text, text, text, text, text, text) to service_role;
+revoke all on function public.employee_access_provision_account(uuid, text, text, text, text, text, text, text[], text) from public, anon, authenticated, service_role;
+grant execute on function public.employee_access_provision_account(uuid, text, text, text, text, text, text, text[], text) to service_role;

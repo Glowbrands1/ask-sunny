@@ -325,7 +325,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
 
   it("the database re-checks too: provisioning a status-conflict employee directly is refused, whatever the caller sends", () => {
     expect(
-      sqlFails(`select public.employee_access_provision_account(gen_random_uuid(), '${id("CONFLICT")}', '${mail("CONFLICT")}', 'X', 'assistant_salon_director', 'salon', 'loc-0307', 'test')`),
+      sqlFails(`select public.employee_access_provision_account(gen_random_uuid(), '${id("CONFLICT")}', '${mail("CONFLICT")}', 'X', 'assistant_salon_director', 'salon', 'loc-0307', '{}', 'test')`),
     ).toMatch(/provision_auth_user_mismatch|provision_status_conflict/);
   });
 
@@ -352,6 +352,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
         p_role: "salon_director",
         p_scope_level: "salon",
         p_primary_area_id: "loc-0307",
+        p_also_covers: [],
         p_set_by: "test",
       });
     const [a, b] = await Promise.all([call(), call()]);
@@ -396,7 +397,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     expect(sql(`select to_jsonb(u) - 'updated_at' from auth.users u where id = '${ids.BARE}'`)).toBe(before);
     expect((await messagesTo(mail("BARE"))).length).toBe(0);
     /* And the database refuses it directly: the credential was not created for this employee. */
-    expect(sqlFails(`select public.employee_access_provision_account('${ids.BARE}', '${id("BARE")}', '${mail("BARE")}', 'X', 'salon_director', 'salon', 'loc-0307', 'test')`)).toMatch(/provision_auth_user_mismatch/);
+    expect(sqlFails(`select public.employee_access_provision_account('${ids.BARE}', '${id("BARE")}', '${mail("BARE")}', 'X', 'salon_director', 'salon', 'loc-0307', '{}', 'test')`)).toMatch(/provision_auth_user_mismatch/);
   });
 
   /* ------------------------------------------------------ LINK_EXISTING -- */
@@ -548,7 +549,7 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     const asAnon = await anonClient().rpc("employee_access_disable_terminated", { p_app_user_id: ids.STEADY, p_external_employee_id: id("STEADY"), p_set_by: "x" });
     expect(asAnon.error).not.toBeNull();
     for (const fn of [
-      "employee_access_provision_account(uuid, text, text, text, text, text, text, text)",
+      "employee_access_provision_account(uuid, text, text, text, text, text, text, text[], text)",
       "employee_access_link_existing(uuid, text, text)",
       "employee_access_disable_terminated(uuid, text, text)",
       "employee_access_auth_user_by_email(text)",

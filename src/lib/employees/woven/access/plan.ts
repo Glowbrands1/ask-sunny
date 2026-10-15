@@ -117,7 +117,7 @@ function proposedLocation(employee: PlannerEmployee, locations: Map<string, Plan
 }
 
 type InviteScope =
-  | { ok: true; level: "salon" | "district" | "region"; primaryAreaId: string; salonNumbers: string[]; additionalSalonNumbers: string[]; temporaryIgnored: number }
+  | { ok: true; level: "salon" | "district" | "region"; primaryAreaId: string; alsoCovers: string[]; salonNumbers: string[]; additionalSalonNumbers: string[]; temporaryIgnored: number }
   | { ok: false; action: "FLAG_UNMAPPED_LOCATION" | "FLAG_LOCATION_REVIEW"; reason: string };
 
 /**
@@ -131,9 +131,11 @@ type InviteScope =
  * Anything unmapped, unknown or not a salon stops the invitation (nothing is
  * created, nothing is emailed) and goes to a person.
  *
- *   Salon Director / Assistant Salon Director: salon scope at the PRIMARY salon
- *     only. Additional salons are validated and recorded but NOT granted —
- *     owner decision 4 (2 Oct 2026) stands until the owner changes it.
+ *   Salon Director / Assistant Salon Director: salon scope at the PRIMARY salon,
+ *     and (owner instruction, 16 Oct 2026, superseding decision 4 for NEW
+ *     accounts only) every approved ADDITIONAL salon in `also covers`. The
+ *     authorization model already reads `alsoCoversAreaIds` for a salon-level
+ *     scope (forms, reporting, chat). An existing account is never changed.
  *   District Manager: district scope. The district comes from reporting for the
  *     primary salon; every other mapped salon must be in that SAME district.
  *   Regional Manager: region scope, likewise with one region.
@@ -162,7 +164,7 @@ function inviteScope(role: Role, employee: PlannerEmployee, ctx: Context, primar
   const salonNumbers = [primaryNumber, ...additional].sort();
   const base = { salonNumbers, additionalSalonNumbers: additional, temporaryIgnored: employee.temporaryLocationIds.length + ignored };
 
-  if (level === "salon") return { ok: true, level, primaryAreaId: primary.areaId, ...base };
+  if (level === "salon") return { ok: true, level, primaryAreaId: primary.areaId, alsoCovers: additional.map(salonAreaId), ...base };
 
   if (!ctx.salonAreas) return { ok: false, action: "FLAG_LOCATION_REVIEW", reason: "salon_areas_unavailable" };
   const areaIds = new Set<string>();
@@ -170,10 +172,24 @@ function inviteScope(role: Role, employee: PlannerEmployee, ctx: Context, primar
     const area = ctx.salonAreas.get(number);
     const id = level === "district" ? area?.districtId : area?.regionId;
     if (!id) return { ok: false, action: "FLAG_LOCATION_REVIEW", reason: `salon_${level}_unknown` };
+    /* Reporting moved this salon between periods: ambiguous, so a person confirms rather than the sync granting a whole district/region. */
+    if (level === "district" ? area?.districtStable === false : area?.regionStable === false) {
+      return { ok: false, action: "FLAG_LOCATION_REVIEW", reason: `salon_${level}_changed_recently` };
+    }
     areaIds.add(id);
   }
   if (areaIds.size !== 1) return { ok: false, action: "FLAG_LOCATION_REVIEW", reason: `locations_span_several_${level === "district" ? "districts" : "regions"}` };
-  return { ok: true, level, primaryAreaId: [...areaIds][0]!, ...base };
+  return { ok: true, level, primaryAreaId: [...areaIds][0]!, alsoCovers: [], ...base };
+}
+
+/** The `loc-` areas of an employee's approved (mapped-salon, non-temporary) additional locations. */
+function approvedAdditionalAreas(employee: PlannerEmployee, ctx: Context): string[] {
+  const out: string[] = [];
+  for (const id of employee.additionalLocationIds) {
+    const location = ctx.locations.get(id);
+    if (location?.status === "mapped" && location.salonNumber) out.push(salonAreaId(location.salonNumber));
+  }
+  return out;
 }
 
 function confirmedRole(employee: PlannerEmployee, positions: Map<string, PlannerPosition>): Role | null {
@@ -435,11 +451,13 @@ function planEmployee(employee: PlannerEmployee, ctx: Context): PlannedRow {
   }
 
   /*
-   * Extra salons are never granted from Woven: only the primary location gives
-   * salon access. Any held by a salon-tier account were granted by hand and are
-   * flagged for review, never removed automatically.
+   * An existing account's extra salons are NEVER changed here. Woven's approved
+   * additional salons were granted when the account was created; any extra
+   * salon beyond them was assigned by hand, is preserved, and is only flagged so
+   * a person can see it. Nothing is ever removed or added automatically.
    */
-  if (linked.alsoCoversAreaIds.length > 0) {
+  const approvedExtras = new Set(approvedAdditionalAreas(employee, ctx));
+  if (linked.alsoCoversAreaIds.some((area) => !approvedExtras.has(area))) {
     if (!actions.includes("FLAG_LOCATION_REVIEW")) actions.push("FLAG_LOCATION_REVIEW");
     reasons.push("extra_salons_not_granted_by_woven");
   }
@@ -560,12 +578,11 @@ function planWithoutAccount(
     status: "invited",
     scope_level: scope.level,
     scope_primary_area_id: scope.primaryAreaId,
-    scope_also_covers_area_ids: [],
+    scope_also_covers_area_ids: scope.alsoCovers,
     woven_position: employee.positionName,
     primary_location_salon: location.areaId,
     salon_numbers: scope.salonNumbers,
     additional_salon_numbers: scope.additionalSalonNumbers,
-    additional_locations_not_granted: scope.level === "salon" ? scope.additionalSalonNumbers : [],
     locations_ignored_or_temporary: scope.temporaryIgnored,
     provisioned_by_source: "woven",
     external_employee_id: employee.externalEmployeeId,

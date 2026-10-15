@@ -337,7 +337,8 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
   const role = typeof after.role === "string" ? after.role : null;
   const area = typeof after.scope_primary_area_id === "string" ? after.scope_primary_area_id : null;
   const level = typeof after.scope_level === "string" ? after.scope_level : null;
-  if (!row.externalEmployeeId || !email || !role || !area || !level) return { result: "failed", code: "create_input_incomplete" };
+  const alsoCovers = Array.isArray(after.scope_also_covers_area_ids) && after.scope_also_covers_area_ids.every((a) => typeof a === "string") ? (after.scope_also_covers_area_ids as string[]) : null;
+  if (!row.externalEmployeeId || !email || !role || !area || !level || !alsoCovers) return { result: "failed", code: "create_input_incomplete" };
   /* Defence in depth: the planner only proposes these four, the database re-checks, and so does this. */
   if (!(AUTO_PROVISION_ROLES as readonly string[]).includes(role) || PROVISION_SCOPE_LEVEL[role as keyof typeof PROVISION_SCOPE_LEVEL] !== level) {
     return { result: "failed", code: "role_not_auto_provisioned" };
@@ -354,6 +355,7 @@ async function createUser(row: PlannedRow, request: ApplyRequest, deps: ApplyDep
     p_role: role,
     p_scope_level: level,
     p_primary_area_id: area,
+    p_also_covers: alsoCovers,
     p_set_by: setBy,
   });
   if (provisioned.error) {

@@ -25,6 +25,7 @@ interface Row {
   district_label: string | null;
   region_label: string | null;
   salons: { salon_number: string } | null;
+  report_periods: { period_end: string };
 }
 
 let rows: Row[] = [];
@@ -57,12 +58,24 @@ function row(period: string, salonNumber: string, district: string): Row {
     district_label: district,
     region_label: "Patterson, Madeline",
     salons: { salon_number: salonNumber },
+    report_periods: { period_end: `${period}-28` },
   };
 }
 
 beforeEach(() => {
   failQuery = false;
   rows = [];
+});
+
+describe("the newest period is chosen by the period's own date, not by arrival order or id", () => {
+  it("rows arriving OLDEST-first still resolve to the newest period, and the earlier one is kept as history", async () => {
+    const { currentSalonAreas } = await import("./reporting-areas");
+    rows = [row("2026-08", "0495", "Cotton, Sarah"), row("2026-09", "0495", "Patterson, Madeline")];
+    const [area] = await currentSalonAreas();
+    expect(area).toMatchObject({ salonNumber: "0495", previousDistrictId: districtIdOf("Cotton, Sarah") });
+    expect(area!.districtId).toBe(districtIdOf("Patterson, Madeline"));
+    expect(await areaSalonNumbersFromReporting("district", [districtIdOf("Cotton, Sarah")])).toEqual([]);
+  });
 });
 
 describe("a salon that moved district", () => {

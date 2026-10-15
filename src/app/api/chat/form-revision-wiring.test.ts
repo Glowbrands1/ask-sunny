@@ -103,6 +103,8 @@ describe("a revision of the open form", () => {
   });
 
   it("is given the business day, so a typed follow-up date can be read", async () => {
+    /* The route only trusts a client-stated day that is close to the server's own, so the test states TODAY rather than a fixed date that ages out. */
+    const today = new Date().toISOString().slice(0, 10);
     const { route, seen } = await load({
       content: "Set the follow-up date to **Thursday, October 15, 2026**.",
       citations: [],
@@ -115,11 +117,11 @@ describe("a revision of the open form", () => {
         activeFormInstanceId: INSTANCE,
         history: [],
         question: "Change the follow-up date to 10/15",
-        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: "2026-10-02" },
+        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: today },
       }),
     );
     expect(response.status).toBe(200);
-    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: "2026-10-02" });
+    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today });
   });
 
   it("falls through to an ordinary answer when the turn is not a revision", async () => {
