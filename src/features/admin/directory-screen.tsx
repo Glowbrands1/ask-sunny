@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Copy,
   KeyRound,
   Loader2,
   MailCheck,
+  MapPin,
   RefreshCw,
   RotateCcwKey,
   Search,
@@ -26,11 +27,18 @@ import {
   DialogClose,
   DialogContent,
 } from "@/components/ui/overlays";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   PRODUCTION_DISTRICTS,
   PRODUCTION_REGIONS,
   PRODUCTION_SALONS,
+  areaLabel,
 } from "@/data/salons";
+import {
+  additionalLocationOptions,
+  cleanAdditionalLocations,
+} from "@/lib/admin/additional-locations";
+import type { InviteSuggestion } from "@/lib/employees/woven/invite-suggestion";
 import { ADMIN_CONSOLE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL, ROLES } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { relativeTime } from "@/lib/utils/date";
@@ -126,6 +134,7 @@ export function DirectoryScreen({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNote, setActionNote] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [locationsFor, setLocationsFor] = useState<DirectoryUser | null>(null);
   /*
    * A generated reset link. A CREDENTIAL: held only while its dialog is open
    * and dropped the moment it closes. Never persisted, never logged.
@@ -464,6 +473,11 @@ export function DirectoryScreen({
                         <td className="py-2.5 pr-3 text-muted-foreground">
                           <span className="block">{areaName(entry.scope)}</span>
                           <span className="block text-xs capitalize">{entry.scope.level}</span>
+                          {entry.scope.alsoCoversAreaIds.length > 0 ? (
+                            <span className="mt-1 block text-xs text-subtle-foreground">
+                              Also: {entry.scope.alsoCoversAreaIds.map((id) => areaLabel(id)).join(", ")}
+                            </span>
+                          ) : null}
                         </td>
 
                         <td className="py-2.5 pr-3">
@@ -514,6 +528,25 @@ export function DirectoryScreen({
                               >
                                 <KeyRound />
                                 Generate reset link
+                              </Button>
+                            ) : null}
+
+                            {/*
+                              A global scope already covers every salon, so
+                              there is nothing to add to it.
+                            */}
+                            {entry.scope.level !== "global" ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => {
+                                  setActionError(null);
+                                  setLocationsFor(entry);
+                                }}
+                              >
+                                <MapPin />
+                                Edit locations
                               </Button>
                             ) : null}
 
@@ -582,6 +615,28 @@ export function DirectoryScreen({
       <ResetLinkDialog
         link={resetLink}
         onClose={() => setResetLink(null)}
+      />
+
+      <EditLocationsDialog
+        user={locationsFor}
+        error={actionError}
+        onClose={() => setLocationsFor(null)}
+        onSave={async (target, alsoCoversAreaIds) => {
+          /*
+           * The WHOLE scope is sent, with only the additional locations
+           * changed: the level and primary come from the row as the server last
+           * returned it, so saving here cannot move somebody's primary area.
+           */
+          const saved = await send(target.id, {
+            scope: {
+              level: target.scope.level,
+              primaryAreaId: target.scope.primaryAreaId,
+              alsoCoversAreaIds,
+            },
+          });
+          if (saved) setActionNote(`Locations updated for ${target.email}.`);
+          return saved;
+        }}
       />
 
       <InviteDialog
@@ -685,6 +740,21 @@ export function ResetLinkDialog({
 
 /* ---------------------------------------------------------------- invite -- */
 
+/** What the Woven lookup is doing for the address currently typed. */
+type SuggestionLookup =
+  | { state: "idle" }
+  | { state: "loading"; email: string }
+  | { state: "done"; email: string; result: InviteSuggestion }
+  | { state: "applied"; email: string; result: InviteSuggestion };
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const SCOPE_LEVEL_LABEL: Record<Exclude<ScopeLevel, "global">, string> = {
+  salon: "One salon",
+  district: "A district",
+  region: "A region",
+};
+
 function InviteDialog({
   open,
   onOpenChange,
@@ -704,12 +774,101 @@ function InviteDialog({
   const [role, setRole] = useState<Role>("employee");
   const [level, setLevel] = useState<ScopeLevel>("salon");
   const [areaId, setAreaId] = useState<string>(AREAS.salon[0]?.id ?? "");
+  /*
+   * ADDITIONAL LOCATIONS: optional, empty for somebody with one location. Held
+   * as stable location ids; the names are only for display.
+   */
+  const [additional, setAdditional] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lookup, setLookup] = useState<SuggestionLookup>({ state: "idle" });
+  /* A later lookup supersedes an earlier one that is still in flight. */
+  const lookupSeq = useRef(0);
+
+  function reset() {
+    setEmail("");
+    setDisplayName("");
+    setRole("employee");
+    setLevel("salon");
+    setAreaId(AREAS.salon[0]?.id ?? "");
+    setAdditional([]);
+    setLookup({ state: "idle" });
+    lookupSeq.current += 1;
+  }
+
+  /** A new primary can never also be an additional location. */
+  function choosePrimary(nextLevel: ScopeLevel, nextArea: string) {
+    setAdditional((current) =>
+      cleanAdditionalLocations(current, { level: nextLevel, primaryAreaId: nextArea || null }),
+    );
+  }
+
+  /*
+   * ASKS WOVEN, SUGGESTS, CHANGES NOTHING. Runs when the administrator leaves
+   * the email field, never on every keystroke, and only for something shaped
+   * like an address. A failure (not permitted, Woven not connected, offline) is
+   * silent: the form is complete without it, and an error banner about an
+   * optional convenience would only get in the way of sending an invitation.
+   */
+  async function lookUpWoven() {
+    const wanted = email.trim().toLowerCase();
+    if (!EMAIL_SHAPE.test(wanted)) {
+      setLookup({ state: "idle" });
+      return;
+    }
+    if ("email" in lookup && lookup.email === wanted) return;
+
+    const seq = ++lookupSeq.current;
+    setLookup({ state: "loading", email: wanted });
+    try {
+      const response = await fetch(
+        `/api/admin/employees/woven/invite-suggestion?email=${encodeURIComponent(wanted)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json().catch(() => null)) as InviteSuggestion | null;
+      if (seq !== lookupSeq.current) return;
+      if (!response.ok || !payload || !("status" in payload)) {
+        setLookup({ state: "idle" });
+        return;
+      }
+      setLookup({ state: "done", email: wanted, result: payload });
+    } catch {
+      if (seq === lookupSeq.current) setLookup({ state: "idle" });
+    }
+  }
+
+  /*
+   * APPLYING IS THE ADMINISTRATOR'S ACT. Nothing above fills a field; this does,
+   * when asked, and every field stays editable afterwards. A value Woven could
+   * not vouch for is simply absent from the suggestion and is left as it was —
+   * and where the primary area is missing it is left EMPTY, so the form cannot
+   * be sent until somebody chooses one rather than inheriting a default.
+   */
+  function applySuggestion(result: InviteSuggestion) {
+    if (result.status !== "found" || !result.suggestion) return;
+    const s = result.suggestion;
+    if (s.displayName) setDisplayName(s.displayName);
+    if (s.role) setRole(s.role);
+
+    let nextLevel: ScopeLevel = level;
+    let nextArea = areaId;
+    if (s.scopeLevel) {
+      nextLevel = s.scopeLevel;
+      nextArea = s.primaryAreaId ?? "";
+      setLevel(nextLevel);
+      setAreaId(nextArea);
+    }
+    setAdditional(
+      cleanAdditionalLocations(s.additionalAreaIds, { level: nextLevel, primaryAreaId: nextArea || null }),
+    );
+    if (lookup.state === "done") setLookup({ state: "applied", email: lookup.email, result });
+  }
+
+  const needsArea = level !== "global" && !areaId;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || needsArea) return;
     setBusy(true);
     setError(null);
 
@@ -724,7 +883,10 @@ function InviteDialog({
           scope: {
             level,
             primaryAreaId: level === "global" ? null : areaId,
-            alsoCoversAreaIds: [],
+            alsoCoversAreaIds:
+              level === "global"
+                ? []
+                : cleanAdditionalLocations(additional, { level, primaryAreaId: areaId }),
           },
         }),
       });
@@ -739,8 +901,7 @@ function InviteDialog({
       }
 
       onInvited((payload as { user: DirectoryUser }).user);
-      setEmail("");
-      setDisplayName("");
+      reset();
       onOpenChange(false);
     } catch {
       setError("The invitation could not be sent. Check your connection and try again.");
@@ -748,6 +909,8 @@ function InviteDialog({
       setBusy(false);
     }
   }
+
+  const suggestion = lookup.state === "done" || lookup.state === "applied" ? lookup.result : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -770,10 +933,92 @@ function InviteDialog({
               autoComplete="off"
               placeholder="name@suntancity.com"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                // A different address makes any earlier suggestion stale.
+                if (lookup.state !== "idle") {
+                  setLookup({ state: "idle" });
+                  lookupSeq.current += 1;
+                }
+              }}
+              onBlur={() => void lookUpWoven()}
               disabled={busy}
             />
           </FieldGroup>
+
+          {lookup.state === "loading" ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              Checking Woven…
+            </p>
+          ) : null}
+
+          {suggestion?.status === "not_found" ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              No employee with this email was found in Woven. Fill in the details below.
+            </p>
+          ) : null}
+
+          {suggestion?.status === "ambiguous" ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {suggestion.reason}
+            </p>
+          ) : null}
+
+          {suggestion?.status === "found" ? (
+            <Notice tone="neutral" icon={<ShieldCheck />} title="Found in Woven">
+              <p>
+                {suggestion.employee.name}
+                {suggestion.employee.positionName ? ` — ${suggestion.employee.positionName}` : ""}
+                {suggestion.employee.primaryLocationName
+                  ? `, ${suggestion.employee.primaryLocationName}`
+                  : ""}
+              </p>
+              {suggestion.suggestion ? (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs">
+                  {suggestion.suggestion.role ? (
+                    <li>Role: {ROLE_LABEL[suggestion.suggestion.role]}</li>
+                  ) : null}
+                  {suggestion.suggestion.scopeLevel ? (
+                    <li>Scope: {SCOPE_LEVEL_LABEL[suggestion.suggestion.scopeLevel]}</li>
+                  ) : null}
+                  {suggestion.suggestion.primaryAreaId ? (
+                    <li>Primary area: {areaLabel(suggestion.suggestion.primaryAreaId)}</li>
+                  ) : null}
+                  {suggestion.suggestion.additionalAreaIds.length > 0 ? (
+                    <li>
+                      Additional locations:{" "}
+                      {suggestion.suggestion.additionalAreaIds.map((id) => areaLabel(id)).join(", ")}
+                    </li>
+                  ) : null}
+                </ul>
+              ) : null}
+              {suggestion.notes.length > 0 ? (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                  {suggestion.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {suggestion.suggestion ? (
+                <div className="mt-2.5 flex items-center gap-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy || lookup.state === "applied"}
+                    onClick={() => applySuggestion(suggestion)}
+                  >
+                    {lookup.state === "applied" ? "Applied" : "Apply suggestions"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {lookup.state === "applied"
+                      ? "Review each field before sending."
+                      : "Nothing changes until you apply. You can edit everything after."}
+                  </span>
+                </div>
+              ) : null}
+            </Notice>
+          ) : null}
 
           <FieldGroup label="Full name" htmlFor="invite-name">
             <Input
@@ -810,7 +1055,9 @@ function InviteDialog({
               onChange={(event) => {
                 const next = event.target.value as ScopeLevel;
                 setLevel(next);
-                if (next !== "global") setAreaId(AREAS[next][0]?.id ?? "");
+                const nextArea = next !== "global" ? (AREAS[next][0]?.id ?? "") : "";
+                setAreaId(nextArea);
+                choosePrimary(next, nextArea);
               }}
               disabled={busy}
             >
@@ -826,9 +1073,17 @@ function InviteDialog({
               <Select
                 id="invite-area"
                 value={areaId}
-                onChange={(event) => setAreaId(event.target.value)}
+                onChange={(event) => {
+                  setAreaId(event.target.value);
+                  choosePrimary(level, event.target.value);
+                }}
                 disabled={busy}
               >
+                {areaId === "" ? (
+                  <option value="" disabled>
+                    Choose a primary area…
+                  </option>
+                ) : null}
                 {AREAS[level].map((entry) => (
                   <option key={entry.id} value={entry.id}>
                     {entry.name}
@@ -838,13 +1093,33 @@ function InviteDialog({
             </FieldGroup>
           ) : null}
 
+          {/*
+            Directly under Primary area, as asked. Hidden for a global scope,
+            which already covers every salon and cannot be widened.
+          */}
+          {level !== "global" ? (
+            <FieldGroup
+              label="Additional locations (optional)"
+              htmlFor="invite-additional"
+              hint="Salons this person can access in addition to their primary area. Leave empty if they have just one."
+            >
+              <MultiSelect
+                id="invite-additional"
+                options={additionalLocationOptions(level === "salon" ? areaId : null)}
+                value={additional}
+                onChange={setAdditional}
+                disabled={busy}
+              />
+            </FieldGroup>
+          ) : null}
+
           <DialogActions>
             <DialogClose asChild>
               <Button variant="ghost" type="button">
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={busy || !email || !displayName}>
+            <Button type="submit" disabled={busy || !email || !displayName || needsArea}>
               {busy ? <Loader2 className="animate-spin" /> : <UserPlus />}
               {busy ? "Sending…" : "Send invitation"}
             </Button>
@@ -852,5 +1127,126 @@ function InviteDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* --------------------------------------------------------- edit locations -- */
+
+/**
+ * Edits ONE thing: the additional locations of an existing account.
+ *
+ * The primary area, scope and role are shown and cannot be changed here —
+ * those have their own deliberate paths — so opening this and pressing Save
+ * cannot move somebody's primary assignment or change what they may do beyond
+ * the salons named. Saving sends the account's current level and primary back
+ * unchanged with the new list; the server validates it like any other write.
+ */
+function EditLocationsDialog({
+  user,
+  onClose,
+  onSave,
+  error,
+}: {
+  user: DirectoryUser | null;
+  onClose: () => void;
+  onSave: (user: DirectoryUser, alsoCoversAreaIds: string[]) => Promise<boolean>;
+  error: string | null;
+}) {
+  return (
+    <Dialog open={user !== null} onOpenChange={(next) => (next ? undefined : onClose())}>
+      {user ? (
+        <DialogContent
+          title="Edit locations"
+          description={`${user.displayName} — ${user.email}`}
+        >
+          <EditLocationsForm key={user.id} user={user} onClose={onClose} onSave={onSave} error={error} />
+        </DialogContent>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function EditLocationsForm({
+  user,
+  onClose,
+  onSave,
+  error,
+}: {
+  user: DirectoryUser;
+  onClose: () => void;
+  onSave: (user: DirectoryUser, alsoCoversAreaIds: string[]) => Promise<boolean>;
+  error: string | null;
+}) {
+  const initial = user.scope.alsoCoversAreaIds;
+  const [selected, setSelected] = useState<string[]>(initial);
+  const [busy, setBusy] = useState(false);
+
+  /*
+   * What is offered: the salons, minus the primary. Anything the account ALREADY
+   * holds that is not a salon (a district or region added before this existed)
+   * is kept selectable by name so it displays and survives a save — it is never
+   * silently dropped by opening this dialog.
+   */
+  const options = useMemo(() => {
+    const primary = user.scope.level === "salon" ? user.scope.primaryAreaId : null;
+    const held = initial
+      .filter((id) => !id.startsWith("loc-"))
+      .map((id) => ({ id, name: areaLabel(id) }));
+    return [...additionalLocationOptions(primary), ...held];
+  }, [user, initial]);
+
+  const cleaned = cleanAdditionalLocations(selected, {
+    level: user.scope.level,
+    primaryAreaId: user.scope.primaryAreaId,
+  });
+  const changed =
+    cleaned.length !== initial.length || cleaned.some((id) => !initial.includes(id));
+
+  return (
+    <div className="space-y-4">
+      {error ? (
+        <Notice tone="attention" title="That did not work">
+          {error}
+        </Notice>
+      ) : null}
+
+      <p className="text-[13px] text-muted-foreground">
+        Primary area: <span className="font-medium text-foreground">{areaName(user.scope)}</span>
+        <span className="ml-1 capitalize">({user.scope.level})</span>
+      </p>
+
+      <FieldGroup
+        label="Additional locations"
+        htmlFor="edit-additional"
+        hint="Salons this person can access in addition to their primary area. Removing one takes effect on their next request."
+      >
+        <MultiSelect
+          id="edit-additional"
+          options={options}
+          value={selected}
+          onChange={setSelected}
+          disabled={busy}
+        />
+      </FieldGroup>
+
+      <DialogActions>
+        <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={busy || !changed}
+          onClick={async () => {
+            setBusy(true);
+            const saved = await onSave(user, cleaned);
+            setBusy(false);
+            if (saved) onClose();
+          }}
+        >
+          {busy ? <Loader2 className="animate-spin" /> : <MapPin />}
+          {busy ? "Saving…" : "Save locations"}
+        </Button>
+      </DialogActions>
+    </div>
   );
 }
