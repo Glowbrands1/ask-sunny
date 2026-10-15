@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { ParsedReport } from "../types";
 import type { IngestionResult, ReportingRepository, SourceFileRecord } from "./types";
+import { correctedDistrictLabel } from "../district-overrides";
 
 /**
  * SupabaseReportingRepository — the production persistence implementation.
@@ -72,7 +73,7 @@ export function buildIngestionPayload(report: ParsedReport) {
     })),
     attributes: report.salonPeriodAttributes.map((attributes) => ({
       salon_number: attributes.salonNumber,
-      district_label: attributes.districtLabel,
+      district_label: correctedDistrictLabel(attributes.salonNumber, attributes.districtLabel),
       region_label: attributes.regionLabel,
       company: attributes.company,
       ownership_group: attributes.ownershipGroup,

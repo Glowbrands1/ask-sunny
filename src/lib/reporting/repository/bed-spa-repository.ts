@@ -9,6 +9,7 @@ import type { ParsedSpaWellnessReport, ParsedSpaWellnessWindow } from "../spa-we
 import { ingestionFingerprint, REPORTING_BUCKET } from "./supabase-reporting-repository";
 import { safeFailureReason } from "./supabase-reporting-repository";
 import type { IngestionResult, SourceFileRecord } from "./types";
+import { correctedDistrictLabel, correctedDistrictLabelByStoreName } from "../district-overrides";
 
 /**
  * ============================================================================
@@ -127,7 +128,7 @@ export function buildSpaWellnessPayload(
       total_sessions: salon.totalSessions,
       equipment_pieces: salon.equipmentPieces,
       equipment_types_used: salon.equipmentTypesUsed,
-      district_label: salon.districtLabel,
+      district_label: correctedDistrictLabelByStoreName(salon.storeName, salon.districtLabel),
       region_label: salon.regionLabel,
       first_use_date: salon.firstUseDate,
       newest_first_use_date: salon.newestFirstUseDate,
@@ -193,7 +194,7 @@ export function buildSpaEngagementPayload(report: ParsedSpaEngagementReport) {
       unique_spa_tanners: salon.uniqueSpaTanners,
       spa_beds: salon.spaBeds,
       ownership: salon.ownership,
-      district_label: salon.districtLabel,
+      district_label: correctedDistrictLabel(salon.salonNumber, salon.districtLabel),
       region_label: salon.regionLabel,
       reported_spa_sessions_per_bed: salon.reportedSpaSessionsPerBed,
       reported_spa_sessions_per_unique_per_bed: salon.reportedSpaSessionsPerUniquePerBed,

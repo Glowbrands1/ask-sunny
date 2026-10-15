@@ -163,7 +163,7 @@ export const PRODUCTION_SALONS: readonly ProductionSalon[] = [
   salon("0314", "NE Omaha 144th and Center", DIST_COTTON, COTTON),
   salon("0394", "MO Kansas City Liberty", DIST_PATTERSON, PATTERSON),
   salon("0410", "NE Omaha Pacific", DIST_COTTON, COTTON),
-  salon("0462", "KS Manhattan", DIST_PATTERSON, PATTERSON),
+  salon("0462", "KS Manhattan", DIST_DUGAN, DUGAN),
   salon("0463", "KS Shawnee Mission Pkwy", DIST_PATTERSON, PATTERSON),
   salon("0468", "KS Lawrence", DIST_PATTERSON, PATTERSON),
   salon("0476", "KS Overland Park", DIST_PATTERSON, PATTERSON),
