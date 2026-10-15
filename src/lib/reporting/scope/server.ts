@@ -4,6 +4,7 @@ import type { AccessScope } from "@/types";
 import { pageIdentity } from "@/lib/auth/page";
 import {
   reportingScopeOf,
+  salonNumberOf,
   scopeAreaLabel,
   type ReportingScope,
 } from "./authorized-salons";
@@ -84,15 +85,32 @@ export async function resolveScopeFor(
   }
 
   const alsoCovers = Array.isArray(scope?.alsoCoversAreaIds) ? scope.alsoCoversAreaIds : [];
-  const areaIds = [scope?.primaryAreaId, ...alsoCovers].filter(
-    (id): id is string => typeof id === "string" && id.length > 0,
-  );
+  /*
+   * EXPLICIT SALONS ARE NOT AREAS. An "also covers" id that is a salon id
+   * grants that one salon directly, with no round trip: like a salon scope, its
+   * id cannot drift, so it does not depend on reporting being reachable. Only
+   * district and region ids go to reporting. The union of the two is the reach;
+   * a failed area query still fails closed for the AREAS, and never takes away
+   * a salon somebody was named on.
+   */
+  const explicitSalons = new Set<string>();
+  const areaIds: string[] = [];
+  const primary = scope?.primaryAreaId;
+  if (typeof primary === "string" && primary.length > 0) areaIds.push(primary);
+  for (const id of alsoCovers) {
+    if (typeof id !== "string" || id.length === 0) continue;
+    const number = salonNumberOf(id);
+    if (number) explicitSalons.add(number);
+    else areaIds.push(id);
+  }
+
+  const fromAreas = await areaSalonNumbersFromReporting(level, areaIds);
 
   return {
     level,
     /* Never unrestricted here: that belongs to a global scope alone. */
     unrestricted: false,
-    salonNumbers: await areaSalonNumbersFromReporting(level, areaIds),
+    salonNumbers: [...new Set([...fromAreas, ...explicitSalons])].sort(),
     areaLabel: scopeAreaLabel(scope ?? null),
   };
 }

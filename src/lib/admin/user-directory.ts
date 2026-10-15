@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  cleanAdditionalLocations,
+  MAX_ADDITIONAL_LOCATIONS,
+  unknownAdditionalAreaIds,
+} from "@/lib/admin/additional-locations";
 import { AuthError } from "@/lib/auth/types";
 import { APP_USER_COLUMNS, toAppUserProfile } from "@/lib/auth/app-user";
 import { revokeAuthAccess, restoreAuthAccess } from "@/lib/auth/revocation";
@@ -178,11 +183,10 @@ export function normalizeScope(value: unknown): AccessScope {
     ? (raw.level as ScopeLevel)
     : "salon";
   const primary = typeof raw.primaryAreaId === "string" ? raw.primaryAreaId.slice(0, 80) : null;
-  const also = Array.isArray(raw.alsoCoversAreaIds)
+  const requestedAlso = Array.isArray(raw.alsoCoversAreaIds)
     ? raw.alsoCoversAreaIds
         .filter((entry): entry is string => typeof entry === "string")
         .map((entry) => entry.slice(0, 80))
-        .slice(0, 60)
     : [];
 
   /*
@@ -200,6 +204,28 @@ export function normalizeScope(value: unknown): AccessScope {
     throw new DirectoryError(
       "invalid_input",
       "A global scope covers everything, so it cannot also name a primary area.",
+    );
+  }
+
+  /*
+   * ADDITIONAL LOCATIONS. De-duplicated, the primary removed, none for a global
+   * scope — the same cleaning the form does, repeated here because the form is
+   * not a boundary. An id that is not a known salon (or, on a district or
+   * region scope, a known area of that kind) is REFUSED rather than stored: an
+   * unknown id would sit in the column looking like an assignment while granting
+   * nothing, and a typo'd one would be an assignment nobody could see was wrong.
+   */
+  const also = cleanAdditionalLocations(requestedAlso, { level, primaryAreaId: primary });
+  if (also.length > MAX_ADDITIONAL_LOCATIONS) {
+    throw new DirectoryError(
+      "invalid_input",
+      `An account can have at most ${MAX_ADDITIONAL_LOCATIONS} additional locations.`,
+    );
+  }
+  if (unknownAdditionalAreaIds(also, level).length > 0) {
+    throw new DirectoryError(
+      "invalid_input",
+      "One of the additional locations is not a location Ask Sunny knows for this scope. Pick locations from the list.",
     );
   }
 

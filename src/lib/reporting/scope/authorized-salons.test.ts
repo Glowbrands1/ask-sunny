@@ -237,3 +237,103 @@ describe("the notice names the assignment", () => {
     ).toBeNull();
   });
 });
+
+/**
+ * ============================================================================
+ * ADDITIONAL LOCATIONS: WHAT THEY GRANT, AND WHAT THEY MUST NOT
+ * ============================================================================
+ */
+describe("additional locations (explicit salons)", () => {
+  it("one location: only the primary", () => {
+    expect(authorizedSalonNumbers(WORNALL)).toEqual(["0306"]);
+  });
+
+  it("primary + one additional: exactly those two, and nothing else", () => {
+    expect(
+      authorizedSalonNumbers({ level: "salon", primaryAreaId: "loc-0306", alsoCoversAreaIds: ["loc-0394"] }),
+    ).toEqual(["0306", "0394"]);
+  });
+
+  it("primary + several additional: exactly the named salons", () => {
+    expect(
+      authorizedSalonNumbers({
+        level: "salon",
+        primaryAreaId: "loc-0306",
+        alsoCoversAreaIds: ["loc-0394", "loc-0468", "loc-0476"],
+      }),
+    ).toEqual(["0306", "0394", "0468", "0476"]);
+  });
+
+  it("never reaches an unassigned salon", () => {
+    const numbers = authorizedSalonNumbers({
+      level: "salon",
+      primaryAreaId: "loc-0306",
+      alsoCoversAreaIds: ["loc-0394"],
+    })!;
+    for (const salon of PRODUCTION_SALONS) {
+      expect(numbers.includes(salon.salonNumber), salon.salonNumber).toBe(
+        ["0306", "0394"].includes(salon.salonNumber),
+      );
+    }
+  });
+
+  it("a duplicate, or the primary listed again, changes nothing", () => {
+    expect(
+      authorizedSalonNumbers({
+        level: "salon",
+        primaryAreaId: "loc-0306",
+        alsoCoversAreaIds: ["loc-0306", "loc-0394", "loc-0394"],
+      }),
+    ).toEqual(["0306", "0394"]);
+  });
+
+  it("a district manager given one extra salon gets that salon in addition to the district", () => {
+    /*
+     * THE GAP THIS CLOSES. `loc-0462` is in Dugan's district, so use a salon
+     * OUTSIDE Cotton's: Cotton + Liberty. Before, the salon id was read as a
+     * district id, matched nothing, and the assignment looked saved but did
+     * nothing.
+     */
+    const numbers = authorizedSalonNumbers({
+      level: "district",
+      primaryAreaId: "dist-cotton-sarah",
+      alsoCoversAreaIds: ["loc-0394"],
+    })!;
+    const cotton = PRODUCTION_SALONS.filter((s) => s.districtId === "dist-cotton-sarah").map((s) => s.salonNumber);
+    expect(numbers.sort()).toEqual([...cotton, "0394"].sort());
+  });
+
+  it("an explicit salon on a district scope adds ONE salon, never its district", () => {
+    const numbers = authorizedSalonNumbers({
+      level: "district",
+      primaryAreaId: "dist-cotton-sarah",
+      alsoCoversAreaIds: ["loc-0394"],
+    })!;
+    // Liberty is Patterson's; Patterson's other salons must not come with it.
+    expect(numbers).not.toContain("0306");
+    expect(numbers).not.toContain("0468");
+  });
+
+  it("a district id on a salon scope still grants nothing (no widening)", () => {
+    expect(
+      authorizedSalonNumbers({
+        level: "salon",
+        primaryAreaId: "loc-0306",
+        alsoCoversAreaIds: ["dist-cotton-sarah"],
+      }),
+    ).toEqual(["0306"]);
+  });
+
+  it("an unknown salon id is carried as a number but is never invented into a location id", () => {
+    // Roster membership is validated when the assignment is saved; here an id
+    // that is not on the roster maps to no location id.
+    const scope: AccessScope = { level: "salon", primaryAreaId: "loc-0306", alsoCoversAreaIds: ["loc-9999"] };
+    expect(authorizedLocationIds(scope)).toEqual(["loc-0306"]);
+  });
+
+  it("global stays unrestricted and ignores any list", () => {
+    expect(
+      authorizedSalonNumbers({ level: "global", primaryAreaId: null, alsoCoversAreaIds: ["loc-0394"] }),
+    ).toBeNull();
+  });
+});
