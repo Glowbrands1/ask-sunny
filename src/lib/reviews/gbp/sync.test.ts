@@ -92,6 +92,9 @@ function fixture(opts: {
     finishRun: vi.fn(async () => {
       writes.finished += 1;
     }),
+    recordRun: vi.fn(async () => undefined),
+    clearMapping: vi.fn(async () => "cleared" as const),
+    readOverviewRows: vi.fn(async () => ({ listings: [], runs: [], connection: null })),
   };
 
   const ingested: IncomingGoogleReview[][] = [];

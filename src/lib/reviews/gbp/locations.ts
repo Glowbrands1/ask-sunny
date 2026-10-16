@@ -56,7 +56,45 @@ export interface LocationProposal {
   googleLocationName: string;
   title: string | null;
   placeId: string | null;
+  /** What Google lists, for a person to compare with the roster. */
+  address: { street: string | null; city: string | null; state: string | null; postalCode: string | null } | null;
+  /** The Business Profile account that holds the location. Filled in by the caller. */
+  accountName?: string;
   reasons: string[];
+}
+
+/**
+ * WHEN A PERSON MAY CONFIRM BY HAND (Ask Bubbles' "Confirm this profile").
+ *
+ * Only for a listing whose store code matches one and only one Google location
+ * and where the ONLY gap is missing corroboration (no place id or address to
+ * compare). A conflict (a different place id, a different address, a duplicate
+ * store code) is never confirmable: those are facts, not gaps.
+ */
+export const MANUALLY_CONFIRMABLE_REASONS: readonly string[] = [
+  "no_independent_corroboration",
+  "no_verified_place_id_or_address_to_corroborate",
+];
+
+export function isManuallyConfirmable(proposal: Pick<LocationProposal, "verdict" | "reasons" | "storeCode">): boolean {
+  return (
+    proposal.verdict === "needs_review" &&
+    proposal.storeCode !== null &&
+    isAllowedStoreCode(proposal.storeCode) &&
+    proposal.reasons.length > 0 &&
+    proposal.reasons.every((reason) => MANUALLY_CONFIRMABLE_REASONS.includes(reason))
+  );
+}
+
+function addressOf(location: GbpLocation): LocationProposal["address"] {
+  const a = location.address;
+  if (!a) return null;
+  return {
+    street: (a.addressLines ?? []).filter(Boolean).join(", ") || null,
+    city: a.locality ?? null,
+    state: a.administrativeArea ?? null,
+    postalCode: a.postalCode ?? null,
+  };
 }
 
 export interface MissingListing {
@@ -144,6 +182,7 @@ export function discoverMappings(
       googleLocationName: location.name,
       title: location.title ?? null,
       placeId: location.placeId ?? null,
+      address: addressOf(location),
     };
 
     if (isOtherBrandTitle(location.title)) {

@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { PermissionGate } from "@/components/permission-gate";
 import { Notice } from "@/components/ui/feedback";
 import { loadApifySourcePage } from "@/features/reviews/apify/load";
+import { GbpSection } from "@/features/reviews/gbp/gbp-section";
 import { ApifySourceScreen } from "@/features/reviews/apify/source-screen";
 import { requirePagePermission } from "@/lib/auth/page";
 
@@ -32,14 +33,20 @@ export const dynamic = "force-dynamic";
  * the second line, for demo mode where the server guards deliberately do not
  * enforce.
  */
-export default async function GoogleReviewSourcePage() {
+export default async function GoogleReviewSourcePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ gbp?: string }>;
+}) {
   await requirePagePermission("manage_integrations");
 
   const props = await loadApifySourcePage();
+  const flash = (await searchParams)?.gbp ?? null;
 
   return (
     <PermissionGate permission="manage_integrations" adminOnly>
       <Suspense fallback={null}>
+        {props.mode === "live" ? <GbpSection flash={flash} /> : null}
         {props.mode === "live" ? (
           <ApifySourceScreen source={props.source} reconciliation={props.reconciliation} />
         ) : (

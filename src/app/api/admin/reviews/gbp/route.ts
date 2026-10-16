@@ -9,28 +9,34 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { isSameOriginRequest } from "@/lib/reviews/gbp/csrf";
+import { readApifySourceStatus } from "@/lib/reviews/apify/status";
 import { GBP_PUBSUB_TOPIC_ENV, isProductionRuntime, readSyncMode } from "@/lib/reviews/gbp/config";
-import { discoverMappings } from "@/lib/reviews/gbp/locations";
+import { isSameOriginRequest } from "@/lib/reviews/gbp/csrf";
+import { discoverFromGoogle } from "@/lib/reviews/gbp/discovery";
+import { isManuallyConfirmable } from "@/lib/reviews/gbp/locations";
+import { apifyGlance, loadGbpOverview } from "@/lib/reviews/gbp/overview-load";
 import { buildGbpRuntime } from "@/lib/reviews/gbp/runtime";
 import { createSupabaseStore } from "@/lib/reviews/gbp/store";
 import { runGbpSync } from "@/lib/reviews/gbp/sync";
 
 /**
- * /api/admin/reviews/gbp — the operator's console for the Business Profile
- * integration. Requires `manage_integrations`.
+ * /api/admin/reviews/gbp — the Business Profile integration's controls. Requires
+ * `manage_integrations`. The admin screen calls these; nobody types a URL.
  *
- *   GET                           mapping state held in the database (no Google call)
- *   POST { action: "discover" }   ask Google for locations; PROPOSE mappings; writes nothing
- *   POST { action: "confirm", storeCode, locationName }
- *                                 confirm ONE mapping, only if discovery still rates it `eligible`
+ *   GET                                  the overview (status, 15 listings, runs, readiness)
+ *   POST { action: "discover" }          ask Google for locations and PROPOSE mappings; writes nothing
+ *   POST { action: "confirm", storeCode, locationName, manual? }
+ *                                        confirm ONE mapping from FRESH evidence: `eligible`, or —
+ *                                        with manual:true — a listing whose only gap is missing
+ *                                        corroboration (a person compared the address)
+ *   POST { action: "confirm_all" }       confirm every `eligible` proposal, each re-checked
+ *   POST { action: "unlink", storeCode } stop a listing syncing (refused while reviews are linked)
  *   POST { action: "dry_run", scope?, storeCodes?, from?, to? }
- *                                 from/to (YYYY-MM-DD) add an `inWindow` summary, e.g. 2026-09-01..2026-11-01
- *                                 full reconciliation report; writes nothing
- *   POST { action: "sync", scope?, storeCodes? }
- *                                 files reviews. Refused unless GBP_SYNC_MODE=live
+ *                                        full reconciliation report; no review data is written
+ *   POST { action: "sync", confirm: true, scope?, storeCodes? }
+ *                                        files reviews. Needs confirm:true AND GBP_SYNC_MODE=live
  *   POST { action: "configure_notifications", accountName }
- *                                 points Google's notification setting at GBP_PUBSUB_TOPIC
+ *                                        points Google's notification setting at GBP_PUBSUB_TOPIC
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,25 +46,16 @@ export async function GET(request: Request) {
   try {
     assertLiveMode();
     await authorizeRequest(request, "manage_integrations");
-    /* Reading mapping state needs no Google credential, so it must not demand one. */
-    const store = createSupabaseStore();
-    const listings = await store.readListings();
-    return NextResponse.json({
-      status: "ok",
-      mode: readSyncMode(),
-      listings: listings.map((l) => ({
-        storeCode: l.storeCode,
-        label: l.googleLocationLabel,
-        confirmed: l.confirmedLocationName !== null,
-        isActive: l.isActive,
-      })),
-    });
+    /* Reading state needs no Google credential, so it must not demand one. */
+    const overview = await loadGbpOverview(apifyGlance(await readApifySourceStatus()));
+    return NextResponse.json({ status: "ok", overview });
   } catch (error) {
     return errorResponse(error, "admin/reviews/gbp");
   }
 }
 
 const SCOPES = new Set(["incremental", "backfill"]);
+const WRITE_REFUSED = "Mappings can only be changed from the production deployment.";
 
 export async function POST(request: Request) {
   try {
@@ -69,6 +66,7 @@ export async function POST(request: Request) {
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "manage_integrations");
     assertWithinRateLimit(request, "mutate");
+    const actor = context.identity.email || context.identity.subject;
 
     const body = await parseJsonBody<{
       action?: unknown;
@@ -79,28 +77,31 @@ export async function POST(request: Request) {
       accountName?: unknown;
       from?: unknown;
       to?: unknown;
+      manual?: unknown;
+      confirm?: unknown;
     }>(request);
     const action = typeof body.action === "string" ? body.action : "";
+
+    if (action === "unlink") {
+      if (!isProductionRuntime()) return NextResponse.json({ status: "refused", reason: WRITE_REFUSED }, { status: 409 });
+      const storeCode = typeof body.storeCode === "string" ? body.storeCode.trim() : "";
+      const outcome = await createSupabaseStore().clearMapping(storeCode, actor);
+      return NextResponse.json({ status: outcome === "cleared" ? "ok" : "refused", outcome }, { status: outcome === "cleared" ? 200 : 409 });
+    }
+
     const deps = await buildGbpRuntime();
 
-    if (action === "discover" || action === "confirm") {
-      const listings = await deps.store.readListings();
-      const accounts = await deps.client.listAccounts();
-      const found: { accountName: string; location: Awaited<ReturnType<typeof deps.client.listLocations>>[number] }[] = [];
-      for (const account of accounts) {
-        for (const location of await deps.client.listLocations(account.name)) {
-          found.push({ accountName: account.name, location });
-        }
+    if (action === "discover" || action === "confirm" || action === "confirm_all") {
+      /* The switch that makes the whole integration inert also silences discovery. */
+      if (readSyncMode() === "off") {
+        return NextResponse.json({ status: "disabled", reason: "GBP_SYNC_MODE is off, so nothing reaches Google." }, { status: 409 });
       }
-      const discovery = discoverMappings(
-        found.map((f) => f.location),
-        listings,
-      );
+      const discovery = await discoverFromGoogle(deps.client, deps.store);
 
       if (action === "discover") {
         return NextResponse.json({
           status: "ok",
-          accounts: accounts.length,
+          accounts: discovery.accounts,
           counts: discovery.counts,
           proposals: discovery.proposals,
           missing: discovery.missing,
@@ -109,37 +110,61 @@ export async function POST(request: Request) {
 
       if (!isProductionRuntime()) {
         /* Preview shares the production database: mapping changes are a write. */
-        return NextResponse.json({ status: "refused", reason: "Mappings can only be confirmed from the production deployment." }, { status: 409 });
+        return NextResponse.json({ status: "refused", reason: WRITE_REFUSED }, { status: 409 });
       }
+
+      if (action === "confirm_all") {
+        const outcomes: { storeCode: string; outcome: string }[] = [];
+        for (const proposal of discovery.proposals) {
+          if (proposal.verdict !== "eligible" || !proposal.storeCode) continue;
+          const outcome = await deps.store.confirmMapping({
+            storeCode: proposal.storeCode,
+            accountName: proposal.accountName,
+            locationName: proposal.googleLocationName,
+            placeId: proposal.placeId,
+            evidence: { storeCode: true, uniqueStoreCode: true, corroborated: true, title: proposal.title, bulk: true },
+            confirmedBy: actor,
+          });
+          outcomes.push({ storeCode: proposal.storeCode, outcome });
+        }
+        return NextResponse.json({ status: "ok", confirmed: outcomes.filter((o) => o.outcome === "confirmed").length, outcomes });
+      }
+
       const storeCode = typeof body.storeCode === "string" ? body.storeCode.trim() : "";
       const locationName = typeof body.locationName === "string" ? body.locationName.trim() : "";
-      const proposal = discovery.proposals.find(
-        (p) => p.storeCode === storeCode && p.googleLocationName === locationName,
-      );
-      /* Confirmable only on a FRESH `eligible` verdict: store code, uniqueness and place id all agree. */
-      if (!proposal || proposal.verdict !== "eligible") {
+      const manual = body.manual === true;
+      const proposal = discovery.proposals.find((p) => p.storeCode === storeCode && p.googleLocationName === locationName);
+      /*
+       * FRESH EVIDENCE ONLY. `eligible` (store code, uniqueness and place id or
+       * address all agree) confirms. A listing whose only gap is missing
+       * corroboration confirms only when a person says they compared it
+       * (`manual`). A conflict never confirms.
+       */
+      const confirmable = !!proposal && (proposal.verdict === "eligible" || (manual && isManuallyConfirmable(proposal)));
+      if (!proposal || !confirmable) {
         return NextResponse.json(
-          {
-            status: "refused",
-            verdict: proposal?.verdict ?? "not_found",
-            reasons: proposal?.reasons ?? ["no_matching_google_location"],
-          },
+          { status: "refused", verdict: proposal?.verdict ?? "not_found", reasons: proposal?.reasons ?? ["no_matching_google_location"] },
           { status: 409 },
         );
       }
-      const owner = found.find((f) => f.location.name === locationName)!;
       const outcome = await deps.store.confirmMapping({
         storeCode,
-        accountName: owner.accountName,
+        accountName: proposal.accountName,
         locationName,
         placeId: proposal.placeId,
-        evidence: { storeCode: true, uniqueStoreCode: true, placeIdMatchesVerified: true, title: proposal.title },
-        confirmedBy: context.identity.email || context.identity.subject,
+        evidence: { storeCode: true, uniqueStoreCode: true, corroborated: proposal.verdict === "eligible", manual: proposal.verdict !== "eligible", title: proposal.title },
+        confirmedBy: actor,
       });
       return NextResponse.json({ status: outcome === "confirmed" ? "ok" : "refused", outcome }, { status: outcome === "confirmed" ? 200 : 409 });
     }
 
     if (action === "dry_run" || action === "sync") {
+      if (action === "sync" && body.confirm !== true) {
+        return NextResponse.json(
+          { status: "confirmation_required", reason: "Saving needs an explicit confirmation. Nothing was read or saved." },
+          { status: 409 },
+        );
+      }
       const scope = typeof body.scope === "string" && SCOPES.has(body.scope) ? (body.scope as "incremental" | "backfill") : "incremental";
       const storeCodes = Array.isArray(body.storeCodes)
         ? body.storeCodes.filter((c): c is string => typeof c === "string" && /^[0-9]{1,8}$/.test(c)).slice(0, 20)

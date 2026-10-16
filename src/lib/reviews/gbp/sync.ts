@@ -14,6 +14,7 @@ import {
 import { GbpApiError } from "./http";
 import { normaliseOfficialReview, toIncoming, type OfficialReview } from "./normalise";
 import { planPeriodAssignment } from "../period-assignment";
+import { buildRunSummary } from "./summary";
 import { reconcileLocation, type Decision, type Discrepancy } from "./reconcile";
 import type { GbpStore, LinkInput, MappedLocation, ReviewItemInput } from "./store";
 
@@ -340,25 +341,26 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
     totals,
   };
 
+  const summary = buildRunSummary(report);
+  const runStatus = status === "failed" ? "failed" : status === "partial" ? "partial" : "succeeded";
   if (mode === "live") {
     await deps.store.finishRun(runId, {
-      status: status === "failed" ? "failed" : status === "partial" ? "partial" : "succeeded",
+      status: runStatus,
       requests: report.requests,
       /* Counts and codes only — no review text and no names. */
-      summary: locations.map((l) => ({
-        storeCode: l.storeCode,
-        status: l.status,
-        errorCode: l.errorCode ?? null,
-        fetched: l.fetched,
-        autoMatched: l.autoMatched,
-        newReviews: l.newReviews,
-        needsReview: l.needsReview,
-        truncated: l.truncated,
-        complete: l.complete,
-        resourceMismatch: l.resourceMismatch,
-      })),
+      summary,
       errorCode: fatal ? (fatal as GbpApiError).code : null,
     });
+  } else if (options.trigger === "admin" || options.trigger === "cron") {
+    /*
+     * A DRY RUN WRITES NO REVIEW DATA — no review row, no link, no queue item.
+     * It records ONE counts-only ledger row, so "what did the last check find"
+     * is a fact the screen can show after a reload and the cutover checklist can
+     * read. Best effort: a ledger failure never fails the check.
+     */
+    await deps.store
+      .recordRun({ mode: "dry_run", scope: options.scope, trigger: options.trigger, status: runStatus, requests: report.requests, summary, errorCode: fatal ? (fatal as GbpApiError).code : null })
+      .catch(() => undefined);
   }
 
   return report;
