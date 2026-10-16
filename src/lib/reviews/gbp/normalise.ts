@@ -59,11 +59,24 @@ export function originalText(comment: string | null): string | null {
 
 export type NormaliseOutcome =
   | { ok: true; review: OfficialReview }
-  | { ok: false; code: "invalid_review_id" | "invalid_rating" };
+  | { ok: false; code: "invalid_review_id" | "invalid_rating" | "resource_mismatch" };
 
-export function normaliseOfficialReview(raw: GbpApiReview, storeCode: string): NormaliseOutcome {
+/**
+ * `expected` is the account and location the review was REQUESTED from. A review
+ * whose resource name is not exactly `{account}/{location}/reviews/{id}` for
+ * that location is refused: it can never be attributed to a listing Google did
+ * not serve it for (Ask Bubbles' structural brand-isolation check).
+ */
+export function normaliseOfficialReview(
+  raw: GbpApiReview,
+  storeCode: string,
+  expected?: { accountName: string; locationName: string },
+): NormaliseOutcome {
   if (typeof raw.reviewId !== "string" || !GBP_ID_PATTERN.test(raw.reviewId)) {
     return { ok: false, code: "invalid_review_id" };
+  }
+  if (expected && raw.name !== `${expected.accountName}/${expected.locationName}/reviews/${raw.reviewId}`) {
+    return { ok: false, code: "resource_mismatch" };
   }
   const rating = raw.starRating ? STAR[raw.starRating] ?? null : null;
   if (rating === null) return { ok: false, code: "invalid_rating" };

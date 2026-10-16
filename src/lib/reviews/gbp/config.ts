@@ -14,7 +14,9 @@ import "server-only";
 
 export const GBP_CLIENT_ID_ENV = "GOOGLE_GBP_CLIENT_ID";
 export const GBP_CLIENT_SECRET_ENV = "GOOGLE_GBP_CLIENT_SECRET";
-export const GBP_REFRESH_TOKEN_ENV = "GOOGLE_GBP_REFRESH_TOKEN";
+export const GBP_TOKEN_ENCRYPTION_KEY_ENV = "GOOGLE_GBP_TOKEN_ENCRYPTION_KEY";
+export const GBP_REDIRECT_URI_ENV = "GOOGLE_GBP_REDIRECT_URI";
+export const GBP_CALLBACK_PATH = "/api/admin/reviews/gbp/callback";
 export const GBP_SYNC_MODE_ENV = "GBP_SYNC_MODE";
 export const GBP_ALLOW_LIVE_BACKFILL_ENV = "GBP_ALLOW_LIVE_BACKFILL";
 export const GBP_CREATE_NEW_REVIEWS_ENV = "GBP_CREATE_NEW_REVIEWS";
@@ -29,10 +31,14 @@ export const GBP_SCOPE = "https://www.googleapis.com/auth/business.manage";
 
 export type GbpSyncMode = "off" | "dry_run" | "live";
 
-export interface GbpCredentials {
+/** The OAuth CLIENT only. The refresh token is never in the environment: it is sealed in the database. */
+export interface GbpOAuthClient {
   clientId: string;
   clientSecret: string;
-  refreshToken: string;
+}
+
+export interface GbpOAuthSettings extends GbpOAuthClient {
+  redirectUri: string;
 }
 
 export interface GbpLimits {
@@ -68,17 +74,30 @@ export function liveBackfillAllowed(env: NodeJS.ProcessEnv = process.env): boole
   return (env[GBP_ALLOW_LIVE_BACKFILL_ENV] ?? "").trim().toLowerCase() === "true";
 }
 
-export function readCredentials(env: NodeJS.ProcessEnv = process.env): GbpCredentials | null {
+export function readOAuthClient(env: NodeJS.ProcessEnv = process.env): GbpOAuthClient | null {
   const clientId = env[GBP_CLIENT_ID_ENV]?.trim();
   const clientSecret = env[GBP_CLIENT_SECRET_ENV]?.trim();
-  const refreshToken = env[GBP_REFRESH_TOKEN_ENV]?.trim();
-  if (!clientId || !clientSecret || !refreshToken) return null;
-  return { clientId, clientSecret, refreshToken };
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
+}
+
+/** The redirect URI the OAuth client must list. Explicit, or this site's origin + the callback path. */
+export function resolveRedirectUri(env: NodeJS.ProcessEnv = process.env, requestOrigin?: string): string | null {
+  const explicit = env[GBP_REDIRECT_URI_ENV]?.trim();
+  if (explicit) return explicit;
+  const base = env.NEXT_PUBLIC_SITE_URL?.trim() || requestOrigin;
+  return base ? `${base.replace(/\/+$/, "")}${GBP_CALLBACK_PATH}` : null;
+}
+
+export function readOAuthSettings(env: NodeJS.ProcessEnv = process.env, requestOrigin?: string): GbpOAuthSettings | null {
+  const client = readOAuthClient(env);
+  const redirectUri = resolveRedirectUri(env, requestOrigin);
+  return client && redirectUri ? { ...client, redirectUri } : null;
 }
 
 /** Names only — what is missing, never what is set. */
 export function missingCredentialNames(env: NodeJS.ProcessEnv = process.env): string[] {
-  return [GBP_CLIENT_ID_ENV, GBP_CLIENT_SECRET_ENV, GBP_REFRESH_TOKEN_ENV].filter(
+  return [GBP_CLIENT_ID_ENV, GBP_CLIENT_SECRET_ENV, GBP_TOKEN_ENCRYPTION_KEY_ENV].filter(
     (name) => !env[name]?.trim(),
   );
 }

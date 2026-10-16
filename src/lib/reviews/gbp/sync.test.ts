@@ -20,8 +20,8 @@ const mapping = (code: string, n: number): MappedLocation => ({
   verifiedPlaceId: `ChIJplace${code}0000`,
 });
 
-const apiReview = (id: string, over: Record<string, unknown> = {}) => ({
-  name: `accounts/1/locations/9/reviews/${id}`,
+const apiReview = (id: string, over: Record<string, unknown> = {}, location = "locations/9") => ({
+  name: `accounts/1/${location}/reviews/${id}`,
   reviewId: id,
   reviewer: { displayName: "Sarah Miller" },
   starRating: "FIVE",
@@ -50,6 +50,7 @@ function fixture(opts: {
   storedByLocation?: Record<string, StoredReview[]>;
   failOn?: Record<string, GbpApiError>;
   anchors?: Record<string, string | null>;
+  busy?: boolean;
 }) {
   const writes = { links: [] as LinkInput[], items: [] as ReviewItemInput[], runs: 0, finished: 0 };
   const fetchedLocations: string[] = [];
@@ -79,10 +80,15 @@ function fixture(opts: {
       return items.length;
     }),
     confirmMapping: vi.fn(async () => "confirmed"),
-    startRun: vi.fn(async () => {
+    claimRun: vi.fn(async () => {
+      if (opts.busy) return null;
       writes.runs += 1;
       return "run-1";
     }),
+    getActiveConnection: vi.fn(async () => null),
+    saveConnection: vi.fn(async () => "conn-1"),
+    endConnection: vi.fn(async () => undefined),
+    touchConnection: vi.fn(async () => undefined),
     finishRun: vi.fn(async () => {
       writes.finished += 1;
     }),
@@ -363,6 +369,62 @@ describe("runGbpSync", () => {
       const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] } });
       const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
       expect(report.locations[0].projectedIfFull).toMatchObject({ counted: 0, finding: "no_anchor" });
+    });
+  });
+
+  describe("run lock, completeness and dead grants", () => {
+    it("a live run that cannot take the lock reports busy and reads nothing", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] }, busy: true });
+      const report = await runGbpSync(live, { ...f.deps, env: env("live") });
+      expect(report.status).toBe("busy");
+      expect(f.fetchedLocations).toEqual([]);
+      expect(f.ingest).not.toHaveBeenCalled();
+    });
+
+    it("a dry run takes no lock", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [] }, busy: true });
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.status).toBe("succeeded");
+      expect(f.store.claimRun).not.toHaveBeenCalled();
+    });
+
+    it("records that the connection was used on a live run", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [] } });
+      await runGbpSync(live, { ...f.deps, connectionId: "conn-9", env: env("live") });
+      expect(f.store.touchConnection).toHaveBeenCalledWith("conn-9");
+    });
+
+    it("a revoked grant ends the stored connection (live only), so the screen says reconnect", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], failOn: { "locations/9": new GbpApiError("auth_revoked", "x") } });
+      await runGbpSync(live, { ...f.deps, env: env("live") });
+      expect(f.store.endConnection).toHaveBeenCalledWith("expired", "invalid_grant", expect.stringContaining("system"));
+      const g = fixture({ mappings: [mapping("306", 9)], failOn: { "locations/9": new GbpApiError("auth_revoked", "x") } });
+      await runGbpSync(dry, { ...g.deps, env: env("dry_run") });
+      expect(g.store.endConnection).not.toHaveBeenCalled();
+    });
+
+    it("a zero-quota project (not yet approved) stops the whole run instead of failing each listing", async () => {
+      const f = fixture({ mappings: [mapping("306", 9), mapping("307", 10)], failOn: { "locations/9": new GbpApiError("api_access_pending", "x") } });
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.locations[1]).toMatchObject({ status: "skipped", errorCode: "api_access_pending" });
+      expect(f.fetchedLocations).toEqual(["locations/9"]);
+    });
+
+    it("a review that belongs to ANOTHER listing is refused and makes the read incomplete", async () => {
+      const f = fixture({
+        mappings: [mapping("306", 9)],
+        reviews: { "locations/9": [apiReview("GBP00001"), apiReview("GBP00002", {}, "locations/777")] },
+        storedByLocation: { "loc-306": [stored("a")] },
+      });
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.locations[0]).toMatchObject({ fetched: 1, resourceMismatch: 1, complete: false, unmatchedStored: 0 });
+    });
+
+    it("is complete only when everything was read and Google's total is not larger", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] } });
+      // the fixture reports totalReviewCount 10, so one review read is NOT complete
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.locations[0].complete).toBe(false);
     });
   });
 });

@@ -16,6 +16,8 @@ import "server-only";
 export type GbpErrorCode =
   | "auth_revoked"
   | "auth_failed"
+  | "api_disabled"
+  | "api_access_pending"
   | "forbidden"
   | "not_found"
   | "quota_exhausted"
@@ -58,6 +60,7 @@ export const defaultHttpDeps: HttpDeps = {
 };
 
 export const MAX_ATTEMPTS = 5;
+const REQUEST_TIMEOUT_MS = 20_000;
 const BASE_DELAY_MS = 500;
 const MAX_DELAY_MS = 30_000;
 
@@ -75,46 +78,95 @@ export function backoffMs(attempt: number, retryAfterHeader: string | null, rand
   return Math.min(exponential + exponential * 0.25 * random(), MAX_DELAY_MS);
 }
 
-async function readGoogleError(response: Response): Promise<{ message: string; status: string | null }> {
-  try {
-    const body = (await response.json()) as {
-      error?: { message?: unknown; status?: unknown } | string;
-      error_description?: unknown;
-    };
-    if (typeof body.error === "string") {
-      return { message: body.error.slice(0, 120), status: body.error.slice(0, 60) };
+export interface GoogleErrorFacts {
+  status: string | null;
+  reasons: string[];
+  quotaLimitValue: string | null;
+  message: string;
+}
+
+/**
+ * Reads Google's STRUCTURED error facts (status string, `details[].reason`,
+ * quota metadata). Classification relies on these, not on message text, and the
+ * message is used only as a fallback and then dropped — it can quote project
+ * identifiers and is never kept or returned.
+ */
+export function readErrorFacts(body: unknown): GoogleErrorFacts {
+  const error = body && typeof body === "object" ? (body as { error?: unknown }).error : null;
+  const e = (error && typeof error === "object" ? error : {}) as { status?: unknown; message?: unknown; details?: unknown };
+  const reasons: string[] = [];
+  let quotaLimitValue: string | null = null;
+  if (Array.isArray(e.details)) {
+    for (const d of e.details) {
+      if (!d || typeof d !== "object") continue;
+      const detail = d as { reason?: unknown; metadata?: unknown };
+      if (typeof detail.reason === "string") reasons.push(detail.reason);
+      const meta = detail.metadata && typeof detail.metadata === "object" ? (detail.metadata as Record<string, unknown>) : null;
+      if (meta && typeof meta.quota_limit_value === "string") quotaLimitValue = meta.quota_limit_value;
     }
-    const message = typeof body.error?.message === "string" ? body.error.message : "";
-    const status = typeof body.error?.status === "string" ? body.error.status : null;
-    return { message: message.slice(0, 200), status };
+  }
+  return {
+    status: typeof e.status === "string" ? e.status : null,
+    reasons,
+    quotaLimitValue,
+    message: typeof e.message === "string" ? e.message.slice(0, 600) : "",
+  };
+}
+
+async function readGoogleError(response: Response): Promise<GoogleErrorFacts> {
+  try {
+    return readErrorFacts(await response.json());
   } catch {
-    return { message: "", status: null };
+    return { status: null, reasons: [], quotaLimitValue: null, message: "" };
   }
 }
 
-export function classifyFailure(status: number, googleStatus: string | null): GbpApiError {
+export function classifyFailure(status: number, facts: GoogleErrorFacts | string | null): GbpApiError {
+  const f: GoogleErrorFacts =
+    facts && typeof facts === "object"
+      ? facts
+      : { status: facts, reasons: [], quotaLimitValue: null, message: "" };
+  const googleStatus = f.status;
+
   if (status === 401) return new GbpApiError("auth_failed", "Google rejected the access token.", { status });
+
+  const notEnabled =
+    f.reasons.includes("SERVICE_DISABLED") ||
+    /has not been used in project|is disabled|API has not been enabled/i.test(f.message);
+  if (status === 403 && notEnabled) {
+    return new GbpApiError("api_disabled", "A Business Profile API is not enabled in the Google Cloud project.", { status, googleStatus });
+  }
+
+  /*
+   * A quota LIMIT OF ZERO is the signature of a Google Cloud project that has not
+   * been APPROVED for the Business Profile APIs. It is a 429, but waiting does not
+   * help and retrying only burns requests, so it is its own permanent code.
+   */
+  const exhausted =
+    status === 429 ||
+    f.status === "RESOURCE_EXHAUSTED" ||
+    f.reasons.includes("RATE_LIMIT_EXCEEDED") ||
+    f.reasons.includes("RESOURCE_EXHAUSTED");
+  if (exhausted && f.quotaLimitValue === "0") {
+    return new GbpApiError(
+      "api_access_pending",
+      "Google has not yet approved this Google Cloud project for the Business Profile APIs (quota limit 0).",
+      { status, googleStatus },
+    );
+  }
   if (status === 403) {
     return new GbpApiError(
       "forbidden",
-      "Google refused access. The Business Profile API may not be approved or enabled for this project, or the account lacks access to the location.",
+      "Google refused access. The account may lack access to the location, or the API is not approved for this project.",
       { status, googleStatus },
     );
   }
   if (status === 404) return new GbpApiError("not_found", "Google could not find that resource.", { status, googleStatus });
-  if (status === 429) {
-    return new GbpApiError("quota_exhausted", "Google's request quota is exhausted.", {
-      status,
-      googleStatus,
-      retryable: true,
-    });
+  if (exhausted) {
+    return new GbpApiError("quota_exhausted", "Google's request quota is exhausted.", { status, googleStatus, retryable: true });
   }
   if (status >= 500 || status === 408) {
-    return new GbpApiError("upstream_unavailable", "Google is temporarily unavailable.", {
-      status,
-      googleStatus,
-      retryable: true,
-    });
+    return new GbpApiError("upstream_unavailable", "Google is temporarily unavailable.", { status, googleStatus, retryable: true });
   }
   return new GbpApiError("bad_request", "Google rejected the request.", { status, googleStatus });
 }
@@ -137,7 +189,8 @@ export async function requestWithRetry(
 
     let response: Response;
     try {
-      response = await deps.fetch(url, init);
+      /* Per-request timeout, and a redirect is an error: nothing here follows one. */
+      response = await deps.fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch {
       lastError = new GbpApiError("upstream_unavailable", "The request to Google could not be completed.", {
         retryable: true,
@@ -149,9 +202,11 @@ export async function requestWithRetry(
 
     if (response.ok) return response;
 
-    const { status: googleStatus } = await readGoogleError(response);
-    const failure = classifyFailure(response.status, googleStatus);
+    const facts = await readGoogleError(response);
+    const failure = classifyFailure(response.status, facts);
 
+    /* Permanent even though the status is 429 (a zero quota never recovers by waiting). */
+    if (!failure.retryable) throw failure;
     if (!RETRYABLE_STATUSES.has(response.status)) throw failure;
 
     lastError = failure;

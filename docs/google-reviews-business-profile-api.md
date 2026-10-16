@@ -109,33 +109,91 @@ production, and the Pub/Sub subscription should point at the production host.
 | `GBP_ALLOW_LIVE_BACKFILL=true` | Required, in addition, for a live **backfill**. Cron and Pub/Sub never run a backfill. |
 | `GBP_MAX_REQUESTS_PER_RUN` | Hard ceiling on Google requests, retries included. |
 
-## Google Cloud configuration required
+## Reusing what Ask Bubbles already proved
 
-1. A Google Cloud project with the Business Profile APIs **approved** for it
-   (the access request must be granted; unapproved projects get quota 0 / 403):
-   * My Business Account Management API
-   * My Business Business Information API
-   * Google My Business API (v4 — the surface that serves reviews)
-   * My Business Notifications API
-2. OAuth consent screen + an OAuth client (web). Authorise with scope
-   `https://www.googleapis.com/auth/business.manage` as a user who manages the
-   Glow Brands profile; keep the resulting **refresh token** (offline access).
-   Publish the consent screen to production, or refresh tokens expire in 7 days.
-3. Pub/Sub: a topic; grant `mybusiness-api-pubsub@system.gserviceaccount.com`
-   the Publisher role on it; a **push** subscription to
-   `https://<production host>/api/reviews/gbp/pubsub` with OIDC authentication
-   (a service account you create, and an audience equal to that URL).
-4. Point Google at the topic: admin action `configure_notifications`
-   (`NEW_REVIEW`, `UPDATED_REVIEW`), once per account.
+Ask Bubbles (same Glow Brands Google account) has run the official API in
+production since 14 Oct 2026: 1 Business Profile account, **22 locations seen —
+7 Buff City Soap linked, 15 blocked as "Sun Tan City"** — every 6 hours, all 7
+stores complete with each imported count equal to Google's own total. So, already
+proven and **not** something to set up again:
 
-## Vercel environment variables (names only)
+* The Google Cloud project is **approved** for the Business Profile APIs, has the
+  Account Management, Business Information and My Business (v4) APIs **enabled**
+  (it needed enabling once: the first Bubbles run failed `api_disabled` and
+  succeeded minutes after), and its quota is ample (Bubbles reads ~7 stores × a
+  few pages every 6 hours).
+* The authorized Google account **can see Sun Tan City's 15 listings** — the
+  count equals Ask Sunny's allowlist. The store codes themselves are confirmed by
+  Ask Sunny's first dry run, not assumed.
+* The endpoints are the same ones used here (`GET /v1/accounts`,
+  `GET /v1/{account}/locations?readMask=…`, `GET /v4/{account}/{location}/reviews`)
+  and the notification setting is a `PATCH`, as corrected in this PR.
 
-`GOOGLE_GBP_CLIENT_ID`, `GOOGLE_GBP_CLIENT_SECRET`, `GOOGLE_GBP_REFRESH_TOKEN`
-(mark Sensitive), `GBP_SYNC_MODE`, `GBP_PUBSUB_AUDIENCE`,
-`GBP_PUBSUB_SERVICE_ACCOUNT`, `GBP_PUBSUB_TOPIC`; optional `GBP_CREATE_NEW_REVIEWS`, `GBP_ALLOW_LIVE_BACKFILL`,
-`GBP_INCREMENTAL_MAX_PAGES`, `GBP_BACKFILL_MAX_PAGES`, `GBP_MAX_REQUESTS_PER_RUN`.
-`CRON_SECRET` already exists. **Preview deployments share the production
-database** (same `NEXT_PUBLIC_SUPABASE_URL`), so do not add these to Preview.
+Patterns ported from Bubbles into this PR: in-app OAuth connect with PKCE and a
+**sealed refresh token in the database** (no token in the environment); `api_disabled`
+and zero-quota `api_access_pending` classification from Google's structured error
+details; request timeouts and `redirect: "error"`; loop-proof pagination and a
+**complete-read** rule (every page, nothing rejected, Google's total not larger);
+a Postgres run lock; store-code **and address** corroboration; refusing any review
+whose resource name is not under the requested listing; blocking the other brand
+by title before any comparison.
+
+Kept from this PR where it is stronger: Pub/Sub authentication is a Google-signed
+OIDC token (Bubbles uses a shared token in the push URL, which lands in logs), and
+reconciliation against the existing Brave/Apify ids (Bubbles had no legacy ids).
+
+### Separate OAuth client and separate refresh token (recommended)
+
+* **Do not reuse Bubbles' refresh token or client secret.** Create a **second OAuth
+  client in the same approved Google Cloud project** for Ask Sunny, with its own
+  redirect URI, and connect Google through Ask Sunny's own sign-in. Each app then
+  has its own grant: revoking or rotating one cannot break the other, a leaked
+  secret has half the blast radius, and nothing is copied between projects.
+* The same Google **account** may be used for both grants (it manages all 22
+  listings). A new grant does not invalidate an existing one.
+* The consent screen must be **published to production**; in Testing, refresh
+  tokens expire after 7 days. Confirm in Google Cloud (Bubbles' token is only days
+  old, so it has not proven this).
+* **Databases stay separate.** Ask Sunny's sealed token and reviews live only in
+  Ask Sunny's Supabase project; nothing here reads or writes Bubbles' database.
+  Brand isolation is enforced both ways (allowlist + other-brand title block +
+  resource-name check here; the mirror image in Bubbles).
+
+### Pub/Sub: one topic, two subscriptions
+
+A Business Profile **account has exactly one notification setting**, and both
+brands are in one account. The topic is therefore necessarily shared. Do **not**
+point the account at a second topic (that would silently redirect Bubbles).
+Instead give the existing topic a **second push subscription** for Ask Sunny, with
+its own service account and audience. Events for Buff City locations are simply
+acknowledged by Ask Sunny (they are not confirmed Sun Tan City listings), and Sun
+Tan City events cause Bubbles to run a harmless idempotent sync. The admin
+`configure_notifications` action **refuses** if the account already notifies a
+different topic. Note that Bubbles has recorded **no** Pub/Sub-triggered run yet:
+its 6-hourly cron is what is proven; push delivery is not.
+
+## Google Cloud configuration required (Ask Sunny's part only)
+
+1. In the **existing approved project** (the one Ask Bubbles uses): create a
+   **second OAuth client** (Web application) named for Ask Sunny; add its redirect
+   URI `https://ask-sunny.vercel.app/api/admin/reviews/gbp/callback` (or your
+   explicit `GOOGLE_GBP_REDIRECT_URI`). Confirm the consent screen is published to
+   production.
+2. Pub/Sub (only for push): a **push subscription** on the existing topic to
+   `https://ask-sunny.vercel.app/api/reviews/gbp/pubsub` with OIDC enabled, a
+   service account dedicated to Ask Sunny, and an audience equal to that URL.
+   Do not change the account's notification setting.
+
+## Vercel environment variables (names only; Production only, never Preview)
+
+`GOOGLE_GBP_CLIENT_ID`, `GOOGLE_GBP_CLIENT_SECRET`, `GOOGLE_GBP_TOKEN_ENCRYPTION_KEY`
+(all Sensitive), optional `GOOGLE_GBP_REDIRECT_URI`; `GBP_SYNC_MODE` (start at
+`dry_run`); for push: `GBP_PUBSUB_AUDIENCE`, `GBP_PUBSUB_SERVICE_ACCOUNT`;
+optional `GBP_PUBSUB_TOPIC` (only used by `configure_notifications`),
+`GBP_CREATE_NEW_REVIEWS`, `GBP_ALLOW_LIVE_BACKFILL`, `GBP_INCREMENTAL_MAX_PAGES`,
+`GBP_BACKFILL_MAX_PAGES`, `GBP_MAX_REQUESTS_PER_RUN`. `CRON_SECRET` already exists.
+There is **no refresh-token variable**. **Preview deployments share the production
+database** (same `NEXT_PUBLIC_SUPABASE_URL`), so none of these belong in Preview.
 
 ## Production rollout
 
@@ -143,7 +201,9 @@ database** (same `NEXT_PUBLIC_SUPABASE_URL`), so do not add these to Preview.
 2. Apply `20261016001000_google_review_business_profile_api.sql` (additive,
    re-runnable). Run `supabase/tests/gbp_schema_checks.sql` against a throwaway
    cluster first.
-3. Add the Google variables with `GBP_SYNC_MODE=dry_run`.
+3. Add the Google variables with `GBP_SYNC_MODE=dry_run`, redeploy, then an
+   administrator opens `/api/admin/reviews/gbp/connect` and signs in with the
+   account that manages the profiles (sealed token saved; no token is ever shown).
 4. Admin `discover`; review proposals and `missing`; `confirm` each `eligible`
    listing; resolve `needs_review`/`conflict` by hand.
 5. Admin `dry_run` (incremental, then backfill). Review: per-listing counts vs
@@ -181,6 +241,10 @@ drop function if exists public.gbp_record_review_items(jsonb);
 drop function if exists public.gbp_confirm_location_mapping(text, text, text, text, jsonb, text);
 drop table if exists public.google_review_reconciliation_items;
 drop table if exists public.google_review_gbp_sync_runs;
+drop table if exists public.google_review_gbp_connections;   -- the sealed token (revoke the grant in Google first)
+drop function if exists public.gbp_set_connection(text, text[], text);
+drop function if exists public.gbp_end_connection(text, text, text);
+drop function if exists public.gbp_claim_run(text, text);
 alter table public.google_reviews
   drop column if exists gbp_review_name, drop column if exists gbp_review_id,
   drop column if exists gbp_link_method, drop column if exists gbp_linked_at,
@@ -205,7 +269,9 @@ commit;
 * `ALTER TYPE … ADD VALUE` runs inside the migration transaction (allowed on
   PG 12+, production is PG 17) because the value is not used in that transaction.
 * Functions are `SECURITY INVOKER`, revoked from `public`/`anon`/`authenticated`;
-  the new tables have RLS enabled with no policy and no browser-role privileges.
+  the new tables (including the sealed-token table) have RLS enabled with no
+  policy and no browser-role privileges. A unique index allows one running sync
+  at a time and one active connection.
 * Re-runnable (`IF NOT EXISTS` / `DROP … IF EXISTS`); verified by applying twice.
 
 ## Retiring Apify (only after verified production use)

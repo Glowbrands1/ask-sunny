@@ -68,6 +68,8 @@ export interface SyncDeps {
   client: GbpClient;
   store: GbpStore;
   limits: GbpLimits;
+  /** The active connection, for recording that it was used. Optional in tests. */
+  connectionId?: string;
   env?: NodeJS.ProcessEnv;
   ingest?: (
     reviews: IncomingGoogleReview[],
@@ -90,7 +92,15 @@ export interface LocationReport {
   errorCode?: string;
   fetched: number;
   truncated: boolean;
+  /**
+   * COMPLETE only if every page was read, every review was understood, and
+   * Google's own total is not larger than what was read (Ask Bubbles' rule).
+   * An incomplete read never supports a conclusion about what is missing.
+   */
+  complete: boolean;
   skippedInvalid: number;
+  /** Reviews whose resource name did not belong to the requested listing. Always refused. */
+  resourceMismatch: number;
   alreadyLinked: number;
   autoMatched: number;
   newReviews: number;
@@ -118,7 +128,7 @@ export interface LocationReport {
 export interface SyncReport {
   mode: "dry_run" | "live";
   scope: SyncScope;
-  status: "disabled" | "succeeded" | "partial" | "failed" | "refused";
+  status: "disabled" | "succeeded" | "partial" | "failed" | "refused" | "busy";
   reason?: string;
   /**
    * ENRICH-ONLY files known reviews with NO feed position, which the period
@@ -159,7 +169,9 @@ function emptyLocation(mapping: MappedLocation): LocationReport {
     status: "ok",
     fetched: 0,
     truncated: false,
+    complete: false,
     skippedInvalid: 0,
+    resourceMismatch: 0,
     alreadyLinked: 0,
     autoMatched: 0,
     newReviews: 0,
@@ -223,7 +235,15 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
   const maxPages = options.scope === "backfill" ? deps.limits.backfillMaxPages : deps.limits.incrementalMaxPages;
 
   const fileNew = creation.allowed;
-  const runId = mode === "live" ? await deps.store.startRun({ mode: "live", scope: options.scope, trigger: options.trigger }) : null;
+  /* ONE live run at a time, enforced by Postgres. A dry run writes nothing and so takes no lock. */
+  let runId: string | null = null;
+  if (mode === "live") {
+    runId = await deps.store.claimRun({ scope: options.scope, trigger: options.trigger });
+    if (!runId) {
+      return { ...base, mode, status: "busy", reason: "Another Business Profile sync is running.", forcedDryRunReason };
+    }
+    if (deps.connectionId) await deps.store.touchConnection(deps.connectionId).catch(() => undefined);
+  }
 
   const locations: LocationReport[] = [];
   let fatal: GbpApiError | null = null;
@@ -245,8 +265,19 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
       if (error instanceof GbpApiError) {
         report.errorCode = error.code;
         /* Revoked auth, an unapproved API and an exhausted budget fail every listing alike. */
-        if (error.code === "auth_revoked" || error.code === "auth_failed" || error.code === "forbidden" || error.code === "request_budget_exceeded") {
+        if (
+          error.code === "auth_revoked" ||
+          error.code === "auth_failed" ||
+          error.code === "forbidden" ||
+          error.code === "api_disabled" ||
+          error.code === "api_access_pending" ||
+          error.code === "request_budget_exceeded"
+        ) {
           fatal = error;
+          /* A dead grant is recorded so the screen can say "reconnect", not "Google is down". */
+          if (mode === "live" && error.code === "auth_revoked") {
+            await deps.store.endConnection("expired", "invalid_grant", `system:${options.trigger}`).catch(() => undefined);
+          }
         }
       } else {
         report.errorCode = "unexpected_error";
@@ -294,6 +325,8 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
         newReviews: l.newReviews,
         needsReview: l.needsReview,
         truncated: l.truncated,
+        complete: l.complete,
+        resourceMismatch: l.resourceMismatch,
       })),
       errorCode: fatal ? (fatal as GbpApiError).code : null,
     });
@@ -315,8 +348,12 @@ async function syncLocation(
 
   const officials: OfficialReview[] = [];
   for (const raw of fetched.reviews) {
-    const outcome = normaliseOfficialReview(raw, mapping.storeCode);
+    const outcome = normaliseOfficialReview(raw, mapping.storeCode, {
+      accountName: mapping.accountName,
+      locationName: mapping.gbpLocationName,
+    });
     if (outcome.ok) officials.push(outcome.review);
+    else if (outcome.code === "resource_mismatch") report.resourceMismatch += 1;
     else report.skippedInvalid += 1;
   }
 
@@ -327,6 +364,11 @@ async function syncLocation(
 
   report.fetched = unique.length;
   report.truncated = fetched.truncated;
+  report.complete =
+    !fetched.truncated &&
+    report.skippedInvalid === 0 &&
+    report.resourceMismatch === 0 &&
+    (fetched.totalReviewCount === null || unique.length >= fetched.totalReviewCount);
   report.storedTotal = stored.length;
   report.googleTotal = fetched.totalReviewCount;
   report.googleAverage = fetched.averageRating;
@@ -335,7 +377,7 @@ async function syncLocation(
     : null;
   report.discrepancies = plan.discrepancies;
   /* Only meaningful when the whole feed was read. */
-  report.unmatchedStored = fetched.truncated ? 0 : plan.unmatchedStored.length;
+  report.unmatchedStored = report.complete ? plan.unmatchedStored.length : 0;
 
   for (const decision of plan.decisions) {
     if (decision.kind === "linked") report.alreadyLinked += 1;

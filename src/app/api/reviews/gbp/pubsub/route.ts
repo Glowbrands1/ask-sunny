@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   if (!parsed.ok) return new NextResponse(null, { status: 204 });
 
   try {
-    const runtimeDeps = buildGbpRuntime();
+    const runtimeDeps = await buildGbpRuntime();
     const mappings = await runtimeDeps.store.readConfirmedMappings();
     const mapping = mappings.find(
       (m) => m.accountName === parsed.accountName && m.gbpLocationName === parsed.locationName,
@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       { requestedMode: "live", scope: "incremental", trigger: "pubsub", storeCodes: [mapping.storeCode] },
       runtimeDeps,
     );
+    /* Busy: a run already in flight is reading the same pages, so this message is covered. */
     if (report.status === "failed" || report.status === "partial") {
       return NextResponse.json({ status: report.status }, { status: 500 });
     }

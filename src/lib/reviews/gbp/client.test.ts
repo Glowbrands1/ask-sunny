@@ -51,7 +51,7 @@ describe("GBP client", () => {
     let page = 0;
     const d = router(() => {
       page += 1;
-      return json({ reviews: [{ name: `accounts/1/locations/2/reviews/r${page}`, reviewId: `r${page}000000`, starRating: "FIVE" }], nextPageToken: "more", totalReviewCount: 99, averageRating: 4.5 });
+      return json({ reviews: [{ name: `accounts/1/locations/2/reviews/r${page}`, reviewId: `r${page}000000`, starRating: "FIVE" }], nextPageToken: `more-${page}`, totalReviewCount: 99, averageRating: 4.5 });
     });
     const client = createGbpClient({ tokens: tokens(), deps: d, maxRequests: 50 });
     const result = await client.listReviews("accounts/1", "locations/2", 3);
@@ -112,5 +112,38 @@ describe("GBP client", () => {
     expect(sent.method).toBe("PATCH");
     expect(sent.body).toMatchObject({ notificationTypes: ["NEW_REVIEW", "UPDATED_REVIEW"] });
     await expect(client.setNotificationSetting("accounts/1", "not-a-topic")).rejects.toMatchObject({ code: "bad_request" });
+  });
+
+  it("treats a repeated page token as a loop and reports the read INCOMPLETE rather than spinning", async () => {
+    const d = router(() => json({ reviews: [{ name: "n", reviewId: "abcdefgh" }], nextPageToken: "same" }));
+    const client = createGbpClient({ tokens: tokens(), deps: d, maxRequests: 50 });
+    const result = await client.listReviews("accounts/1", "locations/2", 10);
+    expect(result.truncated).toBe(true);
+    expect(d.urls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("fails a looping account/location listing instead of spinning", async () => {
+    const d = router(() => json({ accounts: [{ name: "accounts/1" }], nextPageToken: "same" }));
+    const client = createGbpClient({ tokens: tokens(), deps: d, maxRequests: 50 });
+    await expect(client.listAccounts()).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("paces requests at least minRequestIntervalMs apart", async () => {
+    const sleeps: number[] = [];
+    let clock = 1000;
+    const d = { ...router(() => json({ accounts: [] })), sleep: async (ms: number) => void sleeps.push(ms) };
+    const client = createGbpClient({ tokens: tokens(), deps: d, maxRequests: 50, minRequestIntervalMs: 150, now: () => clock });
+    await client.listAccounts();
+    clock += 50;
+    await client.listAccounts();
+    expect(sleeps).toEqual([100]);
+  });
+
+  it("reads the account's notification setting, and returns null when none exists", async () => {
+    const d = router(() => json({ pubsubTopic: "projects/p-123456/topics/t", notificationTypes: ["NEW_REVIEW"] }));
+    const client = createGbpClient({ tokens: tokens(), deps: d, maxRequests: 10 });
+    expect(await client.getNotificationSetting("accounts/1")).toEqual({ pubsubTopic: "projects/p-123456/topics/t", notificationTypes: ["NEW_REVIEW"] });
+    const none = createGbpClient({ tokens: tokens(), deps: router(() => json({}, 404)), maxRequests: 10 });
+    expect(await none.getNotificationSetting("accounts/1")).toBeNull();
   });
 });

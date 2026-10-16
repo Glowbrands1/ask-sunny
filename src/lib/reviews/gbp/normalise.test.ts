@@ -47,4 +47,11 @@ describe("normaliseOfficialReview", () => {
     const outcome = normaliseOfficialReview({ ...raw, comment: undefined }, "306");
     expect(outcome.ok && outcome.review.comment).toBeNull();
   });
+
+  it("refuses a review whose resource name does not belong to the requested listing", () => {
+    const expected = { accountName: "accounts/1", locationName: "locations/2" };
+    expect(normaliseOfficialReview(raw, "306", expected)).toMatchObject({ ok: true });
+    expect(normaliseOfficialReview({ ...raw, name: "accounts/1/locations/999/reviews/AbCdEf123456" }, "306", expected)).toEqual({ ok: false, code: "resource_mismatch" });
+    expect(normaliseOfficialReview({ ...raw, name: "accounts/9/locations/2/reviews/AbCdEf123456" }, "306", expected)).toEqual({ ok: false, code: "resource_mismatch" });
+  });
 });

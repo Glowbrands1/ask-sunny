@@ -496,3 +496,120 @@ revoke all on function public.gbp_confirm_location_mapping(text, text, text, tex
 
 comment on function public.gbp_apply_links(jsonb) is
   'Attaches official Business Profile data to stored reviews. Writes gbp_* columns only; never re-points an existing link; cannot touch ratings, text, reply columns, first_seen_week, first_seen_at or the reporting period.';
+
+
+-- ---------------------------------------------------- the OAuth connection ----
+--
+-- THE REFRESH TOKEN LIVES HERE, SEALED, NOT IN THE ENVIRONMENT. Pattern taken
+-- from Ask Bubbles' working Google integration: an administrator signs in to
+-- Google once through the app (PKCE), the refresh token is sealed with
+-- AES-256-GCM using a key held only in the server environment, and only the
+-- sealed value is stored. A database dump or read-only SQL leak yields no usable
+-- token. This is a SEPARATE grant from Ask Bubbles': separate OAuth client,
+-- separate token, separate database.
+
+create table if not exists public.google_review_gbp_connections (
+  id uuid primary key default extensions.gen_random_uuid(),
+  status text not null default 'active'
+    check (status in ('active', 'revoked', 'expired', 'error')),
+  /* "v1.<nonce>.<tag>.<ciphertext>" — sealed by the application, never a plaintext token. */
+  refresh_token_sealed text not null
+    check (refresh_token_sealed ~ '^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+           and length(refresh_token_sealed) <= 4096),
+  token_key_version smallint not null default 1 check (token_key_version > 0),
+  scopes text[] not null default '{}',
+  connected_by text not null check (length(connected_by) between 1 and 200),
+  connected_at timestamptz not null default now(),
+  last_used_at timestamptz,
+  last_error_code text check (last_error_code is null or last_error_code ~ '^[a-z0-9_]{1,60}$'),
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+/* At most ONE active connection. */
+create unique index if not exists google_review_gbp_connections_one_active
+  on public.google_review_gbp_connections ((true)) where status = 'active';
+
+drop trigger if exists google_review_gbp_connections_touch_updated_at
+  on public.google_review_gbp_connections;
+create trigger google_review_gbp_connections_touch_updated_at
+  before update on public.google_review_gbp_connections
+  for each row execute function public.touch_updated_at();
+
+alter table public.google_review_gbp_connections enable row level security;
+revoke all on public.google_review_gbp_connections from public, anon, authenticated;
+
+comment on table public.google_review_gbp_connections is
+  'The sealed Google refresh token for the Business Profile API. Server-only. At most one active row.';
+
+/* Replaces any earlier connection with the new one. */
+create or replace function public.gbp_set_connection(p_sealed text, p_scopes text[], p_actor text)
+returns uuid
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  update public.google_review_gbp_connections
+     set status = 'revoked', revoked_at = now()
+   where status = 'active';
+  insert into public.google_review_gbp_connections (refresh_token_sealed, scopes, connected_by)
+  values (p_sealed, coalesce(p_scopes, '{}'), left(p_actor, 200))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.gbp_end_connection(p_status text, p_error_code text, p_actor text)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if p_status not in ('revoked', 'expired', 'error') then
+    raise exception 'gbp_end_connection: bad status' using errcode = 'invalid_parameter_value';
+  end if;
+  update public.google_review_gbp_connections
+     set status = p_status, revoked_at = now(), last_error_code = p_error_code
+   where status = 'active';
+end;
+$$;
+
+-- ------------------------------------------------------------- the run lock ----
+--
+-- ONE LIVE RUN AT A TIME, enforced by Postgres rather than by hope. Pub/Sub, the
+-- cron and the admin console can all start a run; two at once would read the
+-- same pages and write the same rows twice. A run still "running" after 30
+-- minutes died without finishing and is abandoned by the next claim.
+
+create unique index if not exists google_review_gbp_sync_runs_one_running
+  on public.google_review_gbp_sync_runs ((true)) where status = 'running';
+
+create or replace function public.gbp_claim_run(p_trigger text, p_scope text)
+returns uuid
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  update public.google_review_gbp_sync_runs
+     set status = 'failed', finished_at = now(), error_code = 'abandoned'
+   where status = 'running' and started_at < now() - interval '30 minutes';
+
+  begin
+    insert into public.google_review_gbp_sync_runs (mode, scope, trigger)
+    values ('live', p_scope, p_trigger)
+    returning id into v_id;
+  exception when unique_violation then
+    return null;
+  end;
+  return v_id;
+end;
+$$;
+
+revoke all on function public.gbp_set_connection(text, text[], text) from public, anon, authenticated;
+revoke all on function public.gbp_end_connection(text, text, text) from public, anon, authenticated;
+revoke all on function public.gbp_claim_run(text, text) from public, anon, authenticated;

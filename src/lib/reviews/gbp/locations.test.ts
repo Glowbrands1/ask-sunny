@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ALLOWED_STORE_CODES } from "../store-codes";
-import { discoverMappings, type KnownListing } from "./locations";
+import { addressAgrees, discoverMappings, isOtherBrandTitle, normalizeAddressText, type KnownListing } from "./locations";
 import type { GbpLocation } from "./types";
 
 const listings: KnownListing[] = ALLOWED_STORE_CODES.map((storeCode) => ({
@@ -70,5 +70,37 @@ describe("discoverMappings", () => {
     const confirmed = listings.map((l) => (l.storeCode === "306" ? { ...l, confirmedLocationName: "locations/1" } : l));
     expect(discoverMappings([loc(1, "306")], confirmed).proposals[0].verdict).toBe("already_confirmed");
     expect(discoverMappings([loc(9, "306")], confirmed).proposals[0].verdict).toBe("conflict");
+  });
+
+  it("blocks another brand by TITLE first, even when its store code equals one of ours", () => {
+    const { proposals } = discoverMappings([{ name: "locations/5", title: "Buff City Soap - Lee's Summit", storeCode: "306", placeId: "ChIJplace3060000" }], listings);
+    expect(proposals[0]).toMatchObject({ verdict: "excluded_other_brand", reasons: ["title_names_another_brand"] });
+    expect(isOtherBrandTitle("BUFF CITY SOAP")).toBe(true);
+    expect(isOtherBrandTitle("Sun Tan City - KS Manhattan")).toBe(false);
+  });
+
+  describe("address corroboration (Ask Bubbles' rule)", () => {
+    const withAddress = (over: Partial<KnownListing> = {}): KnownListing[] =>
+      listings.map((l) => (l.storeCode === "306" ? { ...l, verifiedPlaceId: null, expectedAddress: { street: "1101 N 3rd St", city: "Manhattan", state: "KS", postalCode: "66502" }, ...over } : l));
+    const at = (over: Record<string, unknown> = {}): GbpLocation => ({
+      name: "locations/9", title: "Sun Tan City", storeCode: "306", placeId: undefined,
+      address: { addressLines: ["1101 North 3rd Street"], locality: "Manhattan", administrativeArea: "KS", postalCode: "66502-1234", ...over },
+    });
+
+    it("is eligible on store code + matching street/city/state/ZIP even without a place id", () => {
+      expect(discoverMappings([at()], withAddress()).proposals[0].verdict).toBe("eligible");
+    });
+    it("is a CONFLICT when both sides state an address and they differ", () => {
+      expect(discoverMappings([at({ postalCode: "99999" })], withAddress()).proposals[0]).toMatchObject({ verdict: "conflict", reasons: ["address_differs_from_roster"] });
+    });
+    it("needs a person when Google gives no address and no place id to corroborate", () => {
+      const noAddress = { ...at(), address: undefined };
+      expect(discoverMappings([noAddress], withAddress()).proposals[0].verdict).toBe("needs_review");
+    });
+    it("normalises street words and treats missing data as disagreement", () => {
+      expect(normalizeAddressText("1101 North 3rd Street, Suite 4")).toBe("1101 n 3rd st ste 4");
+      expect(addressAgrees(null, at())).toBe(false);
+      expect(addressAgrees({ street: "1101 N 3rd St", city: "Manhattan", state: "KS", postalCode: "66502" }, { ...at(), address: undefined })).toBe(false);
+    });
   });
 });

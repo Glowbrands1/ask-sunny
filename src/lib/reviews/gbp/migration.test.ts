@@ -34,7 +34,9 @@ describe("Business Profile migration is additive", () => {
   it("keeps the new tables server-only and the functions off the browser roles", () => {
     expect(code).toMatch(/alter table public\.google_review_reconciliation_items enable row level security/i);
     expect(code).toMatch(/alter table public\.google_review_gbp_sync_runs enable row level security/i);
-    for (const fn of ["gbp_apply_links", "gbp_record_review_items", "gbp_confirm_location_mapping"]) {
+    expect(code).toMatch(/alter table public\.google_review_gbp_connections enable row level security/i);
+    expect(code).toMatch(/revoke all on public\.google_review_gbp_connections from public, anon, authenticated/i);
+    for (const fn of ["gbp_apply_links", "gbp_record_review_items", "gbp_confirm_location_mapping", "gbp_set_connection", "gbp_end_connection", "gbp_claim_run"]) {
       expect(code).toMatch(new RegExp(`revoke all on function public\\.${fn}[^;]*from public, anon, authenticated`, "i"));
     }
   });
@@ -42,5 +44,12 @@ describe("Business Profile migration is additive", () => {
   it("forbids two listings sharing a Business Profile location and two rows sharing an official id", () => {
     expect(code).toMatch(/unique index[^;]*google_review_locations_gbp_location_key/i);
     expect(code).toMatch(/unique index[^;]*google_reviews_gbp_review_id_key/i);
+  });
+
+  it("stores only a SEALED refresh token, one active connection, and one running sync", () => {
+    expect(code).toMatch(/refresh_token_sealed ~ '\^v1/);
+    expect(code).toMatch(/unique index[^;]*google_review_gbp_connections_one_active/i);
+    expect(code).toMatch(/unique index[^;]*google_review_gbp_sync_runs_one_running/i);
+    expect(code).not.toMatch(/\brefresh_token\b(?!_sealed)/);
   });
 });

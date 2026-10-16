@@ -1,6 +1,6 @@
 import "server-only";
 
-import { GBP_SCOPE, type GbpCredentials } from "./config";
+import { GBP_SCOPE, type GbpOAuthClient } from "./config";
 import { defaultHttpDeps, GbpApiError, backoffMs, MAX_ATTEMPTS, type HttpDeps } from "./http";
 
 /**
@@ -25,8 +25,14 @@ export interface TokenProvider {
   invalidate(): void;
 }
 
+/**
+ * `getRefreshToken` supplies the refresh token on demand — in production by
+ * opening the sealed value in the database — so it is never held in the
+ * environment and is only in memory for the moment of an exchange.
+ */
 export function createTokenProvider(
-  credentials: GbpCredentials,
+  credentials: GbpOAuthClient,
+  getRefreshToken: () => Promise<string>,
   deps: HttpDeps = defaultHttpDeps,
   now: () => number = Date.now,
 ): TokenProvider {
@@ -37,7 +43,7 @@ export function createTokenProvider(
     const body = new URLSearchParams({
       client_id: credentials.clientId,
       client_secret: credentials.clientSecret,
-      refresh_token: credentials.refreshToken,
+      refresh_token: await getRefreshToken(),
       grant_type: "refresh_token",
     });
 
@@ -46,6 +52,8 @@ export function createTokenProvider(
       try {
         response = await deps.fetch(TOKEN_URL, {
           method: "POST",
+          redirect: "error",
+          signal: AbortSignal.timeout(15_000),
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body,
         });

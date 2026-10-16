@@ -39,6 +39,9 @@ export interface GbpClientOptions {
   tokens: TokenProvider;
   deps?: HttpDeps;
   maxRequests: number;
+  /** Minimum gap between Google requests. Far under quota, and polite. */
+  minRequestIntervalMs?: number;
+  now?: () => number;
 }
 
 export interface GbpClient {
@@ -56,6 +59,8 @@ export interface GbpClient {
     locationName: string,
     maxPages: number,
   ): Promise<{ reviews: GbpApiReview[]; averageRating: number | null; totalReviewCount: number | null; truncated: boolean }>;
+  /** The account's single notification setting (topic and types), or null if none is set. */
+  getNotificationSetting(accountName: string): Promise<{ pubsubTopic: string | null; notificationTypes: string[] } | null>;
   setNotificationSetting(accountName: string, topic: string): Promise<void>;
 }
 
@@ -71,6 +76,9 @@ const LOCATION_PATTERN = /^locations\/[0-9]{1,30}$/;
 
 export function createGbpClient(options: GbpClientOptions): GbpClient {
   const deps = options.deps ?? defaultHttpDeps;
+  const now = options.now ?? Date.now;
+  const minInterval = options.minRequestIntervalMs ?? 150;
+  let lastRequestAt = 0;
   let requests = 0;
 
   function charge(): void {
@@ -86,6 +94,9 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
   async function call(url: string, init: Omit<RequestInit, "headers"> = {}): Promise<unknown> {
     let refreshedAfter401 = false;
     for (;;) {
+      const wait = lastRequestAt + minInterval - now();
+      if (lastRequestAt > 0 && wait > 0) await deps.sleep(wait);
+      lastRequestAt = now();
       const token = await options.tokens.getAccessToken();
       try {
         const response = await requestWithRetry(
@@ -117,6 +128,7 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
     pick: (body: Record<string, unknown>) => T[],
   ): Promise<T[]> {
     const items: T[] = [];
+    const seenTokens = new Set<string>();
     let pageToken: string | null = null;
     for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
       const url = new URL(baseUrl);
@@ -125,6 +137,9 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
       items.push(...pick(body));
       pageToken = typeof body.nextPageToken === "string" && body.nextPageToken ? body.nextPageToken : null;
       if (!pageToken) return items;
+      /* A token we were already given means Google is looping: fail rather than spin. */
+      if (seenTokens.has(pageToken)) throw new GbpApiError("invalid_response", "Google's pagination looped.");
+      seenTokens.add(pageToken);
     }
     throw new GbpApiError("invalid_response", "Google's pagination did not terminate.");
   }
@@ -194,6 +209,7 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
       let token: string | null = null;
       let averageRating: number | null = null;
       let totalReviewCount: number | null = null;
+      const seenTokens = new Set<string>();
       for (let page = 0; page < maxPages; page += 1) {
         const result: GbpReviewsPage = await client.listReviewsPage(accountName, locationName, token);
         reviews.push(...result.reviews);
@@ -201,9 +217,29 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
         totalReviewCount = result.totalReviewCount ?? totalReviewCount;
         token = result.nextPageToken;
         if (!token) return { reviews, averageRating, totalReviewCount, truncated: false };
+        /* A repeated token is a loop: what we hold is NOT the whole list, so say so. */
+        if (seenTokens.has(token)) return { reviews, averageRating, totalReviewCount, truncated: true };
+        seenTokens.add(token);
       }
       /* Stopped by the page cap with more to read — reported, never silently complete. */
       return { reviews, averageRating, totalReviewCount, truncated: true };
+    },
+
+    async getNotificationSetting(accountName) {
+      assertResourceName(accountName, ACCOUNT_PATTERN, "account");
+      try {
+        const body = (await call(
+          `https://mybusinessnotifications.googleapis.com/v1/${accountName}/notificationSetting`,
+        )) as { pubsubTopic?: unknown; notificationTypes?: unknown };
+        const topic = typeof body.pubsubTopic === "string" && body.pubsubTopic ? body.pubsubTopic : null;
+        const types = Array.isArray(body.notificationTypes)
+          ? body.notificationTypes.filter((t): t is string => typeof t === "string")
+          : [];
+        return topic || types.length ? { pubsubTopic: topic, notificationTypes: types } : null;
+      } catch (error) {
+        if (error instanceof GbpApiError && error.code === "not_found") return null;
+        throw error;
+      }
     },
 
     async setNotificationSetting(accountName, topic) {

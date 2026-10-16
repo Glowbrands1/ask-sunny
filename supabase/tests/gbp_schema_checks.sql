@@ -237,4 +237,80 @@ begin
   end if;
 end $$;
 
+
+-- ------------------------------------------------ 8. the sealed OAuth connection ----
+do $$
+declare a uuid; b uuid;
+begin
+  a := public.gbp_set_connection('v1.AAAA.BBBB.CCCC', array['https://www.googleapis.com/auth/business.manage'], 'admin@example.com');
+  b := public.gbp_set_connection('v1.DDDD.EEEE.FFFF', array['https://www.googleapis.com/auth/business.manage'], 'admin@example.com');
+  if (select count(*) from public.google_review_gbp_connections where status = 'active') <> 1 then
+    raise exception 'there must be exactly one active connection';
+  end if;
+  if (select status from public.google_review_gbp_connections where id = a) <> 'revoked' then
+    raise exception 'a new connection must replace the old one';
+  end if;
+
+  -- a plaintext token can never be stored: only the sealed v1.* format is accepted
+  begin
+    insert into public.google_review_gbp_connections (refresh_token_sealed, connected_by)
+    values ('1//0gPlaintextRefreshToken', 'admin@example.com');
+    raise exception 'a plaintext token must be refused';
+  exception when check_violation then null;
+  end;
+
+  -- two active connections are impossible even bypassing the function
+  begin
+    insert into public.google_review_gbp_connections (refresh_token_sealed, connected_by)
+    values ('v1.GGGG.HHHH.IIII', 'admin@example.com');
+    raise exception 'a second active connection must be refused';
+  exception when unique_violation then null;
+  end;
+
+  perform public.gbp_end_connection('expired', 'invalid_grant', 'system:cron');
+  if exists (select 1 from public.google_review_gbp_connections where status = 'active') then
+    raise exception 'ending must deactivate the connection';
+  end if;
+  begin
+    perform public.gbp_end_connection('bogus', null, 'x');
+    raise exception 'a bad status must be refused';
+  exception when invalid_parameter_value then null;
+  end;
+end $$;
+
+-- ------------------------------------------------------------ 9. the run lock ----
+do $$
+declare first_run uuid; second_run uuid; third_run uuid;
+begin
+  first_run := public.gbp_claim_run('cron', 'incremental');
+  if first_run is null then raise exception 'the first claim must succeed'; end if;
+
+  second_run := public.gbp_claim_run('pubsub', 'incremental');
+  if second_run is not null then raise exception 'a second concurrent run must be refused'; end if;
+
+  -- a run that died long ago is abandoned by the next claim, not left blocking forever
+  update public.google_review_gbp_sync_runs set started_at = now() - interval '2 hours' where id = first_run;
+  third_run := public.gbp_claim_run('cron', 'incremental');
+  if third_run is null then raise exception 'a stale run must not block the next one'; end if;
+  if (select error_code from public.google_review_gbp_sync_runs where id = first_run) <> 'abandoned' then
+    raise exception 'a stale run must be marked abandoned';
+  end if;
+  update public.google_review_gbp_sync_runs set status = 'succeeded', finished_at = now() where id = third_run;
+  if public.gbp_claim_run('admin', 'incremental') is null then raise exception 'a finished run must release the lock'; end if;
+end $$;
+
+-- the new objects are server-only too
+do $$
+begin
+  if has_table_privilege('anon', 'public.google_review_gbp_connections', 'select')
+     or has_table_privilege('authenticated', 'public.google_review_gbp_connections', 'select') then
+    raise exception 'browser roles must not read the sealed token table';
+  end if;
+  if has_function_privilege('anon', 'public.gbp_set_connection(text,text[],text)', 'execute')
+     or has_function_privilege('authenticated', 'public.gbp_claim_run(text,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.gbp_end_connection(text,text,text)', 'execute') then
+    raise exception 'browser roles must not execute the connection or lock functions';
+  end if;
+end $$;
+
 \echo 'gbp_schema_checks: all checks passed'

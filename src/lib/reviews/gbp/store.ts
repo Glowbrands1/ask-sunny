@@ -48,7 +48,19 @@ export interface LocalTotals {
   averageRating: number | null;
 }
 
+export interface StoredConnection {
+  id: string;
+  refreshTokenSealed: string;
+  scopes: string[];
+  connectedBy: string;
+  connectedAt: string;
+}
+
 export interface GbpStore {
+  getActiveConnection(): Promise<StoredConnection | null>;
+  saveConnection(sealed: string, scopes: readonly string[], actor: string): Promise<string>;
+  endConnection(status: "revoked" | "expired" | "error", errorCode: string | null, actor: string): Promise<void>;
+  touchConnection(id: string): Promise<void>;
   readListings(): Promise<(KnownListing & { locationId: string; isActive: boolean })[]>;
   readConfirmedMappings(storeCodes?: readonly string[]): Promise<MappedLocation[]>;
   readStoredReviews(locationId: string): Promise<StoredReview[]>;
@@ -65,7 +77,8 @@ export interface GbpStore {
     evidence: Record<string, unknown>;
     confirmedBy: string;
   }): Promise<string>;
-  startRun(input: { mode: "live"; scope: string; trigger: string }): Promise<string | null>;
+  /** Takes the single live-run lock. Null means another run holds it. */
+  claimRun(input: { scope: string; trigger: string }): Promise<string | null>;
   finishRun(
     id: string | null,
     input: { status: "succeeded" | "partial" | "failed"; requests: number; summary: unknown; errorCode: string | null },
@@ -84,10 +97,49 @@ export function createSupabaseStore(): GbpStore {
   const db = () => getSupabaseAdmin();
 
   return {
+    async getActiveConnection() {
+      const { data, error } = await db()
+        .from("google_review_gbp_connections")
+        .select("id,refresh_token_sealed,scopes,connected_by,connected_at")
+        .eq("status", "active")
+        .maybeSingle();
+      if (error) fail("read the connection", error.code);
+      if (!data) return null;
+      const row = data as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        refreshTokenSealed: String(row.refresh_token_sealed),
+        scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
+        connectedBy: String(row.connected_by),
+        connectedAt: String(row.connected_at),
+      };
+    },
+
+    async saveConnection(sealed, scopes, actor) {
+      const { data, error } = await db().rpc("gbp_set_connection", { p_sealed: sealed, p_scopes: [...scopes], p_actor: actor });
+      if (error) fail("save the connection", error.code);
+      return String(data);
+    },
+
+    async endConnection(status, errorCode, actor) {
+      const { error } = await db().rpc("gbp_end_connection", { p_status: status, p_error_code: errorCode, p_actor: actor });
+      if (error) fail("end the connection", error.code);
+    },
+
+    async touchConnection(id) {
+      const { error } = await db()
+        .from("google_review_gbp_connections")
+        .update({ last_used_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) fail("record connection use", error.code);
+    },
+
     async readListings() {
       const { data, error } = await db()
         .from("google_review_locations")
-        .select("id,store_code,google_location_label,google_place_id,gbp_location_name,gbp_mapping_status,is_active");
+        .select(
+          "id,store_code,google_location_label,google_place_id,gbp_location_name,gbp_mapping_status,is_active,expected_street_address,expected_city,expected_state,expected_postal_code",
+        );
       if (error) fail("read listings", error.code);
       return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
         locationId: row.id as string,
@@ -97,6 +149,15 @@ export function createSupabaseStore(): GbpStore {
         confirmedLocationName:
           row.gbp_mapping_status === "confirmed" ? ((row.gbp_location_name as string | null) ?? null) : null,
         isActive: row.is_active === true,
+        expectedAddress:
+          row.expected_street_address && row.expected_city && row.expected_state && row.expected_postal_code
+            ? {
+                street: row.expected_street_address as string,
+                city: row.expected_city as string,
+                state: row.expected_state as string,
+                postalCode: row.expected_postal_code as string,
+              }
+            : null,
       }));
     },
 
@@ -209,17 +270,10 @@ export function createSupabaseStore(): GbpStore {
       return ((data ?? {}) as { status?: string }).status ?? "unknown";
     },
 
-    async startRun(input) {
-      const { data, error } = await db()
-        .from("google_review_gbp_sync_runs")
-        .insert({ mode: input.mode, scope: input.scope, trigger: input.trigger })
-        .select("id")
-        .single();
-      if (error) {
-        console.error("[reviews/gbp/store] could not open a run row", error.code ?? "unknown");
-        return null;
-      }
-      return (data as { id: string }).id;
+    async claimRun(input) {
+      const { data, error } = await db().rpc("gbp_claim_run", { p_trigger: input.trigger, p_scope: input.scope });
+      if (error) fail("claim the run lock", error.code);
+      return typeof data === "string" ? data : null;
     },
 
     async finishRun(id, input) {

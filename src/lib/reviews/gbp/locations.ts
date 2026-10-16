@@ -25,9 +25,18 @@ import type { GbpLocation } from "./types";
  * with the reason, and a person decides.
  */
 
+export interface ExpectedAddress {
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+}
+
 export interface KnownListing {
   storeCode: string;
   googleLocationLabel: string;
+  /** What the roster says the listing's address is (from the Apify verification). Null if not held. */
+  expectedAddress?: ExpectedAddress | null;
   /** The place id verified during the Apify rollout, when one is held. */
   verifiedPlaceId: string | null;
   /** Already-confirmed Business Profile location, if any. */
@@ -65,6 +74,53 @@ export interface LocationDiscovery {
 
 const SUN_TAN_CITY_TITLE = /\bsun\s*tan\s*city\b/i;
 
+/**
+ * ANOTHER BRAND'S TITLE IS BLOCKED FIRST, before any comparison — even if its
+ * store code happened to equal one of ours. Ask Bubbles (same Google account)
+ * does the mirror image for "Sun Tan City". Store codes are numeric and short, so
+ * a future Buff City Soap code could collide with one of ours; the title cannot.
+ */
+export const OTHER_BRAND_TITLE_MARKERS: readonly string[] = ["buffcitysoap", "buffcity"];
+
+export function isOtherBrandTitle(title: string | null | undefined): boolean {
+  if (!title) return false;
+  const squashed = title.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return OTHER_BRAND_TITLE_MARKERS.some((marker) => squashed.includes(marker));
+}
+
+const STREET_WORDS: Readonly<Record<string, string>> = {
+  street: "st", drive: "dr", road: "rd", avenue: "ave", boulevard: "blvd", lane: "ln", parkway: "pkwy",
+  highway: "hwy", court: "ct", circle: "cir", place: "pl", suite: "ste", north: "n", south: "s", east: "e",
+  west: "w", northwest: "nw", northeast: "ne", southwest: "sw", southeast: "se",
+};
+
+/** Lower-case, strip punctuation, collapse spacing, abbreviate street words. */
+export function normalizeAddressText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[.,#]/g, " ")
+    .replace(/[^a-z0-9\s'-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => STREET_WORDS[token] ?? token)
+    .join(" ");
+}
+
+const plain = (value: string | null | undefined) => normalizeAddressText(value ?? "").replace(/['-]/g, "");
+
+/** True only when street, city, state and ZIP all agree. Absent data is NOT agreement. */
+export function addressAgrees(expected: ExpectedAddress | null | undefined, location: GbpLocation): boolean {
+  const a = location.address;
+  if (!expected || !a) return false;
+  const google = ` ${normalizeAddressText((a.addressLines ?? []).join(" "))} `;
+  return (
+    google.includes(` ${normalizeAddressText(expected.street)} `) &&
+    plain(a.locality) === plain(expected.city) &&
+    (a.administrativeArea ?? "").trim().toUpperCase() === expected.state.trim().toUpperCase() &&
+    (a.postalCode ?? "").trim().slice(0, 5) === expected.postalCode.trim().slice(0, 5)
+  );
+}
+
 export function discoverMappings(
   locations: readonly GbpLocation[],
   listings: readonly KnownListing[],
@@ -89,6 +145,11 @@ export function discoverMappings(
       title: location.title ?? null,
       placeId: location.placeId ?? null,
     };
+
+    if (isOtherBrandTitle(location.title)) {
+      proposals.push({ ...base, verdict: "excluded_other_brand", storeCode: code, reasons: ["title_names_another_brand"] });
+      continue;
+    }
 
     if (!code || !isAllowedStoreCode(code)) {
       /*
@@ -136,8 +197,22 @@ export function discoverMappings(
       continue;
     }
 
-    if (!listing.verifiedPlaceId) reasons.push("no_verified_place_id_to_corroborate");
-    if (!location.placeId) reasons.push("google_returned_no_place_id");
+    /*
+     * INDEPENDENT CORROBORATION beyond the store code: the place id matches the
+     * one verified during the Apify rollout, OR the street/city/state/ZIP match
+     * the roster's expected address (Ask Bubbles' rule). Either is enough;
+     * neither means a person decides.
+     */
+    const placeAgrees = !!listing.verifiedPlaceId && !!location.placeId && listing.verifiedPlaceId === location.placeId;
+    const addressOk = addressAgrees(listing.expectedAddress, location);
+    if (!placeAgrees && !addressOk && listing.expectedAddress && location.address) {
+      /* Both sides state an address and they disagree: that is a conflict, not a gap. */
+      proposals.push({ ...base, verdict: "conflict", storeCode: code, reasons: ["address_differs_from_roster"] });
+      continue;
+    }
+    if (!placeAgrees && !addressOk) {
+      reasons.push(listing.verifiedPlaceId || listing.expectedAddress ? "no_independent_corroboration" : "no_verified_place_id_or_address_to_corroborate");
+    }
 
     proposals.push({
       ...base,

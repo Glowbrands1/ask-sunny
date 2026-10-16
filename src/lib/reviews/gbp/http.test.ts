@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { backoffMs, GbpApiError, MAX_ATTEMPTS, requestWithRetry, type HttpDeps } from "./http";
+import { backoffMs, classifyFailure, GbpApiError, MAX_ATTEMPTS, readErrorFacts, requestWithRetry, type HttpDeps } from "./http";
 
 function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
@@ -89,5 +89,42 @@ describe("backoffMs", () => {
   it("caps the delay", () => {
     expect(backoffMs(20, null, () => 0)).toBeLessThanOrEqual(30_000);
     expect(backoffMs(1, "9999", () => 0)).toBe(30_000);
+  });
+});
+
+describe("structured Google error classification", () => {
+  const zeroQuota = { error: { status: "RESOURCE_EXHAUSTED", message: "Quota exceeded", details: [{ reason: "RATE_LIMIT_EXCEEDED", metadata: { quota_limit_value: "0" } }] } };
+
+  it("treats a quota limit of ZERO as 'project not approved' — permanent, one request, no retry", async () => {
+    const d = deps([json(429, zeroQuota)]);
+    await expect(requestWithRetry("https://x", {}, d)).rejects.toMatchObject({ code: "api_access_pending", retryable: false });
+    expect(d.calls()).toBe(1);
+  });
+
+  it("recognises an API that is not enabled in the project, without retrying", async () => {
+    const d = deps([json(403, { error: { status: "PERMISSION_DENIED", details: [{ reason: "SERVICE_DISABLED" }] } })]);
+    await expect(requestWithRetry("https://x", {}, d)).rejects.toMatchObject({ code: "api_disabled" });
+    expect(d.calls()).toBe(1);
+  });
+
+  it("still retries an ordinary rate limit (non-zero quota)", async () => {
+    const d = deps([json(429, { error: { status: "RESOURCE_EXHAUSTED", details: [{ metadata: { quota_limit_value: "300" } }] } }), json(200, {})]);
+    await requestWithRetry("https://x", {}, d);
+    expect(d.calls()).toBe(2);
+  });
+
+  it("reads structured facts and keeps only a bounded message", () => {
+    const facts = readErrorFacts({ error: { status: "X", message: "m".repeat(2000), details: [{ reason: "R", metadata: { quota_limit_value: "0" } }] } });
+    expect(facts).toMatchObject({ status: "X", reasons: ["R"], quotaLimitValue: "0" });
+    expect(facts.message.length).toBeLessThanOrEqual(600);
+    expect(classifyFailure(500, null).retryable).toBe(true);
+  });
+
+  it("sends every request with a timeout signal and refuses redirects", async () => {
+    const seen: RequestInit[] = [];
+    const d: HttpDeps = { fetch: (async (_u: string, init: RequestInit) => { seen.push(init); return json(200, {}); }) as unknown as typeof fetch, sleep: async () => {}, random: () => 0 };
+    await requestWithRetry("https://x", { method: "GET" }, d);
+    expect(seen[0].redirect).toBe("error");
+    expect(seen[0].signal).toBeInstanceOf(AbortSignal);
   });
 });

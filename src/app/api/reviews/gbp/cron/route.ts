@@ -46,7 +46,7 @@ async function handle(request: Request) {
   try {
     const report = await runGbpSync(
       { requestedMode: "live", scope: "incremental", trigger: "cron" },
-      buildGbpRuntime(),
+      await buildGbpRuntime(),
     );
     /* Counts only: no review text and no names leave through a cron response. */
     return NextResponse.json({

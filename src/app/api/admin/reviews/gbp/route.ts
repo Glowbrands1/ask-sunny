@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       accountName?: unknown;
     }>(request);
     const action = typeof body.action === "string" ? body.action : "";
-    const deps = buildGbpRuntime();
+    const deps = await buildGbpRuntime();
 
     if (action === "discover" || action === "confirm") {
       const listings = await deps.store.readListings();
@@ -151,6 +151,26 @@ export async function POST(request: Request) {
       const accountName = typeof body.accountName === "string" ? body.accountName.trim() : "";
       const topic = process.env[GBP_PUBSUB_TOPIC_ENV];
       if (!topic) throw new AiError("not_configured", "The Pub/Sub topic is not configured.", 503, [GBP_PUBSUB_TOPIC_ENV]);
+      /*
+       * A Business Profile ACCOUNT has exactly ONE notification setting, and the
+       * Glow Brands account is shared with Ask Bubbles. Overwriting it would
+       * silently redirect (or break) the other app's notifications, so this
+       * refuses unless no topic is set yet or it is already this topic. Sharing
+       * one topic between the apps is done with a second SUBSCRIPTION, not by
+       * re-pointing the account.
+       */
+      const current = await deps.client.getNotificationSetting(accountName);
+      if (current?.pubsubTopic && current.pubsubTopic !== topic) {
+        return NextResponse.json(
+          {
+            status: "refused",
+            reason: "This account already notifies a different Pub/Sub topic. Add a subscription to that topic instead of changing it.",
+            currentTopic: current.pubsubTopic,
+          },
+          { status: 409 },
+        );
+      }
+      if (current?.pubsubTopic === topic) return NextResponse.json({ status: "ok", unchanged: true });
       await deps.client.setNotificationSetting(accountName, topic);
       return NextResponse.json({ status: "ok" });
     }

@@ -4,7 +4,8 @@ import { createTokenProvider } from "./auth";
 import { GBP_SCOPE } from "./config";
 import type { HttpDeps } from "./http";
 
-const credentials = { clientId: "cid", clientSecret: "SECRET-VALUE", refreshToken: "REFRESH-VALUE" };
+const credentials = { clientId: "cid", clientSecret: "SECRET-VALUE" };
+const refreshToken = async () => "REFRESH-VALUE";
 
 function deps(responses: Response[]): HttpDeps & { fetchMock: ReturnType<typeof vi.fn> } {
   let i = 0;
@@ -17,7 +18,7 @@ const ok = (extra: object = {}) =>
 describe("token provider", () => {
   it("exchanges the refresh token and caches the access token", async () => {
     const d = deps([ok()]);
-    const provider = createTokenProvider(credentials, d, () => 0);
+    const provider = createTokenProvider(credentials, refreshToken, d, () => 0);
     expect(await provider.getAccessToken()).toBe("tok-1");
     expect(await provider.getAccessToken()).toBe("tok-1");
     expect(d.fetchMock).toHaveBeenCalledTimes(1);
@@ -28,7 +29,7 @@ describe("token provider", () => {
   it("refreshes again once the token is within the expiry margin", async () => {
     let now = 0;
     const d = deps([ok(), ok({ access_token: "tok-2" })]);
-    const provider = createTokenProvider(credentials, d, () => now);
+    const provider = createTokenProvider(credentials, refreshToken, d, () => now);
     await provider.getAccessToken();
     now = 3_600_000 - 30_000;
     expect(await provider.getAccessToken()).toBe("tok-2");
@@ -36,14 +37,14 @@ describe("token provider", () => {
 
   it("shares one refresh between concurrent callers", async () => {
     const d = deps([ok()]);
-    const provider = createTokenProvider(credentials, d, () => 0);
+    const provider = createTokenProvider(credentials, refreshToken, d, () => 0);
     await Promise.all([provider.getAccessToken(), provider.getAccessToken(), provider.getAccessToken()]);
     expect(d.fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("reports a revoked grant as permanent auth_revoked, with no retry and no secret in the message", async () => {
     const d = deps([new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })]);
-    const provider = createTokenProvider(credentials, d);
+    const provider = createTokenProvider(credentials, refreshToken, d);
     const error = await provider.getAccessToken().catch((e) => e);
     expect(error.code).toBe("auth_revoked");
     expect(error.retryable).toBe(false);
@@ -52,20 +53,20 @@ describe("token provider", () => {
   });
 
   it("rejects a token that lacks the business.manage scope", async () => {
-    const provider = createTokenProvider(credentials, deps([ok({ scope: "openid email" })]));
+    const provider = createTokenProvider(credentials, refreshToken, deps([ok({ scope: "openid email" })]));
     await expect(provider.getAccessToken()).rejects.toMatchObject({ code: "forbidden" });
   });
 
   it("retries a 503 from the token endpoint", async () => {
     const d = deps([new Response("{}", { status: 503 }), ok()]);
-    const provider = createTokenProvider(credentials, d);
+    const provider = createTokenProvider(credentials, refreshToken, d);
     expect(await provider.getAccessToken()).toBe("tok-1");
     expect(d.fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("invalidate() forces a fresh exchange", async () => {
     const d = deps([ok(), ok({ access_token: "tok-2" })]);
-    const provider = createTokenProvider(credentials, d, () => 0);
+    const provider = createTokenProvider(credentials, refreshToken, d, () => 0);
     await provider.getAccessToken();
     provider.invalidate();
     expect(await provider.getAccessToken()).toBe("tok-2");
