@@ -6,6 +6,7 @@ import { DEFAULT_LIMITS } from "./config";
 import { GbpApiError } from "./http";
 import type { StoredReview } from "./reconcile";
 import type { GbpStore, LinkInput, MappedLocation, ReviewItemInput } from "./store";
+import { planPeriodAssignment } from "../period-assignment";
 import { runGbpSync, type SyncDeps } from "./sync";
 
 const T = "2026-10-01T15:00:00.000Z";
@@ -48,6 +49,7 @@ function fixture(opts: {
   reviews?: Record<string, ReturnType<typeof apiReview>[]>;
   storedByLocation?: Record<string, StoredReview[]>;
   failOn?: Record<string, GbpApiError>;
+  anchors?: Record<string, string | null>;
 }) {
   const writes = { links: [] as LinkInput[], items: [] as ReviewItemInput[], runs: 0, finished: 0 };
   const fetchedLocations: string[] = [];
@@ -66,6 +68,7 @@ function fixture(opts: {
     readListings: vi.fn(async () => []),
     readConfirmedMappings: vi.fn(async (codes) => (opts.mappings ?? []).filter((m) => !codes || codes.includes(m.storeCode))),
     readStoredReviews: vi.fn(async (locationId) => opts.storedByLocation?.[locationId] ?? []),
+    readAnchor: vi.fn(async (storeCode: string) => opts.anchors?.[storeCode] ?? null),
     lookupIdsByExternalId: vi.fn(async (_l: string, ids: string[]) => new Map<string, string>(ids.map((id) => [id, `row-for-${id}`] as [string, string]))),
     applyLinks: vi.fn(async (links) => {
       writes.links.push(...links);
@@ -98,7 +101,10 @@ function fixture(opts: {
 
 const dry = { requestedMode: "dry_run", scope: "incremental", trigger: "admin" } as const;
 const live = { requestedMode: "live", scope: "incremental", trigger: "cron" } as const;
-const env = (mode: string, extra: Record<string, string> = {}) => ({ GBP_SYNC_MODE: mode, ...extra }) as unknown as NodeJS.ProcessEnv;
+const env = (mode: string, extra: Record<string, string> = {}) =>
+  ({ GBP_SYNC_MODE: mode, VERCEL_ENV: "production", ...extra }) as unknown as NodeJS.ProcessEnv;
+/** Post-cutover: creation switched on, Apify off. */
+const full = { GBP_CREATE_NEW_REVIEWS: "true" };
 
 describe("runGbpSync", () => {
   it("is disabled, and touches nothing, when GBP_SYNC_MODE is off", async () => {
@@ -147,8 +153,9 @@ describe("runGbpSync", () => {
       },
       storedByLocation: { "loc-306": [stored("a", { reviewerName: "Sarah Miller", reviewText: "Loved it" })] },
     });
-    const report = await runGbpSync(live, { ...f.deps, env: env("live") });
+    const report = await runGbpSync(live, { ...f.deps, env: env("live", full) });
     expect(report.status).toBe("succeeded");
+    expect(report.filing).toBe("full");
 
     const [batch] = f.ingested;
     const known = batch.find((r) => r.externalReviewId.startsWith("apify-a"))!;
@@ -165,7 +172,7 @@ describe("runGbpSync", () => {
 
   it("live: ingestion is called with the gbp_api source and never carries a reporting-week field", async () => {
     const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] } });
-    await runGbpSync(live, { ...f.deps, env: env("live") });
+    await runGbpSync(live, { ...f.deps, env: env("live", full) });
     expect(f.ingest.mock.calls[0][1]).toMatchObject({ ingestionSource: "gbp_api" });
     expect(JSON.stringify(f.ingested)).not.toMatch(/reporting_?week|firstSeen|anchor/i);
   });
@@ -250,5 +257,112 @@ describe("runGbpSync", () => {
     await runGbpSync(live, { ...f.deps, env: env("live") });
     const summary = JSON.stringify((f.store.finishRun as ReturnType<typeof vi.fn>).mock.calls[0][1].summary);
     expect(summary).not.toMatch(/Sarah|Loved it/);
+  });
+
+  describe("while Apify is live (the default): enrich-only", () => {
+    const overlapFixture = () =>
+      fixture({
+        mappings: [mapping("306", 9)],
+        reviews: {
+          "locations/9": [
+            apiReview("GBP00001", { reviewReply: { comment: "Thank you!" } }),
+            apiReview("GBP00002", { createTime: "2026-10-09T10:00:00Z", reviewer: { displayName: "Brand New" }, comment: "Fresh" }),
+          ],
+        },
+        storedByLocation: { "loc-306": [stored("a")] },
+      });
+
+    it("never creates a review: a brand-new official review is reported as deferred, not filed", async () => {
+      const f = overlapFixture();
+      const report = await runGbpSync(live, { ...f.deps, env: env("live") });
+      expect(report.filing).toBe("enrich_only");
+      expect(report.totals.newReviews).toBe(1);
+      expect(report.locations[0].deferredNewReviews).toBe(1);
+      const filed = f.ingested.flat().map((r) => r.externalReviewId);
+      expect(filed).toEqual([stored("a").externalReviewId]);
+      expect(filed).not.toContain("GBP00002");
+      expect(f.writes.links.map((l) => l.gbpReviewId)).toEqual(["GBP00001"]);
+    });
+
+    it("files known reviews with NO feed position, so the real period planner can assign nothing and move no anchor", async () => {
+      const f = overlapFixture();
+      await runGbpSync(live, { ...f.deps, env: env("live") });
+      const batch = f.ingested[0];
+      expect(batch.every((r) => r.feedPosition === null)).toBe(true);
+
+      // Feed the exact batch to the REAL planner with an anchor set on a stored review.
+      const anchorId = stored("a").externalReviewId;
+      const plan = planPeriodAssignment(
+        batch.map((r) => ({
+          externalReviewId: r.externalReviewId,
+          storeCode: r.storeCode,
+          feedPosition: r.feedPosition ?? null,
+          relativeDateText: null,
+          publishedAt: r.googleAbsoluteDate ?? null,
+        })),
+        new Map([["306", anchorId]]),
+      );
+      expect([...plan.assignments.values()].every((v) => v === "historical")).toBe(true);
+      expect(plan.storePlans[0]).toMatchObject({ advanceAnchorTo: null, counted: 0, finding: "feed_position_missing" });
+    });
+
+    it("still takes a missing owner reply from Google for a stored review", async () => {
+      const f = overlapFixture();
+      await runGbpSync(live, { ...f.deps, env: env("live") });
+      expect(f.ingested[0][0]).toMatchObject({ hasOwnerResponse: true, ownerResponseText: "Thank you!" });
+    });
+
+    it("creation stays refused when the switch is on but Apify is still enabled", async () => {
+      const f = overlapFixture();
+      const report = await runGbpSync(live, { ...f.deps, env: env("live", { ...full, APIFY_SYNC_ENABLED: "true" }) });
+      expect(report.filing).toBe("enrich_only");
+      expect(f.ingested.flat().map((r) => r.externalReviewId)).not.toContain("GBP00002");
+    });
+
+    it("creation stays refused when Apify is off but the switch is not set", async () => {
+      const f = overlapFixture();
+      const report = await runGbpSync(live, { ...f.deps, env: env("live") });
+      expect(report.filing).toBe("enrich_only");
+    });
+  });
+
+  describe("preview deployments (shared production database)", () => {
+    it("are forced to a read-only dry run even if live is requested and configured", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] }, storedByLocation: { "loc-306": [stored("a")] } });
+      for (const vercelEnv of ["preview", "development", ""]) {
+        const report = await runGbpSync(live, { ...f.deps, env: env("live", { ...full, VERCEL_ENV: vercelEnv }) });
+        expect(report.mode).toBe("dry_run");
+        expect(report.forcedDryRunReason).toMatch(/not a production deployment/i);
+      }
+      expect(f.ingest).not.toHaveBeenCalled();
+      expect(f.writes).toEqual({ links: [], items: [], runs: 0, finished: 0 });
+    });
+  });
+
+  describe("dry-run projection of full filing (cutover evidence)", () => {
+    it("shows how many reviews would start counting, using the real planner and the real anchor, and writes nothing", async () => {
+      const anchorRow = stored("anchor", { externalReviewId: "apify-anchor-" + "q".repeat(50), googleAbsoluteDate: "2026-09-01T00:00:00.000Z", reviewerName: "Old Timer", reviewText: "Old" });
+      const f = fixture({
+        mappings: [mapping("306", 9)],
+        reviews: {
+          "locations/9": [
+            apiReview("GBP00002", { createTime: "2026-10-09T10:00:00Z", reviewer: { displayName: "Brand New" }, comment: "Fresh" }),
+            apiReview("GBP00009", { createTime: "2026-09-01T00:00:00Z", reviewer: { displayName: "Old Timer" }, comment: "Old" }),
+          ],
+        },
+        storedByLocation: { "loc-306": [anchorRow] },
+        anchors: { "306": anchorRow.externalReviewId },
+      });
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.locations[0].projectedIfFull).toEqual({ counted: 1, historical: 1, finding: null });
+      expect(f.ingest).not.toHaveBeenCalled();
+      expect(f.writes).toEqual({ links: [], items: [], runs: 0, finished: 0 });
+    });
+
+    it("reports the planner's finding when there is no anchor, so nothing would count", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] } });
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.locations[0].projectedIfFull).toMatchObject({ counted: 0, finding: "no_anchor" });
+    });
   });
 });

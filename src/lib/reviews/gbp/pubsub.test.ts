@@ -77,6 +77,10 @@ describe("parsePushEnvelope", () => {
     const parsed = parsePushEnvelope(envelope({ notificationType: "NEW_REVIEW", review: "accounts/12/locations/34/reviews/abc" }));
     expect(parsed).toMatchObject({ ok: true, accountName: "accounts/12", locationName: "locations/34" });
   });
+  it("accepts Google's reviewName / locationName field names", () => {
+    expect(parsePushEnvelope(envelope({ notificationType: "UPDATED_REVIEW", reviewName: "accounts/7/locations/8/reviews/zz", locationName: "accounts/7/locations/8" }))).toMatchObject({ ok: true, accountName: "accounts/7", locationName: "locations/8" });
+    expect(parsePushEnvelope(envelope({ reviewName: "accounts/7/locations/8/reviews/zz" }))).toMatchObject({ ok: true, locationName: "locations/8" });
+  });
   it("rejects malformed envelopes and resource names", () => {
     expect(parsePushEnvelope({}).ok).toBe(false);
     expect(parsePushEnvelope({ message: { data: "!!!" } }).ok).toBe(false);

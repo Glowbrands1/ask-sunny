@@ -52,6 +52,8 @@ export interface GbpStore {
   readListings(): Promise<(KnownListing & { locationId: string; isActive: boolean })[]>;
   readConfirmedMappings(storeCodes?: readonly string[]): Promise<MappedLocation[]>;
   readStoredReviews(locationId: string): Promise<StoredReview[]>;
+  /** The listing's current anchor (`counted_through_external_review_id`), read-only. */
+  readAnchor(storeCode: string): Promise<string | null>;
   lookupIdsByExternalId(locationId: string, externalIds: string[]): Promise<Map<string, string>>;
   applyLinks(links: LinkInput[]): Promise<{ linked: number; refreshed: number; conflicts: number }>;
   recordReviewItems(items: ReviewItemInput[]): Promise<number>;
@@ -148,6 +150,16 @@ export function createSupabaseStore(): GbpStore {
         }
         if (rows.length < PAGE) return out;
       }
+    },
+
+    async readAnchor(storeCode) {
+      const { data, error } = await db()
+        .from("google_review_locations")
+        .select("counted_through_external_review_id")
+        .eq("store_code", storeCode)
+        .maybeSingle();
+      if (error) fail("read anchor", error.code);
+      return ((data as { counted_through_external_review_id: string | null } | null)?.counted_through_external_review_id) ?? null;
     },
 
     async lookupIdsByExternalId(locationId, externalIds) {

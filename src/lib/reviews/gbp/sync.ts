@@ -3,9 +3,17 @@ import "server-only";
 import { ingestGoogleReviews } from "../ingest";
 import type { IncomingGoogleReview, ReviewSyncResult } from "../types";
 import type { GbpClient } from "./client";
-import { liveBackfillAllowed, readSyncMode, type GbpLimits, type GbpSyncMode } from "./config";
+import {
+  isProductionRuntime,
+  liveBackfillAllowed,
+  newReviewCreation,
+  readSyncMode,
+  type GbpLimits,
+  type GbpSyncMode,
+} from "./config";
 import { GbpApiError } from "./http";
 import { normaliseOfficialReview, toIncoming, type OfficialReview } from "./normalise";
+import { planPeriodAssignment } from "../period-assignment";
 import { reconcileLocation, type Decision, type Discrepancy } from "./reconcile";
 import type { GbpStore, LinkInput, MappedLocation, ReviewItemInput } from "./store";
 
@@ -86,12 +94,20 @@ export interface LocationReport {
   alreadyLinked: number;
   autoMatched: number;
   newReviews: number;
+  /** Official reviews nothing stored resembles, reported but not filed (enrich-only). */
+  deferredNewReviews: number;
   needsReview: number;
   unmatchedStored: number;
   storedTotal: number;
   googleTotal: number | null;
   googleAverage: number | null;
   storedAverage: number | null;
+  /**
+   * WHAT FULL FILING WOULD DO, computed with the real period planner against the
+   * listing's current anchor and never written. This is the evidence for the
+   * cutover decision: how many reviews would start counting, and why not.
+   */
+  projectedIfFull?: { counted: number; historical: number; finding: string | null };
   discrepancies: Discrepancy[];
   needsReviewItems: (ReviewExcerpt & { reasons: string[]; candidateIds: string[] })[];
   newItems: ReviewExcerpt[];
@@ -104,6 +120,14 @@ export interface SyncReport {
   scope: SyncScope;
   status: "disabled" | "succeeded" | "partial" | "failed" | "refused";
   reason?: string;
+  /**
+   * ENRICH-ONLY files known reviews with NO feed position, which the period
+   * planner provably treats as history (it can neither count a review nor move
+   * an anchor). FULL files newly created reviews with positions and so can
+   * count them; it needs GBP_CREATE_NEW_REVIEWS and Apify off.
+   */
+  filing: "enrich_only" | "full";
+  forcedDryRunReason?: string;
   requests: number;
   locations: LocationReport[];
   totals: {
@@ -139,6 +163,7 @@ function emptyLocation(mapping: MappedLocation): LocationReport {
     alreadyLinked: 0,
     autoMatched: 0,
     newReviews: 0,
+    deferredNewReviews: 0,
     needsReview: 0,
     unmatchedStored: 0,
     storedTotal: 0,
@@ -161,7 +186,11 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
   const env = deps.env ?? process.env;
   const envMode: GbpSyncMode = readSyncMode(env);
 
+  const creation = newReviewCreation(env);
+  const filing: "enrich_only" | "full" = creation.allowed ? "full" : "enrich_only";
+
   const base = {
+    filing,
     scope: options.scope,
     requests: 0,
     locations: [] as LocationReport[],
@@ -173,7 +202,13 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
   }
 
   /* The environment can lower the mode, never raise it: dry_run in env forces a dry run. */
-  const mode: "dry_run" | "live" = envMode === "live" && options.requestedMode === "live" ? "live" : "dry_run";
+  let mode: "dry_run" | "live" = envMode === "live" && options.requestedMode === "live" ? "live" : "dry_run";
+  let forcedDryRunReason: string | undefined;
+  if (mode === "live" && !isProductionRuntime(env)) {
+    /* Preview shares the production database; only a production deployment may write. */
+    mode = "dry_run";
+    forcedDryRunReason = "Not a production deployment (VERCEL_ENV); live writes are refused.";
+  }
 
   if (mode === "live" && options.scope === "backfill" && !liveBackfillAllowed(env)) {
     return {
@@ -187,6 +222,7 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
   const mappings = await deps.store.readConfirmedMappings(options.storeCodes);
   const maxPages = options.scope === "backfill" ? deps.limits.backfillMaxPages : deps.limits.incrementalMaxPages;
 
+  const fileNew = creation.allowed;
   const runId = mode === "live" ? await deps.store.startRun({ mode: "live", scope: options.scope, trigger: options.trigger }) : null;
 
   const locations: LocationReport[] = [];
@@ -203,7 +239,7 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
     }
 
     try {
-      await syncLocation(mapping, report, mode, maxPages, deps);
+      await syncLocation(mapping, report, mode, maxPages, deps, fileNew);
     } catch (error) {
       report.status = "failed";
       if (error instanceof GbpApiError) {
@@ -235,6 +271,8 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
   const status: SyncReport["status"] = failed === 0 ? "succeeded" : failed === locations.length ? "failed" : "partial";
   const report: SyncReport = {
     mode,
+    filing,
+    forcedDryRunReason,
     scope: options.scope,
     status,
     requests: deps.client.requestCount,
@@ -270,6 +308,7 @@ async function syncLocation(
   mode: "dry_run" | "live",
   maxPages: number,
   deps: SyncDeps,
+  fileNew: boolean,
 ): Promise<void> {
   const fetched = await deps.client.listReviews(mapping.accountName, mapping.gbpLocationName, maxPages);
   const stored = await deps.store.readStoredReviews(mapping.locationId);
@@ -303,6 +342,7 @@ async function syncLocation(
     else if (decision.kind === "auto_match") report.autoMatched += 1;
     else if (decision.kind === "new") {
       report.newReviews += 1;
+      if (!fileNew) report.deferredNewReviews += 1;
       report.newItems.push(excerpt(decision.official));
     } else {
       report.needsReview += 1;
@@ -314,22 +354,42 @@ async function syncLocation(
     }
   }
 
+  /* Evidence for the cutover decision. Read-only: the real planner, the real anchor, nothing written. */
+  const projected = buildBatch(mapping, fileableOf(plan.decisions, true), true);
+  const anchor = await deps.store.readAnchor(mapping.storeCode);
+  const projection = planPeriodAssignment(
+    projected.map((r) => ({
+      externalReviewId: r.externalReviewId,
+      storeCode: r.storeCode,
+      feedPosition: r.feedPosition ?? null,
+      relativeDateText: null,
+      publishedAt: r.googleAbsoluteDate ?? null,
+    })),
+    new Map([[mapping.storeCode, anchor]]),
+  );
+  const storePlan = projection.storePlans[0];
+  report.projectedIfFull = storePlan
+    ? { counted: storePlan.counted, historical: storePlan.historical, finding: storePlan.finding }
+    : { counted: 0, historical: 0, finding: null };
+
   if (mode === "dry_run") return;
 
-  await fileLive(mapping, report, plan.decisions, deps);
+  await fileLive(mapping, report, plan.decisions, deps, fileNew);
 }
 
-async function fileLive(
-  mapping: MappedLocation,
-  report: LocationReport,
-  decisions: Decision[],
-  deps: SyncDeps,
-): Promise<void> {
-  const fileable = decisions
-    .filter((d): d is Exclude<Decision, { kind: "needs_review" }> => d.kind !== "needs_review")
-    .sort((a, b) => byNewest(a.official, b.official));
 
-  const batch: IncomingGoogleReview[] = fileable.map((decision, position) => {
+type Fileable = Exclude<Decision, { kind: "needs_review" }>;
+
+function fileableOf(decisions: Decision[], includeNew: boolean): Fileable[] {
+  return decisions
+    .filter((d): d is Fileable => d.kind !== "needs_review")
+    .filter((d) => includeNew || d.kind !== "new")
+    .sort((a, b) => byNewest(a.official, b.official));
+}
+
+function buildBatch(mapping: MappedLocation, fileable: Fileable[], withPositions: boolean): IncomingGoogleReview[] {
+  return fileable.map((decision, index) => {
+    const position = withPositions ? index : null;
     const { official } = decision;
     if (decision.kind === "new") {
       return toIncoming(official, {
@@ -360,6 +420,26 @@ async function fileLive(
       ownerResponseText: replyText,
     });
   });
+}
+
+async function fileLive(
+  mapping: MappedLocation,
+  report: LocationReport,
+  decisions: Decision[],
+  deps: SyncDeps,
+  fileNew: boolean,
+): Promise<void> {
+  /*
+   * ENRICH-ONLY (the default while Apify runs): brand-new reviews are NOT
+   * created, and known reviews are filed with NO feed position. A store batch
+   * containing any null position is marked historical by the period planner —
+   * it cannot count a review or advance an anchor — so this path cannot change
+   * a reporting assignment. FULL mode (positions, creation) is the post-Apify
+   * cutover behaviour.
+   */
+  const fileable = fileableOf(decisions, fileNew);
+
+  const batch = buildBatch(mapping, fileable, fileNew);
 
   const ingest = deps.ingest ?? ingestGoogleReviews;
   if (batch.length > 0) {
@@ -400,6 +480,8 @@ async function fileLive(
       replyUpdateTime: official.replyUpdateTime,
     });
   }
+  /* A stable order, so two writers touching the same rows lock them in the same sequence. */
+  links.sort((a, b) => a.reviewId.localeCompare(b.reviewId));
   report.links = await deps.store.applyLinks(links);
 
   const items: ReviewItemInput[] = decisions

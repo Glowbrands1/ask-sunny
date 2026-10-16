@@ -17,6 +17,7 @@ export const GBP_CLIENT_SECRET_ENV = "GOOGLE_GBP_CLIENT_SECRET";
 export const GBP_REFRESH_TOKEN_ENV = "GOOGLE_GBP_REFRESH_TOKEN";
 export const GBP_SYNC_MODE_ENV = "GBP_SYNC_MODE";
 export const GBP_ALLOW_LIVE_BACKFILL_ENV = "GBP_ALLOW_LIVE_BACKFILL";
+export const GBP_CREATE_NEW_REVIEWS_ENV = "GBP_CREATE_NEW_REVIEWS";
 export const GBP_INCREMENTAL_MAX_PAGES_ENV = "GBP_INCREMENTAL_MAX_PAGES";
 export const GBP_BACKFILL_MAX_PAGES_ENV = "GBP_BACKFILL_MAX_PAGES";
 export const GBP_MAX_REQUESTS_ENV = "GBP_MAX_REQUESTS_PER_RUN";
@@ -96,4 +97,39 @@ export function readLimits(env: NodeJS.ProcessEnv = process.env): GbpLimits {
     ),
     maxRequestsPerRun: positiveInt(env[GBP_MAX_REQUESTS_ENV], DEFAULT_LIMITS.maxRequestsPerRun, 5000),
   };
+}
+
+/**
+ * WRITES ONLY FROM A REAL PRODUCTION DEPLOYMENT.
+ *
+ * Preview deployments of this project share the production Supabase project
+ * (same URL, same service key), so a variable set on Preview by mistake would
+ * otherwise let a preview build write production reviews. `VERCEL_ENV` is set by
+ * Vercel itself per deployment and cannot be spoofed by a request. Anywhere else
+ * — preview, development, a laptop holding production keys — the sync is
+ * forced to a read-only dry run and mapping changes are refused.
+ */
+export function isProductionRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.VERCEL_ENV === "production";
+}
+
+export type NewReviewCreation = { allowed: true } | { allowed: false; reason: string };
+
+/**
+ * MAY THIS SOURCE CREATE A REVIEW ROW?
+ *
+ * Not while Apify is still a live source. Both sources would then file the same
+ * brand-new review under their own ids — Apify does not know the official id —
+ * and the review would be stored twice. So during the overlap the official API
+ * only ENRICHES rows Apify already created (link, reply, official timestamps).
+ * Creation needs an explicit switch AND Apify off.
+ */
+export function newReviewCreation(env: NodeJS.ProcessEnv = process.env): NewReviewCreation {
+  if ((env[GBP_CREATE_NEW_REVIEWS_ENV] ?? "").trim().toLowerCase() !== "true") {
+    return { allowed: false, reason: `${GBP_CREATE_NEW_REVIEWS_ENV} is not "true".` };
+  }
+  if ((env.APIFY_SYNC_ENABLED ?? "").trim().toLowerCase() === "true") {
+    return { allowed: false, reason: "Apify is still enabled; creating rows here would duplicate its reviews." };
+  }
+  return { allowed: true };
 }

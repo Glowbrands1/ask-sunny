@@ -50,7 +50,11 @@ export interface GbpReviewsPage {
 export interface GbpNotification {
   notificationType: "NEW_REVIEW" | "UPDATED_REVIEW" | string;
   /** `accounts/{a}/locations/{l}/reviews/{id}` */
-  review?: string;
+  reviewName?: string;
   /** `accounts/{a}/locations/{l}` */
+  locationName?: string;
+  /** Alternative spellings tolerated by the parser. */
+  review?: string;
   location?: string;
+  name?: string;
 }

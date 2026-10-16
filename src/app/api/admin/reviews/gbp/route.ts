@@ -9,7 +9,7 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
-import { GBP_PUBSUB_TOPIC_ENV, readSyncMode } from "@/lib/reviews/gbp/config";
+import { GBP_PUBSUB_TOPIC_ENV, isProductionRuntime, readSyncMode } from "@/lib/reviews/gbp/config";
 import { discoverMappings } from "@/lib/reviews/gbp/locations";
 import { buildGbpRuntime } from "@/lib/reviews/gbp/runtime";
 import { createSupabaseStore } from "@/lib/reviews/gbp/store";
@@ -100,6 +100,10 @@ export async function POST(request: Request) {
         });
       }
 
+      if (!isProductionRuntime()) {
+        /* Preview shares the production database: mapping changes are a write. */
+        return NextResponse.json({ status: "refused", reason: "Mappings can only be confirmed from the production deployment." }, { status: 409 });
+      }
       const storeCode = typeof body.storeCode === "string" ? body.storeCode.trim() : "";
       const locationName = typeof body.locationName === "string" ? body.locationName.trim() : "";
       const proposal = discovery.proposals.find(
@@ -141,6 +145,9 @@ export async function POST(request: Request) {
     }
 
     if (action === "configure_notifications") {
+      if (!isProductionRuntime()) {
+        return NextResponse.json({ status: "refused", reason: "Notifications can only be configured from the production deployment." }, { status: 409 });
+      }
       const accountName = typeof body.accountName === "string" ? body.accountName.trim() : "";
       const topic = process.env[GBP_PUBSUB_TOPIC_ENV];
       if (!topic) throw new AiError("not_configured", "The Pub/Sub topic is not configured.", 503, [GBP_PUBSUB_TOPIC_ENV]);

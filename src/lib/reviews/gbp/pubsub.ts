@@ -127,7 +127,15 @@ export function parsePushEnvelope(body: unknown): ParsedNotification {
     return { ok: false };
   }
 
-  const resource = notification.location ?? notification.review ?? "";
+  /*
+   * Google's notification names the resource in `reviewName` / `locationName`
+   * (v4 Notification). Older or alternative shapes use `review` / `location` /
+   * `name`. All are accepted and only the account and location are extracted —
+   * the message is a hint, never an instruction.
+   */
+  const fields = notification as unknown as Record<string, unknown>;
+  const candidates = [fields.locationName, fields.reviewName, fields.location, fields.review, fields.name];
+  const resource = candidates.find((value): value is string => typeof value === "string") ?? "";
   const match = /^(accounts\/[0-9]{1,30})\/(locations\/[0-9]{1,30})(?:\/|$)/.exec(resource);
   if (!match) return { ok: false };
   return { ok: true, notification, accountName: match[1], locationName: match[2] };

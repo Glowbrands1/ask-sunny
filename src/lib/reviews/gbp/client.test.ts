@@ -60,6 +60,7 @@ describe("GBP client", () => {
     expect(result.totalReviewCount).toBe(99);
     expect(d.urls[0]).toContain("mybusiness.googleapis.com/v4/accounts/1/locations/2/reviews");
     expect(d.urls[0]).toContain("pageSize=50");
+    expect(d.urls[0]).not.toContain("orderBy");
   });
 
   it("stops cleanly when pagination ends", async () => {
@@ -108,7 +109,7 @@ describe("GBP client", () => {
     });
     const client = createGbpClient({ tokens: tokens(), deps: d, maxRequests: 10 });
     await client.setNotificationSetting("accounts/1", "projects/my-proj-123/topics/gbp-reviews");
-    expect(sent.method).toBe("PUT");
+    expect(sent.method).toBe("PATCH");
     expect(sent.body).toMatchObject({ notificationTypes: ["NEW_REVIEW", "UPDATED_REVIEW"] });
     await expect(client.setNotificationSetting("accounts/1", "not-a-topic")).rejects.toMatchObject({ code: "bad_request" });
   });

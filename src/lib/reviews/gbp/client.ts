@@ -11,7 +11,7 @@ import type {
 
 /**
  * The official Google Business Profile API, read-only except for the one
- * notification-setting call.
+ * notification-setting call (a PATCH of the account's notificationSetting).
  *
  *   Account Management  mybusinessaccountmanagement.googleapis.com/v1   accounts
  *   Business Information mybusinessbusinessinformation.googleapis.com/v1 locations
@@ -90,7 +90,7 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
       try {
         const response = await requestWithRetry(
           url,
-          { ...init, headers: { authorization: `Bearer ${token}`, accept: "application/json", ...(init.method === "PUT" ? { "content-type": "application/json" } : {}) } },
+          { ...init, headers: { authorization: `Bearer ${token}`, accept: "application/json", ...(init.method === "PATCH" ? { "content-type": "application/json" } : {}) } },
           deps,
           charge,
         );
@@ -172,7 +172,7 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
       assertResourceName(locationName, LOCATION_PATTERN, "location");
       const url = new URL(`https://mybusiness.googleapis.com/v4/${accountName}/${locationName}/reviews`);
       url.searchParams.set("pageSize", String(REVIEWS_PAGE_SIZE));
-      url.searchParams.set("orderBy", "updateTime desc");
+      /* No orderBy: the API default is updateTime desc, and nothing here relies on order. */
       if (pageToken) url.searchParams.set("pageToken", pageToken);
       const body = (await call(url.toString())) as Record<string, unknown>;
       const reviews = Array.isArray(body.reviews)
@@ -216,7 +216,7 @@ export function createGbpClient(options: GbpClientOptions): GbpClient {
       );
       url.searchParams.set("updateMask", "pubsubTopic,notificationTypes");
       await call(url.toString(), {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
           name: `${accountName}/notificationSetting`,
           pubsubTopic: topic,
