@@ -311,7 +311,7 @@ export async function ingestGoogleReviews(
      * row seen twice, not two rows. Defaults to the extension, which is the
      * caller that existed first and the one that does not pass this.
      */
-    ingestionSource?: ReviewIngestionSource;
+    ingestionSource?: ReviewIngestionSource | "gbp_api";
   },
 ): Promise<ReviewSyncResult> {
   const { accepted, invalid, ignoredNonStc, problems } = normaliseReviewBatch(raw);

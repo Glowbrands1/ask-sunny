@@ -6,6 +6,10 @@
       "schedule": "0 11,12 * * *"
     },
     {
+      "path": "/api/reviews/gbp/cron",
+      "schedule": "30 12 * * *"
+    },
+    {
       "path": "/api/knowledge-sync/woven/cron",
       "schedule": "40 * * * *"
     },
