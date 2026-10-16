@@ -103,7 +103,7 @@ production, and the Pub/Sub subscription should point at the production host.
 | Variable | Effect |
 | --- | --- |
 | `GBP_SYNC_MODE` unset / `off` | Everything inert. Routes answer `disabled`; no Google call, no DB access. |
-| `dry_run` | Reads Google and the DB, returns the report, **writes nothing** (not even a ledger row). Forces dry run even if `live` is requested. |
+| `dry_run` | Reads Google and the DB, returns the report and writes **no review data**. An admin or cron dry run records one counts-only run row (no names, no review text) so history and the cutover checklist survive a reload. Forces dry run even if `live` is requested. |
 | `live` | Files reviews. Admin `sync` and cron/Pub/Sub require this. |
 | `GBP_CREATE_NEW_REVIEWS=true` | Permits creating rows from the API; ignored while `APIFY_SYNC_ENABLED=true`. |
 | `GBP_ALLOW_LIVE_BACKFILL=true` | Required, in addition, for a live **backfill**. Cron and Pub/Sub never run a backfill. |
@@ -236,7 +236,7 @@ counted (anchor-assigned) reviews are 33 for September and 34 for October; those
 are frozen by the anchor model and a backfill must not move them. Ten September
 rows have no timestamp (Brave-only) and can only be linked by a person.
 
-1. **Measure (dry run, writes nothing).** Admin `dry_run`, `scope: "backfill"`,
+1. **Measure (dry run, no review data written).** Admin `dry_run`, `scope: "backfill"`,
    `from: "2026-09-01"`, `to: "2026-11-01"`. The report gives, per listing and
    summed: reviews Google holds in the window (`window.google`), already held
    and linked (`alreadyHeld`), **missing** (`missing`), and needing a person
@@ -342,3 +342,16 @@ commit;
 * `UPDATED_REVIEW` edits to a stored review's text are surfaced as discrepancies
   rather than applied, while Apify is still a live source (to avoid the two
   sources overwriting each other).
+
+
+## Admin screen (Admin → Integrations → Google Reviews)
+
+The whole flow is click-driven; nobody types an API URL, query string or console snippet.
+
+- **Provider banner**: which source is active (Apify) and that Google is off / dry-run / enrich-only / primary.
+- **Connection**: Connect Google (a link to the OAuth route), connected account and time, Reconnect, Disconnect.
+- **Locations**: auto-discovers on load once connected (read-only); shows the 15 Sun Tan City listings with mapping status. `Confirm` and `Confirm all verified` re-check evidence server-side and work from production only. `Unlink` is refused while reviews are linked.
+- **Sync**: `Check Google now` (dry run) always available when connected; `Sync Google Reviews now` needs live mode and a second confirming click.
+- **Backfill (2026-09-01 to 2026-11-01)**: dry-run reconciliation across all listings; live backfill stays disabled.
+- **History**: recent runs, errors, last successful sync, last dry run.
+- **Cutover readiness**: a computed checklist. Cutover itself remains an approved environment change, not a button.
