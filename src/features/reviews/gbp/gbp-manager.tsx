@@ -39,6 +39,8 @@ interface LocationReportLike {
   newReviews: number;
   deferredNewReviews: number;
   needsReview: number;
+  googleByMonth?: Record<string, number>;
+  missingByMonth?: Record<string, number>;
   inWindow?: { google: number; alreadyHeld: number; missing: number; needsReview: number };
   projectedIfFull?: { counted: number; historical: number; finding: string | null };
 }
@@ -309,7 +311,7 @@ export function GbpManager({ initial, flash }: { initial: GbpOverview; flash?: s
         <p className="mt-2 text-[12px] text-muted-foreground">
           Live backfill is disabled{overview.liveBackfillAllowed ? " until sync is live and creation is allowed" : " — GBP_ALLOW_LIVE_BACKFILL is not enabled"}.
         </p>
-        {report ? <ReportTable report={report} /> : lastRunSummary ? <SummaryTable summary={lastRunSummary} /> : null}
+        {report ? <ReportTable report={report} listings={overview.listings} /> : lastRunSummary ? <SummaryTable summary={lastRunSummary} listings={overview.listings} /> : null}
       </div>
 
       <div className="rounded-[var(--radius-md)] border border-border bg-surface p-4">
@@ -357,52 +359,99 @@ export function GbpManager({ initial, flash }: { initial: GbpOverview; flash?: s
   );
 }
 
-function SummaryTable({ summary }: { summary: RunSummary }) {
-  return (
-    <ReportRows
-      title="Last backfill dry run"
-      rows={summary.locations.map((l) => ({
+const SEPT = "2026-09";
+const OCT = "2026-10";
+
+interface Row {
+  storeCode: string;
+  name: string;
+  status: string;
+  google: number;
+  held: number;
+  missing: number;
+  needsReview: number;
+  complete: boolean;
+  sepGoogle: number;
+  sepMissing: number;
+  octGoogle: number;
+  octMissing: number;
+}
+
+/** One row for EVERY active listing: a location that is not mapped is shown as "not measured", never left out. */
+function withAllListings(measured: Map<string, Row>, listings: OverviewListing[]): Row[] {
+  return listings.map(
+    (l) =>
+      measured.get(l.storeCode) ?? {
         storeCode: l.storeCode,
+        name: l.salonName ?? l.label,
+        status: l.mappingStatus === "confirmed" ? "not read" : "not mapped — not measured",
+        google: 0, held: 0, missing: 0, needsReview: 0, complete: false, sepGoogle: 0, sepMissing: 0, octGoogle: 0, octMissing: 0,
+      },
+  );
+}
+
+function SummaryTable({ summary, listings }: { summary: RunSummary; listings: OverviewListing[] }) {
+  const names = new Map(listings.map((l) => [l.storeCode, l.salonName ?? l.label]));
+  const measured = new Map<string, Row>(
+    summary.locations.map((l) => [
+      l.storeCode,
+      {
+        storeCode: l.storeCode,
+        name: names.get(l.storeCode) ?? l.storeCode,
         status: l.status,
         google: l.inWindow?.google ?? l.fetched,
         held: l.inWindow?.alreadyHeld ?? l.alreadyLinked + l.autoMatched,
         missing: l.inWindow?.missing ?? l.newReviews,
         needsReview: l.inWindow?.needsReview ?? l.needsReview,
         complete: l.complete,
-      }))}
-    />
+        sepGoogle: l.googleByMonth[SEPT] ?? 0,
+        sepMissing: l.missingByMonth[SEPT] ?? 0,
+        octGoogle: l.googleByMonth[OCT] ?? 0,
+        octMissing: l.missingByMonth[OCT] ?? 0,
+      },
+    ]),
   );
+  return <ReportRows title="Last backfill dry run" rows={withAllListings(measured, listings)} />;
 }
 
-function ReportTable({ report }: { report: ReportLike }) {
-  return (
-    <ReportRows
-      title={`Dry-run report (${report.status})`}
-      rows={report.locations.map((l) => ({
+function ReportTable({ report, listings }: { report: ReportLike; listings: OverviewListing[] }) {
+  const names = new Map(listings.map((l) => [l.storeCode, l.salonName ?? l.label]));
+  const measured = new Map<string, Row>(
+    report.locations.map((l) => [
+      l.storeCode,
+      {
         storeCode: l.storeCode,
+        name: names.get(l.storeCode) ?? l.label,
         status: l.status,
         google: l.inWindow?.google ?? l.fetched,
         held: l.inWindow?.alreadyHeld ?? l.alreadyLinked + l.autoMatched,
         missing: l.inWindow?.missing ?? l.newReviews + l.deferredNewReviews,
         needsReview: l.inWindow?.needsReview ?? l.needsReview,
         complete: l.complete,
-      }))}
-    />
+        sepGoogle: l.googleByMonth?.[SEPT] ?? 0,
+        sepMissing: l.missingByMonth?.[SEPT] ?? 0,
+        octGoogle: l.googleByMonth?.[OCT] ?? 0,
+        octMissing: l.missingByMonth?.[OCT] ?? 0,
+      },
+    ]),
   );
+  return <ReportRows title={`Dry-run report (${report.status})`} rows={withAllListings(measured, listings)} />;
 }
 
-function ReportRows({ title, rows }: { title: string; rows: { storeCode: string; status: string; google: number; held: number; missing: number; needsReview: number; complete: boolean }[] }) {
+function ReportRows({ title, rows }: { title: string; rows: Row[] }) {
+  const notMeasured = rows.filter((r) => r.status.startsWith("not ")).length;
   return (
     <div className="mt-3 overflow-x-auto">
       <p className="text-[13px] font-medium">{title}</p>
+      {notMeasured ? <p className="text-[12px] text-status-attention">{notMeasured} of {rows.length} locations were not measured. Map and verify them, then run the dry run again.</p> : null}
       <table className="mt-1 w-full text-left text-[13px]">
         <thead className="text-muted-foreground">
-          <tr><th className="py-1 pr-3">Store</th><th className="pr-3">Status</th><th className="pr-3">On Google</th><th className="pr-3">Already held</th><th className="pr-3">Missing</th><th className="pr-3">To review</th><th>Complete</th></tr>
+          <tr><th className="py-1 pr-3">Store</th><th className="pr-3">Status</th><th className="pr-3">Sep on Google / missing</th><th className="pr-3">Oct on Google / missing</th><th className="pr-3">Window total</th><th className="pr-3">Already held</th><th className="pr-3">Missing</th><th className="pr-3">Duplicate / ambiguous (to review)</th><th>Complete</th></tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.storeCode} className="border-t border-border">
-              <td className="py-1 pr-3 font-mono">{r.storeCode}</td><td className="pr-3">{r.status}</td><td className="pr-3">{r.google}</td><td className="pr-3">{r.held}</td><td className="pr-3">{r.missing}</td><td className="pr-3">{r.needsReview}</td><td>{r.complete ? "yes" : "no"}</td>
+              <td className="py-1 pr-3"><span className="font-mono">{r.storeCode}</span> {r.name}</td><td className="pr-3">{r.status}</td><td className="pr-3">{r.sepGoogle} / {r.sepMissing}</td><td className="pr-3">{r.octGoogle} / {r.octMissing}</td><td className="pr-3">{r.google}</td><td className="pr-3">{r.held}</td><td className="pr-3">{r.missing}</td><td className="pr-3">{r.needsReview}</td><td>{r.complete ? "yes" : "no"}</td>
             </tr>
           ))}
         </tbody>

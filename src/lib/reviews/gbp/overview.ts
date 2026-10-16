@@ -93,7 +93,7 @@ export function evaluateCutover(input: {
 
   const fresh = input.lastDryRun && input.now - Date.parse(input.lastDryRun.startedAt) <= DAY_MS;
   const summary = input.lastDryRun?.summary;
-  const allRead = !!summary && summary.locations.length >= confirmed.length && summary.locations.every((l) => l.status === "ok" && l.complete);
+  const allRead = !!summary && active.length > 0 && summary.locations.length >= active.length && summary.locations.every((l) => l.status === "ok" && l.complete);
   checks.push({
     id: "dry_run",
     label: "A complete dry-run check in the last 24 hours",
@@ -111,7 +111,8 @@ export function evaluateCutover(input: {
   const backfillDone =
     !!backfill &&
     covers(backfill.window, SEPT_OCT_2026_WINDOW) &&
-    backfill.locations.length >= confirmed.length &&
+    active.length > 0 &&
+    backfill.locations.length >= active.length &&
     backfill.locations.every((l) => l.status === "ok" && l.complete);
   checks.push({
     id: "backfill_measured",

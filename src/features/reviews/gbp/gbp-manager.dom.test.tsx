@@ -30,4 +30,15 @@ describe("GbpManager", () => {
     expect(screen.getByText(/dry-run only/)).toBeTruthy();
     expect(screen.getByText("Apify:")).toBeTruthy();
   });
+
+  it("backfill report lists every listing, marks unmapped ones as not measured, and splits Sep/Oct", () => {
+    const listing = (storeCode: string) => ({ locationId: storeCode, storeCode, label: `Salon ${storeCode}`, salonName: `Salon ${storeCode}`, district: null, isActive: true, listingState: "active", apifySourceStatus: null, hasVerifiedPlaceId: false, expectedAddress: { street: null, city: null, state: null, postalCode: null }, mappingStatus: "unmapped", gbpAccountName: null, gbpLocationName: null, confirmedAt: null, confirmedBy: null, reviewsHeld: 0, reviewsLinked: 0, openReviewItems: 0 });
+    const overview = buildOverview({ listings: ["101", "102", "103"].map(listing), runs: [], connection: null }, apify, { env: env() });
+    overview.lastBackfillDryRun = { id: "r", startedAt: "2026-10-16T10:00:00Z", finishedAt: "2026-10-16T10:00:01Z", mode: "dry_run", scope: "backfill", trigger: "admin", status: "succeeded", requests: 1, errorCode: null, summary: { filing: "enrich_only", window: { from: "2026-09-01", to: "2026-11-01" }, locations: [{ storeCode: "101", status: "ok", errorCode: null, fetched: 5, complete: true, truncated: false, skippedInvalid: 0, resourceMismatch: 0, alreadyLinked: 3, autoMatched: 0, newReviews: 2, deferredNewReviews: 0, needsReview: 0, unmatchedStored: 0, storedTotal: 3, googleTotal: 5, googleByMonth: { "2026-09": 3, "2026-10": 2 }, missingByMonth: { "2026-10": 2 }, inWindow: { google: 5, alreadyHeld: 3, missing: 2, needsReview: 0 }, projectedIfFull: null }] } };
+    render(<GbpManager initial={overview} />);
+    expect(screen.getAllByText(/not mapped — not measured/)).toHaveLength(2);
+    expect(screen.getByText(/2 of 3 locations were not measured/)).toBeTruthy();
+    expect(screen.getByText("3 / 0")).toBeTruthy();
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+  });
 });
