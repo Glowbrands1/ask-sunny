@@ -160,6 +160,41 @@ describe("callback", () => {
   });
 });
 
+describe("same-origin guard and administrator binding", () => {
+  it("refuses a cross-site POST to disconnect and to the admin actions, whatever it carries", async () => {
+    const r = await load({ connection: null });
+    for (const [handler, path] of [[r.disconnect, "/api/admin/reviews/gbp/disconnect"], [r.admin, "/api/admin/reviews/gbp"]] as const) {
+      for (const headers of [{ origin: "https://evil.example" }, { "sec-fetch-site": "cross-site" }, { "sec-fetch-site": "same-site" }] as Record<string, string>[]) {
+        const response = await handler(new Request(`https://ask-sunny.example${path}`, { method: "POST", headers, body: "{}" }));
+        expect(response.status).toBe(403);
+      }
+    }
+    expect(r.seen.permissions).toEqual([]);
+  });
+
+  it("allows same-origin browser requests and header-less server calls through to the normal checks", async () => {
+    const r = await load({ connection: null });
+    for (const headers of [{ origin: "https://ask-sunny.example" }, { "sec-fetch-site": "same-origin" }, {}] as Record<string, string>[]) {
+      const response = await r.disconnect(new Request("https://ask-sunny.example/api/admin/reviews/gbp/disconnect", { method: "POST", headers, body: "{}" }));
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it("the callback refuses an attempt started by a DIFFERENT administrator, even with a valid state and cookie", async () => {
+    const r = await load();
+    const start = await r.connect(get("/api/admin/reviews/gbp/connect"));
+    const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
+    const cookie = start.headers.get("set-cookie")!.split(";")[0];
+    // a second administrator (different subject) completes the callback in the same browser
+    vi.resetModules();
+    vi.doMock("@/lib/auth/server", () => ({ authorizeRequest: async () => ({ identity: { subject: "admin-2", email: "other@example.test", role: "admin" } }) }));
+    const other = (await import("./callback/route")).GET;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ refresh_token: "R", scope: "https://www.googleapis.com/auth/business.manage" }), { status: 200 })));
+    const response = await other(get(`/api/admin/reviews/gbp/callback?code=abc&state=${state}`, cookie));
+    expect(new URL(response.headers.get("location")!).searchParams.get("gbp")).toBe("attempt_invalid");
+  });
+});
+
 describe("disconnect", () => {
   it("ends the local connection and returns no token", async () => {
     const { seal, REFRESH_TOKEN_LABEL } = await import("@/lib/reviews/gbp/crypto");

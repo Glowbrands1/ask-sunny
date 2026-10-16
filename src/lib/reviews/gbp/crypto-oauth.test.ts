@@ -72,6 +72,14 @@ describe("OAuth authorization (PKCE)", () => {
     expect(url.search).not.toContain("SECRET-VALUE");
   });
 
+  it("binds the attempt to the administrator who started it", () => {
+    const start = createAuthorization(settings, { key: KEY, now: 1_000, subject: "admin-1" });
+    const state = new URL(start.url).searchParams.get("state")!;
+    expect(verifyAttempt(start.cookieValue, state, { key: KEY, now: 2_000, subject: "admin-1" }).verifier).toBeTruthy();
+    expect(() => verifyAttempt(start.cookieValue, state, { key: KEY, now: 2_000, subject: "admin-2" })).toThrowError(expect.objectContaining({ code: "attempt_invalid" }));
+    expect(() => verifyAttempt(start.cookieValue, state, { key: KEY, now: 2_000 })).toThrowError(expect.objectContaining({ code: "attempt_invalid" }));
+  });
+
   it("verifies the callback state in constant time and rejects forged, expired and missing attempts", () => {
     const start = createAuthorization(settings, { key: KEY, now: 1_000 });
     const state = new URL(start.url).searchParams.get("state")!;

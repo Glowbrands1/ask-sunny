@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
-    await authorizeRequest(request, "manage_integrations");
+    const context = await authorizeRequest(request, "manage_integrations");
     assertWithinRateLimit(request, "mutate");
 
     if (!isProductionRuntime()) {
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const start = createAuthorization(settings);
+    const start = createAuthorization(settings, { subject: context.identity.subject });
     const response = NextResponse.redirect(start.url, { status: 302, headers: NO_STORE });
     response.cookies.set(OAUTH_COOKIE, start.cookieValue, {
       httpOnly: true,

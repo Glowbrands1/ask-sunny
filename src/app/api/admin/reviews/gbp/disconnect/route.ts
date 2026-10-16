@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { assertLiveMode, assertNoConfigurationProblems, assertWithinRateLimit, errorResponse } from "@/lib/api/respond";
 import { authorizeRequest } from "@/lib/auth/server";
 import { isProductionRuntime } from "@/lib/reviews/gbp/config";
+import { isSameOriginRequest } from "@/lib/reviews/gbp/csrf";
 import { REFRESH_TOKEN_LABEL, open } from "@/lib/reviews/gbp/crypto";
 import { revokeRefreshToken } from "@/lib/reviews/gbp/oauth";
 import { createSupabaseStore } from "@/lib/reviews/gbp/store";
@@ -22,6 +23,9 @@ const NO_STORE = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
   try {
+    if (!isSameOriginRequest(request)) {
+      return NextResponse.json({ status: "refused", reason: "Cross-site request refused." }, { status: 403, headers: NO_STORE });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "manage_integrations");

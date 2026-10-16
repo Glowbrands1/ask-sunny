@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/respond";
 import { parseJsonBody } from "@/lib/api/validation";
 import { authorizeRequest } from "@/lib/auth/server";
+import { isSameOriginRequest } from "@/lib/reviews/gbp/csrf";
 import { GBP_PUBSUB_TOPIC_ENV, isProductionRuntime, readSyncMode } from "@/lib/reviews/gbp/config";
 import { discoverMappings } from "@/lib/reviews/gbp/locations";
 import { buildGbpRuntime } from "@/lib/reviews/gbp/runtime";
@@ -60,6 +61,9 @@ const SCOPES = new Set(["incremental", "backfill"]);
 
 export async function POST(request: Request) {
   try {
+    if (!isSameOriginRequest(request)) {
+      return NextResponse.json({ status: "refused", reason: "Cross-site request refused." }, { status: 403 });
+    }
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "manage_integrations");
