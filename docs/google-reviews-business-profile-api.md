@@ -206,7 +206,7 @@ database** (same `NEXT_PUBLIC_SUPABASE_URL`), so none of these belong in Preview
    account that manages the profiles (sealed token saved; no token is ever shown).
 4. Admin `discover`; review proposals and `missing`; `confirm` each `eligible`
    listing; resolve `needs_review`/`conflict` by hand.
-5. Admin `dry_run` (incremental, then backfill). Review: per-listing counts vs
+5. Admin `dry_run` (incremental, then the **September–October backfill measurement** above). Review: per-listing counts vs
    Google's `totalReviewCount`/`averageRating`, `autoMatched`, `newReviews`,
    `needsReviewItems`, `discrepancies`, `unmatchedStored`.
 6. Only after sign-off: `GBP_SYNC_MODE=live` (enrich-only), run one listing,
@@ -223,6 +223,51 @@ between the two; both are idempotent, links are applied in a stable row order,
 and enrich-only never creates rows. The project already runs an hourly cron and
 three cron entries, which Hobby does not allow, so it is on a paid plan; the
 route's `maxDuration` is 300 s. Apply the migration outside 11:00–12:45 UTC.
+
+## Backfill of September–October 2026 reviews
+
+**Goal:** Ask Sunny holds every Google review created between 2026-09-01 and
+2026-10-31, without changing any existing review, week, period or count.
+
+**Where things stand (production, 16 Oct 2026):** 194 reviews in total; 164 are
+dated September (111) or October (53). Apify keeps only the newest ~15 reviews per
+listing, so Google very likely holds more in that window than Ask Sunny does. The
+counted (anchor-assigned) reviews are 33 for September and 34 for October; those
+are frozen by the anchor model and a backfill must not move them. Ten September
+rows have no timestamp (Brave-only) and can only be linked by a person.
+
+1. **Measure (dry run, writes nothing).** Admin `dry_run`, `scope: "backfill"`,
+   `from: "2026-09-01"`, `to: "2026-11-01"`. The report gives, per listing and
+   summed: reviews Google holds in the window (`window.google`), already held
+   and linked (`alreadyHeld`), **missing** (`missing`), and needing a person
+   (`needsReview`), plus `googleByMonth` / `missingByMonth`, discrepancies,
+   `complete` (must be true for every listing; if not, raise
+   `GBP_BACKFILL_MAX_PAGES`), and `projectedIfFull`.
+2. **Resolve the ambiguous ones.** A person works the `needsReview` list (the ten
+   timestamp-less September rows are expected there). Nothing is merged
+   automatically.
+3. **Fill the missing ones: a decision is required.** While Apify is enabled the
+   integration deliberately cannot create rows (Apify does not know the official
+   id, so a review created here and later re-read by Apify would be stored twice).
+   Two ways forward:
+   * **Path A (recommended; no new code):** after Apify is retired
+     (`APIFY_SYNC_ENABLED` off), set `GBP_CREATE_NEW_REVIEWS=true` and
+     `GBP_ALLOW_LIVE_BACKFILL=true`, re-run the dry run and read
+     `projectedIfFull` for each listing (it must show 0 counted, or only reviews
+     that genuinely sit above the anchor), then run the live backfill one listing
+     first.
+   * **Path B (not built; needs separate approval):** a guarded gap-fill that runs
+     while Apify is on and creates only reviews older than each listing's Apify
+     horizon. It still carries the re-read risk and would need its own design.
+4. **Verify after any live write:** the fingerprint of the existing 194 reviews
+   (same query used for the migration) is unchanged apart from the added rows;
+   counted totals are still 33 / 34 unless `projectedIfFull` predicted otherwise;
+   per-listing totals approach Google's `totalReviewCount`; no duplicate
+   (same listing, reviewer, rating within a day) appears; dashboards spot-checked.
+
+A backfill never rewrites an existing review's week, period or assignment: the
+database function files known rows with no feed position (history), and rows it
+creates are decided by the same anchor planner as every other source.
 
 ## Rollback
 

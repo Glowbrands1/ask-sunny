@@ -24,7 +24,8 @@ import { runGbpSync } from "@/lib/reviews/gbp/sync";
  *   POST { action: "discover" }   ask Google for locations; PROPOSE mappings; writes nothing
  *   POST { action: "confirm", storeCode, locationName }
  *                                 confirm ONE mapping, only if discovery still rates it `eligible`
- *   POST { action: "dry_run", scope?, storeCodes? }
+ *   POST { action: "dry_run", scope?, storeCodes?, from?, to? }
+ *                                 from/to (YYYY-MM-DD) add an `inWindow` summary, e.g. 2026-09-01..2026-11-01
  *                                 full reconciliation report; writes nothing
  *   POST { action: "sync", scope?, storeCodes? }
  *                                 files reviews. Refused unless GBP_SYNC_MODE=live
@@ -76,6 +77,8 @@ export async function POST(request: Request) {
       storeCode?: unknown;
       locationName?: unknown;
       accountName?: unknown;
+      from?: unknown;
+      to?: unknown;
     }>(request);
     const action = typeof body.action === "string" ? body.action : "";
     const deps = await buildGbpRuntime();
@@ -141,8 +144,10 @@ export async function POST(request: Request) {
       const storeCodes = Array.isArray(body.storeCodes)
         ? body.storeCodes.filter((c): c is string => typeof c === "string" && /^[0-9]{1,8}$/.test(c)).slice(0, 20)
         : undefined;
+      const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+      const window = isDay(body.from) && isDay(body.to) && body.from < body.to ? { from: body.from, to: body.to } : undefined;
       const report = await runGbpSync(
-        { requestedMode: action === "sync" ? "live" : "dry_run", scope, trigger: "admin", storeCodes },
+        { requestedMode: action === "sync" ? "live" : "dry_run", scope, trigger: "admin", storeCodes, window },
         deps,
       );
       return NextResponse.json({ status: "ok", report });

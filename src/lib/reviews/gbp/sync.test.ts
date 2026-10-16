@@ -427,4 +427,37 @@ describe("runGbpSync", () => {
       expect(report.locations[0].complete).toBe(false);
     });
   });
+
+  describe("backfill window report (September–October 2026)", () => {
+    const sept = { createTime: "2026-09-10T10:00:00Z" };
+    const oct = { createTime: "2026-10-05T10:00:00Z" };
+    const aug = { createTime: "2026-08-20T10:00:00Z" };
+
+    it("sizes what Google holds in the window against what Ask Sunny holds, by month, and writes nothing", async () => {
+      const f = fixture({
+        mappings: [mapping("306", 9)],
+        reviews: {
+          "locations/9": [
+            apiReview("GBP00001", sept),                                                        // held (auto-matched)
+            apiReview("GBP00002", { ...oct, reviewer: { displayName: "Gap One" }, comment: "Missing one" }),
+            apiReview("GBP00003", { createTime: "2026-09-12T09:00:00Z", reviewer: { displayName: "Gap Two" }, comment: "Missing two" }),
+            apiReview("GBP00004", { ...aug, reviewer: { displayName: "Old One" }, comment: "Outside window" }),
+          ],
+        },
+        storedByLocation: { "loc-306": [stored("a", { googleAbsoluteDate: "2026-09-10T10:00:00.000Z" })] },
+      });
+      const report = await runGbpSync({ ...dry, scope: "backfill", window: { from: "2026-09-01", to: "2026-11-01" } }, { ...f.deps, env: env("dry_run") });
+      expect(report.window).toMatchObject({ from: "2026-09-01", to: "2026-11-01", google: 3, alreadyHeld: 1, missing: 2, needsReview: 0 });
+      expect(report.locations[0].googleByMonth).toEqual({ "2026-08": 1, "2026-09": 2, "2026-10": 1 });
+      expect(report.locations[0].missingByMonth).toEqual({ "2026-08": 1, "2026-09": 1, "2026-10": 1 });
+      expect(f.ingest).not.toHaveBeenCalled();
+      expect(f.writes).toEqual({ links: [], items: [], runs: 0, finished: 0 });
+    });
+
+    it("omits the window summary when none is requested", async () => {
+      const f = fixture({ mappings: [mapping("306", 9)], reviews: { "locations/9": [apiReview("GBP00001")] } });
+      const report = await runGbpSync(dry, { ...f.deps, env: env("dry_run") });
+      expect(report.window).toBeUndefined();
+    });
+  });
 });

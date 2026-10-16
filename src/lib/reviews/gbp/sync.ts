@@ -62,6 +62,13 @@ export interface SyncOptions {
   scope: SyncScope;
   trigger: SyncTrigger;
   storeCodes?: readonly string[];
+  /**
+   * A reporting window over the official review's CREATE time (inclusive start,
+   * exclusive end, `YYYY-MM-DD`). It changes nothing about what is filed: it only
+   * adds an `inWindow` summary to the report, so a backfill such as September–
+   * October 2026 can be sized and checked before anything is written.
+   */
+  window?: { from: string; to: string };
 }
 
 export interface SyncDeps {
@@ -112,6 +119,11 @@ export interface LocationReport {
   googleTotal: number | null;
   googleAverage: number | null;
   storedAverage: number | null;
+  /** Official reviews by creation month (YYYY-MM), and the ones nothing stored resembles. */
+  googleByMonth: Record<string, number>;
+  missingByMonth: Record<string, number>;
+  /** Present only when a window was requested. */
+  inWindow?: { google: number; alreadyHeld: number; missing: number; needsReview: number };
   /**
    * WHAT FULL FILING WOULD DO, computed with the real period planner against the
    * listing's current anchor and never written. This is the evidence for the
@@ -138,6 +150,8 @@ export interface SyncReport {
    */
   filing: "enrich_only" | "full";
   forcedDryRunReason?: string;
+  /** Summed over listings; present only when a window was requested. */
+  window?: { from: string; to: string; google: number; alreadyHeld: number; missing: number; needsReview: number };
   requests: number;
   locations: LocationReport[];
   totals: {
@@ -185,6 +199,8 @@ function emptyLocation(mapping: MappedLocation): LocationReport {
     discrepancies: [],
     needsReviewItems: [],
     newItems: [],
+    googleByMonth: {},
+    missingByMonth: {},
   };
 }
 
@@ -259,7 +275,7 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
     }
 
     try {
-      await syncLocation(mapping, report, mode, maxPages, deps, fileNew);
+      await syncLocation(mapping, report, mode, maxPages, deps, fileNew, options.window);
     } catch (error) {
       report.status = "failed";
       if (error instanceof GbpApiError) {
@@ -300,9 +316,22 @@ export async function runGbpSync(options: SyncOptions, deps: SyncDeps): Promise<
   );
 
   const status: SyncReport["status"] = failed === 0 ? "succeeded" : failed === locations.length ? "failed" : "partial";
+  const windowTotals = options.window
+    ? locations.reduce(
+        (sum, l) => ({
+          ...sum,
+          google: sum.google + (l.inWindow?.google ?? 0),
+          alreadyHeld: sum.alreadyHeld + (l.inWindow?.alreadyHeld ?? 0),
+          missing: sum.missing + (l.inWindow?.missing ?? 0),
+          needsReview: sum.needsReview + (l.inWindow?.needsReview ?? 0),
+        }),
+        { ...options.window, google: 0, alreadyHeld: 0, missing: 0, needsReview: 0 },
+      )
+    : undefined;
   const report: SyncReport = {
     mode,
     filing,
+    window: windowTotals,
     forcedDryRunReason,
     scope: options.scope,
     status,
@@ -342,6 +371,7 @@ async function syncLocation(
   maxPages: number,
   deps: SyncDeps,
   fileNew: boolean,
+  window?: { from: string; to: string },
 ): Promise<void> {
   const fetched = await deps.client.listReviews(mapping.accountName, mapping.gbpLocationName, maxPages);
   const stored = await deps.store.readStoredReviews(mapping.locationId);
@@ -394,6 +424,32 @@ async function syncLocation(
         candidateIds: decision.candidates.map((c) => c.id),
       });
     }
+  }
+
+  /* Size the gap by month, and over a requested window, without filing anything. */
+  const month = (iso: string | null) => (iso ? iso.slice(0, 7) : "unknown");
+  for (const official of unique) {
+    const m = month(official.createTime);
+    report.googleByMonth[m] = (report.googleByMonth[m] ?? 0) + 1;
+  }
+  for (const decision of plan.decisions) {
+    if (decision.kind !== "new") continue;
+    const m = month(decision.official.createTime);
+    report.missingByMonth[m] = (report.missingByMonth[m] ?? 0) + 1;
+  }
+  if (window) {
+    const start = Date.parse(`${window.from}T00:00:00Z`);
+    const end = Date.parse(`${window.to}T00:00:00Z`);
+    const summary = { google: 0, alreadyHeld: 0, missing: 0, needsReview: 0 };
+    for (const decision of plan.decisions) {
+      const at = decision.official.createTime ? Date.parse(decision.official.createTime) : NaN;
+      if (Number.isNaN(at) || at < start || at >= end) continue;
+      summary.google += 1;
+      if (decision.kind === "linked" || decision.kind === "auto_match") summary.alreadyHeld += 1;
+      else if (decision.kind === "new") summary.missing += 1;
+      else summary.needsReview += 1;
+    }
+    report.inWindow = summary;
   }
 
   /* Evidence for the cutover decision. Read-only: the real planner, the real anchor, nothing written. */
