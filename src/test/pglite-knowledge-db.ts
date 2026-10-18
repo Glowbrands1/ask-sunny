@@ -16,7 +16,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *   extensions → knowledge schema → match_knowledge_chunks → RLS → privilege
  *   hardening → 384-dimension embeddings (which redefines the RPC) → the Woven
  *   knowledge sync (the `retired` status, the replaced read policies and the
- *   sync's own tables) → the dry run's inventory.
+ *   sync's own tables) → the dry run's inventory → superseded uploads → the
+ *   keyword index and `match_knowledge_chunks_keyword`.
  *
  * So `match_knowledge_chunks` — the WHERE clause that decides what chat and
  * the form policy search can see (`indexed`, `status = 'indexed'`, current
@@ -43,6 +44,7 @@ const MIGRATIONS = [
   "20260929001000_woven_knowledge_sync",
   "20260930001000_woven_knowledge_inventory",
   "20260930002000_knowledge_document_superseded",
+  "20261008001000_knowledge_keyword_retrieval",
 ] as const;
 
 type Row = Record<string, unknown>;

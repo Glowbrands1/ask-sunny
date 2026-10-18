@@ -618,6 +618,26 @@ describe("11f. the intake answered on one line, as a comma-separated list", () =
     expect(extractEmployeeNames("NE Kearney")).toEqual([]);
   });
 
+  /*
+   * ASK SUNNY FEEDBACK, 7 OCTOBER 2026. "Put together a written CA for <employee>,
+   * primary salon is Omaha Center…" was asked whether the form was
+   * for Jordan Testperson or for Omaha Center. Managers shorten a salon to its
+   * city and the word they know it by — "Omaha Center" is NE Omaha 144th and
+   * Center — and the shortening is still a place on the roster.
+   */
+  it.each([
+    "Put together a written CA for Jordan Testperson, primary salon is Omaha Center. But on Monday 10/05/2026 Jordan was working a shift at Omaha Pacific and did not complete the 10 minute disenfect",
+    "Jordan Testperson was late, her home salon is Omaha Center",
+    "Jordan Testperson covered a shift at Lincoln Pine yesterday",
+  ])("reads a roster salon's shortened name as a place: %s", (text) => {
+    expect(extractEmployeeNames(text)).toEqual(["Jordan Testperson"]);
+  });
+
+  it("does not read a person as a salon because they share its city", () => {
+    expect(extractEmployeeNames("Lawrence Smith was late at KS Lawrence")).toEqual(["Lawrence Smith"]);
+    expect(extractEmployeeNames("Coaching form for Grand Jones")).toEqual(["Grand Jones"]);
+  });
+
   it("still reads a person whose name only looks like a prefix", () => {
     expect(extractEmployeeNames("Mo Smith was late today")).toEqual(["Mo Smith"]);
     expect(extractEmployeeNames("CREATE A COACHING FORM FOR MO SMITH")).toContain("MO SMITH");

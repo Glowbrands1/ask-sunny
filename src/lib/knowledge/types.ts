@@ -11,6 +11,12 @@ export interface KnowledgeQuery {
   scopeId: string;
   categories?: KnowledgeCategory[];
   limit?: number;
+  /**
+   * Add the keyword leg (`knowledge/hybrid.ts`). Chat answers ask for it. Form
+   * policy grounding does not: it verifies a quote by similarity, and a
+   * keyword-only row has none to verify with.
+   */
+  hybrid?: boolean;
 }
 
 /**

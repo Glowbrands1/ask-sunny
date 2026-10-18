@@ -1454,3 +1454,46 @@ describe("HIDE. the hiring forms are not offered as choices", () => {
     expect(response!.content).toMatch(/your role cannot create/i);
   });
 });
+
+/* ================================================ feedback, 6–7 October == */
+
+describe("Ask Sunny feedback, 6–7 October 2026: who the form is for", () => {
+  it("drafts a CA for the employee, not a salon shortened to its city", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn(
+        "Put together a written CA for Jordan Testperson, primary salon is Omaha Center. But on Monday 10/05/2026 Jordan was working a shift at Omaha Pacific and did not complete the 10 minute disenfect",
+        { role: "district_manager", scope: null },
+      ),
+    );
+
+    expect(response!.content).not.toMatch(/Which of them/);
+    expect(response!.formProposal!.employeeName).toBe("Jordan Testperson");
+  });
+
+  it("asks who a coaching form is for instead of filing it for 'based'", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("coacing form based on uniform", {
+        history: [
+          managerTurn(
+            "msg-1",
+            "generate me a coaching worksheet for team memebers about getting checking accounts put onto client profiles",
+          ),
+        ],
+      }),
+    );
+
+    // The earlier turn asked for coaching for the team, which is a subject
+    // the Coaching Form already supports; "based" is nobody.
+    expect(response!.formProposal!.employeeName).toBe("All team members");
+  });
+
+  it("asks who it is for when nothing in the conversation says", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(turn("coacing form based on uniform"));
+
+    expect(response!.formProposal!.employeeName).toBeNull();
+    expect(response!.formProposal!.status).not.toBe("ready");
+  });
+});

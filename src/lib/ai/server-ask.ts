@@ -33,9 +33,11 @@ import {
   type RoleGroundingResult,
 } from "@/lib/knowledge/role-grounding";
 import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
+import { rowsForQuestion } from "@/lib/knowledge/credential-redaction";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { assembleGrounding } from "./grounding-assembly";
+import { ASK_SUNNY_APP_KNOWLEDGE, asksAboutTheApp, selectAppKnowledgeRows } from "./app-knowledge";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
 import { classifyPerformanceManagementIntent } from "./performance-management-gate";
@@ -621,6 +623,17 @@ export async function answerQuestion(
     : Promise.resolve(null);
 
   /*
+   * QUESTIONS ABOUT ASK SUNNY ITSELF are answered from its app knowledge
+   * document, pinned by identity: "change the password on this platform" uses
+   * none of that document's words. Degrades exactly as the manual does — the
+   * lookup returns a reason rather than throwing, and a lookup that fails or
+   * finds nothing pins nothing. See `app-knowledge.ts`.
+   */
+  const appKnowledgePromise = asksAboutTheApp(request.question)
+    ? knowledge.fetchOfficialPolicyManual(request.scopeId, ASK_SUNNY_APP_KNOWLEDGE)
+    : Promise.resolve(null);
+
+  /*
    * The employee-level facts the framework is meant to reason OVER. Today no
    * such dataset exists — the reporting layer is salon-level — so this reports
    * "no ingested dataset", which is NOT the same as "no facts": the manager may
@@ -635,6 +648,12 @@ export async function answerQuestion(
     rows = await knowledge.match({
       query: request.question,
       scopeId: request.scopeId,
+      /*
+       * KEYWORDS AS WELL AS MEANING. "Checking accounts" asked as a coaching
+       * request retrieved only coaching frameworks; the keyword leg finds the
+       * documents that use the manager's own words. See `knowledge/hybrid.ts`.
+       */
+      hybrid: true,
       /*
        * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
        * manual in the corpus on its own topics, and `assembleGrounding` drops
@@ -662,6 +681,7 @@ export async function answerQuestion(
   const performanceManagementResult = await performanceManagementPromise;
   const employeeFacts = await employeeFactsPromise;
   const policyManual = await policyManualPromise;
+  const appKnowledge = await appKnowledgePromise;
 
   /*
    * THE REFUSAL. An employee-performance turn whose mandatory framework is not
@@ -766,6 +786,16 @@ export async function answerQuestion(
        * pinned here.
        */
       ...(manualCoverage?.rows ?? []),
+      /* The app's own sections, for a question about the app. */
+      ...(appKnowledge?.ok
+        ? selectAppKnowledgeRows({
+            question: request.question,
+            documentId: appKnowledge.documentId,
+            documentTitle: appKnowledge.documentTitle,
+            documentCategory: appKnowledge.documentCategory,
+            chunks: appKnowledge.chunks,
+          })
+        : []),
     ],
     retrieved: rows,
     roleDocumentIds: [
@@ -776,7 +806,12 @@ export async function answerQuestion(
     evidenceBudget: RETRIEVAL.contextChunks,
   });
 
-  const used = assembled.rows;
+  /*
+   * Default account passwords withheld unless the question is about them —
+   * from the grounding and the source cards alike, since both derive from
+   * these rows. See `knowledge/credential-redaction.ts`.
+   */
+  const used = rowsForQuestion(request.question, assembled.rows);
 
   /*
    * Where the pinned manual rows actually landed, so the note that tells the
