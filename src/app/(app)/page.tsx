@@ -20,6 +20,7 @@ import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { withoutUnreadable } from "@/lib/forms/instance-scope";
+import { formsScopeFor } from "@/lib/forms/forms-scope";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
 import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
@@ -95,7 +96,7 @@ export default async function OverviewPage() {
       Overview's queue cannot disagree with a report page about which salons a
       person covers. See `scope/server.ts`.
     */
-    const access = await resolveScopeFor(identity?.verified ? identity.scope : null);
+    const access = await resolveScopeFor(identity?.verified ? formsScopeFor(identity) : null);
     const locationIds = locationIdsForScope(access);
     // Exit forms only for readers who may create them — see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");

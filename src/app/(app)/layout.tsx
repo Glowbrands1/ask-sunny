@@ -6,7 +6,7 @@ import { attentionSummary } from "@/lib/forms/follow-up";
 import { pageShowsAppSwitcher } from "@/lib/auth/app-switcher";
 import { pageCan } from "@/lib/auth/page";
 import { withoutUnreadable } from "@/lib/forms/instance-scope";
-import { listOutstandingFollowUps } from "@/lib/forms/instances";
+import { outstandingFollowUpsFor, pageFormsActor } from "@/lib/forms/page-scope";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -33,7 +33,7 @@ async function overdueCount(): Promise<number> {
     // The badge counts only forms this reader may open; see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");
     const outstanding = withoutUnreadable(
-      await listOutstandingFollowUps(),
+      await outstandingFollowUpsFor(await pageFormsActor()),
       (permission) => permission === "create_exit_form" && readsExit,
     );
     return attentionSummary(outstanding, today).overdue;

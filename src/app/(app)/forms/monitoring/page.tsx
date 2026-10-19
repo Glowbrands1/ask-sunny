@@ -10,7 +10,6 @@ import {
   findDemoInstances,
   isDemoInstance,
   listInstances,
-  listOutstandingFollowUps,
   type InstanceView,
 } from "@/lib/forms/instances";
 import {
@@ -20,6 +19,14 @@ import {
 } from "@/features/forms/monitoring-table";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
 import { withoutUnreadable } from "@/lib/forms/instance-scope";
+import { NO_HOME_SALON_MESSAGE } from "@/lib/forms/forms-scope";
+import {
+  actorLacksHomeSalon,
+  onlyVisible,
+  outstandingFollowUpsFor,
+  pageFormsActor,
+  pageListFilter,
+} from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
@@ -69,6 +76,17 @@ export default async function FormMonitoringPage({
   let demo = { deletable: 0, protected: 0 };
   let failure: string | null = null;
 
+  /*
+   * WHOSE FORMS. Decided on the server from the verified identity
+   * (`formsScopeFor`): administrators, Colene and DJ read every salon; everyone
+   * else reads only their assigned salon, and an account with no salon reads
+   * nothing and is told why. Every read below is narrowed by it — rows, the
+   * overdue banner and the demo-sweep count — so no other salon's forms are
+   * fetched, counted or listed.
+   */
+  const actor = await pageFormsActor();
+  const noHomeSalon = actorLacksHomeSalon(actor);
+
   try {
     /*
      * EXIT FORMS ONLY FOR THOSE WHO MAY CREATE THEM. The Resignation/Exit Form
@@ -78,7 +96,13 @@ export default async function FormMonitoringPage({
      */
     const readsExit = await pageCan("create_exit_form");
     const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
-    const instances = withoutUnreadable(await listInstances(view satisfies InstanceView), holds);
+    const instances = onlyVisible(
+      actor,
+      withoutUnreadable(
+        await listInstances(view satisfies InstanceView, undefined, pageListFilter(actor)),
+        holds,
+      ),
+    );
     forms = instances.map((instance) => ({
       id: instance.id,
       templateName: instance.templateName,
@@ -113,7 +137,7 @@ export default async function FormMonitoringPage({
      * query the Overview uses — not from `forms`, which is shelf-filtered. A
      * manager looking at Followed up still needs to be told what is overdue.
      */
-    attention = attentionSummary(withoutUnreadable(await listOutstandingFollowUps(), holds), today);
+    attention = attentionSummary(withoutUnreadable(await outstandingFollowUpsFor(actor), holds), today);
 
     /*
      * Counted on the server across EVERY shelf, so the sweep button can state a
@@ -121,7 +145,10 @@ export default async function FormMonitoringPage({
      * filtered, and the count would change with the view.
      */
     const sweep = await findDemoInstances();
-    demo = { deletable: sweep.deletable.length, protected: sweep.protected.length };
+    demo = {
+      deletable: onlyVisible(actor, sweep.deletable).length,
+      protected: onlyVisible(actor, sweep.protected).length,
+    };
   } catch (error) {
     failure = (error as Error).message;
   }
@@ -137,7 +164,11 @@ export default async function FormMonitoringPage({
 
         <FormsAccessNotice permission="view_form_monitoring" />
 
-        {failure ? (
+        {noHomeSalon ? (
+          <Notice tone="attention" title="No home salon assigned">
+            {NO_HOME_SALON_MESSAGE}
+          </Notice>
+        ) : failure ? (
           <Notice tone="attention" title="Form history could not be read">
             {failure}
           </Notice>

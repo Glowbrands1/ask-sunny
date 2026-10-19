@@ -3,6 +3,7 @@ import "server-only";
 import { isDemoMode } from "@/lib/config/runtime";
 import { AuthError } from "@/lib/auth/types";
 import { authorizeRequest } from "@/lib/auth/server";
+import { formsScopeFor } from "./forms-scope";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type { AccessScope, Permission, Role } from "@/types";
 
@@ -111,7 +112,12 @@ export async function authorizeForms(
       role: context.identity.role,
       // The whole point of this remediation: the assignment travels with the
       // actor, so a form-creating path can check it.
-      scope: context.identity.scope,
+      //
+      // DECIDED BY `formsScopeFor`, not copied: a stored `global` level on an
+      // ordinary account does not read every salon's forms. See `forms-scope.ts`.
+      scope: context.identity.verified
+        ? formsScopeFor(context.identity)
+        : context.identity.scope,
       // `authorizeRequest` refuses anything a production-grade provider did not
       // vouch for, so reaching here means the identity really was verified —
       // but the flag is carried from the identity rather than asserted, so the
