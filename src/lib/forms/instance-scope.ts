@@ -83,9 +83,10 @@ export type InstanceAction =
  */
 export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): boolean {
   // Demo: unverified identity, no scope, no enforcement. See `location-scope`.
-  if (!actor.scope) return true;
+  const visibility = actor.visibility;
+  if (!visibility) return true;
 
-  if (actor.scope.level === "global") return true;
+  if (visibility.level === "global") return true;
 
   /*
    * ==========================================================================
@@ -110,8 +111,8 @@ export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): b
    * So a record that names a salon is decided by the salon, and nothing else.
    */
   if (instance.locationId) {
-    if (actor.scope.level === "salon") {
-      return authorizedSalonIds(actor.scope).includes(instance.locationId);
+    if (visibility.level === "salon") {
+      return authorizedSalonIds(visibility).includes(instance.locationId);
     }
     // district | region — fails closed, exactly as creation does.
     return false;
@@ -152,8 +153,9 @@ export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): b
  */
 export function instanceListFilterFor(actor: FormsActor): InstanceListFilter | undefined {
   // Preview and global: unrestricted, one ordered bounded read.
-  if (!actor.scope) return undefined;
-  if (actor.scope.level === "global") return undefined;
+  const visibility = actor.visibility;
+  if (!visibility) return undefined;
+  if (visibility.level === "global") return undefined;
 
   return {
     /*
@@ -161,7 +163,7 @@ export function instanceListFilterFor(actor: FormsActor): InstanceListFilter | u
      * location-bearing rows: `authorizedSalonIds` returns nothing for any level
      * but `salon`, and an empty list means no salon query is issued at all.
      */
-    locationIds: authorizedSalonIds(actor.scope),
+    locationIds: authorizedSalonIds(visibility),
     // The narrow exception for an ABSENT salon, matching `actorMaySeeInstance`.
     ownNullLocationCreatedBy: actor.id,
   };

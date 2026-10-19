@@ -1263,10 +1263,6 @@ export async function listOutstandingFollowUps(
    */
   locationIds: readonly string[] | null = null,
 ): Promise<InstanceRow[]> {
-  // An empty list is a reader with no salon: nothing qualifies, and `in.()` is
-  // not a query to issue. Fail closed rather than let it read, or error.
-  if (locationIds !== null && locationIds.length === 0) return [];
-
   const supabase = getSupabaseAdmin();
   let query = supabase
     .from("form_instance_overview")

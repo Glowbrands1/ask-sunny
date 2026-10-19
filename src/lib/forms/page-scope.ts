@@ -1,66 +1,43 @@
 import "server-only";
 
-import { pageIdentity } from "@/lib/auth/page";
+import type { AuthenticatedIdentity } from "@/lib/auth/types";
 
 import type { FormsActor } from "./access";
-import { formsScopeFor, formsSalonIdsFor, lacksHomeSalon } from "./forms-scope";
-import { actorMaySeeInstance, instanceListFilterFor } from "./instance-scope";
-import {
-  listOutstandingFollowUps,
-  type InstanceListFilter,
-  type InstanceRow,
-} from "./instances";
+import { resolveFormsVisibility } from "./forms-visibility";
+import { authorizedSalonIds } from "./location-scope";
 
 /**
- * The reader of a SERVER-RENDERED page, as the same `FormsActor` the API routes
- * build, so a page and a route cannot disagree about whose forms are whose.
+ * What a SERVER-RENDERED page may read from the forms record: the same
+ * visibility the API routes apply through `authorizeForms`, resolved from the
+ * VERIFIED identity, so a page and its API cannot disagree.
  *
- * The scope is decided by `formsScopeFor` from the VERIFIED identity — never
- * from a request value. An unverified (demo) identity carries no scope and is
- * not enforced, exactly as `authorizeForms` treats it; no identity at all fails
- * closed to a reader with no salon.
+ *   locationIds   salon ids the read must be narrowed to; null = unrestricted
+ *                 (administrators, designated accounts, and unverified preview,
+ *                 whose scope the browser asserted about itself)
+ *   noSalon       a verified reader with no resolvable home salon: nothing is
+ *                 read at all and the page says why
  */
-export async function pageFormsActor(): Promise<FormsActor> {
-  const identity = await pageIdentity();
-  if (!identity) {
-    return {
-      id: "anonymous",
-      role: null,
-      verified: false,
-      scope: { level: "salon", primaryAreaId: null, alsoCoversAreaIds: [] },
-    };
-  }
-  return {
-    id: identity.subject,
-    role: identity.role,
-    verified: identity.verified,
-    scope: identity.verified ? formsScopeFor(identity) : null,
+export interface PageFormsAccess {
+  actor: FormsActor;
+  locationIds: string[] | null;
+  noSalon: boolean;
+}
+
+export async function pageFormsAccess(
+  identity: AuthenticatedIdentity | null,
+): Promise<PageFormsAccess> {
+  const visibility =
+    identity?.verified === true ? await resolveFormsVisibility(identity) : null;
+  const actor: FormsActor = {
+    id: identity?.subject ?? "preview",
+    role: identity?.role ?? null,
+    verified: identity?.verified === true,
+    scope: identity?.scope ?? null,
+    visibility,
   };
-}
-
-/** The query narrowing for this reader, or undefined when unrestricted. */
-export function pageListFilter(actor: FormsActor): InstanceListFilter | undefined {
-  return instanceListFilterFor(actor);
-}
-
-/** True when a verified reader has no salon to read. */
-export function actorLacksHomeSalon(actor: FormsActor): boolean {
-  return actor.verified && lacksHomeSalon(actor.scope);
-}
-
-/** Rows this reader may see — the same predicate the API applies. */
-export function onlyVisible<T extends InstanceRow>(actor: FormsActor, rows: readonly T[]): T[] {
-  return rows.filter((row) => actorMaySeeInstance(actor, row));
-}
-
-/**
- * Outstanding follow-ups for this reader: narrowed in the query, re-checked in
- * memory. The Monitoring banner, the Overview queue and the rail badge all call
- * this, so their counts cannot disagree and none can count another salon.
- */
-export async function outstandingFollowUpsFor(
-  actor: FormsActor,
-  limit?: number,
-): Promise<InstanceRow[]> {
-  return onlyVisible(actor, await listOutstandingFollowUps(limit, formsSalonIdsFor(actor.scope)));
+  if (!visibility || visibility.level === "global") {
+    return { actor, locationIds: null, noSalon: false };
+  }
+  const locationIds = authorizedSalonIds(visibility);
+  return { actor, locationIds, noSalon: locationIds.length === 0 };
 }
