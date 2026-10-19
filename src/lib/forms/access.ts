@@ -4,6 +4,7 @@ import { isDemoMode } from "@/lib/config/runtime";
 import { AuthError } from "@/lib/auth/types";
 import { authorizeRequest } from "@/lib/auth/server";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
+import { resolveFormsVisibility } from "./forms-visibility";
 import type { AccessScope, Permission, Role } from "@/types";
 
 /**
@@ -57,6 +58,13 @@ export interface FormsActor {
    */
   scope: AccessScope | null;
   /**
+   * THE SCOPE FORMS ARE READ UNDER — see `forms-visibility.ts`. Distinct from
+   * `scope` because the stored scope level is not enough to read by: it grants
+   * all salons only to administrators and designated accounts. `null` for a
+   * DEMO actor, for the same reason `scope` is.
+   */
+  visibility: AccessScope | null;
+  /**
    * Set in preview mode to the permission this call WOULD have needed, when the
    * preview role does not carry it. Recorded rather than refused — see
    * `authorizeForms`.
@@ -90,6 +98,7 @@ function demoActor(request: Request): FormsActor {
     verified: false,
     // No verified identity, so no scope. Never enforced against.
     scope: null,
+    visibility: null,
   };
 }
 
@@ -112,6 +121,7 @@ export async function authorizeForms(
       // The whole point of this remediation: the assignment travels with the
       // actor, so a form-creating path can check it.
       scope: context.identity.scope,
+      visibility: context.identity.verified ? await resolveFormsVisibility(context.identity) : null,
       // `authorizeRequest` refuses anything a production-grade provider did not
       // vouch for, so reaching here means the identity really was verified —
       // but the flag is carried from the identity rather than asserted, so the

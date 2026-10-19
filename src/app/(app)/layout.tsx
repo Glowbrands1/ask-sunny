@@ -4,9 +4,10 @@ import { AppShell } from "@/components/shell/app-shell";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary } from "@/lib/forms/follow-up";
 import { pageShowsAppSwitcher } from "@/lib/auth/app-switcher";
-import { pageCan } from "@/lib/auth/page";
-import { withoutUnreadable } from "@/lib/forms/instance-scope";
+import { pageCan, pageIdentity } from "@/lib/auth/page";
+import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
+import { pageFormsAccess } from "@/lib/forms/page-scope";
 
 /**
  * COUNTS, NOT HUES — the rail's overdue badge.
@@ -32,10 +33,12 @@ async function overdueCount(): Promise<number> {
     const today = businessToday();
     // The badge counts only forms this reader may open; see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");
+    const access = await pageFormsAccess(await pageIdentity());
+    if (access.noSalon) return 0;
     const outstanding = withoutUnreadable(
-      await listOutstandingFollowUps(),
+      await listOutstandingFollowUps(50, access.locationIds),
       (permission) => permission === "create_exit_form" && readsExit,
-    );
+    ).filter((instance) => actorMaySeeInstance(access.actor, instance));
     return attentionSummary(outstanding, today).overdue;
   } catch {
     return 0;

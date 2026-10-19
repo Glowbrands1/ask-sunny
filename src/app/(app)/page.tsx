@@ -19,11 +19,10 @@ import {
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
-import { withoutUnreadable } from "@/lib/forms/instance-scope";
+import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
+import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
-import { resolveScopeFor } from "@/lib/reporting/scope/server";
 import {
-  locationIdsForScope,
   scopeAreaLabel,
 } from "@/lib/reporting/scope/authorized-salons";
 import {
@@ -95,14 +94,16 @@ export default async function OverviewPage() {
       Overview's queue cannot disagree with a report page about which salons a
       person covers. See `scope/server.ts`.
     */
-    const access = await resolveScopeFor(identity?.verified ? identity.scope : null);
-    const locationIds = locationIdsForScope(access);
+    const access = await pageFormsAccess(identity);
+    const locationIds = access.locationIds;
     // Exit forms only for readers who may create them — see `withoutUnreadable`.
     const readsExit = await pageCan("create_exit_form");
-    const outstanding = withoutUnreadable(
-      await listOutstandingFollowUps(50, locationIds),
-      (permission) => permission === "create_exit_form" && readsExit,
-    );
+    const outstanding = access.noSalon
+      ? []
+      : withoutUnreadable(
+          await listOutstandingFollowUps(50, locationIds),
+          (permission) => permission === "create_exit_form" && readsExit,
+        ).filter((instance) => actorMaySeeInstance(access.actor, instance));
 
     /*
      * NON-PRODUCTION RECORDS ARE HELD BACK FROM THE SUMMARY, NOT DELETED.
@@ -151,7 +152,10 @@ export default async function OverviewPage() {
       today,
       failure: null,
       excluded: outstanding.length - production.length,
-      scopeLabel: locationIds === null ? null : scopeAreaLabel(identity?.scope ?? null),
+      scopeLabel:
+        locationIds === null
+          ? null
+          : scopeAreaLabel({ level: "salon", primaryAreaId: locationIds.length === 1 ? locationIds[0]! : null, alsoCoversAreaIds: [] }),
     };
   } catch (error) {
     followUps = { ...followUps, failure: (error as Error).message };

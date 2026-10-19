@@ -19,7 +19,12 @@ import {
   type MonitoringView,
 } from "@/features/forms/monitoring-table";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
-import { withoutUnreadable } from "@/lib/forms/instance-scope";
+import {
+  actorMaySeeInstance,
+  instanceListFilterFor,
+  withoutUnreadable,
+} from "@/lib/forms/instance-scope";
+import { pageFormsAccess } from "@/lib/forms/page-scope";
 import type { Permission } from "@/types";
 
 export const metadata: Metadata = { title: "Form Monitoring" };
@@ -44,7 +49,7 @@ export default async function FormMonitoringPage({
 }: {
   searchParams: Promise<{ view?: string; followup?: string }>;
 }) {
-  await requirePagePermission("view_form_monitoring");
+  const identity = await requirePagePermission("view_form_monitoring");
 
   const { view: requestedView, followup: requestedFollowUp } = await searchParams;
   /*
@@ -69,7 +74,18 @@ export default async function FormMonitoringPage({
   let demo = { deletable: 0, protected: 0 };
   let failure: string | null = null;
 
-  try {
+  /*
+   * WHOSE FORMS. Decided on the server from the verified identity
+   * (`resolveFormsVisibility`): administrators and designated accounts read
+   * every salon; everyone else reads only their home salon, and an account with
+   * none reads nothing and is told why. Every read below is narrowed by it —
+   * rows, the overdue banner and the demo-sweep count.
+   */
+  const access = await pageFormsAccess(identity);
+  const mayRead = (instance: Parameters<typeof actorMaySeeInstance>[1]) =>
+    actorMaySeeInstance(access.actor, instance);
+
+  if (!access.noSalon) try {
     /*
      * EXIT FORMS ONLY FOR THOSE WHO MAY CREATE THEM. The Resignation/Exit Form
      * carries payroll, bonus, minimum-wage and rehire answers, so a reader
@@ -78,7 +94,10 @@ export default async function FormMonitoringPage({
      */
     const readsExit = await pageCan("create_exit_form");
     const holds = (permission: Permission) => (permission === "create_exit_form" ? readsExit : false);
-    const instances = withoutUnreadable(await listInstances(view satisfies InstanceView), holds);
+    const instances = withoutUnreadable(
+      await listInstances(view satisfies InstanceView, undefined, instanceListFilterFor(access.actor)),
+      holds,
+    ).filter(mayRead);
     forms = instances.map((instance) => ({
       id: instance.id,
       templateName: instance.templateName,
@@ -113,7 +132,10 @@ export default async function FormMonitoringPage({
      * query the Overview uses — not from `forms`, which is shelf-filtered. A
      * manager looking at Followed up still needs to be told what is overdue.
      */
-    attention = attentionSummary(withoutUnreadable(await listOutstandingFollowUps(), holds), today);
+    attention = attentionSummary(
+      withoutUnreadable(await listOutstandingFollowUps(50, access.locationIds), holds).filter(mayRead),
+      today,
+    );
 
     /*
      * Counted on the server across EVERY shelf, so the sweep button can state a
@@ -121,7 +143,10 @@ export default async function FormMonitoringPage({
      * filtered, and the count would change with the view.
      */
     const sweep = await findDemoInstances();
-    demo = { deletable: sweep.deletable.length, protected: sweep.protected.length };
+    demo = {
+      deletable: sweep.deletable.filter(mayRead).length,
+      protected: sweep.protected.filter(mayRead).length,
+    };
   } catch (error) {
     failure = (error as Error).message;
   }
@@ -137,7 +162,11 @@ export default async function FormMonitoringPage({
 
         <FormsAccessNotice permission="view_form_monitoring" />
 
-        {failure ? (
+        {access.noSalon ? (
+          <Notice tone="attention" title="No home salon assigned">
+            Form Monitoring shows the forms for your own salon, and your account has no salon assigned yet. An administrator can set it in User Management.
+          </Notice>
+        ) : failure ? (
           <Notice tone="attention" title="Form history could not be read">
             {failure}
           </Notice>
