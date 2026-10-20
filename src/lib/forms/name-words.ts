@@ -16,6 +16,17 @@ export const NOT_A_NAME = new Set([
   "tomorrow", "yesterday", "monday", "tuesday", "wednesday", "thursday",
   "friday", "saturday", "sunday",
   /*
+   * THE MONTHS THAT ARE NEVER ANYBODY'S FIRST NAME. Production feedback,
+   * October 2026: "Betty Sue … under performance for September 270 tans
+   * below …" read "for September" as a second person, and Ask Sunny asked
+   * whether the form was for Betty Sue or September. April, May, June, July
+   * and August are real first names, so they are not here — `lowercaseMonths`
+   * below takes them out of a name position only where the sentence uses
+   * them as a date.
+   */
+  "january", "february", "march", "september", "october", "november", "december",
+  "feb", "sep", "sept", "oct", "nov", "dec",
+  /*
    * THE SUBJECT PRONOUNS. They could not reach a candidate before: a full name
    * needs two capitalised parts and the preposed pattern needs "for"/"about",
    * so a sentence-initial "She" matched nothing. `NAMED_ROLE` below reads
@@ -141,6 +152,41 @@ export const NOT_A_TYPED_NAME = new Set([
   "language", "profanity", "gum", "food", "eating", "drinking", "sleeping", "callout",
   "callouts", "call-out", "call-outs", "no-show", "no-shows",
 ]);
+
+/*
+ * ============================================================================
+ * "FOR SEPTEMBER 270 TANS BELOW" IS A MONTH, NOT A PERSON
+ * ============================================================================
+ *
+ * The employee readers take a capital letter as the evidence of a name, so a
+ * month written as managers write it — capitalised — reached the same
+ * positions a person does: "for September", or the tail of a capitalised run
+ * ("Betty Sue September"). Writing the month in lower case takes it out of
+ * every capital-based reading while the date readers, which match months in
+ * any case, still see it.
+ *
+ * The months that are never a first name are always lowered. The ones that
+ * are (April, May, June, July, August, Jan) are lowered only where the
+ * sentence uses them as a date: followed by a number ("June 5", "August
+ * 2026", "June 270 tans") or led by a word that introduces a period ("in
+ * June", "since August", "last July", "the month of May"). "Coaching for June"
+ * is still a person.
+ */
+const ALWAYS_MONTH = "january|february|march|september|october|november|december|feb|mar|sept?|oct|nov|dec";
+const NAME_LIKE_MONTH = "april|may|june|july|august|jan|apr|jun|jul|aug";
+const MONTH_ALWAYS = new RegExp(`\\b(?:${ALWAYS_MONTH})\\b\\.?`, "gi");
+const MONTH_AS_DATE = new RegExp(
+  `(\\b(?:in|during|since|until|till|through|thru|throughout|of|last|this|next|early|mid|late|every|each|by|from)\\s+)(${NAME_LIKE_MONTH})\\b|\\b(${NAME_LIKE_MONTH})\\b(?=\\.?\\s*,?\\s*\\d)`,
+  "gi",
+);
+
+export function lowercaseMonths(text: string): string {
+  return text
+    .replace(MONTH_ALWAYS, (month) => month.toLowerCase())
+    .replace(MONTH_AS_DATE, (match, lead: string | undefined, led: string | undefined, dated: string | undefined) =>
+      lead && led ? `${lead}${led.toLowerCase()}` : (dated ?? match).toLowerCase(),
+    );
+}
 
 /** A word a lower-case or all-caps name can be made of: letters, ' and -. */
 export const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;

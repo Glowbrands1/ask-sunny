@@ -121,7 +121,7 @@ describe("a revision of the open form", () => {
       }),
     );
     expect(response.status).toBe(200);
-    // The SERVER's business day, never the browser's `todayIso` — see `parseAskRequest`.
+    // The server's business day, never the date the browser sent — see `context` in the route.
     expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: businessToday() });
   });
 
