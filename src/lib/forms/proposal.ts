@@ -6,7 +6,7 @@ import { storeNameKey } from "@/lib/reporting/store-identity";
 
 import { extractFormDate } from "./form-date-answer";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
-import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
+import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD, lowercaseMonths } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import {
   allowsTeamSubject,
@@ -254,6 +254,19 @@ export type EmployeeResolution =
  * There "paulyne", "paulyne co" and "PAULYNE CO" read exactly as "Paulyne Co"
  * does, and a first name alone is a name. See `readTypedName`.
  */
+/**
+ * A capitalised run made only of words that are never anybody's name — "Late
+ * Opening", "Dress Code", "Cell Phones". Production, 20 Oct 2026: "create
+ * corrective action for Ellie Sendgraff for Late Opening" asked whether the
+ * form was for Ellie Sendgraff or for Late Opening. A policy is named in
+ * capitals as naturally as a person is; one word that could be a name keeps
+ * the run a candidate.
+ */
+function namesATopic(run: string): boolean {
+  const words = run.trim().split(/\s+/);
+  return words.length >= 2 && words.every((word) => NOT_A_TYPED_NAME.has(word.toLowerCase()));
+}
+
 export function extractEmployeeNames(text: string): string[] {
   return readEmployeeMentions(text).names;
 }
@@ -302,7 +315,8 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   // "pls", "u", "frm" are never names and never end one; read them as words.
   // "general training", "team-wide", "everyone at the salon" describe the team,
   // never a person — they are taken out first. See `maskTeamSubjectPhrases`.
-  const text = maskTeamSubjectPhrases(canonicalShorthand(typed));
+  // "for September 270 tans" is a date, never a person. See `lowercaseMonths`.
+  const text = lowercaseMonths(maskTeamSubjectPhrases(canonicalShorthand(typed)));
   /* Names read from a position that says a person is being given on purpose. */
   const strong: string[] = [];
   /* Names read from the narrative: a capitalised pair, "with Jordan". */
@@ -513,7 +527,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
 
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
-    const run = match[1]!.trim();
+    const run = nameBeforeRole(match[1]!.trim());
     if (places.has(run)) continue;
     /*
      * "It's Avery Testperson", "Sorry Avery Testperson": the capitalised run
@@ -525,6 +539,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (isRosterSalonName(candidate)) continue;
     if (isJobTitlePhrase(candidate)) continue;
+    if (namesATopic(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       // Led by a reply ("It's …"), the run IS the answer.
       (candidate === run ? found : strong).push(candidate);
@@ -532,8 +547,12 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   }
 
   const PREPOSED = new RegExp(`\\b(?:for|about|with|regarding)\\s+(${NAME})\\b`, "g");
+  const RUN = new RegExp(`^${NAME}(?:\\s+${PART})*`);
   for (const match of text.matchAll(PREPOSED)) {
     const candidate = match[1]!.trim();
+    // "for Late Opening": the first word of a capitalised policy title.
+    const run = RUN.exec(text.slice(match.index! + match[0].length - match[1]!.length))?.[0] ?? candidate;
+    if (run.includes(" ") && namesATopic(run)) continue;
     if (!notAName(candidate)) found.push(candidate);
   }
 
@@ -733,6 +752,37 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   }
 
   return settle(strong, found, text);
+}
+
+/*
+ * ============================================================================
+ * "BRANDI ALGYA ASD LINCOLN O ST": THE NAME, THE ROLE, THE SALON
+ * ============================================================================
+ *
+ * Reported from production, 20 October 2026. Managers sign a person off the
+ * way the salon's paperwork does — name, role, salon — with no commas:
+ *
+ *     "Can you create a coaching form for a manager on the onboarding
+ *      process? Brandi Algya ASD Lincoln O St. Properly uploading …"
+ *
+ * The capitalised-run reader took all six words as one run, found "ASD" in it
+ * (a role, so never a name) and threw the whole run away. Sunny asked who the
+ * form was for, was told "Brandi Algya ASD Lincoln O St" on its own, and threw
+ * that away too — so the intake ended and the manager got advice instead of a
+ * form.
+ *
+ * THE ROLE ABBREVIATION IS THE BOUNDARY. Typed in capitals, it ends the name:
+ * the words before it are the person, and what follows is the salon or the
+ * rest of the sentence. Two name words are required before it, so a lone
+ * "Sarah SD" still names nobody from here, exactly as a lone capitalised word
+ * never has. A run with no role in it is returned unchanged.
+ */
+const ROLE_ABBREVIATION = /^(?:SD|ASD|TSD|SDIT|DMIT|FTTC|PTTC|TC|DM|RM|GM|FT|PT|MGR)$/;
+
+function nameBeforeRole(run: string): string {
+  const words = run.split(/\s+/);
+  const role = words.findIndex((word) => ROLE_ABBREVIATION.test(word.replace(/[.,]+$/, "")));
+  return role >= 2 ? words.slice(0, role).join(" ") : run;
 }
 
 /**

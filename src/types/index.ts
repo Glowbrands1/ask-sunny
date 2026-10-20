@@ -676,6 +676,14 @@ export interface ChatFormProposal {
    */
   status: "needs_employee" | "needs_location" | "ready";
   /**
+   * True on a Corrective Action Form whose employee is known but whose
+   * incident the manager has not described yet. The form can still be
+   * created; the card says its policy line cannot be cited until Sunny is told
+   * what happened, which then redrafts it (`chat-redraft.ts`). Absent on
+   * every other proposal.
+   */
+  awaitingIncident?: true;
+  /**
    * The MANAGER turns this proposal was built from, oldest first. Ids, not
    * text: the conversation keeps the words, and this keeps the pointer.
    */

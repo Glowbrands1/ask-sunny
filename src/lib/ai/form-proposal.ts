@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildProposal,
   extractEmployeeNames,
+  employeeState,
   managerContext,
   resolveEmployee,
   type ManagerContext,
@@ -23,10 +24,13 @@ import {
   type EppIntakeReading,
 } from "@/lib/forms/epp-intake";
 import {
+  answeredWhatHappened,
   asksToBeGuided,
   describesIncident,
   correctiveActionBasis,
   correctiveActionIntakeRequest,
+  describesMoreThanTheRequest,
+  NO_INCIDENT_NOTE,
   readCorrectiveActionIntake,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
@@ -65,6 +69,7 @@ import {
   type EmploymentChangeKind,
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
+import { PRODUCTION_SALONS } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import {
@@ -252,6 +257,14 @@ export interface ChatActor {
   role: Role | null;
   /** `null` when no identity provider vouched for a scope. Never enforced against. */
   scope: AccessScope | null;
+  /**
+   * The account id and whether a provider verified it. Optional because only
+   * the Form Monitoring lookup needs them — forms visibility is decided per
+   * account (designated all-salon access, the Woven home salon, the creator of
+   * a form with no salon) — and it reads nothing without both.
+   */
+  subject?: string;
+  verified?: boolean;
 }
 
 export interface ProposalTurn {
@@ -558,10 +571,12 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * See `checkTypedEmployee`: an exact match takes the directory's spelling and
    * salon, a close one is asked about, and nothing is ever autocorrected.
    */
-  const directory = await checkTypedEmployee(input, match, context);
+  const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, context) : null;
+  const directory = await checkTypedEmployee(input, match, context, carried);
+  const employee = directory.resolution ?? carried;
 
   const proposal = buildProposal({
-    ...(directory.resolution ? { employee: directory.resolution } : {}),
+    ...(employee ? { employee } : {}),
     employeeSalonIds: directory.salonIds ?? [],
     /*
      * SERVER-GENERATED, never taken from the request. A proposal id is how a
@@ -626,6 +641,26 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     ]);
   }
 
+  /*
+   * NAMED, BUT NOT DESCRIBED. A Corrective Action Form is drafted from the
+   * account, and the policy citation is resolved from the offense that account
+   * supports — so a form created from "create ca for Ellie Sendgraff" alone
+   * comes back without one. It can still be created; the card says so, and
+   * says that telling Sunny what happened redrafts it with the citation (see
+   * `chat-redraft.ts`).
+   */
+  if (
+    isCorrectiveActionForm(match) &&
+    proposal.status !== "needs_employee" &&
+    !describesIncident(context.text) &&
+    !describesMoreThanTheRequest(context.text, {
+      ignore: [proposal.employeeName ?? "", ...PRODUCTION_SALONS.map((salon) => salon.name)],
+    }) &&
+    !answeredWhatHappened([...input.history, { role: "user", content: input.question }])
+  ) {
+    proposal.awaitingIncident = true;
+  }
+
   const changeKind = employmentChangeKind(match.key);
   /*
    * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
@@ -655,7 +690,49 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     changeKind && facts
       ? employmentChangeContent(changeKind, facts, proposal, context)
       : proposalContent(proposal, context, match, input.today ?? businessToday());
-  return turn(directory.note ? `${content}\n\n${directory.note}` : content, proposal);
+  const notes = [
+    directory.note,
+    carried?.kind === "resolved" && proposal.employeeName
+      ? `I took **${proposal.employeeName}** from earlier in this conversation — if this form is for somebody else, tell me who.`
+      : undefined,
+  ].filter((note): note is string => Boolean(note));
+  return turn([content, ...notes].join("\n\n"), proposal);
+}
+
+/**
+ * ============================================================================
+ * THE PERSON THIS CONVERSATION HAS BEEN ABOUT
+ * ============================================================================
+ *
+ * Production feedback, 20 Oct 2026: a conversation that opened with a
+ * Corrective Action Form for Ellie Sendgraff ran on about the Late Opening
+ * policy, and "Create a Coaching Form from this conversation" then asked who
+ * the form was for. Her name was in the conversation — just further back than
+ * the six-turn window the facts are read from.
+ *
+ * So when the window names nobody, the whole conversation's manager turns are
+ * read for the person — the person only, every other fact still comes from the
+ * window. It is used only when the conversation settles on ONE person
+ * (`employeeState`, with its corrections and "not her" rules), and the reply
+ * says where the name came from, so the manager can change it before Create.
+ */
+function employeeFromEarlierTurns(input: ProposalTurn, context: ManagerContext): EmployeeResolution | null {
+  if (resolveEmployee(context).kind !== "missing") return null;
+  const turns = [
+    ...input.history
+      .filter((message) => message.role === "user" && !message.error)
+      .filter((message) => typeof message.content === "string" && message.content.trim() !== "")
+      .map((message) => ({ id: message.id, content: message.content.trim() })),
+    { id: input.questionMessageId, content: input.question.trim() },
+  ];
+  if (turns.length <= context.messages.length) return null;
+  const resolution = employeeState({
+    messages: turns,
+    ids: [],
+    text: turns.map((turn) => turn.content).join("\n\n"),
+    truncated: false,
+  }).resolution;
+  return resolution.kind === "resolved" ? resolution : null;
 }
 
 /**
@@ -696,9 +773,11 @@ async function checkTypedEmployee(
   input: ProposalTurn,
   match: TemplateSummary,
   context: ManagerContext,
+  /** A name read from earlier in the conversation, when the window had none. */
+  carried: EmployeeResolution | null = null,
 ): Promise<DirectoryCheck> {
   if (!NAME_CHECKED_TEMPLATES.has(match.key)) return {};
-  const typed = resolveEmployee(context);
+  const typed = carried ?? resolveEmployee(context);
   if (typed.kind !== "resolved") return {};
 
   const roster = await loadScopedRoster(input.actor.scope);
@@ -1011,6 +1090,15 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
       typeof lastAssistant?.content === "string" &&
       (lastAssistant.content.includes(CA_POLICY_QUESTION) || lastAssistant.content.includes("**Policy:**"));
     if (raisedPolicy && namesCaPolicy(input.question)) return { kind: "explicit", templateKey: continued };
+
+    /*
+     * AND BY ITS ACCOUNT OF WHAT HAPPENED, in whatever words: "Ellie got to the
+     * salon at 11:23 for a 9:30 shift" names nobody and no topic, and sending
+     * it to retrieval would end the intake that just asked for it.
+     */
+    if (lastAssistant && answeredWhatHappened([lastAssistant, { role: "user", content: input.question }])) {
+      return { kind: "explicit", templateKey: continued };
+    }
   }
 
   /*
@@ -1581,6 +1669,7 @@ function proposalContent(
     lines.push(openingQuestions(proposal, context));
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
+    if (proposal.awaitingIncident) lines.push("", NO_INCIDENT_NOTE);
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,
@@ -1709,9 +1798,11 @@ function correctiveActionReady(
       item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
     );
 
-  const lines = [
-    `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
-  ];
+  const lines = proposal.awaitingIncident
+    ? [`I can create a **${proposal.templateName}** for **${proposal.employeeName}**.`, "", NO_INCIDENT_NOTE]
+    : [
+        `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
+      ];
 
   /*
    * THE POLICY, SUGGESTED OR ASKED — never left silently to the drafting

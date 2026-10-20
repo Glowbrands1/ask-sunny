@@ -1,7 +1,7 @@
 import { REPORTS } from "@/features/reports/reports-routes";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
-import type { AskContext } from "./types";
+import type { AskContext, OpenFormSummary } from "./types";
 
 /**
  * SUNNY'S PRODUCTION SYSTEM INSTRUCTION AND GROUNDING FORMAT.
@@ -34,6 +34,9 @@ export interface GroundingChunk {
  * asserts the two agree, so the duplication cannot drift silently.
  */
 export const EMPLOYEE_DATA_SECTION = "CURRENT EMPLOYEE PERFORMANCE DATA";
+
+/** The heading of the block `chat/person-memory.ts` renders. */
+export const MEMORY_SECTION = "WHAT THIS MANAGER TOLD YOU BEFORE";
 
 /**
  * ============================================================================
@@ -411,11 +414,37 @@ export function buildSystemPrompt(input: {
    */
   hasFormsLibrary?: boolean;
   /**
+   * Whether a block of what this manager told Sunny BEFORE is attached — their
+   * own words from earlier conversations, and the forms they filed, about the
+   * people this conversation names. See `chat/person-memory.ts`.
+   *
+   * Its own kind of statement: not policy, not a measurement and not a
+   * verified record, but the manager's own account at the time. The rules it
+   * selects are about using that without overstating it.
+   */
+  hasPersonMemory?: boolean;
+  /**
+   * Whether a FORMS ON FILE block — forms already created, read from Form
+   * Monitoring under this user's forms visibility — is attached to this turn.
+   *
+   * A different thing from the forms library and stated separately: the library
+   * says which TEMPLATES exist, this says which RECORDS exist about named people.
+   * Its absence from the list is dispositive only for the salons the block says
+   * it covers.
+   */
+  hasFormRecords?: boolean;
+  /**
    * What this turn was given of the JBA Policy Manual, when the question named
    * it — see `policy-manual-coverage.ts`. Null on every other turn, which
    * leaves the prompt exactly as it was.
    */
   policyManualNote?: string | null;
+  /**
+   * The form created earlier in this conversation, as it reads now — set by
+   * the route from the instance, never from the request body. Null leaves the
+   * prompt exactly as it was. See `lib/forms/open-form-summary.ts`.
+   */
+  openForm?: OpenFormSummary | null;
   /**
    * Whether this person's role holds `view_reports`, from the authorized
    * actor. Selects which Reports & Analytics guidance the prompt carries — see
@@ -432,6 +461,8 @@ export function buildSystemPrompt(input: {
   const wantsDailyStatsReasoning = input.wantsDailyStatsReasoning ?? false;
   const hasMissingReports = input.hasMissingReports ?? false;
   const hasFormsLibrary = input.hasFormsLibrary ?? false;
+  const hasPersonMemory = input.hasPersonMemory ?? false;
+  const hasFormRecords = input.hasFormRecords ?? false;
 
   /*
    * The framework rules, with the brand's own name substituted, plus exactly
@@ -478,7 +509,19 @@ export function buildSystemPrompt(input: {
     );
   }
 
-  const NUMBER_WORD = ["", "one", "two", "three", "four", "five"] as const;
+  if (hasPersonMemory) {
+    statementKinds.push(
+      `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are the manager's own words from earlier Ask Sunny conversations, and the forms they created, about people named here. Never mark them with a source marker. Say where they came from in plain words — for example "Last time you mentioned that…" or "On October 3 you told me…".`,
+    );
+  }
+
+  if (hasFormRecords) {
+    statementKinds.push(
+      `Forms on file — which forms have already been created, about whom, at which salon, when, and where each stands. These come from the FORMS ON FILE section below, read from Form Monitoring for this user. Never mark them with a source marker. You have seen only each form's name, employee, salon, dates and status — never its contents.`,
+    );
+  }
+
+  const NUMBER_WORD = ["", "one", "two", "three", "four", "five", "six", "seven"] as const;
   const taxonomy = statementKinds
     .map((kind, index) => `${index + 1}. ${kind}`)
     .join("\n");
@@ -547,6 +590,34 @@ export function buildSystemPrompt(input: {
 - Where a form is: a manager creates one by asking Ask Sunny, here in the conversation. Forms already created are in Forms → Form Monitoring. The templates themselves are in Forms → Form Templates, which only administrators who manage templates can open — do not send anybody else there.`
     : "";
 
+  const personMemorySection = hasPersonMemory
+    ? `\n\nWHAT THE MANAGER TOLD YOU BEFORE
+
+- The ${MEMORY_SECTION} section is the manager's own earlier account of the people named in this conversation. Use it so they do not have to repeat themselves: connect what they ask now to what they told you before, and notice patterns across conversations — a second late arrival, a follow-up that was due.
+- It is what the manager said at the time, not a verified record. Never present it as a fact on somebody's file, and never treat it as company policy.
+- What the manager says now wins over what they said before. If the two disagree, go with today and mention the difference only if it matters.
+- A first name can belong to more than one person. If an earlier conversation might be about somebody else with the same name, ask before relying on it.
+- A form is only on record if the section lists it under forms the manager created. An earlier conversation that discussed a coaching or corrective action is not proof one was filed.
+- Use what is relevant to the question and leave the rest. Do not recite the history back unprompted.`
+    : "";
+
+  /*
+   * FORMS ON FILE. Sunny used to answer "does Ellie have previous coachings?"
+   * with "I can't look that up — check Form Monitoring". With the block
+   * attached it answers from the record, and these rules keep that answer to
+   * what the record actually shows.
+   */
+  const formRecordsSection = hasFormRecords
+    ? `\n\nFORMS ALREADY ON FILE
+
+- You HAVE checked Form Monitoring for this question: the FORMS ON FILE section is that check. Answer from it directly — never say you cannot look it up, and never send the manager to Form Monitoring to find out whether a form exists.
+- State only the forms listed there: how many, which form, the date, the status and any follow-up. Never add a form the section does not list, and never describe what a form says — you have not seen its contents.
+- The section covers only the salons it names. "None on file" means none at those salons; say that, not that the employee has never been coached.
+- A draft is not a completed coaching, and a revised form has been replaced by a newer version. Say which is which.
+- Where the section lists only a POSSIBLE match, ask whether that is the person they mean before treating it as theirs.
+- Prior forms matter for the next step: where a framework source is provided, use what is on file to decide the next step it supports — and point the manager to Forms → Form Monitoring to open any of them.`
+    : "";
+
   const missingReportsSection = hasMissingReports
     ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
     : "";
@@ -576,13 +647,44 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${reportsGuideSection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
+${input.openForm ? openFormRule(input.openForm) : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`}${formsLibrarySection}${formRecordsSection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
 Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers. ${MODE_INSTRUCTION[mode]}
 
 ${SUNNY_VOICE}`;
+}
+
+/**
+ * ============================================================================
+ * A FORM IS OPEN — THE ANSWER IS TOLD SO, AND WHAT IT SAYS
+ * ============================================================================
+ *
+ * Production feedback, 20 Oct 2026: "No form has been created yet — there's
+ * no draft card in this conversation", said beside the draft on screen, and
+ * the manager told to create it again. The rule above was true of a turn with
+ * no form and false of this one, so it is replaced, not added to: the model is
+ * told which form is open, for whom, what it says, and how a change is made.
+ *
+ * The form's text is the RECORD, not a company source — it is never cited with
+ * a marker, and the policy-source rules above still decide what may be said
+ * about policy. A Direct policy line Ask Sunny quoted from the manual says so.
+ */
+export function openFormRule(form: OpenFormSummary): string {
+  const lines = form.lines.length
+    ? form.lines.map((line) => `    ${line.label}: ${JSON.stringify(line.value)}`).join("\n")
+    : "    (nothing filled in yet)";
+  const policy =
+    form.unverifiedPolicy.length > 0
+      ? `Not yet checked against the official manual: ${form.unverifiedPolicy.join(", ")}.`
+      : "Its policy lines, where it has any, were quoted from the official manual.";
+  return `- A FORM IS OPEN IN THIS CONVERSATION: the ${form.templateName} for ${form.employeeName}, ${form.status === "draft" ? "a draft the manager can still edit" : "finalized"}. It is on screen as a card above. NEVER say no form has been created, never say there is no draft card, and never ask the manager to create this form again. ${policy} What it says now:
+${lines}
+- The form's text is the record, not a company source: never cite it with a marker.
+- ${form.status === "draft" ? `CHANGES TO THIS FORM ARE MADE IN THIS CONVERSATION OR ON THE CARD — never by starting another form. If the manager asks for a change this answer has not made, do not claim it was made and do not send them elsewhere: tell them to say it in plain words — for example "add the Late Opening policy", "change it to a written warning", or "add that she was 20 minutes late" — or to edit the card and press Save changes. A policy is added by naming the manual's section; Ask Sunny quotes it onto the form word for word.` : "It is finalized: a change needs a revision, opened from Forms → Form Monitoring."}
+- Finalizing and signing are the manager's. When they say it is ready or that they have verified it, tell them to press Finalize on the card — you do not finalize, issue or sign it. Do not argue about a decision that is theirs, and do not ask them a yes-or-no question the form already answers.
+- NEVER SAY YOU HAVE CREATED, FILED OR SAVED A NEW FORM in this answer. If the manager wants a different form, ask them to request it by name and employee.`;
 }
 
 /**

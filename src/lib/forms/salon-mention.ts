@@ -131,9 +131,18 @@ const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
 const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+(?:${CARRIES_ON})\\b`);
 
+/*
+ * "BRANDI ALGYA ASD LINCOLN O ST": NAME, ROLE, SALON. Managers sign a person
+ * off the way the paperwork does, and the role is what says a place follows.
+ * Only for a name of two or more words — "SD Lawrence" can be the salon
+ * director called Lawrence, but nobody is called "Lincoln O St".
+ */
+const ROLE_BEFORE = /\b(?:sd|asd|tsd|sdit|dmit|fttc|pttc|tc|dm|rm|gm|mgr)\s+$/;
+
 /** Whether a short name, at this position, is being used as the salon. */
-function cued(before: string, after: string): boolean {
+function cued(before: string, after: string, phrase: string): boolean {
   if (STATE_BEFORE.test(before) || PLACE_AFTER.test(after)) return true;
+  if (phrase.includes(" ") && ROLE_BEFORE.test(before)) return true;
   return AT_BEFORE.test(before) && CARRIES_ON_AFTER.test(after);
 }
 
@@ -185,7 +194,7 @@ export function readSalonMentions(text: string): SalonMention[] {
     haystack = haystack.replace(pattern, (phrase, offset: number) => {
       const before = haystack.slice(0, offset);
       const after = haystack.slice(offset + phrase.length);
-      if (alias.needsCue && !cued(before, after)) {
+      if (alias.needsCue && !cued(before, after, phrase)) {
         return phrase;
       }
       found = true;

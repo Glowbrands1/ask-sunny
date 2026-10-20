@@ -27,6 +27,7 @@ import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import { businessToday } from "@/lib/business-date";
+import { isClientConversationId } from "@/lib/chat/client-ids";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -147,16 +148,50 @@ export async function POST(request: Request) {
             instanceId: parsed.activeFormInstanceId,
             question: parsed.question,
             today: parsed.context.todayIso,
+            history: parsed.history,
           })
         : null;
       /*
-       * "REDRAFT IT WITH THESE CHANGES" on a coaching form this conversation
-       * created — the open record, revised in place, rather than a new form
-       * drafted from scratch. Null for anything that is not that, exactly
-       * like the correction above. See `lib/forms/chat-revision.ts`.
+       * "ADD THE LATE OPENING POLICY TO THIS FORM" — a manual section named,
+       * added, swapped or removed on the Direct policy line of the form that
+       * is open. The manual's own words, found by its own heading; no model
+       * writes them. Null for anything else. See `lib/forms/chat-policy-change.ts`.
+       */
+      const policyChange =
+        !correction && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-policy-change")).changeActiveFormPolicy({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
+      /*
+       * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
+       * a name alone — the form on screen is redrafted from it, citation
+       * included. Null for anything else. See `lib/forms/chat-redraft.ts`.
+       *
+       * BEFORE THE REVISION: it answers only where Sunny's draft wrote nothing,
+       * and there a whole draft from the account — citation and all — is what
+       * the manager needs, not one field revised in place.
+       */
+      const redraft =
+        !correction && !policyChange && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
+      /*
+       * "REDRAFT IT WITH THESE CHANGES" on a coaching or Corrective Action form
+       * this conversation created — the open record, revised in place, rather
+       * than a new form drafted from scratch. Null for anything that is not
+       * that, exactly like the correction above. See `lib/forms/chat-revision.ts`.
        */
       const revision =
-        !correction && parsed.activeFormInstanceId
+        !correction && !policyChange && !redraft && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -165,13 +200,34 @@ export async function POST(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
+      /*
+       * AN ORDINARY ANSWER STILL KNOWS THE FORM IS THERE. Without this it was
+       * told no card ever comes with an answer, and said "no form has been
+       * created yet" beside the draft on screen.
+       */
+      const openForm =
+        !correction && !policyChange && !redraft && !revision && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId)
+          : null;
       answer =
         correction ??
+        policyChange ??
+        redraft ??
         revision ??
-        (await answerQuestion(parsed, {
-          role: context.identity.role,
-          scope: context.identity.scope,
-        }));
+        (await answerQuestion(
+          { ...parsed, openForm },
+          {
+            role: context.identity.role,
+            scope: context.identity.scope,
+            subject: context.identity.subject,
+            verified: context.identity.verified,
+          },
+          /*
+           * WHOSE EARLIER CONVERSATIONS SUNNY MAY RECALL: the validated
+           * session's, and only ever theirs. See `chat/person-memory-store.ts`.
+           */
+          { memoryOwnerId: context.identity.subject },
+        ));
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -246,6 +302,10 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     // An id and nothing more; malformed ones are dropped rather than looked up.
     activeFormInstanceId: UUID.test(String(body.activeFormInstanceId ?? ""))
       ? String(body.activeFormInstanceId)
+      : undefined,
+    // A `conv_*` id and nothing more; anything else is dropped. See `AskRequest`.
+    conversationId: isClientConversationId(String(body.conversationId ?? ""))
+      ? String(body.conversationId)
       : undefined,
     /*
      * THE MOST IMPORTANT OF THE SIX. Chat retrieves knowledge without the

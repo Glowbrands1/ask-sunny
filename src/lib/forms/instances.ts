@@ -186,6 +186,20 @@ export interface InstanceListFilter {
    * exception for an absent location — see `instance-scope.ts`.
    */
   ownNullLocationCreatedBy?: string;
+  /**
+   * Also read this actor's own rows that DO name a salon, wherever it is. The
+   * caller re-checks each with `actorMaySeeInstance`, which keeps only the
+   * salons their stored scope still covers — see `ownFormStillInScope`.
+   */
+  ownCreatedBy?: string;
+  /**
+   * Only rows whose employee name contains ANY of these words, case-insensitive.
+   * Used by chat's Form Monitoring lookup, so a person's older forms are found
+   * by name rather than lost behind the newest `limit` rows. Each word must be
+   * letters only: it is interpolated into a PostgREST filter, and anything else
+   * is dropped rather than escaped.
+   */
+  employeeNameWords?: string[];
 }
 
 export async function listInstances(
@@ -195,9 +209,15 @@ export async function listInstances(
 ): Promise<InstanceRow[]> {
   const supabase = getSupabaseAdmin();
 
-  /** The view filter, applied identically to every read below. */
+  const nameWords = (filter?.employeeNameWords ?? []).filter((word) => /^[a-z]+$/i.test(word));
+  if (filter?.employeeNameWords && nameWords.length === 0) return [];
+
+  /** The view and name filters, applied identically to every read below. */
   function scoped() {
-    const query = supabase.from("form_instance_overview").select("*");
+    let query = supabase.from("form_instance_overview").select("*");
+    if (nameWords.length > 0) {
+      query = query.or(nameWords.map((word) => `employee_name.ilike.*${word}*`).join(","));
+    }
     // `archived_at` is presentation, not status — see the migration. The active
     // list is the default because it is what somebody opening the screen wants.
     if (view === "active") return query.is("archived_at", null);
@@ -242,6 +262,16 @@ export async function listInstances(
       scoped()
         .is("location_id", null)
         .eq("created_by", filter.ownNullLocationCreatedBy)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
+  }
+
+  if (filter.ownCreatedBy) {
+    reads.push(
+      scoped()
+        .not("location_id", "is", null)
+        .eq("created_by", filter.ownCreatedBy)
         .order("created_at", { ascending: false })
         .limit(limit),
     );
@@ -1262,20 +1292,42 @@ export async function listOutstandingFollowUps(
    * somebody else's unattributed record.
    */
   locationIds: readonly string[] | null = null,
+  /**
+   * A restricted reader's own forms at OTHER salons are read too, in a second
+   * bounded query; the caller keeps only those `actorMaySeeInstance` allows.
+   */
+  ownCreatedBy: string | null = null,
 ): Promise<InstanceRow[]> {
   const supabase = getSupabaseAdmin();
-  let query = supabase
-    .from("form_instance_overview")
-    .select("*")
-    .not("follow_up_date", "is", null)
-    .is("followed_up_at", null)
-    .is("archived_at", null)
-    .order("follow_up_date", { ascending: true })
-    .limit(limit);
+  const outstanding = () =>
+    supabase
+      .from("form_instance_overview")
+      .select("*")
+      .not("follow_up_date", "is", null)
+      .is("followed_up_at", null)
+      .is("archived_at", null)
+      .order("follow_up_date", { ascending: true })
+      .limit(limit);
 
-  if (locationIds !== null) query = query.in("location_id", locationIds);
+  const scoped = locationIds === null ? outstanding() : outstanding().in("location_id", locationIds);
+  const own =
+    locationIds !== null && ownCreatedBy
+      ? outstanding().not("location_id", "is", null).eq("created_by", ownCreatedBy)
+      : null;
+  type Read = { data: unknown[] | null; error: { message: string } | null };
+  const reads: PromiseLike<Read>[] = [scoped as PromiseLike<Read>];
+  if (own) reads.push(own as PromiseLike<Read>);
+  const results = await Promise.all(reads);
 
-  const { data, error } = await query;
-  if (error) throw new Error(`Could not read outstanding follow-ups: ${error.message}`);
-  return (data ?? []).map(mapInstance);
+  const byId = new Map<string, InstanceRow>();
+  for (const { data, error } of results) {
+    if (error) throw new Error(`Could not read outstanding follow-ups: ${error.message}`);
+    for (const row of data ?? []) {
+      const mapped = mapInstance(row as Record<string, unknown>);
+      byId.set(mapped.id, mapped);
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => (a.followUpDate ?? "").localeCompare(b.followUpDate ?? ""))
+    .slice(0, limit);
 }

@@ -377,6 +377,21 @@ describe("32-33. a form the server will not return is not recreated", () => {
     expect(recorded.some((made) => made.method === "POST")).toBe(false);
     expect(push).not.toHaveBeenCalled();
   });
+
+  it("says a form it may not open could belong to another account, not only that it is missing", async () => {
+    fakeFetch(() => ({ ok: false, payload: { error: "No such form." } }));
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toMatch(/not available/i));
+    expect(container.textContent).toMatch(/account you're signed in with/i);
+    expect(container.textContent).toMatch(/created by someone else on this device/i);
+    expect(container.textContent).not.toMatch(/No such form\./);
+  });
 });
 
 describe("35-37. the editor renders from the stored template version", () => {
@@ -1426,6 +1441,25 @@ describe("the policy-verification notice", () => {
     );
 
     expect(notice).toMatch(/entered by hand|is blank/);
+  });
+
+  /*
+   * Production, 20 Oct 2026: the draft wrote nothing, the manager filled the
+   * form in by hand, and the notice blamed the manual for not matching an
+   * account that was never given.
+   */
+  it("says the draft had nothing to work from when Sunny wrote nothing", () => {
+    const loaded = correctiveInstance([
+      { fieldKey: "policy_violated", value: "Late Opening" },
+      { fieldKey: "policy_language", value: "When an employee assigned to open a location…" },
+    ]);
+    loaded.values = loaded.values.map((row) => ({ ...row, filledBy: "manager" as never }));
+
+    const notice = policyVerificationNoticeFor(loaded, false);
+
+    expect(notice).toMatch(/You didn't tell Sunny what happened/);
+    expect(notice).toMatch(/redraft this form with the manual's section and page cited/);
+    expect(notice).not.toMatch(/no approved policy matched/);
   });
 
   it("stays quiet while Sunny is still writing", () => {

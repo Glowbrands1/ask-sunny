@@ -22,6 +22,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
+import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -36,6 +37,7 @@ import {
 import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
+import { recallPeople } from "@/lib/chat/person-memory-store";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
@@ -59,6 +61,7 @@ import {
   stripMarkers,
   type GroundingChunk,
 } from "./prompts";
+import { retrievalQueryFor } from "./retrieval-query";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -146,10 +149,13 @@ import type { AskRequest, AskResponse } from "./types";
  *   `authorizeRequest` context. A separate parameter from `request`, which is
  *   parsed from the request body: a caller must never be able to assert its own
  *   role or its own salon assignment.
+ * @param memory Whose earlier conversations may be recalled — the validated
+ *   session's subject, from the route. Omitted, nothing is recalled.
  */
 export async function answerQuestion(
   request: AskRequest,
   actor: ChatActor,
+  memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
   const readiness = liveReadiness();
 
@@ -397,6 +403,23 @@ export async function answerQuestion(
   /* ------------------------------------------------------------ retrieve -- */
 
   /*
+   * WHAT THIS MANAGER TOLD SUNNY BEFORE about the people this conversation
+   * names — their own earlier conversations and the forms they filed, nobody
+   * else's. Started here, after every forms branch has had its chance to
+   * return, so a proposal never pays for it; it runs alongside retrieval and
+   * never rejects. See `chat/person-memory-store.ts`.
+   */
+  const memoryPromise = memory.memoryOwnerId
+    ? recallPeople({
+        userId: memory.memoryOwnerId,
+        question: request.question,
+        history: request.history,
+        conversationId: request.conversationId,
+        userName: request.context.userName,
+      })
+    : Promise.resolve(null);
+
+  /*
    * THE RETRIEVALS RUN TOGETHER. None depends on another and the briefing is
    * several queries of its own, so serialising them would add every one's
    * latency to the others for no benefit.
@@ -631,10 +654,36 @@ export async function answerQuestion(
     ? loadEmployeeFacts()
     : Promise.resolve(null);
 
+  /*
+   * FORMS ALREADY ON FILE. "Does Ellie have previous coachings?" used to be
+   * answered with "I can't look that up — check Form Monitoring", when Form
+   * Monitoring is this app's own table. A question about existing forms now
+   * reads it, under exactly the visibility that screen applies — see
+   * `chat-form-records.ts`. Never rejects: a failed read becomes a block that
+   * says so.
+   */
+  const formRecordsPromise = isFormRecordsQuestion(request.question)
+    ? loadFormRecords({
+        actor,
+        question: request.question,
+        previousQuestion: previousManagerTurn(request),
+        today: request.context.todayIso,
+      })
+    : Promise.resolve(null);
+
   let rows: MatchedChunkRow[];
   try {
     rows = await knowledge.match({
-      query: request.question,
+      /*
+       * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
+       * with what it points at — see `retrieval-query.ts`. Every other turn is
+       * searched on its own words, exactly as before.
+       */
+      query: retrievalQueryFor({
+        question: request.question,
+        history: request.history,
+        openForm: request.openForm ?? null,
+      }),
       scopeId: request.scopeId,
       /*
        * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
@@ -663,6 +712,7 @@ export async function answerQuestion(
   const performanceManagementResult = await performanceManagementPromise;
   const employeeFacts = await employeeFactsPromise;
   const policyManual = await policyManualPromise;
+  const formRecords = await formRecordsPromise;
 
   /*
    * THE REFUSAL. An employee-performance turn whose mandatory framework is not
@@ -842,6 +892,7 @@ export async function answerQuestion(
    * framework reads and the report briefing, so it costs no serial time.
    */
   const settledSummaries = await summariesPromise;
+  const personMemory = await memoryPromise;
   const formInventoryBlock = settledSummaries.ok
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
@@ -876,7 +927,12 @@ export async function answerQuestion(
      * thing as the list — which is the failure the section exists to remove.
      */
     hasFormsLibrary: formInventoryBlock !== null,
+    hasFormRecords: formRecords !== null,
+    /* Read from whether the block exists, like the forms library above. */
+    hasPersonMemory: personMemory !== null,
     policyManualNote,
+    /* Read from the instance by the route, never from the body. */
+    openForm: request.openForm ?? null,
     /*
      * From the AUTHORIZED actor, the same matrix the report pages' guard
      * reads, so Sunny only sends somebody to Reports & Analytics when the
@@ -901,6 +957,8 @@ export async function answerQuestion(
      */
     employeeData: employeeFacts?.block ?? null,
     formsLibrary: formInventoryBlock,
+    formRecords: formRecords?.block ?? null,
+    personMemory,
     history: request.history,
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
@@ -963,7 +1021,7 @@ export async function answerQuestion(
        * `grounded` would put a confident banner over an answer whose whole
        * content is "I do not have that delivery".
        */
-      grounding.length === 0 && (briefing?.present.length ?? 0) === 0
+      grounding.length === 0 && (briefing?.present.length ?? 0) === 0 && formRecords === null
         ? "insufficient"
         : "grounded",
     // Video matching is a separate concern and still runs on the client's
@@ -1001,4 +1059,15 @@ async function suggestedFormsFor(input: {
   } catch {
     return null;
   }
+}
+
+/** The manager's turn before this one, for a question that names nobody. */
+function previousManagerTurn(request: AskRequest): string | null {
+  for (let index = request.history.length - 1; index >= 0; index -= 1) {
+    const message = request.history[index]!;
+    if (message.role === "user" && message.content.trim() !== request.question.trim()) {
+      return message.content;
+    }
+  }
+  return null;
 }

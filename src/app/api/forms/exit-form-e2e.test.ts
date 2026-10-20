@@ -427,20 +427,19 @@ describe("the Details section HR asked for", () => {
     expect(text).toContain("Place comment on employee's Sunlync account");
   });
 
-  it("asks only for what is missing, then a correction updates the same form in place", async () => {
+  it("lists what is missing without asking, then a correction updates the same form in place", async () => {
     state.details = "";
     const { response, result } = await fromConversation([
       said("m1", "Create an STC exit for Jane Smith at lincoln o street. She quit on the spot by text on 9/20, last day 9/19. She returned her key."),
     ]);
     const content = response!.content;
     expect(content).toMatch(/- \*\*Salon Key Returned:\*\* Salon key was returned\./);
-    expect(content).toMatch(/- What reason did they give for leaving\?/);
-    expect(content).toMatch(/- Were their store items returned\?/);
-    expect(content).toMatch(/- Is payroll deduction applicable\?/);
-    expect(content).toMatch(/- Will they be dropped to minimum wage and forfeit their bonus\?/);
-    expect(content).toMatch(/- Are they eligible for rehire\?/);
-    // Already said: not asked again.
-    expect(content).not.toMatch(/What date did they resign|How did they let you know|salon key returned\?/i);
+    expect(content).toMatch(
+      /\*\*Left blank for you to review:\*\*[^\n]*Reason for Resignation, Store Items Returned, Payroll Deduction, Minimum Wage \/ Bonus Forfeiture, Eligible for Rehire/,
+    );
+    // Already said: not listed. And nothing is asked.
+    expect(content).not.toMatch(/Left blank for you to review:\*\*[^\n]*(?:Resignation Date|How Employee Resigned|Salon Key Returned)/);
+    expect(content).not.toMatch(/\?/);
 
     const id = result.reference.instanceId;
     const correct = (question: string) =>

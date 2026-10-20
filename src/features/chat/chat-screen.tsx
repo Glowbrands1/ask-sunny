@@ -286,6 +286,12 @@ export function ChatScreen() {
            */
           activeFormInstanceId: activeFormInstanceFor(history),
           /*
+           * Which conversation this is, so what Sunny recalls from the
+           * manager's EARLIER conversations leaves this one out — it is
+           * already the history above. A correlation key; it confers nothing.
+           */
+          conversationId,
+          /*
            * Sent on every turn, not just the first. Pointers at rows; the
            * server re-reads them and never trusts a rendered number.
            */
