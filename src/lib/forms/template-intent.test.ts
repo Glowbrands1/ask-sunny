@@ -94,6 +94,25 @@ describe("2b. corrective action is the progression, and never resolves to a temp
     });
   });
 
+  /* Production, October 2026: "write a CA for …" was answered as a question. */
+  it.each([
+    "write a CA for Paisley Peklo",
+    "write a corrective action for Paisley",
+    "please write an ca for dana moss",
+  ])("%s asks for a document", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({
+      kind: "corrective_action",
+      requestedCreation: true,
+    });
+  });
+
+  it.each(["how do I write a corrective action", "how do I write a CA?"])(
+    "%s is still a question",
+    (question) => {
+      expect(detectTemplateIntent(question)).toMatchObject({ requestedCreation: false });
+    },
+  );
+
   it("I need to do a corrective action for Sarah asks for a document and must be classified first", () => {
     expect(detectTemplateIntent("I need to do a corrective action for Sarah")).toEqual({
       kind: "corrective_action",

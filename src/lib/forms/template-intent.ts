@@ -621,6 +621,15 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
+  /*
+   * "write a CA for Paisley" — production, October 2026. It was read as a
+   * question about the progression and the manager was told to rephrase.
+   */
+  "write a",
+  "write an",
+  "write her up",
+  "write him up",
+  "write them up",
   "fill out",
   "generate",
   "prepare",

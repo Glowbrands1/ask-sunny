@@ -10,7 +10,7 @@ import {
   type InstanceRow,
   type LoadedInstance,
 } from "./instances";
-import { authorizedSalonIds } from "./location-scope";
+import { authorizeLocation, authorizedSalonIds } from "./location-scope";
 import { getTemplateByKey } from "./repository";
 import type { Permission } from "@/types";
 
@@ -111,11 +111,35 @@ export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): b
    * So a record that names a salon is decided by the salon, and nothing else.
    */
   if (instance.locationId) {
-    if (visibility.level === "salon") {
-      return authorizedSalonIds(visibility).includes(instance.locationId);
+    if (
+      visibility.level === "salon" &&
+      authorizedSalonIds(visibility).includes(instance.locationId)
+    ) {
+      return true;
     }
-    // district | region — fails closed, exactly as creation does.
-    return false;
+    /*
+     * ========================================================================
+     * A FORM YOU WERE JUST ALLOWED TO CREATE IS A FORM YOU MAY OPEN
+     * ========================================================================
+     *
+     * Visibility (`forms-visibility.ts`) narrows a district or regional
+     * manager to their HOME salon, but creation is still authorized against
+     * the STORED scope — so a DM could file a Corrective Action Form for an
+     * employee at another salon in their district, and the inline editor's
+     * very next read answered "No such form." The record existed, the
+     * manager was told it did not, and every retry filed another one.
+     *
+     * So the creator may open it while their CURRENT stored scope would still
+     * let them file at that salon — the same `authorizeLocation` the create
+     * route applies. That is not the authorship override removed above: a
+     * manager who transfers loses the salon from their scope, and with it
+     * this exception. Form Monitoring's list is unchanged (home salon only).
+     */
+    return (
+      instance.createdBy === actor.id &&
+      actor.scope !== null &&
+      authorizeLocation(actor.scope, instance.locationId).kind === "authorized"
+    );
   }
 
   /*

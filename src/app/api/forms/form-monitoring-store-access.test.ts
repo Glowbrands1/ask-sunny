@@ -69,6 +69,8 @@ interface Options {
   woven?: Record<string, string | null>;
   /** Make the designation lookup fail. */
   designationFails?: boolean;
+  /** Who created each form, by form id. Defaults to somebody else. */
+  createdBy?: Record<string, string>;
 }
 
 async function load(options: Options) {
@@ -145,7 +147,7 @@ async function load(options: Options) {
   vi.doMock("@/lib/forms/instances", () => ({
     loadInstance: async (id: string) =>
       ROWS[id]
-        ? { instance: row(id), version: { id: "v", document: { paper: "letter", blocks: [] }, variants: [] }, values: [], events: [] }
+        ? { instance: { ...row(id), createdBy: options.createdBy?.[id] ?? "someone-else" }, version: { id: "v", document: { paper: "letter", blocks: [] }, variants: [] }, values: [], events: [] }
         : null,
     listInstances: async (
       _view: string,
@@ -266,6 +268,30 @@ describe("designation fails closed", () => {
     expect(
       await listedIds({ subject: "other", role: "district_manager", scope: GLOBAL, designated: ["colene"] }),
     ).toEqual([]);
+  });
+});
+
+describe("a form the manager just created opens for them", () => {
+  /*
+   * REGRESSION, production October 2026. A District Manager (stored scope
+   * global, Woven home salon B) created a Corrective Action Form for an
+   * employee at salon A. The create was authorized against the stored scope;
+   * the inline editor's read was refused as "No such form.", and every retry
+   * filed another draft.
+   */
+  it("serves the creator's own form at a salon their stored scope may file at", async () => {
+    const { detail } = await load({ ...AMBER, createdBy: { [FORM_A]: "amber" } });
+    expect((await detail.GET(get(), params(FORM_A))).status).toBe(200);
+    // Somebody else's form at the same salon is still not theirs to read.
+    expect((await detail.GET(get(), params(FORM_C))).status).toBe(404);
+  });
+  it("keeps it out of the Form Monitoring list, which stays home-salon only", async () => {
+    expect(await listedIds({ ...AMBER, createdBy: { [FORM_A]: "amber" } })).toEqual([FORM_B]);
+  });
+  it("does not survive a transfer: a salon scope that no longer covers it refuses it", async () => {
+    const moved: Options = { subject: "sm", role: "salon_director", scope: STORE_A, createdBy: { [FORM_B]: "sm" } };
+    const { detail } = await load(moved);
+    expect((await detail.GET(get(), params(FORM_B))).status).toBe(404);
   });
 });
 
