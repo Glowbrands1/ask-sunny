@@ -167,65 +167,82 @@ export function FeedbackQueue({
         </p>
       ) : null}
 
-      {page.items.length === 0 ? (
-        <EmptyState
-          title={
-            closed > 0 && queue.status === DEFAULT_STATUS_FILTER
-              ? "Nothing open"
-              : hasActiveFeedbackFilters(queue)
-                ? "No feedback matches these filters"
-                : "No feedback in this period"
-          }
-          description={
-            /*
-             * AN EMPTY QUEUE WITH CLOSED WORK BEHIND IT IS A DIFFERENT STATE
-             * from an empty period, and reads completely differently to an
-             * administrator: one means "you are done", the other means "nobody
-             * has said anything". Conflating them is how somebody concludes the
-             * feature is broken.
-             */
-            closed > 0 && queue.status === DEFAULT_STATUS_FILTER
-              ? `Everything in this period has been dealt with — ${formatNumber(closedCounts.resolved)} resolved and ${formatNumber(closedCounts.dismissed)} dismissed. Nothing was deleted; switch the status filter to see them.`
-              : hasActiveFeedbackFilters(queue)
-                ? "Clear a filter to widen the search. Hidden comments are excluded unless you ask for them."
-                : "Ratings are collected under every Ask Sunny answer and appear here as they arrive. Nothing is backfilled."
-          }
-        />
-      ) : (
-        <>
-          <ul className="divide-y divide-border-row rounded-[var(--radius-lg)] border border-border bg-surface">
-            {page.items.map((item) => (
-              <QueueRow key={item.id} item={item} onOpen={() => setOpen(item)} />
-            ))}
-          </ul>
+      {/*
+        THE LIST SAYS WHEN IT IS BEING REPLACED. A filter change is a server
+        round trip, and the old rows stay painted until it lands — without this
+        a reader sees the previous status's comments and concludes the filter
+        did nothing.
+      */}
+      <div
+        aria-busy={pending}
+        className={cn("space-y-4 transition-opacity", pending && "pointer-events-none opacity-50")}
+      >
+        {pending ? (
+          <p role="status" className="text-[12px] font-bold text-muted-foreground">
+            Updating…
+          </p>
+        ) : null}
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[12.5px] text-muted-foreground">
-              {formatNumber(page.total)}{" "}
-              {page.total === 1 ? "comment" : "comments"} · page {page.page} of{" "}
-              {pages}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page.page <= 1 || pending}
-                onClick={() => push({ page: page.page - 1 }, true)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page.page >= pages || pending}
-                onClick={() => push({ page: page.page + 1 }, true)}
-              >
-                Next
-              </Button>
+        {page.items.length === 0 ? (
+          <EmptyState
+            title={
+              closed > 0 && queue.status === DEFAULT_STATUS_FILTER
+                ? "Nothing open"
+                : hasActiveFeedbackFilters(queue)
+                  ? "No feedback matches these filters"
+                  : "No feedback in this period"
+            }
+            description={
+              /*
+               * AN EMPTY QUEUE WITH CLOSED WORK BEHIND IT IS A DIFFERENT STATE
+               * from an empty period, and reads completely differently to an
+               * administrator: one means "you are done", the other means "nobody
+               * has said anything". Conflating them is how somebody concludes the
+               * feature is broken.
+               */
+              closed > 0 && queue.status === DEFAULT_STATUS_FILTER
+                ? `Everything in this period has been dealt with — ${formatNumber(closedCounts.resolved)} resolved and ${formatNumber(closedCounts.dismissed)} dismissed. Nothing was deleted; switch the status filter to see them.`
+                : hasActiveFeedbackFilters(queue)
+                  ? "Clear a filter to widen the search. Hidden comments are excluded unless you ask for them."
+                  : "Ratings are collected under every Ask Sunny answer and appear here as they arrive. Nothing is backfilled."
+            }
+          />
+        ) : (
+          <>
+            <ul className="divide-y divide-border-row rounded-[var(--radius-lg)] border border-border bg-surface">
+              {page.items.map((item) => (
+                <QueueRow key={item.id} item={item} onOpen={() => setOpen(item)} />
+              ))}
+            </ul>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[12.5px] text-muted-foreground">
+                {formatNumber(page.total)}{" "}
+                {page.total === 1 ? "comment" : "comments"} · page {page.page} of{" "}
+                {pages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={page.page <= 1 || pending}
+                  onClick={() => push({ page: page.page - 1 }, true)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={page.page >= pages || pending}
+                  onClick={() => push({ page: page.page + 1 }, true)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
 
       {/*
         KEYED ON THE ITEM, so opening a second comment remounts the panel with

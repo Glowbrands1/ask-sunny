@@ -5,7 +5,12 @@ import { Check, ChevronDown, Search } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Input } from "@/components/ui/field";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
+import {
+  Popover,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/overlays";
 import { cn } from "@/lib/utils/cn";
 import { serializeReportFilters, type ReportFilters } from "@/lib/reporting/read/filters";
 
@@ -216,7 +221,7 @@ function OptionRow({
   mode: "single" | "multi";
   onSelect: () => void;
 }) {
-  return (
+  const row = (
     <button
       type="button"
       role={mode === "single" ? "menuitemradio" : "menuitemcheckbox"}
@@ -274,6 +279,15 @@ function OptionRow({
       ) : null}
     </button>
   );
+
+  /*
+   * A SINGLE CHOICE CLOSES THE MENU. There is nothing left to do in it once a
+   * row is picked, and leaving it open meant the old tick sat there for the
+   * whole server round trip — which reads as "the click did not register", and
+   * is exactly how the feedback Status menu was reported. A multi-select stays
+   * open so several boxes can be ticked.
+   */
+  return mode === "single" ? <PopoverClose asChild>{row}</PopoverClose> : row;
 }
 
 export interface MenuOption {
