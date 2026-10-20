@@ -77,6 +77,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.env = { ...ORIGINAL };
   for (const path of ["@/lib/auth/server", "@/lib/ai/server-ask", "@/lib/forms/chat-correction", "@/lib/forms/chat-revision", "@/lib/supabase/server"]) {
     vi.doUnmock(path);
@@ -103,6 +104,13 @@ describe("a revision of the open form", () => {
   });
 
   it("is given the business day, so a typed follow-up date can be read", async () => {
+    /*
+     * THE SERVER'S OWN DAY, not the browser's: the `todayIso` sent below is
+     * ignored by design. The clock is pinned so the day is known — the test
+     * used to pass only on 2 October 2026.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T15:00:00Z"));
     const { route, seen } = await load({
       content: "Set the follow-up date to **Thursday, October 15, 2026**.",
       citations: [],

@@ -58,6 +58,7 @@ vi.mock("./instance-scope", () => ({
 }));
 
 vi.mock("./instances", () => ({
+  findOpenRevision: async () => null,
   reviseInstance: async (id: string) => {
     state.revised.push(id);
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;

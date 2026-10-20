@@ -56,10 +56,11 @@ vi.mock("./instances", () => ({
     state.listed += 1;
     return state.rows;
   },
+  // The original is left as it is: it is replaced when the revision is finalized.
+  findOpenRevision: async (id: string) =>
+    state.rows.find((entry) => entry.revisesInstanceId === id && entry.status === "draft") ?? null,
   reviseInstance: async (id: string) => {
     state.revised.push(id);
-    const original = state.rows.find((entry) => entry.id === id)!;
-    original.status = "revised";
     const revision = row({
       id: `${id}-rev`,
       status: "draft",
@@ -144,6 +145,15 @@ describe("bringing a form on file back into the conversation", () => {
     const second = await ask("change exit for ashley rogers");
     expect(state.revised).toEqual(["exit-1"]);
     expect(second!.formOpened!.instanceId).toBe("exit-1-rev");
+    // The finalized original is untouched until that draft is finalized.
+    expect(state.rows.find((entry) => entry.id === "exit-1")!.status).toBe("finalized");
+  });
+
+  it("asking from the original's own card lands on its open draft too", async () => {
+    await ask("change exit for ashley rogers");
+    const again = await ask("edit the exit form", "exit-1");
+    expect(state.revised).toEqual(["exit-1"]);
+    expect(again!.formOpened!.instanceId).toBe("exit-1-rev");
   });
 
   it("follows a revised form in the conversation to its newer version", async () => {
@@ -154,7 +164,7 @@ describe("bringing a form on file back into the conversation", () => {
     const response = await ask("change the exit form", "exit-1");
     expect(state.revised).toEqual([]);
     expect(response!.formOpened!.instanceId).toBe("exit-2");
-    expect(response!.content).toContain("already has a newer draft");
+    expect(response!.content).toContain("already has a new draft open — here it is");
   });
 
   it("chooses the named employee's newest form, not somebody else's", async () => {

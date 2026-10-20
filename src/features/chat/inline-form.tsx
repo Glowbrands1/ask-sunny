@@ -94,7 +94,8 @@ export type PrefillState =
  *   403  no longer permitted. Say so, for the same reason.
  *   finalized  render it read-only, with "Edit as new draft": a revision that
  *        copies these answers into a new draft and points back at this one.
- *        The card then shows that draft. The finalized form is never written.
+ *        The card then shows that draft. The finalized form is never written,
+ *        and is replaced only when the draft is finalized.
  *   revised  read-only, and says a newer version replaced it.
  */
 
@@ -727,8 +728,8 @@ export function InlineForm({
           ) : finalized ? (
             <p className="text-xs text-subtle-foreground">
               This form is finalized, so its values are frozen. To change it, edit it as a new
-              draft — everything is carried over except signatures, and this one stays on file,
-              marked revised.
+              draft: every answer and the follow-up are carried over, and this one stays on file
+              unchanged until the new draft is finalized and replaces it.
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
@@ -831,7 +832,9 @@ export function InlineForm({
                 Finalize
               </Button>
               <span className="text-xs text-subtle-foreground">
-                Freezes these values. Signatures are signed on paper afterwards.
+                {loaded.instance.revisesInstanceId
+                  ? "Freezes these values and replaces the finalized original. Signatures are signed on paper afterwards."
+                  : "Freezes these values. Signatures are signed on paper afterwards."}
               </span>
             </div>
           )}

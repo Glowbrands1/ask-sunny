@@ -3,7 +3,7 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { authorizeInstance } from "./instance-scope";
-import { reviseInstance, type LoadedInstance } from "./instances";
+import { findOpenRevision, reviseInstance, type LoadedInstance } from "./instances";
 
 /**
  * ============================================================================
@@ -20,12 +20,14 @@ import { reviseInstance, type LoadedInstance } from "./instances";
  * for the card's own button alike:
  *
  *   THE FINALIZED FORM IS NEVER WRITTEN. `reviseInstance` copies its values
- *   (signatures excepted) into a new draft that points back at it, and marks
- *   the original `revised`. What was signed stays exactly as it was signed.
+ *   and follow-up into a new draft that points back at it. The original is
+ *   marked `revised` only when that draft is finalized, so deleting the draft
+ *   undoes the whole thing. Signatures are never stored — they are signed on
+ *   paper — so the new version is printed and signed like any other.
  *
- *   A FORM ALREADY REVISED IS FOLLOWED TO ITS NEWER VERSION, so asking twice
- *   never forks a second revision of the same record — the second request
- *   lands on the draft the first one opened.
+ *   ONE OPEN DRAFT PER FORM. A finalized form whose revision is still a draft
+ *   lands on that draft, and a form already revised is followed to its newer
+ *   version, so asking twice never forks a second revision.
  *
  *   EVERY HOP IS RE-AUTHORIZED with the "edit" action, the template's own
  *   permission and the salon scope, exactly as a save is.
@@ -71,6 +73,12 @@ export async function openEditableDraft(
 
     if (instance.status === "draft") return found;
     if (instance.status === "finalized") {
+      // A revision already open is the draft, whether or not this call revises.
+      const open = await findOpenRevision(instance.id);
+      if (open) {
+        id = open.id;
+        continue;
+      }
       if (!options.revise) return found;
       const revision = await reviseInstance(instance.id, actor.id, "revised");
       return {
@@ -146,10 +154,10 @@ export async function changeOnEditableDraft(
 export function openingLine(draft: EditableDraft): string {
   const who = `**${draft.templateName}** for **${draft.employeeName}**`;
   if (draft.opened) {
-    return `The ${who} was finalized, so I opened a new draft of it with everything carried over except signatures. The finalized form stays on file unchanged, marked as revised.`;
+    return `The ${who} was finalized, so I opened a new draft of it with every answer and the follow-up carried over. The finalized form stays on file unchanged until you finalize this draft, which then replaces it — delete the draft instead and nothing changes. Signatures are on paper, so print and sign the new version once it's final.`;
   }
   if (draft.status === "draft" && draft.revisesInstanceId) {
-    return `The ${who} already has a newer draft, so I'm working on that one.`;
+    return `The ${who} already has a new draft open — here it is. It replaces the finalized form once you finalize it.`;
   }
   if (draft.status === "draft") return `The ${who} is still a draft, so it's open to edit.`;
   return `Here's the ${who}. It's finalized — press **Edit as new draft** on it to make a change.`;

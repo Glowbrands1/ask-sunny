@@ -1282,8 +1282,14 @@ function revisable() {
     if (url === "/api/forms/instances/inst-42" && init.method === "POST") {
       const body = JSON.parse(String(init.body)) as { action: string };
       if (body.action !== "revise") return { ok: false, payload: { error: "Unknown action." } };
-      originalStatus = "revised";
+      // Opening the revision leaves the original as it is.
       return { payload: { instance: { id: "inst-43", templateName: "Coaching Form" } } };
+    }
+    if (url === "/api/forms/instances/inst-43" && init.method === "POST") {
+      // Finalizing the revision is what replaces the original.
+      originalStatus = "revised";
+      revision.instance.status = "finalized";
+      return { payload: { instance: revision.instance } };
     }
     if (url === "/api/forms/instances/inst-42" && init.method !== "GET" && init.method !== undefined) {
       return { ok: false, payload: { error: "This form is finalized. Create a revision to change it." } };
@@ -1349,7 +1355,7 @@ describe("a finalized form is edited as a new draft of it", () => {
     expect(recorded.some((made) => made.method === "PATCH" && made.url === "/api/forms/instances/inst-42")).toBe(false);
   });
 
-  it("says a revised form was replaced, and opens its newer version", async () => {
+  it("says a form was replaced once its revision is finalized, and opens the newer version", async () => {
     revisable();
     render(
       <InlineForm
@@ -1359,9 +1365,12 @@ describe("a finalized form is edited as a new draft of it", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: /edit as new draft/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
+    expect(screen.getByText(/replaces the finalized original/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^finalize$/i }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull());
     cleanup();
 
-    // The same finalized form, opened again after it was revised.
+    // The same original, opened again once its revision was finalized.
     const replaced = vi.fn();
     const { container } = render(
       <InlineForm
@@ -1375,8 +1384,10 @@ describe("a finalized form is edited as a new draft of it", () => {
     expect(screen.queryByRole("button", { name: /edit as new draft/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /open newer version/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
     expect(replaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: "inst-43" }));
+    // The newer version, finalized itself, offers its own Edit as new draft.
+    await waitFor(() => expect(screen.getByRole("button", { name: /edit as new draft/i })).toBeTruthy());
+    expect(container.textContent).not.toMatch(/a newer version replaces it/i);
   });
 
   it("renders a form a turn opened, with no proposal on the message", async () => {
