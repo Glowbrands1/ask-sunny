@@ -156,6 +156,30 @@ type LoadState =
   | { kind: "ready"; loaded: LoadedInstance }
   | { kind: "gone"; message: string };
 
+/*
+ * ============================================================================
+ * "NO SUCH FORM." READ AS "THE FORM IS LOST" — AND IT USUALLY IS NOT
+ * ============================================================================
+ *
+ * Production feedback, October 2026: a district manager created a Corrective
+ * Action Form in a conversation on a shared salon computer. Weeks later a Salon
+ * Director signed in on the same browser, the conversation came up from this
+ * device's history, and the card said only "No such form." The record was
+ * intact; it was simply not theirs to open, which is the rule
+ * `instance-scope.ts` enforces.
+ *
+ * The server answers a form this account may not see exactly as it answers a
+ * missing one — on purpose, so a guessed id learns nothing — so the card cannot
+ * say which it is either. It names every case instead, which is true whichever
+ * it is and tells the person what to do about the likeliest one.
+ */
+const NOT_VISIBLE_MESSAGE = "No such form.";
+
+function goneExplanation(message: string): string {
+  if (message.trim() !== NOT_VISIBLE_MESSAGE) return message;
+  return "This form can't be opened with the account you're signed in with. It may have been created by someone else on this device or for a salon you don't cover, or it may have been removed. If someone else created it, they can still open it when they're signed in.";
+}
+
 function splitValues(rows: LoadedValueRow[]): ResponsiveFormValues {
   const values: Record<string, string> = {};
   const checked: Record<string, string[]> = {};
@@ -297,8 +321,8 @@ export function InlineForm({
       <Notice tone="attention" className="mt-4">
         <span className="font-semibold text-foreground">This form is not available</span>
         <p className="mt-0.5">
-          {load.message} Ask Sunny has not created another one — if you still need this
-          form, start a new conversation about it.
+          {goneExplanation(load.message)} Ask Sunny has not created another one — if you still
+          need this form, start a new conversation about it.
         </p>
       </Notice>
     );
@@ -1050,6 +1074,19 @@ export function policyVerificationNoticeFor(
 
   const unresolved = grounded.filter((field) => !verified(field.key));
   if (unresolved.length === 0) return null;
+
+  /*
+   * A DRAFT THAT WROTE NOTHING AT ALL. "No approved policy matched what you
+   * described" is wrong when nothing was described: production, 20 Oct 2026,
+   * "create ca for Ellie Sendgraff" drafted zero fields, and the form was then
+   * filled by hand — policy wording pasted in with no section or page.
+   */
+  const draftedNothing = !loaded.values.some(
+    (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+  );
+  if (draftedNothing) {
+    return "You didn't tell Sunny what happened, so it had nothing to draft this form from and couldn't cite the policy manual. Tell Sunny in the chat what happened and it will redraft this form with the manual's section and page cited. If you complete it by hand instead, confirm the exact policy, section and page in the official manual before you issue it.";
+  }
 
   const blank = unresolved.filter((field) => !filled(field.key));
   const byHand = unresolved.filter((field) => filled(field.key));

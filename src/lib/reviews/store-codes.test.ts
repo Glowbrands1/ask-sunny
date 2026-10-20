@@ -107,11 +107,7 @@ describe("a store code is not a salon number", () => {
     const salon = salonForStoreCode("306");
     expect(salon?.salonNumber).toBe("0462");
     expect(salon?.name).toBe("KS Manhattan");
-    /*
-     * The district comes from the existing roster, never invented here — and
-     * the roster moved KS Manhattan to Rachael Dugan's district (see
-     * `district-overrides.ts`).
-     */
+    /* The district comes from the existing roster, never invented here. */
     expect(salon?.districtName).toBe("Dugan, Rachael");
   });
 });

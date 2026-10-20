@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { businessToday } from "@/lib/business-date";
+
 /**
  * ============================================================================
  * THE CHAT ROUTE SENDS "REDRAFT IT" TO THE OPEN FORM
@@ -105,12 +107,13 @@ describe("a revision of the open form", () => {
 
   it("is given the business day, so a typed follow-up date can be read", async () => {
     /*
-     * THE SERVER'S OWN DAY, not the browser's: the `todayIso` sent below is
-     * ignored by design. The clock is pinned so the day is known — the test
-     * used to pass only on 2 October 2026.
+     * The SERVER's business day, never the caller's: the route ignores the
+     * browser's `todayIso` (see the `businessToday()` note in the route). The clock is
+     * pinned so the expectation does not move with the calendar, and the
+     * caller asserts a different day to show it is not the one used.
      */
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-02T15:00:00Z"));
+    vi.setSystemTime(new Date("2026-10-02T17:00:00Z"));
     const { route, seen } = await load({
       content: "Set the follow-up date to **Thursday, October 15, 2026**.",
       citations: [],
@@ -123,11 +126,12 @@ describe("a revision of the open form", () => {
         activeFormInstanceId: INSTANCE,
         history: [],
         question: "Change the follow-up date to 10/15",
-        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: "2026-10-02" },
+        context: { userName: "Dana", locationName: "NE Lincoln O Street", todayIso: "2026-08-26" },
       }),
     );
     expect(response.status).toBe(200);
-    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: "2026-10-02" });
+    // The server's business day, never the date the browser sent — see `context` in the route.
+    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: businessToday() });
   });
 
   it("falls through to an ordinary answer when the turn is not a revision", async () => {

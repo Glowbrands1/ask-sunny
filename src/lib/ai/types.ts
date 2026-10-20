@@ -83,6 +83,16 @@ export interface AskRequest {
    */
   activeFormInstanceId?: string;
   /**
+   * The browser's `conv_*` id for the conversation this question belongs to.
+   *
+   * A CORRELATION KEY, NOT AUTHORITY. It is used for one thing: leaving this
+   * conversation out of what Sunny recalls from the manager's earlier ones,
+   * because it is already in the prompt as history. Memory is read under the
+   * session's own user id, so a forged value can only fail to exclude a
+   * conversation the caller already owns.
+   */
+  conversationId?: string;
+  /**
    * What the manager was looking at when they asked, when they came from a
    * report tab's "Ask Sunny about this report".
    *

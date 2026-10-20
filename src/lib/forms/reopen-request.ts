@@ -1,3 +1,4 @@
+import { EDIT_VERB, SHOW_VERB } from "./reopen-cue";
 import { asksAboutForms, detectTemplateIntent, leadingFormRequest } from "./template-intent";
 
 /**
@@ -31,9 +32,6 @@ export interface ReopenRequest {
   asksChange: boolean;
 }
 
-const EDIT_VERB =
-  /\b(?:edit|change|update|correct|fix|revise|redo|re-do|amend|modify|redraft|re-draft|reopen|re-open|unlock|unfinali[sz]e|un-finali[sz]e|duplicate|copy)\b/i;
-const SHOW_VERB = /\b(?:show|see|view|display|bring\s+back|open\s+up)\b/i;
 /*
  * Asking for a new record. Narrow on purpose: "change her new location" and
  * "change the start date" are corrections, not new forms.

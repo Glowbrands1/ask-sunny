@@ -35,6 +35,9 @@ export interface GroundingChunk {
  */
 export const EMPLOYEE_DATA_SECTION = "CURRENT EMPLOYEE PERFORMANCE DATA";
 
+/** The heading of the block `chat/person-memory.ts` renders. */
+export const MEMORY_SECTION = "WHAT THIS MANAGER TOLD YOU BEFORE";
+
 /**
  * ============================================================================
  * ONE VOICE, EVERY ANSWER
@@ -411,6 +414,16 @@ export function buildSystemPrompt(input: {
    */
   hasFormsLibrary?: boolean;
   /**
+   * Whether a block of what this manager told Sunny BEFORE is attached — their
+   * own words from earlier conversations, and the forms they filed, about the
+   * people this conversation names. See `chat/person-memory.ts`.
+   *
+   * Its own kind of statement: not policy, not a measurement and not a
+   * verified record, but the manager's own account at the time. The rules it
+   * selects are about using that without overstating it.
+   */
+  hasPersonMemory?: boolean;
+  /**
    * What this turn was given of the JBA Policy Manual, when the question named
    * it — see `policy-manual-coverage.ts`. Null on every other turn, which
    * leaves the prompt exactly as it was.
@@ -432,6 +445,7 @@ export function buildSystemPrompt(input: {
   const wantsDailyStatsReasoning = input.wantsDailyStatsReasoning ?? false;
   const hasMissingReports = input.hasMissingReports ?? false;
   const hasFormsLibrary = input.hasFormsLibrary ?? false;
+  const hasPersonMemory = input.hasPersonMemory ?? false;
 
   /*
    * The framework rules, with the brand's own name substituted, plus exactly
@@ -478,7 +492,13 @@ export function buildSystemPrompt(input: {
     );
   }
 
-  const NUMBER_WORD = ["", "one", "two", "three", "four", "five"] as const;
+  if (hasPersonMemory) {
+    statementKinds.push(
+      `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are the manager's own words from earlier Ask Sunny conversations, and the forms they created, about people named here. Never mark them with a source marker. Say where they came from in plain words — for example "Last time you mentioned that…" or "On October 3 you told me…".`,
+    );
+  }
+
+  const NUMBER_WORD = ["", "one", "two", "three", "four", "five", "six"] as const;
   const taxonomy = statementKinds
     .map((kind, index) => `${index + 1}. ${kind}`)
     .join("\n");
@@ -547,6 +567,17 @@ export function buildSystemPrompt(input: {
 - Where a form is: a manager creates one by asking Ask Sunny, here in the conversation. Forms already created are in Forms → Form Monitoring. A form already created CAN be changed, here in the conversation: the manager asks for it by form and employee — for example "edit the exit form for Ashley Rogers" — and the form comes back into the conversation to edit; a finalized one opens as a new draft with everything carried over, and the finalized original stays on file. A finalized form's card also has an Edit as new draft button. Never say a created or finalized form cannot be edited, copied or drafted again. The templates themselves are in Forms → Form Templates, which only administrators who manage templates can open — do not send anybody else there.`
     : "";
 
+  const personMemorySection = hasPersonMemory
+    ? `\n\nWHAT THE MANAGER TOLD YOU BEFORE
+
+- The ${MEMORY_SECTION} section is the manager's own earlier account of the people named in this conversation. Use it so they do not have to repeat themselves: connect what they ask now to what they told you before, and notice patterns across conversations — a second late arrival, a follow-up that was due.
+- It is what the manager said at the time, not a verified record. Never present it as a fact on somebody's file, and never treat it as company policy.
+- What the manager says now wins over what they said before. If the two disagree, go with today and mention the difference only if it matters.
+- A first name can belong to more than one person. If an earlier conversation might be about somebody else with the same name, ask before relying on it.
+- A form is only on record if the section lists it under forms the manager created. An earlier conversation that discussed a coaching or corrective action is not proof one was filed.
+- Use what is relevant to the question and leave the rest. Do not recite the history back unprompted.`
+    : "";
+
   const missingReportsSection = hasMissingReports
     ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
     : "";
@@ -576,7 +607,7 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${reportsGuideSection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
+- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 

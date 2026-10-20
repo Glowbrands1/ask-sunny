@@ -25,8 +25,10 @@ import {
 } from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
+import { mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import { businessToday } from "@/lib/business-date";
+import { isClientConversationId } from "@/lib/chat/client-ids";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -166,6 +168,20 @@ export async function POST(request: Request) {
             })
           : null;
       /*
+       * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
+       * a name alone — the form on screen is redrafted from it, citation
+       * included. Null for anything else. See `lib/forms/chat-redraft.ts`.
+       */
+      const redraft =
+        !correction && !revision && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
+      /*
        * "CHANGE EXIT FOR ASHLEY ROGERS" — a form already on file, asked for by
        * name and employee: found among the forms this actor may see and put
        * in the thread, a finalized one as a new draft of it. Null for any
@@ -173,7 +189,7 @@ export async function POST(request: Request) {
        * `lib/forms/chat-reopen.ts`.
        */
       const reopened =
-        !correction && !revision
+        !correction && !revision && !redraft && mayAskToReopen(parsed.question)
           ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
               request,
               question: parsed.question,
@@ -186,11 +202,20 @@ export async function POST(request: Request) {
       answer =
         correction ??
         revision ??
+        redraft ??
         reopened ??
-        (await answerQuestion(parsed, {
-          role: context.identity.role,
-          scope: context.identity.scope,
-        }));
+        (await answerQuestion(
+          parsed,
+          {
+            role: context.identity.role,
+            scope: context.identity.scope,
+          },
+          /*
+           * WHOSE EARLIER CONVERSATIONS SUNNY MAY RECALL: the validated
+           * session's, and only ever theirs. See `chat/person-memory-store.ts`.
+           */
+          { memoryOwnerId: context.identity.subject },
+        ));
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
@@ -265,6 +290,10 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
     // An id and nothing more; malformed ones are dropped rather than looked up.
     activeFormInstanceId: UUID.test(String(body.activeFormInstanceId ?? ""))
       ? String(body.activeFormInstanceId)
+      : undefined,
+    // A `conv_*` id and nothing more; anything else is dropped. See `AskRequest`.
+    conversationId: isClientConversationId(String(body.conversationId ?? ""))
+      ? String(body.conversationId)
       : undefined,
     /*
      * THE MOST IMPORTANT OF THE SIX. Chat retrieves knowledge without the
