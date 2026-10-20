@@ -377,6 +377,42 @@ period be assigned without an anchor at all. It was **not** done here, because:
 That is a reporting-architecture decision, not an integration one. **It needs
 your sign-off before anybody writes it**, which is why nothing here assumes it.
 
+### Decided, 20 October 2026: count by the date Google says a review was posted
+
+Signed off by Paulyne Camacho, and built in
+`20261020001100_google_review_count_by_posted_date.sql`.
+
+**Why.** The anchor failed silently three ways in October: the anchored review
+left Google (MO Kansas City Wornall), the run's date cutoff passed the anchor
+(MO St Joseph), and more reviews arrived between syncs than a run fetched.
+Each logged `anchor_not_in_feed` and counted nothing from then on. Five
+listings held 28 October reviews counted toward nothing. Wornall's director saw
+"2 this month" on Ask Sunny and 9 on Google.
+
+**The rule from 1 October 2026.** A review counts in the reporting week and the
+month it was **posted**, Central, when its listing has a posted-date start
+(`google_review_locations.count_by_posted_date_from`) and Google's publication
+instant is on or after it. Every listing counting on 20 October starts at
+midnight on 1 October. A listing anchored later starts when its anchor is first
+set.
+
+**What was kept, so no figure already shown goes down.**
+
+* Every review the anchor had counted keeps its week. `reporting_period_id` is
+  still write-once.
+* Month to date credits those reviews to the month they were first seen, as
+  before. `google_reviews_enriched.counted_at` holds the instant month to date
+  reads.
+* September is untouched.
+* Reviews with no publication instant (the extension's) still count through the
+  anchor. The anchor still advances, and for posted-date listings it is moved
+  to the newest review each sync sees, so `anchor_not_in_feed` stops reappearing
+  for a listing that is counting correctly.
+
+**What a manager should know.** A review posted late on Saturday arrives with
+Sunday's 6 AM sync and is added to the week it was posted, which has just
+ended. The goal table's footnote says so.
+
 ---
 
 ## 7. Mapping the fifteen locations

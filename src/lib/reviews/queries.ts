@@ -16,9 +16,7 @@ import {
   isCounting,
   monthlyReviewGoal,
   MONTHLY_REVIEW_GOAL_ENV,
-  qualifyingMonthToDate,
-  straddlingPeriod,
-  type ReportingPeriodRow,
+  monthToDateByStore,
   type ReviewGoalContext,
 } from "./goal";
 import { ratingDistribution } from "./rating-distribution";
@@ -97,12 +95,13 @@ export const TREND_WEEKS = 12;
 export const TIMELINE_LIMIT = 5000;
 
 /**
- * THE CEILING ON THE MONTH-TO-DATE READ of the week that straddles the 1st.
+ * THE CEILING ON THE MONTH-TO-DATE READ.
  *
- * One week's qualifying reviews across the estate — tens of rows. Exceeding it
- * fails the read loudly rather than truncating it into a low total.
+ * One month's qualifying reviews across the estate — the goal is ten a salon,
+ * so a hundred or two. Exceeding it fails the read loudly rather than
+ * truncating it into a low total.
  */
-export const MONTH_STRADDLE_LIMIT = 1000;
+export const MONTH_TO_DATE_LIMIT = 2000;
 
 export interface ReviewsSnapshot {
   /** True when this deployment holds no Google review at all yet. */
@@ -210,7 +209,10 @@ function toDashboardReview(row: EnrichedRow): DashboardReview {
     eligibleForWeeklyCount: row.eligible_for_weekly_count,
     reportingPeriodId: row.reporting_period_id,
     reportingAssignmentStatus:
-      row.reporting_assignment_status === "anchor_assigned" ? "anchor_assigned" : "historical",
+      row.reporting_assignment_status === "anchor_assigned" ||
+      row.reporting_assignment_status === "posted_date"
+        ? row.reporting_assignment_status
+        : "historical",
     periodStart: row.period_start,
     periodEnd: row.period_end,
     parserVersion: row.parser_version,
@@ -218,6 +220,26 @@ function toDashboardReview(row: EnrichedRow): DashboardReview {
 }
 
 /* ------------------------------------------------------- the snapshot ---- */
+
+/**
+ * THE MONTH-TO-DATE PREDICATE, written once for the figure and the feed.
+ *
+ * Counted (a reporting period, so never history), and counting AT an instant
+ * from Central midnight on the 1st up to Central midnight after today. A
+ * second `or` group (the feed's search) is ANDed with it, since it has none.
+ */
+function monthToDateQuery<
+  Q extends {
+    not(column: string, operator: string, value: unknown): Q;
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+  },
+>(query: Q, today: string): Q {
+  return query
+    .not("reporting_period_id", "is", null)
+    .gte("counted_at", googleReviewsDayStartUtc(monthStart(today)))
+    .lt("counted_at", googleReviewsDayStartUtc(shiftDays(today, 1)));
+}
 
 /**
  * Every figure on the page, plus the filter bar's options.
@@ -271,13 +293,12 @@ export async function loadReviewsSnapshot(
   if (periodResult.error) throw periodResult.error;
   if (directoryResult.error) throw directoryResult.error;
 
-  const periods = (periodResult.data ?? []) as unknown as ReportingPeriodRow[];
+  const periods = (periodResult.data ?? []) as unknown as { id: string; period_start: string }[];
   const periodIdByStart = new Map(periods.map((period) => [period.period_start, period.id]));
 
   const goal = goalContext(today, monthlyReviewGoal(process.env[MONTHLY_REVIEW_GOAL_ENV]));
-  const straddle = straddlingPeriod(periods, goal.monthStart);
 
-  const [countResult, backlogResult, straddleResult] = await Promise.all([
+  const [countResult, backlogResult, monthResult] = await Promise.all([
     periods.length === 0
       ? Promise.resolve({ data: [], error: null })
       : supabase
@@ -300,27 +321,25 @@ export async function loadReviewsSnapshot(
       ),
 
     /*
-     * THE WEEK THAT STRADDLES THE 1ST, DATED REVIEW BY REVIEW. Only its
-     * qualifying, counted reviews first seen on or after Central midnight on
-     * the 1st belong to this month — see `qualifyingMonthToDate` in `goal.ts`.
-     * One reporting week of qualifying reviews is tens of rows, not thousands.
+     * THIS MONTH'S QUALIFYING REVIEWS, DATED REVIEW BY REVIEW — by the instant
+     * each counts at (`counted_at`: posted, or first seen for a review the
+     * anchor counted), from Central midnight on the 1st through the end of
+     * today. See `monthToDateByStore` in `goal.ts`. The same predicate as the
+     * feed's `week=month`, so the figure and the list it opens agree.
      */
-    straddle === null
-      ? Promise.resolve({ data: [], error: null, count: 0 })
-      : supabase
-          .from("google_reviews_enriched")
-          .select("id,store_code", { count: "exact" })
-          .eq("reporting_period_id", straddle.id)
-          .eq("eligible_for_weekly_count", true)
-          .gte("first_seen_at", googleReviewsDayStartUtc(goal.monthStart))
-          .limit(MONTH_STRADDLE_LIMIT),
+    monthToDateQuery(
+      supabase.from("google_reviews_enriched").select("id,store_code", { count: "exact" }),
+      today,
+    )
+      .eq("eligible_for_weekly_count", true)
+      .limit(MONTH_TO_DATE_LIMIT),
   ]);
 
   if (countResult.error) throw countResult.error;
   if (backlogResult.error) throw backlogResult.error;
-  if (straddleResult.error) throw straddleResult.error;
+  if (monthResult.error) throw monthResult.error;
 
-  const straddleRows = (straddleResult.data ?? []) as unknown as {
+  const monthRows = (monthResult.data ?? []) as unknown as {
     id: string;
     store_code: string;
   }[];
@@ -329,10 +348,8 @@ export async function loadReviewsSnapshot(
    * shown. At the limit, the month-to-date figure is not knowable from this
    * read and the page says it could not load rather than printing a low one.
    */
-  if ((straddleResult.count ?? straddleRows.length) > straddleRows.length) {
-    throw new Error(
-      `Month-to-date read for period ${straddle?.id} exceeded ${MONTH_STRADDLE_LIMIT} reviews.`,
-    );
+  if ((monthResult.count ?? monthRows.length) > monthRows.length) {
+    throw new Error(`Month-to-date read exceeded ${MONTH_TO_DATE_LIMIT} reviews.`);
   }
 
   const directoryAll = (directoryResult.data ?? []) as unknown as LocationDirectoryRow[];
@@ -357,28 +374,16 @@ export async function loadReviewsSnapshot(
   const currentPeriodId = periodIdByStart.get(currentStart) ?? null;
   const previousPeriodId = periodIdByStart.get(previousStart) ?? null;
 
-  /*
-   * MONTH TO DATE: QUALIFYING REVIEWS FROM THE 1ST, CENTRAL, THROUGH TODAY.
-   *
-   * It used to be every review (1- and 2-star included) in the reporting weeks
-   * that BEGAN this month, which left out the first days of any month that
-   * does not open on a Sunday. Whole weeks that began this month come from the
-   * rollup; the one week that straddles the 1st comes from the dated read
-   * above, de-duplicated on the review id. `goal.ts` explains why neither part
-   * can count a review the other already has.
-   */
+  /* MONTH TO DATE: QUALIFYING REVIEWS FROM THE 1ST, CENTRAL, THROUGH TODAY. */
   const visibleStores = new Set(directory.map((entry) => entry.store_code));
-  const straddleCounts = new Map<string, number>();
-  for (const row of new Map(straddleRows.map((entry) => [entry.id, entry])).values()) {
-    if (!visibleStores.has(row.store_code)) continue;
-    straddleCounts.set(row.store_code, (straddleCounts.get(row.store_code) ?? 0) + 1);
-  }
-  const monthToDateByStore = qualifyingMonthToDate(periodRows, goal.monthStart, straddleCounts);
+  const qualifyingByStore = monthToDateByStore(
+    monthRows.filter((row) => visibleStores.has(row.store_code)),
+  );
 
   const locations = locationRollups(directory, periodRows, backlog, {
     currentPeriodId,
     previousPeriodId,
-    monthToDate: monthToDateByStore,
+    monthToDate: qualifyingByStore,
   });
 
   /* Over the listings that are counting: an unanchored listing has no month. */
@@ -530,18 +535,8 @@ export async function loadReviewFeed(
   if (filters.week === WEEK_CURRENT) {
     query = query.eq("period_start", currentWeekStart(today));
   } else if (filters.week === WEEK_MONTH) {
-    /*
-     * THE MONTH-TO-DATE RULE, AS ONE PREDICATE: counted, in a week that ends on
-     * or after the 1st, and either that week began on or after the 1st or the
-     * review was first seen on or after Central midnight on it. Equivalent to
-     * `qualifyingMonthToDate` in `goal.ts`, so the figure and the list it opens
-     * cannot disagree. A second `or` group (the search) is ANDed with this one.
-     */
-    const first = monthStart(today);
-    query = query
-      .not("reporting_period_id", "is", null)
-      .gte("period_start", shiftDays(first, -6))
-      .or(`period_start.gte.${first},first_seen_at.gte.${googleReviewsDayStartUtc(first)}`);
+    /* The month-to-date predicate the snapshot counts with, so the two agree. */
+    query = monthToDateQuery(query, today);
   } else if (filters.week !== WEEK_ALL) {
     query = query.eq("period_start", filters.week);
   }

@@ -467,7 +467,7 @@ function OverviewView({
           detail={
             summary.historicalReviews === 0
               ? "Every review held is assigned to a reporting period"
-              : "Imported before the location had a baseline, or their place in the feed could not be proven. Stored, visible and searchable — and in no weekly total."
+              : "Posted before the location started counting, or imported without a date Google confirmed. Stored, visible and searchable — and in no weekly total."
           }
           href={reviewsHref({
             ...filters,
@@ -747,7 +747,7 @@ function GoalTiles({
         tag={<WindowTag window="week">This week · {formatWeekRange(snapshot.currentWeek)}</WindowTag>}
         label="Qualifying reviews"
         value={formatNumber(summary.qualifyingThisWeek)}
-        detail={`3–5★ reviews counted this week · ${describeDelta(
+        detail={`3–5★ reviews posted this week · ${describeDelta(
           summary.qualifyingThisWeek,
           summary.qualifyingLastWeek,
         )}`}

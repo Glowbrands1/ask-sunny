@@ -314,7 +314,7 @@ describe("the dashboard's anchor status", () => {
     expect(screen.queryByRole("link", { name: /Review baselines/ })).toBeNull();
   });
 
-  it("says 'Tracking active' once an anchor exists, and names the reviewer", () => {
+  it("says 'Tracking active' once an anchor exists, without naming the anchored reviewer", () => {
     draw(
       [
         location({
@@ -330,7 +330,9 @@ describe("the dashboard's anchor status", () => {
       "overview",
     );
 
-    expect(screen.getByText(/Tracking active · counting after Marla Quist/)).toBeTruthy();
+    expect(screen.getByText("Tracking active")).toBeTruthy();
+    /* Reviews count by posting date; the anchored review is no longer the line. */
+    expect(screen.queryByText(/Marla Quist/)).toBeNull();
     expect(screen.queryByText(/No anchor — counting nothing/)).toBeNull();
   });
 

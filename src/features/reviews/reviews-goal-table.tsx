@@ -353,9 +353,11 @@ export function ReviewGoalTable({
       ) : null}
 
       <p className="border-t border-border-hairline px-4 py-3 text-[11px] text-muted-foreground">
-        Qualifying means a 3-, 4- or 5-star Google review counted after the salon&rsquo;s
-        baseline. 1–2 star reviews and imported history never count. This week runs Sunday
-        to Saturday, Central time; month to date runs from the 1st through today.
+        Qualifying means a 3-, 4- or 5-star Google review, counted in the week and month
+        Google shows it was posted. 1–2 star reviews and imported history never count. This
+        week runs Sunday to Saturday, Central time; month to date runs from the 1st through
+        today. Reviews arrive with the daily 6&nbsp;AM sync, so one posted late on Saturday
+        appears on Sunday morning, in the week it was posted.
       </p>
     </section>
   );

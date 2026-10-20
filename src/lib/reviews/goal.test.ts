@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { LocationPeriodRow } from "./aggregate";
 import {
   DEFAULT_MONTHLY_REVIEW_GOAL,
   daysInMonthOf,
@@ -13,9 +12,8 @@ import {
   goalSummary,
   monthlyReviewGoal,
   paceTargetFor,
-  qualifyingMonthToDate,
+  monthToDateByStore,
   rankLocations,
-  straddlingPeriod,
 } from "./goal";
 import type { LocationRollup } from "./types";
 
@@ -24,8 +22,8 @@ import type { LocationRollup } from "./types";
  *
  * Three rules under test throughout:
  *
- *   MONTH TO DATE IS CALENDAR DAYS, CENTRAL, from the 1st through today — not
- *   the reporting weeks that began this month — and no review is counted twice.
+ *   MONTH TO DATE IS CALENDAR DAYS, CENTRAL, from the 1st through today, and
+ *   no review is counted twice.
  *
  *   A SALON WITH NO BASELINE IS NOT COUNTING. It is never ranked and never
  *   summed into a figure compared against the goal.
@@ -52,27 +50,6 @@ function location(overrides: Partial<LocationRollup> = {}): LocationRollup {
     criticalOpen: 0,
     averageRating: null,
     total: 0,
-    ...overrides,
-  };
-}
-
-function period(overrides: Partial<LocationPeriodRow>): LocationPeriodRow {
-  return {
-    location_id: "loc-a",
-    store_code: "306",
-    reporting_period_id: "p",
-    period_start: "2026-10-04",
-    all_reviews: 0,
-    qualifying_reviews: 0,
-    critical_reviews: 0,
-    unanswered: 0,
-    critical_unanswered: 0,
-    rating_1: 0,
-    rating_2: 0,
-    rating_3: 0,
-    rating_4: 0,
-    rating_5: 0,
-    rating_sum: 0,
     ...overrides,
   };
 }
@@ -152,97 +129,33 @@ describe("where today sits in the month", () => {
 
 /* ======================================================= month to date === */
 
-describe("which reporting week straddles the 1st", () => {
-  const periods = [
-    { id: "sep-20", period_start: "2026-09-20", period_end: "2026-09-26" },
-    { id: "sep-27", period_start: "2026-09-27", period_end: "2026-10-03" },
-    { id: "oct-04", period_start: "2026-10-04", period_end: "2026-10-10" },
-  ];
-
-  it("is the one that began last month and ends this month", () => {
-    expect(straddlingPeriod(periods, "2026-10-01")?.id).toBe("sep-27");
-  });
-
-  it("is none when the month opens on a Sunday", () => {
-    /* November 2026 begins on a Sunday, so no week is split by the 1st. */
-    expect(
-      straddlingPeriod(
-        [{ id: "nov-01", period_start: "2026-11-01", period_end: "2026-11-07" }],
-        "2026-11-01",
-      ),
-    ).toBeNull();
-  });
-
-  it("is none when nothing was counted that week (no period row exists)", () => {
-    expect(straddlingPeriod([periods[2]], "2026-10-01")).toBeNull();
-  });
-});
-
 describe("qualifying reviews month to date", () => {
-  it("takes whole weeks that began this month, and only their QUALIFYING reviews", () => {
-    const byStore = qualifyingMonthToDate(
-      [
-        period({ period_start: "2026-10-04", all_reviews: 6, qualifying_reviews: 4 }),
-        period({ period_start: "2026-10-11", all_reviews: 2, qualifying_reviews: 2 }),
-      ],
-      "2026-10-01",
-      new Map(),
-    );
-    /* The two 1- or 2-star reviews raise nothing. */
-    expect(byStore.get("306")).toBe(6);
+  /*
+   * WHICH reviews are this month's is the read's predicate (`counted_at` from
+   * Central midnight on the 1st, counted, 3–5★) and is proven against real
+   * Postgres in `month-to-date.local-stack.test.ts`. What is left here is the
+   * counting.
+   */
+  it("counts each listing's reviews", () => {
+    const byStore = monthToDateByStore([
+      { id: "a", store_code: "306" },
+      { id: "b", store_code: "306" },
+      { id: "c", store_code: "143" },
+    ]);
+    expect(byStore.get("306")).toBe(2);
+    expect(byStore.get("143")).toBe(1);
   });
 
-  it("does NOT take the straddling week whole — its reviews before the 1st are last month's", () => {
-    const byStore = qualifyingMonthToDate(
-      [period({ period_start: "2026-09-27", qualifying_reviews: 5 })],
-      "2026-10-01",
-      new Map(),
-    );
-    expect(byStore.get("306")).toBeUndefined();
+  it("counts a review once, however many times the read repeats it", () => {
+    const byStore = monthToDateByStore([
+      { id: "a", store_code: "306" },
+      { id: "a", store_code: "306" },
+    ]);
+    expect(byStore.get("306")).toBe(1);
   });
 
-  it("adds the straddling week's reviews dated on or after the 1st, once", () => {
-    const byStore = qualifyingMonthToDate(
-      [
-        period({ period_start: "2026-09-27", qualifying_reviews: 5 }),
-        period({ period_start: "2026-10-04", qualifying_reviews: 3 }),
-      ],
-      "2026-10-01",
-      new Map([["306", 2]]),
-    );
-    /* 2 from Oct 1–3, 3 from the week of Oct 4. The other 3 of that 5 were September's. */
-    expect(byStore.get("306")).toBe(5);
-  });
-
-  it("does not reach back into weeks wholly before the month", () => {
-    const byStore = qualifyingMonthToDate(
-      [period({ period_start: "2026-09-20", qualifying_reviews: 9 })],
-      "2026-10-01",
-      new Map(),
-    );
-    expect(byStore.size).toBe(0);
-  });
-
-  it("keeps listings apart", () => {
-    const byStore = qualifyingMonthToDate(
-      [
-        period({ store_code: "306", qualifying_reviews: 3 }),
-        period({ store_code: "143", location_id: "loc-b", qualifying_reviews: 11 }),
-      ],
-      "2026-10-01",
-      new Map([["143", 1]]),
-    );
-    expect(byStore.get("306")).toBe(3);
-    expect(byStore.get("143")).toBe(12);
-  });
-
-  it("starts the next month from zero", () => {
-    const rows = [
-      period({ period_start: "2026-10-25", qualifying_reviews: 8 }),
-      period({ period_start: "2026-11-01", qualifying_reviews: 1 }),
-    ];
-    expect(qualifyingMonthToDate(rows, "2026-10-01", new Map()).get("306")).toBe(9);
-    expect(qualifyingMonthToDate(rows, "2026-11-01", new Map()).get("306")).toBe(1);
+  it("leaves a listing with nothing this month absent rather than zero", () => {
+    expect(monthToDateByStore([]).size).toBe(0);
   });
 });
 

@@ -165,9 +165,13 @@ export function AnchorMarker({
     );
   }
 
-  const label = location.anchorReviewer
-    ? `Tracking active · counting after ${location.anchorReviewer}`
-    : "Tracking active";
+  /*
+   * NO REVIEWER NAME. Reviews count by the date Google says they were posted,
+   * so the anchor is no longer the line that decides what counts — and naming
+   * it ("counting after A Google User") would point at a review that may have
+   * left Google since.
+   */
+  const label = "Tracking active";
 
   return canManageAnchors ? (
     <Link

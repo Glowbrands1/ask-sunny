@@ -20,8 +20,12 @@ export type GoogleListingState = "verified" | "verification_required";
  *                    in the week somebody happened to press Sync.
  *   anchor_assigned  Proven to sit above its listing's anchor, and therefore
  *                    assigned to the period that was open at the time.
+ *   posted_date      Posted, by Google's own timestamp, on or after its
+ *                    listing's posted-date start (1 October 2026 for every
+ *                    listing counting then), and assigned to the week it was
+ *                    posted, Central.
  */
-export type ReviewAssignmentStatus = "historical" | "anchor_assigned";
+export type ReviewAssignmentStatus = "historical" | "anchor_assigned" | "posted_date";
 
 /**
  * ONE REVIEW AS THE EXTENSION REPORTS IT.
