@@ -56,7 +56,32 @@
 - `src/app/api/chat/form-revision-wiring.test.ts`: route order, and that the open-form summary is server-set.
 - `src/lib/ai/prompts.test.ts` and `src/features/chat/form-proposal.dom.test.tsx`: the prompt rule and the salon name.
 
-Two tests already fail on the base branch and are untouched here:
+## Follow-up turns are searched with what they follow (`lib/ai/retrieval-query.ts`)
 
-- `store-codes.test.ts` expects the pre-move district for KS Manhattan.
-- The wiring test "is given the business day" expects a fixed date where the server now uses its own clock.
+"I have independently verified and the policy is correct" was searched on its own words and found no Late Opening passage. So Sunny took back the wording it had just quoted.
+
+A follow-up that only points back is now searched with what it points at: the manager's previous turn, plus the sections the open form cites. "Points back" means 25 words or fewer and leaning on "it", "that", "the policy" or an opening "and" / "what about".
+
+- The question still leads the query.
+- Only the manager's words are added. Sunny's own answers are never searched on.
+- Any other turn is searched exactly as before.
+
+Tested in `src/lib/ai/retrieval-query.test.ts`, including the production turn through `answerQuestion`.
+
+## Tests that were stale on `main`
+
+Both now pass.
+
+- `store-codes.test.ts` expects Rachael Dugan's district for KS Manhattan. It moved there on 15 Oct.
+- The wiring test "is given the business day" sets the clock. The server reads today from its own clock, not from the request body.
+
+## Before release: replay on the preview
+
+This was not run against the real model, because the test environment has no model key. Vercel builds a preview for every push to this branch. Replay this conversation there with a **test employee**:
+
+1. `create a corrective action for <test employee> for Late Opening. It is a verbal warning` → **Create**
+2. `can you add late opening policy to the direct policy section of this form` → Direct policy shows the manual's Late Opening text, and Sunny doesn't deny the form
+3. `I have independently verified and the policy is correct` → Sunny points to **Finalize** and doesn't take the policy back
+4. `change it to a written warning` → the warning box moves to Written
+5. `no` (straight after Sunny asks the payroll question) → payroll is set to No
+6. Several unrelated turns, then **Coaching Form** from "See more forms" → the card names the employee, and Salon shows the salon's name

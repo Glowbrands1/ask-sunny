@@ -94,6 +94,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   process.env = { ...ORIGINAL };
   for (const path of ["@/lib/auth/server", "@/lib/ai/server-ask", "@/lib/forms/chat-correction", "@/lib/forms/chat-policy-change", "@/lib/forms/open-form-summary", "@/lib/forms/chat-revision", "@/lib/supabase/server"]) {
     vi.doUnmock(path);
@@ -120,6 +121,13 @@ describe("a revision of the open form", () => {
   });
 
   it("is given the business day, so a typed follow-up date can be read", async () => {
+    /*
+     * THE SERVER'S BUSINESS DAY, NOT THE BODY'S. The route reads "today" from
+     * its own clock (`businessToday`), so the clock is what is set here; the
+     * body's `todayIso` below is ignored, as it is in production.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-02T15:00:00Z"));
     const { route, seen } = await load({
       content: "Set the follow-up date to **Thursday, October 15, 2026**.",
       citations: [],
