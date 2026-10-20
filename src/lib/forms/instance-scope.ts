@@ -10,7 +10,7 @@ import {
   type InstanceRow,
   type LoadedInstance,
 } from "./instances";
-import { authorizedSalonIds } from "./location-scope";
+import { authorizeLocation, authorizedSalonIds } from "./location-scope";
 import { getTemplateByKey } from "./repository";
 import type { Permission } from "@/types";
 
@@ -290,9 +290,36 @@ export async function authorizeInstance(
     }
   }
 
-  if (!actorMaySeeInstance(actor, loaded.instance)) throw new InstanceNotVisibleError();
+  if (!actorMaySeeInstance(actor, loaded.instance) && !ownFormStillInScope(actor, loaded.instance)) {
+    throw new InstanceNotVisibleError();
+  }
 
   return { actor, loaded };
+}
+
+/**
+ * ============================================================================
+ * THE FORM YOU JUST CREATED IS ONE YOU CAN OPEN
+ * ============================================================================
+ *
+ * READING is decided by the VISIBILITY scope (`forms-visibility.ts`: the home
+ * salon, unless an administrator or designated account), but CREATING is still
+ * authorized against the STORED scope — which, for a district or regional
+ * manager, is `global`. So a manager covering several salons could create an
+ * exit form for one that is not their home salon, and the inline editor's very
+ * next fetch answered "No such form": a draft created and then stranded.
+ *
+ * So the per-instance guard also lets the CREATOR in, but only while their
+ * stored scope would still let them file against that salon today. That keeps
+ * the transfer rule above intact — a manager whose assignment no longer covers
+ * the salon loses the record — while a form somebody may create is never one
+ * they cannot then edit. Lists are not widened: Form Monitoring stays the home
+ * salon only.
+ */
+function ownFormStillInScope(actor: FormsActor, instance: InstanceRow): boolean {
+  if (!actor.verified || !actor.scope || !instance.locationId) return false;
+  if (instance.createdBy !== actor.id) return false;
+  return authorizeLocation(actor.scope, instance.locationId).kind === "authorized";
 }
 
 /**

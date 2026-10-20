@@ -17,24 +17,26 @@ import {
  * ============================================================================
  *
  * Three situations, three answers, and the rule running through all of them is
- * the one the form needs most: SAY WHAT WAS FILLED, SAY WHAT WAS LEFT, ASK
- * ONLY FOR WHAT A USEFUL DRAFT IS MISSING.
+ * the one managers asked for (20 Oct 2026): DRAFT IT AND LET THEM EDIT. Say
+ * what will be filled, say what will be left blank, and ask nothing a manager
+ * can fill in on the form themselves.
  *
- *   NOTHING SUPPLIED ("pull up the exit form"). The short intake — who, how
- *   they left, the dates, anything for Details — in one message, because one
- *   question at a time is the interrogation nobody wants.
+ *   NOTHING SUPPLIED ("pull up the exit form"). One question — who it is for —
+ *   with an invitation to add whatever they already know in their own words.
+ *   Not a numbered intake: every line it used to ask about is a line on the
+ *   form they can fill in.
  *
  *   NO EMPLOYEE, but facts given. The one blocking question: who. A wrong name
  *   on somebody's exit paperwork is the failure nothing downstream undoes.
  *
  *   READY. The facts that will be prefilled, in the form's own labels — the
- *   Details lines in the exact sentences the form will print; the lines left
- *   blank for review; and questions for ONLY what is still missing: the last
- *   day and how they left, and HR's Details lines (the resignation date, how
- *   they told you, the reason, the key and store items, payroll deduction,
- *   minimum wage and bonus, rehire) that nothing the manager said answers —
- *   plus anything they said two ways. A yes/no answer is filled only from the
- *   manager's own words (`exit-details.ts`), never decided by Sunny.
+ *   Details lines in the exact sentences the form will print — and every line
+ *   left blank for review, the unanswered Details lines among them. Nothing is
+ *   asked except what the manager said two ways (two last days, a notice both
+ *   worked and not worked, a key both returned and kept): those are left blank
+ *   rather than guessed, and the manager is told which. A yes/no answer is
+ *   filled only from the manager's own words (`exit-details.ts`), never
+ *   decided by Sunny.
  *
  * WHAT IS NEVER SAID. That the form is signed, filed or complete; that anybody
  * has been removed from MyGlow, taken off payroll or had their Sunlync account
@@ -85,17 +87,9 @@ export const EXIT_DOES_NOT_ACT =
 /** The opening intake, for a manager who has only named the form. */
 export function exitIntakeRequest(formName: string): string {
   return [
-    `I can draft the **${formName}** here. Tell me:`,
+    `I can draft the **${formName}** for you. Who is it for?`,
     "",
-    "1. The employee's full name.",
-    "2. Their job title (optional).",
-    "3. How they left — gave notice and worked it, quit immediately, didn't finish their notice, no call no show, or was already let go — and how they told you (in person, phone call, text message or email).",
-    "4. The date they resigned, their last day worked, and the dates notice was given and fulfilled if there was notice.",
-    "5. The reason they gave for leaving.",
-    "6. Whether their store items and salon key were returned, whether payroll deduction applies, whether they'll be dropped to minimum wage and forfeit their bonus, and whether they're eligible for rehire.",
-    "7. Anything else that belongs under Details.",
-    "",
-    "Anything you don't know yet stays blank for you to answer on the form — I won't answer it for you. Permanent Address and written notice attached are yours to complete, and the signature lines stay blank.",
+    "Add anything you already know in your own words — how and when they left, why, what was returned, rehire — and I'll fill it in. Anything you leave out stays blank for you to fill in on the form, and the signature lines stay blank.",
   ].join("\n");
 }
 
@@ -183,6 +177,7 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
   const unsetDates = ROLE_ORDER.filter((role) => !facts[role]).map((role) => EXIT_ROLE_LABEL[role]);
   blank.push(...unsetDates);
   if (ticks.length === 0) blank.push("the Resignation Details boxes");
+  blank.push(...blankDetailLines(facts, details));
   blank.push("written notice attached");
   blank.push("all three signature lines");
 
@@ -194,37 +189,20 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
     `**Left blank for you to review:** ${list(blank)}.`,
   ];
 
-
   /*
-   * THE QUESTIONS, AND ONLY THESE. An ambiguity is always asked — a guessed
-   * last day is a payroll error. The last day and the manner of leaving are
-   * asked when nothing was said about them, because an exit form without
-   * either is not yet useful; everything else is a blank line the manager
-   * fills on the form.
+   * NOTHING IS ASKED BUT A CONTRADICTION. A missing answer is a blank line the
+   * manager fills on the form — asking for each one was the interrogation
+   * managers said they did not want. Something said two ways is different: it
+   * is left blank rather than guessed (a guessed last day is a payroll error),
+   * and the manager is told so in one line each.
    */
-  const questions = ambiguityQuestion(facts, details);
-  const ambiguousRoles = new Set(
-    facts.ambiguities.flatMap((entry) => (entry.kind === "separation_conflict" ? [] : [entry.role])),
-  );
-  const separationUnclear = facts.ambiguities.some((entry) => entry.kind === "separation_conflict");
-  if (!facts.lastDayWorked && !ambiguousRoles.has("lastDayWorked")) {
-    questions.push("What was their last day worked?");
-  }
-  if (ticks.length === 0 && !separationUnclear) {
-    questions.push(
-      "How did they leave — gave notice and worked it, quit immediately, didn't finish their notice, or no call no show?",
-    );
-  }
-  questions.push(...detailQuestions(facts, details, ambiguousRoles));
-  if (questions.length > 0) {
+  const conflicts = ambiguityQuestion(facts, details);
+  if (conflicts.length > 0) {
     lines.push(
       "",
-      questions.length === 1 ? questions[0]! : ["Before you create it:", ...questions.map((question) => `- ${question}`)].join("\n"),
-      /*
-       * THE SHAPE OF AN ANSWER, because a bare "9/15" names no line and would
-       * be left unplaced. "Last day 9/15" is read exactly.
-       */
-      'You can reply in a line — for example, "last day was 9/15, she quit on the spot by text because she\'s moving, returned her items but not her key, no payroll deduction, not eligible for rehire" — or create the draft now and fill those in on the form.',
+      conflicts.length === 1
+        ? `${conflicts[0]!} I've left it blank until you say — or fix it on the form.`
+        : ["I've left these blank because you said them two ways — tell me, or fix them on the form:", ...conflicts.map((question) => `- ${question}`)].join("\n"),
     );
   }
 
@@ -237,54 +215,28 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
  * HR'S DETAILS LINES THAT NOTHING THE MANAGER SAID ANSWERS
  * ============================================================================
  *
- * Asked in the plain words a manager would use, one line each, and only for
- * what is missing. Two questions that are usually answered together — the
- * items and the key, minimum wage and the bonus — are asked together when
- * both are open. An answer given two ways is already asked by
- * `ambiguityQuestion` and is not asked twice.
+ * Named in the form's own labels so the manager can find them on the page. A
+ * line answered two ways is blank too, and is also named by
+ * `ambiguityQuestion`.
  *
  * AN INVOLUNTARY SEPARATION IS NOT A RESIGNATION. Nobody "resigned", so the
- * resignation date, how they resigned and why are not asked; the lines stay
- * blank for the manager, and the yes/no answers are still asked.
+ * resignation date, how they resigned and why are not listed; the yes/no
+ * lines still are.
  */
-function detailQuestions(
-  facts: ExitFacts,
-  details: ExitDetails,
-  ambiguousRoles: ReadonlySet<ExitDateRole>,
-): string[] {
-  const questions: string[] = [];
-  const conflicted = new Set(details.ambiguities.map((entry) => entry.key));
-  const open = (key: ExitAnswerKey) => !details.answers[key] && !conflicted.has(key);
+function blankDetailLines(facts: ExitFacts, details: ExitDetails): string[] {
+  const blank: string[] = [];
   const involuntary = facts.typeOptions.includes(EXIT_OPTION.immediateInvoluntary);
-
   if (!involuntary) {
-    if (!details.resignationDate && !ambiguousRoles.has("resigned")) {
-      questions.push("What date did they resign or quit?");
-    }
-    if (!details.resignationMethod) {
-      questions.push("How did they let you know — in person, phone call, text message, email, or no call/no show?");
-    }
-    if (!details.resignationReason) {
-      questions.push("What reason did they give for leaving? (If they didn't give one, just say so.)");
-    }
+    if (!details.resignationDate) blank.push(EXIT_DETAIL_LABEL.resignationDate);
+    if (!details.resignationMethod) blank.push(EXIT_DETAIL_LABEL.resignationMethod);
+    if (!details.resignationReason) blank.push(EXIT_DETAIL_LABEL.resignationReason);
   }
-  if (open("store_items_returned") && open("salon_key_returned")) {
-    questions.push("Were their store items and salon key returned?");
-  } else if (open("store_items_returned")) {
-    questions.push("Were their store items returned?");
-  } else if (open("salon_key_returned")) {
-    questions.push("Was their salon key returned?");
+  const { checked } = exitDetailValues(details);
+  for (const line of EXIT_ANSWER_LINES) {
+    const answered = line.parts.filter((part) => (checked[part.key] ?? []).length === 1).length;
+    if (answered < line.parts.length) blank.push(line.label);
   }
-  if (open("payroll_deduction_applicable")) questions.push("Is payroll deduction applicable?");
-  if (open("dropped_to_minimum_wage") && open("forfeit_bonus")) {
-    questions.push("Will they be dropped to minimum wage and forfeit their bonus?");
-  } else if (open("dropped_to_minimum_wage")) {
-    questions.push("Will they be dropped to minimum wage?");
-  } else if (open("forfeit_bonus")) {
-    questions.push("Will they forfeit their bonus?");
-  }
-  if (open("eligible_for_rehire")) questions.push("Are they eligible for rehire?");
-  return questions;
+  return blank;
 }
 
 function closingLine(proposal: ChatFormProposal): string {

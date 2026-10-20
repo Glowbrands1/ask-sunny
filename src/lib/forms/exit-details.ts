@@ -313,6 +313,10 @@ function bonusForfeited(clause: string): Reading {
   return undefined;
 }
 
+/** A negation directly before a rehire cue, with only auxiliaries between. */
+const REHIRE_NEGATED_BEFORE =
+  /\b(?:not|never|no longer|isn't|aren't|wasn't|weren't|won't|wouldn't|can't|cannot|shouldn't|don't|doesn't)\s+(?:(?:be|ever|currently|really|actually|definitely|going to be|gonna be|to be)\s+)*$/;
+
 function rehireEligible(clause: string): Reading {
   const labelled = labelledAnswer(clause, /\b(?:eligible for )?re-?hire(?: eligib(?:le|ility))?/);
   if (labelled) return labelled;
@@ -330,8 +334,16 @@ function rehireEligible(clause: string): Reading {
     }
     const cue = /\b(?:eligible|ok|okay|fine|good|able|can|could|would|will|may|should)\b[^,;]{0,25}$/.exec(before);
     if (cue) {
-      // "would not rehire", "is eligible for rehire" / "is not eligible for rehire"
-      const negated = negatedAt(clause, cue.index) || /\b(?:not|never)\b|n't\b/.test(before.slice(cue.index));
+      /*
+       * "would not rehire", "is eligible for rehire" / "is not eligible for
+       * rehire". The negation must sit RIGHT before the cue: in "payroll
+       * deduction does not apply eligible for rehire" — one fact per line, run
+       * together — the "not" belongs to the deduction, and reading it here put
+       * "not eligible for rehire" on the form of somebody who is.
+       */
+      const negated =
+        REHIRE_NEGATED_BEFORE.test(before.slice(0, cue.index)) ||
+        /\b(?:not|never)\b|n't\b/.test(before.slice(cue.index));
       reading = add(reading, negated ? "no" : "yes");
       continue;
     }
@@ -405,8 +417,15 @@ const LEAVING = String.raw`(?:quit|quits|quitting|resign(?:ed|s|ing)?|left|leavi
 
 /** Where a reason stops: the next fact, not a comma inside the reason. */
 const NEXT_FACT = String.raw`(?:she|he|they|her|his|their|last|returned|didn't|did|kept|still|payroll|no|not|is|was|we|i|please|can|the (?:key|store|items))\b`;
+/**
+ * The other Details facts, which end a reason even with no punctuation before
+ * them: "Resigning to pursue other career options Store items returned payroll
+ * deduction does not apply" is a reason followed by two answers, not one long
+ * reason.
+ */
+const FACT_START = String.raw`(?:store items?|salon key|(?:her|his|their|the) keys?\s+(?:was|were|returned|not)|items?\s+(?:were\s+|was\s+)?(?:not\s+)?returned|keys?\s+(?:was\s+|were\s+)?(?:not\s+)?returned|(?:no\s+)?payroll|(?:not\s+|in)?eligible for re-?hire|re-?hire\b|last day|min(?:imum|\.)?\s*wage)`;
 const REASON_END = new RegExp(
-  String.raw`\s*(?:[.;!?\n]|,\s*(?:and\s+|but\s+|so\s+)?(?=${NEXT_FACT})|\s+(?:and|but|so)\s+(?=${NEXT_FACT}))`,
+  String.raw`\s*(?:[.;!?\n]|,\s*(?:and\s+|but\s+|so\s+)?(?=${NEXT_FACT})|\s+(?:and|but|so)\s+(?=${NEXT_FACT}))|\s+(?=${FACT_START})`,
 );
 
 /** Each opening, and whether the words it matched belong to the reason. */

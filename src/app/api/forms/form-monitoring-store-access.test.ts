@@ -29,7 +29,7 @@ const FORM_B = "22222222-2222-4222-8222-222222222222";
 const FORM_C = "33333333-3333-4333-8333-333333333333";
 const ROWS: Record<string, string> = { [FORM_A]: "loc-a", [FORM_B]: "loc-b", [FORM_C]: "loc-c" };
 
-const row = (id: string) => ({
+const row = (id: string, createdBy = "someone-else") => ({
   id,
   templateId: "tpl",
   templateKey: "coaching",
@@ -43,7 +43,7 @@ const row = (id: string) => ({
   employeeRole: null,
   locationId: ROWS[id]!,
   locationName: null,
-  createdBy: "someone-else",
+  createdBy,
   createdByRole: "salon_director",
   source: "manual",
   status: "draft",
@@ -69,6 +69,8 @@ interface Options {
   woven?: Record<string, string | null>;
   /** Make the designation lookup fail. */
   designationFails?: boolean;
+  /** Forms this subject created, by form id. */
+  created?: string[];
 }
 
 async function load(options: Options) {
@@ -145,21 +147,21 @@ async function load(options: Options) {
   vi.doMock("@/lib/forms/instances", () => ({
     loadInstance: async (id: string) =>
       ROWS[id]
-        ? { instance: row(id), version: { id: "v", document: { paper: "letter", blocks: [] }, variants: [] }, values: [], events: [] }
+        ? { instance: row(id, options.created?.includes(id) ? options.subject : "someone-else"), version: { id: "v", document: { paper: "letter", blocks: [] }, variants: [] }, values: [], events: [] }
         : null,
     listInstances: async (
       _view: string,
       _limit: number | undefined,
       filter?: { locationIds?: string[]; ownNullLocationCreatedBy?: string },
     ) => {
-      const rows = Object.keys(ROWS).map(row);
+      const rows = Object.keys(ROWS).map((id) => row(id));
       if (!filter || filter.locationIds === undefined) return rows;
       return rows.filter((r) => filter.locationIds!.includes(r.locationId));
     },
-    findDemoInstances: async () => ({ deletable: Object.keys(ROWS).map(row), protected: [] }),
+    findDemoInstances: async () => ({ deletable: Object.keys(ROWS).map((id) => row(id)), protected: [] }),
     listOutstandingFollowUps: async (_limit: number, ids: string[] | null) =>
       Object.keys(ROWS)
-        .map(row)
+        .map((id) => row(id))
         .filter((r) => ids === null || ids.includes(r.locationId)),
     markExported: async () => undefined,
     InstanceProtectedError: class extends Error {},
@@ -283,6 +285,24 @@ describe("direct URL / API access to another store's form", () => {
     const { detail } = await load(AMBER);
     expect((await detail.GET(get(), params(FORM_A))).status).toBe(404);
     expect((await detail.GET(get(), params(FORM_B))).status).toBe(200);
+  });
+  /*
+   * REGRESSION (20 Oct 2026). A District Manager created an exit form for a
+   * salon their stored scope covers but that is not their home salon, and the
+   * inline editor's next fetch answered "No such form". The creator may open
+   * their own form while their stored scope still covers its salon.
+   */
+  it("serves a form its creator just created at a salon outside their home salon", async () => {
+    const { detail } = await load({ ...AMBER, created: [FORM_C] });
+    expect((await detail.GET(get(), params(FORM_C))).status).toBe(200);
+    expect((await detail.GET(get(), params(FORM_A))).status).toBe(404);
+  });
+  it("does not widen the list to the creator's out-of-home-salon forms", async () => {
+    expect(await listedIds({ ...AMBER, created: [FORM_C] })).toEqual([FORM_B]);
+  });
+  it("refuses the creator once their stored scope no longer covers the salon", async () => {
+    const { detail } = await load({ ...STORE_MANAGER, created: [FORM_B] });
+    expect((await detail.GET(get(), params(FORM_B))).status).toBe(404);
   });
   it("answers 404 for a user with no home store", async () => {
     const { detail } = await load(NO_STORE);
