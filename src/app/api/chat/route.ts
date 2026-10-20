@@ -165,9 +165,28 @@ export async function POST(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
+      /*
+       * "CHANGE EXIT FOR ASHLEY ROGERS" — a form already on file, asked for by
+       * name and employee: found among the forms this actor may see and put
+       * in the thread, a finalized one as a new draft of it. Null for any
+       * sentence that does not ask to edit or see an existing form. See
+       * `lib/forms/chat-reopen.ts`.
+       */
+      const reopened =
+        !correction && !revision
+          ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
+              request,
+              question: parsed.question,
+              history: parsed.history,
+              today: parsed.context.todayIso,
+              activeInstanceId: parsed.activeFormInstanceId,
+              continuingTemplateKey: parsed.continueProposalTemplateKey,
+            })
+          : null;
       answer =
         correction ??
         revision ??
+        reopened ??
         (await answerQuestion(parsed, {
           role: context.identity.role,
           scope: context.identity.scope,

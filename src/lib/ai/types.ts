@@ -195,6 +195,19 @@ export interface AskResponse {
    * carried here. See `lib/forms/chat-correction.ts`.
    */
   formUpdate?: { instanceId: string; updated: string[] };
+  /**
+   * A form this turn put in front of the manager — an existing one they asked
+   * to edit or see, or the new draft opened from a finalized one so it can be
+   * changed. The chat attaches it to this answer as a form card. An id, never
+   * values. See `lib/forms/editable-draft.ts`.
+   */
+  formOpened?: {
+    instanceId: string;
+    /** Presentation only, until the card's own fetch lands. */
+    templateName: string;
+    /** The finalized form this turn revised to open the draft, if it did. */
+    revisesInstanceId: string | null;
+  };
 }
 
 /**

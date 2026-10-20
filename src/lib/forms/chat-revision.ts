@@ -26,6 +26,7 @@ import {
 } from "./follow-up-observation";
 import { FOLLOW_UP_TIMEFRAME_RULES, guardFollowUpTimeframe } from "./follow-up-timeframe";
 import { authorizeInstance } from "./instance-scope";
+import { changeOnEditableDraft } from "./editable-draft";
 import { datesInText } from "./form-date-answer";
 import { FollowUpError, applyAssistantRevision, setFollowUpDate } from "./instances";
 import {
@@ -140,9 +141,20 @@ export async function reviseActiveForm(input: {
 
   const subject = team ? "the team" : `**${instance.employeeName}**`;
   const who = `**${instance.templateName}** for ${subject}`;
+  /*
+   * A REDRAFT OF A FINALIZED FORM IS MADE ON A NEW DRAFT OF IT, which is
+   * opened here; the signed record is never written. Only for an actual
+   * revision request — a follow-up date or a stated finding is not a reason
+   * to open a new version of a signed form. See `editable-draft.ts`.
+   */
   if (instance.status !== "draft") {
+    if (asksRevision) {
+      return changeOnEditableDraft(input.request, input.instanceId, (draftId) =>
+        reviseActiveForm({ ...input, instanceId: draftId }),
+      );
+    }
     return reply(
-      `The ${who} is finalized, so I haven't changed it. Open it from Form Monitoring and create a revision to make a change.`,
+      `The ${who} is finalized, so I haven't changed it. Ask me to "edit the ${instance.templateName} for ${team ? "the team" : instance.employeeName}", or press **Edit as new draft** on the form, to open a new draft of it.`,
     );
   }
 

@@ -19,23 +19,32 @@ const state = vi.hoisted(() => ({
   values: [] as { fieldKey: string; value: string }[],
   failSave: false,
   reasonFilledBy: "ai",
+  /** Every instance id a save was written to, in order. */
+  savedTo: [] as string[],
+  revised: [] as string[],
 }));
 
+/* The new draft `reviseInstance` opens from a finalized form. */
+const REVISION_ID = "22222222-2222-2222-2222-222222222222";
+
 vi.mock("./instance-scope", () => ({
-  authorizeInstance: async () => {
+  authorizeInstance: async (_request: Request, id: string) => {
     if (!state.authorized) throw new Error("not permitted");
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    const isRevision = id === REVISION_ID;
     return {
       actor: { id: "user-1", role: "salon_director", verified: true, scope: null },
       loaded: {
         instance: {
-          id: "form-1",
+          id,
           templateKey: seed.key,
           templateName: seed.name,
           variantKey: null,
           employeeName: state.employeeName,
-          status: state.status,
+          status: isRevision ? "draft" : state.status,
+          revisesInstanceId: isRevision ? "11111111-1111-1111-1111-111111111111" : null,
         },
+        events: [],
         version: { document: parseFormDocument(seed.document), variants: [] },
         values: [
           ...(state.reason
@@ -49,11 +58,17 @@ vi.mock("./instance-scope", () => ({
 }));
 
 vi.mock("./instances", () => ({
+  reviseInstance: async (id: string) => {
+    state.revised.push(id);
+    const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
+    return { id: REVISION_ID, templateName: seed.name, employeeName: state.employeeName, status: "draft" };
+  },
   saveInstanceValues: async (
-    _id: string,
+    id: string,
     submitted: { values: Record<string, string>; checked: Record<string, string[]> },
   ) => {
     state.saved.push(submitted);
+    state.savedTo.push(id);
     if (state.failSave) throw new Error("Could not save the form: connection reset");
     return { rejected: [] };
   },
@@ -79,6 +94,8 @@ beforeEach(() => {
   state.values = [];
   state.failSave = false;
   state.reasonFilledBy = "ai";
+  state.savedTo = [];
+  state.revised = [];
 });
 
 describe("correcting the open form from chat", () => {
@@ -109,11 +126,26 @@ describe("correcting the open form from chat", () => {
     expect(response!.content).toContain("reason paragraph was written before this change");
   });
 
-  it("does not touch a finalized form", async () => {
+  it("corrects a finalized form on a new draft of it, never on the finalized one", async () => {
     state.status = "finalized";
     const response = await correct("change her new location to salon 24");
-    expect(state.saved).toEqual([]);
-    expect(response!.content).toContain("finalized");
+    expect(state.revised).toEqual(["11111111-1111-1111-1111-111111111111"]);
+    expect(state.saved).toEqual([{ values: { new_location: "Salon 24" }, checked: {} }]);
+    expect(state.savedTo).toEqual([REVISION_ID]);
+    expect(response!.content).toContain("was finalized, so I opened a new draft of it");
+    expect(response!.content).toContain("New Location, if applicable → Salon 24");
+    expect(response!.formUpdate).toEqual({ instanceId: REVISION_ID, updated: ["new_location"] });
+    expect(response!.formOpened).toEqual({
+      instanceId: REVISION_ID,
+      templateName: "Position Transfer Form",
+      revisesInstanceId: "11111111-1111-1111-1111-111111111111",
+    });
+  });
+
+  it("opens no new draft for a turn that is not a correction", async () => {
+    state.status = "finalized";
+    expect(await correct("thanks, looks good")).toBeNull();
+    expect(state.revised).toEqual([]);
   });
 
   it.each([
@@ -340,11 +372,12 @@ describe("the Corrective Action Form's payroll-deduct answer", () => {
     },
   );
 
-  it("does not touch a finalized form", async () => {
+  it("changes a finalized form's answer on a new draft of it", async () => {
     state.status = "finalized";
     const response = await correct("change payroll deduct to no");
-    expect(state.saved).toEqual([]);
-    expect(response!.content).toContain("finalized");
+    expect(state.savedTo).toEqual([REVISION_ID]);
+    expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["no"] } }]);
+    expect(response!.formOpened?.instanceId).toBe(REVISION_ID);
   });
 
   it("never writes a payroll answer onto a form that does not ask the question", async () => {

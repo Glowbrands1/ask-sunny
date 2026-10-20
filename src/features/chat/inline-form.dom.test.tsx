@@ -1138,7 +1138,8 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
     expect(
       container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!.disabled,
     ).toBe(true);
-    expect(container.textContent).toMatch(/a correction is a revision/i);
+    expect(container.textContent).toMatch(/edit it as a new\s+draft/i);
+    expect(screen.getByRole("button", { name: /edit as new draft/i })).toBeTruthy();
   });
 
   it("sends the canonical follow-up date with the action", async () => {
@@ -1258,6 +1259,136 @@ describe("P4. Start another begins a new request, never reusing this one", () =>
     expect(onStartAnother).toHaveBeenCalledTimes(1);
     // No write of any kind against the finalized record.
     expect(recorded.slice(before).some((made) => made.method !== "GET")).toBe(false);
+  });
+});
+
+/* ==================================================================== */
+/*  A FINALIZED FORM IS EDITED AS A NEW DRAFT OF IT                     */
+/* ==================================================================== */
+
+/**
+ * Production feedback: a finalized exit form said "a correction is a
+ * revision" and offered no way to make one. The card now opens the revision
+ * itself — `POST {action: "revise"}` — and becomes the editable draft, while
+ * the finalized record is never written.
+ */
+function revisable() {
+  const original = loadedInstance({ status: "finalized" });
+  let originalStatus: "finalized" | "revised" = "finalized";
+  const revision = loadedInstance({ id: "inst-43", revisesInstanceId: "inst-42" });
+  revision.events = [{ kind: "created", actor: "user-1", createdAt: "2026-10-20T12:00:00Z" }];
+
+  fakeFetch((url, init) => {
+    if (url === "/api/forms/instances/inst-42" && init.method === "POST") {
+      const body = JSON.parse(String(init.body)) as { action: string };
+      if (body.action !== "revise") return { ok: false, payload: { error: "Unknown action." } };
+      originalStatus = "revised";
+      return { payload: { instance: { id: "inst-43", templateName: "Coaching Form" } } };
+    }
+    if (url === "/api/forms/instances/inst-42" && init.method !== "GET" && init.method !== undefined) {
+      return { ok: false, payload: { error: "This form is finalized. Create a revision to change it." } };
+    }
+    if (url === "/api/forms/instances/inst-43") return { payload: revision };
+    return {
+      payload: {
+        ...original,
+        instance: { ...original.instance, status: originalStatus },
+        events: [
+          ...original.events,
+          ...(originalStatus === "revised"
+            ? [{ kind: "revised", actor: "user-1", createdAt: "2026-10-20T12:00:00Z", detail: { revisionId: "inst-43" } }]
+            : []),
+        ],
+      },
+    };
+  });
+}
+
+describe("a finalized form is edited as a new draft of it", () => {
+  it("opens a revision and turns the card into that draft, editable", async () => {
+    revisable();
+    const { container } = mounted();
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit as new draft/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
+    expect(container.textContent).toContain("Draft");
+    expect(container.textContent).toContain("New draft of a finalized form");
+    // The carried-over answers are there, and editable.
+    const details = container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!;
+    expect(details.value).toBe("Arrived late on three shifts this week.");
+    expect(details.disabled).toBe(false);
+    // No prefill warning: a revision is a copy, not something Sunny drafted.
+    expect(container.textContent).not.toMatch(/prefill has not completed/i);
+
+    // One revise, against the finalized record; nothing else written to it.
+    const writes = recorded.filter((made) => made.method !== "GET");
+    expect(writes).toEqual([
+      { url: "/api/forms/instances/inst-42", method: "POST", body: { action: "revise" } },
+    ]);
+    // The pointer on the message moves to the draft, so a refresh reopens it.
+    expect(onFormCreated).toHaveBeenCalledWith(
+      "msg-answer",
+      expect.objectContaining({ instanceId: "inst-43", templateName: "Coaching Form" }),
+    );
+  });
+
+  it("saves edits on the new draft, never on the finalized form", async () => {
+    revisable();
+    const { container } = mounted();
+    fireEvent.click(await screen.findByRole("button", { name: /edit as new draft/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
+
+    const details = container.querySelector<HTMLTextAreaElement>("#form-field-coaching_details")!;
+    fireEvent.change(details, { target: { value: "Late twice, not three times." } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() =>
+      expect(recorded.some((made) => made.method === "PATCH" && made.url === "/api/forms/instances/inst-43")).toBe(true),
+    );
+    expect(recorded.some((made) => made.method === "PATCH" && made.url === "/api/forms/instances/inst-42")).toBe(false);
+  });
+
+  it("says a revised form was replaced, and opens its newer version", async () => {
+    revisable();
+    render(
+      <InlineForm
+        reference={{ instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" }}
+        prefill={{ kind: "unknown" }}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /edit as new draft/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
+    cleanup();
+
+    // The same finalized form, opened again after it was revised.
+    const replaced = vi.fn();
+    const { container } = render(
+      <InlineForm
+        reference={{ instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" }}
+        prefill={{ kind: "unknown" }}
+        onReplaced={replaced}
+      />,
+    );
+    await waitFor(() => expect(container.textContent).toContain("Revised"));
+    expect(container.textContent).toMatch(/a newer version replaces it/i);
+    expect(screen.queryByRole("button", { name: /edit as new draft/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /open newer version/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
+    expect(replaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: "inst-43" }));
+  });
+
+  it("renders a form a turn opened, with no proposal on the message", async () => {
+    revisable();
+    const { container } = bubble(
+      assistantTurn({
+        content: "Here's the Coaching Form for Sarah Jones.",
+        formInstanceRef: { instanceId: "inst-43", proposalId: "opened:inst-43", templateName: "Coaching Form" },
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
+    expect(container.textContent).toContain("Sarah Jones");
   });
 });
 

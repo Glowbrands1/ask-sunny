@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, Download, ExternalLink, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, Check, Download, ExternalLink, Loader2, PencilLine, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,8 +92,10 @@ export type PrefillState =
  *        asked for a form once, and silently making a second is how duplicate
  *        disciplinary records happen.
  *   403  no longer permitted. Say so, for the same reason.
- *   finalized  render it read-only. Phase 4 adds the finalized controls; this
- *        phase must simply not assume every referenced form stays a draft.
+ *   finalized  render it read-only, with "Edit as new draft": a revision that
+ *        copies these answers into a new draft and points back at this one.
+ *        The card then shows that draft. The finalized form is never written.
+ *   revised  read-only, and says a newer version replaced it.
  */
 
 interface LoadedValueRow {
@@ -127,11 +129,13 @@ interface LoadedInstance {
     source: "manual" | "ask_sunny";
     status: "draft" | "finalized" | "revised";
     followUpDate: string | null;
+    /** The finalized form this one revises, when it is a revision. */
+    revisesInstanceId?: string | null;
   };
   version: { document: FormDocument; variants: FormVariant[] };
   values: LoadedValueRow[];
   /** The form's own audit trail. Used to answer the `unknown` case honestly. */
-  events: { kind: string; actor: string; createdAt: string }[];
+  events: { kind: string; actor: string; createdAt: string; detail?: Record<string, unknown> }[];
 }
 
 type SaveState =
@@ -143,7 +147,7 @@ type SaveState =
 
 type ActionState =
   | { kind: "idle" }
-  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" }
+  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "revise" }
   | { kind: "error"; message: string };
 
 type LoadState =
@@ -163,15 +167,37 @@ function splitValues(rows: LoadedValueRow[]): ResponsiveFormValues {
 
 export function InlineForm({
   reference,
-  prefill,
+  prefill: prefillFromParent,
   onStartAnother,
+  onReplaced,
 }: {
   reference: ChatFormInstanceRef;
   prefill: PrefillState;
   /** Begins a NEW request. Never reuses this instance — see the button below. */
   onStartAnother?: () => void;
+  /**
+   * The card now shows a different record — the new draft opened from this
+   * finalized form, or the newer version of a revised one. The parent persists
+   * the pointer so a refresh reopens that record.
+   */
+  onReplaced?: (reference: ChatFormInstanceRef) => void;
 }) {
   const { role, user } = useSession();
+  /*
+   * ==========================================================================
+   * THE RECORD THIS CARD SHOWS, WHICH A REVISION MOVES
+   * ==========================================================================
+   *
+   * "Edit as new draft" opens a revision, and from then on the card is about
+   * the draft. `onReplaced` persists that on the message; this holds it until
+   * the persisted pointer arrives, and only while the parent's pointer is
+   * still the one it replaced — so a newer pointer from the parent always wins.
+   */
+  const [replaced, setReplaced] = React.useState<{ from: string; to: ChatFormInstanceRef } | null>(null);
+  const current = replaced && replaced.from === reference.instanceId ? replaced.to : reference;
+  const instanceId = current.instanceId;
+  /* The prefill the parent watched was the ORIGINAL's; a revision is a copy. */
+  const prefill: PrefillState = current === reference ? prefillFromParent : { kind: "complete" };
   const [load, setLoad] = React.useState<LoadState>({ kind: "loading" });
   const [edits, setEdits] = React.useState<ResponsiveFormValues>({ values: {}, checked: {} });
   const [save, setSave] = React.useState<SaveState>({ kind: "clean" });
@@ -182,8 +208,8 @@ export function InlineForm({
    */
   const [externalRevision, setExternalRevision] = React.useState(0);
   React.useEffect(
-    () => onFormUpdate(reference.instanceId, () => setExternalRevision((value) => value + 1)),
-    [reference.instanceId],
+    () => onFormUpdate(instanceId, () => setExternalRevision((value) => value + 1)),
+    [instanceId],
   );
   /*
    * THE FOLLOW-UP DATE IS INSTANCE METADATA, NOT A FIELD ON THIS TEMPLATE.
@@ -211,8 +237,6 @@ export function InlineForm({
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
     [role, user.name],
   );
-
-  const instanceId = reference.instanceId;
 
   /*
    * ==========================================================================
@@ -262,7 +286,7 @@ export function InlineForm({
     return (
       <div className="mt-4 flex items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface-muted px-4 py-3 text-xs text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" aria-hidden />
-        Opening {reference.templateName}…
+        Opening {current.templateName}…
       </div>
     );
   }
@@ -288,6 +312,8 @@ export function InlineForm({
    * record at the same time, in whatever order the requests happen to land.
    */
   const finalized = loaded.instance.status !== "draft";
+  const revised = loaded.instance.status === "revised";
+  const newerVersion = revised ? newerVersionOf(loaded.events) : null;
   /* Whether the form's own body carries an agreed follow-up timeframe. */
   const hasTimeframeField = fieldsForVariant(
     loaded.version.document,
@@ -436,6 +462,46 @@ export function InlineForm({
     }
   }
 
+  /** Points this card at another record, and asks the parent to persist it. */
+  function showRecord(id: string, templateName: string) {
+    const next: ChatFormInstanceRef = {
+      instanceId: id,
+      proposalId: current.proposalId,
+      templateName,
+    };
+    setReplaced({ from: reference.instanceId, to: next });
+    onReplaced?.(next);
+  }
+
+  /**
+   * ==========================================================================
+   * EDIT AS NEW DRAFT — A REVISION, NEVER AN EDIT OF THE FINALIZED FORM
+   * ==========================================================================
+   *
+   * `POST {action: "revise"}` copies these answers (signatures excepted) into
+   * a new draft that points back at this form, and marks this one revised.
+   * What was finalized stays exactly as it was. The card then shows the
+   * draft, editable, with the same Save and Finalize as any other.
+   */
+  async function openRevision() {
+    if (action.kind === "busy") return;
+    setAction({ kind: "busy", what: "revise" });
+    try {
+      const result = await call<{ instance: { id: string; templateName?: string } }>(
+        `/api/forms/instances/${instanceId}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "revise" }),
+        },
+      );
+      setAction({ kind: "idle" });
+      showRecord(result.instance.id, result.instance.templateName || loaded.instance.templateName);
+    } catch (error) {
+      setAction({ kind: "error", message: (error as Error).message });
+    }
+  }
+
   async function submit() {
     if (save.kind === "saving") return;
     setSave({ kind: "saving" });
@@ -481,8 +547,11 @@ export function InlineForm({
           HR record and exactly the kind of thing nobody re-reads.
         */}
         <Badge tone={finalized ? "outline" : "accent"} size="sm">
-          {finalized ? "Finalized" : "Draft"}
+          {revised ? "Revised" : finalized ? "Finalized" : "Draft"}
         </Badge>
+        {!finalized && loaded.instance.revisesInstanceId ? (
+          <span className="text-xs text-subtle-foreground">New draft of a finalized form</span>
+        ) : null}
       </div>
 
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
@@ -650,9 +719,16 @@ export function InlineForm({
               : "The day the follow-up is scheduled, once you've picked one."}
           </p>
 
-          {finalized ? (
+          {revised ? (
             <p className="text-xs text-subtle-foreground">
-              This form is finalized, so its values are frozen. A correction is a revision.
+              This form was revised: a newer version replaces it. Its values stay exactly as they
+              were finalized.
+            </p>
+          ) : finalized ? (
+            <p className="text-xs text-subtle-foreground">
+              This form is finalized, so its values are frozen. To change it, edit it as a new
+              draft — everything is carried over except signatures, and this one stays on file,
+              marked revised.
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
@@ -695,6 +771,31 @@ export function InlineForm({
           */}
           {finalized ? (
             <div className="flex flex-wrap items-center gap-2">
+              {!revised ? (
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={() => void openRevision()}
+                  disabled={action.kind === "busy"}
+                >
+                  {action.kind === "busy" && action.what === "revise" ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <PencilLine />
+                  )}
+                  Edit as new draft
+                </Button>
+              ) : newerVersion ? (
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={() => showRecord(newerVersion, loaded.instance.templateName)}
+                  disabled={action.kind === "busy"}
+                >
+                  <PencilLine />
+                  Open newer version
+                </Button>
+              ) : null}
               <Button size="sm" onClick={() => void downloadPdf()} disabled={action.kind === "busy"}>
                 {action.kind === "busy" && action.what === "pdf" ? (
                   <Loader2 className="animate-spin" />
@@ -908,7 +1009,10 @@ export function policyVerificationNoticeFor(
   // because it has not got to them yet.
   if (prefilling) return null;
   if (loaded.instance.source !== "ask_sunny") return null;
-  if (!loaded.events.some((event) => event.kind === "drafted")) return null;
+  /* A revision carries the drafted values — and their provenance — over. */
+  if (!loaded.events.some((event) => event.kind === "drafted") && !loaded.instance.revisesInstanceId) {
+    return null;
+  }
 
   const grounded = fieldsForVariant(loaded.version.document, loaded.instance.variantKey).filter(
     (field) => field.policyGrounded,
@@ -1019,6 +1123,12 @@ function prefillNoticeFor(
     };
   }
 
+  /*
+   * A revision is a copy of a finalized form, not something Sunny prefilled —
+   * whatever happened to the original's prefill is not news about this one.
+   */
+  if (loaded.instance.revisesInstanceId) return null;
+
   if (prefill.kind === "failed") {
     return { tone: "attention", text: prefill.message };
   }
@@ -1033,4 +1143,15 @@ function prefillNoticeFor(
     tone: "attention",
     text: "Sunny's prefill has not completed for this draft. You can complete it yourself below — if Sunny does finish, reopening this form will show what it wrote.",
   };
+}
+
+/** The revision a revised form points to, from its own `revised` event. */
+function newerVersionOf(events: LoadedInstance["events"]): string | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
+    if (event.kind !== "revised" && event.kind !== "reevaluated") continue;
+    const revisionId = event.detail?.revisionId;
+    if (typeof revisionId === "string" && revisionId !== "") return revisionId;
+  }
+  return null;
 }
