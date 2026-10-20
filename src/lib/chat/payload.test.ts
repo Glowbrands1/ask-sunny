@@ -215,6 +215,10 @@ describe("metadata is an allowlist, not a passthrough", () => {
     }
   });
 
+  it("never carries the asker stamp, which holds a user id", () => {
+    expect(METADATA_KEYS as readonly string[]).not.toContain("author");
+  });
+
   it("refuses a message whose metadata is larger than the bound", () => {
     const source = conversation();
     source.messages[1].citations = [
