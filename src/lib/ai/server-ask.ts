@@ -37,6 +37,7 @@ import {
 import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
+import { recallPeople } from "@/lib/chat/person-memory-store";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
@@ -147,10 +148,13 @@ import type { AskRequest, AskResponse } from "./types";
  *   `authorizeRequest` context. A separate parameter from `request`, which is
  *   parsed from the request body: a caller must never be able to assert its own
  *   role or its own salon assignment.
+ * @param memory Whose earlier conversations may be recalled — the validated
+ *   session's subject, from the route. Omitted, nothing is recalled.
  */
 export async function answerQuestion(
   request: AskRequest,
   actor: ChatActor,
+  memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
   const readiness = liveReadiness();
 
@@ -396,6 +400,23 @@ export async function answerQuestion(
   }
 
   /* ------------------------------------------------------------ retrieve -- */
+
+  /*
+   * WHAT THIS MANAGER TOLD SUNNY BEFORE about the people this conversation
+   * names — their own earlier conversations and the forms they filed, nobody
+   * else's. Started here, after every forms branch has had its chance to
+   * return, so a proposal never pays for it; it runs alongside retrieval and
+   * never rejects. See `chat/person-memory-store.ts`.
+   */
+  const memoryPromise = memory.memoryOwnerId
+    ? recallPeople({
+        userId: memory.memoryOwnerId,
+        question: request.question,
+        history: request.history,
+        conversationId: request.conversationId,
+        userName: request.context.userName,
+      })
+    : Promise.resolve(null);
 
   /*
    * THE RETRIEVALS RUN TOGETHER. None depends on another and the briefing is
@@ -861,6 +882,7 @@ export async function answerQuestion(
    * framework reads and the report briefing, so it costs no serial time.
    */
   const settledSummaries = await summariesPromise;
+  const personMemory = await memoryPromise;
   const formInventoryBlock = settledSummaries.ok
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
@@ -896,6 +918,8 @@ export async function answerQuestion(
      */
     hasFormsLibrary: formInventoryBlock !== null,
     hasFormRecords: formRecords !== null,
+    /* Read from whether the block exists, like the forms library above. */
+    hasPersonMemory: personMemory !== null,
     policyManualNote,
     /*
      * From the AUTHORIZED actor, the same matrix the report pages' guard
@@ -922,6 +946,7 @@ export async function answerQuestion(
     employeeData: employeeFacts?.block ?? null,
     formsLibrary: formInventoryBlock,
     formRecords: formRecords?.block ?? null,
+    personMemory,
     history: request.history,
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],

@@ -75,7 +75,16 @@ export interface CallClaudeInput {
    */
   readonly formsLibrary?: string | null;
   /**
-   * A FIFTH context block: FORMS ON FILE, read from Form Monitoring under the
+   * A FIFTH context block: what this manager told Sunny before about the
+   * people this conversation names, or null.
+   *
+   * Separate because it is a different kind of statement again — the
+   * manager's own earlier account, not a document, a figure or a record — and
+   * the system prompt says how it may be used. See `chat/person-memory.ts`.
+   */
+  readonly personMemory?: string | null;
+  /**
+   * A SIXTH context block: FORMS ON FILE, read from Form Monitoring under the
    * caller's own forms visibility, or null. Records that exist about named
    * people — not templates, not evidence — so it travels apart from the forms
    * library it would otherwise be confused with.
@@ -119,6 +128,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
             input.grounding,
             ...(input.reportData ? [input.reportData] : []),
             ...(input.employeeData ? [input.employeeData] : []),
+            ...(input.personMemory ? [input.personMemory] : []),
             ...(input.formsLibrary ? [input.formsLibrary] : []),
             ...(input.formRecords ? [input.formRecords] : []),
             `QUESTION\n\n${input.question}`,

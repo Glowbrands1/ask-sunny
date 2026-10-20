@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 import * as React from "react";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ROLES } from "@/lib/permissions";
 import type { ChatConversation, Permission, Role } from "@/types";
+
+/*
+ * THE REAL CHAT SCREEN, CLICKED THROUGH, takes most of the default five
+ * seconds when the whole suite runs in parallel, and one case per role ran
+ * over. More time, not fewer checks.
+ */
+vi.setConfig({ testTimeout: 20_000 });
+configure({ asyncUtilTimeout: 5_000 });
 
 /**
  * ============================================================================
