@@ -25,6 +25,9 @@ describe("a salon the manager names", () => {
     ["she was in Liberty today", ["loc-0394"]],
     ["late at Lincoln O. Street this morning", ["loc-0311"]],
     ["late at Omaha 144th & Center", ["loc-0314"]],
+    // Name, role, salon — production QA, 20 October 2026.
+    ["Brandi Algya ASD Lincoln O St. Properly uploading documentation", ["loc-0311"]],
+    ["Brandi Algya SD Pine Lake", ["loc-0312"]],
   ])("reads %s", (text, ids) => {
     expect(named(text)).toEqual(ids);
   });
@@ -42,6 +45,8 @@ describe("an employee's name is not a salon", () => {
     "coaching form for Manhattan Brown",
     "Write one for Grace Pacific",
     "coaching form for Joseph St Clair",
+    // A one-word salon name after a role can still be the person's name.
+    "my SD Lawrence was late",
   ])("%s", (text) => {
     expect(named(text)).toEqual([]);
   });

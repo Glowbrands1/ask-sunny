@@ -68,6 +68,10 @@ function id(): string {
 
 /** Sends each turn the way the chat screen does; returns the latest assistant turn. */
 async function converse(...turns: string[]): Promise<ChatMessage> {
+  return converseAs(GLOBAL, ...turns);
+}
+
+async function converseAs(scope: AccessScope, ...turns: string[]): Promise<ChatMessage> {
   const { proposeFormForTurn } = await import("./form-proposal");
   const thread: ChatMessage[] = [];
   for (const question of turns) {
@@ -78,7 +82,7 @@ async function converse(...turns: string[]): Promise<ChatMessage> {
       history,
       question,
       questionMessageId: user.id,
-      actor: { role: "admin" as never, scope: GLOBAL },
+      actor: { role: "admin" as never, scope },
       continueTemplateKey: continuationFor(history)?.templateKey,
       summaries: LIBRARY as never,
       today: "2026-10-20",
@@ -141,5 +145,12 @@ describe("QA 20 Oct — a name followed by a role and a salon", () => {
   it("a role with only one name word before it still names nobody from the run", async () => {
     const last = await converse("I need a coaching form", "Sarah SD Lincoln O St");
     expect(last.formProposal?.employeeName ?? null).not.toBe("Sarah SD Lincoln O St");
+  });
+
+  it("a manager over several Lincoln salons gets the one named after the role", async () => {
+    const lincoln: AccessScope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311", "loc-0312"] };
+    const last = await converseAs(lincoln, REPORTED);
+    expectReadyCoaching(last, "Brandi Algya");
+    expect(last.formProposal!.locationId).toBe("loc-0311");
   });
 });
