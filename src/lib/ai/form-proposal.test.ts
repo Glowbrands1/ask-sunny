@@ -671,6 +671,47 @@ describe("P4-RC. a global actor can create a coaching form", () => {
   });
 });
 
+/**
+ * ============================================================================
+ * WAITING ONLY ON THE SALON IS NOT "CAN'T CREATE IN CHAT"
+ * ============================================================================
+ *
+ * Production, October 2026: a district manager covering three salons asked for
+ * a Coaching Form and was told "I can't create this one in chat yet" beside
+ * the salon picker that creates it — and read it as Sunny no longer knowing
+ * what a Coaching Form was.
+ */
+describe("a proposal waiting only on the salon says it can be created here", () => {
+  const THREE_SALONS: AccessScope = {
+    level: "salon",
+    primaryAreaId: "loc-0410",
+    alsoCoversAreaIds: ["loc-0313", "loc-0314"],
+  };
+  const ask = () =>
+    turn("Build me a coaching form for Sarah Test for that.", {
+      role: "district_manager",
+      scope: THREE_SALONS,
+    });
+
+  it("asks which of their salons, and offers exactly those", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(ask());
+
+    expect(response!.formProposal!.status).toBe("needs_location");
+    expect(response!.formProposal!.locationResolution).toBe("needs_selection");
+    expect(response!.formProposal!.authorizedLocationIds).toEqual(["loc-0410", "loc-0313", "loc-0314"]);
+  });
+
+  it("says the draft can be created here once the salon is chosen", async () => {
+    const { proposals } = await load([template()]);
+    const response = await proposals.proposeFormForTurn(ask());
+
+    expect(response!.content).toMatch(/nothing has been created yet/i);
+    expect(response!.content).toMatch(/choose the salon below/i);
+    expect(response!.content).not.toMatch(/can't create this one in chat/i);
+  });
+});
+
 describe("P4-RC. the FORMS LIBRARY decides the template exists, never the knowledge base", () => {
   it("resolves the template without consulting retrieval at all", async () => {
     /*
