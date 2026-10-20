@@ -133,7 +133,7 @@ export default async function FormMonitoringPage({
      * manager looking at Followed up still needs to be told what is overdue.
      */
     attention = attentionSummary(
-      withoutUnreadable(await listOutstandingFollowUps(50, access.locationIds), holds).filter(mayRead),
+      withoutUnreadable(await listOutstandingFollowUps(50, access.locationIds, access.ownCreatedBy), holds).filter(mayRead),
       today,
     );
 

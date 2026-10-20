@@ -234,20 +234,17 @@ describe("the chat form picker and permissions", () => {
 /* ============================================================ the reply == */
 
 describe("what Ask Sunny says beside the proposal", () => {
-  it("asks the short intake when only the form was named", async () => {
+  it("asks only who it is for when only the form was named — no numbered intake", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(turn("pull up the exit form"));
     expect(response!.formProposal!.status).toBe("needs_employee");
-    expect(response!.content).toMatch(/1\. The employee's full name\./);
-    expect(response!.content).toMatch(/last day worked/);
-    expect(response!.content).toMatch(/how they told you \(in person, phone call, text message or email\)/);
-    expect(response!.content).toMatch(/The date they resigned/);
-    expect(response!.content).toMatch(/The reason they gave for leaving/);
-    expect(response!.content).toMatch(
-      /store items and salon key were returned, whether payroll deduction applies, whether they'll be dropped to minimum wage and forfeit their bonus, and whether they're eligible for rehire/,
-    );
-    expect(response!.content).toMatch(/I won't answer it for you/);
-    expect(response!.content).toMatch(/signature lines stay blank/);
+    const content = response!.content;
+    expect(content).toMatch(/^I can draft the \*\*Resignation\/Exit Form\*\* for you\. Who is it for\?/);
+    // One question, not a questionnaire.
+    expect(content.match(/\?/g)).toHaveLength(1);
+    expect(content).not.toMatch(/^\d\. /m);
+    expect(content).toMatch(/stays blank for you to fill in on the form/);
+    expect(content).toMatch(/signature lines stay blank/);
   });
 
   it("asks only who, when the departure was described without a name", async () => {
@@ -268,7 +265,7 @@ describe("what Ask Sunny says beside the proposal", () => {
     expect(response!.content).toMatch(/\*\*Sarah Jones\*\* or \*\*Maria Lopez\*\*/);
   });
 
-  it("lists what it filled, what it left, and asks only HR's lines nobody answered", async () => {
+  it("lists what it filled and every line it left, and asks nothing", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(
       turn(
@@ -279,21 +276,13 @@ describe("what Ask Sunny says beside the proposal", () => {
     expect(content).toMatch(/- \*\*Last Day Worked:\*\* September 15, 2026/);
     // Handing in notice is resigning: the notice date is the resignation date.
     expect(content).toMatch(/- \*\*Resignation Date:\*\* September 1, 2026/);
-    expect(content).toMatch(/\*\*Left blank for you to review:\*\* Location, Permanent Address, Date that notice was fulfilled, written notice attached and all three signature lines\./);
-    expect(content).toMatch(/Before you create it:/);
-    for (const question of [
-      /- How did they let you know — in person, phone call, text message, email, or no call\/no show\?/,
-      /- What reason did they give for leaving\? \(If they didn't give one, just say so\.\)/,
-      /- Were their store items and salon key returned\?/,
-      /- Is payroll deduction applicable\?/,
-      /- Will they be dropped to minimum wage and forfeit their bonus\?/,
-      /- Are they eligible for rehire\?/,
-    ]) {
-      expect(content).toMatch(question);
-    }
-    // What was said is not asked again.
-    expect(content).not.toMatch(/What was their last day worked|How did they leave|What date did they resign/);
-    expect(content).toMatch(/or create the draft now and fill those in on the form\./);
+    expect(content).toMatch(
+      /\*\*Left blank for you to review:\*\* Location, Permanent Address, Date that notice was fulfilled, How Employee Resigned, Reason for Resignation, Store Items Returned, Salon Key Returned, Payroll Deduction, Minimum Wage \/ Bonus Forfeiture, Eligible for Rehire, written notice attached and all three signature lines\./,
+    );
+    // A missing answer is a blank line on the form, never a question.
+    expect(content).not.toMatch(/\?/);
+    expect(content).not.toMatch(/Before you create it|You can reply in a line/);
+    expect(content).toMatch(/Create the draft here when you're ready, and edit it below/);
   });
 
   it("lists what it filled, what it left, and asks nothing when everything is there", async () => {
@@ -345,17 +334,15 @@ describe("what Ask Sunny says beside the proposal", () => {
     expect(content).toMatch(/Immediate Voluntary Resignation/);
     expect(content).not.toMatch(/September 1, 2026/);
     // "quit ... last Friday" says when he quit, not which day he last worked.
-    expect(content).toMatch(/What was their last day worked\?/);
+    expect(content).toMatch(/\*\*Left blank for you to review:\*\*[^\n]*Last Day Worked/);
+    expect(content).not.toMatch(/What was their last day worked\?/);
   });
 
-  it("asks for the last day and how they left when neither was said", async () => {
+  it("drafts with only a name, leaving the last day and how they left blank rather than asking", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(turn("create an STC exit for Sarah Jones"));
-    expect(response!.content).toMatch(/Before you create it:/);
-    expect(response!.content).toMatch(/- What was their last day worked\?/);
-    expect(response!.content).toMatch(/- How did they leave/);
-    expect(response!.content).toMatch(/or create the draft now and fill those in on the form\./);
-    // Still creatable: a question is not a gate.
+    expect(response!.content).toMatch(/\*\*Left blank for you to review:\*\*[^\n]*Last Day Worked[^\n]*the Resignation Details boxes/);
+    expect(response!.content).not.toMatch(/\?/);
     expect(response!.formProposal!.supportsInlineDraft).toBe(true);
   });
 
@@ -426,8 +413,8 @@ describe("what Ask Sunny says beside the proposal", () => {
     const response = await proposals.proposeFormForTurn(turn(question));
     expect(response!.formProposal!.templateKey).toBe("stc-exit");
     expect(response!.content).not.toMatch(/Immediate involuntary separation/);
-    // Nothing about how he left was established, so Sunny asks.
-    expect(response!.content).toMatch(/How did they leave/);
+    // Nothing about how he left was established, so the boxes are left blank.
+    expect(response!.content).toMatch(/\*\*Left blank for you to review:\*\*[^\n]*the Resignation Details boxes/);
   });
 
   it("never says anything is signed, or that a termination step was done", async () => {
@@ -658,15 +645,15 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
     expect(filled).toMatch(/- \*\*Payroll Deduction:\*\* Payroll deduction is applicable\./);
     expect(filled).toMatch(/- \*\*Minimum Wage \/ Bonus Forfeiture:\*\* Employee will be dropped to minimum wage and forfeit bonus\./);
     expect(filled).toMatch(/- \*\*Eligible for Rehire:\*\* Employee is not eligible for rehire\./);
-    // Nobody said anything about store items: not filled, asked.
+    // Nobody said anything about store items: not filled, left blank.
     expect(filled).not.toMatch(/Store Items Returned/);
-    expect(content).toMatch(/- Were their store items returned\?/);
+    expect(content).toMatch(/Left blank for you to review:[^\n]*Store Items Returned/);
     // Written notice and signatures are never read from chat.
     expect(filled).not.toMatch(/written notice|\bsign/i);
     expect(content).toMatch(/Left blank for you to review:[\s\S]*written notice attached and all three signature lines/);
   });
 
-  it("a key not returned gets the $25 sentence, and the payroll deduction question is still asked", async () => {
+  it("a key not returned gets the $25 sentence, and the payroll deduction line is still left blank", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(
       turn("exit form for Jane Smith. She quit on the spot 9/20. She still has her key, so she'll be deducted $25 for it."),
@@ -676,7 +663,7 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
       /- \*\*Salon Key Returned:\*\* Salon key was not returned\. Employee will be payroll deducted \$25 for the salon key\./,
     );
     expect(content).not.toMatch(/- \*\*Payroll Deduction:\*\*/);
-    expect(content).toMatch(/- Is payroll deduction applicable\?/);
+    expect(content).toMatch(/Left blank for you to review:[^\n]*Payroll Deduction/);
   });
 
   it("never fills an answer said both ways in one breath — it asks", async () => {
@@ -719,13 +706,53 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
     expect(content).not.toMatch(/- Are they eligible for rehire\?/);
   });
 
-  it("does not ask how or why someone resigned when they were let go", async () => {
+  it("does not list how or why someone resigned when they were let go", async () => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn(
       turn("termination paperwork for Dan Smith, we let him go yesterday; yesterday was his last day"),
     );
-    expect(response!.content).not.toMatch(/What date did they resign|How did they let you know|What reason did they give/);
-    expect(response!.content).toMatch(/- Are they eligible for rehire\?/);
+    const blank = /Left blank for you to review:([^\n]*)/.exec(response!.content)![1]!;
+    expect(blank).not.toMatch(/Resignation Date|How Employee Resigned|Reason for Resignation/);
+    expect(blank).toMatch(/Eligible for Rehire/);
+  });
+
+  /*
+   * REGRESSION (20 Oct 2026). A manager typed one fact per line. The reason ran
+   * into the lines after it, "does not apply" was read as "not eligible for
+   * rehire", and Sunny then asked four more questions before drafting.
+   */
+  it.each([
+    ["one fact per line", "\n"],
+    ["the lines run together", " "],
+  ])("drafts Kayla Koehn's exit as described, without questions (%s)", async (_label, sep) => {
+    const proposals = await load([exitForm()]);
+    const response = await proposals.proposeFormForTurn({
+      ...turn(
+        "Kayla Koehn\nTanning Consultant\n" +
+        [
+          "Gave notice - fulfilled notice",
+          "Gave notice 9/25/26 - date notice fulfilled 10/9/26",
+          "Resigning to pursue other career options",
+          "Store items returned payroll deduction does not apply eligible for rehire",
+        ].join(sep),
+        { history: [said("m0", "Can you create an exit form for me?")] },
+      ),
+      continueTemplateKey: "stc-exit",
+    });
+    const content = response!.content;
+    expect(response!.formProposal!.employeeName).toBe("Kayla Koehn");
+    expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 25, 2026/);
+    expect(content).toMatch(/- \*\*Date that notice was fulfilled:\*\* October 9, 2026/);
+    // The notice ran to 10/9, so that is the last day worked.
+    expect(content).toMatch(/- \*\*Last Day Worked:\*\* October 9, 2026/);
+    expect(content).not.toMatch(/Left blank for you to review:\*\*[^\n]*Last Day Worked/);
+    expect(content).toMatch(/- \*\*Resignation Details:\*\* Submitted & Fulfilled Notice/);
+    expect(content).toMatch(/- \*\*Reason for Resignation:\*\* To pursue other career options\.\n/);
+    expect(content).toMatch(/- \*\*Store Items Returned:\*\* Store items were returned\./);
+    expect(content).toMatch(/- \*\*Payroll Deduction:\*\* Payroll deduction is not applicable\./);
+    expect(content).toMatch(/- \*\*Eligible for Rehire:\*\* Employee is eligible for rehire\./);
+    expect(content).not.toMatch(/not eligible for rehire/);
+    expect(content).not.toMatch(/\?/);
   });
 });
 

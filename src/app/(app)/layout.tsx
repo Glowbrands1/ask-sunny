@@ -36,7 +36,7 @@ async function overdueCount(): Promise<number> {
     const access = await pageFormsAccess(await pageIdentity());
     if (access.noSalon) return 0;
     const outstanding = withoutUnreadable(
-      await listOutstandingFollowUps(50, access.locationIds),
+      await listOutstandingFollowUps(50, access.locationIds, access.ownCreatedBy),
       (permission) => permission === "create_exit_form" && readsExit,
     ).filter((instance) => actorMaySeeInstance(access.actor, instance));
     return attentionSummary(outstanding, today).overdue;
