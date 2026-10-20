@@ -377,6 +377,21 @@ describe("32-33. a form the server will not return is not recreated", () => {
     expect(recorded.some((made) => made.method === "POST")).toBe(false);
     expect(push).not.toHaveBeenCalled();
   });
+
+  it("says a form it may not open could belong to another account, not only that it is missing", async () => {
+    fakeFetch(() => ({ ok: false, payload: { error: "No such form." } }));
+    const { container } = bubble(
+      assistantTurn({
+        formProposal: proposal(),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Coaching Form" },
+      }),
+    );
+
+    await waitFor(() => expect(container.textContent).toMatch(/not available/i));
+    expect(container.textContent).toMatch(/account you're signed in with/i);
+    expect(container.textContent).toMatch(/created by someone else on this device/i);
+    expect(container.textContent).not.toMatch(/No such form\./);
+  });
 });
 
 describe("35-37. the editor renders from the stored template version", () => {
