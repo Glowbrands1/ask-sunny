@@ -111,11 +111,12 @@ export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): b
    * So a record that names a salon is decided by the salon, and nothing else.
    */
   if (instance.locationId) {
-    if (visibility.level === "salon") {
-      return authorizedSalonIds(visibility).includes(instance.locationId);
+    if (visibility.level === "salon" && authorizedSalonIds(visibility).includes(instance.locationId)) {
+      return true;
     }
-    // district | region — fails closed, exactly as creation does.
-    return false;
+    // district | region — fails closed, exactly as creation does — unless it
+    // is the reader's own form at a salon they may still file against.
+    return ownFormStillInScope(actor, instance);
   }
 
   /*
@@ -166,6 +167,9 @@ export function instanceListFilterFor(actor: FormsActor): InstanceListFilter | u
     locationIds: authorizedSalonIds(visibility),
     // The narrow exception for an ABSENT salon, matching `actorMaySeeInstance`.
     ownNullLocationCreatedBy: actor.id,
+    // And their own forms at other salons; `visibleInstances` keeps only those
+    // their stored scope still covers (`ownFormStillInScope`).
+    ...(actor.verified ? { ownCreatedBy: actor.id } : {}),
   };
 }
 
@@ -290,9 +294,7 @@ export async function authorizeInstance(
     }
   }
 
-  if (!actorMaySeeInstance(actor, loaded.instance) && !ownFormStillInScope(actor, loaded.instance)) {
-    throw new InstanceNotVisibleError();
-  }
+  if (!actorMaySeeInstance(actor, loaded.instance)) throw new InstanceNotVisibleError();
 
   return { actor, loaded };
 }
@@ -309,12 +311,12 @@ export async function authorizeInstance(
  * exit form for one that is not their home salon, and the inline editor's very
  * next fetch answered "No such form": a draft created and then stranded.
  *
- * So the per-instance guard also lets the CREATOR in, but only while their
- * stored scope would still let them file against that salon today. That keeps
- * the transfer rule above intact — a manager whose assignment no longer covers
- * the salon loses the record — while a form somebody may create is never one
- * they cannot then edit. Lists are not widened: Form Monitoring stays the home
- * salon only.
+ * So the CREATOR may also see it — in the guard and in every list, which
+ * share `actorMaySeeInstance` — but only while their stored scope would still
+ * let them file against that salon today. That keeps the transfer rule above
+ * intact — a manager whose assignment no longer covers the salon loses the
+ * record — while a form somebody may create is never one they cannot then
+ * open, or find again in Form Monitoring.
  */
 function ownFormStillInScope(actor: FormsActor, instance: InstanceRow): boolean {
   if (!actor.verified || !actor.scope || !instance.locationId) return false;

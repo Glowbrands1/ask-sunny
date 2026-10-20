@@ -71,6 +71,11 @@ interface Options {
   designationFails?: boolean;
   /** Forms this subject created, by form id. */
   created?: string[];
+  /**
+   * Woven's other locations for this subject: salon number, and the date the
+   * access expires (temporary), or `unmapped` for a location with no salon.
+   */
+  affiliations?: { number: string; expiresOn?: string; unmapped?: boolean }[];
 }
 
 async function load(options: Options) {
@@ -105,23 +110,44 @@ async function load(options: Options) {
   vi.doMock("@/lib/supabase/server", () => ({
     getSupabaseAdmin: () => ({
       from: (table: string) => {
-        const state: { eq?: string } = {};
+        const eq: Record<string, unknown> = {};
+        const within: Record<string, unknown[]> = {};
+        const affiliations = options.affiliations ?? [];
+        const rows = (): Record<string, unknown>[] => {
+          const subject = eq.app_user_id as string;
+          if (table === "employee_access_preview") {
+            return options.woven && subject in options.woven
+              ? [{ employee_id: `emp-${subject}`, mapped_primary_salon_number: options.woven[subject] }]
+              : [];
+          }
+          if (table === "employee_location_affiliations") {
+            return eq.employee_id === `emp-${options.subject}`
+              ? affiliations.map((a) => ({ woven_location_id: `w-${a.number}`, expires_on: a.expiresOn ?? null }))
+              : [];
+          }
+          if (table === "woven_location_map") {
+            return affiliations
+              .filter((a) => !a.unmapped && within.woven_location_id?.includes(`w-${a.number}`))
+              .map((a) => ({ salon_id: `salon-${a.number}` }));
+          }
+          if (table === "salons") {
+            return affiliations
+              .filter((a) => within.id?.includes(`salon-${a.number}`))
+              .map((a) => ({ salon_number: a.number }));
+          }
+          return [];
+        };
         const builder = {
           select: () => builder,
-          eq: (_column: string, value: string) => ((state.eq = value), builder),
+          eq: (column: string, value: unknown) => ((eq[column] = value), builder),
+          in: (column: string, values: unknown[]) => ((within[column] = values), builder),
           is: () => builder,
-          limit: async () => ({
-            data:
-              table === "employee_access_preview" && options.woven && state.eq! in options.woven
-                ? [{ mapped_primary_salon_number: options.woven[state.eq!] }]
-                : [],
-            error: null,
-          }),
+          limit: async () => ({ data: rows(), error: null }),
           maybeSingle: async () =>
             options.designationFails
               ? { data: null, error: { message: "relation does not exist" } }
               : {
-                  data: options.designated?.includes(state.eq!) ? { app_user_id: state.eq } : null,
+                  data: options.designated?.includes(eq.app_user_id as string) ? { app_user_id: eq.app_user_id } : null,
                   error: null,
                 },
         };
@@ -152,11 +178,15 @@ async function load(options: Options) {
     listInstances: async (
       _view: string,
       _limit: number | undefined,
-      filter?: { locationIds?: string[]; ownNullLocationCreatedBy?: string },
+      filter?: { locationIds?: string[]; ownNullLocationCreatedBy?: string; ownCreatedBy?: string },
     ) => {
-      const rows = Object.keys(ROWS).map((id) => row(id));
+      const rows = Object.keys(ROWS).map((id) =>
+        row(id, options.created?.includes(id) ? options.subject : "someone-else"),
+      );
       if (!filter || filter.locationIds === undefined) return rows;
-      return rows.filter((r) => filter.locationIds!.includes(r.locationId));
+      return rows.filter(
+        (r) => filter.locationIds!.includes(r.locationId) || (filter.ownCreatedBy !== undefined && r.createdBy === filter.ownCreatedBy),
+      );
     },
     findDemoInstances: async () => ({ deletable: Object.keys(ROWS).map((id) => row(id)), protected: [] }),
     listOutstandingFollowUps: async (_limit: number, ids: string[] | null) =>
@@ -254,6 +284,46 @@ describe("the list API: who sees which stores' forms", () => {
   });
 });
 
+/*
+ * MULTIPLE LOCATIONS (20 Oct 2026). A manager Woven assigns to several
+ * locations reads every one of them — not only the primary.
+ */
+describe("a manager with multiple locations", () => {
+  const MULTI: Options = {
+    subject: "multi",
+    role: "district_manager",
+    scope: GLOBAL,
+    woven: { multi: "a" },
+    affiliations: [{ number: "b" }],
+  };
+  it("sees the forms at each of their Woven locations", async () => {
+    expect(await listedIds(MULTI)).toEqual([FORM_A, FORM_B]);
+    const { detail } = await load(MULTI);
+    expect((await detail.GET(get(), params(FORM_B))).status).toBe(200);
+    expect((await detail.GET(get(), params(FORM_C))).status).toBe(404);
+  });
+  it("adds Woven's locations to a salon-scoped manager's assignment", async () => {
+    expect(await listedIds({ ...STORE_MANAGER, woven: { sm: "a" }, affiliations: [{ number: "c" }] })).toEqual([
+      FORM_A,
+      FORM_C,
+    ]);
+  });
+  it("drops temporary access once it has expired", async () => {
+    expect(await listedIds({ ...MULTI, affiliations: [{ number: "b", expiresOn: "2020-01-01" }] })).toEqual([FORM_A]);
+    expect(await listedIds({ ...MULTI, affiliations: [{ number: "b", expiresOn: "2099-01-01" }] })).toEqual([
+      FORM_A,
+      FORM_B,
+    ]);
+  });
+  it("skips a Woven location that is not mapped to a salon", async () => {
+    expect(await listedIds({ ...MULTI, affiliations: [{ number: "b", unmapped: true }] })).toEqual([FORM_A]);
+  });
+  it("puts every location on the page reads, the queue and the badge too", async () => {
+    const { pageFormsAccess } = await load(MULTI);
+    expect(await pageFormsAccess(identity(MULTI))).toMatchObject({ locationIds: ["loc-a", "loc-b"], noSalon: false });
+  });
+});
+
 describe("designation fails closed", () => {
   it("a revoked or absent designation grants nothing", async () => {
     expect(await listedIds({ ...COLENE, designated: [] })).toEqual([]);
@@ -297,8 +367,11 @@ describe("direct URL / API access to another store's form", () => {
     expect((await detail.GET(get(), params(FORM_C))).status).toBe(200);
     expect((await detail.GET(get(), params(FORM_A))).status).toBe(404);
   });
-  it("does not widen the list to the creator's out-of-home-salon forms", async () => {
-    expect(await listedIds({ ...AMBER, created: [FORM_C] })).toEqual([FORM_B]);
+  it("lists the creator's own form at another salon in Form Monitoring", async () => {
+    expect(await listedIds({ ...AMBER, created: [FORM_C] })).toEqual([FORM_B, FORM_C]);
+  });
+  it("does not list it once their stored scope no longer covers that salon", async () => {
+    expect(await listedIds({ ...STORE_MANAGER, created: [FORM_B] })).toEqual([FORM_A]);
   });
   it("refuses the creator once their stored scope no longer covers the salon", async () => {
     const { detail } = await load({ ...STORE_MANAGER, created: [FORM_B] });

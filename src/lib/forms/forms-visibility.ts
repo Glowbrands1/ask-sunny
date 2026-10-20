@@ -1,7 +1,9 @@
 import "server-only";
 
+import { businessToday } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { canAccessAdminConsole } from "@/lib/permissions";
+import { authorizedSalonIds } from "./location-scope";
 import type { AccessScope, Role } from "@/types";
 
 /**
@@ -22,9 +24,12 @@ import type { AccessScope, Role } from "@/types";
  *   all salons   an administrator role, or an account with an unrevoked row in
  *                `forms_all_store_access` (admin-managed, keyed to the account
  *                id; Colene and DJ). Independent of Woven verification.
- *   home salon   everyone else, whatever their role: the salons on a `salon`
- *                scope, else the primary salon Woven maps to their account.
- *   nothing      no resolvable home salon. Fails closed, never to "all".
+ *   their salons everyone else, whatever their role: the salons on a `salon`
+ *                scope, PLUS every location Woven assigns them — the primary
+ *                and each active additional or unexpired temporary location
+ *                that maps to a salon. A manager covering several locations
+ *                reads all of them (20 Oct 2026); one covering one reads one.
+ *   nothing      no resolvable salon. Fails closed, never to "all".
  *
  * Every lookup failure resolves to LESS access. This is the VISIBILITY scope
  * only: creating a form is still authorized against the stored scope.
@@ -54,19 +59,74 @@ async function isDesignatedAllSalons(subject: string): Promise<boolean> {
   }
 }
 
-/** The primary salon Woven maps to this account, as a location id (`loc-<salon number>`). */
-async function wovenHomeSalon(subject: string): Promise<string | null> {
+interface WovenEmployee {
+  employeeId: string | null;
+  primarySalon: string | null;
+}
+
+/** The Woven employee behind this account, and the primary salon it maps to. */
+async function wovenEmployee(subject: string): Promise<WovenEmployee | null> {
   try {
     const { data, error } = await getSupabaseAdmin()
       .from("employee_access_preview")
-      .select("mapped_primary_salon_number")
+      .select("employee_id, mapped_primary_salon_number")
       .eq("app_user_id", subject)
       .limit(2);
     if (error || !data || data.length !== 1) return null;
-    const number = (data[0] as { mapped_primary_salon_number: unknown }).mapped_primary_salon_number;
-    return typeof number === "string" && number.length > 0 ? `loc-${number}` : null;
+    const row = data[0] as { employee_id?: unknown; mapped_primary_salon_number: unknown };
+    const number = row.mapped_primary_salon_number;
+    return {
+      employeeId: typeof row.employee_id === "string" && row.employee_id.length > 0 ? row.employee_id : null,
+      primarySalon: typeof number === "string" && number.length > 0 ? `loc-${number}` : null,
+    };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Every OTHER location Woven assigns this employee, as location ids: active
+ * affiliations, not past their ExpiresOn, whose Woven location is mapped to a
+ * salon. An unmapped location names no salon and is skipped; any lookup
+ * failure returns nothing, so the reader falls back to their primary salon.
+ */
+async function wovenAffiliatedSalons(employeeId: string): Promise<string[]> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const today = businessToday();
+    const affiliations = await supabase
+      .from("employee_location_affiliations")
+      .select("woven_location_id, expires_on")
+      .eq("employee_id", employeeId)
+      .eq("active", true)
+      .limit(200);
+    if (affiliations.error || !affiliations.data) return [];
+    const wovenIds = (affiliations.data as { woven_location_id: unknown; expires_on: unknown }[])
+      .filter((row) => typeof row.expires_on !== "string" || row.expires_on >= today)
+      .map((row) => row.woven_location_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (wovenIds.length === 0) return [];
+
+    const mapped = await supabase
+      .from("woven_location_map")
+      .select("salon_id")
+      .in("woven_location_id", wovenIds)
+      .eq("status", "mapped")
+      .limit(200);
+    if (mapped.error || !mapped.data) return [];
+    const salonIds = (mapped.data as { salon_id: unknown }[])
+      .map((row) => row.salon_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (salonIds.length === 0) return [];
+
+    const salons = await supabase.from("salons").select("salon_number").in("id", salonIds).limit(200);
+    if (salons.error || !salons.data) return [];
+    return (salons.data as { salon_number: unknown }[])
+      .map((row) => row.salon_number)
+      .filter((number): number is string => typeof number === "string" && number.length > 0)
+      .map((number) => `loc-${number}`);
+  } catch {
+    return [];
   }
 }
 
@@ -76,13 +136,19 @@ export async function resolveFormsVisibility(identity: VisibilityIdentity): Prom
   if (await isDesignatedAllSalons(identity.subject)) return ALL_SALONS;
 
   /*
-   * A `salon` scope IS a home-store assignment, so it is honoured as assigned.
-   * Every other level (global, district, region) names no salon, so the salon
-   * comes from Woven's mapping instead.
+   * A `salon` scope IS a store assignment, so its salons are honoured as
+   * assigned. Every other level (global, district, region) names no salon. In
+   * both cases Woven's locations for the account are added: the primary, and
+   * each further location they are assigned to.
    */
   const { scope } = identity;
-  if (scope?.level === "salon" && scope.primaryAreaId) return scope;
-
-  const woven = await wovenHomeSalon(identity.subject);
-  return woven ? { level: "salon", primaryAreaId: woven, alsoCoversAreaIds: [] } : NO_SALON;
+  const assigned = scope?.level === "salon" ? authorizedSalonIds(scope) : [];
+  const woven = await wovenEmployee(identity.subject);
+  const affiliated = woven?.employeeId ? await wovenAffiliatedSalons(woven.employeeId) : [];
+  const salons = [
+    ...new Set([...assigned, ...(woven?.primarySalon ? [woven.primarySalon] : []), ...affiliated]),
+  ];
+  if (salons.length === 0) return NO_SALON;
+  const [primary, ...rest] = salons;
+  return { level: "salon", primaryAreaId: primary!, alsoCoversAreaIds: rest };
 }

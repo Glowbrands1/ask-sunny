@@ -743,6 +743,9 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
     expect(response!.formProposal!.employeeName).toBe("Kayla Koehn");
     expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 25, 2026/);
     expect(content).toMatch(/- \*\*Date that notice was fulfilled:\*\* October 9, 2026/);
+    // The notice ran to 10/9, so that is the last day worked.
+    expect(content).toMatch(/- \*\*Last Day Worked:\*\* October 9, 2026/);
+    expect(content).not.toMatch(/Left blank for you to review:\*\*[^\n]*Last Day Worked/);
     expect(content).toMatch(/- \*\*Resignation Details:\*\* Submitted & Fulfilled Notice/);
     expect(content).toMatch(/- \*\*Reason for Resignation:\*\* To pursue other career options\.\n/);
     expect(content).toMatch(/- \*\*Store Items Returned:\*\* Store items were returned\./);
