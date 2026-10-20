@@ -698,8 +698,23 @@ describe("\"Create a corrective action for Sarah.\"", () => {
     expect(answer.content).not.toMatch(/which one do you need/i);
   });
 
-  it("drafts instead of interviewing, and names what is left without asking for it", async () => {
+  /*
+   * ON A NAME ALONE, STILL OFFERED — AND HONEST ABOUT IT. Production, 20 Oct
+   * 2026: such a draft came back empty and the policy line was filled by hand
+   * with no section or page; the card now says the policy cannot be cited
+   * until Sunny is told what happened.
+   */
+  it("offers the form on a name alone, and says the policy cannot be cited yet", async () => {
     const answer = await ask("Create a corrective action for Sarah.");
+
+    expect(answer.formProposal!.awaitingIncident).toBe(true);
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+    expect(answer.content).toMatch(/haven't told me what happened yet/);
+    expect(answer.content).toMatch(/create the draft here/i);
+  });
+
+  it("drafts instead of interviewing, and names what is left without asking for it", async () => {
+    const answer = await ask("Create a corrective action for Sarah. She was 30 minutes late today.");
 
     // Nothing is asked for. The form is offered.
     expect(answer.content).not.toMatch(/please give me/i);
@@ -868,7 +883,7 @@ describe("the explicit create requests still resolve to one template each", () =
 
   it("offers to create all four of them inside the conversation", async () => {
     for (const question of [
-      "Create a DPOA for Sarah.",
+      "Create a DPOA for Sarah. She was late today.",
       "Create a policy review for Sarah.",
       "Create a coaching form for Sarah.",
       "Create a follow-up coaching form for Sarah.",
