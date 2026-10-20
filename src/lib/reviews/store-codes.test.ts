@@ -107,10 +107,7 @@ describe("a store code is not a salon number", () => {
     const salon = salonForStoreCode("306");
     expect(salon?.salonNumber).toBe("0462");
     expect(salon?.name).toBe("KS Manhattan");
-    /*
-     * The district comes from the existing roster, never invented here — and
-     * the roster moved 0462 to Rachael Dugan's district on 15 Oct 2026.
-     */
+    /* The district comes from the existing roster, never invented here. */
     expect(salon?.districtName).toBe("Dugan, Rachael");
   });
 });
