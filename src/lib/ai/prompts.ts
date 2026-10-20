@@ -1,3 +1,4 @@
+import { REPORTS } from "@/features/reports/reports-routes";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import type { AskContext } from "./types";
@@ -269,6 +270,56 @@ export const MANAGER_ANSWER_SHAPE = `WHEN THE QUESTION IS BROAD — "what should
 
 DO NOT DUMP EVERY METRIC. Three priorities, chosen for impact. Everything else stays unsaid unless it is asked for.`;
 
+/**
+ * ============================================================================
+ * "WHERE DO I FIND MY KPIs?" — START IN REPORTS & ANALYTICS
+ * ============================================================================
+ *
+ * Reported from production: asked "where do i find kpi information", Sunny
+ * answered entirely from the knowledge base — the OPS Dashboard, Power BI, the
+ * Portal Report Center — and never mentioned the Reports & Analytics section
+ * of this app, which is one click away in the sidebar and carries the ingested
+ * reports. The model was not told the section exists, so it could not say so.
+ *
+ * So the section is described here, built from `REPORTS` rather than written
+ * out, so a report added to the tab strip is a report Sunny can point at.
+ *
+ * ONLY FOR A ROLE THAT CAN OPEN IT. `view_reports` gates the sidebar entry and
+ * every report page; sending somebody without it to a screen that bounces them
+ * is worse than not mentioning it, so a role without it is told nothing about
+ * the tabs — only not to send anybody there.
+ *
+ * THE LINKS ARE THE ONLY ONES `RichText` WILL RENDER. It links an allowlist of
+ * in-app report paths and nothing else, so a link here is a path the renderer
+ * already knows rather than something the model was trusted to spell.
+ */
+export function buildReportsGuideSection(
+  canViewReports: boolean,
+  assistantName: string,
+): string {
+  if (!canViewReports) {
+    return `REPORTS & ANALYTICS
+
+- This person's account cannot open the Reports & Analytics section of this app. Never send them there and never describe its tabs. If they ask where to find figures, answer from the sources and suggest they ask their Salon Director or District Manager for the report.`;
+  }
+
+  const tabs = REPORTS.map(
+    (report) => `- [${report.label}](${report.path}) — ${report.summary}`,
+  ).join("\n");
+
+  return `REPORTS & ANALYTICS — WHERE THE NUMBERS LIVE IN THIS APP
+
+This app has a Reports & Analytics section: in the left sidebar under Insights. It opens on ${REPORTS[0].label}, and each report is a tab across the top:
+
+${tabs}
+
+- WHEN SOMEBODY ASKS WHERE TO FIND KPIs, STATS, SALES, PERFORMANCE OR A REPORT, START HERE. Tell them to open Reports & Analytics in the sidebar, name the tab that answers their question, and link it exactly as written above — for example [Sales Totals](/reports/sales-totals). Only link the paths listed above; never write any other link.
+- Then guide them on the tab: the filters at the top narrow it to a period, district or salon, and the "Ask ${assistantName} about this report" bar on every tab answers questions about the figures on screen without leaving the report.
+- If they have not said which number they are after, ask, and offer the tabs that fit.
+- Systems outside this app — the OPS Dashboard, Power BI, the Portal Report Center and others — come second. Mention one only when the provided sources cover it and the measure is one these tabs do not carry, such as labor, app adoption, cancel/freeze or employee-level figures, and cite the source as usual.
+- Pointing somebody to a tab is not reading it to them. Never state a figure from a tab unless it is written in the REPORT DATA section.`;
+}
+
 export function buildSystemPrompt(input: {
   assistantName: string;
   brandName: string;
@@ -365,6 +416,13 @@ export function buildSystemPrompt(input: {
    * leaves the prompt exactly as it was.
    */
   policyManualNote?: string | null;
+  /**
+   * Whether this person's role holds `view_reports`, from the authorized
+   * actor. Selects which Reports & Analytics guidance the prompt carries — see
+   * `buildReportsGuideSection`. Absent is treated as no access: a caller that
+   * cannot say the person may open the section has not said they may.
+   */
+  canViewReports?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
@@ -495,6 +553,8 @@ export function buildSystemPrompt(input: {
 
   const policyManualSection = input.policyManualNote ? `\n\n${input.policyManualNote}` : "";
 
+  const reportsGuideSection = `\n\n${buildReportsGuideSection(input.canViewReports ?? false, assistantName)}`;
+
   return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
@@ -516,7 +576,7 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
+- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${reportsGuideSection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
