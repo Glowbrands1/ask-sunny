@@ -656,6 +656,13 @@ export interface ChatFormProposal {
    */
   status: "needs_employee" | "needs_location" | "ready";
   /**
+   * True on a Corrective Action Form whose employee is known but whose
+   * incident the manager has not described yet. The card offers no Create
+   * draft while it is set: a draft made from nothing comes back empty, policy
+   * citation included. Absent on every other proposal.
+   */
+  awaitingIncident?: true;
+  /**
    * The MANAGER turns this proposal was built from, oldest first. Ids, not
    * text: the conversation keeps the words, and this keeps the pointer.
    */

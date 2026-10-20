@@ -632,7 +632,9 @@ function FormProposalCard({
         </div>
       ) : null}
 
-      {!superseded && (proposal.supportsInlineDraft || (salon && proposal.status === "needs_location")) ? (
+      {!superseded &&
+      !proposal.awaitingIncident &&
+      (proposal.supportsInlineDraft || (salon && proposal.status === "needs_location")) ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button size="sm" onClick={() => void create()} disabled={creating}>
             {creating ? <Loader2 className="animate-spin" /> : null}

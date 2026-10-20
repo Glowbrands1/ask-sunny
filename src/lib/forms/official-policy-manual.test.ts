@@ -466,6 +466,52 @@ describe("4. the offense box decides which section", () => {
     );
   });
 
+  /*
+   * A LATE OPENING IS LATENESS WITH A SECTION OF ITS OWN. Production, 20 Oct
+   * 2026: a late opener's form was ticked Tardiness and cited Attendance, and
+   * the manager pasted the Late Opening wording in by hand with no source.
+   */
+  it.each([
+    "Ellie was scheduled to open the salon at 9:30 and did not arrive until 11:23",
+    "she was the opener today and came in late",
+    "late opening on 10/16",
+    "she didn't open the store until 10",
+  ])("cites Late Opening, then Attendance, for a tardy opener: %s", (notes) => {
+    const sections = manualSectionsFor({
+      chunks: [...MANUAL, LEGACY_LATE_OPENING],
+      offenseKeys: ["tardiness"],
+      notes,
+    });
+
+    expect(officialManualReference(TITLE, sections)).toBe(
+      "JBA Policy Manual — Late Opening — Page 15; Attendance — Page 14",
+    );
+  });
+
+  it.each([
+    "she was 20 minutes late for her 2pm shift",
+    "she left the drawer open and came in late",
+    "we need open communication about her late arrivals",
+  ])("cites Attendance alone when the account is not a late opening: %s", (notes) => {
+    const sections = manualSectionsFor({
+      chunks: [...MANUAL, LEGACY_LATE_OPENING],
+      offenseKeys: ["tardiness"],
+      notes,
+    });
+
+    expect(sections.map((section) => section.heading)).toEqual(["Attendance"]);
+  });
+
+  it("cites Late Opening only under the box that governs it", () => {
+    const sections = manualSectionsFor({
+      chunks: [...MANUAL, LEGACY_LATE_OPENING],
+      offenseKeys: ["dress_code"],
+      notes: "she was scheduled to open the salon and wore flip flops",
+    });
+
+    expect(sections.map((section) => section.heading)).toEqual(["Dress Code for The Company"]);
+  });
+
   it("skips a ticked box the manual does not state, and cites the rest", () => {
     const sections = manualSectionsFor({
       chunks: MANUAL,

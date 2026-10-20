@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   CORRECTIVE_ACTION_INTAKE,
+  answeredWhatHappened,
   correctiveActionBasis,
   correctiveActionIntakeRequest,
+  describesIncident,
+  describesMoreThanTheRequest,
   readCorrectiveActionIntake,
   statesFirstOccurrence,
   statesRepeatedBehaviour,
@@ -461,5 +464,90 @@ describe("5. what Ask Sunny actually says", () => {
     });
 
     expect(message).toMatch(/one more thing/i);
+  });
+});
+
+/*
+ * ============================================================================
+ * NOTHING TO DRAFT FROM
+ * ============================================================================
+ *
+ * Production, 20 Oct 2026: "create ca for Ellie Sendgraff" was offered a draft
+ * with nothing described. The draft came back empty and the form, its policy
+ * line included, was completed by hand with no section or page cited.
+ */
+describe("6. whether the manager has said what happened", () => {
+  it.each([
+    "create ca for Ellie Sendgraff",
+    "Create a corrective action form for Jane Smith",
+    "I need a CA for Dana Moss at NE Omaha 132nd and Maple please",
+    "write up a corrective action for Sarah, verbal warning, no payroll deduction, today",
+  ])("reads %s as only the request", (text) => {
+    const ignore = ["Ellie Sendgraff", "Jane Smith", "Dana Moss", "Sarah", "NE Omaha 132nd and Maple"];
+    expect(describesIncident(text)).toBe(false);
+    expect(describesMoreThanTheRequest(text, { ignore })).toBe(false);
+  });
+
+  it.each([
+    "Create a corrective action for Colene for missing the Woven deadline.",
+    "corrective action for Ellie, scheduled 9:30 but got here 11:23",
+    "CA for Jane, rang up her own tan package against policy",
+  ])("reads %s as an account", (text) => {
+    expect(describesMoreThanTheRequest(text, { ignore: ["Colene", "Ellie", "Jane"] })).toBe(true);
+  });
+
+  it("reads an arrival with its time as an incident", () => {
+    expect(describesIncident("Ellie arrived at 11:23 for a 9:30 shift")).toBe(true);
+    expect(describesIncident("came in after ten")).toBe(true);
+  });
+
+  it("takes a reply to its own What happened ask as the account, in any words", () => {
+    const ask = correctiveActionIntakeRequest({
+      formName: "Corrective Action Form",
+      items: CORRECTIVE_ACTION_INTAKE.filter((item) => item.key === "what_happened"),
+      opening: false,
+      awaitingIncident: true,
+    });
+
+    expect(
+      answeredWhatHappened([
+        { role: "user", content: "create ca for Ellie Sendgraff" },
+        { role: "assistant", content: ask },
+        { role: "user", content: "Ellie got to the salon at 11:23 for a 9:30 shift" },
+        { role: "assistant", content: "Is payroll deduct applicable?" },
+        { role: "user", content: "yes" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("does not take a question, a bare ok, or an unprompted turn as the account", () => {
+    const ask = correctiveActionIntakeRequest({
+      formName: "Corrective Action Form",
+      items: CORRECTIVE_ACTION_INTAKE.filter((item) => item.key === "what_happened"),
+      opening: false,
+      awaitingIncident: true,
+    });
+
+    expect(answeredWhatHappened([{ role: "assistant", content: ask }, { role: "user", content: "ok" }])).toBe(false);
+    expect(
+      answeredWhatHappened([
+        { role: "assistant", content: ask },
+        { role: "user", content: "what does the attendance policy say?" },
+      ]),
+    ).toBe(false);
+    expect(answeredWhatHappened([{ role: "user", content: "create ca for Ellie Sendgraff" }])).toBe(false);
+  });
+
+  it("asks for the account and says the manual will be cited", () => {
+    const text = correctiveActionIntakeRequest({
+      formName: "Corrective Action Form",
+      items: CORRECTIVE_ACTION_INTAKE.filter((item) => item.key === "what_happened"),
+      opening: false,
+      awaitingIncident: true,
+    });
+
+    expect(text).toMatch(/^Before I draft the \*\*Corrective Action Form\*\*, tell me what happened:/);
+    expect(text).toMatch(/What happened — a clear description/);
+    expect(text).toMatch(/section and page/);
   });
 });

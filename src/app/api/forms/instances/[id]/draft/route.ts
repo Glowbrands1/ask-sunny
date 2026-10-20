@@ -1275,6 +1275,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
            * reads as front-line — see `isManagementTitle`.
            */
           jobTitle: loaded.instance.employeeRole,
+          /*
+           * THE MANAGER'S OWN WORDS, never the model's: a late opening under
+           * the Tardiness box also cites the manual's Late Opening section.
+           * See `DESCRIBED_SECTIONS`.
+           */
+          notes: `${body.topic ?? ""} ${notes}`,
         })
       : [];
 

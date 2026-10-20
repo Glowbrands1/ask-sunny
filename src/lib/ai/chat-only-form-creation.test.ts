@@ -144,7 +144,8 @@ const LIBRARY = () => [template(), dpoa(), policyReview(), followUp(), epp(), ts
 
 const INLINE: [question: string, templateKey: string, employee: string, role: string][] = [
   ["Create a coaching form for Jane Smith", "coaching", "Jane Smith", "salon_director"],
-  ["Create a corrective action form for Jane Smith", "dpoa", "Jane Smith", "salon_director"],
+  /* A Corrective Action Form is offered once what happened is described — see below. */
+  ["Create a corrective action form for Jane Smith, she was 40 minutes late today", "dpoa", "Jane Smith", "salon_director"],
   ["Create a policy review for Jane Smith", "policy-review", "Jane Smith", "salon_director"],
   ["Start a policy review for John", "policy-review", "John", "salon_director"],
   ["Create a follow-up coaching form for Jane Smith", "follow-up-coaching", "Jane Smith", "salon_director"],
@@ -174,6 +175,46 @@ describe("a form request typed into Ask Sunny", () => {
     expect(response!.formProposal!.templateKey).toBe("coaching");
     expect(response!.formProposal!.employeeName?.toLowerCase()).toBe("jane smith");
     expect(response!.formProposal!.formDate).toMatch(/^\d{4}-09-24$/);
+  });
+
+  /*
+   * PRODUCTION, 20 OCT 2026: "create ca for Ellie Sendgraff" was offered a
+   * draft, the draft came back with nothing on it, and the form — its policy
+   * line included — was filled in by hand with no section or page cited.
+   */
+  it.each(["create ca for Ellie Sendgraff", "Create a corrective action form for Jane Smith"])(
+    "%s asks what happened before offering a draft",
+    async (question) => {
+      const { proposals } = await load(LIBRARY());
+      const response = await proposals.proposeFormForTurn(turn(question));
+
+      expect(response!.formProposal!.templateKey).toBe("dpoa");
+      expect(response!.formProposal!.awaitingIncident).toBe(true);
+      expect(response!.formProposal!.supportsInlineDraft).toBe(false);
+      expect(response!.content).toMatch(/tell me what happened/i);
+      expect(response!.content).toMatch(/What happened — a clear description/);
+      expect(response!.content).not.toMatch(/I'll draft a/);
+      expect(response!.content).not.toMatch(/create the draft here/i);
+    },
+  );
+
+  it("offers the draft once the manager's reply says what happened, in any words", async () => {
+    const { proposals } = await load(LIBRARY());
+    const asked = await proposals.proposeFormForTurn(turn("create ca for Ellie Sendgraff"));
+    const response = await proposals.proposeFormForTurn(
+      turn("Ellie got to the salon at 11:23 for a 9:30 shift on Oct 16", {
+        history: [
+          { id: "m1", role: "user", content: "create ca for Ellie Sendgraff" },
+          { id: "m2", role: "assistant", content: asked!.content },
+        ] as never,
+        continueTemplateKey: "dpoa",
+      }),
+    );
+
+    expect(response!.formProposal!.templateKey).toBe("dpoa");
+    expect(response!.formProposal!.awaitingIncident).toBeUndefined();
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+    expect(response!.content).toMatch(/create the draft here/i);
   });
 
   it("asks for what is missing, in the conversation, when only the form is named", async () => {
