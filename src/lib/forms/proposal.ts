@@ -527,7 +527,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
 
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
-    const run = match[1]!.trim();
+    const run = nameBeforeRole(match[1]!.trim());
     if (places.has(run)) continue;
     /*
      * "It's Avery Testperson", "Sorry Avery Testperson": the capitalised run
@@ -752,6 +752,37 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   }
 
   return settle(strong, found, text);
+}
+
+/*
+ * ============================================================================
+ * "BRANDI ALGYA ASD LINCOLN O ST": THE NAME, THE ROLE, THE SALON
+ * ============================================================================
+ *
+ * Reported from production, 20 October 2026. Managers sign a person off the
+ * way the salon's paperwork does — name, role, salon — with no commas:
+ *
+ *     "Can you create a coaching form for a manager on the onboarding
+ *      process? Brandi Algya ASD Lincoln O St. Properly uploading …"
+ *
+ * The capitalised-run reader took all six words as one run, found "ASD" in it
+ * (a role, so never a name) and threw the whole run away. Sunny asked who the
+ * form was for, was told "Brandi Algya ASD Lincoln O St" on its own, and threw
+ * that away too — so the intake ended and the manager got advice instead of a
+ * form.
+ *
+ * THE ROLE ABBREVIATION IS THE BOUNDARY. Typed in capitals, it ends the name:
+ * the words before it are the person, and what follows is the salon or the
+ * rest of the sentence. Two name words are required before it, so a lone
+ * "Sarah SD" still names nobody from here, exactly as a lone capitalised word
+ * never has. A run with no role in it is returned unchanged.
+ */
+const ROLE_ABBREVIATION = /^(?:SD|ASD|TSD|SDIT|DMIT|FTTC|PTTC|TC|DM|RM|GM|FT|PT|MGR)$/;
+
+function nameBeforeRole(run: string): string {
+  const words = run.split(/\s+/);
+  const role = words.findIndex((word) => ROLE_ABBREVIATION.test(word.replace(/[.,]+$/, "")));
+  return role >= 2 ? words.slice(0, role).join(" ") : run;
 }
 
 /**
