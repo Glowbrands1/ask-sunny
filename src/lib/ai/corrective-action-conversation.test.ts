@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
+/*
+ * The first test pays for importing the whole answer path (`server-ask`), and
+ * under a full parallel run that alone can pass the default five seconds.
+ */
+vi.setConfig({ testTimeout: 30_000 });
+
 /**
  * ============================================================================
  * THE ACCEPTANCE CONVERSATION, TURN BY TURN
