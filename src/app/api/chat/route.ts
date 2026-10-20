@@ -166,9 +166,24 @@ export async function POST(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
+      /*
+       * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
+       * a name alone — the form on screen is redrafted from it, citation
+       * included. Null for anything else. See `lib/forms/chat-redraft.ts`.
+       */
+      const redraft =
+        !correction && !revision && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
       answer =
         correction ??
         revision ??
+        redraft ??
         (await answerQuestion(
           parsed,
           {
