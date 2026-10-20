@@ -13,9 +13,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL = { ...process.env };
 
-async function load(revision: unknown) {
+async function load(revision: unknown, policyChange: unknown = null) {
   vi.resetModules();
-  const seen = { answered: 0, revised: [] as unknown[] };
+  const seen = { answered: 0, revised: [] as unknown[], policy: [] as unknown[], asked: [] as Record<string, unknown>[] };
 
   vi.doMock("@/lib/auth/server", () => ({
     authorizeRequest: async (_request: Request, permission: string) => ({
@@ -32,12 +32,29 @@ async function load(revision: unknown) {
     }),
   }));
   vi.doMock("@/lib/ai/server-ask", () => ({
-    answerQuestion: async () => {
+    answerQuestion: async (request: Record<string, unknown>) => {
       seen.answered += 1;
+      seen.asked.push(request);
       return { content: "An ordinary answer.", citations: [], recommendedVideoIds: [] };
     },
   }));
   vi.doMock("@/lib/forms/chat-correction", () => ({ correctActiveForm: async () => null }));
+  vi.doMock("@/lib/forms/chat-policy-change", () => ({
+    changeActiveFormPolicy: async (input: unknown) => {
+      seen.policy.push(input);
+      return policyChange;
+    },
+  }));
+  vi.doMock("@/lib/forms/open-form-summary", () => ({
+    describeOpenForm: async (_request: Request, id: string) => ({
+      templateName: "Corrective Action Form",
+      employeeName: "Ellie Sendgraff",
+      status: "draft",
+      lines: [],
+      unverifiedPolicy: [],
+      id,
+    }),
+  }));
   vi.doMock("@/lib/forms/chat-revision", () => ({
     reviseActiveForm: async (input: unknown) => {
       seen.revised.push(input);
@@ -78,7 +95,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env = { ...ORIGINAL };
-  for (const path of ["@/lib/auth/server", "@/lib/ai/server-ask", "@/lib/forms/chat-correction", "@/lib/forms/chat-revision", "@/lib/supabase/server"]) {
+  for (const path of ["@/lib/auth/server", "@/lib/ai/server-ask", "@/lib/forms/chat-correction", "@/lib/forms/chat-policy-change", "@/lib/forms/open-form-summary", "@/lib/forms/chat-revision", "@/lib/supabase/server"]) {
     vi.doUnmock(path);
   }
   vi.resetModules();
@@ -134,5 +151,42 @@ describe("a revision of the open form", () => {
     await route.POST(ask({ history: [] }));
     expect(seen.revised).toHaveLength(0);
     expect(seen.answered).toBe(1);
+  });
+});
+
+describe("a policy named for the open form", () => {
+  it("is answered by the policy change, before any revision is tried", async () => {
+    const { route, seen } = await load(
+      { content: "should not be used" },
+      {
+        content: "Updated Direct policy from official manual on the **Corrective Action Form** for **Ellie Sendgraff**.",
+        citations: [],
+        coverage: "not_applicable",
+        recommendedVideoIds: [],
+        formUpdate: { instanceId: INSTANCE, updated: ["policy_language"] },
+      },
+    );
+    const response = await route.POST(
+      ask({ activeFormInstanceId: INSTANCE, history: [], question: "add the late opening policy to this form" }),
+    );
+    const payload = await response.json();
+    expect(payload.formUpdate).toEqual({ instanceId: INSTANCE, updated: ["policy_language"] });
+    expect(seen.policy).toHaveLength(1);
+    expect(seen.revised).toHaveLength(0);
+    expect(seen.answered).toBe(0);
+  });
+});
+
+describe("an ordinary answer while a form is open", () => {
+  it("is told which form is open, read by the server", async () => {
+    const { route, seen } = await load(null);
+    await route.POST(ask({ activeFormInstanceId: INSTANCE, history: [], openForm: { templateName: "Forged" } }));
+    expect(seen.asked[0]?.openForm).toMatchObject({ templateName: "Corrective Action Form", id: INSTANCE });
+  });
+
+  it("is told nothing when the conversation created no form, whatever the body claims", async () => {
+    const { route, seen } = await load(null);
+    await route.POST(ask({ history: [], openForm: { templateName: "Forged" } }));
+    expect(seen.asked[0]?.openForm ?? null).toBeNull();
   });
 });

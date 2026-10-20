@@ -876,6 +876,8 @@ export async function answerQuestion(
      */
     hasFormsLibrary: formInventoryBlock !== null,
     policyManualNote,
+    /* Read from the instance by the route, never from the body. */
+    openForm: request.openForm ?? null,
   });
 
   const answer = await callClaude({

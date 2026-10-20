@@ -147,8 +147,24 @@ export async function POST(request: Request) {
             instanceId: parsed.activeFormInstanceId,
             question: parsed.question,
             today: parsed.context.todayIso,
+            history: parsed.history,
           })
         : null;
+      /*
+       * "ADD THE LATE OPENING POLICY TO THIS FORM" — a manual section named,
+       * added, swapped or removed on the Direct policy line of the form that
+       * is open. The manual's own words, found by its own heading; no model
+       * writes them. Null for anything else. See `lib/forms/chat-policy-change.ts`.
+       */
+      const policyChange =
+        !correction && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-policy-change")).changeActiveFormPolicy({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
       /*
        * "REDRAFT IT WITH THESE CHANGES" on a coaching form this conversation
        * created — the open record, revised in place, rather than a new form
@@ -156,7 +172,7 @@ export async function POST(request: Request) {
        * like the correction above. See `lib/forms/chat-revision.ts`.
        */
       const revision =
-        !correction && parsed.activeFormInstanceId
+        !correction && !policyChange && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -165,10 +181,20 @@ export async function POST(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
+      /*
+       * AN ORDINARY ANSWER STILL KNOWS THE FORM IS THERE. Without this it was
+       * told no card ever comes with an answer, and said "no form has been
+       * created yet" beside the draft on screen.
+       */
+      const openForm =
+        !correction && !policyChange && !revision && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId)
+          : null;
       answer =
         correction ??
+        policyChange ??
         revision ??
-        (await answerQuestion(parsed, {
+        (await answerQuestion({ ...parsed, openForm }, {
           role: context.identity.role,
           scope: context.identity.scope,
         }));

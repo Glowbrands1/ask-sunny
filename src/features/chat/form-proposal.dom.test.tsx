@@ -74,6 +74,15 @@ function bubble(overrides: Partial<ChatMessage> = {}) {
   );
 }
 
+describe("the card names a verified salon the way the manager knows it", () => {
+  it("shows the roster name, not the id — production read 'loc-0314'", () => {
+    const { container } = bubble({ formProposal: proposal({ locationId: "loc-0314" }) });
+    const card = container.querySelector("dl")!;
+    expect(card.textContent).toContain("NE Omaha 144th and Center");
+    expect(card.textContent).not.toContain("loc-0314");
+  });
+});
+
 describe("45. the card shows what Sunny established", () => {
   it("names the template, the employee and the salon it verified", () => {
     const { container } = bubble({ formProposal: proposal() });

@@ -249,3 +249,43 @@ describe("stripMarkers", () => {
     );
   });
 });
+
+describe("an answer given while a form is open in the conversation", () => {
+  const openForm = {
+    templateName: "Corrective Action Form",
+    employeeName: "Ellie Sendgraff",
+    status: "draft" as const,
+    lines: [{ label: "Type of Warning", value: "Verbal Warning" }],
+    unverifiedPolicy: ["Direct policy from official manual"],
+  };
+
+  it("names the form and never tells the manager it does not exist", () => {
+    const prompt = buildSystemPrompt({
+      assistantName: "Sunny",
+      brandName: "Sun Tan City",
+      salonNoun: "salon",
+      context: CONTEXT,
+      mode: "standard",
+      hasContext: true,
+      openForm,
+    });
+    expect(prompt).toContain("A FORM IS OPEN IN THIS CONVERSATION: the Corrective Action Form for Ellie Sendgraff");
+    expect(prompt).toContain('Type of Warning: "Verbal Warning"');
+    expect(prompt).toMatch(/NEVER say no form has been created/);
+    expect(prompt).toMatch(/add the Late Opening policy/);
+    expect(prompt).not.toMatch(/say the form has not been created yet/);
+  });
+
+  it("keeps the old rule when no form is open", () => {
+    const prompt = buildSystemPrompt({
+      assistantName: "Sunny",
+      brandName: "Sun Tan City",
+      salonNoun: "salon",
+      context: CONTEXT,
+      mode: "standard",
+      hasContext: true,
+    });
+    expect(prompt).toMatch(/say the form has not been created yet/);
+    expect(prompt).not.toContain("A FORM IS OPEN");
+  });
+});

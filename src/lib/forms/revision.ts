@@ -39,8 +39,17 @@
  * PURE: no I/O. `chat-revision.ts` loads, calls the model and saves.
  */
 
-/** The coaching documents. A revision of any other family is not handled here. */
-export const REVISABLE_LAYOUT_FAMILIES: ReadonlySet<string> = new Set(["coaching"]);
+/**
+ * The coaching documents, and the Corrective Action Form and Policy Review
+ * (`corrective`). A revision of any other family is not handled here.
+ *
+ * THE CORRECTIVE FAMILY JOINED ON PRODUCTION FEEDBACK, 20 Oct 2026: a manager
+ * who changed their mind about a detail on an open Corrective Action Form had
+ * no way to say so in the conversation. Its two policy lines are never the
+ * model's to revise — `chat-policy-change.ts` quotes the manual onto them, and
+ * `chat-revision.ts` keeps them out of what a redraft may write.
+ */
+export const REVISABLE_LAYOUT_FAMILIES: ReadonlySet<string> = new Set(["coaching", "corrective"]);
 
 const REVISE_VERB =
   /\b(?:re-?draft|re-?write|rewrite|revise|redo|re-?do|update|edit|change|amend|modify|fix|tweak|adjust|add|include|insert|put|mention|remove|delete|drop|take out|clear|replace|swap|correct|clean up|set|mark|tick|untick|select|unselect|reword|rephrase|shorten|lengthen|expand|tighten|soften|polish|rework|tidy(?:\s+up)?|make (?:it|the|this|that))\b|\bclean\s+(?:this|it|that)\s+up\b/i;
@@ -62,6 +71,11 @@ const REVISE_VERB =
 const ASKS_FOR_A_FORM =
   /\b(?:create|start)\b|\b(?:open|pull\s+up)\s+(?:a|an|another|new|up\s+a)\b|\b(?:new|another|second|separate|different)\s+(?:\w+\s+){0,2}form\b|(?<![\w-])draft\s+(?:a|an|another|me)\b(?!\s+(?:\w+\s+)?(?:version|copy|rewrite|revision)\b)|\b(?:make|need|want)\s+(?:a|an|me a|another)\s+(?:\w+\s+){0,2}form\b/i;
 
+/** Whether a turn asks for a different (new) form rather than a change to the open one. */
+export function asksForAnotherForm(question: string): boolean {
+  return ASKS_FOR_A_FORM.test(question ?? "");
+}
+
 /** A question about the form, not a request to change it. */
 const ASKS_ABOUT =
   /^\s*(?:what|why|how|when|where|who|which|should|is|are|does|do|did|was|were|will|would)\b[^.!]*\?\s*$/i;
@@ -80,7 +94,7 @@ const REDRAFT_VERB =
  * changes to the form.
  */
 const POINTS_AT_THE_FORM =
-  /\b(?:form|draft|it|details|field|section|wording|line|box|observation|evidence|expectation|follow[- ]?up|timeframe|topic|progress|next step|summary|write[- ]?up|other|version)\b|\badd\s+that\b|\b(?:this|that)\s+(?:cleaner|clearer|better|shorter|tighter)\b/i;
+  /\b(?:form|draft|it|details|field|section|wording|line|box|observation|evidence|expectation|follow[- ]?up|timeframe|topic|progress|next step|summary|write[- ]?up|other|version|warning|plan|offen[cs]e|prior|previous)\b|\badd\s+that\b|\b(?:this|that)\s+(?:cleaner|clearer|better|shorter|tighter)\b/i;
 
 /** Whether a turn asks to change the form that is open. */
 export function isRevisionRequest(question: string): boolean {
@@ -172,6 +186,19 @@ const FIELD_ALIASES: Record<string, readonly string[]> = {
   additional_coaching: ["additional coaching completed", "additional coaching"],
   next_step: ["next step", "next steps", "role-play", "role play", "leadership review"],
   next_follow_up: ["next follow-up", "next follow up", "follow-up timeframe", "follow up timeframe", "timeframe", "follow up in", "follow-up in", "follow up within", "follow-up within"],
+  /*
+   * THE CORRECTIVE ACTION FORM AND POLICY REVIEW — revisable from chat since
+   * 20 Oct 2026. The words managers use for each line: "make it a written
+   * warning", "change the offense to absenteeism", "add to the action plan".
+   */
+  warning_type: ["type of warning", "warning type", "warning level", "warning"],
+  offense_type: ["type of offense", "offense type", "type of offence", "offense", "offence"],
+  other_offense: ["other offense", "other offence"],
+  observation: ["observation of offense", "observation", "observed", "expectation", "going forward", "details", "write-up", "write up"],
+  action_plan: ["action plan", "plan of action", "plan"],
+  plan_of_action: ["plan of action", "action plan", "plan"],
+  prior_actions: ["previously received", "previous coaching", "prior coaching", "previous corrective action", "prior corrective action", "previous warnings", "prior warnings", "prior actions"],
+  review_types: ["type of review", "review type"],
 };
 
 export interface RevisableField {
@@ -243,6 +270,13 @@ const INSTRUCTION_VERB =
 const VALUE_AFTER = /^\s*(?:(?:field|section|box|line|part)\s+)?(?:should\s+(?:be|say|read)|needs?\s+to\s+(?:be|say|read)|=|:|is\s+now\b|instead\b)/;
 /** A value given after the field, in a clause that already carries an edit verb. */
 const VALUE_AFTER_VERB = /^\s*(?:(?:field|section|box|line|part)\s+)?(?:to|as|into|with)\s+\S/;
+/**
+ * The value named straight after an edit: "change it TO A written warning",
+ * "it SHOULD BE A written warning". The phrase that follows is the new value —
+ * which, for a checkbox option, names its group.
+ */
+const VALUE_BEFORE =
+  /(?:\b(?:to|as|into)|\bshould\s+be|\bneeds?\s+to\s+be|\bit\s+is|\bits)\s+(?:an?\s+|the\s+)?$/;
 const PROTECTED_BEFORE =
   /\b(?:keep|leave|dont\s+(?:change|touch)|do\s+not\s+(?:change|touch)|without\s+changing|not)\s+(?:the\s+|her\s+|his\s+|their\s+|my\s+|any\s+of\s+the\s+)?$/;
 
@@ -289,6 +323,7 @@ function readFieldMentions(question: string, fields: readonly RevisableField[]):
       if (
         INSTRUCTION_VERB.test(lastWords) ||
         VALUE_AFTER.test(after) ||
+        (VALUE_BEFORE.test(before) && (INSTRUCTION_VERB.test(before) || /\bshould\s+be|\bneeds?\s+to\s+be/.test(before))) ||
         (INSTRUCTION_VERB.test(before) && VALUE_AFTER_VERB.test(after))
       ) {
         instructed.add(key);

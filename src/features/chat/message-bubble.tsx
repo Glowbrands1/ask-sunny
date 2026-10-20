@@ -560,7 +560,7 @@ function FormProposalCard({
         </ProposalRow>
         <ProposalRow label="Salon">
           {salon ? (
-            <span className="font-mono text-[11px] text-foreground">{salon}</span>
+            <SalonName id={salon} />
           ) : proposal.locationResolution === "not_applicable" ? (
             /*
              * NOT A GAP. A global actor is not assigned to a salon, and the
@@ -571,16 +571,13 @@ function FormProposalCard({
             <Missing>Not recorded — your account covers every salon</Missing>
           ) : proposal.locationId ? (
             /*
-             * THE VERIFIED ID, NOT AN INVENTED NAME. There is no salon roster
-             * to resolve a display name from. `PRODUCTION_SALONS` is the roster, but a
-             * demo data — putting a fictional salon name in front of somebody
-             * about to file a disciplinary record is the class of thing this
-             * phase exists to stop. `locationName` stays null until a roster
-             * exists; see docs/chat-phase-3.md.
+             * THE VERIFIED ID, SHOWN BY ITS ROSTER NAME. Production feedback,
+             * 20 Oct 2026: the card read "loc-0314" where the manager expected
+             * "NE Omaha 144th and Center". The id is still what the server
+             * verified and what the form is filed under; `PRODUCTION_SALONS`
+             * only names it, and an id it does not know is shown as it is.
              */
-            <span className="font-mono text-[11px] text-foreground">
-              {proposal.locationId}
-            </span>
+            <SalonName id={proposal.locationId} />
           ) : (
             <Missing>
               {proposal.locationResolution === "needs_selection"
@@ -653,6 +650,18 @@ function ProposalRow({ label, children }: { label: string; children: React.React
       <dt className="text-subtle-foreground">{label}</dt>
       <dd className="min-w-0 text-foreground">{children}</dd>
     </>
+  );
+}
+
+/** A salon by its roster name, falling back to the verified id when the roster has none. */
+function SalonName({ id }: { id: string }) {
+  const name = salonById(id)?.name;
+  return name ? (
+    <span className="text-foreground" title={id}>
+      {name}
+    </span>
+  ) : (
+    <span className="font-mono text-[11px] text-foreground">{id}</span>
   );
 }
 
