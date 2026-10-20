@@ -9,6 +9,7 @@ import {
 import type { ChatMessage } from "@/types";
 
 import { fieldsForVariant, parseFormDocument } from "./document";
+import { changeOnEditableDraft } from "./editable-draft";
 import { authorizeInstance } from "./instance-scope";
 import { applyAssistantDraft, applyAssistantRevision } from "./instances";
 import {
@@ -90,9 +91,13 @@ export async function changeActiveFormPolicy(input: {
   if (named.length > 0 && !named.some((name) => samePerson(name, instance.employeeName))) return null;
 
   const who = `**${instance.templateName}** for **${instance.employeeName}**`;
+  /*
+   * A FINALIZED FORM'S POLICY IS CHANGED ON A NEW DRAFT OF IT, opened here;
+   * the finalized record is never written. See `editable-draft.ts`.
+   */
   if (instance.status !== "draft") {
-    return reply(
-      `The ${who} is finalized, so I haven't changed it. Open it from Form Monitoring and create a revision to make a change.`,
+    return changeOnEditableDraft(input.request, input.instanceId, (draftId) =>
+      changeActiveFormPolicy({ ...input, instanceId: draftId }),
     );
   }
 

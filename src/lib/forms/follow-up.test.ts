@@ -208,3 +208,24 @@ describe("the module's own boundaries", () => {
     expect(SOURCE).not.toMatch(/import\s+["']server-only["']/);
   });
 });
+
+describe("a revised form's follow-up is counted on one version only", () => {
+  it("stays on the original while its revision is a draft", () => {
+    expect(followUpState(form({ followUpDate: "2026-09-10" }), TODAY)).toBe("open");
+    expect(
+      followUpState(form({ status: "draft", followUpDate: "2026-09-10", revisesInstanceId: "original" }), TODAY),
+    ).toBe("drafted");
+  });
+
+  it("moves to the revision once it is finalized", () => {
+    expect(followUpState(form({ status: "revised", followUpDate: "2026-09-10" }), TODAY)).toBe("untracked");
+    expect(
+      followUpState(form({ status: "finalized", followUpDate: "2026-09-10", revisesInstanceId: "original" }), TODAY),
+    ).toBe("open");
+  });
+
+  it("keeps a follow-up that already happened on the record it happened on", () => {
+    const done = form({ status: "revised", followUpDate: "2026-09-03", followedUpAt: "2026-09-03T15:00:00Z" });
+    expect(followUpState(done, TODAY)).toBe("followed_up");
+  });
+});

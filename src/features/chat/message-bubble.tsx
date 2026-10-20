@@ -190,6 +190,19 @@ export function MessageBubble({
               onCreated={(reference) => onFormCreated?.(message.id, reference)}
               onStartAnother={onStartAnother}
             />
+          ) : message.formInstanceRef ? (
+            /*
+              A FORM ALREADY ON FILE, OPENED BY THIS TURN — "edit the exit
+              form for Ashley Rogers", or the new draft of a finalized one. No
+              proposal: the form existed before this answer. The card is the
+              same live editor a created form gets.
+            */
+            <InlineForm
+              reference={message.formInstanceRef}
+              prefill={OPENED_PREFILL}
+              onReplaced={(reference) => onFormCreated?.(message.id, reference)}
+              onStartAnother={onStartAnother}
+            />
           ) : null}
 
           {/*
@@ -307,6 +320,13 @@ export function MessageBubble({
     </div>
   );
 }
+
+/**
+ * A form this turn opened rather than created — see `openedFormReference`.
+ * Its prefill is long over (or never happened: a revision is a copy), so the
+ * editor is told so rather than left guessing from the form's history.
+ */
+const OPENED_PREFILL: PrefillState = { kind: "complete" };
 
 /**
  * ============================================================================
@@ -551,6 +571,15 @@ function FormProposalCard({
         reference={reference}
         prefill={prefill}
         onStartAnother={onStartAnother}
+        /*
+          "Edit as new draft" on a finalized form: the card now points at the
+          new draft, persisted on this message the same way the created form
+          was, so a refresh reopens the draft rather than the frozen original.
+        */
+        onReplaced={(next) => {
+          setCreated(next);
+          onCreated(next);
+        }}
       />
     );
   }

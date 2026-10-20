@@ -30,6 +30,12 @@ import { businessToday, businessWeekEnd, daysBetween } from "@/lib/business-date
  * would drop it out of the counts that exist to chase it. `drafted` therefore
  * means "a draft, and nothing has been scheduled" — which is what makes the
  * five counts disjoint and their sum the total.
+ *
+ * ONE VERSION OF A FORM CARRIES ITS FOLLOW-UP. A revision copies the
+ * original's follow-up date, so for a while two rows hold the same date. The
+ * original keeps the tracking while its revision is a draft (the draft reads
+ * `drafted`); once the revision is finalized the original is `revised` and
+ * reads `untracked`, and the revision carries it. Counted once, either way.
  */
 export type FollowUpState =
   | "drafted"
@@ -45,6 +51,8 @@ export interface FollowUpFacts {
   followUpDate: string | null;
   followedUpAt: string | null;
   archivedAt: string | null;
+  /** Set on a revision: the form it revises. */
+  revisesInstanceId?: string | null;
 }
 
 export function followUpState(
@@ -53,6 +61,10 @@ export function followUpState(
 ): FollowUpState {
   if (form.archivedAt) return "archived";
   if (form.followedUpAt) return "followed_up";
+  // Replaced by a finalized revision, which carries the follow-up now.
+  if (form.status === "revised") return "untracked";
+  // A revision still in draft: the original carries the follow-up until it is finalized.
+  if (form.status === "draft" && form.revisesInstanceId) return "drafted";
   if (!form.followUpDate) return form.status === "draft" ? "drafted" : "untracked";
   return daysBetween(today, form.followUpDate) < 0 ? "overdue" : "open";
 }

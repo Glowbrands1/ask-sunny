@@ -25,6 +25,7 @@ import {
 } from "@/lib/analytics/taxonomy";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { CONTINUATION_KEY_MAX } from "@/lib/forms/proposal-continuation";
+import { mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
@@ -209,11 +210,30 @@ export async function POST(request: Request) {
         !correction && !policyChange && !redraft && !revision && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId)
           : null;
+      /*
+       * "CHANGE EXIT FOR ASHLEY ROGERS" — a form already on file, asked for by
+       * name and employee: found among the forms this actor may see and put
+       * in the thread, a finalized one as a new draft of it. Null for any
+       * sentence that does not ask to edit or see an existing form. See
+       * `lib/forms/chat-reopen.ts`.
+       */
+      const reopened =
+        !correction && !policyChange && !redraft && !revision && mayAskToReopen(parsed.question)
+          ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
+              request,
+              question: parsed.question,
+              history: parsed.history,
+              today: parsed.context.todayIso,
+              activeInstanceId: parsed.activeFormInstanceId,
+              continuingTemplateKey: parsed.continueProposalTemplateKey,
+            })
+          : null;
       answer =
         correction ??
         policyChange ??
         redraft ??
         revision ??
+        reopened ??
         (await answerQuestion(
           { ...parsed, openForm },
           {

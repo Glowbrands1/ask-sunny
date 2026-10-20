@@ -13,6 +13,7 @@ import {
   type FormDocument,
 } from "./document";
 import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative } from "./employment-change";
+import { changeOnEditableDraft } from "./editable-draft";
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
@@ -41,8 +42,9 @@ import { enforcePersonEdit } from "./responsibility";
  * the turn is answered as it always would have been.
  *
  * IT IS THE MANAGER'S OWN EDIT. Saved through `saveInstanceValues` — the same
- * path as typing into the field — so it is recorded as the manager's, refused
- * on a finalized form, and limited to fields a person may edit.
+ * path as typing into the field — so it is recorded as the manager's and
+ * limited to fields a person may edit. A finalized form is never written: the
+ * correction is made on a new draft of it (`editable-draft.ts`).
  */
 export async function correctActiveForm(input: {
   request: Request;
@@ -140,9 +142,14 @@ export async function correctActiveForm(input: {
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
+  /*
+   * A FINALIZED FORM IS CORRECTED ON A NEW DRAFT OF IT — opened here, with
+   * the same correction then applied to that draft. The signed record itself
+   * is never written. See `editable-draft.ts`.
+   */
   if (loaded.instance.status !== "draft") {
-    return reply(
-      `The ${who} is finalized, so I haven't changed it. Open it from Form Monitoring and create a revision to make a change.`,
+    return changeOnEditableDraft(input.request, input.instanceId, (draftId) =>
+      correctActiveForm({ ...input, instanceId: draftId }),
     );
   }
 
