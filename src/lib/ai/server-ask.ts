@@ -22,6 +22,7 @@ import {
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
+import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -653,6 +654,23 @@ export async function answerQuestion(
     ? loadEmployeeFacts()
     : Promise.resolve(null);
 
+  /*
+   * FORMS ALREADY ON FILE. "Does Ellie have previous coachings?" used to be
+   * answered with "I can't look that up — check Form Monitoring", when Form
+   * Monitoring is this app's own table. A question about existing forms now
+   * reads it, under exactly the visibility that screen applies — see
+   * `chat-form-records.ts`. Never rejects: a failed read becomes a block that
+   * says so.
+   */
+  const formRecordsPromise = isFormRecordsQuestion(request.question)
+    ? loadFormRecords({
+        actor,
+        question: request.question,
+        previousQuestion: previousManagerTurn(request),
+        today: request.context.todayIso,
+      })
+    : Promise.resolve(null);
+
   let rows: MatchedChunkRow[];
   try {
     rows = await knowledge.match({
@@ -694,6 +712,7 @@ export async function answerQuestion(
   const performanceManagementResult = await performanceManagementPromise;
   const employeeFacts = await employeeFactsPromise;
   const policyManual = await policyManualPromise;
+  const formRecords = await formRecordsPromise;
 
   /*
    * THE REFUSAL. An employee-performance turn whose mandatory framework is not
@@ -908,6 +927,7 @@ export async function answerQuestion(
      * thing as the list — which is the failure the section exists to remove.
      */
     hasFormsLibrary: formInventoryBlock !== null,
+    hasFormRecords: formRecords !== null,
     /* Read from whether the block exists, like the forms library above. */
     hasPersonMemory: personMemory !== null,
     policyManualNote,
@@ -937,6 +957,7 @@ export async function answerQuestion(
      */
     employeeData: employeeFacts?.block ?? null,
     formsLibrary: formInventoryBlock,
+    formRecords: formRecords?.block ?? null,
     personMemory,
     history: request.history,
     question: request.question,
@@ -1000,7 +1021,7 @@ export async function answerQuestion(
        * `grounded` would put a confident banner over an answer whose whole
        * content is "I do not have that delivery".
        */
-      grounding.length === 0 && (briefing?.present.length ?? 0) === 0
+      grounding.length === 0 && (briefing?.present.length ?? 0) === 0 && formRecords === null
         ? "insufficient"
         : "grounded",
     // Video matching is a separate concern and still runs on the client's
@@ -1038,4 +1059,15 @@ async function suggestedFormsFor(input: {
   } catch {
     return null;
   }
+}
+
+/** The manager's turn before this one, for a question that names nobody. */
+function previousManagerTurn(request: AskRequest): string | null {
+  for (let index = request.history.length - 1; index >= 0; index -= 1) {
+    const message = request.history[index]!;
+    if (message.role === "user" && message.content.trim() !== request.question.trim()) {
+      return message.content;
+    }
+  }
+  return null;
 }

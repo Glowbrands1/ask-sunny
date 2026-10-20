@@ -27,7 +27,7 @@ const REAL_SCOPE: AccessScope = {
 
 interface Seen {
   request: Record<string, unknown>;
-  actor: { role: string | null; scope: AccessScope | null };
+  actor: { role: string | null; scope: AccessScope | null; subject?: string; verified?: boolean };
 }
 
 async function load(identity: { role: string; scope: AccessScope | null }) {
@@ -110,7 +110,12 @@ describe("44. the actor comes from the session, never from the body", () => {
     const { route, seen } = await load({ role: "salon_director", scope: REAL_SCOPE });
     await route.POST(ask({}));
 
-    expect(seen[0]!.actor).toEqual({ role: "salon_director", scope: REAL_SCOPE });
+    expect(seen[0]!.actor).toEqual({
+      role: "salon_director",
+      scope: REAL_SCOPE,
+      subject: "user-1",
+      verified: true,
+    });
   });
 
   it("ignores a role and a scope the browser asserts about itself", async () => {
@@ -122,13 +127,21 @@ describe("44. the actor comes from the session, never from the body", () => {
         scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] },
         actor: { role: "owner", scope: { level: "global" } },
         identity: { role: "developer" },
+        subject: "someone-else",
+        verified: true,
       }),
     );
 
-    expect(seen[0]!.actor).toEqual({ role: "salon_director", scope: REAL_SCOPE });
+    expect(seen[0]!.actor).toEqual({
+      role: "salon_director",
+      scope: REAL_SCOPE,
+      subject: "user-1",
+      verified: true,
+    });
     expect(seen[0]!.request).not.toHaveProperty("role");
     expect(seen[0]!.request).not.toHaveProperty("scope");
     expect(seen[0]!.request).not.toHaveProperty("actor");
+    expect(seen[0]!.request).not.toHaveProperty("subject");
   });
 
   it("carries a null scope through rather than inventing one", async () => {
