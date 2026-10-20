@@ -259,3 +259,47 @@ describe("a complete assistant answer", () => {
     expect(text).not.toMatch(/(^|\n)\s*-\s/);
   });
 });
+
+/**
+ * Asked "where do i find kpi information", Sunny now sends the manager to a
+ * Reports & Analytics tab — and the tab is a link, so the next step is a click.
+ * Only the report paths are linkable; anything else stays the text it was.
+ */
+describe("links to the Reports & Analytics tabs", () => {
+  it("links a report tab, with the label as the link text", () => {
+    render(
+      <RichText content="Open [Sales Totals](/reports/sales-totals) for yesterday's numbers." />,
+    );
+
+    const link = screen.getByRole("link", { name: "Sales Totals" });
+    expect(link.getAttribute("href")).toBe("/reports/sales-totals");
+    expect(document.body.textContent).toBe("Open Sales Totals for yesterday's numbers.");
+  });
+
+  it("links the section root and a tab wrapped in bold", () => {
+    render(
+      <RichText content="- **[Reports & Analytics](/reports)** then **[Bed Usage](/reports/bed-usage)**" />,
+    );
+
+    expect(screen.getByRole("link", { name: "Reports & Analytics" }).getAttribute("href")).toBe(
+      "/reports",
+    );
+    expect(screen.getByRole("link", { name: "Bed Usage" }).getAttribute("href")).toBe(
+      "/reports/bed-usage",
+    );
+    expect(document.body.textContent).not.toContain("**");
+  });
+
+  it("never links anything off the allowlist", () => {
+    const content = [
+      "[Power BI](https://app.powerbi.com)",
+      "[Users](/admin/users)",
+      "[Sneaky](javascript:alert(1))",
+      "[Close](/reports/sales-totals/../../admin)",
+    ].join("\n\n");
+    render(<RichText content={content} />);
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(document.body.textContent).toContain("[Power BI](https://app.powerbi.com)");
+  });
+});
