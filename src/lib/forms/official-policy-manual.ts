@@ -463,8 +463,36 @@ function sheetHeadingsOf(content: string): string[] {
   return headings;
 }
 
+/**
+ * Every heading the manual prints on a sheet, in the manual's own spelling.
+ *
+ * THE SAME TWO TIERS `findManualSection` trusts — the headings ingestion
+ * recorded and the page-heading rule — and never the contents page or body
+ * prose, so a name read out of a manager's sentence can only ever resolve to a
+ * place the manual itself marks as a section. Used to read "add the Late
+ * Opening policy" against the manual as it is, rather than against a list kept
+ * here. See `policy-change.ts`.
+ */
+export function manualSectionHeadings(chunks: readonly ManualChunk[]): string[] {
+  const seen = new Map<string, string>();
+  const add = (heading: string | null | undefined) => {
+    const text = (heading ?? "").trim();
+    const key = headingKey(text);
+    if (key === "" || key === "table of contents" || seen.has(key)) return;
+    seen.set(key, text);
+  };
+  for (const chunk of [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)) {
+    if (isTableOfContents(chunk.content)) continue;
+    for (const entry of chunk.sections ?? []) add(entry.heading);
+    add(chunk.section);
+    for (const heading of sheetHeadingsOf(chunk.content)) add(heading);
+    add(pageHeadingOf(chunk.content)?.heading);
+  }
+  return [...seen.values()];
+}
+
 /** Loosened for matching: case, punctuation and spacing drift are absorbed. */
-function headingKey(text: string): string {
+export function headingKey(text: string): string {
   return text
     .toLowerCase()
     .replace(/[\u2010-\u2015]/g, "-")

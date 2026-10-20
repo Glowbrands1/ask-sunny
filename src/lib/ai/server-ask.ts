@@ -60,6 +60,7 @@ import {
   stripMarkers,
   type GroundingChunk,
 } from "./prompts";
+import { retrievalQueryFor } from "./retrieval-query";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -655,7 +656,16 @@ export async function answerQuestion(
   let rows: MatchedChunkRow[];
   try {
     rows = await knowledge.match({
-      query: request.question,
+      /*
+       * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
+       * with what it points at — see `retrieval-query.ts`. Every other turn is
+       * searched on its own words, exactly as before.
+       */
+      query: retrievalQueryFor({
+        question: request.question,
+        history: request.history,
+        openForm: request.openForm ?? null,
+      }),
       scopeId: request.scopeId,
       /*
        * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
@@ -901,6 +911,8 @@ export async function answerQuestion(
     /* Read from whether the block exists, like the forms library above. */
     hasPersonMemory: personMemory !== null,
     policyManualNote,
+    /* Read from the instance by the route, never from the body. */
+    openForm: request.openForm ?? null,
     /*
      * From the AUTHORIZED actor, the same matrix the report pages' guard
      * reads, so Sunny only sends somebody to Reports & Analytics when the
