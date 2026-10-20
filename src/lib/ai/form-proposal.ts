@@ -252,6 +252,14 @@ export interface ChatActor {
   role: Role | null;
   /** `null` when no identity provider vouched for a scope. Never enforced against. */
   scope: AccessScope | null;
+  /**
+   * The account id and whether a provider verified it. Optional because only
+   * the Form Monitoring lookup needs them — forms visibility is decided per
+   * account (designated all-salon access, the Woven home salon, the creator of
+   * a form with no salon) — and it reads nothing without both.
+   */
+  subject?: string;
+  verified?: boolean;
 }
 
 export interface ProposalTurn {

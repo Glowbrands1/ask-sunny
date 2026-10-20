@@ -360,6 +360,16 @@ export function buildSystemPrompt(input: {
    */
   hasFormsLibrary?: boolean;
   /**
+   * Whether a FORMS ON FILE block — forms already created, read from Form
+   * Monitoring under this user's forms visibility — is attached to this turn.
+   *
+   * A different thing from the forms library and stated separately: the library
+   * says which TEMPLATES exist, this says which RECORDS exist about named people.
+   * Its absence from the list is dispositive only for the salons the block says
+   * it covers.
+   */
+  hasFormRecords?: boolean;
+  /**
    * What this turn was given of the JBA Policy Manual, when the question named
    * it — see `policy-manual-coverage.ts`. Null on every other turn, which
    * leaves the prompt exactly as it was.
@@ -374,6 +384,7 @@ export function buildSystemPrompt(input: {
   const wantsDailyStatsReasoning = input.wantsDailyStatsReasoning ?? false;
   const hasMissingReports = input.hasMissingReports ?? false;
   const hasFormsLibrary = input.hasFormsLibrary ?? false;
+  const hasFormRecords = input.hasFormRecords ?? false;
 
   /*
    * The framework rules, with the brand's own name substituted, plus exactly
@@ -420,7 +431,13 @@ export function buildSystemPrompt(input: {
     );
   }
 
-  const NUMBER_WORD = ["", "one", "two", "three", "four", "five"] as const;
+  if (hasFormRecords) {
+    statementKinds.push(
+      `Forms on file — which forms have already been created, about whom, at which salon, when, and where each stands. These come from the FORMS ON FILE section below, read from Form Monitoring for this user. Never mark them with a source marker. You have seen only each form's name, employee, salon, dates and status — never its contents.`,
+    );
+  }
+
+  const NUMBER_WORD = ["", "one", "two", "three", "four", "five", "six"] as const;
   const taxonomy = statementKinds
     .map((kind, index) => `${index + 1}. ${kind}`)
     .join("\n");
@@ -489,6 +506,23 @@ export function buildSystemPrompt(input: {
 - Where a form is: a manager creates one by asking Ask Sunny, here in the conversation. Forms already created are in Forms → Form Monitoring. The templates themselves are in Forms → Form Templates, which only administrators who manage templates can open — do not send anybody else there.`
     : "";
 
+  /*
+   * FORMS ON FILE. Sunny used to answer "does Ellie have previous coachings?"
+   * with "I can't look that up — check Form Monitoring". With the block
+   * attached it answers from the record, and these rules keep that answer to
+   * what the record actually shows.
+   */
+  const formRecordsSection = hasFormRecords
+    ? `\n\nFORMS ALREADY ON FILE
+
+- You HAVE checked Form Monitoring for this question: the FORMS ON FILE section is that check. Answer from it directly — never say you cannot look it up, and never send the manager to Form Monitoring to find out whether a form exists.
+- State only the forms listed there: how many, which form, the date, the status and any follow-up. Never add a form the section does not list, and never describe what a form says — you have not seen its contents.
+- The section covers only the salons it names. "None on file" means none at those salons; say that, not that the employee has never been coached.
+- A draft is not a completed coaching, and a revised form has been replaced by a newer version. Say which is which.
+- Where the section lists only a POSSIBLE match, ask whether that is the person they mean before treating it as theirs.
+- Prior forms matter for the next step: where a framework source is provided, use what is on file to decide the next step it supports — and point the manager to Forms → Form Monitoring to open any of them.`
+    : "";
+
   const missingReportsSection = hasMissingReports
     ? "\n\nONE OR MORE REPORTS THIS QUESTION NEEDS IS NOT LOADED. The REPORT DATA section names them. Say so plainly and early — for example \"I don't have a current Spa Wellness delivery for that period\" — then answer the part you can from what IS loaded. Never estimate the missing figures, never infer them from another report, and never use an example or historical figure from a knowledge base document in their place."
     : "";
@@ -516,7 +550,7 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
+- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${formRecordsSection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 

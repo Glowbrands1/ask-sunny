@@ -171,6 +171,8 @@ export async function POST(request: Request) {
         (await answerQuestion(parsed, {
           role: context.identity.role,
           scope: context.identity.scope,
+          subject: context.identity.subject,
+          verified: context.identity.verified,
         }));
     } catch (error) {
       /*
