@@ -50,6 +50,11 @@ import { datesInText } from "./form-date-answer";
  *   The notice-fulfilled date from a duration. "Two weeks notice on 9/1" does
  *   not make 9/15 the fulfilled date; that is arithmetic about a fact nobody
  *   stated.
+ *
+ * ONE DATE IS CARRIED ACROSS, because managers asked for it (20 Oct 2026): a
+ * notice fulfilled on a stated date ends on that date, so with no last day of
+ * its own the Last Day Worked is the fulfilled date. Only a STATED fulfilled
+ * date, never one computed, and never for a notice said not to be fulfilled.
  */
 
 /**
@@ -521,7 +526,7 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     return dates.size === 1 ? [...dates][0]! : null;
   };
 
-  const lastDayWorked = settle("lastDayWorked");
+  let lastDayWorked = settle("lastDayWorked");
   const noticeGiven = settle("noticeGiven");
   const noticeFulfilled = settle("noticeFulfilled");
   const quitDate = settle("resigned");
@@ -571,6 +576,25 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     fulfilled = false;
     voluntary = false;
     involuntary = false;
+  }
+
+  /*
+   * THE FULFILLED DATE IS THE LAST DAY WORKED when no last day was given and
+   * the notice was not said to be cut short. A last day stated two ways is
+   * still an ambiguity, and stays blank.
+   */
+  const lastDayUnclear = ambiguities.some((entry) => entry.kind !== "separation_conflict" && entry.role === "lastDayWorked");
+  const separationUnclear = ambiguities.some((entry) => entry.kind === "separation_conflict");
+  if (
+    !lastDayWorked &&
+    !lastDayUnclear &&
+    noticeFulfilled &&
+    !separationUnclear &&
+    !reading.notFulfilled &&
+    !reading.noCallNoShow &&
+    !involuntary
+  ) {
+    lastDayWorked = noticeFulfilled;
   }
 
   return {

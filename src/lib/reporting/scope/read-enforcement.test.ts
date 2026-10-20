@@ -249,6 +249,19 @@ describe("the Overview follow-up queue narrows in the query", () => {
     expect(filters).toEqual([{ op: "in", column: "location_id", value: ["loc-0306"] }]);
   });
 
+  it("reads the caller's own forms at other salons in a second query, never unrestricted", async () => {
+    await listOutstandingFollowUps(50, ["loc-0306"], "user-dm");
+
+    const reads = queries.filter((query) => query.table === "form_instance_overview");
+    expect(reads).toHaveLength(2);
+    expect(reads[0]!.filters.filter((filter) => filter.column === "location_id")).toEqual([
+      { op: "in", column: "location_id", value: ["loc-0306"] },
+    ]);
+    expect(reads[1]!.filters.filter((filter) => filter.column === "created_by")).toMatchObject([
+      { column: "created_by", value: "user-dm" },
+    ]);
+  });
+
   it("adds no predicate for an unrestricted reader", async () => {
     await listOutstandingFollowUps(
       50,

@@ -157,6 +157,8 @@ describe("loadFormRecords", () => {
     expect(state.listCalls[0]?.filter).toEqual({
       locationIds: ["loc-101"],
       ownNullLocationCreatedBy: "user-1",
+      // Their own forms at other salons, re-checked by `visibleInstances`.
+      ownCreatedBy: "user-1",
       employeeNameWords: ["ellie", "sendgraff"],
     });
 

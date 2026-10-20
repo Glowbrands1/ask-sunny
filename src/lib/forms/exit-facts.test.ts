@@ -42,11 +42,16 @@ describe("the dates, each on its own line", () => {
   it("reads the fulfilled date only from words that say the notice was fulfilled", () => {
     const facts = read("Gave notice 9/1. She worked out her notice through 9/15.");
     expect(facts.noticeGiven).toBe("2026-09-01");
-    // "worked out her notice through 9/15" says when the notice was fulfilled. It does
-    // not separately say 9/15 was a day worked, so that line is not filled from it.
     expect(facts.noticeFulfilled).toBe("2026-09-15");
-    expect(facts.lastDayWorked).toBeNull();
     expect(read("notice was fulfilled on 9/15").noticeFulfilled).toBe("2026-09-15");
+  });
+
+  it("takes the stated fulfilled date as the last day worked when no last day was given", () => {
+    expect(read("Gave notice 9/1. She worked out her notice through 9/15.").lastDayWorked).toBe("2026-09-15");
+    // A last day of its own wins.
+    expect(read("Notice fulfilled 9/15, her last day was 9/14.").lastDayWorked).toBe("2026-09-14");
+    // A notice said not to be fulfilled carries nothing across.
+    expect(read("Notice fulfilled 9/15. She didn't fulfill her notice.").lastDayWorked).toBeNull();
   });
 
   it("never computes a date from a duration", () => {
