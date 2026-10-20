@@ -944,6 +944,19 @@ export function policyVerificationNoticeFor(
   const unresolved = grounded.filter((field) => !verified(field.key));
   if (unresolved.length === 0) return null;
 
+  /*
+   * A DRAFT THAT WROTE NOTHING AT ALL. "No approved policy matched what you
+   * described" is wrong when nothing was described: production, 20 Oct 2026,
+   * "create ca for Ellie Sendgraff" drafted zero fields, and the form was then
+   * filled by hand — policy wording pasted in with no section or page.
+   */
+  const draftedNothing = !loaded.values.some(
+    (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+  );
+  if (draftedNothing) {
+    return "You didn't tell Sunny what happened, so it had nothing to draft this form from and couldn't cite the policy manual. Tell Sunny in the chat what happened and it will redraft this form with the manual's section and page cited. If you complete it by hand instead, confirm the exact policy, section and page in the official manual before you issue it.";
+  }
+
   const blank = unresolved.filter((field) => !filled(field.key));
   const byHand = unresolved.filter((field) => filled(field.key));
   const quote = (fields: typeof grounded) =>
