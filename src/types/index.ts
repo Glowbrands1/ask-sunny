@@ -381,6 +381,19 @@ export interface ChatMessage {
    * manager changes a report filter.
    */
   feedback?: SavedFeedback;
+  /**
+   * WHO ASKED. User messages only, stamped when the question is sent.
+   *
+   * Chat history lives in this browser's IndexedDB, and a salon computer is
+   * shared: everybody who signs in on it sees every thread it holds. Drawing
+   * the signed-in person's initials beside every question put their initials
+   * on questions somebody else asked. The avatar reads this instead.
+   *
+   * Browser-only. It is not in the sync metadata allowlist, so it never reaches
+   * the server — an account's own conversations need no stamp to say whose
+   * they are. Absent on turns from before it existed; see `askerFor`.
+   */
+  author?: ChatMessageAuthor;
   mode?: AnswerMode;
   citations?: SourceCitation[];
   recommendedVideoIds?: string[];
@@ -457,6 +470,13 @@ export interface ChatFormInstanceRef {
   proposalId: string;
   /** Presentation only. The server's own name is used once the fetch lands. */
   templateName: string;
+}
+
+/** Who sent a user message, as the avatar beside it shows them. */
+export interface ChatMessageAuthor {
+  userId: string;
+  name: string;
+  initials: string;
 }
 
 /** Why a chat turn failed, and what the manager can do about it. */

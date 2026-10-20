@@ -7,6 +7,7 @@ import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { activityNowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
+import { authorFromSession } from "@/lib/chat/message-author";
 import { activeFormInstanceFor, continuationFor } from "@/lib/forms/proposal-continuation";
 import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type { ActivitySurface } from "@/lib/analytics/taxonomy";
@@ -88,7 +89,11 @@ export interface InlineExchange {
 }
 
 export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineAskOptions) {
-  const { managerDisplayName, primaryLocationName } = useSession();
+  const { managerDisplayName, primaryLocationName, user } = useSession();
+  const signedIn = useMemo(
+    () => authorFromSession(user, managerDisplayName),
+    [user, managerDisplayName],
+  );
   const {
     conversations,
     addConversation,
@@ -148,6 +153,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
         role: "user",
         content: text,
         createdAt: activityNowIso(),
+        author: signedIn,
       };
 
       /*
@@ -268,6 +274,7 @@ export function useInlineAsk({ reportContext, onActiveChange, surface }: InlineA
       appendConversationMessages,
       managerDisplayName,
       primaryLocationName,
+      signedIn,
       setActive,
     ],
   );
