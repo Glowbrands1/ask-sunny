@@ -463,6 +463,15 @@ export function describesIncident(text: string): boolean {
 const WHAT_HAPPENED_ASK = "What happened —";
 
 /**
+ * Said beside a Corrective Action Form offered on a name alone. The form can
+ * still be created; this is what tells the manager why its policy line will
+ * come back without a citation, and how to get one.
+ */
+export const NO_INCIDENT_NOTE =
+  "**You haven't told me what happened yet**, so I can't cite the policy manual — the draft will come back without the policy section and page. You can create it now and fill it in yourself, or tell me here what happened and I'll draft it (or redraft the form you created) with the manual's section and page cited.";
+const NO_INCIDENT_MARKER = "You haven't told me what happened yet";
+
+/**
  * ============================================================================
  * MORE THAN THE REQUEST ITSELF
  * ============================================================================
@@ -514,7 +523,7 @@ export function answeredWhatHappened(
     const asked = conversation[index]!;
     const reply = conversation[index + 1]!;
     if (asked.role !== "assistant" || typeof asked.content !== "string") continue;
-    if (!asked.content.includes(WHAT_HAPPENED_ASK)) continue;
+    if (!asked.content.includes(WHAT_HAPPENED_ASK) && !asked.content.includes(NO_INCIDENT_MARKER)) continue;
     if (reply.role !== "user" || typeof reply.content !== "string") continue;
     const text = reply.content.trim();
     if (text.endsWith("?")) continue;
@@ -688,29 +697,10 @@ export function correctiveActionIntakeRequest(input: {
    * caller with no date gets the generic line rather than a wrong one.
    */
   readonly today?: string | null;
-  /** The employee is known but the account of what happened is not: ask for it first. */
-  readonly awaitingIncident?: boolean;
 }): string {
   const numbered = input.items
     .map((item, index) => `${index + 1}. ${promptFor(item, input.today ?? null)}`)
     .join("\n");
-
-  /*
-   * NOTHING TO DRAFT FROM YET. The employee and the salon are settled, but a
-   * Corrective Action Form is written from what happened, and the manager has
-   * not said. Production, 20 Oct 2026: "create ca for Ellie Sendgraff" was
-   * offered a draft, the draft came back empty, and the form — its policy
-   * line included — was filled by hand with no citation.
-   */
-  if (input.awaitingIncident) {
-    return [
-      `Before I draft the **${input.formName}**, tell me what happened:`,
-      "",
-      numbered,
-      "",
-      "I'll draft it from your answer and cite the policy manual section and page it falls under.",
-    ].join("\n");
-  }
 
   if (input.opening) {
     return [

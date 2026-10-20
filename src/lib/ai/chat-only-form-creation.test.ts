@@ -178,23 +178,24 @@ describe("a form request typed into Ask Sunny", () => {
   });
 
   /*
-   * PRODUCTION, 20 OCT 2026: "create ca for Ellie Sendgraff" was offered a
-   * draft, the draft came back with nothing on it, and the form — its policy
-   * line included — was filled in by hand with no section or page cited.
+   * PRODUCTION, 20 OCT 2026: "create ca for Ellie Sendgraff" drafted an empty
+   * form, and its policy line was filled in by hand with no section or page.
+   * The form is still offered on a name alone — and the card says why its
+   * policy line cannot be cited yet, and how to get it cited.
    */
   it.each(["create ca for Ellie Sendgraff", "Create a corrective action form for Jane Smith"])(
-    "%s asks what happened before offering a draft",
+    "%s is offered, with a note that the policy cannot be cited yet",
     async (question) => {
       const { proposals } = await load(LIBRARY());
       const response = await proposals.proposeFormForTurn(turn(question));
 
       expect(response!.formProposal!.templateKey).toBe("dpoa");
       expect(response!.formProposal!.awaitingIncident).toBe(true);
-      expect(response!.formProposal!.supportsInlineDraft).toBe(false);
-      expect(response!.content).toMatch(/tell me what happened/i);
-      expect(response!.content).toMatch(/What happened — a clear description/);
-      expect(response!.content).not.toMatch(/I'll draft a/);
-      expect(response!.content).not.toMatch(/create the draft here/i);
+      expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+      expect(response!.content).toMatch(/haven't told me what happened yet/);
+      expect(response!.content).toMatch(/can't cite the policy manual/);
+      expect(response!.content).not.toMatch(/from what you've described/);
+      expect(response!.content).toMatch(/create the draft here/i);
     },
   );
 

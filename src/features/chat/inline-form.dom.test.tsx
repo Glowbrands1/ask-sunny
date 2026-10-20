@@ -1442,8 +1442,8 @@ describe("the policy-verification notice", () => {
 
     const notice = policyVerificationNoticeFor(loaded, false);
 
-    expect(notice).toMatch(/Ask Sunny had nothing to draft this form from/);
-    expect(notice).toMatch(/cite the manual's section and page/);
+    expect(notice).toMatch(/You didn't tell Sunny what happened/);
+    expect(notice).toMatch(/redraft this form with the manual's section and page cited/);
     expect(notice).not.toMatch(/no approved policy matched/);
   });
 

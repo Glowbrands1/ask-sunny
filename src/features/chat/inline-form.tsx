@@ -954,7 +954,7 @@ export function policyVerificationNoticeFor(
     (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
   );
   if (draftedNothing) {
-    return "Ask Sunny had nothing to draft this form from, so nothing on it came from the policy manual. Tell Sunny in the chat what happened and create a new draft: it will fill the form and cite the manual's section and page. If you complete this one by hand, confirm the exact policy, section and page in the official manual before you issue it.";
+    return "You didn't tell Sunny what happened, so it had nothing to draft this form from and couldn't cite the policy manual. Tell Sunny in the chat what happened and it will redraft this form with the manual's section and page cited. If you complete it by hand instead, confirm the exact policy, section and page in the official manual before you issue it.";
   }
 
   const blank = unresolved.filter((field) => !filled(field.key));

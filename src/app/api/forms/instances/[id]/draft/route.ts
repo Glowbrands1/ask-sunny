@@ -173,6 +173,13 @@ interface DraftBody {
   /** What the manager described, in their own words. */
   notes?: string;
   topic?: string;
+  /**
+   * A REDRAFT FROM CHAT, of a form the manager may already have filled in by
+   * hand. What they typed stays; their offense tick decides the citation;
+   * only the policy lines are replaced, and only by a cited value. See
+   * `lib/forms/chat-redraft.ts`.
+   */
+  keepManagerValues?: boolean;
 }
 
 function fieldBrief(field: FormField, variantLabel: string | null): string {
@@ -1184,9 +1191,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? withConductOffense({ checked: enforced.checked, values: enforced.values })
       : null;
     const offenseChange = statedOffense ?? conductOffense;
-    const validated = offenseChange
+    const offenseApplied = offenseChange
       ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
       : enforced;
+
+    /*
+     * A REDRAFT KEEPS WHAT THE MANAGER TYPED. Their lines and ticks are left
+     * exactly as they are, and a Type of Offense they ticked is the one the
+     * manual's section is looked up for — the citation follows their
+     * classification, not the model's.
+     */
+    const managerRows = body.keepManagerValues
+      ? loaded.values.filter(
+          (row) => row.filledBy === "manager" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+        )
+      : [];
+    const managerKeys = new Set(managerRows.map((row) => row.fieldKey));
+    const managerOffense = managerRows.find((row) => row.fieldKey === "offense_type" && row.checked.length > 0);
+    const validated = managerOffense
+      ? { ...offenseApplied, checked: { ...offenseApplied.checked, offense_type: [...managerOffense.checked] } }
+      : offenseApplied;
 
     /*
      * ========================================================================
@@ -1437,9 +1461,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ],
         });
 
+    /*
+     * The manager's own lines are not overwritten — except a policy line this
+     * draft could CITE from the manual, which replaces wording typed without a
+     * section or page.
+     */
+    const keeps = (key: string) =>
+      managerKeys.has(key) && !(DERIVED_POLICY_FIELD_KEYS.has(key) && derivedPolicy.derived.includes(key));
     const guarded = await applyAssistantDraft(
       id,
-      { values: named.values, checked: validated.checked },
+      {
+        values: Object.fromEntries(Object.entries(named.values).filter(([key]) => !keeps(key))),
+        checked: Object.fromEntries(Object.entries(validated.checked).filter(([key]) => !keeps(key))),
+      },
       actor.id,
       provenance,
     );

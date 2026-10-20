@@ -29,6 +29,7 @@ import {
   correctiveActionBasis,
   correctiveActionIntakeRequest,
   describesMoreThanTheRequest,
+  NO_INCIDENT_NOTE,
   readCorrectiveActionIntake,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
@@ -630,12 +631,12 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   }
 
   /*
-   * NO CREATE DRAFT UNTIL THE MANAGER HAS SAID WHAT HAPPENED. A Corrective
-   * Action Form is drafted from the account, and the policy citation is
-   * resolved from the offense that account supports — so a card created from
-   * "create ca for Ellie Sendgraff" alone came back empty and was filled by
-   * hand with no citation. The question is asked instead; the next turn that
-   * answers it rebuilds the proposal without this flag.
+   * NAMED, BUT NOT DESCRIBED. A Corrective Action Form is drafted from the
+   * account, and the policy citation is resolved from the offense that account
+   * supports — so a form created from "create ca for Ellie Sendgraff" alone
+   * comes back without one. It can still be created; the card says so, and
+   * says that telling Sunny what happened redrafts it with the citation (see
+   * `chat-redraft.ts`).
    */
   if (
     isCorrectiveActionForm(match) &&
@@ -647,7 +648,6 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     !answeredWhatHappened([...input.history, { role: "user", content: input.question }])
   ) {
     proposal.awaitingIncident = true;
-    proposal.supportsInlineDraft = false;
   }
 
   const changeKind = employmentChangeKind(match.key);
@@ -1594,22 +1594,6 @@ function proposalContent(
     }
 
     /*
-     * WHO, BUT NOT WHAT. The account is asked for — with the payroll question
-     * if it is still open, so the next answer can complete the card — and
-     * nothing is offered to create until it arrives. See `awaitingIncident`.
-     */
-    if (proposal.awaitingIncident) {
-      const ask = correctiveActionIntakeRequest({
-        formName: proposal.templateName,
-        items: intake.missing.filter((item) => item.key === "what_happened" || item.key === "payroll_deduct"),
-        opening: false,
-        today: todayInWords(),
-        awaitingIncident: true,
-      });
-      return proposal.status === "needs_location" ? `${locationQuestion(proposal)}\n\n${ask}` : ask;
-    }
-
-    /*
      * OTHERWISE, DRAFT IT. What is still unknown is NAMED, never asked for:
      * the manager should see that the warning level is theirs to tick without
      * being stopped for it.
@@ -1630,6 +1614,7 @@ function proposalContent(
     lines.push(openingQuestions(proposal, context));
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
+    if (proposal.awaitingIncident) lines.push("", NO_INCIDENT_NOTE);
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,
@@ -1758,9 +1743,11 @@ function correctiveActionReady(
       item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
     );
 
-  const lines = [
-    `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
-  ];
+  const lines = proposal.awaitingIncident
+    ? [`I can create a **${proposal.templateName}** for **${proposal.employeeName}**.`, "", NO_INCIDENT_NOTE]
+    : [
+        `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
+      ];
 
   /*
    * THE POLICY, SUGGESTED OR ASKED — never left silently to the drafting

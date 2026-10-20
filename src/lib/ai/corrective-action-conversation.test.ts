@@ -699,17 +699,18 @@ describe("\"Create a corrective action for Sarah.\"", () => {
   });
 
   /*
-   * BUT NOT FROM NOTHING. Production, 20 Oct 2026: a card offered on the name
-   * alone drafted an empty form, and the policy line was filled by hand with
-   * no section or page. What happened is the one detail asked for.
+   * ON A NAME ALONE, STILL OFFERED — AND HONEST ABOUT IT. Production, 20 Oct
+   * 2026: such a draft came back empty and the policy line was filled by hand
+   * with no section or page; the card now says the policy cannot be cited
+   * until Sunny is told what happened.
    */
-  it("asks what happened when the manager has only named the person", async () => {
+  it("offers the form on a name alone, and says the policy cannot be cited yet", async () => {
     const answer = await ask("Create a corrective action for Sarah.");
 
     expect(answer.formProposal!.awaitingIncident).toBe(true);
-    expect(answer.formProposal!.supportsInlineDraft).toBe(false);
-    expect(answer.content).toMatch(/tell me what happened/i);
-    expect(answer.content).not.toMatch(/create the draft here/i);
+    expect(answer.formProposal!.supportsInlineDraft).toBe(true);
+    expect(answer.content).toMatch(/haven't told me what happened yet/);
+    expect(answer.content).toMatch(/create the draft here/i);
   });
 
   it("drafts instead of interviewing, and names what is left without asking for it", async () => {
