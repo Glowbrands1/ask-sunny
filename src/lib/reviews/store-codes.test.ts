@@ -108,7 +108,7 @@ describe("a store code is not a salon number", () => {
     expect(salon?.salonNumber).toBe("0462");
     expect(salon?.name).toBe("KS Manhattan");
     /* The district comes from the existing roster, never invented here. */
-    expect(salon?.districtName).toBe("Patterson, Madeline");
+    expect(salon?.districtName).toBe("Dugan, Rachael");
   });
 });
 
