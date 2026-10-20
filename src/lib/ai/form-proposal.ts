@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildProposal,
   extractEmployeeNames,
+  employeeState,
   managerContext,
   resolveEmployee,
   type ManagerContext,
@@ -570,10 +571,12 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * See `checkTypedEmployee`: an exact match takes the directory's spelling and
    * salon, a close one is asked about, and nothing is ever autocorrected.
    */
-  const directory = await checkTypedEmployee(input, match, context);
+  const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, context) : null;
+  const directory = await checkTypedEmployee(input, match, context, carried);
+  const employee = directory.resolution ?? carried;
 
   const proposal = buildProposal({
-    ...(directory.resolution ? { employee: directory.resolution } : {}),
+    ...(employee ? { employee } : {}),
     employeeSalonIds: directory.salonIds ?? [],
     /*
      * SERVER-GENERATED, never taken from the request. A proposal id is how a
@@ -687,7 +690,49 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     changeKind && facts
       ? employmentChangeContent(changeKind, facts, proposal, context)
       : proposalContent(proposal, context, match, input.today ?? businessToday());
-  return turn(directory.note ? `${content}\n\n${directory.note}` : content, proposal);
+  const notes = [
+    directory.note,
+    carried?.kind === "resolved" && proposal.employeeName
+      ? `I took **${proposal.employeeName}** from earlier in this conversation — if this form is for somebody else, tell me who.`
+      : undefined,
+  ].filter((note): note is string => Boolean(note));
+  return turn([content, ...notes].join("\n\n"), proposal);
+}
+
+/**
+ * ============================================================================
+ * THE PERSON THIS CONVERSATION HAS BEEN ABOUT
+ * ============================================================================
+ *
+ * Production feedback, 20 Oct 2026: a conversation that opened with a
+ * Corrective Action Form for Ellie Sendgraff ran on about the Late Opening
+ * policy, and "Create a Coaching Form from this conversation" then asked who
+ * the form was for. Her name was in the conversation — just further back than
+ * the six-turn window the facts are read from.
+ *
+ * So when the window names nobody, the whole conversation's manager turns are
+ * read for the person — the person only, every other fact still comes from the
+ * window. It is used only when the conversation settles on ONE person
+ * (`employeeState`, with its corrections and "not her" rules), and the reply
+ * says where the name came from, so the manager can change it before Create.
+ */
+function employeeFromEarlierTurns(input: ProposalTurn, context: ManagerContext): EmployeeResolution | null {
+  if (resolveEmployee(context).kind !== "missing") return null;
+  const turns = [
+    ...input.history
+      .filter((message) => message.role === "user" && !message.error)
+      .filter((message) => typeof message.content === "string" && message.content.trim() !== "")
+      .map((message) => ({ id: message.id, content: message.content.trim() })),
+    { id: input.questionMessageId, content: input.question.trim() },
+  ];
+  if (turns.length <= context.messages.length) return null;
+  const resolution = employeeState({
+    messages: turns,
+    ids: [],
+    text: turns.map((turn) => turn.content).join("\n\n"),
+    truncated: false,
+  }).resolution;
+  return resolution.kind === "resolved" ? resolution : null;
 }
 
 /**
@@ -728,9 +773,11 @@ async function checkTypedEmployee(
   input: ProposalTurn,
   match: TemplateSummary,
   context: ManagerContext,
+  /** A name read from earlier in the conversation, when the window had none. */
+  carried: EmployeeResolution | null = null,
 ): Promise<DirectoryCheck> {
   if (!NAME_CHECKED_TEMPLATES.has(match.key)) return {};
-  const typed = resolveEmployee(context);
+  const typed = carried ?? resolveEmployee(context);
   if (typed.kind !== "resolved") return {};
 
   const roster = await loadScopedRoster(input.actor.scope);

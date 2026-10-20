@@ -1,7 +1,7 @@
 import { REPORTS } from "@/features/reports/reports-routes";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
-import type { AskContext } from "./types";
+import type { AskContext, OpenFormSummary } from "./types";
 
 /**
  * SUNNY'S PRODUCTION SYSTEM INSTRUCTION AND GROUNDING FORMAT.
@@ -440,6 +440,12 @@ export function buildSystemPrompt(input: {
    */
   policyManualNote?: string | null;
   /**
+   * The form created earlier in this conversation, as it reads now — set by
+   * the route from the instance, never from the request body. Null leaves the
+   * prompt exactly as it was. See `lib/forms/open-form-summary.ts`.
+   */
+  openForm?: OpenFormSummary | null;
+  /**
    * Whether this person's role holds `view_reports`, from the authorized
    * actor. Selects which Reports & Analytics guidance the prompt carries — see
    * `buildReportsGuideSection`. Absent is treated as no access: a caller that
@@ -641,13 +647,44 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.${formsLibrarySection}${formRecordsSection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
+${input.openForm ? openFormRule(input.openForm) : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`}${formsLibrarySection}${formRecordsSection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
 Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers. ${MODE_INSTRUCTION[mode]}
 
 ${SUNNY_VOICE}`;
+}
+
+/**
+ * ============================================================================
+ * A FORM IS OPEN — THE ANSWER IS TOLD SO, AND WHAT IT SAYS
+ * ============================================================================
+ *
+ * Production feedback, 20 Oct 2026: "No form has been created yet — there's
+ * no draft card in this conversation", said beside the draft on screen, and
+ * the manager told to create it again. The rule above was true of a turn with
+ * no form and false of this one, so it is replaced, not added to: the model is
+ * told which form is open, for whom, what it says, and how a change is made.
+ *
+ * The form's text is the RECORD, not a company source — it is never cited with
+ * a marker, and the policy-source rules above still decide what may be said
+ * about policy. A Direct policy line Ask Sunny quoted from the manual says so.
+ */
+export function openFormRule(form: OpenFormSummary): string {
+  const lines = form.lines.length
+    ? form.lines.map((line) => `    ${line.label}: ${JSON.stringify(line.value)}`).join("\n")
+    : "    (nothing filled in yet)";
+  const policy =
+    form.unverifiedPolicy.length > 0
+      ? `Not yet checked against the official manual: ${form.unverifiedPolicy.join(", ")}.`
+      : "Its policy lines, where it has any, were quoted from the official manual.";
+  return `- A FORM IS OPEN IN THIS CONVERSATION: the ${form.templateName} for ${form.employeeName}, ${form.status === "draft" ? "a draft the manager can still edit" : "finalized"}. It is on screen as a card above. NEVER say no form has been created, never say there is no draft card, and never ask the manager to create this form again. ${policy} What it says now:
+${lines}
+- The form's text is the record, not a company source: never cite it with a marker.
+- ${form.status === "draft" ? `CHANGES TO THIS FORM ARE MADE IN THIS CONVERSATION OR ON THE CARD — never by starting another form. If the manager asks for a change this answer has not made, do not claim it was made and do not send them elsewhere: tell them to say it in plain words — for example "add the Late Opening policy", "change it to a written warning", or "add that she was 20 minutes late" — or to edit the card and press Save changes. A policy is added by naming the manual's section; Ask Sunny quotes it onto the form word for word.` : "It is finalized: a change needs a revision, opened from Forms → Form Monitoring."}
+- Finalizing and signing are the manager's. When they say it is ready or that they have verified it, tell them to press Finalize on the card — you do not finalize, issue or sign it. Do not argue about a decision that is theirs, and do not ask them a yes-or-no question the form already answers.
+- NEVER SAY YOU HAVE CREATED, FILED OR SAVED A NEW FORM in this answer. If the manager wants a different form, ask them to request it by name and employee.`;
 }
 
 /**
