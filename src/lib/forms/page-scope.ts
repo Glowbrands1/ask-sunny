@@ -16,11 +16,14 @@ import { authorizedSalonIds } from "./location-scope";
  *                 whose scope the browser asserted about itself)
  *   noSalon       a verified reader with no resolvable home salon: nothing is
  *                 read at all and the page says why
+ *   ownCreatedBy  a restricted reader's account id, so their own forms at
+ *                 other salons are read too (then re-checked per row)
  */
 export interface PageFormsAccess {
   actor: FormsActor;
   locationIds: string[] | null;
   noSalon: boolean;
+  ownCreatedBy: string | null;
 }
 
 export async function pageFormsAccess(
@@ -36,8 +39,8 @@ export async function pageFormsAccess(
     visibility,
   };
   if (!visibility || visibility.level === "global") {
-    return { actor, locationIds: null, noSalon: false };
+    return { actor, locationIds: null, noSalon: false, ownCreatedBy: null };
   }
   const locationIds = authorizedSalonIds(visibility);
-  return { actor, locationIds, noSalon: locationIds.length === 0 };
+  return { actor, locationIds, noSalon: locationIds.length === 0, ownCreatedBy: actor.id };
 }

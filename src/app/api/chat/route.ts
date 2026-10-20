@@ -149,16 +149,50 @@ export async function POST(request: Request) {
             instanceId: parsed.activeFormInstanceId,
             question: parsed.question,
             today: parsed.context.todayIso,
+            history: parsed.history,
           })
         : null;
       /*
-       * "REDRAFT IT WITH THESE CHANGES" on a coaching form this conversation
-       * created — the open record, revised in place, rather than a new form
-       * drafted from scratch. Null for anything that is not that, exactly
-       * like the correction above. See `lib/forms/chat-revision.ts`.
+       * "ADD THE LATE OPENING POLICY TO THIS FORM" — a manual section named,
+       * added, swapped or removed on the Direct policy line of the form that
+       * is open. The manual's own words, found by its own heading; no model
+       * writes them. Null for anything else. See `lib/forms/chat-policy-change.ts`.
+       */
+      const policyChange =
+        !correction && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-policy-change")).changeActiveFormPolicy({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
+      /*
+       * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
+       * a name alone — the form on screen is redrafted from it, citation
+       * included. Null for anything else. See `lib/forms/chat-redraft.ts`.
+       *
+       * BEFORE THE REVISION: it answers only where Sunny's draft wrote nothing,
+       * and there a whole draft from the account — citation and all — is what
+       * the manager needs, not one field revised in place.
+       */
+      const redraft =
+        !correction && !policyChange && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
+      /*
+       * "REDRAFT IT WITH THESE CHANGES" on a coaching or Corrective Action form
+       * this conversation created — the open record, revised in place, rather
+       * than a new form drafted from scratch. Null for anything that is not
+       * that, exactly like the correction above. See `lib/forms/chat-revision.ts`.
        */
       const revision =
-        !correction && parsed.activeFormInstanceId
+        !correction && !policyChange && !redraft && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -168,18 +202,13 @@ export async function POST(request: Request) {
             })
           : null;
       /*
-       * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
-       * a name alone — the form on screen is redrafted from it, citation
-       * included. Null for anything else. See `lib/forms/chat-redraft.ts`.
+       * AN ORDINARY ANSWER STILL KNOWS THE FORM IS THERE. Without this it was
+       * told no card ever comes with an answer, and said "no form has been
+       * created yet" beside the draft on screen.
        */
-      const redraft =
-        !correction && !revision && parsed.activeFormInstanceId
-          ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
-              request,
-              instanceId: parsed.activeFormInstanceId,
-              question: parsed.question,
-              history: parsed.history,
-            })
+      const openForm =
+        !correction && !policyChange && !redraft && !revision && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId)
           : null;
       /*
        * "CHANGE EXIT FOR ASHLEY ROGERS" — a form already on file, asked for by
@@ -189,7 +218,7 @@ export async function POST(request: Request) {
        * `lib/forms/chat-reopen.ts`.
        */
       const reopened =
-        !correction && !revision && !redraft && mayAskToReopen(parsed.question)
+        !correction && !policyChange && !redraft && !revision && mayAskToReopen(parsed.question)
           ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
               request,
               question: parsed.question,
@@ -201,11 +230,12 @@ export async function POST(request: Request) {
           : null;
       answer =
         correction ??
-        revision ??
+        policyChange ??
         redraft ??
+        revision ??
         reopened ??
         (await answerQuestion(
-          parsed,
+          { ...parsed, openForm },
           {
             role: context.identity.role,
             scope: context.identity.scope,

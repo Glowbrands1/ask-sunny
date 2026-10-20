@@ -234,6 +234,18 @@ export function payrollDeductFromConversation(
 }
 
 /**
+ * A reply to Ask Sunny's own payroll question, when that question was the last
+ * thing it asked — "no", "Yes.", or "7. no" to a numbered intake. Read the
+ * same way the proposal reads it, so the answer the manager gives after the
+ * form is created lands on the form instead of being asked for again.
+ */
+export function payrollDeductReply(text: string, lastAssistant: string): PayrollDeductAnswer | null {
+  const asked = payrollQuestionIn(lastAssistant);
+  if (!asked) return null;
+  return (asked.number !== null ? numberedAnswer(text, asked.number) : null) ?? (asked.alone ? bareAnswer(text) : null);
+}
+
+/**
  * The value to store for an answer: one ticked option, or nothing at all.
  * Never both boxes, never a default.
  */

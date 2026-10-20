@@ -17,7 +17,7 @@ import { changeOnEditableDraft } from "./editable-draft";
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
-import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection } from "./payroll-deduct";
+import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection, payrollDeductReply } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
@@ -51,11 +51,19 @@ export async function correctActiveForm(input: {
   instanceId: string;
   question: string;
   today: string;
+  /**
+   * The conversation so far — read only for the last assistant turn, so a
+   * bare "no" that answers Ask Sunny's own payroll question is read as that
+   * answer rather than asked for again.
+   */
+  history?: readonly { role: string; content: string; error?: unknown }[];
 }): Promise<AskResponse | null> {
   // A cheap first reading, before anything is loaded: most turns are not corrections.
   const employmentCorrection = correctionValues(input.question, input.today);
   const exitCorrection = exitCorrectionValues(input.question, input.today);
-  const payroll = payrollDeductCorrection(input.question);
+  const lastAssistant =
+    [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
+  const payroll = payrollDeductCorrection(input.question) ?? payrollDeductReply(input.question, lastAssistant);
   if (!employmentCorrection && !exitCorrection && !payroll) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;

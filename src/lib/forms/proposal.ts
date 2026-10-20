@@ -254,6 +254,19 @@ export type EmployeeResolution =
  * There "paulyne", "paulyne co" and "PAULYNE CO" read exactly as "Paulyne Co"
  * does, and a first name alone is a name. See `readTypedName`.
  */
+/**
+ * A capitalised run made only of words that are never anybody's name — "Late
+ * Opening", "Dress Code", "Cell Phones". Production, 20 Oct 2026: "create
+ * corrective action for Ellie Sendgraff for Late Opening" asked whether the
+ * form was for Ellie Sendgraff or for Late Opening. A policy is named in
+ * capitals as naturally as a person is; one word that could be a name keeps
+ * the run a candidate.
+ */
+function namesATopic(run: string): boolean {
+  const words = run.trim().split(/\s+/);
+  return words.length >= 2 && words.every((word) => NOT_A_TYPED_NAME.has(word.toLowerCase()));
+}
+
 export function extractEmployeeNames(text: string): string[] {
   return readEmployeeMentions(text).names;
 }
@@ -526,6 +539,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     if (opensWithRosterState(candidate) && !AS_A_PERSON(candidate)) continue;
     if (isRosterSalonName(candidate)) continue;
     if (isJobTitlePhrase(candidate)) continue;
+    if (namesATopic(candidate)) continue;
     if (!candidate.split(/\s+/).some(notAName)) {
       // Led by a reply ("It's …"), the run IS the answer.
       (candidate === run ? found : strong).push(candidate);
@@ -533,8 +547,12 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   }
 
   const PREPOSED = new RegExp(`\\b(?:for|about|with|regarding)\\s+(${NAME})\\b`, "g");
+  const RUN = new RegExp(`^${NAME}(?:\\s+${PART})*`);
   for (const match of text.matchAll(PREPOSED)) {
     const candidate = match[1]!.trim();
+    // "for Late Opening": the first word of a capitalised policy title.
+    const run = RUN.exec(text.slice(match.index! + match[0].length - match[1]!.length))?.[0] ?? candidate;
+    if (run.includes(" ") && namesATopic(run)) continue;
     if (!notAName(candidate)) found.push(candidate);
   }
 

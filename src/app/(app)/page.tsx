@@ -101,7 +101,7 @@ export default async function OverviewPage() {
     const outstanding = access.noSalon
       ? []
       : withoutUnreadable(
-          await listOutstandingFollowUps(50, locationIds),
+          await listOutstandingFollowUps(50, locationIds, access.ownCreatedBy),
           (permission) => permission === "create_exit_form" && readsExit,
         ).filter((instance) => actorMaySeeInstance(access.actor, instance));
 
