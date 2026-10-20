@@ -239,6 +239,8 @@ export async function POST(request: Request) {
           {
             role: context.identity.role,
             scope: context.identity.scope,
+            subject: context.identity.subject,
+            verified: context.identity.verified,
           },
           /*
            * WHOSE EARLIER CONVERSATIONS SUNNY MAY RECALL: the validated
