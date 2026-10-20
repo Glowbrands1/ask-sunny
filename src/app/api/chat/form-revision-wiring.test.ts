@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { businessToday } from "@/lib/business-date";
+
 /**
  * ============================================================================
  * THE CHAT ROUTE SENDS "REDRAFT IT" TO THE OPEN FORM
@@ -128,7 +130,8 @@ describe("a revision of the open form", () => {
       }),
     );
     expect(response.status).toBe(200);
-    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: "2026-10-02" });
+    // The server's business day, never the date the browser sent — see `context` in the route.
+    expect(seen.revised[0]).toMatchObject({ question: "Change the follow-up date to 10/15", today: businessToday() });
   });
 
   it("falls through to an ordinary answer when the turn is not a revision", async () => {
