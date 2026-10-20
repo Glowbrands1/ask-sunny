@@ -106,6 +106,12 @@ describe("isFormRecordsQuestion", () => {
     "how many coaching forms have I filed this month",
     "show me the write-ups for Jordan",
     "Any prior corrective action for Ellie?",
+    "past coaching file for ellie sendgraff",
+    "does ellie have a past coaching file",
+    "past ca for ellie sendgraff",
+    "any past CAs for Dana?",
+    "does dana have a previous CA form",
+    "past corrective action form for Marcus",
   ])("fires on %s", (question) => {
     expect(isFormRecordsQuestion(question)).toBe(true);
   });
@@ -128,6 +134,8 @@ describe("candidateNameWords", () => {
       "sendgraff",
     ]);
     expect(candidateNameWords("What is Dana Moss's coaching history?")).toEqual(["dana", "moss"]);
+    expect(candidateNameWords("past ca for ellie sendgraff")).toEqual(["ellie", "sendgraff"]);
+    expect(candidateNameWords("past coaching file for Ellie Sendgraff")).toEqual(["ellie", "sendgraff"]);
   });
 });
 

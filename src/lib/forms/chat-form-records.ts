@@ -43,7 +43,7 @@ import { listInstances, type InstanceRow } from "./instances";
 /* ------------------------------------------------------------------ gate --- */
 
 const FORM_NOUN =
-  "(?:coachings?|coaching (?:forms?|records?|notes?|sessions?)|forms?|write[- ]?ups?|corrective(?: actions?)?|warnings?|documentation|records?|epps?|follow[- ]?ups?|disciplinary|discipline|exit (?:forms?|interviews?))";
+  "(?:coachings?|coaching (?:forms?|records?|notes?|sessions?|files?)|forms?|files?|write[- ]?ups?|corrective(?: actions?)?(?: forms?)?|ca|cas|cafs?|ca forms?|warnings?|documentation|records?|epps?|follow[- ]?ups?|disciplinary|discipline|exit (?:forms?|interviews?))";
 
 const FORM_RECORDS_PATTERNS: readonly RegExp[] = [
   // "previous coachings", "any write-ups", "open follow-ups", "past forms"
@@ -63,7 +63,7 @@ const FORM_RECORDS_PATTERNS: readonly RegExp[] = [
   ),
   new RegExp(`\\bhow many\\s+${FORM_NOUN}\\b`),
   // "coachings for ellie", "write-ups on dana"
-  /\b(?:coachings|write[- ]?ups|forms|corrective actions|warnings)\s+(?:for|on|about)\s+\w/,
+  /\b(?:coachings|write[- ]?ups|forms|corrective actions|cas|warnings)\s+(?:for|on|about)\s+\w/,
 ];
 
 /**
@@ -100,7 +100,7 @@ const STOP_WORDS = new Set(
     "exit interview interviews follow followup followups history file monitoring many much " +
     "created create completed submitted started team member members staff salon store manager " +
     "director stylist consultant sunny ask know find list give get got any people person " +
-    "performance plan plans has hasnt havent doesnt didnt isnt wasnt dont"
+    "performance plan plans has hasnt havent doesnt didnt isnt wasnt dont ca cas caf cafs files"
   ).split(" "),
 );
 
