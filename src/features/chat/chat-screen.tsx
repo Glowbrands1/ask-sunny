@@ -13,6 +13,7 @@ import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { activityNowIso } from "@/lib/utils/date";
 import { createId } from "@/lib/utils/id";
+import { authorFromSession } from "@/lib/chat/message-author";
 import { conversationRatingTarget } from "@/lib/feedback/conversation";
 import type {
   AnswerMode,
@@ -49,9 +50,14 @@ export function ChatScreen() {
     removeConversation,
     clearConversations,
     accountHistory,
+    accountConversationIds,
     conversationSyncFailed,
     retryConversationSync,
   } = useAppStore();
+  const signedIn = useMemo(
+    () => authorFromSession(user, managerDisplayName),
+    [user, managerDisplayName],
+  );
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftMessages, setDraftMessages] = useState<ChatMessage[]>([]);
@@ -119,6 +125,17 @@ export function ChatScreen() {
   );
 
   const messages = activeConversation?.messages ?? draftMessages;
+
+  /*
+   * A draft is being typed by whoever is signed in. A saved thread is theirs
+   * only if their account holds it: anything else in this shared browser may
+   * have been started by somebody else. Demo mode has one person and no
+   * account to ask.
+   */
+  const ownedBySignedIn =
+    activeId === null ||
+    !accountHistory ||
+    (accountConversationIds?.has(activeId) ?? false);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -215,6 +232,7 @@ export function ChatScreen() {
         role: "user",
         content: text,
         createdAt: activityNowIso(),
+        author: signedIn,
       };
 
       let conversationId = activeId;
@@ -388,6 +406,7 @@ export function ChatScreen() {
       mode,
       managerDisplayName,
       primaryLocationName,
+      signedIn,
       addConversation,
       appendConversationMessages,
       reportContext,
@@ -956,6 +975,7 @@ export function ChatScreen() {
                     onRetry={(question) => void send(question)}
                     onFormCreated={attachFormInstance}
                     onStartAnother={startAnotherForm}
+                    ownedBySignedIn={ownedBySignedIn}
                   />
                 ))}
                 {busy ? <ThinkingBubble /> : null}
