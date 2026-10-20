@@ -3,6 +3,7 @@ import "server-only";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
+import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { answersFormClarification } from "@/lib/forms/form-clarification";
 import {
@@ -878,6 +879,14 @@ export async function answerQuestion(
     policyManualNote,
     /* Read from the instance by the route, never from the body. */
     openForm: request.openForm ?? null,
+    /*
+     * From the AUTHORIZED actor, the same matrix the report pages' guard
+     * reads, so Sunny only sends somebody to Reports & Analytics when the
+     * sidebar would show it to them and the page would let them in.
+     */
+    canViewReports:
+      actor.role !== null &&
+      hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
   });
 
   const answer = await callClaude({

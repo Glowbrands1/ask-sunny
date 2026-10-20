@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { REPORTS } from "@/features/reports/reports-routes";
+
 import {
   buildGroundingBlock,
+  buildReportsGuideSection,
   buildSystemPrompt,
   extractUsedMarkers,
   stripMarkers,
@@ -229,6 +232,53 @@ describe("extractUsedMarkers", () => {
 
   it("returns nothing when the answer cites nothing", () => {
     expect(extractUsedMarkers("I do not have that in the knowledge base.", [1])).toEqual([]);
+  });
+});
+
+/**
+ * Asked "where do i find kpi information", Sunny listed the OPS Dashboard,
+ * Power BI and the Portal Report Center from the knowledge base and never
+ * mentioned Reports & Analytics — the section of this app that holds the
+ * reports — because nothing told it the section exists.
+ */
+describe("the Reports & Analytics guide", () => {
+  const base = {
+    assistantName: "Sunny",
+    brandName: "Sun Tan City",
+    salonNoun: "salon",
+    context: CONTEXT,
+    mode: "standard" as const,
+    hasContext: true,
+  };
+
+  it("names the section and links every tab for a role that can open it", () => {
+    const prompt = buildSystemPrompt({ ...base, canViewReports: true });
+
+    expect(prompt).toContain("REPORTS & ANALYTICS — WHERE THE NUMBERS LIVE IN THIS APP");
+    expect(prompt).toMatch(/where to find KPIs/i);
+    for (const report of REPORTS) {
+      expect(prompt).toContain(`[${report.label}](${report.path})`);
+    }
+    expect(prompt).toContain('"Ask Sunny about this report"');
+  });
+
+  it("puts systems outside the app second", () => {
+    const section = buildReportsGuideSection(true, "Sunny");
+
+    expect(section).toMatch(/OPS Dashboard, Power BI.*come second/);
+  });
+
+  it("does not send a role without view_reports there", () => {
+    const prompt = buildSystemPrompt({ ...base, canViewReports: false });
+
+    expect(prompt).toMatch(/cannot open the Reports & Analytics section/);
+    for (const report of REPORTS) {
+      expect(prompt).not.toContain(report.path);
+    }
+  });
+
+  it("treats an absent flag as no access", () => {
+    expect(buildSystemPrompt(base)).toMatch(/cannot open the Reports & Analytics section/);
   });
 });
 
