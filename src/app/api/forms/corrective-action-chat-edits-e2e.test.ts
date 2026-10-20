@@ -207,9 +207,15 @@ const said = (content: string): ChatMessage => ({
 
 const chat = () => new Request("https://app.test/api/chat", { method: "POST" });
 
-/** The production conversation: a verbal warning for Ellie, created in chat. */
+/**
+ * A verbal warning for Ellie, created in chat. The account says she was late
+ * rather than naming Late Opening, so the first draft cites Attendance and the
+ * Late Opening section is what the conversation then asks to add. (Named in
+ * the account, the first draft cites Late Opening by itself — see
+ * `DESCRIBED_SECTIONS`.)
+ */
 async function createdForm() {
-  const message = said("create corrective action for for Ellie Sendgraff for Late Opening from the policy manual. It is a verbal warning");
+  const message = said("create corrective action for Ellie Sendgraff, she was late to work today. It is a verbal warning");
   const response = await proposeFormForTurn({
     history: [],
     question: message.content,
@@ -461,5 +467,15 @@ describe("changing to a different form keeps the person the conversation is abou
     expect(response?.formProposal?.employeeName).toBe("Ellie Sendgraff");
     expect(response?.content).toContain("from earlier in this conversation");
     expect(response?.content).not.toMatch(/employee's full name/i);
+  });
+});
+
+describe("a section the form already cites", () => {
+  it("is said to be there, and nothing is rewritten", async () => {
+    const { id, history } = await createdForm();
+    await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy", history });
+    const answer = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy", history });
+    expect(answer?.content).toMatch(/already cites \*\*Late Opening\*\*/);
+    expect(answer?.formUpdate).toBeUndefined();
   });
 });

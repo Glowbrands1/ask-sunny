@@ -188,7 +188,7 @@ describe("1. a manager with one salon is never asked for it", () => {
   });
 
   it("goes straight to the draft once the employee is named", async () => {
-    const response = await ask("Create a corrective action form for Jane Smith", salons(WORNALL));
+    const response = await ask("Create a corrective action form for Jane Smith, she was late today", salons(WORNALL));
 
     expect(response.formProposal!.status).toBe("ready");
     expect(response.formProposal!.supportsInlineDraft).toBe(true);

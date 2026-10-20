@@ -807,10 +807,12 @@ export function isManagementTitle(jobTitle: string | null | undefined): boolean 
 export function sectionHeadingsFor(input: {
   readonly offenseKeys: readonly string[];
   readonly jobTitle?: string | null;
+  /** The manager's own account, read only for `DESCRIBED_SECTIONS`. */
+  readonly notes?: string | null;
 }): string[][] {
   const management = isManagementTitle(input.jobTitle);
 
-  return input.offenseKeys
+  const ticked = input.offenseKeys
     .map((key) => OFFENSE_MANUAL_SECTIONS[key])
     .filter((entry): entry is OffenseSections => entry !== undefined)
     .map((entry) =>
@@ -818,7 +820,44 @@ export function sectionHeadingsFor(input: {
         ? [...entry.managementHeadings]
         : [...entry.headings],
     );
+
+  const notes = input.notes ?? "";
+  const described = DESCRIBED_SECTIONS.filter(
+    (rule) => input.offenseKeys.includes(rule.offenseKey) && rule.describes.test(notes),
+  ).map((rule) => [...rule.headings]);
+
+  return [...described, ...ticked];
 }
+
+/**
+ * ============================================================================
+ * A SECTION THE MANAGER'S ACCOUNT NAMES, UNDER A BOX THAT GOVERNS IT
+ * ============================================================================
+ *
+ * The Tardiness box cites Attendance, which governs every late arrival. A late
+ * OPENING is also governed by its own section — the one that says the manager
+ * opens in their place and the employee reimburses The Company $25.00 by
+ * payroll deduction — and a Corrective Action written for one should cite it.
+ * Production, 20 Oct 2026: a late opener's form cited Attendance alone, and
+ * the manager pasted the Late Opening wording in by hand, with no source.
+ *
+ * ONLY UNDER THE BOX THAT GOVERNS IT, and only where the manager's own words
+ * say opening: the section is cited in addition to the box's own, first,
+ * because it is the more specific of the two. Words that merely contain
+ * "open" — an open drawer, open communication — do not count.
+ */
+const DESCRIBED_SECTIONS: readonly {
+  readonly offenseKey: string;
+  readonly describes: RegExp;
+  readonly headings: readonly string[];
+}[] = [
+  {
+    offenseKey: "tardiness",
+    describes:
+      /\b(?:late[- ]open(?:ing|ed)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
+    headings: ["Late Opening"],
+  },
+];
 
 /* ------------------------------------------------------------ reference --- */
 
@@ -862,6 +901,7 @@ export function manualSectionsFor(input: {
   readonly chunks: readonly ManualChunk[];
   readonly offenseKeys: readonly string[];
   readonly jobTitle?: string | null;
+  readonly notes?: string | null;
 }): ManualSection[] {
   const found: ManualSection[] = [];
 

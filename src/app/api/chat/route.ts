@@ -166,13 +166,31 @@ export async function POST(request: Request) {
             })
           : null;
       /*
-       * "REDRAFT IT WITH THESE CHANGES" on a coaching form this conversation
-       * created — the open record, revised in place, rather than a new form
-       * drafted from scratch. Null for anything that is not that, exactly
-       * like the correction above. See `lib/forms/chat-revision.ts`.
+       * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
+       * a name alone — the form on screen is redrafted from it, citation
+       * included. Null for anything else. See `lib/forms/chat-redraft.ts`.
+       *
+       * BEFORE THE REVISION: it answers only where Sunny's draft wrote nothing,
+       * and there a whole draft from the account — citation and all — is what
+       * the manager needs, not one field revised in place.
+       */
+      const redraft =
+        !correction && !policyChange && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+            })
+          : null;
+      /*
+       * "REDRAFT IT WITH THESE CHANGES" on a coaching or Corrective Action form
+       * this conversation created — the open record, revised in place, rather
+       * than a new form drafted from scratch. Null for anything that is not
+       * that, exactly like the correction above. See `lib/forms/chat-revision.ts`.
        */
       const revision =
-        !correction && !policyChange && parsed.activeFormInstanceId
+        !correction && !policyChange && !redraft && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -187,12 +205,13 @@ export async function POST(request: Request) {
        * created yet" beside the draft on screen.
        */
       const openForm =
-        !correction && !policyChange && !revision && parsed.activeFormInstanceId
+        !correction && !policyChange && !redraft && !revision && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId)
           : null;
       answer =
         correction ??
         policyChange ??
+        redraft ??
         revision ??
         (await answerQuestion({ ...parsed, openForm }, {
           role: context.identity.role,

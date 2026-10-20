@@ -31,7 +31,15 @@ vi.setConfig({ hookTimeout: 60_000, testTimeout: 60_000 });
 const state = vi.hoisted(() => ({
   modelInput: null as Record<string, unknown> | null,
   templateKey: "dpoa",
-  persisted: [] as { values: Record<string, string>; provenance: Record<string, Record<string, unknown>> }[],
+  persisted: [] as {
+    values: Record<string, string>;
+    checked: Record<string, string[]>;
+    provenance: Record<string, Record<string, unknown>>;
+  }[],
+  /** The form's stored values, as a redraft from chat finds them. */
+  values: [] as { fieldKey: string; value: string | null; checked: string[]; filledBy: string; provenance: Record<string, unknown> }[],
+  /** The offense box the fixture model ticks. */
+  modelOffense: ["dress_code"] as string[],
 }));
 
 vi.mock("@/lib/api/respond", () => ({
@@ -63,6 +71,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           status: "draft",
         },
         version: { document: parseFormDocument(seed.document), variants: seed.variants },
+        values: state.values,
       },
     };
   },
@@ -75,7 +84,7 @@ vi.mock("@/lib/forms/instances", () => ({
     _actor: string,
     provenance: Record<string, Record<string, unknown>> = {},
   ) => {
-    state.persisted.push({ values: draft.values ?? {}, provenance });
+    state.persisted.push({ values: draft.values ?? {}, checked: draft.checked ?? {}, provenance });
     return { accepted: { values: draft.values ?? {}, checked: draft.checked ?? {} }, rejected: [], policyRefused: [] };
   },
 }));
@@ -91,7 +100,10 @@ vi.mock("@/lib/ai/anthropic", () => ({
               type: "tool_use",
               name: "write_form_fields",
               /* The model's own attempt at the line, which must not survive. */
-              input: { values: { policy_language: "Shift Replacement — Text" }, checked: { offense_type: ["dress_code"] } },
+              input: {
+                values: { observation: "Observed: the model's account.", policy_language: "Shift Replacement — Text" },
+                checked: { offense_type: state.modelOffense },
+              },
             },
           ],
         };
@@ -178,11 +190,11 @@ async function insertManualCopy(id: string, source: "upload" | "woven") {
   }
 }
 
-async function draft(notes: string) {
+async function draft(notes: string, extra: Record<string, unknown> = {}) {
   state.persisted = [];
   const { POST } = await import("./instances/[id]/draft/route");
   const response = await POST(
-    new Request("http://localhost/api/forms/instances/form-1/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ notes }) }),
+    new Request("http://localhost/api/forms/instances/form-1/draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ notes, ...extra }) }),
     { params: Promise.resolve({ id: "form-1" }) },
   );
   return (await response.json()) as Record<string, unknown>;
@@ -199,6 +211,8 @@ beforeEach(async () => {
   await insertManualCopy(MANUAL_UPLOAD, "upload");
   await insertManualCopy(MANUAL_WOVEN, "woven");
   state.templateKey = "dpoa";
+  state.values = [];
+  state.modelOffense = ["dress_code"];
 });
 
 afterEach(async () => {
@@ -261,6 +275,61 @@ describe("Direct policy from official manual, on the live corpus shape", () => {
   it("two copies of the SAME kind stay ambiguous: the line is left for the manager, never filled from an unrelated hit", async () => {
     await h.database.db.query("update public.knowledge_documents set source = 'upload' where id = $1", [MANUAL_WOVEN]);
     await draft("She was wearing a mini skirt at the front desk today. Dress code.");
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+  });
+});
+
+/*
+ * ============================================================================
+ * A REDRAFT FROM CHAT, OF A FORM THE MANAGER FILLED IN BY HAND
+ * ============================================================================
+ *
+ * Production, 20 Oct 2026: a Corrective Action created from a name alone came
+ * back blank and was filled in by hand, the policy wording pasted in with no
+ * section or page. When the manager then tells Sunny what happened, the form
+ * is redrafted (`chat-redraft.ts`) with `keepManagerValues`.
+ */
+describe("a redraft keeps what the manager typed", () => {
+  const typed = (fieldKey: string, value: string | null, checked: string[] = []) => ({
+    fieldKey,
+    value,
+    checked,
+    filledBy: "manager",
+    provenance: {},
+  });
+
+  it("keeps their lines and their tick, and replaces only the uncited policy line with a cited one", async () => {
+    state.values = [
+      typed("observation", "Observed: what the manager wrote."),
+      typed("policy_language", "Skirts must reach the knee."),
+      typed("offense_type", null, ["dress_code"]),
+    ];
+    /* The model would tick another box; the manager's tick decides the section. */
+    state.modelOffense = ["standards_of_conduct"];
+
+    await draft("She wore a mini skirt at the front desk today.", { keepManagerValues: true });
+    const persisted = state.persisted[0]!;
+
+    expect(persisted.values.observation).toBeUndefined();
+    expect(persisted.checked.offense_type).toBeUndefined();
+    expect(persisted.values.policy_language).toBe(
+      `${DRESS_CODE}\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15`,
+    );
+  });
+
+  it("leaves a first draft as it was: without the flag, every line is written", async () => {
+    await draft("She wore a mini skirt at the front desk today.");
+
+    expect(state.persisted[0]!.values.observation).toContain("the model's account");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
+  });
+
+  it("keeps a policy line they typed when the redraft cannot cite one", async () => {
+    await h.database.db.query("update public.knowledge_documents set source = 'upload' where id = $1", [MANUAL_WOVEN]);
+    state.values = [typed("policy_language", "Our dress code says skirts reach the knee.")];
+
+    await draft("She was wearing a mini skirt at the front desk today. Dress code.", { keepManagerValues: true });
+
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
   });
 });

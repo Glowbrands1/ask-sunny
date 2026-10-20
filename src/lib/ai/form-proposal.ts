@@ -24,10 +24,13 @@ import {
   type EppIntakeReading,
 } from "@/lib/forms/epp-intake";
 import {
+  answeredWhatHappened,
   asksToBeGuided,
   describesIncident,
   correctiveActionBasis,
   correctiveActionIntakeRequest,
+  describesMoreThanTheRequest,
+  NO_INCIDENT_NOTE,
   readCorrectiveActionIntake,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
@@ -66,6 +69,7 @@ import {
   type EmploymentChangeKind,
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
+import { PRODUCTION_SALONS } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import {
@@ -629,6 +633,26 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     ]);
   }
 
+  /*
+   * NAMED, BUT NOT DESCRIBED. A Corrective Action Form is drafted from the
+   * account, and the policy citation is resolved from the offense that account
+   * supports — so a form created from "create ca for Ellie Sendgraff" alone
+   * comes back without one. It can still be created; the card says so, and
+   * says that telling Sunny what happened redrafts it with the citation (see
+   * `chat-redraft.ts`).
+   */
+  if (
+    isCorrectiveActionForm(match) &&
+    proposal.status !== "needs_employee" &&
+    !describesIncident(context.text) &&
+    !describesMoreThanTheRequest(context.text, {
+      ignore: [proposal.employeeName ?? "", ...PRODUCTION_SALONS.map((salon) => salon.name)],
+    }) &&
+    !answeredWhatHappened([...input.history, { role: "user", content: input.question }])
+  ) {
+    proposal.awaitingIncident = true;
+  }
+
   const changeKind = employmentChangeKind(match.key);
   /*
    * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
@@ -1058,6 +1082,15 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
       typeof lastAssistant?.content === "string" &&
       (lastAssistant.content.includes(CA_POLICY_QUESTION) || lastAssistant.content.includes("**Policy:**"));
     if (raisedPolicy && namesCaPolicy(input.question)) return { kind: "explicit", templateKey: continued };
+
+    /*
+     * AND BY ITS ACCOUNT OF WHAT HAPPENED, in whatever words: "Ellie got to the
+     * salon at 11:23 for a 9:30 shift" names nobody and no topic, and sending
+     * it to retrieval would end the intake that just asked for it.
+     */
+    if (lastAssistant && answeredWhatHappened([lastAssistant, { role: "user", content: input.question }])) {
+      return { kind: "explicit", templateKey: continued };
+    }
   }
 
   /*
@@ -1628,6 +1661,7 @@ function proposalContent(
     lines.push(openingQuestions(proposal, context));
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
+    if (proposal.awaitingIncident) lines.push("", NO_INCIDENT_NOTE);
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,
@@ -1756,9 +1790,11 @@ function correctiveActionReady(
       item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
     );
 
-  const lines = [
-    `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
-  ];
+  const lines = proposal.awaitingIncident
+    ? [`I can create a **${proposal.templateName}** for **${proposal.employeeName}**.`, "", NO_INCIDENT_NOTE]
+    : [
+        `I'll draft a **${proposal.templateName}** for **${proposal.employeeName}** from what you've described, and check the applicable company policy before anything policy-related goes on it.`,
+      ];
 
   /*
    * THE POLICY, SUGGESTED OR ASKED — never left silently to the drafting
