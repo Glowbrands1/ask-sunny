@@ -196,3 +196,49 @@ describe("a labelled earlier step is history, wherever its date sits", () => {
     expect(extractFormDate(text, DAY)).toBe("2026-10-20");
   });
 });
+
+/*
+ * HR, 21 Oct 2026: the history as a LIST under one label. Every item is
+ * history — the second ("verbal ca 9-1-26") was handed to the drafting model
+ * as one of the manager's dates for the form, and left off the prior actions.
+ */
+describe("every item of a labelled history list is history", () => {
+  const DAY = "2026-10-21";
+  const PRODUCTION =
+    "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26. payroll deduct not applicable";
+
+  it("the production request: one incident date, two earlier steps", () => {
+    expect(listFormDates(PRODUCTION, DAY).map((found) => found.iso)).toEqual(["2026-10-20"]);
+    expect(extractFormDate(PRODUCTION, DAY)).toBe("2026-10-20");
+    expect(priorSteps(PRODUCTION, DAY)).toEqual([
+      expect.objectContaining({ iso: "2026-01-01", topic: "jba policy manual" }),
+      expect.objectContaining({ iso: "2026-09-01", topic: "verbal ca" }),
+    ]);
+  });
+
+  it.each([
+    ["previous coaching: verbal ca 9-1-26", ["2026-09-01"]],
+    ["prior actions: written warning 8/2/26", ["2026-08-02"]],
+    ["previous coaching: policy acknowledgement 1-1-26", ["2026-01-01"]],
+    ["previous CA: verbal ca 3/4/26, written warning 8/2/26 and final written 9/9/26", ["2026-03-04", "2026-08-02", "2026-09-09"]],
+    ["prior actions - policy acknowledgement 1-1-26, coaching on 2-2-26 & verbal ca 9-1-26", ["2026-01-01", "2026-02-02", "2026-09-01"]],
+    ["previous coaching: 1-1-26, 3-5-26", ["2026-01-01", "2026-03-05"]],
+    ["prior actions:\n- coaching 1-1-26\n- verbal ca 9-1-26", ["2026-01-01", "2026-09-01"]],
+  ])("%s", (text, isos) => {
+    expect(priorSteps(text, DAY).map((step) => step.iso)).toEqual(isos);
+    expect(listFormDates(text, DAY)).toEqual([]);
+  });
+
+  it.each([
+    // An account after the list: its date is the incident's.
+    ["previous coaching: jba manual 1-1-26, late again on 10/20", "2026-10-20"],
+    ["previous coaching: jba manual 1-1-26, and she missed the meeting on 10/20", "2026-10-20"],
+    // A new sentence ends the list.
+    ["previous coaching: jba manual 1-1-26. missed the meeting 10/20", "2026-10-20"],
+    // No colon or dash, no list: only the step right after the label is history.
+    ["prior CA 9/1, missed meeting 10/20", "2026-10-20"],
+  ])("ends at the list: %s", (text, incident) => {
+    expect(extractFormDate(text, DAY)).toBe(incident);
+    expect(priorSteps(text, DAY).map((step) => step.iso)).not.toContain(incident);
+  });
+});

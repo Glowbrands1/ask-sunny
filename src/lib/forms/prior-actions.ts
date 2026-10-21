@@ -42,32 +42,50 @@ export function signedDate(iso: string): string {
   return match ? `${match[2]}/${match[3]}/${match[1]}` : iso.trim();
 }
 
+/**
+ * The kinds of step the list records, most specific first. A verbal, written
+ * or final written CA is its own step, and so is a policy acknowledgement —
+ * "previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26" lists a
+ * verbal corrective action (HR, 21 Oct 2026).
+ */
+const STEPS: readonly [RegExp, string][] = [
+  [/final\s+written\s+(?:corrective actions?|cas?\b|c\/a)/i, "Final written corrective action"],
+  [/written\s+(?:corrective actions?|cas?\b|c\/a)/i, "Written corrective action"],
+  [/verbal\s+(?:corrective actions?|cas?\b|c\/a)/i, "Verbal corrective action"],
+  [/final\s+written\s+warning/i, "Final written warning"],
+  [/written\s+warning/i, "Written warning"],
+  [/verbal\s+warning/i, "Verbal warning"],
+  [/write[- ]?ups?|written up/i, "Write-up"],
+  [/corrective actions?/i, "Corrective action"],
+  // "prior CA 9/1": the form's own shorthand.
+  [/\b(?:cas?|c\/a)\b/i, "Corrective action"],
+  [/coach(?:ed|ing)?/i, "Coaching"],
+  [/disciplin\w*/i, "Disciplinary action"],
+  [/warn(?:ing|ings|ed)/i, "Warning"],
+  [/(?:\bpolicy\s+)?\backnowledge?ments?\b|\backnowledged\b/i, "Policy acknowledgement"],
+];
+
 /** The step a manager's words named, as a line on the list begins. */
 function stepLabel(named: string): string {
-  const steps: [RegExp, string][] = [
-    [/final\s+written\s+warning/i, "Final written warning"],
-    [/written\s+warning/i, "Written warning"],
-    [/verbal\s+warning/i, "Verbal warning"],
-    [/write[- ]?ups?|written up/i, "Write-up"],
-    [/corrective actions?/i, "Corrective action"],
-    // "prior CA 9/1": the form's own shorthand.
-    [/\b(?:cas?|c\/a)\b/i, "Corrective action"],
-    [/coach(?:ed|ing)?/i, "Coaching"],
-    [/disciplin\w*/i, "Disciplinary action"],
-    [/warn(?:ing|ings|ed)/i, "Warning"],
-  ];
-  // The step nearest the date is the one the date belongs to; where two end
-  // at the same place ("verbal warning" and its "warning"), the more specific,
-  // listed first, wins.
-  let best: { end: number; label: string } | null = null;
-  for (const [pattern, label] of steps) {
+  return namedStep(named)?.label ?? "Coaching or corrective action";
+}
+
+/**
+ * The step nearest the date in the manager's words, and where it sits: the
+ * step nearest the date is the one the date belongs to. Where two end at the
+ * same place ("verbal warning" and its "warning"), the more specific, listed
+ * first, wins.
+ */
+function namedStep(named: string): { start: number; end: number; label: string } | null {
+  let best: { start: number; end: number; label: string } | null = null;
+  for (const [pattern, label] of STEPS) {
     const global = new RegExp(pattern.source, "gi");
     for (const match of named.matchAll(global)) {
       const end = match.index + match[0].length;
-      if (!best || end > best.end) best = { end, label };
+      if (!best || end > best.end) best = { start: match.index, end, label };
     }
   }
-  return best?.label ?? "Coaching or corrective action";
+  return best;
 }
 
 export function priorActionLine(step: string, iso: string, topic = ""): string {
@@ -89,8 +107,11 @@ const MANUAL_WORDS = new Map(
 );
 
 function stepTopic(topic: string | undefined): string {
-  return (topic ?? "")
-    .trim()
+  let words = (topic ?? "").trim();
+  // "previous coaching: verbal ca 9-1-26": the item names its own step, which the line already opens with.
+  const step = namedStep(words);
+  if (step) words = `${words.slice(0, step.start)} ${words.slice(step.end)}`.trim();
+  return words
     .split(/\s+/)
     .filter(Boolean)
     .map((word) => MANUAL_WORDS.get(word.toLowerCase()) ?? word)

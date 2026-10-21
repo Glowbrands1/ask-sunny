@@ -225,6 +225,8 @@ const WARNING_LEVEL_GIVEN: readonly RegExp[] = [
  *                     "prior" … in the same sentence, or before "before",
  *                     "previously", "last week" …, is a step already taken:
  *                     "she had a written CA in august" states no level here.
+ *                     So is one listed under a history heading ("previous
+ *                     coaching: jba policy manual 1-1-26, verbal ca 9-1-26").
  *   A BARE LEVEL      only as a sentence of its own — "… 10-20-26. verbal. no
  *                     payroll deduct." or "5. verbal" — never mid-sentence,
  *                     for the reason the intake gives above.
@@ -258,6 +260,16 @@ const LEVEL_HISTORY_BEFORE =
 const LEVEL_HISTORY_AFTER =
   /^\s*(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/;
 
+/**
+ * …or anywhere after a history heading in the same sentence: "previous
+ * coaching: …", "previous CA: …", "prior actions - …" open a list of what
+ * already happened. HR, 21 Oct 2026: "create a written CA for … previous
+ * coaching: jba policy manual 1-1-26, verbal ca 9-1-26" lists a verbal CA on
+ * file; the form being written is the written one requested.
+ */
+const LEVEL_HISTORY_HEADING =
+  /\b(?:prior|previous|past|earlier)\s+(?:actions?|warnings?|discipline|disciplinary(?:\s+actions?)?|corrective\s+actions?|coachings?|cas?|c\/a|steps|history|write[- ]?ups?)\s*[:\-–—]/;
+
 /** "actually written", "no, make it verbal" — a correction's lead-in. */
 const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rather|i\s+meant|i\s+mean|make\s+that)[\s,:-]*)*`;
 
@@ -284,7 +296,9 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
     for (const match of body.matchAll(LEVEL_NAMED)) {
       const before = body.slice(0, match.index);
       const after = body.slice(match.index + match[0].length);
-      if (LEVEL_HISTORY_BEFORE.test(before) || LEVEL_HISTORY_AFTER.test(after)) continue;
+      if (LEVEL_HISTORY_BEFORE.test(before) || LEVEL_HISTORY_AFTER.test(after) || LEVEL_HISTORY_HEADING.test(before)) {
+        continue;
+      }
       levels.add(match[1] as StatedWarningLevel);
     }
   }

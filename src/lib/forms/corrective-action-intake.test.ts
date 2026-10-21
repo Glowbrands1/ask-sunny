@@ -624,3 +624,27 @@ describe("statedWarningLevel — the level stated for this form", () => {
     expect(reading.supplied).toContain("warning_level");
   });
 });
+
+/*
+ * HR, 21 Oct 2026: "create a written CA for … previous coaching: jba policy
+ * manual 1-1-26, verbal ca 9-1-26 …". The verbal CA is an item of the history
+ * list under the label; the form being written is the written one requested.
+ * Synthetic names.
+ */
+describe("a verbal CA in a labelled history list is history", () => {
+  const PRODUCTION =
+    "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26. payroll deduct not applicable";
+
+  it("the production request is Written", () => {
+    expect(statedWarningLevel(PRODUCTION)).toBe("written");
+  });
+
+  it.each([
+    "missed the monthly meeting on 10-20-26. previous coaching: jba policy manual 1-1-26, verbal ca",
+    "missed the monthly meeting on 10-20-26. previous CA: verbal ca",
+    "missed the monthly meeting on 10-20-26. prior actions - written warning",
+    "missed the monthly meeting on 10-20-26. previous coaching: jba policy manual attendance and punctuality review, verbal ca",
+  ])("undated, under the label: %s", (text) => {
+    expect(statedWarningLevel(text)).toBeNull();
+  });
+});
