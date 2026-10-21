@@ -323,7 +323,7 @@ function namedPolicyLine(named: NamedPolicyReading): string {
     return `**Policy:** ${named.heading}, as you said — the policy manual's section on page ${named.page}. I'll quote it on the draft${box ? ` under **${box}**` : ""}.`;
   }
   if (named.lookup === "missing") {
-    return `**Policy:** I couldn't find a section of the current policy manual for "${named.phrase}", so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
+    return `**Policy:** Woven does not see a section of the current policy manual for "${named.phrase}" in the knowledge base, so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
   }
   return `**Policy:** "${named.phrase}", as you said. I'll look for that section in the current policy manual and quote it on the draft; if the manual has no section by that name, Direct policy is left for you to complete.`;
 }

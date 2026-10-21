@@ -562,7 +562,7 @@ describe('"violating visitors at work policy" is the manual\'s Visitors in the W
       "create verbal CA for remy calder for violating the unicorn parking policy on 10-10-26. no payroll deduct",
     ]);
 
-    expect(last.content).toMatch(/couldn't find a section of the current policy manual for "unicorn parking"/);
+    expect(last.content).toMatch(/Woven does not see a section of the current policy manual for "unicorn parking"/);
 
     state.draft = { values: { observation: "Observed:\nRemy parked in the wrong place." }, checked: {} };
     const { reference } = await create();
