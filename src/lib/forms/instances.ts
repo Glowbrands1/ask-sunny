@@ -137,6 +137,13 @@ function mapValue(row: Record<string, unknown>): InstanceValueRow {
   };
 }
 
+/** The same ticks, in any order. */
+function sameOptions(a: readonly string[], b: readonly string[]): boolean {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((key) => right.has(key));
+}
+
 async function recordEvent(
   instanceId: string,
   kind: string,
@@ -553,10 +560,36 @@ export async function saveInstanceValues(
    * record — see `required-closing.ts`. Nothing else they typed is changed.
    */
   const values = applyRequiredClosings(document, loaded.instance.variantKey, result.values);
-  await writeValues(instanceId, { values, checked: result.checked }, "manager");
+
+  /*
+   * ==========================================================================
+   * A FIELD THE MANAGER DID NOT CHANGE IS NOT RE-WRITTEN AS THEIRS
+   * ==========================================================================
+   *
+   * The card's Save sends EVERY value on the form, not just the edited ones.
+   * Writing them all as `manager` stripped the provenance off the policy
+   * citation Ask Sunny had verified, so one unrelated edit to Observation left
+   * the form unverifiable and Finalize refused it — production, 21 Oct 2026,
+   * a Verbal CA citing Standards of Conduct from the JBA Policy Manual.
+   *
+   * So a value identical to the stored one keeps its row exactly as it is:
+   * who wrote it and where it came from. Only what actually changed becomes
+   * the manager's.
+   */
+  const stored = new Map(loaded.values.map((row) => [row.fieldKey, row]));
+  const changedValues = Object.fromEntries(
+    Object.entries(values).filter(([key, value]) => (stored.get(key)?.value ?? "") !== value),
+  );
+  const changedChecked = Object.fromEntries(
+    Object.entries(result.checked).filter(
+      ([key, checked]) => !sameOptions(stored.get(key)?.checked ?? [], checked),
+    ),
+  );
+
+  await writeValues(instanceId, { values: changedValues, checked: changedChecked }, "manager");
   await recordEvent(instanceId, "edited", actor, {
-    fields: Object.keys(result.values).length,
-    groups: Object.keys(result.checked).length,
+    fields: Object.keys(changedValues).length,
+    groups: Object.keys(changedChecked).length,
     rejected: result.rejected,
   });
 
