@@ -11,8 +11,8 @@ import {
   payrollDeductCorrection,
   payrollDeductAmount,
   payrollDeductFromConversation,
+  payrollDeductSentence,
   statedPayrollDeduct,
-  withPayrollDeductInPlan,
 } from "./payroll-deduct";
 import { enforcePersonEdit, enforceResponsibilities } from "./responsibility";
 
@@ -299,10 +299,7 @@ describe("an amount between the question and its answer", () => {
   });
 });
 
-describe("the amount, and the Action Plan that states it", () => {
-  const PLAN =
-    "Tess Varga is expected to adhere to the cash handling policy by counting the drawer accurately. Moving forward, Tess should count her drawer at every shift change. Management will monitor compliance and provide coaching as needed.";
-
+describe("the amount, and the Action Plan sentence that states it", () => {
   it.each([
     ["payroll deduct of $3.25 is applicable", "$3.25"],
     ["payroll deduct applies and $3.25 will be deducted from check.", "$3.25"],
@@ -312,23 +309,21 @@ describe("the amount, and the Action Plan that states it", () => {
     expect(payrollDeductAmount(text)).toBe(amount);
   });
 
-  it("states the manager's amount, exactly, after what was drafted", () => {
-    expect(withPayrollDeductInPlan(PLAN, { answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe(
-      `${PLAN} $3.25 will be deducted from Tess's pay.`,
+  it("states the manager's amount, exactly", () => {
+    expect(payrollDeductSentence({ answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe(
+      "$3.25 will be deducted from Tess's pay.",
+    );
+    expect(payrollDeductSentence({ answer: "yes", amount: "$3.25", firstName: null })).toBe(
+      "$3.25 will be deducted from the employee's pay.",
     );
   });
 
   it("says a deduction applies, with no figure, when none was given", () => {
-    expect(withPayrollDeductInPlan(PLAN, { answer: "yes", amount: null, firstName: "Tess" })).toBe(
-      `${PLAN} A payroll deduction applies.`,
-    );
+    expect(payrollDeductSentence({ answer: "yes", amount: null, firstName: "Tess" })).toBe("A payroll deduction applies.");
   });
 
-  it("changes nothing on No, on an empty plan, or where the plan already says it", () => {
-    expect(withPayrollDeductInPlan(PLAN, { answer: "no", amount: "$3.25", firstName: "Tess" })).toBe(PLAN);
-    expect(withPayrollDeductInPlan(PLAN, { answer: null, amount: "$3.25", firstName: "Tess" })).toBe(PLAN);
-    expect(withPayrollDeductInPlan("", { answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe("");
-    const stated = `${PLAN} $3.25 will be deducted from Tess's pay.`;
-    expect(withPayrollDeductInPlan(stated, { answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe(stated);
+  it("says nothing on No or no answer", () => {
+    expect(payrollDeductSentence({ answer: "no", amount: "$3.25", firstName: "Tess" })).toBeNull();
+    expect(payrollDeductSentence({ answer: null, amount: "$3.25", firstName: "Tess" })).toBeNull();
   });
 });

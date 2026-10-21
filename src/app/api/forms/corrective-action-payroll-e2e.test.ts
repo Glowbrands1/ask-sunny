@@ -352,6 +352,8 @@ describe("changing the answer after the form exists", () => {
 
     const first = await download(id, "ca-payroll-before");
     expect(ticked(first.bytes)).toEqual(["Yes"]);
+    const plan = () => review(id).then(({ values }) => values.find((row) => row.fieldKey === "action_plan")?.value);
+    expect(await plan()).toMatch(/ A payroll deduction applies\. Future policy violations may result in /);
 
     const response = await correctActiveForm({
       request: new Request("https://app.test/api/chat"),
@@ -360,9 +362,11 @@ describe("changing the answer after the form exists", () => {
       today: "2026-09-29",
     });
     expect(response?.content).toBe(
-      "Updated the **Corrective Action Form** for **Dana Moss**: Is payroll deduct applicable? → No.",
+      "Updated the **Corrective Action Form** for **Dana Moss**: Is payroll deduct applicable? → No.\n\nThe Action Plan no longer states a payroll deduction.",
     );
-    expect(response?.formUpdate).toEqual({ instanceId: id, updated: ["payroll_deduct"] });
+    expect(response?.formUpdate).toEqual({ instanceId: id, updated: ["payroll_deduct", "action_plan"] });
+    /* The Action Plan Ask Sunny built follows the answer: no deduction sentence on No. */
+    expect(await plan()).not.toMatch(/deduct/i);
 
     const { values } = await review(id);
     expect(values.find((row) => row.fieldKey === "payroll_deduct")?.checked).toEqual(["no"]);

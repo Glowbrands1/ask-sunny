@@ -635,10 +635,18 @@ const C1 =
   "create ca form for tess varga. tess had a register shortage of $3.25 on 10-20-26. payroll deduct of $3.25 is applicable";
 
 const CLOSING =
-  "Future policy violations may be subject to additional corrective action up to and including termination of employment.";
+  "Future policy violations may result in additional corrective action up to and including termination of employment.";
 
+/*
+ * What the model would have written. The Action Plan is built by code now
+ * (District Manager feedback, 21 Oct 2026; `ca-action-plan.ts`), so none of
+ * this reaches the form.
+ */
 const DRAWER_PLAN =
   "Tess Varga is expected to adhere to the Sun Tan City cash handling policy by keeping the register accurate. Moving forward, Tess should count the drawer at every shift change. Management will monitor compliance and provide coaching as needed.";
+
+/* No offense box is ticked and no manual section cited for a register shortage here, so the plan names the applicable company policy. */
+const REVIEW_APPLICABLE = "Management will review the applicable company policy with Tess.";
 
 describe("a payroll deduction with an amount", () => {
   it("is read as Yes, not asked, and the Action Plan states the amount before the closing", async () => {
@@ -659,7 +667,7 @@ describe("a payroll deduction with an amount", () => {
     const form = await review(reference.instanceId);
 
     expect(field(form, "payroll_deduct")!.checked).toEqual(["yes"]);
-    expect(field(form, "action_plan")!.value).toBe(`${DRAWER_PLAN} $3.25 will be deducted from Tess's pay. ${CLOSING}`);
+    expect(field(form, "action_plan")!.value).toBe(`${REVIEW_APPLICABLE} $3.25 will be deducted from Tess's pay. ${CLOSING}`);
   });
 
   it('"payroll deduct applies and $3.25 will be deducted from check" says the same', async () => {
@@ -668,7 +676,7 @@ describe("a payroll deduction with an amount", () => {
 
     const { reference } = await create();
     expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
-      `${DRAWER_PLAN} $3.25 will be deducted from Tess's pay. ${CLOSING}`,
+      `${REVIEW_APPLICABLE} $3.25 will be deducted from Tess's pay. ${CLOSING}`,
     );
   });
 
@@ -676,20 +684,29 @@ describe("a payroll deduction with an amount", () => {
     const { create } = await conversation([
       "create ca form for tess varga, her register was short on 10-20-26. yes payroll deduct",
     ]);
-    state.draft = { values: { action_plan: DRAWER_PLAN }, checked: {} };
+    /*
+     * With an observation drafted: the plan is built only on a form the draft
+     * wrote something on — one created from a name alone stays blank.
+     */
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Tess Varga's register was short.", action_plan: DRAWER_PLAN },
+      checked: {},
+    };
 
     const { reference } = await create();
     const plan = field(await review(reference.instanceId), "action_plan")!.value!;
-    expect(plan).toBe(`${DRAWER_PLAN} A payroll deduction applies. ${CLOSING}`);
+    expect(plan).toBe(`${REVIEW_APPLICABLE} A payroll deduction applies. ${CLOSING}`);
     expect(plan).not.toMatch(/\$/);
   });
 
-  it("leaves the plan alone when payroll deduct is No", async () => {
+  it("says nothing about pay when payroll deduct is No", async () => {
     const { create } = await conversation([B1]);
     state.draft = { values: { action_plan: DRAWER_PLAN }, checked: {} };
 
     const { reference } = await create();
-    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(`${DRAWER_PLAN} ${CLOSING}`);
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `Management will review the Attendance policy with Tess. ${CLOSING}`,
+    );
   });
 });
 

@@ -331,6 +331,14 @@ const PLAN_WITH_PRONOUN =
 const PLAN_NAMED =
   "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time for every scheduled shift. Moving forward, Jessica should arrive ready to work at the start of the shift. Management will monitor compliance and provide coaching as needed.";
 
+/*
+ * The Action Plan is built by code from revision 6 (District Manager feedback,
+ * 21 Oct 2026; `ca-action-plan.ts`): what the model writes for it never reaches
+ * the form. Nothing here is ticked or cited, so the plan names the applicable
+ * company policy.
+ */
+const REVIEW = "Management will review the applicable company policy with Jessica.";
+
 const OPENING =
   "Create a CA for Jessica Moss. She was 30 minutes late today, verbal warning. She was coached on 9/2 and got a verbal warning on 9/21. No payroll deduct.";
 
@@ -365,8 +373,8 @@ describe("creating a Corrective Action from chat", () => {
     expect(byKey.observation).toContain("Jessica should plan to arrive early.");
     expect(byKey.observation).not.toMatch(/\b(?:she|her)\b/i);
 
-    // 3. The plan, named, and ending with the closing — exactly once.
-    expect(byKey.action_plan).toBe(`${PLAN_NAMED} ${CLOSING}`);
+    // 3. The plan, built, naming the employee and ending with the closing — exactly once.
+    expect(byKey.action_plan).toBe(`${REVIEW} ${CLOSING}`);
 
     const { text } = await download(id, "ca-rev5-created");
     expect(text).toContain("List previously received coaching and/or corrective action with date signed");
@@ -375,7 +383,8 @@ describe("creating a Corrective Action from chat", () => {
     expect(text).not.toContain("Previous corrective action for this policy or issue");
     expect(text).not.toContain("Date of previous corrective action");
     expect(count(text, CLOSING)).toBe(1);
-    expect(text.replace(/\s+/g, " ")).toContain(`the start of the shift. Management will monitor compliance and provide coaching as needed. ${CLOSING}`);
+    expect(text.replace(/\s+/g, " ")).toContain(`${REVIEW} ${CLOSING}`);
+    expect(text).not.toContain("Management will monitor compliance");
   });
 
   it("asks the intake question the new field answers", async () => {
@@ -398,19 +407,19 @@ describe("creating a Corrective Action from chat", () => {
     expect(plan.endsWith(CLOSING)).toBe(true);
   });
 
-  it("puts the closing on even when the model wrote no plan sentence the guards kept", async () => {
+  it("builds the plan whatever the model wrote for it", async () => {
     state.toolValues = { action_plan: "Jessica will arrive on time" };
     const { result } = await conversation([OPENING]);
-    expect(await valueOf(result.reference.instanceId, "action_plan")).toBe(`Jessica will arrive on time. ${CLOSING}`);
+    expect(await valueOf(result.reference.instanceId, "action_plan")).toBe(`${REVIEW} ${CLOSING}`);
   });
 });
 
 describe("changing the Action Plan after the form exists", () => {
-  it("keeps the closing through a manager's edit, a redraft and a chat correction", async () => {
+  it("keeps the closing through a manager's edit, a chat correction and a redraft", async () => {
     state.toolValues = { action_plan: PLAN_NAMED };
     const { result } = await conversation([OPENING]);
     const id = result.reference.instanceId;
-    expect(await valueOf(id, "action_plan")).toBe(`${PLAN_NAMED} ${CLOSING}`);
+    expect(await valueOf(id, "action_plan")).toBe(`${REVIEW} ${CLOSING}`);
 
     // A manager rewrites the plan and deletes the closing in the editor.
     await edit(id, { action_plan: "Jessica will set an earlier alarm and arrive ten minutes early." });
@@ -420,16 +429,10 @@ describe("changing the Action Plan after the form exists", () => {
 
     // …and types after it.
     await edit(id, { action_plan: `Jessica will arrive early. ${CLOSING} Jessica agreed to this plan.` });
-    expect(await valueOf(id, "action_plan")).toBe(`Jessica will arrive early. Jessica agreed to this plan. ${CLOSING}`);
+    const typed = `Jessica will arrive early. Jessica agreed to this plan. ${CLOSING}`;
+    expect(await valueOf(id, "action_plan")).toBe(typed);
 
-    // Ask Sunny redrafts the plan — the model leaves the closing out.
-    state.toolValues = { action_plan: "Moving forward, she should arrive ready to work at the start of each shift." };
-    await redraft(id, "Redo the action plan: Jessica was 30 minutes late today, verbal warning.");
-    const redrafted = (await valueOf(id, "action_plan"))!;
-    expect(redrafted).toBe(`Moving forward, Jessica should arrive ready to work at the start of each shift. ${CLOSING}`);
-    expect(count(redrafted, CLOSING)).toBe(1);
-
-    // A correction in chat to another line leaves the plan, and its closing, alone.
+    // A correction in chat to another line leaves the manager's plan, and its closing, alone.
     const correction = await correctActiveForm({
       request: new Request("https://app.test/api/chat"),
       instanceId: id,
@@ -437,7 +440,14 @@ describe("changing the Action Plan after the form exists", () => {
       today: "2026-09-29",
     });
     expect(correction?.formUpdate).toEqual({ instanceId: id, updated: ["payroll_deduct"] });
-    expect(await valueOf(id, "action_plan")).toBe(redrafted);
+    expect(await valueOf(id, "action_plan")).toBe(typed);
+
+    // Ask Sunny redrafts the form: the plan is built again, with the deduction now answered Yes.
+    state.toolValues = { action_plan: "Moving forward, she should arrive ready to work at the start of each shift." };
+    await redraft(id, "Redo the action plan: Jessica was 30 minutes late today, verbal warning.");
+    const redrafted = (await valueOf(id, "action_plan"))!;
+    expect(redrafted).toBe(`${REVIEW} A payroll deduction applies. ${CLOSING}`);
+    expect(count(redrafted, CLOSING)).toBe(1);
 
     const { text } = await download(id, "ca-rev5-after-corrections");
     expect(count(text, CLOSING)).toBe(1);
@@ -537,5 +547,126 @@ describe("a Corrective Action filed on revision 4, revised", () => {
     const revised = await download(revision, "ca-rev5-revision");
     expect(revised.text).toContain("Verbal warning for tardiness - signed 09/21/2026");
     expect(count(revised.text, CLOSING)).toBe(1);
+  });
+});
+
+describe("a Corrective Action filed on revision 5, edited as a new draft", () => {
+  /*
+   * THE ACTION PLAN BY ITS OWN RULES ON A REVISION (`ca-action-plan.ts`). A
+   * revision is filled against the CURRENT version, so a CA filed on revision
+   * 5 is revised onto revision 6. A plan Ask Sunny built is rebuilt there, in
+   * revision 6's words; a plan a person wrote is theirs, with only its closing
+   * brought up to date — replaced, never doubled. The filed record is not
+   * touched until the revision is finalized.
+   */
+  async function filedOnRevision5(plan: { value: string; filledBy: string; provenance: Record<string, unknown> }) {
+    const { CA_ACTION_PLAN_CLOSING_REVISION_5 } = await import("@/lib/forms/required-closing");
+    const { result } = await conversation([OPENING]);
+    const id = result.reference.instanceId;
+    const instance = store.form_instances.find((entry) => entry.id === id)!;
+    const current = store.form_template_versions.find((row) => row.id === instance.template_version_id)!;
+    const document = current.document as { blocks: Record<string, unknown>[] };
+    const revision5 = {
+      ...current,
+      id: "dpoa-revision-5",
+      version: 0,
+      status: "archived",
+      seed_revision: 5,
+      document: {
+        ...document,
+        blocks: document.blocks.map((block) => {
+          const field = block.field as Record<string, unknown> | undefined;
+          return field?.key === "action_plan"
+            ? { ...block, field: { ...field, requiredClosing: CA_ACTION_PLAN_CLOSING_REVISION_5 } }
+            : block;
+        }),
+      },
+    };
+    store.form_template_versions.push(revision5);
+    instance.template_version_id = revision5.id;
+    instance.status = "finalized";
+    instance.finalized_at = "2026-09-29T15:00:00Z";
+    const row = store.form_instance_values.find((entry) => entry.instance_id === id && entry.field_key === "action_plan")!;
+    Object.assign(row, { value: plan.value, filled_by: plan.filledBy, provenance: plan.provenance });
+    return { id, closing5: CA_ACTION_PLAN_CLOSING_REVISION_5 };
+  }
+
+  async function revise(id: string) {
+    joinOverview();
+    const response = await instanceRoute.POST(
+      new Request(`https://app.test/api/forms/instances/${id}`, { method: "POST", body: JSON.stringify({ action: "revise" }) }),
+      { params: Promise.resolve({ id }) },
+    );
+    expect(response.status).toBe(200);
+    joinOverview();
+    return ((await response.json()) as { instance: { id: string } }).instance.id;
+  }
+
+  it("rebuilds a plan Ask Sunny built in the current version's words, and leaves the filed one as signed", async () => {
+    const { ACTION_PLAN_SOURCE } = await import("@/lib/forms/ca-action-plan");
+    const { CA_ACTION_PLAN_CLOSING_REVISION_5: CLOSING_5 } = await import("@/lib/forms/required-closing");
+    const built = { source: ACTION_PLAN_SOURCE, policySource: "none", policies: [], payroll: null };
+    const { id } = await filedOnRevision5({ value: `${REVIEW} ${CLOSING_5}`, filledBy: "ai", provenance: built });
+
+    const revision = await revise(id);
+    const carried = (await review(revision)).values.find((row) => row.fieldKey === "action_plan")!;
+    expect(carried.value).toBe(`${REVIEW} ${CLOSING}`);
+    expect(count(carried.value!, "Future policy violations")).toBe(1);
+    // Still a plan Ask Sunny built, so a later policy or payroll change in chat rebuilds it again.
+    expect(
+      store.form_instance_values.find((row) => row.instance_id === revision && row.field_key === "action_plan")!.provenance,
+    ).toMatchObject({ source: ACTION_PLAN_SOURCE });
+
+    // The filed record: its revision-5 words, and still the finalized one on file.
+    expect(await valueOf(id, "action_plan")).toBe(`${REVIEW} ${CLOSING_5}`);
+    expect(store.form_instances.find((row) => row.id === id)!.status).toBe("finalized");
+    const filed = await download(id, "ca-rev5-filed-closing");
+    expect(count(filed.text, CLOSING_5)).toBe(1);
+    expect(filed.text.replace(/\s+/g, " ")).not.toContain("may result in additional corrective action");
+  });
+
+  it("builds the rebuilt plan from what the carried form says", async () => {
+    const { ACTION_PLAN_SOURCE } = await import("@/lib/forms/ca-action-plan");
+    const { CA_ACTION_PLAN_CLOSING_REVISION_5: CLOSING_5 } = await import("@/lib/forms/required-closing");
+    const built = { source: ACTION_PLAN_SOURCE, policySource: "none", policies: [], payroll: null };
+    const { id } = await filedOnRevision5({ value: `${REVIEW} ${CLOSING_5}`, filledBy: "ai", provenance: built });
+    // The offense line was filled in on the card after the plan was built.
+    store.form_instance_values = store.form_instance_values.filter(
+      (row) => !(row.instance_id === id && row.field_key === "policy_violated"),
+    );
+    store.form_instance_values.push({
+      instance_id: id,
+      field_key: "policy_violated",
+      value: "Attendance Violation",
+      checked: [],
+      filled_by: "manager",
+      provenance: {},
+    });
+
+    const revision = await revise(id);
+    expect(await valueOf(revision, "action_plan")).toBe(`Management will review the Attendance policy with Jessica. ${CLOSING}`);
+    expect(await valueOf(id, "action_plan")).toBe(`${REVIEW} ${CLOSING_5}`);
+  });
+
+  it("copies the plan exactly when the revision is on the version the form was filed on", async () => {
+    const { ACTION_PLAN_SOURCE } = await import("@/lib/forms/ca-action-plan");
+    const { result } = await conversation([OPENING]);
+    const id = result.reference.instanceId;
+    Object.assign(store.form_instances.find((row) => row.id === id)!, {
+      status: "finalized",
+      finalized_at: "2026-09-29T15:00:00Z",
+    });
+    const plan = store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "action_plan")!;
+    expect(plan.provenance).toMatchObject({ source: ACTION_PLAN_SOURCE });
+    const revision = await revise(id);
+    expect(await valueOf(revision, "action_plan")).toBe(plan.value);
+  });
+
+  it("keeps a plan the manager wrote, with only its closing brought up to date", async () => {
+    const { CA_ACTION_PLAN_CLOSING_REVISION_5: CLOSING_5 } = await import("@/lib/forms/required-closing");
+    const { id } = await filedOnRevision5({ value: `Jessica will arrive early. ${CLOSING_5}`, filledBy: "manager", provenance: {} });
+    const revision = await revise(id);
+    expect(await valueOf(revision, "action_plan")).toBe(`Jessica will arrive early. ${CLOSING}`);
+    expect(await valueOf(id, "action_plan")).toBe(`Jessica will arrive early. ${CLOSING_5}`);
   });
 });

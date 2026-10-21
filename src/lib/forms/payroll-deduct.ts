@@ -328,30 +328,21 @@ export function payrollDeductAmount(text: string): string | null {
 }
 
 /**
- * The Action Plan with the deduction stated, when the manager answered Yes:
- * "$3.25 will be deducted from Tess's pay.", or, with no amount stated, "A
- * payroll deduction applies." — added after what was drafted; the form's
- * required closing is moved back to the end at the write
- * (`applyRequiredClosings`), so it stays the last sentence. A plan that
- * already states the amount, or already says a deduction applies when no
- * amount was given, is returned as it is; so is an empty one, which stays the
- * manager's to write.
+ * The Action Plan's payroll sentence, when the manager answered Yes: "$3.25
+ * will be deducted from Tess's pay.", or, with no amount stated, "A payroll
+ * deduction applies." Null on No or no answer — the plan then says nothing
+ * about pay. Placed by `ca-action-plan.ts` between the review sentence and the
+ * form's required closing (District Manager feedback, 21 Oct 2026: the plan is
+ * built by code, so the deduction is one of its sentences rather than text
+ * added after a drafted paragraph).
  */
-export function withPayrollDeductInPlan(
-  plan: string,
-  input: { answer: PayrollDeductAnswer | null; amount: string | null; firstName: string | null },
-): string {
-  if (input.answer !== "yes" || typeof plan !== "string" || plan.trim() === "") return plan;
-  const body = plan.trim();
-  if (input.amount) {
-    if (body.replace(/\s+/g, "").includes(input.amount)) return plan;
-    const whose = input.firstName ? `${input.firstName}'s` : "the employee's";
-    return `${terminated(body)} ${input.amount} will be deducted from ${whose} pay.`;
-  }
-  if (/\bdeduct/i.test(body)) return plan;
-  return `${terminated(body)} A payroll deduction applies.`;
-}
-
-function terminated(text: string): string {
-  return /[.!?…"'”’)\]]$/.test(text) ? text : `${text}.`;
+export function payrollDeductSentence(input: {
+  answer: PayrollDeductAnswer | null;
+  amount: string | null;
+  firstName: string | null;
+}): string | null {
+  if (input.answer !== "yes") return null;
+  if (!input.amount) return "A payroll deduction applies.";
+  const whose = input.firstName ? `${input.firstName}'s` : "the employee's";
+  return `${input.amount} will be deducted from ${whose} pay.`;
 }
