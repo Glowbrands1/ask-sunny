@@ -76,16 +76,17 @@ export function citedPolicyNames(provenance: Record<string, unknown> | null | un
 
 /**
  * The policies a Policy Violated line names — the offense labels it prints,
- * one per box. "Violation of Company Policies — Visitors in the Workplace" is
- * the section; the box alone names no policy; "Dress Code Violation" is the
- * Dress Code.
+ * one per box. "Violation of Company Policies — Visitors in the Workplace" and
+ * "Tardiness/Leaving Early — Late Opening" are the section; Violation of
+ * Company Policies alone names no policy; "Dress Code Violation" is the Dress
+ * Code.
  */
 export function policyNamesFromViolated(value: string | null | undefined): string[] {
   return (value ?? "")
     .split(/\s*,\s*/)
     .map((label) => {
       const text = label.trim();
-      const section = /^violation of company polic(?:y|ies)\s*[—–-]\s*(.+)$/i.exec(text);
+      const section = /^.+?\s+[—–]\s+(.+)$/.exec(text) ?? /^violation of company polic(?:y|ies)\s*-\s*(.+)$/i.exec(text);
       if (section) return section[1]!.trim();
       if (/^violation of company polic(?:y|ies)$/i.test(text)) return "";
       return text.replace(/\s+violations?$/i, "").trim();

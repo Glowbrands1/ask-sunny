@@ -123,6 +123,14 @@ describe("the pieces", () => {
   it("reads several offense labels from one Policy Violated line", () => {
     expect(policyNamesFromViolated("Tardiness/Leaving Early, Absenteeism")).toEqual(["Tardiness/Leaving Early", "Absenteeism"]);
     expect(policyNamesFromViolated("")).toEqual([]);
+    /* A section named beside its box is the policy (District Manager feedback, 21 Oct 2026). */
+    expect(policyNamesFromViolated("Tardiness/Leaving Early — Late Opening")).toEqual(["Late Opening"]);
+    expect(policyNamesFromViolated("Violation of Company Policies — Cell Phone/Smart Watch Policy")).toEqual([
+      "Cell Phone/Smart Watch Policy",
+    ]);
+    expect(policyPhrase(policyNamesFromViolated("Violation of Company Policies — Cell Phone/Smart Watch Policy"))).toBe(
+      "the Cell Phone/Smart Watch policy",
+    );
   });
 
   it("phrases the names", () => {

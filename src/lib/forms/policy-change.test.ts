@@ -4,6 +4,7 @@ import { JBA_MANUAL_CHUNKS } from "@/lib/ai/__fixtures__/jba-policy-manual";
 
 import { findManualSection, manualSectionHeadings } from "./official-policy-manual";
 import {
+  citedBoxSections,
   headingsNamedIn,
   nextPolicySections,
   readPolicyChange,
@@ -111,5 +112,23 @@ describe("a policy title in capitals is not a person", () => {
 
   it("still reads a name with one ordinary word in it", () => {
     expect(extractEmployeeNames("coaching form for Grace Early")).toEqual(["Grace Early"]);
+  });
+});
+
+describe("the section Policy Violated names beside a box", () => {
+  it("is a cited section that is not the box's own, from verified manual provenance only", () => {
+    const provenance = {
+      verified: true,
+      source: "official_policy_manual",
+      sections: [{ locator: "Attendance" }, { locator: "Visitors in the Workplace" }],
+    };
+    expect(citedBoxSections(provenance)).toEqual({ company_policies: "Visitors in the Workplace" });
+    expect(citedBoxSections({ ...provenance, sections: [{ locator: "Attendance" }] })).toEqual({});
+    /* A late opening is named beside Tardiness; Attendance, its own section, is not. */
+    expect(citedBoxSections({ ...provenance, sections: [{ locator: "Late Opening" }, { locator: "Attendance" }] })).toEqual({
+      tardiness: "Late Opening",
+    });
+    expect(citedBoxSections({ ...provenance, verified: false })).toEqual({});
+    expect(citedBoxSections(undefined)).toEqual({});
   });
 });

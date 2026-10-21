@@ -879,6 +879,40 @@ export function offenseKeyForManualHeading(heading: string): string {
   return described?.offenseKey ?? COMPANY_POLICIES_OFFENSE;
 }
 
+/**
+ * ============================================================================
+ * THE SECTION POLICY VIOLATED NAMES BESIDE A BOX
+ * ============================================================================
+ *
+ * Policy Violated is the ticked box; where Direct policy cites a section under
+ * that box which is NOT the box's own, the line names it too, so the two say
+ * the same thing:
+ *
+ *   "Violation of Company Policies — Visitors in the Workplace"   (a section
+ *                                     no other box cites)
+ *   "Tardiness/Leaving Early — Late Opening"   (the section a late opening is
+ *                                     cited for, ahead of Attendance)
+ *
+ * A box's own section — Attendance under Tardiness, the Dress Code under
+ * Dress Code Violation — adds nothing to its label and is not named. One name
+ * per box: the first cited that is not its own. District Manager feedback,
+ * 21 Oct 2026: a late opener's form cited Late Opening, page 15, but Policy
+ * Violated said only "Tardiness/Leaving Early".
+ */
+export function boxSectionNames(headings: readonly string[]): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const heading of headings) {
+    const name = heading.trim();
+    if (name === "") continue;
+    const key = offenseKeyForManualHeading(name);
+    if (names[key]) continue;
+    const own = OFFENSE_MANUAL_SECTIONS[key];
+    if (own && [...own.headings, ...(own.managementHeadings ?? [])].some((entry) => headingKey(entry) === headingKey(name))) continue;
+    names[key] = name;
+  }
+  return names;
+}
+
 /* ------------------------------------------------------------ reference --- */
 
 /**

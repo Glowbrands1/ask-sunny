@@ -267,7 +267,9 @@ describe("a policy named in the conversation goes onto the open form", () => {
 
     expect(answer?.content).toContain("Late Opening");
     expect(answer?.content).not.toMatch(/no form has been created/i);
-    expect(answer?.formUpdate).toEqual({ instanceId: id, updated: ["policy_language", "action_plan"] });
+    expect(answer?.formUpdate).toEqual({ instanceId: id, updated: ["policy_language", "policy_violated", "action_plan"] });
+    /* Policy Violated names the section beside its box, as a first draft does (District Manager feedback, 21 Oct 2026). */
+    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening");
     /* The Action Plan follows Direct policy: both sections, in the order cited. */
     expect(answer?.content).toContain("The Action Plan now says management will review the Attendance and Late Opening policies with Ellie.");
     expect((await row(id, "action_plan"))?.value).toBe(
@@ -299,6 +301,8 @@ describe("a policy named in the conversation goes onto the open form", () => {
     expect(value).toContain("Dress Code for The Company");
     expect(value).not.toContain("Late Opening");
     expect(swapped?.content).toMatch(/no longer cites/i);
+    /* Late Opening is no longer cited, so Policy Violated no longer names it beside the box. */
+    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early");
   });
 
   it("removes a section the manager takes off, and blanks the line when it was the only one", async () => {
@@ -313,8 +317,9 @@ describe("a policy named in the conversation goes onto the open form", () => {
     });
     expect(answer?.content).toMatch(/Removed \*\*Late Opening\*\*/);
     expect((await row(id, "policy_language"))?.value ?? "").toBe("");
-    /* With no section cited, the built plan names what Policy Violated names. */
-    expect(answer?.formUpdate?.updated).toEqual(["policy_language", "action_plan"]);
+    /* With no section cited, Policy Violated is the box alone, and the built plan names it. */
+    expect(answer?.formUpdate?.updated).toEqual(["policy_language", "policy_violated", "action_plan"]);
+    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early");
     expect(answer?.content).toContain("The Action Plan has been updated to match.");
     expect((await row(id, "action_plan"))?.value).toBe(
       `Management will review the Tardiness/Leaving Early policy with Ellie. ${CLOSING}`,
@@ -415,6 +420,25 @@ describe("any other change to the open Corrective Action Form is made in place",
     expect(answer?.content ?? "").not.toMatch(/Type of Warning/);
   });
 
+  it("an offense changed in chat keeps the section Direct policy cites beside its box on Policy Violated", async () => {
+    const { id, history } = await createdForm();
+    await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
+    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening");
+    state.toolValues = {};
+    state.toolChecked = { offense_type: ["tardiness", "absenteeism"] };
+
+    const answer = await reviseActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change the offense to tardiness and absenteeism",
+      history,
+      today: "2026-10-20",
+    });
+    expect(answer?.formUpdate?.updated).toEqual(expect.arrayContaining(["offense_type", "policy_violated"]));
+    /* District Manager feedback, 21 Oct 2026: the section is named beside its box, as on a first draft. */
+    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening, Absenteeism");
+  });
+
   it("rebuilds a built plan from Policy Violated when the offense changes and no section is cited", async () => {
     const { id, history } = await createdForm();
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy instead", history });
@@ -453,7 +477,7 @@ describe("any other change to the open Corrective Action Form is made in place",
 
     /* Asked for in their words, so a later policy or payroll change does not rebuild it. */
     const policy = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
-    expect(policy?.formUpdate?.updated).toEqual(["policy_language"]);
+    expect(policy?.formUpdate?.updated).toEqual(["policy_language", "policy_violated"]);
     const payroll = await correctActiveForm({
       request: chat(),
       instanceId: id,
@@ -471,7 +495,7 @@ describe("any other change to the open Corrective Action Form is made in place",
     expect((await row(id, "action_plan"))?.filledBy).toBe("manager");
 
     const policy = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
-    expect(policy?.formUpdate?.updated).toEqual(["policy_language"]);
+    expect(policy?.formUpdate?.updated).toEqual(["policy_language", "policy_violated"]);
     const payroll = await correctActiveForm({
       request: chat(),
       instanceId: id,
