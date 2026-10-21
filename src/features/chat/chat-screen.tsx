@@ -31,6 +31,7 @@ import {
   chatReportContextFromParams,
   type ChatReportContext,
 } from "@/lib/reporting/read/chat-report-context";
+import { writeChatAddress } from "./chat-address";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
 import { ContextPanel } from "./context-panel";
@@ -414,7 +415,8 @@ export function ChatScreen() {
   );
 
   /**
-   * Accept ?c= — a conversation that was STARTED INLINE on the Overview.
+   * Accept ?c= — a conversation that was STARTED INLINE on the Overview, or
+   * the one that was open before a reload (`chat-address.ts` writes it).
    *
    * The band writes its turn to the same store this screen reads, so "Continue
    * in Ask Sunny" does not replay the question: it adopts the existing thread,
@@ -456,6 +458,15 @@ export function ChatScreen() {
     const timer = window.setTimeout(() => void send(query), 0);
     return () => window.clearTimeout(timer);
   }, [searchParams, send, activeId]);
+
+  /**
+   * The open conversation goes into the address, so a reload reopens it — see
+   * `chat-address.ts`. Declared AFTER the ?q= effect on purpose: that effect
+   * has to read `?q=` and mark it seeded before this one drops it.
+   */
+  useEffect(() => {
+    if (activeId) writeChatAddress(activeId);
+  }, [activeId]);
 
   /**
    * ==========================================================================
@@ -569,6 +580,7 @@ export function ChatScreen() {
    */
   const startNewChat = useCallback(() => {
     setActiveId(null);
+    writeChatAddress(null);
     setDraftMessages([]);
     setInput("");
     setHistoryOpen(false);
