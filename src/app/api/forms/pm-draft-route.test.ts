@@ -812,7 +812,11 @@ describe("the Corrective Action Form's generation behaviour", () => {
 
       // The rest of the form is drafted normally.
       expect(state.persisted[0]!.values.observation).toContain("unattended");
-      expect(state.persisted[0]!.values.action_plan).toContain("remain on the salon floor");
+      // The Action Plan is built, not drafted (District Manager feedback, 21 Oct 2026): with
+      // nothing cited and no offense ticked, it names the applicable company policy.
+      expect(state.persisted[0]!.values.action_plan).toBe(
+        "Management will review the applicable company policy with Jordan. Future policy violations may result in additional corrective action up to and including termination of employment.",
+      );
 
       // And the manager is told why the two fields are theirs.
       expect(String(payload.notice)).toMatch(/policy fields are left for the manager/i);
@@ -941,20 +945,21 @@ describe("the mini-skirt case, end to end", () => {
     expect(payload.withheld).toEqual(["policy_language"]);
   });
 
-  it("refuses the invented clothing rule and states the expectation it can support", async () => {
+  it("never lets the invented clothing rule reach the Action Plan, which is built from the form", async () => {
     const payload = await post(NOTES);
 
     const plan = state.persisted[0]!.values.action_plan!;
 
     expect(plan).not.toMatch(/must wear pants/i);
     expect(plan).not.toMatch(/instead of skirts/i);
-    // What the manager gets instead commits the employee without inventing
-    // what the requirement is, and commits management to checking it.
-    expect(plan).toMatch(/expected to comply with the current .* requirements/i);
-    expect(plan).toMatch(/review the applicable expectation/i);
-    // The sentence that was always fine survives beside it.
-    expect(plan).toContain("Management will monitor compliance");
-    expect(payload.policyRequirements).toEqual({ adjusted: ["action_plan"], replaced: [] });
+    /*
+     * The Corrective Action Form's plan is no longer drafted (District Manager
+     * feedback, 21 Oct 2026; `ca-action-plan.ts`): the model's plan is dropped
+     * before any guard, and the policy named is the offense Policy Violated
+     * names, because no manual section was cited.
+     */
+    expect(plan).toBe("Management will review the Dress Code policy with Jordan. Future policy violations may result in additional corrective action up to and including termination of employment.");
+    expect(payload.policyRequirements).toEqual({ adjusted: [], replaced: [] });
   });
 
   it("classifies the offense and the warning level from the manager's own answers", async () => {
@@ -970,7 +975,8 @@ describe("the mini-skirt case, end to end", () => {
 
     expect(String(payload.notice)).toMatch(/no approved policy matched/i);
     expect(String(payload.notice)).toMatch(/removed the statement that a policy was breached/i);
-    expect(String(payload.notice)).toMatch(/removed a specific requirement/i);
+    // The plan's invented requirement never reached a guard: the plan is built, not drafted.
+    expect(String(payload.notice)).not.toMatch(/removed a specific requirement/i);
   });
 
   it("still retrieves the framework deterministically, by its role", async () => {
@@ -986,7 +992,7 @@ describe("the mini-skirt case, end to end", () => {
    * THE SAME TURN WITH THE MANUAL ANSWERING. Everything the guards removed
    * above is exactly what the form is for once an approved source backs it.
    */
-  it("keeps the finding, the policy and a sourced requirement once the manual answers", async () => {
+  it("keeps the finding and the policy once the manual answers", async () => {
     state.policyHits = [
       {
         chunkId: "c1",
@@ -1014,9 +1020,9 @@ describe("the mini-skirt case, end to end", () => {
     expect(state.persisted[0]!.values.policy_language).toBe(
       `${"Skirts and dresses must reach mid-thigh or longer while on the salon floor."}\n\nSource: JBA Policy Manual — Appearance Standards, Section 3.2`,
     );
-    // The requirement the manual actually states survives untouched.
+    // The Action Plan is built: a retrieved passage is not a manual section, so it names what Policy Violated names.
     expect(state.persisted[0]!.values.action_plan).toBe(
-      "Sarah must ensure skirts reach mid-thigh or longer on every shift.",
+      "Management will review the Dress Code policy with Jordan. Future policy violations may result in additional corrective action up to and including termination of employment.",
     );
     expect(payload.withheld).toEqual([]);
     expect(payload.policyRequirements).toEqual({ adjusted: [], replaced: [] });

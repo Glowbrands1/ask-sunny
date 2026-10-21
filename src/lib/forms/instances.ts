@@ -30,6 +30,7 @@ import {
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
+import { refreshedActionPlan } from "./ca-action-plan";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
 
 /**
@@ -963,7 +964,10 @@ export async function reviseInstance(
    *   the two old lines are carried into the new list as one entry, when the
    *   new version has the list and the original had something on those lines
    *   (the old rows are carried too, as every value always was);
-   *   a carried value gets any closing the NEW version requires.
+   *   a carried value gets any closing the NEW version requires — replacing,
+   *   never doubling, the older wording it supersedes (`required-closing.ts`);
+   *   a Corrective Action plan Ask Sunny built is rebuilt by the new
+   *   version's rules (`ca-action-plan.ts`).
    */
   if (version) {
     const target = parseFormDocument(version.document);
@@ -1000,6 +1004,38 @@ export async function reviseInstance(
       if (typeof row.value === "string" && closed[row.field_key] !== row.value) {
         row.value = closed[row.field_key]!;
       }
+    }
+
+    /*
+     * THE CORRECTIVE ACTION'S ACTION PLAN, BY ITS OWN RULES (`ca-action-plan.ts`).
+     * Carried onto a NEWER version, a plan Ask Sunny built is rebuilt there,
+     * from what the carried form says — so a plan built on an older revision
+     * of the form reads exactly as the current one builds it (District Manager
+     * feedback, 21 Oct 2026). A plan a person wrote, or one drafted before
+     * plans were built, is theirs and is carried as it was, its closing
+     * brought up to date above. On the SAME version the revision is a copy,
+     * plan included, exactly as it was finalized.
+     */
+    const onNewerVersion = version.id !== loaded.instance.templateVersionId;
+    const plan =
+      onNewerVersion &&
+      refreshedActionPlan({
+        templateKey: loaded.instance.templateKey,
+        document: target,
+        variantKey: loaded.instance.variantKey,
+        employeeName: loaded.instance.employeeName,
+        values: rows.map((row) => ({
+          fieldKey: row.field_key,
+          value: row.value,
+          checked: row.checked,
+          filledBy: row.filled_by,
+          provenance: row.provenance,
+        })),
+      });
+    const planRow = plan ? rows.find((row) => row.field_key === plan.key) : undefined;
+    if (plan && planRow) {
+      planRow.value = plan.value;
+      planRow.provenance = plan.provenance;
     }
   }
 

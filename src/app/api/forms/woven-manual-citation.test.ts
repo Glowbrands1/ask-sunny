@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EMBEDDING_DIMENSIONS } from "@/lib/config/models";
+import { ACTION_PLAN_SOURCE } from "@/lib/forms/ca-action-plan";
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
+import { CA_ACTION_PLAN_CLOSING } from "@/lib/forms/required-closing";
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { WovenIntoKnowledge } from "@/lib/knowledge-sync/woven/integration-support";
 import { uuid } from "@/lib/knowledge-sync/woven/test-support";
@@ -315,6 +317,24 @@ describe("a redraft keeps what the manager typed", () => {
     expect(persisted.values.policy_language).toBe(
       `${DRESS_CODE}\n\nSource: JBA Policy Manual — Dress Code for The Company, p. 15`,
     );
+    /* The Action Plan is built from the section the redraft cited (District Manager feedback, 21 Oct 2026). */
+    expect(persisted.values.action_plan).toBe(
+      `Management will review the Dress Code for The Company policy with Paulyne. ${CA_ACTION_PLAN_CLOSING}`,
+    );
+    expect(persisted.provenance.action_plan).toMatchObject({
+      source: ACTION_PLAN_SOURCE,
+      policySource: "direct_policy",
+      policies: ["Dress Code for The Company"],
+    });
+  });
+
+  it("keeps an Action Plan the manager typed, as it does every line of theirs", async () => {
+    state.values = [typed("action_plan", "Paulyne and I agreed she will wear the uniform skirt.")];
+
+    await draft("She wore a mini skirt at the front desk today.", { keepManagerValues: true });
+
+    expect(state.persisted[0]!.values.action_plan).toBeUndefined();
+    expect(state.persisted[0]!.values.policy_language).toContain("Source: JBA Policy Manual — Dress Code for The Company, p. 15");
   });
 
   it("leaves a first draft as it was: without the flag, every line is written", async () => {
@@ -331,5 +351,9 @@ describe("a redraft keeps what the manager typed", () => {
     await draft("She was wearing a mini skirt at the front desk today. Dress code.", { keepManagerValues: true });
 
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
+    /* No section cited: the built Action Plan names what Policy Violated names. */
+    expect(state.persisted[0]!.values.action_plan).toBe(
+      `Management will review the Dress Code policy with Paulyne. ${CA_ACTION_PLAN_CLOSING}`,
+    );
   });
 });
