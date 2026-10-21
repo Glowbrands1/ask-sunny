@@ -6,6 +6,7 @@ import {
   isPayrollDeductAnswer,
   payrollDeductAmount,
   payrollDeductSentence,
+  quotedDeductionAmount,
   type PayrollDeductAnswer,
 } from "./payroll-deduct";
 import { CA_ACTION_PLAN_CLOSING, withRequiredClosing } from "./required-closing";
@@ -30,8 +31,11 @@ import { CA_ACTION_PLAN_CLOSING, withRequiredClosing } from "./required-closing"
  *   and including termination of employment.
  *
  * The payroll sentence is there only when the form's own "Is payroll deduct
- * applicable?" says Yes (the manager's answer; `payroll-deduct.ts`). The last
- * sentence is the version's required closing (`required-closing.ts`).
+ * applicable?" says Yes (the manager's answer; `payroll-deduct.ts`). Its
+ * amount is the manager's, always; with none stated, the one amount the
+ * section Direct policy quotes states for a payroll deduction ("$25.00" under
+ * Late Opening), and otherwise none. The last sentence is the version's
+ * required closing (`required-closing.ts`).
  *
  * THE POLICY IS THE ONE DIRECT POLICY CITES, never the model's: the manual
  * sections on the line's verified provenance, by the headings the manual
@@ -111,7 +115,12 @@ export interface ActionPlanInput {
   /** The Policy Violated line, for when nothing is cited. */
   readonly policyViolated?: string | null;
   readonly employeeName: string | null | undefined;
-  readonly payroll: { readonly answer: PayrollDeductAnswer | null; readonly amount: string | null };
+  readonly payroll: {
+    readonly answer: PayrollDeductAnswer | null;
+    readonly amount: string | null;
+    /** Where the amount came from: the manager's words, or the section Direct policy quotes. */
+    readonly amountFrom?: "manager" | "manual";
+  };
   /** The version's required closing; absent on a version without one, which gets the current wording. */
   readonly closing?: string | null;
 }
@@ -136,7 +145,27 @@ export function actionPlanProvenance(input: ActionPlanInput): Record<string, unk
     policySource: cited ? "direct_policy" : named.length > 0 ? "policy_violated" : "none",
     policies: named,
     payroll: input.payroll.answer === "yes" ? (input.payroll.amount ?? "applies") : null,
+    /* An amount taken from the manual is the manual's: removing the section removes the figure. */
+    ...(input.payroll.answer === "yes" && input.payroll.amount && input.payroll.amountFrom === "manual"
+      ? { payrollAmountFrom: "manual" }
+      : {}),
   };
+}
+
+/**
+ * The amount the plan states, and where it came from: the manager's, always;
+ * otherwise — on a Yes — the one the quoted section states
+ * (`quotedDeductionAmount`); otherwise none.
+ */
+export function planPayrollAmount(input: {
+  readonly answer: PayrollDeductAnswer | null;
+  readonly stated: string | null;
+  /** Direct policy's value, only where it was quoted from the manual with verified provenance. */
+  readonly quotedPolicy: string | null;
+}): { amount: string | null; amountFrom?: "manager" | "manual" } {
+  if (input.stated) return { amount: input.stated, amountFrom: "manager" };
+  const quoted = input.answer === "yes" ? quotedDeductionAmount(input.quotedPolicy) : null;
+  return quoted ? { amount: quoted, amountFrom: "manual" } : { amount: null };
 }
 
 /** The key of the version's Action Plan, or null on a form without one built here. */
@@ -165,7 +194,8 @@ interface StoredValue {
  * built here on it (a person's plan, or none yet), or already right.
  *
  * The amount is the manager's: from `notes` where they said it this turn,
- * otherwise the amount the plan already states.
+ * otherwise the amount the plan already states — unless the plan took it from
+ * the manual, when it is read again from what Direct policy quotes now.
  */
 export function refreshedActionPlan(input: {
   readonly templateKey: string;
@@ -184,11 +214,21 @@ export function refreshedActionPlan(input: {
   const rowOf = (key: string) => input.values.find((entry) => entry.fieldKey === key);
   const policyRow = rowOf("policy_language");
   const answer = (rowOf(PAYROLL_DEDUCT_KEY)?.checked ?? []).find(isPayrollDeductAnswer) ?? null;
+  const cited = (policyRow?.value ?? "").trim() === "" ? [] : citedPolicyNames(policyRow?.provenance);
+  /* An amount the plan took from the manual is the manual's to change: it is read again from what is quoted now. */
+  const kept = row.provenance?.payrollAmountFrom === "manual" ? null : payrollDeductAmount(current);
   const built: ActionPlanInput = {
-    citedPolicies: (policyRow?.value ?? "").trim() === "" ? [] : citedPolicyNames(policyRow?.provenance),
+    citedPolicies: cited,
     policyViolated: rowOf("policy_violated")?.value ?? null,
     employeeName: input.employeeName,
-    payroll: { answer, amount: payrollDeductAmount(input.notes ?? "") ?? payrollDeductAmount(current) },
+    payroll: {
+      answer,
+      ...planPayrollAmount({
+        answer,
+        stated: payrollDeductAmount(input.notes ?? "") ?? kept,
+        quotedPolicy: cited.length > 0 ? (policyRow?.value ?? null) : null,
+      }),
+    },
     closing: plan.closing,
   };
   const value = correctiveActionPlan(built);

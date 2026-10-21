@@ -121,6 +121,7 @@ import {
   actionPlanProvenance,
   correctiveActionPlan,
   fixedActionPlanKey,
+  planPayrollAmount,
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
@@ -1595,7 +1596,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             ? (managerRows.find((row) => row.fieldKey === "policy_violated")?.value ?? null)
             : (named.values.policy_violated ?? null),
           employeeName: loaded.instance.employeeName,
-          payroll: { answer: payrollAnswer, amount: payrollDeductAmount(notes) },
+          /*
+           * The manager's amount; with none stated, the one the section
+           * Direct policy quotes states for a payroll deduction ("$25.00"
+           * under Late Opening) — only where that line is the manual's,
+           * written with its verified provenance.
+           */
+          payroll: {
+            answer: payrollAnswer,
+            ...planPayrollAmount({
+              answer: payrollAnswer,
+              stated: payrollDeductAmount(notes),
+              quotedPolicy: "policy_language" in pinnedProvenance ? (named.values.policy_language ?? null) : null,
+            }),
+          },
           closing: fixedPlan.closing,
         }
       : null;

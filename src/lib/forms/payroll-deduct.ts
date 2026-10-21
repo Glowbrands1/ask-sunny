@@ -338,6 +338,45 @@ export function payrollDeductAmount(text: string): string | null {
 }
 
 /**
+ * ============================================================================
+ * THE AMOUNT THE CITED SECTION ITSELF STATES
+ * ============================================================================
+ *
+ * The manual's Late Opening section states what a late opener reimburses —
+ * "$25.00 via payroll deduction". Where the manager answered Yes and gave no
+ * amount, and the section Direct policy QUOTES on this form states one, the
+ * plan may state it, in the manual's own figure (District Manager feedback,
+ * 21 Oct 2026). Read only from that quoted wording (never a section that was
+ * not quoted, never the Source line, never the manager's words), only from a
+ * sentence about a payroll deduction, and only where exactly one amount is
+ * stated: two different amounts, or none, and the plan says "A payroll
+ * deduction applies." as before.
+ */
+export function quotedDeductionAmount(policyText: string | null | undefined): string | null {
+  const text = (policyText ?? "")
+    .split("\n")
+    .filter((line) => !/^\s*Source:/i.test(line))
+    .join(" ")
+    .replace(/\s+/g, " ");
+  const amounts = new Map<number, string>();
+  for (const sentence of text.split(/(?<=[.!?])\s+(?=[A-Z])/)) {
+    if (
+      !/\bpayroll\s+deduct|\bdeduct\w*\s+from\s+(?:the\s+|their\s+|his\s+|her\s+)?(?:employee'?s?\s+)?(?:pay|paycheck|check|wages)\b/i.test(
+        sentence,
+      )
+    ) {
+      continue;
+    }
+    for (const match of sentence.matchAll(new RegExp(MONEY, "g"))) {
+      const written = match[0].replace(/\s+/g, "");
+      const value = Number(written.replace(/[$,]/g, ""));
+      if (Number.isFinite(value) && !amounts.has(value)) amounts.set(value, written);
+    }
+  }
+  return amounts.size === 1 ? [...amounts.values()][0]! : null;
+}
+
+/**
  * The Action Plan's payroll sentence, when the manager answered Yes: "$3.25
  * will be deducted from Tess's pay.", or, with no amount stated, "A payroll
  * deduction applies." Null on No or no answer — the plan then says nothing

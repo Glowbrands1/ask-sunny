@@ -7,6 +7,7 @@ import {
   correctiveActionPlan,
   fixedActionPlanKey,
   hasFixedActionPlan,
+  planPayrollAmount,
   policyNamesFromViolated,
   policyPhrase,
   refreshedActionPlan,
@@ -193,6 +194,43 @@ describe("rebuilding the plan after a change in chat", () => {
     );
   });
 
+  it("on a Yes with no amount stated, states the one amount the quoted section gives, and follows the section", () => {
+    const yes = { fieldKey: "payroll_deduct", value: null, checked: ["yes"], filledBy: "manager" };
+    const lateOpening = {
+      ...cited("Late Opening", "Attendance"),
+      value: "The employee will reimburse The Company $25.00 via payroll deduction.\n\nSource: JBA Policy Manual — Late Opening, p. 15",
+    };
+    const next = refresh([planRow(built), lateOpening, yes]);
+    expect(next?.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Pat. $25.00 will be deducted from Pat's pay. ${CLOSING}`,
+    );
+    expect(next?.provenance).toMatchObject({ payroll: "$25.00", payrollAmountFrom: "manual" });
+
+    /* Late Opening no longer quoted: the manual's figure goes with it. */
+    const fromManual = planRow(next!.value, "ai", next!.provenance);
+    expect(refresh([fromManual, cited("Attendance"), yes])?.value).toBe(
+      `Management will review the Attendance policy with Pat. A payroll deduction applies. ${CLOSING}`,
+    );
+    /* The manager's amount always wins, and is kept when the section goes. */
+    const stated = refresh([fromManual, lateOpening, yes], "$10 will be payroll deducted");
+    expect(stated?.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Pat. $10 will be deducted from Pat's pay. ${CLOSING}`,
+    );
+    expect(stated?.provenance).not.toHaveProperty("payrollAmountFrom");
+    expect(refresh([planRow(stated!.value, "ai", stated!.provenance), cited("Attendance"), yes])?.value).toBe(
+      `Management will review the Attendance policy with Pat. $10 will be deducted from Pat's pay. ${CLOSING}`,
+    );
+    /* A Direct policy line not quoted from the manual gives no amount. */
+    expect(refresh([planRow(built), { ...lateOpening, provenance: { verified: false } }, yes])?.value).toBe(
+      `Management will review the applicable company policy with Pat. A payroll deduction applies. ${CLOSING}`,
+    );
+    /* On No, nothing about pay. */
+    const no = { ...yes, checked: ["no"] };
+    expect(refresh([planRow(built), lateOpening, no])?.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Pat. ${CLOSING}`,
+    );
+  });
+
   it("leaves a plan a person wrote, or one it did not build, alone", () => {
     expect(refresh([planRow("Pat will set two alarms.", "manager"), cited("Late Opening")])).toBeNull();
     expect(refresh([planRow("Pat will set two alarms.", "ai", {}), cited("Late Opening")])).toBeNull();
@@ -265,5 +303,16 @@ describe("a form filed on revision 5 keeps revision 5's closing", () => {
     });
     expect(next?.value).toBe(`Management will review the Attendance policy with Pat. ${CA_ACTION_PLAN_CLOSING}`);
     expect(next!.value.match(/Future policy violations/g)).toHaveLength(1);
+  });
+});
+
+describe("planPayrollAmount — whose amount the plan states", () => {
+  const QUOTED = "The employee will reimburse The Company $25.00 via payroll deduction.";
+
+  it("the manager's, always; otherwise, on a Yes, the quoted section's; otherwise none", () => {
+    expect(planPayrollAmount({ answer: "yes", stated: "$10", quotedPolicy: QUOTED })).toEqual({ amount: "$10", amountFrom: "manager" });
+    expect(planPayrollAmount({ answer: "yes", stated: null, quotedPolicy: QUOTED })).toEqual({ amount: "$25.00", amountFrom: "manual" });
+    expect(planPayrollAmount({ answer: "no", stated: null, quotedPolicy: QUOTED })).toEqual({ amount: null });
+    expect(planPayrollAmount({ answer: "yes", stated: null, quotedPolicy: null })).toEqual({ amount: null });
   });
 });

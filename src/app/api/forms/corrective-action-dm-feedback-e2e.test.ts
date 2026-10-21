@@ -288,7 +288,8 @@ const DIRECTORY = [
 /*
  * THE MANUAL AS THE KNOWLEDGE BASE HOLDS IT: each section on the sheet it is
  * printed on, with the page the manual prints. Wording shortened, never
- * reworded.
+ * reworded, except the last sentence under Late Opening, which stands in for
+ * its "$25.00 via payroll deduction".
  */
 const STANDARDS_OF_CONDUCT_CHUNK = {
   chunkIndex: 30,
@@ -327,7 +328,7 @@ const LATE_OPENING_CHUNK = {
   sections: [{ heading: "Late Opening", page: 15 }],
   section: "Late Opening",
   content:
-    "15 | P a g e\nLate Opening\nWhen an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible.",
+    "15 | P a g e\nLate Opening\nWhen an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible. The employee will reimburse The\nCompany $25.00 via payroll deduction.",
 };
 
 const CELL_PHONE_CHUNK = {
@@ -985,5 +986,70 @@ describe("Policy Violated names a cited section beside any box", () => {
     const form = await review(reference.instanceId);
     expect(field(form, "policy_violated")!.value).toBe("Tardiness/Leaving Early");
     expect(field(form, "action_plan")!.value).toBe(`Management will review the Attendance policy with Tess. ${CLOSING}`);
+  });
+});
+
+/* ========================================================================= */
+/* ON A YES WITH NO AMOUNT, THE ONE THE QUOTED SECTION STATES                */
+/* ========================================================================= */
+
+/*
+ * District Manager feedback, 21 Oct 2026, the late-opening form: the manual's
+ * Late Opening section states what a late opener reimburses ("$25.00 via
+ * payroll deduction"), but with payroll deduct Yes and no amount stated the
+ * plan said only "A payroll deduction applies."
+ */
+describe("the payroll amount the quoted section states", () => {
+  it("with no amount stated, states the $25.00 the quoted Late Opening section gives", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga for opening the salon late on 10-1-26. payroll deduct applies",
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "policy_language")!.value).toContain("$25.00 via payroll deduction");
+    expect(field(form, "action_plan")!.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Tess. $25.00 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+    expect(field(form, "action_plan")!.provenance).toMatchObject({ payroll: "$25.00", payrollAmountFrom: "manual" });
+  });
+
+  it("the manager's amount wins over the section's", async () => {
+    const { create } = await conversation([G1]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const plan = field(await review(reference.instanceId), "action_plan")!;
+    expect(plan.value).toContain("$25 will be deducted from Tess's pay.");
+    expect(plan.value).not.toContain("$25.00");
+    expect(plan.provenance).not.toHaveProperty("payrollAmountFrom");
+  });
+
+  it("a late arrival cites Attendance alone, and the plan invents no figure", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga, she was 20 minutes late for her 2pm shift on 10-1-26. payroll deduct applies",
+    ]);
+    state.draft = {
+      values: { observation: "Observed:\nOn October 1, 2026, Tess Varga arrived 20 minutes late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `Management will review the Attendance policy with Tess. A payroll deduction applies. ${CLOSING}`,
+    );
+  });
+
+  it("on No, the section's figure is not stated", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga for opening the salon late on 10-1-26. no payroll deduct",
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Tess. ${CLOSING}`,
+    );
   });
 });

@@ -12,6 +12,7 @@ import {
   payrollDeductAmount,
   payrollDeductFromConversation,
   payrollDeductSentence,
+  quotedDeductionAmount,
   statedPayrollDeduct,
 } from "./payroll-deduct";
 import { enforcePersonEdit, enforceResponsibilities } from "./responsibility";
@@ -332,5 +333,34 @@ describe("the amount, and the Action Plan sentence that states it", () => {
   it("says nothing on No or no answer", () => {
     expect(payrollDeductSentence({ answer: "no", amount: "$3.25", firstName: "Tess" })).toBeNull();
     expect(payrollDeductSentence({ answer: null, amount: "$3.25", firstName: "Tess" })).toBeNull();
+  });
+});
+
+describe("quotedDeductionAmount — the one amount the quoted section states for a payroll deduction", () => {
+  const LATE_OPENING =
+    "When an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible. The employee will reimburse The\nCompany $25.00 via payroll deduction.\n\nSource: JBA Policy Manual — Late Opening, p. 15";
+
+  it("reads it in the manual's own figure", () => {
+    expect(quotedDeductionAmount(LATE_OPENING)).toBe("$25.00");
+    expect(quotedDeductionAmount("The amount will be deducted from the employee's paycheck: $12.")).toBe("$12");
+  });
+
+  it("reads nothing from a sentence that is not about a payroll deduction, or from no text", () => {
+    expect(quotedDeductionAmount("Register shortages over $5.00 may result in disciplinary action.")).toBeNull();
+    expect(quotedDeductionAmount("Payroll deductions are listed on each pay stub.")).toBeNull();
+    expect(quotedDeductionAmount("Attendance\n\nSource: JBA Policy Manual — $25.00 payroll deduction, p. 14")).toBeNull();
+    expect(quotedDeductionAmount(null)).toBeNull();
+  });
+
+  it("reads nothing where the section states two amounts", () => {
+    expect(
+      quotedDeductionAmount(
+        "A first late opening is reimbursed at $25.00 via payroll deduction. A second is reimbursed at $50.00 via payroll deduction.",
+      ),
+    ).toBeNull();
+    /* The same amount twice is one amount. */
+    expect(
+      quotedDeductionAmount("The employee reimburses $25.00 via payroll deduction. The $25 payroll deduction is taken next pay period."),
+    ).toBe("$25.00");
   });
 });
