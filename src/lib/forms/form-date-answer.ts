@@ -83,9 +83,64 @@ const FOLLOW_UP_BEFORE =
 const PRIOR_STEP_BEFORE =
   /\b(?:got|gotten|received|was given|were given|been given|given|had|issued|gave|was|were|previous(?:ly)?|prior|already|last time)\b[^.;\n]{0,40}\b(?:warn(?:ing|ings|ed)|write[- ]?ups?|written up|coach(?:ed|ing)?|corrective actions?|disciplin\w*)\b[^.;\n]{0,20}$/i;
 
-function isOtherDate(text: string, index: number): boolean {
+/*
+ * ============================================================================
+ * "PREVIOUS COACHING WAS JBA POLICY MANUAL 1-1-26" — A LABELLED EARLIER STEP
+ * ============================================================================
+ *
+ * District Manager feedback, 21 Oct 2026. Managers write the employee's
+ * history as a label and what it was about, with the date last:
+ *
+ *   "previous coaching was jba policy manual 1-1-26"
+ *   "previous coaching - jba policy manual 1-20-26"
+ *   "jba manual 1-1-26 for previous coaching"
+ *
+ * The topic between the label and the date is longer than `PRIOR_STEP_BEFORE`
+ * allows, and in the last one the label comes after the date — so the
+ * coaching's date could become the form's own (a request whose only date was
+ * the coaching's was dated by it), and never reached the prior-actions line.
+ * A step named "previous / prior / past / last / earlier …" is history
+ * wherever its date sits: up to five words of topic after the label, or the
+ * label right after the date. The topic words stop at anything that starts an
+ * account ("previous coaching was about lateness and she was late on 10/20"
+ * leaves 10/20 an incident date).
+ */
+const STEP_NOUN = String.raw`(?:coachings?|coached|warnings?|write[- ]?ups?|written\s+up|corrective\s+actions?|cas|ca|c\/a|disciplin\w*)`;
+const HISTORY_LABEL = String.raw`(?:previous|prior|past|last|earlier)\s+${STEP_NOUN}`;
+const TOPIC_WORD = String.raw`(?!(?:and|but|or|she|he|they|then|again|today|yesterday|was|were|is|late|on|at|for)\b)[a-z0-9&'/]+`;
+
+/** "previous coaching was jba policy manual " — the label, then up to five words of what it was about. */
+const LABELLED_STEP_BEFORE = new RegExp(
+  String.raw`\b${HISTORY_LABEL}\b\s*(?:(?:was|were|is|on|dated|signed)\s+|[:=\-–—]\s*)?((?:${TOPIC_WORD}\s+){0,5})$`,
+  "i",
+);
+
+/** "1-1-26 for previous coaching" — the label right after the date. */
+const LABELLED_STEP_AFTER = new RegExp(
+  String.raw`^\s*(?:for|as|was|were|is|[:=\-–—])?\s*(?:(?:the|her|his|their|a|an)\s+)?${HISTORY_LABEL}\b`,
+  "i",
+);
+
+/** The topic in front of a date the label follows: "jba manual" in "… deduct. jba manual 1-1-26 for previous coaching". */
+const TOPIC_BEFORE_DATE = new RegExp(String.raw`(?:^|[.;\n,]\s*)((?:${TOPIC_WORD}\s+){1,5})$`, "i");
+
+/** A labelled earlier step around the date at `index`..`end`, with its label and topic. */
+function labelledStep(text: string, index: number, end: number): { named: string; topic: string } | null {
   const before = text.slice(0, index);
-  return FOLLOW_UP_BEFORE.test(before) || PRIOR_STEP_BEFORE.test(before);
+  const ahead = LABELLED_STEP_BEFORE.exec(before);
+  if (ahead) return { named: ahead[0], topic: (ahead[1] ?? "").trim() };
+  const after = LABELLED_STEP_AFTER.exec(text.slice(end));
+  if (after) return { named: after[0].trim(), topic: (TOPIC_BEFORE_DATE.exec(before)?.[1] ?? "").trim() };
+  return null;
+}
+
+function isOtherDate(text: string, index: number, end: number = index): boolean {
+  const before = text.slice(0, index);
+  return (
+    FOLLOW_UP_BEFORE.test(before) ||
+    PRIOR_STEP_BEFORE.test(before) ||
+    labelledStep(text, index, end) !== null
+  );
 }
 
 /**
@@ -108,9 +163,14 @@ export function priorStepDate(text: string, today: string): string | null {
  * and "got verbal warning on". The same reading as `priorStepDate`, which is
  * the latest of these; a list is what a form that records several needs.
  */
-export function priorSteps(text: string, today: string): { iso: string; named: string }[] {
+export function priorSteps(text: string, today: string): { iso: string; named: string; topic?: string }[] {
   return datesInText(text, today).flatMap((found) => {
     const before = text.slice(0, found.index);
+    // "previous coaching was jba policy manual 1-1-26": what it was about, as the manager wrote it.
+    const labelled = labelledStep(text, found.index, found.end);
+    if (labelled) {
+      return [{ iso: found.iso, named: labelled.named, ...(labelled.topic ? { topic: labelled.topic } : {}) }];
+    }
     const match = PRIOR_STEP_BEFORE.exec(before);
     return match ? [{ iso: found.iso, named: match[0] }] : [];
   });
@@ -200,7 +260,7 @@ export function datesInText(text: string, today: string): DateInText[] {
  */
 export function extractFormDate(text: string, today: string): string | null {
   for (const found of datesInText(text, today)) {
-    if (isOtherDate(text, found.index)) continue;
+    if (isOtherDate(text, found.index, found.end)) continue;
     return found.iso;
   }
   return null;
@@ -213,6 +273,6 @@ export function extractFormDate(text: string, today: string): string | null {
  */
 export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
   return datesInText(text, today)
-    .filter((found) => !isOtherDate(text, found.index))
+    .filter((found) => !isOtherDate(text, found.index, found.end))
     .map(({ iso, index }) => ({ iso, index }));
 }

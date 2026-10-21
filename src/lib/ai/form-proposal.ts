@@ -74,6 +74,7 @@ import {
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import {
   answersNameConfirmation,
@@ -1759,7 +1760,13 @@ function proposalContent(
      * being stopped for it.
      */
     if (proposal.status !== "needs_location") {
-      return correctiveActionReady(proposal, intake, asksPayrollDeduct(match), readCaPolicy(context.text));
+      return correctiveActionReady(
+        proposal,
+        intake,
+        asksPayrollDeduct(match),
+        readCaPolicy(context.text),
+        statedPriorActions(context.text, today),
+      );
     }
   }
 
@@ -1912,9 +1919,14 @@ function correctiveActionReady(
   intake: IntakeReading,
   asksPayroll: boolean,
   policy: CaPolicyReading,
+  priorActions: readonly string[] = [],
 ): string {
   const outstanding = intake.missingRequired
-    .filter((item) => (item.key === "warning_level" && !proposal.warningLevel) || item.key === "previous_action")
+    .filter(
+      (item) =>
+        (item.key === "warning_level" && !proposal.warningLevel) ||
+        (item.key === "previous_action" && priorActions.length === 0),
+    )
     .map((item) =>
       item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
     );
@@ -1946,6 +1958,19 @@ function correctiveActionReady(
     lines.push(
       "",
       `**Type of Warning:** ${proposal.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said — I'll tick it on the form. Tell me if that should change.`,
+    );
+  }
+
+  /*
+   * THE HISTORY THE MANAGER GAVE, READ BACK as it will be listed on the form —
+   * "previous coaching was jba policy manual 1-1-26" is the prior-actions
+   * line, and the form's date is not that coaching's (District Manager
+   * feedback, 21 Oct 2026). See `statedPriorActions`.
+   */
+  if (priorActions.length > 0) {
+    lines.push(
+      "",
+      `**Prior actions:** ${priorActions.join("; ")}, as you said. I'll list ${priorActions.length === 1 ? "it" : "them"} on the form — tell me if that should change.`,
     );
   }
 
