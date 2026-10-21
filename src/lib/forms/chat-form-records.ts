@@ -231,6 +231,22 @@ export interface FormRecordsActor {
   scope: AccessScope | null;
 }
 
+/**
+ * The chat caller as Form Monitoring reads under them, or null when they may
+ * not read it at all. Fails closed: no verified identity, no read. Throws only
+ * when the visibility itself cannot be resolved.
+ */
+export async function chatFormsActor(actor: FormRecordsActor): Promise<FormsActor | null> {
+  if (!actor.verified || !actor.subject || !actor.role || !actor.scope) return null;
+  if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_form_monitoring")) return null;
+  const visibility = await resolveFormsVisibility({
+    subject: actor.subject,
+    role: actor.role,
+    scope: actor.scope,
+  });
+  return { id: actor.subject, role: actor.role, verified: true, scope: actor.scope, visibility };
+}
+
 const MATCH_LIMIT = 50;
 const RECENT_LIMIT = 20;
 
@@ -258,18 +274,8 @@ export async function loadFormRecords(input: {
 
   const today = input.today ?? businessToday();
   try {
-    const visibility = await resolveFormsVisibility({
-      subject: actor.subject,
-      role: actor.role,
-      scope: actor.scope,
-    });
-    const formsActor: FormsActor = {
-      id: actor.subject,
-      role: actor.role,
-      verified: true,
-      scope: actor.scope,
-      visibility,
-    };
+    const formsActor = (await chatFormsActor(actor))!;
+    const visibility = formsActor.visibility!;
     const filter = instanceListFilterFor(formsActor);
 
     let nameSource = input.question;

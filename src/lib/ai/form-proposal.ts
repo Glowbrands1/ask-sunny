@@ -101,6 +101,8 @@ import {
   suggestedTemplateKeys,
 } from "@/lib/forms/form-opportunity";
 import { type TemplateSummary } from "@/lib/forms/repository";
+import type { PriorFormOnFile } from "@/lib/forms/prior-forms-lines";
+import { signedDate } from "@/lib/forms/prior-actions";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type {
   AccessScope,
@@ -337,6 +339,14 @@ export interface ProposalTurn {
    * in the manager's own words and the draft looks it up.
    */
   policyManual?: () => Promise<readonly ManualChunk[] | null>;
+  /**
+   * The employee's signed Coaching and Corrective Action forms in Form
+   * Monitoring, under this manager's visibility — read only for a Corrective
+   * Action, so the history already on file is read back before the form is
+   * created. Never rejects: an unreadable record is an empty list. See
+   * `lib/forms/prior-forms.ts`.
+   */
+  priorFormsOnFile?: (employeeName: string) => Promise<readonly PriorFormOnFile[]>;
   /**
    * The server's business day (`YYYY-MM-DD`), which supplies the year for a
    * form date typed as month and day. See `lib/forms/form-date-answer.ts`.
@@ -756,6 +766,10 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
       ? employmentChangeContent(changeKind, facts, proposal, context)
       : proposalContent(proposal, correctiveAction ? scoped : context, match, input.today ?? businessToday(), {
           namedPolicy: correctiveAction ? await namedPolicyFor(scoped.text, input) : null,
+          priorOnFile:
+            correctiveAction && proposal.employeeName && proposal.status !== "needs_employee"
+              ? ((await input.priorFormsOnFile?.(proposal.employeeName)) ?? [])
+              : [],
         });
   const notes = [
     directory.note,
@@ -1628,7 +1642,10 @@ function proposalContent(
   context: ManagerContext,
   match: TemplateSummary,
   today: string,
-  extra: { readonly namedPolicy?: NamedPolicyReading | null } = {},
+  extra: {
+    readonly namedPolicy?: NamedPolicyReading | null;
+    readonly priorOnFile?: readonly PriorFormOnFile[];
+  } = {},
 ): string {
   /*
    * ==========================================================================
@@ -1807,6 +1824,7 @@ function proposalContent(
         readCaPolicy(context.text),
         statedPriorActions(context.text, today),
         extra.namedPolicy ?? null,
+        extra.priorOnFile ?? [],
       );
     }
   }
@@ -1962,12 +1980,17 @@ function correctiveActionReady(
   policy: CaPolicyReading,
   priorActions: readonly string[] = [],
   namedPolicy: NamedPolicyReading | null = null,
+  priorOnFile: readonly PriorFormOnFile[] = [],
 ): string {
+  // A step the manager already dated is theirs; the record adds only the rest.
+  const onFile = priorOnFile.filter(
+    (form) => !priorActions.some((line) => line.includes(signedDate(form.formDate))),
+  );
   const outstanding = intake.missingRequired
     .filter(
       (item) =>
         (item.key === "warning_level" && !proposal.warningLevel) ||
-        (item.key === "previous_action" && priorActions.length === 0),
+        (item.key === "previous_action" && priorActions.length === 0 && onFile.length === 0),
     )
     .map((item) =>
       item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
@@ -2013,6 +2036,20 @@ function correctiveActionReady(
     lines.push(
       "",
       `**Prior actions:** ${priorActions.join("; ")}, as you said. I'll list ${priorActions.length === 1 ? "it" : "them"} on the form — tell me if that should change.`,
+    );
+  }
+
+  /*
+   * THE HISTORY ALREADY ON FILE, READ BACK BEFORE IT GOES ON THE FORM. District
+   * Manager feedback, 21 Oct 2026: the employee's earlier Coaching Form and
+   * Verbal CA were in Form Monitoring, and the manager had to type them again.
+   * They are listed by the draft (`prior-forms.ts`); naming them here is the
+   * manager's chance to say one should not count.
+   */
+  if (onFile.length > 0) {
+    lines.push(
+      "",
+      `**On file in Form Monitoring for ${proposal.employeeName}:** ${onFile.map((form) => form.line).join("; ")}. I'll list ${onFile.length === 1 ? "it" : "them"} under prior coaching and corrective action on the form — remove any that shouldn't count.`,
     );
   }
 

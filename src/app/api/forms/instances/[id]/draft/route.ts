@@ -11,6 +11,7 @@ import {
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
+import { loadPriorFormsOnFile } from "@/lib/forms/prior-forms";
 import {
   parseFormVariants,
   interpolate,
@@ -1187,6 +1188,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           drafted: (exit?.values ?? attributions.values)[PRIOR_ACTIONS_KEY] ?? "",
           notes,
           today: businessToday(),
+          /*
+           * AND THE FORMS ALREADY ON FILE FOR THEM — their finalized Coaching
+           * and Corrective Action forms, read from Form Monitoring under this
+           * manager's own visibility. See `prior-forms.ts`.
+           */
+          onFile: await loadPriorFormsOnFile({
+            actor,
+            employeeName: loaded.instance.employeeName ?? "",
+            excludeInstanceId: loaded.instance.id,
+          }),
         })
       : null;
     /*

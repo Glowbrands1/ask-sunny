@@ -23,6 +23,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
+import { priorFormsForChat } from "@/lib/forms/prior-forms";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -407,6 +408,12 @@ export async function answerQuestion(
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
         return manual.ok ? manual.chunks : null;
       },
+      /*
+       * THE EMPLOYEE'S FORMS ALREADY ON FILE, read only for a Corrective
+       * Action so its history is read back before the form is created. See
+       * `prior-forms.ts`.
+       */
+      priorFormsOnFile: (employeeName) => priorFormsForChat(actor, employeeName),
     });
     if (proposal) return proposal;
   }
