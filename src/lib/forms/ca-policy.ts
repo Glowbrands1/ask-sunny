@@ -297,6 +297,37 @@ const ALTERNATIVE_WORDS: Record<CaPolicyReading["alternatives"][number], string>
   company_policies: "**Violation of Company Policies**",
 };
 
+/**
+ * A policy the manager named by a name this file does not know — "violating
+ * visitors at work policy" — and what the pinned manual said about it:
+ * `found` (its heading and printed page), `missing` (no heading, or more than
+ * one, answers it), or `unknown` (the manual was not read). See
+ * `named-policy-section.ts`.
+ */
+export type NamedPolicyReading =
+  | { phrase: string; lookup: "found"; heading: string; page: number; offenseKey: string }
+  | { phrase: string; lookup: "missing" | "unknown" };
+
+/** The offense box a named section is cited under, as the form labels it. */
+const OFFENSE_BOX_LABEL: Record<string, string> = {
+  tardiness: "Tardiness/Leaving Early",
+  absenteeism: "Absenteeism",
+  standards_of_conduct: "Standards of Conduct",
+  dress_code: "Dress Code Violation",
+  company_policies: "Violation of Company Policies",
+};
+
+function namedPolicyLine(named: NamedPolicyReading): string {
+  if (named.lookup === "found") {
+    const box = OFFENSE_BOX_LABEL[named.offenseKey];
+    return `**Policy:** ${named.heading}, as you said — the policy manual's section on page ${named.page}. I'll quote it on the draft${box ? ` under **${box}**` : ""}.`;
+  }
+  if (named.lookup === "missing") {
+    return `**Policy:** I couldn't find a section of the current policy manual for "${named.phrase}", so I won't cite one. Tell me the policy as the manual names it, or tick Type of Offense and complete Direct policy on the form.`;
+  }
+  return `**Policy:** "${named.phrase}", as you said. I'll look for that section in the current policy manual and quote it on the draft; if the manual has no section by that name, Direct policy is left for you to complete.`;
+}
+
 /** The marker the continuation reads to know a policy question is open. */
 export const CA_POLICY_QUESTION = "Which policy applies?";
 
@@ -304,7 +335,17 @@ export const CA_POLICY_QUESTION = "Which policy applies?";
  * What the proposal says about the policy, or null when there is nothing to
  * say beyond the usual "I'll check the applicable company policy".
  */
-export function caPolicyProposalLine(reading: CaPolicyReading): string | null {
+export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolicyReading | null = null): string | null {
+  /*
+   * A POLICY THE MANAGER NAMED, which the manual answers, is the policy — the
+   * draft ticks its box and quotes its section (District Manager feedback,
+   * 21 Oct 2026: "violating visitors at work policy" named no policy at all).
+   * One the manual does not answer is said so, unless the account still reads
+   * as a policy below.
+   */
+  if (!reading.stated && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
+    return namedPolicyLine(named);
+  }
   if (reading.ambiguous) {
     const others = reading.alternatives.map((name) => ALTERNATIVE_WORDS[name]);
     const topic = TOPIC_WORDS[reading.topics[0]!];

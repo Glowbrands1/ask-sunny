@@ -859,6 +859,26 @@ const DESCRIBED_SECTIONS: readonly {
   },
 ];
 
+/**
+ * The offense box a section is cited under: the box that already cites it
+ * (Attendance under Tardiness, Late Opening under Tardiness, …), and
+ * otherwise Violation of Company Policies — a policy of The Company, named by
+ * the manager, which no other box names. Chosen over "Other" because the
+ * manager named a company policy and the form has a box for exactly that.
+ * See `named-policy-section.ts`.
+ */
+export const COMPANY_POLICIES_OFFENSE = "company_policies";
+
+export function offenseKeyForManualHeading(heading: string): string {
+  const key = headingKey(heading);
+  const ticked = Object.entries(OFFENSE_MANUAL_SECTIONS).find(([, entry]) =>
+    [...entry.headings, ...(entry.managementHeadings ?? [])].some((name) => headingKey(name) === key),
+  );
+  if (ticked) return ticked[0];
+  const described = DESCRIBED_SECTIONS.find((rule) => rule.headings.some((name) => headingKey(name) === key));
+  return described?.offenseKey ?? COMPANY_POLICIES_OFFENSE;
+}
+
 /* ------------------------------------------------------------ reference --- */
 
 /**

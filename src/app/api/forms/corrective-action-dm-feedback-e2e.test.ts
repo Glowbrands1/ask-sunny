@@ -249,6 +249,8 @@ async function conversation(turns: string[]) {
       actor: { role: state.role as never, scope: state.scope as AccessScope },
       summaries: await listTemplateSummaries(),
       today: "2026-10-21",
+      /* The pinned manual, as server-ask supplies it. */
+      policyManual: async () => (state.manual?.chunks as never) ?? null,
       ...(open ? { continueTemplateKey: open } : {}),
     });
     expect(response, `turn left the form intake: ${JSON.stringify(text)}`).not.toBeNull();
@@ -484,6 +486,61 @@ describe("previous coaching stated in chat", () => {
     ]);
 
     expect(proposal.formDate ?? null).toBeNull();
+  });
+});
+
+/* ========================================================================= */
+/* A POLICY NAMED BY THE MANUAL'S OWN SECTION                                */
+/* ========================================================================= */
+
+describe('"violating visitors at work policy" is the manual\'s Visitors in the Workplace', () => {
+  it("is named in the reply, ticked, and quoted with its section and page", async () => {
+    const { last, create } = await conversation([A1, A2]);
+
+    expect(last.content).toMatch(
+      /\*\*Policy:\*\* Visitors in the Workplace, as you said — the policy manual's section on page 30\. I'll quote it on the draft under \*\*Violation of Company Policies\*\*/,
+    );
+
+    /* The model would tick another box and write its own "Other". */
+    state.draft = {
+      values: {
+        observation: "Observed:\nRemy Calder spent 40 minutes talking with a friend and did not attend to clients.",
+        other_offense: "Socializing with visitors",
+      },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(field(form, "offense_type")!.checked).toEqual(["company_policies"]);
+    expect(field(form, "other_offense")).toBeUndefined();
+    expect(field(form, "policy_violated")!.value).toBe("Violation of Company Policies — Visitors in the Workplace");
+    expect(policy).toContain("only authorized visitors are");
+    expect(policy).toContain("Source: JBA Policy Manual — Visitors in the Workplace, p. 30");
+    expect(policy).not.toMatch(/Standards of Conduct/);
+    expect(field(form, "policy_language")!.provenance).toMatchObject({ verified: true });
+  });
+
+  it("fails closed: a named policy no heading answers cites nothing, and the reply says so", async () => {
+    const { last, create } = await conversation([
+      "create verbal CA for remy calder for violating the unicorn parking policy on 10-10-26. no payroll deduct",
+    ]);
+
+    expect(last.content).toMatch(/couldn't find a section of the current policy manual for "unicorn parking"/);
+
+    state.draft = { values: { observation: "Observed:\nRemy parked in the wrong place." }, checked: {} };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")).toBeUndefined();
+    expect(field(form, "policy_language")).toBeUndefined();
+  });
+
+  it("without the manual in front of it, the reply names the policy in the manager's words", async () => {
+    state.manual = null;
+    const { last } = await conversation([A1]);
+
+    expect(last.content).toMatch(/\*\*Policy:\*\* "visitors at work", as you said\. I'll look for that section/);
   });
 });
 
