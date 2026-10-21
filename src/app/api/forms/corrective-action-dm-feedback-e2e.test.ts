@@ -384,3 +384,64 @@ describe("the warning level in the request is read, not left open", () => {
   });
 });
 
+/* ========================================================================= */
+/* WHICH TURNS ARE THIS FORM'S                                               */
+/* ========================================================================= */
+
+const A2 = "no payroll deduct";
+const B2 = "verbal";
+const B3 =
+  "create ca form for tess varga for a register shortage on 10-20-26. payroll deduct applies and $3.25 will be deducted from check. previous coaching - jba policy manual 1-20-26.";
+
+/** The notes the draft was written from, as the browser sent them. */
+const described = () => String(requests.filter((entry) => entry.url.endsWith("/draft")).at(-1)?.body.notes ?? "");
+
+describe("the account survives the short answers after it", () => {
+  it('"no payroll deduct" keeps the account, and the draft is written from it', async () => {
+    const { proposal, create } = await conversation([A1, A2]);
+
+    expect(proposal.employeeName).toBe("Remy Calder");
+    expect(proposal.sourceMessageIds).toEqual(["m1", "m2"]);
+    expect(proposal.payrollDeduct).toBe("no");
+
+    await create();
+    expect(described()).toContain("spent 40 minutes talking with a friend and ignoring clients");
+    expect(described()).toMatch(/^create verbal CA for remy calder/);
+  });
+});
+
+describe("a new request in the same chat is a new proposal", () => {
+  it("keeps none of the earlier request's policy, warning level, account or payroll answer", async () => {
+    const { responses, proposal, create } = await conversation([B1, B2, B3]);
+
+    const reply = responses[2]!.content;
+    expect(reply).not.toMatch(/attendance/i);
+    expect(reply).not.toMatch(/Verbal Warning, as you said/);
+    expect(proposal.sourceMessageIds).toEqual(["m3"]);
+    expect(proposal.warningLevel ?? null).toBeNull();
+    expect(proposal.payrollDeduct).toBe("yes");
+
+    await create();
+    expect(described()).not.toMatch(/attendance/i);
+    expect(described()).toContain("register shortage");
+  });
+
+  it("does not carry the earlier request's payroll answer", async () => {
+    const { proposal, last } = await conversation([
+      B1,
+      B2,
+      "create ca form for tess varga for a register shortage on 10-20-26",
+    ]);
+
+    expect(proposal.payrollDeduct).toBeNull();
+    expect(last.content).toMatch(/\*\*Is payroll deduct applicable\?\*\* Yes or No\?/);
+  });
+
+  it("a repeated request that adds nothing keeps the account already given", async () => {
+    const { proposal } = await conversation([B1, "create ca form for tess varga"]);
+
+    expect(proposal.sourceMessageIds).toEqual(["m1", "m2"]);
+    expect(proposal.payrollDeduct).toBe("no");
+  });
+});
+

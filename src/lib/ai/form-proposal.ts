@@ -649,16 +649,46 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * The same holds for the date: "effective october 5" is when the change
    * takes effect, not the date the form is written.
    */
+  const changeKind = employmentChangeKind(match.key);
   /*
-   * THE PAYROLL-DEDUCT ANSWER, FROM THE WHOLE CONVERSATION. Read over both
-   * sides because a bare "no" answers only the question Ask Sunny asked just
-   * before it — the assistant turns say WHICH question, never the answer.
+   * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
+   * transfer for one employee, asked for right after a demotion for another in
+   * the same conversation, picked up the other employee's new pay rate —
+   * because the facts, and the notes the draft is written from, were read from
+   * every recent manager turn. See `turnsAboutThisForm`.
+   *
+   * A CORRECTIVE ACTION TOO. District Manager feedback, 21 Oct 2026: "create
+   * ca form for <employee> for a register shortage …", asked in the chat that
+   * had just proposed one for her attendance, came back naming the Attendance
+   * policy, and its draft was written from both accounts — every recent
+   * manager turn was this form's. Its policy, warning level, payroll answer,
+   * date and the notes the draft is written from are now read from this
+   * form's turns only.
    */
-  if (isCorrectiveActionForm(match) && asksPayrollDeduct(match)) {
-    proposal.payrollDeduct = payrollDeductFromConversation([
-      ...input.history,
-      { role: "user", content: input.question },
-    ]);
+  const correctiveAction = isCorrectiveActionForm(match);
+  const scoped =
+    changeKind || correctiveAction
+      ? turnsAboutThisForm(context, match.key, proposal.employeeName, { correctiveActionForm: correctiveAction })
+      : context;
+
+  if (correctiveAction) {
+    proposal.sourceMessageIds = scoped.ids;
+    proposal.formDate = extractFormDate(scoped.text, input.today ?? businessToday());
+  }
+
+  /*
+   * THE PAYROLL-DEDUCT ANSWER, FROM THIS FORM'S CONVERSATION. Read over both
+   * sides because a bare "no" answers only the question Ask Sunny asked just
+   * before it — the assistant turns say WHICH question, never the answer. It
+   * starts at this form's first turn, so an answer given for an earlier
+   * request in the same chat does not carry onto a new one, and a repeated
+   * request that adds nothing keeps the answer already given.
+   */
+  if (correctiveAction && asksPayrollDeduct(match)) {
+    proposal.payrollDeduct = payrollDeductFromConversation(
+      [...formHistory(input.history, scoped), { role: "user", content: input.question }],
+      { fromThisForm: true },
+    );
   }
 
   /*
@@ -668,8 +698,8 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * only where the published version offers that level. Sent at creation and
    * written as their statement; the draft does not overwrite it.
    */
-  if (isCorrectiveActionForm(match)) {
-    const level = warningLevelFromTurns(context.messages.map((message) => message.content));
+  if (correctiveAction) {
+    const level = warningLevelFromTurns(scoped.messages.map((message) => message.content));
     proposal.warningLevel = level && offeredWarningLevels(match).includes(level) ? level : null;
   }
 
@@ -682,10 +712,10 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * `chat-redraft.ts`).
    */
   if (
-    isCorrectiveActionForm(match) &&
+    correctiveAction &&
     proposal.status !== "needs_employee" &&
-    !describesIncident(context.text) &&
-    !describesMoreThanTheRequest(context.text, {
+    !describesIncident(scoped.text) &&
+    !describesMoreThanTheRequest(scoped.text, {
       ignore: [proposal.employeeName ?? "", ...PRODUCTION_SALONS.map((salon) => salon.name)],
     }) &&
     !answeredWhatHappened([...input.history, { role: "user", content: input.question }])
@@ -693,17 +723,6 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     proposal.awaitingIncident = true;
   }
 
-  const changeKind = employmentChangeKind(match.key);
-  /*
-   * ONLY THE TURNS ABOUT THIS FORM AND THIS PERSON. Found in hands-on QA: a
-   * transfer for one employee, asked for right after a demotion for another in
-   * the same conversation, picked up the other employee's new pay rate —
-   * because the facts, and the notes the draft is written from, were read from
-   * every recent manager turn. See `turnsAboutThisForm`.
-   */
-  const scoped = changeKind
-    ? turnsAboutThisForm(context, match.key, proposal.employeeName)
-    : context;
   const facts = changeKind
     ? readEmploymentChange(
         scoped.messages.map((message) => message.content),
@@ -721,7 +740,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   const content =
     changeKind && facts
       ? employmentChangeContent(changeKind, facts, proposal, context)
-      : proposalContent(proposal, context, match, input.today ?? businessToday());
+      : proposalContent(proposal, correctiveAction ? scoped : context, match, input.today ?? businessToday());
   const notes = [
     directory.note,
     carried?.kind === "resolved" && proposal.employeeName
@@ -1281,6 +1300,7 @@ function turnsAboutThisForm(
   context: ManagerContext,
   templateKey: string,
   employeeName: string | null,
+  options: { readonly correctiveActionForm?: boolean } = {},
 ): ManagerContext {
   const same = (name: string) => {
     if (!employeeName) return true;
@@ -1299,14 +1319,44 @@ function turnsAboutThisForm(
     return a.join(" ") === b.join(" ") || a[0] === b[0] || trimmedLead;
   };
   let start = 0;
+  /* The latest request for this form, for this employee, inside the turns kept so far. */
+  let requestAt = -1;
   context.messages.forEach((message, index) => {
     const intent = detectTemplateIntent(message.content);
+    /*
+     * "CREATE VERBAL CA FOR …" IS A REQUEST FOR THIS FORM when this form is
+     * the Corrective Action Form: a corrective action to be started is what
+     * the proposal answers with it. Anywhere else it is another form.
+     */
+    const thisForm =
+      (intent.kind === "explicit" && intent.templateKey === templateKey) ||
+      (options.correctiveActionForm === true && intent.kind === "corrective_action" && intent.requestedCreation);
     const otherForm =
       (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
-      intent.kind === "corrective_action";
+      (intent.kind === "corrective_action" && !thisForm);
     const names = extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
     if (otherForm || otherPerson) start = index + 1;
+    if (requestAt < start) requestAt = -1;
+    /*
+     * A NEW REQUEST IS A NEW FORM. District Manager feedback, 21 Oct 2026: a
+     * second Corrective Action request for the same employee that says what
+     * happened ("create ca form for <employee> for a register shortage …")
+     * starts over from itself — the earlier request's policy, level, account
+     * and payroll answer are not this one's. One that only repeats the request
+     * ("create ca form for <employee>") keeps the account already given.
+     */
+    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
+    if (
+      options.correctiveActionForm === true &&
+      forThisEmployee &&
+      requestAt >= 0 &&
+      (describesIncident(message.content) ||
+        describesMoreThanTheRequest(message.content, { ignore: [employeeName ?? ""] }))
+    ) {
+      start = index;
+    }
+    if (forThisEmployee) requestAt = index;
   });
   // The current turn is always the last one, so there is always at least it.
   const messages = context.messages.slice(Math.min(start, context.messages.length - 1));
@@ -1316,6 +1366,20 @@ function turnsAboutThisForm(
     ids: messages.map((message) => message.id).filter((id): id is string => Boolean(id)),
     text: messages.map((message) => message.content).join("\n\n"),
   };
+}
+
+/**
+ * Both sides of the conversation from this form's first turn — what a bare
+ * "no" to Ask Sunny's own payroll question is read against. Where this form's
+ * only turn is the current one, the question just before it is all there is;
+ * where the first turn cannot be found, the whole conversation, as before.
+ */
+function formHistory(history: ProposalTurn["history"], scoped: ManagerContext): ProposalTurn["history"] {
+  const first = scoped.messages[0]?.id;
+  const at = first ? history.findIndex((message) => message.id === first) : -1;
+  if (at >= 0) return history.slice(at);
+  if (first && scoped.messages.length === 1) return history.slice(-1).filter((message) => message.role === "assistant");
+  return history;
 }
 
 /**

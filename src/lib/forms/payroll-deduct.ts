@@ -188,13 +188,18 @@ export interface ConversationTurn {
  * ONLY THIS FORM'S TURNS. The look-back starts after the last manager turn
  * that asked for a DIFFERENT form request than the one being answered, so a
  * payroll answer given on an earlier Corrective Action for somebody else in the
- * same conversation is not carried onto this one.
+ * same conversation is not carried onto this one. A caller that has already
+ * cut the conversation to this form's turns says so (`fromThisForm`), and the
+ * look-back is not cut again: there, a second request is a repeat of this one
+ * ("create ca form for <employee>"), and the answer given with the first still
+ * stands (District Manager feedback, 21 Oct 2026).
  *
  * ASSISTANT TURNS NEVER ANSWER. They are read only to know which question a
  * bare reply was replying to.
  */
 export function payrollDeductFromConversation(
   turns: readonly ConversationTurn[],
+  options: { readonly fromThisForm?: boolean } = {},
 ): PayrollDeductAnswer | null {
   const usable = turns.filter(
     (turn) => !turn.error && typeof turn.content === "string" && turn.content.trim() !== "",
@@ -204,7 +209,7 @@ export function payrollDeductFromConversation(
     .map((turn, index) => ({ turn, index }))
     .filter(({ turn }) => turn.role === "user" && detectTemplateIntent(turn.content).kind !== "none")
     .map(({ index }) => index);
-  const start = requests.length >= 2 ? requests[requests.length - 2]! + 1 : 0;
+  const start = !options.fromThisForm && requests.length >= 2 ? requests[requests.length - 2]! + 1 : 0;
 
   let lastAssistant = "";
   let answer: PayrollDeductAnswer | null = null;

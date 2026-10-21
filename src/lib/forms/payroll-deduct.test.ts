@@ -244,6 +244,17 @@ describe("the answer across the conversation", () => {
     ).toBeNull();
   });
 
+  it("keeps the answer across a repeated request when the turns are already this form's", () => {
+    const turns = [
+      user("create ca form for tess varga for violating attendance policy on 10-20-26. no payroll deduct"),
+      sunny("Is payroll deduct applicable? **No** — tell me if that should change."),
+      user("create ca form for tess varga"),
+    ];
+    expect(payrollDeductFromConversation(turns, { fromThisForm: true })).toBe("no");
+    // Unscoped, the second request still cuts the look-back, as before.
+    expect(payrollDeductFromConversation(turns)).toBeNull();
+  });
+
   it("is null when the question was never answered — never a default", () => {
     expect(payrollDeductFromConversation([user("CA for Dana Moss, she was late today")])).toBeNull();
     expect(payrollDeductFromConversation([])).toBeNull();
