@@ -31,6 +31,7 @@ import type {
 } from "@/lib/forms/document";
 import type { ChatFormInstanceRef } from "@/types";
 import { displayLocator } from "@/lib/knowledge/locator";
+import { NO_AUTOFILL } from "@/features/forms/document/autofill";
 
 /**
  * ============================================================================
@@ -733,6 +734,7 @@ export function InlineForm({
             <div className="min-w-0 space-y-1">
               <Label htmlFor={`follow-up-${instanceId}`}>Follow-up date</Label>
               <Input
+                {...NO_AUTOFILL}
                 id={`follow-up-${instanceId}`}
                 type="date"
                 className="min-w-0"
