@@ -592,3 +592,69 @@ describe("the observation keeps the manager's dates", () => {
   });
 });
 
+/* ========================================================================= */
+/* "PAYROLL DEDUCT OF $3.25 IS APPLICABLE", AND THE ACTION PLAN SAYS SO      */
+/* ========================================================================= */
+
+const C1 =
+  "create ca form for tess varga. tess had a register shortage of $3.25 on 10-20-26. payroll deduct of $3.25 is applicable";
+
+const CLOSING =
+  "Future policy violations may be subject to additional corrective action up to and including termination of employment.";
+
+const DRAWER_PLAN =
+  "Tess Varga is expected to adhere to the Sun Tan City cash handling policy by keeping the register accurate. Moving forward, Tess should count the drawer at every shift change. Management will monitor compliance and provide coaching as needed.";
+
+describe("a payroll deduction with an amount", () => {
+  it("is read as Yes, not asked, and the Action Plan states the amount before the closing", async () => {
+    const { last, proposal, create } = await conversation([C1]);
+
+    expect(proposal.payrollDeduct).toBe("yes");
+    expect(last.content).toMatch(/Is payroll deduct applicable\? \*\*Yes\*\*/);
+    expect(last.content).not.toMatch(/Yes or No\?/);
+
+    state.draft = {
+      values: {
+        observation: "Observed:\nOn October 20, 2026, Tess Varga's register was short $3.25.",
+        action_plan: DRAWER_PLAN,
+      },
+      checked: {},
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["yes"]);
+    expect(field(form, "action_plan")!.value).toBe(`${DRAWER_PLAN} $3.25 will be deducted from Tess's pay. ${CLOSING}`);
+  });
+
+  it('"payroll deduct applies and $3.25 will be deducted from check" says the same', async () => {
+    const { create } = await conversation([B3]);
+    state.draft = { values: { action_plan: DRAWER_PLAN }, checked: {} };
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `${DRAWER_PLAN} $3.25 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+  });
+
+  it("with no amount stated, says a deduction applies and invents no figure", async () => {
+    const { create } = await conversation([
+      "create ca form for tess varga, her register was short on 10-20-26. yes payroll deduct",
+    ]);
+    state.draft = { values: { action_plan: DRAWER_PLAN }, checked: {} };
+
+    const { reference } = await create();
+    const plan = field(await review(reference.instanceId), "action_plan")!.value!;
+    expect(plan).toBe(`${DRAWER_PLAN} A payroll deduction applies. ${CLOSING}`);
+    expect(plan).not.toMatch(/\$/);
+  });
+
+  it("leaves the plan alone when payroll deduct is No", async () => {
+    const { create } = await conversation([B1]);
+    state.draft = { values: { action_plan: DRAWER_PLAN }, checked: {} };
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(`${DRAWER_PLAN} ${CLOSING}`);
+  });
+});
+
