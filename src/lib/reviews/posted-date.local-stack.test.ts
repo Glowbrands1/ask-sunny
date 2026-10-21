@@ -275,6 +275,36 @@ describe.skipIf(!ENABLED)("counting by posted date on the local stack", { timeou
     ).toBe("historical");
   });
 
+  it("never counts a September review through the anchor, even when the anchor proves it new", async () => {
+    /*
+     * KS Lawrence on 21 October: a bigger run brought an old anchor back onto
+     * the page, and the anchor rule counted the September reviews above it.
+     * Here the anchor is put back on a 29 September review, and a September
+     * review the anchor would call new arrives above it.
+     */
+    sql(`update public.google_review_locations set counted_through_external_review_id = 'PDQASEP29LATE'
+          where store_code = '${WORNALL.code}'`);
+    const before = await wornall();
+
+    const result = await ingest([
+      apify("PDQAOCT20B1500", WORNALL.code, "2026-10-20T20:00:00Z", 0),
+      apify("PDQASEP29EVENING", WORNALL.code, "2026-09-30T01:00:00Z", 1),
+      apify("PDQASEP29LATE", WORNALL.code, "2026-09-29T18:00:00Z", 2),
+    ]);
+
+    expect(result.countedIntoPeriod).toBe(1);
+    expect(
+      sql(`select reporting_assignment_status from public.google_reviews where external_review_id = 'PDQASEP29EVENING'`),
+    ).toBe("historical");
+    expect(
+      sql(`select reporting_assignment_status from public.google_reviews where external_review_id = 'PDQAOCT20B1500'`),
+    ).toBe("posted_date");
+
+    const after = await wornall();
+    expect(after.qualifyingThisWeek).toBe(before.qualifyingThisWeek + 1);
+    expect(after.qualifyingMonthToDate).toBe(before.qualifyingMonthToDate + 1);
+  });
+
   it("counts nothing for a listing that has never been given a start", async () => {
     const result = await ingest([
       apify("PDQASTJ1", ST_JOSEPH.code, "2026-10-18T15:00:00Z", 0),
