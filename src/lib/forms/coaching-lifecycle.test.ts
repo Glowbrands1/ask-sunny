@@ -357,6 +357,35 @@ describe("a new coaching form", () => {
     ]);
   });
 
+  /*
+   * PRODUCTION, 21 Oct 2026: Ask Sunny verified the policy, the manager fixed
+   * a line in Observation and pressed Save — which sends every value on the
+   * card — and the untouched policy citation came back as the manager's, with
+   * no provenance. Finalize then refused a form whose policy had been sourced.
+   */
+  it("A. keeps a verified policy verified when the manager saves other edits", async () => {
+    const instance = await correctiveFormWithVerifiedPolicy();
+    const before = await loadInstance(instance.id);
+    const all = Object.fromEntries(
+      before!.values.map((row) => [row.fieldKey, row.value ?? ""]),
+    );
+
+    await saveInstanceValues(
+      instance.id,
+      { values: { ...all, observation: "Missed the Woven deadline of 10-15-26." } },
+      "dana",
+    );
+
+    const loaded = await loadInstance(instance.id);
+    const byKey = new Map(loaded!.values.map((row) => [row.fieldKey, row]));
+    expect(byKey.get("policy_language")?.filledBy).toBe("ai");
+    expect(byKey.get("policy_language")?.provenance).toEqual(VERIFIED);
+    expect(byKey.get("observation")?.filledBy).toBe("manager");
+
+    const finalized = await finalizeInstance(instance.id, "dana", null);
+    expect(finalized.status).toBe("finalized");
+  });
+
   it("C. leaves the form a draft when the manager does not acknowledge", async () => {
     const instance = await startCorrectiveForm();
 
