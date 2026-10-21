@@ -544,3 +544,51 @@ describe('"violating visitors at work policy" is the manual\'s Visitors in the W
   });
 });
 
+/* ========================================================================= */
+/* THE DATES THE MANAGER GAVE STAY THEIRS ON THE DRAFT                       */
+/* ========================================================================= */
+
+const D1 =
+  "create corrective action for tess varga for violating standards of conduct policy on 10-20-26. tess failed to acknowledge policies in woven by the 10-15-26 deadline.";
+
+describe("the observation keeps the manager's dates", () => {
+  it("dated by the incident, the observation states it as given", async () => {
+    const { create } = await conversation([B1]);
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Tess Varga did not follow the attendance policy." },
+      checked: {},
+    };
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "form_date")!.value).toBe("2026-10-20");
+    expect(field(form, "observation")!.value).toBe(
+      "Observed:\nOn October 20, 2026, Tess Varga did not follow the attendance policy.",
+    );
+  });
+
+  it("the deadline the manager gave is not rewritten to the form's date", async () => {
+    const { proposal, create } = await conversation([D1]);
+    expect(proposal.formDate).toBe("2026-10-20");
+    state.draft = {
+      values: {
+        observation:
+          "Observed:\nOn October 20, 2026, Tess Varga had not acknowledged the policies in Woven by the October 15, 2026 deadline.",
+      },
+      checked: {},
+    };
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const observation = field(form, "observation")!.value!;
+
+    expect(field(form, "form_date")!.value).toBe("2026-10-20");
+    expect(observation).toContain("On October 20, 2026");
+    expect(observation).toContain("by the October 15, 2026 deadline");
+    expect(observation).not.toContain("by the October 20, 2026 deadline");
+    /* And the model was told which dates are the manager's, not that the form's is the only one. */
+    expect(state.modelNotes.at(-1)).toMatch(/not necessarily the date of the incident/);
+    expect(state.modelNotes.at(-1)).toContain('\\"October 20, 2026\\", \\"October 15, 2026\\"');
+  });
+});
+

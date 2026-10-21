@@ -108,7 +108,7 @@ import {
   withConductOffense,
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
-import { priorStepDate } from "@/lib/forms/form-date-answer";
+import { listFormDates, priorStepDate } from "@/lib/forms/form-date-answer";
 import { namedManualSection } from "@/lib/forms/named-policy-section";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
@@ -636,7 +636,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * THE CHEAPEST OF THE THREE DATE FIXES, and the only one that prevents
        * rather than repairs: a model told the date does not invent one.
        */
-      ...(resolvedFormDate ? [formDateBrief(resolvedFormDate)] : []),
+      /*
+       * WITH THE DATES THE MANAGER GAVE, which are not always the form's: "on
+       * 10-20-26 … by the 10-15-26 deadline" has a form date and a deadline,
+       * and the model was told the form's date was the only one to write.
+       */
+      ...(resolvedFormDate
+        ? [formDateBrief(resolvedFormDate, listFormDates(notes, businessToday()).map((found) => found.iso))]
+        : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
        *
