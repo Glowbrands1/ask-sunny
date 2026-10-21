@@ -135,3 +135,55 @@ describe("a labelled earlier step is listed with what it was about", () => {
     expect(grounded.added).toEqual([]);
   });
 });
+
+/*
+ * HR, 21 Oct 2026: "previous coaching: jba policy manual 1-1-26, verbal ca
+ * 9-1-26" listed the coaching and dropped the verbal CA. Every item of the
+ * list is a line, in the order written, naming its own step.
+ */
+describe("a labelled history list is listed item by item", () => {
+  const DAY = "2026-10-21";
+  const PRODUCTION =
+    "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26. payroll deduct not applicable";
+
+  it("the production request lists both steps", () => {
+    const lines = ["Coaching — JBA Policy Manual — signed 01/01/2026", "Verbal corrective action — signed 09/01/2026"];
+    expect(statedPriorActions(PRODUCTION, DAY)).toEqual(lines);
+    expect(groundPriorActions({ drafted: "", notes: PRODUCTION, today: DAY }).value).toBe(lines.join("\n"));
+  });
+
+  it.each([
+    ["previous coaching: verbal ca 9-1-26", "Verbal corrective action — signed 09/01/2026"],
+    ["prior actions: written warning 8/2/26", "Written warning — signed 08/02/2026"],
+    ["previous coaching: policy acknowledgement 1-1-26", "Policy acknowledgement — signed 01/01/2026"],
+    ["previous CA: written ca 8/2/26", "Written corrective action — signed 08/02/2026"],
+    ["previous CA: final written ca 9/9/26", "Final written corrective action — signed 09/09/2026"],
+    ["previous coaching: written warning tardiness 8/2/26", "Written warning — tardiness — signed 08/02/2026"],
+  ])("%s", (notes, line) => {
+    expect(statedPriorActions(notes, DAY)).toEqual([line]);
+    expect(groundPriorActions({ drafted: "", notes, today: DAY }).value).toBe(line);
+  });
+
+  it("lists every item, in the order the manager wrote them", () => {
+    const notes = "prior actions: policy acknowledgement 1-1-26, verbal ca 9-1-26 and written warning 10/1/26";
+    expect(groundPriorActions({ drafted: "", notes, today: DAY }).value).toBe(
+      [
+        "Policy acknowledgement — signed 01/01/2026",
+        "Verbal corrective action — signed 09/01/2026",
+        "Written warning — signed 10/01/2026",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps the draft's verbal warning on the day the manager said a verbal CA was given", () => {
+    const grounded = groundPriorActions({
+      drafted: "Verbal warning for missing the meeting — signed 09/01/2026",
+      notes: "previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26",
+      today: DAY,
+    });
+    expect(grounded.removed).toEqual([]);
+    expect(grounded.value).toBe(
+      ["Verbal warning for missing the meeting — signed 09/01/2026", "Coaching — JBA Policy Manual — signed 01/01/2026"].join("\n"),
+    );
+  });
+});

@@ -17,7 +17,8 @@ import type { AccessScope, ChatMessage } from "@/types";
  *   … previous coaching was jba policy manual 1-1-26", "… on 10-20-26.
  *   verbal. no payroll deduct. jba manual 1-1-26 for previous coaching", a
  *   second request in the same chat, "payroll deduct of $3.25 is applicable",
- *   and "by the 10-15-26 deadline".
+ *   "by the 10-15-26 deadline", and "previous coaching: jba policy manual
+ *   1-1-26, verbal ca 9-1-26".
  *
  * Only identity, the model, the knowledge provider and the database are
  * stand-ins. Every person is synthetic.
@@ -326,6 +327,9 @@ const A1 =
   "create verbal CA for remy calder for violating visitors at work policy on 10-10-26. remy spent 40 minutes talking with a friend and ignoring clients. previous coaching was jba policy manual 1-1-26";
 const B1 =
   "create ca form for tess varga for violating attendance policy on 10-20-26. verbal. no payroll deduct. jba manual 1-1-26 for previous coaching";
+/* HR, 21 Oct 2026: the history as a list under one label. */
+const E1 =
+  "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26. payroll deduct not applicable";
 
 beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
@@ -486,6 +490,37 @@ describe("previous coaching stated in chat", () => {
     ]);
 
     expect(proposal.formDate ?? null).toBeNull();
+  });
+
+  /*
+   * HR, 21 Oct 2026: the history as a list under one label. The verbal CA was
+   * dropped from the prior actions, its date handed to the drafting model as
+   * one of the manager's dates for the form, and the "verbal ca" in the list
+   * cancelled the Written the manager asked for.
+   */
+  it('"previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26" — every item of the list is history', async () => {
+    const { last, proposal, create } = await conversation([E1]);
+
+    expect(proposal.formDate).toBe("2026-10-20");
+    expect(proposal.warningLevel).toBe("written");
+    expect(last.content).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
+    expect(last.content).not.toMatch(LEVEL_LEFT_OPEN);
+    expect(last.content).toMatch(
+      /\*\*Prior actions:\*\* Coaching — JBA Policy Manual — signed 01\/01\/2026; Verbal corrective action — signed 09\/01\/2026, as you said/,
+    );
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "form_date")!.value).toBe("2026-10-20");
+    expect(field(form, "prior_actions")!.value).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026",
+    );
+    expect(field(form, "warning_type")!.checked).toEqual(["written"]);
+    expect(field(form, "warning_type")!.provenance).toMatchObject({ source: "manager_statement" });
+    expect(described()).toContain(E1);
+    /* The verbal CA's date is history, not one of the dates to write on the form. */
+    expect(state.modelNotes.at(-1)).toMatch(/This is the date of the incident and of this form/);
+    expect(state.modelNotes.at(-1)).not.toContain("September 1, 2026");
   });
 });
 
