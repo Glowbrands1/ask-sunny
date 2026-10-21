@@ -20,8 +20,11 @@ describe("a salon the manager names", () => {
     ["she works at the Lawrence salon", ["loc-0468"]],
     ["dana moss, KS Shawnee, today", ["loc-0463"]],
     ["NE Kearney", ["loc-0309"]],
-    ["salon 306", ["loc-0306"]],
+    ["salon 0306", ["loc-0306"]],
     ["store #0306", ["loc-0306"]],
+    // A Google store code where no salon number reads the same digits.
+    ["store 373", ["loc-0476"]],
+    ["she works at 0307", ["loc-0307"]],
     ["she was in Liberty today", ["loc-0394"]],
     ["late at Lincoln O. Street this morning", ["loc-0311"]],
     ["late at Omaha 144th & Center", ["loc-0314"]],
@@ -71,6 +74,35 @@ describe("ordinary prose is not a salon", () => {
     "store 12",
     "location 3 of the checklist",
     "she did 144 upgrades",
+    /*
+     * A three-digit number that is one salon's number and ANOTHER salon's
+     * Google store code names neither: 306 is Wornall (0306) or KS Manhattan
+     * (store 306), and guessing files the record at the wrong one.
+     */
+    "salon 306",
+    "store 307",
+    "#314",
+    // A clock time is not a salon.
+    "she was late at 310",
+  ])("%s", (text) => {
+    expect(named(text)).toEqual([]);
+  });
+});
+
+describe("a salon set off by punctuation", () => {
+  it.each([
+    ["Avery Testperson, lincoln 27th st", ["loc-0310"]],
+    ["Avery Testperson (Overland Park)", ["loc-0476"]],
+    ["she works at kearney, needs a coaching form", ["loc-0309"]],
+    ["coaching form: Brandi Algya, ASD, Lincoln O St", ["loc-0311"]],
+  ])("reads %s", (text, ids) => {
+    expect(named(text)).toEqual(ids);
+  });
+
+  it.each([
+    // The salon's road on its own is still a road.
+    "she parked on main, 27th st",
+    "she took the exit, pine lake",
   ])("%s", (text) => {
     expect(named(text)).toEqual([]);
   });
