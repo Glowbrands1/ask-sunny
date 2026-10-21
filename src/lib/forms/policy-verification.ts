@@ -92,7 +92,7 @@ export function unverifiedPolicyFields(
  */
 export const POLICY_ACKNOWLEDGEMENT_REQUIRED = "policy_verification_required";
 
-export const POLICY_ACKNOWLEDGEMENT_TITLE = "Sunny does not see this policy in the knowledge base";
+export const POLICY_ACKNOWLEDGEMENT_TITLE = "Woven does not see this policy in the knowledge base";
 
 export const POLICY_ACKNOWLEDGEMENT_MESSAGE =
-  "Sunny does not see this policy in the knowledge base, so the policy on this form has not been checked by Sunny. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
+  "Woven does not see this policy in the knowledge base, so the policy on this form could not be verified. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
