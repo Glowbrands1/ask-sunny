@@ -8,7 +8,10 @@ import {
 } from "@/lib/knowledge/providers/supabase";
 import type { ChatMessage } from "@/types";
 
+import { policyPhrase } from "./ca-action-plan";
+import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { fieldsForVariant, parseFormDocument } from "./document";
+import { employeeFirstName } from "./employee-reference";
 import { changeOnEditableDraft } from "./editable-draft";
 import { authorizeInstance } from "./instance-scope";
 import { applyAssistantDraft, applyAssistantRevision } from "./instances";
@@ -151,11 +154,13 @@ export async function changeActiveFormPolicy(input: {
     }
     if (next.length === 0) {
       await applyAssistantRevision(input.instanceId, {}, [POLICY_KEY], actor.id);
+      /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
+      const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
       return {
         ...reply(
-          `Removed ${names(wanted)} from ${field.label} on the ${who}. That line is now blank — tell me which policy applies and I'll add it from the manual. Everything else on the form is as it was.`,
+          `Removed ${names(wanted)} from ${field.label} on the ${who}. That line is now blank — tell me which policy applies and I'll add it from the manual.${plan.length > 0 ? " The Action Plan has been updated to match." : ""} Everything else on the form is as it was.`,
         ),
-        formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY] },
+        formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...plan] },
       };
     }
   }
@@ -188,6 +193,8 @@ export async function changeActiveFormPolicy(input: {
   if (!(POLICY_KEY in saved.accepted.values)) {
     return reply(`I couldn't save ${field.label} on the ${who}, so it is as it was. Type the policy into that line on the form instead.`);
   }
+  /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
+  const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
 
   const added = mode === "remove" ? [] : wanted;
   const lines: string[] = [];
@@ -212,13 +219,19 @@ export async function changeActiveFormPolicy(input: {
   } else if (mode === "replace" && current.length > 0 && current.some((section) => !next.some((kept) => kept.heading === section.heading))) {
     lines.push("", `It no longer cites ${names(current.filter((section) => !next.some((kept) => kept.heading === section.heading)))}.`);
   }
+  if (plan.length > 0) {
+    lines.push(
+      "",
+      `The Action Plan now says management will review ${policyPhrase(next.map((section) => section.heading))} with ${employeeFirstName(instance.employeeName) ?? "the employee"}.`,
+    );
+  }
   lines.push(
     "",
     "The policy line is now checked against the manual, so the form won't ask you to verify it at Finalize. Everything else on the form is as it was — give it a read below.",
   );
   return {
     ...reply(lines.join("\n")),
-    formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY] },
+    formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...plan] },
   };
 }
 

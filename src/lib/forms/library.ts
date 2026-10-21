@@ -577,16 +577,17 @@ export function correctiveActionDocument(): FormDocument {
         kind: "field",
         field: field("action_plan", "Action Plan", "ai", "long_text", {
           help:
-            "One paragraph: what is being done, what the employee does going " +
-            "forward, and that the manual's own wording is reviewed with them. " +
-            "No dates and no follow-up meeting. It always ends with the form's " +
-            "closing sentence, which is added automatically.",
+            "Two sentences: management will review the policy cited under Direct " +
+            "policy with the employee, and the form's closing sentence — with the " +
+            "payroll deduction between them when payroll deduct is Yes. Written by " +
+            "Ask Sunny from the form; the closing is added automatically.",
           narrative: "plan_of_action",
           /*
-           * THE CLOSING THE BUSINESS REQUIRES, REVISION 5. Put on by code at
-           * every write and every render — never the model's to write, and
-           * the narrative guard would remove it if it were. See
-           * `required-closing.ts`.
+           * THE CLOSING THE BUSINESS REQUIRES — revision 5, reworded in
+           * revision 6 ("may result in"). Put on by code at every write and
+           * every render — never the model's to write, and the narrative
+           * guard would remove it if it were. See `required-closing.ts`. The
+           * rest of the plan is built by `ca-action-plan.ts`, not drafted.
            */
           requiredClosing: CA_ACTION_PLAN_CLOSING,
         }),
@@ -1702,9 +1703,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 5,
+    revision: 6,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

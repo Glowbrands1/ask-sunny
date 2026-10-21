@@ -5,7 +5,7 @@ import { fieldsForVariant, parseFormDocument, type FormDocument } from "./docume
 import { TEMPLATE_SEEDS } from "./library";
 import { renderFormPdf, type RenderMeta } from "./pdf-render";
 import { PRIOR_ACTIONS_KEY, PRIOR_ACTIONS_LABEL } from "./prior-actions";
-import { CA_ACTION_PLAN_CLOSING } from "./required-closing";
+import { CA_ACTION_PLAN_CLOSING, CA_ACTION_PLAN_CLOSING_REVISION_5 } from "./required-closing";
 
 /**
  * ============================================================================
@@ -22,6 +22,10 @@ import { CA_ACTION_PLAN_CLOSING } from "./required-closing";
  *   employment." — on the record and on the PDF.
  *
  * And a form filed on revision 4 prints exactly as it was signed.
+ *
+ * Revision 6 (District Manager feedback, 21 Oct 2026) rewords that closing
+ * "may result in"; a form filed on revision 5 still prints "may be subject
+ * to", as signed.
  */
 
 const seed = TEMPLATE_SEEDS.find((entry) => entry.key === "dpoa")!;
@@ -74,9 +78,10 @@ function revision4(): FormDocument {
 }
 
 describe("the template", () => {
-  it("is revision 5, published as a new version rather than over revision 4", () => {
-    expect(seed.revision).toBe(5);
+  it("is revision 6, published as a new version rather than over revision 5 or 4", () => {
+    expect(seed.revision).toBe(6);
     expect(seed.revisionNote).toMatch(/Revision 5/);
+    expect(seed.revisionNote).toMatch(/Revision 6 \(District Manager feedback, 21 Oct 2026\)/);
     expect(seed.key).toBe("dpoa");
   });
 
@@ -161,13 +166,28 @@ describe("the printed form", () => {
     const plan = "Jessica is expected to adhere to the Sun Tan City attendance policy by arriving on time.";
     const text = await pdfText(renderFormPdf(document, null, { values: { action_plan: plan }, checked: {} }, META));
     const flat = text.replace(/\s+/g, " ");
-    expect(flat).toContain(`${plan} Future policy violations may be subject to additional corrective action up to and including termination of employment.`);
+    expect(flat).toContain(`${plan} Future policy violations may result in additional corrective action up to and including termination of employment.`);
+  });
+
+  it("prints revision 5's wording on a form filed against revision 5", async () => {
+    const revision5 = parseFormDocument({
+      ...document,
+      blocks: document.blocks.map((block) =>
+        block.kind === "field" && block.field.key === "action_plan"
+          ? { ...block, field: { ...block.field, requiredClosing: CA_ACTION_PLAN_CLOSING_REVISION_5 } }
+          : block,
+      ),
+    });
+    const plan = `Jessica is expected to arrive on time. ${CA_ACTION_PLAN_CLOSING_REVISION_5}`;
+    const flat = (await pdfText(renderFormPdf(revision5, null, { values: { action_plan: plan }, checked: {} }, META))).replace(/\s+/g, " ");
+    expect(flat).toContain(plan);
+    expect(flat).not.toMatch(/may result in additional corrective action/);
   });
 
   it("prints the closing once when the stored plan already has it", async () => {
     const plan = `Jessica is expected to arrive on time. ${CA_ACTION_PLAN_CLOSING}`;
     const text = await pdfText(renderFormPdf(document, null, { values: { action_plan: plan }, checked: {} }, META));
-    expect(text.replace(/\s+/g, " ").match(/Future policy violations may be subject/g)).toHaveLength(1);
+    expect(text.replace(/\s+/g, " ").match(/Future policy violations may result in/g)).toHaveLength(1);
   });
 
   it("prints the closing on a blank form too", async () => {

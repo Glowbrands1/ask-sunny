@@ -4,6 +4,7 @@ import { fieldsForVariant, parseFormDocument } from "./document";
 import { TEMPLATE_SEEDS } from "./library";
 import {
   CA_ACTION_PLAN_CLOSING,
+  CA_ACTION_PLAN_CLOSING_REVISION_5,
   applyRequiredClosings,
   closingForDisplay,
   endsWithRequiredClosing,
@@ -13,7 +14,8 @@ import {
 /**
  * HR feedback, 3 Oct 2026: every Corrective Action Action Plan ends with
  * "Future policy violations may be subject to additional corrective action up
- * to and including termination of employment." Deterministic, never doubled.
+ * to and including termination of employment." District Manager feedback, 21
+ * Oct 2026 (revision 6): "… may result in …". Deterministic, never doubled.
  */
 
 const CLOSING = CA_ACTION_PLAN_CLOSING;
@@ -23,6 +25,9 @@ const PLAN =
 describe("the closing sentence", () => {
   it("is the business's sentence, exactly", () => {
     expect(CLOSING).toBe(
+      "Future policy violations may result in additional corrective action up to and including termination of employment.",
+    );
+    expect(CA_ACTION_PLAN_CLOSING_REVISION_5).toBe(
       "Future policy violations may be subject to additional corrective action up to and including termination of employment.",
     );
   });
@@ -51,7 +56,7 @@ describe("the closing sentence", () => {
   });
 
   it("collapses a copy with different spacing, casing or end punctuation into the exact one", () => {
-    const sloppy = `${PLAN}\nfuture policy violations may be subject to  additional corrective action up to and including termination of employment`;
+    const sloppy = `${PLAN}\nfuture policy violations may result in  additional corrective action up to and including termination of employment`;
     const result = withRequiredClosing(sloppy, CLOSING);
     expect(result.endsWith(CLOSING)).toBe(true);
     expect(result.toLowerCase().match(/future policy violations/g)).toHaveLength(1);
@@ -71,6 +76,21 @@ describe("the closing sentence", () => {
   it("prints alone on a blank form, and with the plan on a filled one", () => {
     expect(closingForDisplay("", CLOSING)).toBe(CLOSING);
     expect(closingForDisplay(PLAN, CLOSING)).toBe(`${PLAN} ${CLOSING}`);
+  });
+
+  it("replaces revision 5's wording, wherever it sits, rather than printing both", () => {
+    const carried = `${PLAN} ${CA_ACTION_PLAN_CLOSING_REVISION_5}`;
+    const result = withRequiredClosing(carried, CLOSING);
+    expect(result).toBe(`${PLAN} ${CLOSING}`);
+    expect(result.match(/Future policy violations/g)).toHaveLength(1);
+    const typedAfter = `${PLAN} ${CA_ACTION_PLAN_CLOSING_REVISION_5} Jessica agreed to this plan.`;
+    expect(withRequiredClosing(typedAfter, CLOSING)).toBe(`${PLAN} Jessica agreed to this plan. ${CLOSING}`);
+  });
+
+  it("keeps revision 5's wording on a revision-5 form, which prints what was signed", () => {
+    const signed = `${PLAN} ${CA_ACTION_PLAN_CLOSING_REVISION_5}`;
+    expect(withRequiredClosing(signed, CA_ACTION_PLAN_CLOSING_REVISION_5)).toBe(signed);
+    expect(closingForDisplay(signed, CA_ACTION_PLAN_CLOSING_REVISION_5)).toBe(signed);
   });
 
   it("is what a reader checks for", () => {

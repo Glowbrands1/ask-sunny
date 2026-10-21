@@ -114,8 +114,13 @@ import {
   PAYROLL_DEDUCT_KEY,
   isPayrollDeductAnswer,
   payrollDeductAmount,
-  withPayrollDeductInPlan,
 } from "@/lib/forms/payroll-deduct";
+import {
+  actionPlanProvenance,
+  correctiveActionPlan,
+  fixedActionPlanKey,
+  type ActionPlanInput,
+} from "@/lib/forms/ca-action-plan";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
   COACHING_CONTEXT_RULES,
@@ -316,7 +321,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ...fields.map((field) => field.key),
       ...groups.map((group) => group.key),
     ]);
-    const promptFields = fields.filter((field) => !EXIT_DERIVED_KEYS.has(field.key));
+    /*
+     * THE CORRECTIVE ACTION FORM'S ACTION PLAN IS NOT DRAFTED. District
+     * Manager feedback, 21 Oct 2026: two sentences, the policy reviewed and
+     * the closing (plus the deduction, where payroll deduct is Yes). Built by
+     * code after the policy is cited — see `ca-action-plan.ts` — so the model
+     * is not shown the field, and anything it returns for it is dropped.
+     */
+    const fixedPlan = fixedActionPlanKey(loaded.instance.templateKey, document, variantKey);
+    const promptFields = fields.filter(
+      (field) => !EXIT_DERIVED_KEYS.has(field.key) && field.key !== fixedPlan?.key,
+    );
     const promptGroups = groups.filter((group) => !EXIT_DERIVED_KEYS.has(group.key));
 
     /*
@@ -557,7 +572,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * would put a second, differently-worded instruction about prose in front
      * of the model on a form that has no plan field to apply it to.
      */
-    const hasPlanOfAction = fields.some((field) => field.narrative === PLAN_OF_ACTION);
+    const hasPlanOfAction = promptFields.some((field) => field.narrative === PLAN_OF_ACTION);
 
     /*
      * THE PRIOR-ACTIONS LIST (Corrective Action Form, revision 5). Its history
@@ -698,7 +713,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
              * `required-closing.ts`); a model paraphrase of it would print
              * next to the real one.
              */
-            ...(fields.some((field) => field.narrative === PLAN_OF_ACTION && field.requiredClosing)
+            ...(promptFields.some((field) => field.narrative === PLAN_OF_ACTION && field.requiredClosing)
               ? [
                   "Do not write any sentence about future violations or their consequences: the form adds its own required closing sentence to this paragraph automatically.",
                 ]
@@ -876,6 +891,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * than the bracket, and why follow-up belongs to instance metadata rather
      * than to a paragraph in Details.
      */
+    // The Corrective Action Form's Action Plan is built below, never taken from the model.
+    if (fixedPlan && drafted.values) delete drafted.values[fixedPlan.key];
     const cleaned = stripPlaceholdersFromDraft(drafted.values ?? {});
 
     /*
@@ -1175,13 +1192,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     /*
      * "PAYROLL DEDUCT OF $3.25 IS APPLICABLE" IS IN THE ACTION PLAN. District
      * Manager feedback, 21 Oct 2026: the plan never said what would be
-     * deducted. Where the form's own Yes / No says Yes (the manager's answer,
-     * stored at creation), the drafted plan states the amount the manager
+     * deducted. The form's own Yes / No (the manager's answer, stored at
+     * creation) decides whether the built plan states the amount the manager
      * gave, exactly — or that a deduction applies, with no figure, when they
-     * gave none. Nothing else about the plan changes. See `payroll-deduct.ts`.
+     * gave none. See `ca-action-plan.ts` and `payroll-deduct.ts`.
      */
-    const planKey = fields.find((field) => field.narrative === PLAN_OF_ACTION)?.key ?? null;
-    const payrollAnswer = planKey
+    const payrollAnswer = fixedPlan
       ? ((loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)?.checked.find(isPayrollDeductAnswer) ??
         null)
       : null;
@@ -1190,13 +1206,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (priorActions) {
         if (priorActions.value.trim() !== "") base[PRIOR_ACTIONS_KEY] = priorActions.value;
         else delete base[PRIOR_ACTIONS_KEY];
-      }
-      if (planKey && typeof base[planKey] === "string") {
-        base[planKey] = withPayrollDeductInPlan(base[planKey]!, {
-          answer: payrollAnswer,
-          amount: payrollDeductAmount(notes),
-          firstName: (loaded.instance.employeeName ?? "").trim().split(/\s+/)[0] || null,
-        });
       }
       return base;
     })();
@@ -1527,6 +1536,52 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const keeps = (key: string) =>
       managerKeys.has(key) && !(DERIVED_POLICY_FIELD_KEYS.has(key) && derivedPolicy.derived.includes(key));
+
+    /*
+     * ========================================================================
+     * THE ACTION PLAN, BUILT FROM WHAT THE FORM NOW SAYS
+     * ========================================================================
+     *
+     * Last, once Direct policy is settled: the plan names the sections that
+     * line cites (`manualSections`, only where they are what is being written
+     * with the manual's provenance), else what Policy Violated names, else
+     * "the applicable company policy". The payroll sentence, on Yes, sits
+     * between the two. A plan the manager typed is kept on a redraft, like
+     * every line of theirs. See `ca-action-plan.ts`.
+     */
+    const planInput: ActionPlanInput | null = fixedPlan
+      ? {
+          citedPolicies: "policy_language" in pinnedProvenance ? manualSections.map((section) => section.heading) : [],
+          policyViolated: keeps("policy_violated")
+            ? (managerRows.find((row) => row.fieldKey === "policy_violated")?.value ?? null)
+            : (named.values.policy_violated ?? null),
+          employeeName: loaded.instance.employeeName,
+          payroll: { answer: payrollAnswer, amount: payrollDeductAmount(notes) },
+          closing: fixedPlan.closing,
+        }
+      : null;
+    /*
+     * A BLANK FORM STAYS BLANK. One created from a name alone, before the
+     * manager has said what happened, is what the chat redraft looks for
+     * (`chat-redraft.ts`), and a plan naming "the applicable company policy"
+     * on it would say nothing anyone decided. So the plan is built when this
+     * draft wrote something, or the form already holds a draft.
+     */
+    const holdsDraft = (values: Record<string, string>, checked: Record<string, string[]>) =>
+      Object.values(values).some((value) => typeof value === "string" && value.trim() !== "") ||
+      Object.values(checked).some((options) => options.length > 0);
+    const draftedAnything =
+      holdsDraft(named.values, validated.checked) ||
+      (loaded.values ?? []).some(
+        (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+      );
+    const planned =
+      fixedPlan && planInput && draftedAnything && !keeps(fixedPlan.key)
+        ? {
+            values: { ...named.values, [fixedPlan.key]: correctiveActionPlan(planInput) },
+            provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
+          }
+        : { values: named.values, provenance };
     /*
      * THE TYPE OF WARNING THE MANAGER STATED IN CHAT — "create verbal CA for
      * …" — was ticked at creation as their statement, and the model's tick
@@ -1543,7 +1598,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const guarded = await applyAssistantDraft(
       id,
       {
-        values: Object.fromEntries(Object.entries(named.values).filter(([key]) => !keeps(key))),
+        values: Object.fromEntries(Object.entries(planned.values).filter(([key]) => !keeps(key))),
         checked: Object.fromEntries(
           Object.entries(validated.checked).filter(
             ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
@@ -1551,7 +1606,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ),
       },
       actor.id,
-      provenance,
+      planned.provenance,
     );
 
     return NextResponse.json({

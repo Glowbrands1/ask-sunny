@@ -17,6 +17,7 @@ import { changeOnEditableDraft } from "./editable-draft";
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
+import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection, payrollDeductReply } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
@@ -249,6 +250,19 @@ export async function correctActiveForm(input: {
   const written = updated.filter((key) => !refusedOnSave.has(key));
   if (written.length === 0) return null;
   const rewritten = syncedKey && !refusedOnSave.has(syncedKey) ? syncedKey : null;
+  /*
+   * THE ACTION PLAN STATES THE DEDUCTION ONLY ON YES, so a corrected payroll
+   * answer rebuilds a plan Ask Sunny built (never one a person wrote). The
+   * amount is read from this message, else kept from the plan. See
+   * `ca-action-plan.ts`.
+   */
+  const planKeys = written.includes(PAYROLL_DEDUCT_KEY)
+    ? await syncCorrectiveActionPlan(input.instanceId, actor.id, {
+        notes: input.question,
+        loaded,
+        checked: accepted.checked,
+      })
+    : [];
 
   const before = Object.fromEntries(loaded.values.map((row) => [row.fieldKey, row.checked]));
   const after = { ...before, ...submitted.checked };
@@ -271,6 +285,13 @@ export async function correctActiveForm(input: {
     );
   } else if (reason && narrative.trim() !== "" && !rewritten) {
     lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
+  }
+  if (planKeys.length > 0) {
+    written.push(...planKeys);
+    lines.push(
+      "",
+      payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction.",
+    );
   }
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };

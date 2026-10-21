@@ -232,8 +232,10 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      * its section and page. Revision 4 adds "Is payroll deduct applicable?".
      * Revision 5 (HR feedback, 3 Oct 2026) replaces the two previous-action
      * lines with one list and gives the Action Plan its required closing.
+     * Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action
+     * Plan two sentences and its closing "may result in".
      */
-    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(5);
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(6);
   });
 });
 

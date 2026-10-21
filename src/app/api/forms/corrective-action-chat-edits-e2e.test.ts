@@ -151,6 +151,8 @@ const { correctActiveForm } = await import("@/lib/forms/chat-correction");
 const { changeActiveFormPolicy } = await import("@/lib/forms/chat-policy-change");
 const { reviseActiveForm } = await import("@/lib/forms/chat-revision");
 const { describeOpenForm } = await import("@/lib/forms/open-form-summary");
+const { saveInstanceValues } = await import("@/lib/forms/instances");
+const { CA_ACTION_PLAN_CLOSING: CLOSING } = await import("@/lib/forms/required-closing");
 const instancesRoute = await import("./instances/route");
 const instanceRoute = await import("./instances/[id]/route");
 const draftRoute = await import("./instances/[id]/draft/route");
@@ -253,6 +255,8 @@ beforeEach(async () => {
 describe("a policy named in the conversation goes onto the open form", () => {
   it("adds Late Opening to Direct policy, in the manual's own words, as verified", async () => {
     const { id, history } = await createdForm();
+    /* The Action Plan Ask Sunny built names what Direct policy cites (District Manager feedback, 21 Oct 2026). */
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Attendance policy with Ellie. ${CLOSING}`);
 
     const answer = await changeActiveFormPolicy({
       request: chat(),
@@ -263,7 +267,12 @@ describe("a policy named in the conversation goes onto the open form", () => {
 
     expect(answer?.content).toContain("Late Opening");
     expect(answer?.content).not.toMatch(/no form has been created/i);
-    expect(answer?.formUpdate).toEqual({ instanceId: id, updated: ["policy_language"] });
+    expect(answer?.formUpdate).toEqual({ instanceId: id, updated: ["policy_language", "action_plan"] });
+    /* The Action Plan follows Direct policy: both sections, in the order cited. */
+    expect(answer?.content).toContain("The Action Plan now says management will review the Attendance and Late Opening policies with Ellie.");
+    expect((await row(id, "action_plan"))?.value).toBe(
+      `Management will review the Attendance and Late Opening policies with Ellie. ${CLOSING}`,
+    );
     const policy = await row(id, "policy_language");
     expect(policy?.value).toContain("When an employee assigned to open a location");
     expect(policy?.value).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
@@ -304,6 +313,12 @@ describe("a policy named in the conversation goes onto the open form", () => {
     });
     expect(answer?.content).toMatch(/Removed \*\*Late Opening\*\*/);
     expect((await row(id, "policy_language"))?.value ?? "").toBe("");
+    /* With no section cited, the built plan names what Policy Violated names. */
+    expect(answer?.formUpdate?.updated).toEqual(["policy_language", "action_plan"]);
+    expect(answer?.content).toContain("The Action Plan has been updated to match.");
+    expect((await row(id, "action_plan"))?.value).toBe(
+      `Management will review the Tardiness/Leaving Early policy with Ellie. ${CLOSING}`,
+    );
   });
 
   it("says plainly when the manual has no such section, and changes nothing", async () => {
@@ -356,7 +371,12 @@ describe("any other change to the open Corrective Action Form is made in place",
   it("changes the warning level, re-derives Policy Violated, and never lets the model write a policy line", async () => {
     const { id, history } = await createdForm();
     const before = (await row(id, "policy_language"))?.value;
-    state.toolValues = { policy_language: "Invented policy text.", policy_violated: "Something else" };
+    const plan = (await row(id, "action_plan"))?.value;
+    state.toolValues = {
+      policy_language: "Invented policy text.",
+      policy_violated: "Something else",
+      action_plan: "Ellie must apologise to the whole team before her next shift.",
+    };
     state.toolChecked = { warning_type: ["written"], offense_type: ["absenteeism"] };
 
     const answer = await reviseActiveForm({
@@ -372,6 +392,9 @@ describe("any other change to the open Corrective Action Form is made in place",
     expect((await row(id, "offense_type"))?.checked).toEqual(["absenteeism"]);
     expect((await row(id, "policy_violated"))?.value).toBe("Absenteeism");
     expect((await row(id, "policy_language"))?.value).toBe(before);
+    /* The Action Plan is built, not drafted: a revision that did not name it keeps the built plan. */
+    expect((await row(id, "action_plan"))?.value).toBe(plan);
+    expect(plan).toBe(`Management will review the Attendance policy with Ellie. ${CLOSING}`);
     const system = state.systems.at(-1) ?? "";
     expect(system).toContain("Corrective Action Form");
     expect(system).not.toContain("COACHING IS NOT ALWAYS ABOUT A PROBLEM");
@@ -390,6 +413,108 @@ describe("any other change to the open Corrective Action Form is made in place",
     });
     expect((await row(id, "warning_type"))?.checked).toEqual(["verbal"]);
     expect(answer?.content ?? "").not.toMatch(/Type of Warning/);
+  });
+
+  it("rebuilds a built plan from Policy Violated when the offense changes and no section is cited", async () => {
+    const { id, history } = await createdForm();
+    await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy instead", history });
+    await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "take the late opening policy off the form", history });
+    expect((await row(id, "action_plan"))?.value).toBe(
+      `Management will review the Tardiness/Leaving Early policy with Ellie. ${CLOSING}`,
+    );
+    state.toolValues = {};
+    state.toolChecked = { offense_type: ["absenteeism"] };
+
+    const answer = await reviseActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change the offense to absenteeism",
+      history,
+      today: "2026-10-20",
+    });
+    expect(answer?.formUpdate?.updated).toEqual(expect.arrayContaining(["offense_type", "policy_violated", "action_plan"]));
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Absenteeism policy with Ellie. ${CLOSING}`);
+  });
+
+  it("changes the Action Plan only when the manager names it, and then leaves their wording alone", async () => {
+    const { id, history } = await createdForm();
+    state.toolValues = { action_plan: "Ellie will retake the attendance training this week." };
+    state.toolChecked = {};
+
+    const answer = await reviseActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change the action plan to say Ellie will retake the attendance training this week",
+      history,
+      today: "2026-10-20",
+    });
+    expect(answer?.formUpdate?.updated).toContain("action_plan");
+    expect((await row(id, "action_plan"))?.value).toBe(`Ellie will retake the attendance training this week. ${CLOSING}`);
+
+    /* Asked for in their words, so a later policy or payroll change does not rebuild it. */
+    const policy = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
+    expect(policy?.formUpdate?.updated).toEqual(["policy_language"]);
+    const payroll = await correctActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change payroll deduct to yes",
+      today: "2026-10-20",
+      history,
+    });
+    expect(payroll?.formUpdate?.updated).toEqual(["payroll_deduct"]);
+    expect((await row(id, "action_plan"))?.value).toBe(`Ellie will retake the attendance training this week. ${CLOSING}`);
+  });
+
+  it("leaves a plan the manager typed on the form when the policy or payroll changes in chat", async () => {
+    const { id, history } = await createdForm();
+    await saveInstanceValues(id, { values: { action_plan: "Ellie and I agreed she will set two alarms." }, checked: {} }, "user-1");
+    expect((await row(id, "action_plan"))?.filledBy).toBe("manager");
+
+    const policy = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
+    expect(policy?.formUpdate?.updated).toEqual(["policy_language"]);
+    const payroll = await correctActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change payroll deduct to yes, $3.25 will be deducted",
+      today: "2026-10-20",
+      history,
+    });
+    expect(payroll?.formUpdate?.updated).toEqual(["payroll_deduct"]);
+    expect((await row(id, "action_plan"))?.value).toBe(`Ellie and I agreed she will set two alarms. ${CLOSING}`);
+  });
+
+  it("puts the deduction in the Action Plan when payroll deduct is changed to Yes, and takes it out on No", async () => {
+    const { id, history } = await createdForm();
+
+    const yes = await correctActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change payroll deduct to yes, $3.25 will be deducted",
+      today: "2026-10-20",
+      history,
+    });
+    expect(yes?.formUpdate?.updated).toEqual(["payroll_deduct", "action_plan"]);
+    expect(yes?.content).toMatch(/The Action Plan now states the payroll deduction/);
+    expect((await row(id, "action_plan"))?.value).toBe(
+      `Management will review the Attendance policy with Ellie. $3.25 will be deducted from Ellie's pay. ${CLOSING}`,
+    );
+
+    const no = await correctActiveForm({
+      request: chat(),
+      instanceId: id,
+      question: "change payroll deduct to no",
+      today: "2026-10-20",
+      history,
+    });
+    expect(no?.formUpdate?.updated).toEqual(["payroll_deduct", "action_plan"]);
+    expect(no?.content).toMatch(/The Action Plan no longer states a payroll deduction/);
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Attendance policy with Ellie. ${CLOSING}`);
+
+    /* Yes again, with no amount this turn: no figure is invented. */
+    await correctActiveForm({ request: chat(), instanceId: id, question: "change payroll deduct to yes", today: "2026-10-20", history });
+    expect((await row(id, "action_plan"))?.value).toBe(
+      `Management will review the Attendance policy with Ellie. A payroll deduction applies. ${CLOSING}`,
+    );
   });
 
   it("is not a revision when the manager asks for another Corrective Action", async () => {
