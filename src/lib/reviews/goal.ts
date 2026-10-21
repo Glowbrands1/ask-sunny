@@ -1,4 +1,3 @@
-import type { LocationPeriodRow } from "./aggregate";
 import { monthStart as monthStartOf } from "./reporting-week";
 import type { LocationRollup } from "./types";
 
@@ -26,8 +25,9 @@ import type { LocationRollup } from "./types";
  * EXACTLY WHAT COUNTS TOWARD THE WEEKLY NUMBER, over a different window. A
  * qualifying review is a 3-, 4- or 5-star review (`eligible_for_weekly_count`,
  * generated in the database from the rating) that has been COUNTED INTO A
- * REPORTING PERIOD — which happens only once it is proven to sit above its
- * listing's anchor. 1- and 2-star reviews and the imported backlog never count.
+ * REPORTING PERIOD — from 1 October 2026, the week Google says it was posted;
+ * before then, only once it was proven to sit above its listing's anchor.
+ * 1- and 2-star reviews and the imported backlog never count.
  *
  * A LISTING WITH NO ANCHOR IS "NOT COUNTING". `counted_through_external_review_id`
  * is null, so nothing about it has been measured; it stays on screen, it is
@@ -136,74 +136,36 @@ export function formatMonthToDate(context: Pick<ReviewGoalContext, "monthStart" 
 
 /* ======================================================= month to date === */
 
-/** A reporting period as `google_review_periods` holds it. */
-export interface ReportingPeriodRow {
-  id: string;
-  period_start: string;
-  period_end: string;
-}
-
-/**
- * THE ONE REPORTING WEEK THAT BEGAN LAST MONTH AND RUNS INTO THIS ONE, or null.
- *
- * Every other week that matters to month to date either began this month, and
- * is therefore wholly inside it, or ended before it. This one is split by the
- * 1st, so its reviews cannot be taken whole and have to be dated one by one.
- */
-export function straddlingPeriod(
-  periods: ReportingPeriodRow[],
-  monthStart: string,
-): ReportingPeriodRow | null {
-  return (
-    periods.find(
-      (period) => period.period_start < monthStart && period.period_end >= monthStart,
-    ) ?? null
-  );
-}
-
 /**
  * ============================================================================
  * QUALIFYING REVIEWS THIS CALENDAR MONTH, PER LISTING
  * ============================================================================
  *
- * FROM THE 1ST, CENTRAL, THROUGH TODAY — not "the reporting weeks that began
- * this month", which is what the old month tile summed and which dropped the
- * first days of any month that does not start on a Sunday.
+ * FROM THE 1ST, CENTRAL, THROUGH TODAY, by the instant each counted review
+ * counts AT — `counted_at` in `google_reviews_enriched`:
  *
- * TWO PARTS, AND NEITHER CAN DOUBLE-COUNT:
+ *   - when Google says it was POSTED, for a review counted by posted date
+ *     (every listing from 1 October 2026 — see
+ *     `20261020001100_google_review_count_by_posted_date.sql`). This is the
+ *     figure a manager can check against their own Google listing;
+ *   - when it was FIRST SEEN, for a review the anchor counted before then.
+ *     First seen is the floor of when that sync ran, so such a review keeps
+ *     the month it was always credited to and no figure already shown moves.
  *
- *   1. Every week that BEGAN on or after the 1st is taken whole, from the
- *      rollup's `qualifying_reviews`. A review is assigned to the period that is
- *      open at the sync that counts it, and the assignment is write-once, so a
- *      review in such a week was counted inside this month.
+ * The read layer selects the counted, qualifying reviews in that window and
+ * hands their rows here. They are de-duplicated on the review id — Google's id
+ * is already the key upstream, so this only guards a read that repeats a row —
+ * and counted per store code, which is unique per listing.
  *
- *   2. The week that straddles the 1st is counted review by review by the read
- *      layer (`straddleCounts`): its qualifying reviews first seen on or after
- *      Central midnight on the 1st. First seen is the floor of when a review
- *      was counted, so anything first seen this month was counted this month.
- *
- * A review belongs to exactly one period, a period is in exactly one of the two
- * parts, and Google's review id is the deduplication key upstream — so no
- * review is ever counted twice.
- *
- * THE ONE KNOWN UNDERCOUNT: a review first seen in the last days of the
- * previous month but only COUNTED in the first days of this one (its anchor was
- * set late) is left out of part 2. It is still in that week's weekly figure.
- *
- * Keyed by store code, which is unique per listing.
+ * 1- and 2-star reviews and history counted nowhere never reach this function:
+ * the read filters on `eligible_for_weekly_count` and a non-null period.
  */
-export function qualifyingMonthToDate(
-  periodRows: LocationPeriodRow[],
-  monthStart: string,
-  straddleCounts: ReadonlyMap<string, number>,
+export function monthToDateByStore(
+  rows: readonly { id: string; store_code: string }[],
 ): Map<string, number> {
   const byStore = new Map<string, number>();
-  for (const row of periodRows) {
-    if (row.period_start < monthStart) continue;
-    byStore.set(row.store_code, (byStore.get(row.store_code) ?? 0) + (row.qualifying_reviews || 0));
-  }
-  for (const [storeCode, count] of straddleCounts) {
-    byStore.set(storeCode, (byStore.get(storeCode) ?? 0) + count);
+  for (const row of new Map(rows.map((entry) => [entry.id, entry])).values()) {
+    byStore.set(row.store_code, (byStore.get(row.store_code) ?? 0) + 1);
   }
   return byStore;
 }
