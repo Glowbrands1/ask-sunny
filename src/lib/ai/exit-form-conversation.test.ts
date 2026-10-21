@@ -293,14 +293,14 @@ describe("what Ask Sunny says beside the proposal", () => {
       ),
     );
     const proposal = response!.formProposal!;
-    expect(proposal.employeeName).toBe("sarah jones");
+    expect(proposal.employeeName).toBe("Sarah Jones");
     expect(proposal.employeeRole).toBe("Tanning Consultant");
     // The form is dated the day it is completed, never the first date in the chat.
     expect(proposal.formDate).toBeNull();
     expect(proposal.supportsInlineDraft).toBe(true);
 
     const content = response!.content;
-    expect(content).toMatch(/- \*\*Name:\*\* sarah jones/);
+    expect(content).toMatch(/- \*\*Name:\*\* Sarah Jones/);
     expect(content).toMatch(/- \*\*Job Title:\*\* Tanning Consultant/);
     expect(content).toMatch(/- \*\*Last Day Worked:\*\* September 15, 2026/);
     expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 1, 2026/);
@@ -483,8 +483,8 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
 describe("QA 1 — natural-language retrieval", () => {
   it.each([
     ["pull up the exit form", null],
-    ["create an STC exit for jane smith", "jane smith"],
-    ["resignation paperwork for JANE SMITH", "JANE SMITH"],
+    ["create an STC exit for jane smith", "Jane Smith"],
+    ["resignation paperwork for JANE SMITH", "Jane Smith"],
     ["termination/exit form for Jane", "Jane"],
     ["I need the exit paperwork for Jane Smith", "Jane Smith"],
     ["start the separation form for Jane Smith", "Jane Smith"],
