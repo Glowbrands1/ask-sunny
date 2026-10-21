@@ -201,6 +201,116 @@ const WARNING_LEVEL_GIVEN: readonly RegExp[] = [
   /(?:^|\n)\s*\d*[.)]?\s*(?:verbal|written)\s*[.?!]?\s*(?:$|\n)/,
 ];
 
+/*
+ * ============================================================================
+ * "CREATE VERBAL CA FOR …" — THE LEVEL THE MANAGER STATED FOR THIS FORM
+ * ============================================================================
+ *
+ * District Manager feedback, 21 Oct 2026: "create verbal CA for <employee> for
+ * violating …" and "… on 10-20-26. verbal. no payroll deduct. …" both named the
+ * level, and Ask Sunny still answered "You'll set the verbal/written warning
+ * level on the form — I won't guess at it." The level was in the request, in
+ * the shorthand managers use for the form itself, and as a sentence of its
+ * own — neither of which `WARNING_LEVEL_GIVEN` reads.
+ *
+ * UNLIKE THE TESTS ABOVE, THIS ONE PUTS A VALUE ON THE FORM, so it is narrow
+ * where they are generous. The level the manager stated is ticked on Type of
+ * Warning as their statement (see `WARNING_LEVEL_STATED_KEYS`), which makes
+ * reading a history as this form's level the mistake that matters:
+ *
+ *   NAMED             "verbal CA", "written C/A", "verbal corrective action",
+ *                     "written warning" — singular, so "verbal CAs before" is
+ *                     a pattern of past ones, not this form.
+ *   NOT HISTORY       a named level after "had", "gave", "got", "previous",
+ *                     "prior" … in the same sentence, or before "before",
+ *                     "previously", "last week" …, is a step already taken:
+ *                     "she had a written CA in august" states no level here.
+ *   A BARE LEVEL      only as a sentence of its own — "… 10-20-26. verbal. no
+ *                     payroll deduct." or "5. verbal" — never mid-sentence,
+ *                     for the reason the intake gives above.
+ *   LABELLED          "warning level: written", "type of warning - verbal".
+ *
+ * Only verbal and written. A final written warning is not an option the form
+ * prints, and termination or demotion is never ticked from chat — those are
+ * the leadership process's (see `escalation-guard.ts`). Two different levels
+ * in one turn are a list, not a decision, and state nothing; a question
+ * states nothing either.
+ */
+export type StatedWarningLevel = "verbal" | "written";
+
+/** The Type of Warning group on the Corrective Action Form. */
+export const WARNING_TYPE_KEY = "warning_type";
+
+/** The one key a stated warning level may write — see `applyStatedFacts`. */
+export const WARNING_LEVEL_STATED_KEYS: ReadonlySet<string> = new Set([WARNING_TYPE_KEY]);
+
+export function isStatedWarningLevel(value: unknown): value is StatedWarningLevel {
+  return value === "verbal" || value === "written";
+}
+
+const LEVEL_NAMED = /\b(verbal|written)\s+(?:warning|ca|c\/a|corrective\s+action)\b/g;
+
+/** A step already taken, said before the level: "she had a written CA", "prior verbal warning". */
+const LEVEL_HISTORY_BEFORE =
+  /\b(?:gave|given|issued|received|got|had|has|have|previous(?:ly)?|prior|past|last|earlier|already|final)\s+(?:(?:her|him|them|a|an|the|one|their|his)\s+)?$/;
+
+/** …or after it: "a written warning before", "verbal CA last month". */
+const LEVEL_HISTORY_AFTER =
+  /^\s*(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/;
+
+/** "actually written", "no, make it verbal" — a correction's lead-in. */
+const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rather|i\s+meant|i\s+mean|make\s+that)[\s,:-]*)*`;
+
+const LEVEL_BARE = new RegExp(
+  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
+);
+
+const LEVEL_LABELLED =
+  /\b(?:type\s+of\s+warning|warning\s*(?:level|type))\s*(?:is|should\s+be|[:=-])\s*(?:a\s+)?(verbal|written)\b/g;
+
+/** The level one manager turn states for this form, or null. */
+export function statedWarningLevel(text: string): StatedWarningLevel | null {
+  const levels = new Set<StatedWarningLevel>();
+  // A sentence at a time, so a cue in one sentence says nothing about the next.
+  for (const sentence of normalize(text).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
+    const body = sentence[0].replace(/[.;!?\n]$/, "");
+    if (sentence[0].endsWith("?")) continue;
+
+    const bare = LEVEL_BARE.exec(body);
+    if (bare) levels.add(bare[1] as StatedWarningLevel);
+
+    for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
+
+    for (const match of body.matchAll(LEVEL_NAMED)) {
+      const before = body.slice(0, match.index);
+      const after = body.slice(match.index + match[0].length);
+      if (LEVEL_HISTORY_BEFORE.test(before) || LEVEL_HISTORY_AFTER.test(after)) continue;
+      levels.add(match[1] as StatedWarningLevel);
+    }
+  }
+  return levels.size === 1 ? [...levels][0]! : null;
+}
+
+/**
+ * The level the manager's turns state, the latest that states one winning —
+ * "verbal" and then "actually written" is written.
+ */
+export function warningLevelFromTurns(turns: readonly string[]): StatedWarningLevel | null {
+  for (const turn of [...turns].reverse()) {
+    const level = statedWarningLevel(turn);
+    if (level) return level;
+  }
+  return null;
+}
+
+/** The value to store for a stated level: one ticked option where the form offers it, or nothing. */
+export function warningLevelChecked(
+  level: StatedWarningLevel | null | undefined,
+  offered: readonly string[],
+): Record<string, string[]> {
+  return isStatedWarningLevel(level) && offered.includes(level) ? { [WARNING_TYPE_KEY]: [level] } : {};
+}
+
 /** "First time", "no prior write-ups" — a stated ABSENCE is a stated answer. */
 const PREVIOUS_NONE: readonly RegExp[] = [
   /\b(?:first|1st)\s+(?:time|occurrence|occasion|offence|offense|incident|instance)\b/,
@@ -407,7 +517,8 @@ export function readCorrectiveActionIntake(input: {
     salon: input.salonSettled,
     form_date: any(text, DATE_GIVEN),
     what_happened: any(text, INCIDENT_TOPIC) || any(text, OBSERVATIONAL_CLAUSE),
-    warning_level: any(text, WARNING_LEVEL_GIVEN),
+    /* "verbal CA" and a bare "verbal." too — see `statedWarningLevel`. */
+    warning_level: any(text, WARNING_LEVEL_GIVEN) || statedWarningLevel(input.text) !== null,
     /*
      * A STATED ABSENCE ("first time") or a STATED HISTORY ("already warned
      * her last week"). A repeated incident is neither — see

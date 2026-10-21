@@ -108,7 +108,15 @@ import {
   withConductOffense,
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
-import { priorStepDate } from "@/lib/forms/form-date-answer";
+import { listFormDates, priorStepDate } from "@/lib/forms/form-date-answer";
+import { namedManualSection } from "@/lib/forms/named-policy-section";
+import {
+  PAYROLL_DEDUCT_KEY,
+  isPayrollDeductAnswer,
+  payrollDeductAmount,
+  withPayrollDeductInPlan,
+} from "@/lib/forms/payroll-deduct";
+import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
   COACHING_CONTEXT_RULES,
   LANGUAGE_CLEANUP_RULES,
@@ -465,6 +473,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           group.key === "offense_type" && group.options.some((option) => option.key === STANDARDS_OF_CONDUCT),
       );
     const caPolicy = offersConductPolicy ? readCaPolicy(notes) : null;
+    /*
+     * A POLICY THE MANAGER NAMED BY THE MANUAL'S OWN HEADING — "violating
+     * visitors at work policy" is the manual's Visitors in the Workplace
+     * (District Manager feedback, 21 Oct 2026). Matched against the pinned
+     * manual's sheet headings, and only where exactly one answers; ticked
+     * under the box that section is cited under. Only when no policy
+     * `ca-policy.ts` knows by name was stated. See `named-policy-section.ts`.
+     */
+    const namedSection =
+      caPolicy && caPolicy.stated === null && manual.ok
+        ? namedManualSection({ text: notes, chunks: manual.chunks })
+        : null;
 
     /*
      * THE SECTIONS THE MANAGER'S OWN WORDS POINT AT — never the model's, so the
@@ -622,7 +642,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * THE CHEAPEST OF THE THREE DATE FIXES, and the only one that prevents
        * rather than repairs: a model told the date does not invent one.
        */
-      ...(resolvedFormDate ? [formDateBrief(resolvedFormDate)] : []),
+      /*
+       * WITH THE DATES THE MANAGER GAVE, which are not always the form's: "on
+       * 10-20-26 … by the 10-15-26 deadline" has a form date and a deadline,
+       * and the model was told the form's date was the only one to write.
+       */
+      ...(resolvedFormDate
+        ? [formDateBrief(resolvedFormDate, listFormDates(notes, businessToday()).map((found) => found.iso))]
+        : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
        *
@@ -1145,11 +1172,31 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           today: businessToday(),
         })
       : null;
+    /*
+     * "PAYROLL DEDUCT OF $3.25 IS APPLICABLE" IS IN THE ACTION PLAN. District
+     * Manager feedback, 21 Oct 2026: the plan never said what would be
+     * deducted. Where the form's own Yes / No says Yes (the manager's answer,
+     * stored at creation), the drafted plan states the amount the manager
+     * gave, exactly — or that a deduction applies, with no figure, when they
+     * gave none. Nothing else about the plan changes. See `payroll-deduct.ts`.
+     */
+    const planKey = fields.find((field) => field.narrative === PLAN_OF_ACTION)?.key ?? null;
+    const payrollAnswer = planKey
+      ? ((loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)?.checked.find(isPayrollDeductAnswer) ??
+        null)
+      : null;
     const draftedValues = (() => {
       const base = { ...(exit?.values ?? attributions.values) };
       if (priorActions) {
         if (priorActions.value.trim() !== "") base[PRIOR_ACTIONS_KEY] = priorActions.value;
         else delete base[PRIOR_ACTIONS_KEY];
+      }
+      if (planKey && typeof base[planKey] === "string") {
+        base[planKey] = withPayrollDeductInPlan(base[planKey]!, {
+          answer: payrollAnswer,
+          amount: payrollDeductAmount(notes),
+          firstName: (loaded.instance.employeeName ?? "").trim().split(/\s+/)[0] || null,
+        });
       }
       return base;
     })();
@@ -1169,7 +1216,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * Otherwise a conduct incident ticks Standards of Conduct where the manual
      * supports it.
      */
-    const statedKeys = caPolicy ? statedOffenseKeys(caPolicy, notes) : null;
+    const statedKeys = caPolicy
+      ? (statedOffenseKeys(caPolicy, notes) ?? (namedSection ? [namedSection.offenseKey] : null))
+      : null;
     const statedOffense = statedKeys
       ? withStatedOffense({
           checked: enforced.checked,
@@ -1288,7 +1337,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * ONLY FOR A VERSION THAT HAS THE FIELD. The twelve templates that cite no
      * manual never reach the knowledge base for one.
      */
-    const manualSections = manual.ok
+    /* The section the manager named, first, while the box it is cited under is still ticked. */
+    const namedManual =
+      namedSection && (validated.checked.offense_type ?? []).includes(namedSection.offenseKey)
+        ? namedSection.section
+        : null;
+    const tickedSections = manual.ok
       ? manualSectionsFor({
           chunks: manual.chunks,
           offenseKeys: validated.checked.offense_type ?? [],
@@ -1307,6 +1361,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           notes: `${body.topic ?? ""} ${notes}`,
         })
       : [];
+    const manualSections = namedManual
+      ? [namedManual, ...tickedSections.filter((section) => section.heading !== namedManual.heading)]
+      : tickedSections;
 
     const derivedPolicy = applyDerivedPolicyFields({
       document,
@@ -1315,6 +1372,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       checked: validated.checked,
       grounding,
       fieldKeys: new Set(fields.map((field) => field.key)),
+      /* "Violation of Company Policies — Visitors in the Workplace": which policy, where the manager named it. */
+      companyPolicyName: namedManual?.heading ?? null,
       /*
        * THE MANUAL'S OWN WORDING FOR EACH TICKED SECTION, THEN ITS SOURCE —
        * "Source: JBA Policy Manual — Dress Code for The Company, p. 15" — every
@@ -1468,11 +1527,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const keeps = (key: string) =>
       managerKeys.has(key) && !(DERIVED_POLICY_FIELD_KEYS.has(key) && derivedPolicy.derived.includes(key));
+    /*
+     * THE TYPE OF WARNING THE MANAGER STATED IN CHAT — "create verbal CA for
+     * …" — was ticked at creation as their statement, and the model's tick
+     * never replaces it: a level is the manager's decision, and the framework
+     * rules ask the model to reason towards a rung of its own. Where they
+     * stated none, the model's tick is written as before.
+     */
+    const statedWarning = (loaded.values ?? []).some(
+      (row) =>
+        row.fieldKey === WARNING_TYPE_KEY &&
+        row.checked.length > 0 &&
+        row.provenance?.source === "manager_statement",
+    );
     const guarded = await applyAssistantDraft(
       id,
       {
         values: Object.fromEntries(Object.entries(named.values).filter(([key]) => !keeps(key))),
-        checked: Object.fromEntries(Object.entries(validated.checked).filter(([key]) => !keeps(key))),
+        checked: Object.fromEntries(
+          Object.entries(validated.checked).filter(
+            ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
+          ),
+        ),
       },
       actor.id,
       provenance,
@@ -1584,6 +1660,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                   applied: true,
                   source: "stated",
                   stated: caPolicy.stated,
+                  ...(namedSection && !caPolicy.stated
+                    ? { named: namedSection.phrase, section: namedSection.section.heading, page: namedSection.section.page }
+                    : {}),
                   ticked: statedOffense.ticked,
                   replaced: statedOffense.replaced,
                 }

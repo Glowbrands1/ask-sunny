@@ -6,7 +6,7 @@ import {
   groundedSourceWithFormDate,
   resolveFormDate,
 } from "./form-date-grounding";
-import { guardNarrativeDraft } from "./narrative-draft";
+import { guardNarrativeDraft, ungroundedSpecifics } from "./narrative-draft";
 
 /**
  * ============================================================================
@@ -233,5 +233,62 @@ describe("4. the observation survives, whatever date the model writes", () => {
     );
 
     expect(result.values.observation ?? "").not.toContain("third occurrence");
+  });
+});
+
+/*
+ * District Manager feedback, 21 Oct 2026: a date the manager gave in one
+ * spelling — "by the 10-15-26 deadline" — drafted in the form's own ("October
+ * 15, 2026") was taken for an invented one and rewritten to the form's date,
+ * and the model was told the form's date was the only one to use.
+ */
+describe("a date the manager gave is never replaced by the form's", () => {
+  const formDate = resolveFormDate("2026-10-21")!;
+  const keys = new Set(["observation"]);
+
+  it("keeps the manager's dates in the form's own spelling", () => {
+    const notes =
+      "create corrective action for tess varga for violating standards of conduct policy on 10-20-26. tess failed to acknowledge policies in woven by the 10-15-26 deadline.";
+    const drafted = {
+      observation:
+        "Observed:\nOn October 20, 2026, Tess Varga did not acknowledge the policies in Woven by the October 15, 2026 deadline.",
+    };
+    const corrected = correctDraftedDates(drafted, keys, notes, formDate);
+    expect(corrected.values.observation).toBe(drafted.observation);
+    expect(corrected.corrected).toEqual([]);
+    expect(ungroundedSpecifics(drafted.observation, groundedSourceWithFormDate(notes, formDate))).toEqual([]);
+  });
+
+  it("keeps a deadline on a form dated by the incident", () => {
+    const incident = resolveFormDate("2026-10-20")!;
+    const notes =
+      "create corrective action for tess varga for violating standards of conduct policy on 10-20-26. tess failed to acknowledge policies in woven by the 10-15-26 deadline.";
+    const drafted = {
+      observation: "Observed:\nTess Varga had not acknowledged the policies in Woven by the October 15, 2026 deadline.",
+    };
+    expect(correctDraftedDates(drafted, keys, notes, incident).values.observation).toBe(drafted.observation);
+  });
+
+  it("still replaces a date nobody gave", () => {
+    const corrected = correctDraftedDates(
+      { observation: "Observed:\nOn September 30, 2026, Tess was late." },
+      keys,
+      "tess was late today",
+      formDate,
+    );
+    expect(corrected.values.observation).toBe("Observed:\nOn October 21, 2026, Tess was late.");
+  });
+
+  it("tells the model the form's date is not the incident's when the manager gave another", () => {
+    const brief = formDateBrief(formDate, ["2026-10-20", "2026-10-15"]);
+    expect(brief).toContain('"October 20, 2026", "October 15, 2026"');
+    expect(brief).toMatch(/not necessarily the date of the incident/);
+    expect(brief).toMatch(/Never write the form date in place of a date the manager gave/);
+    expect(brief).not.toMatch(/This is the date of the incident/);
+  });
+
+  it("keeps the old line where the form's date is the only date given, or none was", () => {
+    expect(formDateBrief(formDate, ["2026-10-21"])).toMatch(/This is the date of the incident and of this form/);
+    expect(formDateBrief(formDate)).toMatch(/This is the date of the incident and of this form/);
   });
 });

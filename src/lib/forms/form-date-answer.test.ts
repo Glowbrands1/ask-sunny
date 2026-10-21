@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { readCorrectiveActionIntake } from "./corrective-action-intake";
 import { readEppIntake } from "./epp-intake";
-import { extractFormDate, isIsoCalendarDate, priorStepDate } from "./form-date-answer";
+import { extractFormDate, isIsoCalendarDate, listFormDates, priorStepDate, priorSteps } from "./form-date-answer";
 
 /**
  * A manager types a date however they type it. Numeric dates are U.S.
@@ -157,5 +157,42 @@ describe("the date of the earlier step", () => {
     ["verbal warning, first time", null],
   ])("%s -> %s", (text, expected) => {
     expect(priorStepDate(text, TODAY)).toBe(expected);
+  });
+});
+
+/*
+ * District Manager feedback, 21 Oct 2026: history written as a label, its
+ * topic, and its date — never a date for the form.
+ */
+describe("a labelled earlier step is history, wherever its date sits", () => {
+  const DAY = "2026-10-21";
+
+  it.each([
+    ["previous coaching was jba policy manual 1-1-26", "2026-01-01", "jba policy manual"],
+    ["previous coaching - jba policy manual 1-20-26.", "2026-01-20", "jba policy manual"],
+    ["no payroll deduct. jba manual 1-1-26 for previous coaching", "2026-01-01", "jba manual"],
+    ["prior CA 9/1, late again on 10/20", "2026-09-01", undefined],
+  ])("%s", (text, iso, topic) => {
+    expect(priorSteps(text, DAY)).toEqual([expect.objectContaining(topic ? { iso, topic } : { iso })]);
+    expect(listFormDates(text, DAY).map((found) => found.iso)).not.toContain(iso);
+  });
+
+  it("leaves the incident's own date alone", () => {
+    const text =
+      "create verbal CA for remy calder for violating visitors at work policy on 10-10-26. remy spent 40 minutes talking with a friend and ignoring clients. previous coaching was jba policy manual 1-1-26";
+    expect(listFormDates(text, DAY).map((found) => found.iso)).toEqual(["2026-10-10"]);
+    expect(extractFormDate(text, DAY)).toBe("2026-10-10");
+  });
+
+  it("a request whose only date is the coaching's has no form date", () => {
+    expect(
+      extractFormDate("create ca for tess varga, she was late for her shift. previous coaching was jba policy manual 1-1-26", DAY),
+    ).toBeNull();
+  });
+
+  it("stops at an account: a date after the history's topic is the incident's", () => {
+    const text = "previous coaching was about lateness and she was late on 10/20";
+    expect(priorSteps(text, DAY)).toEqual([]);
+    expect(extractFormDate(text, DAY)).toBe("2026-10-20");
   });
 });

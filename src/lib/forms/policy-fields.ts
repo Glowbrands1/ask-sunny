@@ -55,6 +55,8 @@ export function offenseCategoryValue(input: {
   readonly variantKey: string | null;
   readonly checked: Record<string, string[]>;
   readonly values: Record<string, string>;
+  /** The manual section the manager named under Violation of Company Policies, printed beside it. */
+  readonly companyPolicyName?: string | null;
 }): string | null {
   const group = checkboxGroupsForVariant(input.document, input.variantKey).find(
     (candidate) => candidate.key === "offense_type",
@@ -70,7 +72,11 @@ export function offenseCategoryValue(input: {
         const written = (input.values.other_offense ?? "").trim();
         return written === "" ? null : written;
       }
-      return group.options.find((option) => option.key === key)?.label ?? null;
+      const label = group.options.find((option) => option.key === key)?.label ?? null;
+      // "Violation of Company Policies — Visitors in the Workplace": which policy, where the manager named it.
+      return label && key === "company_policies" && input.companyPolicyName
+        ? `${label} — ${input.companyPolicyName}`
+        : label;
     })
     .filter((label): label is string => label !== null && label !== "");
 
@@ -309,6 +315,8 @@ export function applyDerivedPolicyFields(input: {
   readonly eppPolicyReference?: string | null;
   /** True on a version that HAS the appendix line, so absence can be reported. */
   readonly wantsEppPolicyReference?: boolean;
+  /** See `offenseCategoryValue`. */
+  readonly companyPolicyName?: string | null;
 }): DerivedPolicyFields {
   const values = { ...input.values };
   const derived: string[] = [];
@@ -332,6 +340,7 @@ export function applyDerivedPolicyFields(input: {
       variantKey: input.variantKey,
       checked: input.checked,
       values: input.values,
+      companyPolicyName: input.companyPolicyName ?? null,
     }),
   );
   assign(

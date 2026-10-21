@@ -47,7 +47,18 @@ export function isPayrollDeductAnswer(value: unknown): value is PayrollDeductAns
 /** "payroll deduct", "payroll deduction(s)", "payroll", "deduction". */
 const SUBJECT = String.raw`(?:payroll\s+deduct(?:ion|ions|ed)?|payroll|deduct(?:ion|ions)?)`;
 
+/*
+ * "PAYROLL DEDUCT OF $3.25 IS APPLICABLE" — the subject, what it is of or for,
+ * then the answer. District Manager feedback, 21 Oct 2026: the amount between
+ * them hid the answer and the manager was asked "Yes or No?". At most a few
+ * words between, within the clause; the negative is read first.
+ */
+const OF_WHAT = String.raw`\s+(?:of|for|on)\s+(?:[^.!?;\n]|\.(?=\d)){1,30}?\s+`;
 const NEGATIVE: readonly RegExp[] = [
+  // "payroll deduct of $3.25 is not applicable"
+  new RegExp(
+    String.raw`\b${SUBJECT}${OF_WHAT}(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
+  ),
   // "no payroll deduct", "no deduction", "no to payroll deduction", "no, payroll"
   new RegExp(String.raw`\bno\b[\s,:-]*(?:to\s+)?(?:the\s+|a\s+)?${SUBJECT}\b`),
   // "payroll deduct is not applicable", "payroll deduction doesn't apply"
@@ -64,6 +75,10 @@ const NEGATIVE: readonly RegExp[] = [
 ];
 
 const POSITIVE: readonly RegExp[] = [
+  // "payroll deduct of $3.25 is applicable", "payroll deduction for the shortage applies"
+  new RegExp(
+    String.raw`\b${SUBJECT}${OF_WHAT}(?:is\s+|does\s+|will\s+|would\s+)?(?:be\s+)?(?:applicable|applies|apply|needed|required|necessary)\b`,
+  ),
   // "yes payroll deduct applies", "yes to payroll deduction", "yes, deduction"
   new RegExp(String.raw`\byes\b[\s,:-]*(?:to\s+)?(?:the\s+|a\s+)?${SUBJECT}\b`),
   // "payroll deduct applies", "payroll deduction is applicable", "payroll deduct needed"
@@ -105,7 +120,8 @@ export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
   const source = normalize(text).replace(/\?\s*(yes|no|y|n)\b/g, ": $1");
   let answer: PayrollDeductAnswer | null = null;
 
-  for (const clause of source.split(/(?<=[.!?;\n])/)) {
+  // A point inside an amount ("$3.25") does not end a clause.
+  for (const clause of source.split(/(?<=[!?;\n]|\.(?!\d))/)) {
     const trimmed = clause.trim();
     if (trimmed === "" || trimmed.endsWith("?")) continue;
     if (NEGATIVE.some((pattern) => pattern.test(trimmed))) answer = "no";
@@ -188,13 +204,18 @@ export interface ConversationTurn {
  * ONLY THIS FORM'S TURNS. The look-back starts after the last manager turn
  * that asked for a DIFFERENT form request than the one being answered, so a
  * payroll answer given on an earlier Corrective Action for somebody else in the
- * same conversation is not carried onto this one.
+ * same conversation is not carried onto this one. A caller that has already
+ * cut the conversation to this form's turns says so (`fromThisForm`), and the
+ * look-back is not cut again: there, a second request is a repeat of this one
+ * ("create ca form for <employee>"), and the answer given with the first still
+ * stands (District Manager feedback, 21 Oct 2026).
  *
  * ASSISTANT TURNS NEVER ANSWER. They are read only to know which question a
  * bare reply was replying to.
  */
 export function payrollDeductFromConversation(
   turns: readonly ConversationTurn[],
+  options: { readonly fromThisForm?: boolean } = {},
 ): PayrollDeductAnswer | null {
   const usable = turns.filter(
     (turn) => !turn.error && typeof turn.content === "string" && turn.content.trim() !== "",
@@ -204,7 +225,7 @@ export function payrollDeductFromConversation(
     .map((turn, index) => ({ turn, index }))
     .filter(({ turn }) => turn.role === "user" && detectTemplateIntent(turn.content).kind !== "none")
     .map(({ index }) => index);
-  const start = requests.length >= 2 ? requests[requests.length - 2]! + 1 : 0;
+  const start = !options.fromThisForm && requests.length >= 2 ? requests[requests.length - 2]! + 1 : 0;
 
   let lastAssistant = "";
   let answer: PayrollDeductAnswer | null = null;
@@ -274,4 +295,63 @@ export function payrollDeductCorrection(text: string): PayrollDeductAnswer | nul
     if (to) return to[1] as PayrollDeductAnswer;
   }
   return statedPayrollDeduct(text);
+}
+
+/*
+ * ============================================================================
+ * THE AMOUNT, AND THE ACTION PLAN THAT SAYS IT
+ * ============================================================================
+ *
+ * District Manager feedback, 21 Oct 2026: "payroll deduct of $3.25 is
+ * applicable" — the Action Plan did not say that $3.25 would be deducted. The
+ * amount is the manager's, read here exactly as they wrote it, and only from
+ * words about the deduction: "deduct(ion) of $3.25", "$3.25 will be deducted",
+ * "deduct $3.25". A register short $3.25 is not, on its own, an amount to
+ * deduct. Never an amount the manager did not write.
+ */
+const MONEY = String.raw`\$\s?\d[\d,]*(?:\.\d{1,2})?`;
+const AMOUNT_PATTERNS: readonly RegExp[] = [
+  new RegExp(String.raw`\b(?:payroll\s+)?deduct(?:ion|ions|ed|ing)?\s+(?:of\s+|for\s+|is\s+|will\s+be\s+|amount\s+(?:of\s+|is\s+)?)?(${MONEY})`, "gi"),
+  new RegExp(String.raw`(${MONEY})\s+(?:will\s+be\s+|is\s+(?:being\s+)?|to\s+be\s+|should\s+be\s+|gets?\s+|being\s+)?deducted\b`, "gi"),
+];
+
+/** The amount the manager said would be deducted — "$3.25" — or null. The latest one stated wins. */
+export function payrollDeductAmount(text: string): string | null {
+  let found: { at: number; amount: string } | null = null;
+  for (const pattern of AMOUNT_PATTERNS) {
+    for (const match of (text ?? "").matchAll(pattern)) {
+      const amount = match[1]!.replace(/\s+/g, "");
+      if (!found || match.index >= found.at) found = { at: match.index, amount };
+    }
+  }
+  return found?.amount ?? null;
+}
+
+/**
+ * The Action Plan with the deduction stated, when the manager answered Yes:
+ * "$3.25 will be deducted from Tess's pay.", or, with no amount stated, "A
+ * payroll deduction applies." — added after what was drafted; the form's
+ * required closing is moved back to the end at the write
+ * (`applyRequiredClosings`), so it stays the last sentence. A plan that
+ * already states the amount, or already says a deduction applies when no
+ * amount was given, is returned as it is; so is an empty one, which stays the
+ * manager's to write.
+ */
+export function withPayrollDeductInPlan(
+  plan: string,
+  input: { answer: PayrollDeductAnswer | null; amount: string | null; firstName: string | null },
+): string {
+  if (input.answer !== "yes" || typeof plan !== "string" || plan.trim() === "") return plan;
+  const body = plan.trim();
+  if (input.amount) {
+    if (body.replace(/\s+/g, "").includes(input.amount)) return plan;
+    const whose = input.firstName ? `${input.firstName}'s` : "the employee's";
+    return `${terminated(body)} ${input.amount} will be deducted from ${whose} pay.`;
+  }
+  if (/\bdeduct/i.test(body)) return plan;
+  return `${terminated(body)} A payroll deduction applies.`;
+}
+
+function terminated(text: string): string {
+  return /[.!?…"'”’)\]]$/.test(text) ? text : `${text}.`;
 }

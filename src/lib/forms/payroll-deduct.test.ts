@@ -9,8 +9,10 @@ import {
   PAYROLL_DEDUCT_STATED_KEYS,
   payrollDeductChecked,
   payrollDeductCorrection,
+  payrollDeductAmount,
   payrollDeductFromConversation,
   statedPayrollDeduct,
+  withPayrollDeductInPlan,
 } from "./payroll-deduct";
 import { enforcePersonEdit, enforceResponsibilities } from "./responsibility";
 
@@ -244,6 +246,17 @@ describe("the answer across the conversation", () => {
     ).toBeNull();
   });
 
+  it("keeps the answer across a repeated request when the turns are already this form's", () => {
+    const turns = [
+      user("create ca form for tess varga for violating attendance policy on 10-20-26. no payroll deduct"),
+      sunny("Is payroll deduct applicable? **No** — tell me if that should change."),
+      user("create ca form for tess varga"),
+    ];
+    expect(payrollDeductFromConversation(turns, { fromThisForm: true })).toBe("no");
+    // Unscoped, the second request still cuts the look-back, as before.
+    expect(payrollDeductFromConversation(turns)).toBeNull();
+  });
+
   it("is null when the question was never answered — never a default", () => {
     expect(payrollDeductFromConversation([user("CA for Dana Moss, she was late today")])).toBeNull();
     expect(payrollDeductFromConversation([])).toBeNull();
@@ -267,4 +280,55 @@ describe("a correction after the form exists", () => {
       expect(payrollDeductCorrection(text)).toBeNull();
     },
   );
+});
+
+/*
+ * District Manager feedback, 21 Oct 2026: "payroll deduct of $3.25 is
+ * applicable" was asked "Yes or No?", and the Action Plan did not say what
+ * would be deducted.
+ */
+describe("an amount between the question and its answer", () => {
+  it.each([
+    ["create ca form for tess varga. tess had a register shortage of $3.25 on 10-20-26. payroll deduct of $3.25 is applicable", "yes"],
+    ["payroll deduct applies and $3.25 will be deducted from check.", "yes"],
+    ["payroll deduction for the shortage applies", "yes"],
+    ["payroll deduct of $3.25 is not applicable", "no"],
+    ["register short $3.25. no payroll deduct", "no"],
+  ])("%s → %s", (text, answer) => {
+    expect(statedPayrollDeduct(text)).toBe(answer);
+  });
+});
+
+describe("the amount, and the Action Plan that states it", () => {
+  const PLAN =
+    "Tess Varga is expected to adhere to the cash handling policy by counting the drawer accurately. Moving forward, Tess should count her drawer at every shift change. Management will monitor compliance and provide coaching as needed.";
+
+  it.each([
+    ["payroll deduct of $3.25 is applicable", "$3.25"],
+    ["payroll deduct applies and $3.25 will be deducted from check.", "$3.25"],
+    ["deduct $12 from her pay", "$12"],
+    ["register shortage of $3.25. payroll deduct applies", null],
+  ])("%s → %s", (text, amount) => {
+    expect(payrollDeductAmount(text)).toBe(amount);
+  });
+
+  it("states the manager's amount, exactly, after what was drafted", () => {
+    expect(withPayrollDeductInPlan(PLAN, { answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe(
+      `${PLAN} $3.25 will be deducted from Tess's pay.`,
+    );
+  });
+
+  it("says a deduction applies, with no figure, when none was given", () => {
+    expect(withPayrollDeductInPlan(PLAN, { answer: "yes", amount: null, firstName: "Tess" })).toBe(
+      `${PLAN} A payroll deduction applies.`,
+    );
+  });
+
+  it("changes nothing on No, on an empty plan, or where the plan already says it", () => {
+    expect(withPayrollDeductInPlan(PLAN, { answer: "no", amount: "$3.25", firstName: "Tess" })).toBe(PLAN);
+    expect(withPayrollDeductInPlan(PLAN, { answer: null, amount: "$3.25", firstName: "Tess" })).toBe(PLAN);
+    expect(withPayrollDeductInPlan("", { answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe("");
+    const stated = `${PLAN} $3.25 will be deducted from Tess's pay.`;
+    expect(withPayrollDeductInPlan(stated, { answer: "yes", amount: "$3.25", firstName: "Tess" })).toBe(stated);
+  });
 });
