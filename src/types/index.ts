@@ -638,6 +638,15 @@ export interface ChatFormProposal {
    * See `lib/forms/payroll-deduct.ts`.
    */
   payrollDeduct?: "yes" | "no" | null;
+  /**
+   * The Corrective Action Form's Type of Warning, where the MANAGER stated it
+   * for this form — "create verbal CA for …", "… verbal. …". Null (or absent)
+   * when they did not; never defaulted and never a termination or demotion.
+   * Sent at creation and written as the manager's statement, only where the
+   * pinned version offers that level. See `statedWarningLevel` in
+   * `lib/forms/corrective-action-intake.ts`.
+   */
+  warningLevel?: "verbal" | "written" | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**

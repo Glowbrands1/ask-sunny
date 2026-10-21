@@ -131,6 +131,12 @@ export async function createInlineForm({
        * Revalidated by the route against the pinned version.
        */
       ...(proposal.payrollDeduct ? { payrollDeduct: proposal.payrollDeduct } : {}),
+      /*
+       * THE TYPE OF WARNING, ONLY WHERE THE MANAGER STATED IT FOR THIS FORM.
+       * Omitted otherwise, so the box starts empty. Revalidated by the route
+       * against the pinned version.
+       */
+      ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
       /*

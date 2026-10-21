@@ -32,6 +32,9 @@ import {
   describesMoreThanTheRequest,
   NO_INCIDENT_NOTE,
   readCorrectiveActionIntake,
+  statedWarningLevel,
+  WARNING_TYPE_KEY,
+  warningLevelFromTurns,
   type IntakeReading,
 } from "@/lib/forms/corrective-action-intake";
 import {
@@ -159,6 +162,23 @@ function isCorrectiveActionForm(summary: TemplateSummary): boolean {
  */
 function isExitForm(summary: TemplateSummary): boolean {
   return summary.requiredPermission === "create_exit_form";
+}
+
+/**
+ * The warning levels the published Corrective Action Form offers that a
+ * manager's statement may tick — verbal and written, read off the version
+ * rather than assumed, so a version without the group is never told a level
+ * will be ticked.
+ */
+function offeredWarningLevels(summary: TemplateSummary): string[] {
+  const version = summary.currentVersion;
+  if (!version?.document) return [];
+  return (
+    checkboxGroupsForVariant(version.document, inlineDraftVariantKey(version.variants ?? []))
+      .find((group) => group.key === WARNING_TYPE_KEY)
+      ?.options.map((option) => option.key)
+      .filter((key) => key === "verbal" || key === "written") ?? []
+  );
 }
 
 /**
@@ -642,6 +662,18 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   }
 
   /*
+   * THE TYPE OF WARNING, WHERE THE MANAGER STATED IT FOR THIS FORM — "create
+   * verbal CA for …", "… on 10-20-26. verbal. …" (District Manager feedback,
+   * 21 Oct 2026). Read turn by turn, the latest that states one winning, and
+   * only where the published version offers that level. Sent at creation and
+   * written as their statement; the draft does not overwrite it.
+   */
+  if (isCorrectiveActionForm(match)) {
+    const level = warningLevelFromTurns(context.messages.map((message) => message.content));
+    proposal.warningLevel = level && offeredWarningLevels(match).includes(level) ? level : null;
+  }
+
+  /*
    * NAMED, BUT NOT DESCRIBED. A Corrective Action Form is drafted from the
    * account, and the policy citation is resolved from the offense that account
    * supports — so a form created from "create ca for Ellie Sendgraff" alone
@@ -1090,6 +1122,15 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
       typeof lastAssistant?.content === "string" &&
       (lastAssistant.content.includes(CA_POLICY_QUESTION) || lastAssistant.content.includes("**Policy:**"));
     if (raisedPolicy && namesCaPolicy(input.question)) return { kind: "explicit", templateKey: continued };
+
+    /*
+     * AND BY ITS WARNING LEVEL. "verbal", "make it a written warning" — the
+     * level for the open form, which names nobody either, and the card reads
+     * back the level it has so the manager can change it.
+     */
+    if (statedWarningLevel(input.question) && !ASKS_FOR_ADVICE.test(input.question)) {
+      return { kind: "explicit", templateKey: continued };
+    }
 
     /*
      * AND BY ITS ACCOUNT OF WHAT HAPPENED, in whatever words: "Ellie got to the
@@ -1809,7 +1850,7 @@ function correctiveActionReady(
   policy: CaPolicyReading,
 ): string {
   const outstanding = intake.missingRequired
-    .filter((item) => item.key === "warning_level" || item.key === "previous_action")
+    .filter((item) => (item.key === "warning_level" && !proposal.warningLevel) || item.key === "previous_action")
     .map((item) =>
       item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
     );
@@ -1830,6 +1871,19 @@ function correctiveActionReady(
    */
   const policyLine = caPolicyProposalLine(policy);
   if (policyLine) lines.push("", policyLine);
+
+  /*
+   * THE LEVEL THE MANAGER STATED, READ BACK. It is ticked on the form as their
+   * statement, so they see it here first and can change it (District Manager
+   * feedback, 21 Oct 2026: "create verbal CA for …" was answered "I won't
+   * guess at it").
+   */
+  if (proposal.warningLevel) {
+    lines.push(
+      "",
+      `**Type of Warning:** ${proposal.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning"}, as you said — I'll tick it on the form. Tell me if that should change.`,
+    );
+  }
 
   if (outstanding.length > 0) {
     lines.push(

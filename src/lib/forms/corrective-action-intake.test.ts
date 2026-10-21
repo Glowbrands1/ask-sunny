@@ -9,8 +9,11 @@ import {
   describesMoreThanTheRequest,
   NO_INCIDENT_NOTE,
   readCorrectiveActionIntake,
+  statedWarningLevel,
   statesFirstOccurrence,
   statesRepeatedBehaviour,
+  warningLevelChecked,
+  warningLevelFromTurns,
 } from "./corrective-action-intake";
 
 /**
@@ -548,5 +551,76 @@ describe("6. whether the manager has said what happened", () => {
         { role: "user", content: "she rang up her own tan package" },
       ]),
     ).toBe(true);
+  });
+});
+
+/*
+ * District Manager feedback, 21 Oct 2026: the level in the form's own
+ * shorthand ("create verbal CA for …") and as a sentence of its own ("… on
+ * 10-20-26. verbal. no payroll deduct.") was left for the manager to set.
+ * Synthetic names.
+ */
+describe("statedWarningLevel — the level stated for this form", () => {
+  it.each([
+    [
+      "create verbal CA for remy calder for violating visitors at work policy on 10-10-26. remy spent 40 minutes talking with a friend and ignoring clients. previous coaching was jba policy manual 1-1-26",
+      "verbal",
+    ],
+    [
+      "create ca form for tess varga for violating attendance policy on 10-20-26. verbal. no payroll deduct. jba manual 1-1-26 for previous coaching",
+      "verbal",
+    ],
+    ["create a written corrective action for tess varga for a register shortage", "written"],
+    ["written CA for tess varga, register short $3.25 today", "written"],
+    ["give her a verbal C/A for the dress code", "verbal"],
+    ["tess was late on 10/20. written. payroll deduct no", "written"],
+    ["late today. Verbal.", "verbal"],
+    ["5. verbal", "verbal"],
+    ["warning level: written", "written"],
+    ["Sarah Test, Kearny, today, mini skirt, verbal warning, first time", "verbal"],
+  ])("%s → %s", (text, level) => {
+    expect(statedWarningLevel(text)).toBe(level);
+  });
+
+  it.each([
+    "she had a written CA in august and was late again today",
+    "she has had verbal CAs before",
+    "previous written corrective action 9/1, late again today",
+    "got verbal warning on september 21",
+    "I gave her a verbal warning last week",
+    "she got a written warning before for this",
+    "final written warning",
+    "late again. verbal. written.",
+    "verbal or written?",
+    "is it verbal?",
+    "he gave her a verbal heads-up about the schedule",
+    "she was written up",
+  ])("%s states no level for this form", (text) => {
+    expect(statedWarningLevel(text)).toBeNull();
+  });
+
+  it("the latest turn that states one wins", () => {
+    expect(
+      warningLevelFromTurns(["create ca form for tess varga for violating attendance policy on 10-20-26", "verbal"]),
+    ).toBe("verbal");
+    expect(warningLevelFromTurns(["verbal CA for tess varga, late today", "actually make it written"])).toBe("written");
+    expect(warningLevelFromTurns(["create ca form for tess varga", "no payroll deduct"])).toBeNull();
+  });
+
+  it("is ticked only where the form offers it", () => {
+    expect(warningLevelChecked("verbal", ["verbal", "written", "termination", "demotion"])).toEqual({
+      warning_type: ["verbal"],
+    });
+    expect(warningLevelChecked("written", ["verbal"])).toEqual({});
+    expect(warningLevelChecked(null, ["verbal", "written"])).toEqual({});
+  });
+
+  it("answers the intake's warning-level item", () => {
+    const reading = readCorrectiveActionIntake({
+      text: "create verbal CA for remy calder for violating visitors at work policy on 10-10-26",
+      employeeKnown: true,
+      salonSettled: true,
+    });
+    expect(reading.supplied).toContain("warning_level");
   });
 });

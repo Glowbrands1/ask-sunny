@@ -5,6 +5,11 @@ import { salonById } from "@/data/salons";
 import { errorResponse } from "@/lib/api/respond";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
+import {
+  isStatedWarningLevel,
+  WARNING_LEVEL_STATED_KEYS,
+  WARNING_TYPE_KEY,
+} from "@/lib/forms/corrective-action-intake";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import {
   applyStatedFacts,
@@ -119,6 +124,7 @@ export async function POST(request: Request) {
       source?: "manual" | "ask_sunny";
       formDate?: string;
       payrollDeduct?: unknown;
+      warningLevel?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
     } | null;
@@ -240,6 +246,23 @@ export async function POST(request: Request) {
         { values: {}, checked: payrollDeductChecked(body.payrollDeduct) },
         actor.id,
         PAYROLL_DEDUCT_STATED_KEYS,
+      );
+    }
+
+    /*
+     * THE TYPE OF WARNING, AS THE MANAGER STATED IT FOR THIS FORM IN CHAT —
+     * "create verbal CA for …". The same path as the payroll answer: their own
+     * statement, only a verbal or written level, and only where the pinned
+     * version offers it (`applyStatedFacts` validates the option). Nothing sent
+     * means nothing written; it is never defaulted. The draft leaves it as it
+     * is. See `statedWarningLevel` in `lib/forms/corrective-action-intake.ts`.
+     */
+    if (isStatedWarningLevel(body.warningLevel)) {
+      await applyStatedFacts(
+        String(instance.id),
+        { values: {}, checked: { [WARNING_TYPE_KEY]: [body.warningLevel] } },
+        actor.id,
+        WARNING_LEVEL_STATED_KEYS,
       );
     }
 

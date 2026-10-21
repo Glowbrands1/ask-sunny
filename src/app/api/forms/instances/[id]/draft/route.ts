@@ -109,6 +109,7 @@ import {
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
 import { priorStepDate } from "@/lib/forms/form-date-answer";
+import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
   COACHING_CONTEXT_RULES,
   LANGUAGE_CLEANUP_RULES,
@@ -1468,11 +1469,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const keeps = (key: string) =>
       managerKeys.has(key) && !(DERIVED_POLICY_FIELD_KEYS.has(key) && derivedPolicy.derived.includes(key));
+    /*
+     * THE TYPE OF WARNING THE MANAGER STATED IN CHAT — "create verbal CA for
+     * …" — was ticked at creation as their statement, and the model's tick
+     * never replaces it: a level is the manager's decision, and the framework
+     * rules ask the model to reason towards a rung of its own. Where they
+     * stated none, the model's tick is written as before.
+     */
+    const statedWarning = (loaded.values ?? []).some(
+      (row) =>
+        row.fieldKey === WARNING_TYPE_KEY &&
+        row.checked.length > 0 &&
+        row.provenance?.source === "manager_statement",
+    );
     const guarded = await applyAssistantDraft(
       id,
       {
         values: Object.fromEntries(Object.entries(named.values).filter(([key]) => !keeps(key))),
-        checked: Object.fromEntries(Object.entries(validated.checked).filter(([key]) => !keeps(key))),
+        checked: Object.fromEntries(
+          Object.entries(validated.checked).filter(
+            ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
+          ),
+        ),
       },
       actor.id,
       provenance,
