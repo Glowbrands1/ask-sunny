@@ -249,7 +249,7 @@ export function ReviewGoalTable({
                         storeCode: location.storeCode,
                         week: WEEK_CURRENT,
                       })}
-                      className="block text-[12px] font-bold text-foreground hover:underline"
+                      className="flex min-h-6 items-center text-[12px] font-bold text-foreground hover:underline"
                     >
                       {location.locationName}
                     </Link>
@@ -276,7 +276,7 @@ export function ReviewGoalTable({
                           qualifying: "yes",
                         })}
                         className={cn(
-                          "text-[12.5px] font-bold hover:underline",
+                          "inline-flex min-h-6 min-w-6 items-center justify-end text-[12.5px] font-bold hover:underline",
                           location.qualifyingThisWeek > 0 ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
@@ -297,7 +297,7 @@ export function ReviewGoalTable({
                           qualifying: "yes",
                         })}
                         className={cn(
-                          "text-[14px] font-black hover:underline",
+                          "inline-flex min-h-6 min-w-6 items-center justify-end text-[14px] font-black hover:underline",
                           location.qualifyingMonthToDate > 0
                             ? "text-foreground"
                             : "text-muted-foreground",
@@ -396,7 +396,7 @@ function Header({
         type="button"
         onClick={() => onSort(sortKey)}
         className={cn(
-          "inline-flex items-center gap-1 whitespace-nowrap uppercase transition-colors hover:text-foreground",
+          "inline-flex min-h-6 items-center gap-1 whitespace-nowrap uppercase transition-colors hover:text-foreground",
           align === "right" && "flex-row-reverse",
           active && "text-foreground",
         )}
