@@ -658,3 +658,32 @@ describe("a payroll deduction with an amount", () => {
   });
 });
 
+/* ========================================================================= */
+/* "OTHER" BESIDE STANDARDS OF CONDUCT                                       */
+/* ========================================================================= */
+
+/*
+ * The same review found a Corrective Action stored with "Other" reading
+ * "Failure to complete required task — Woven deadline of September 30, 2026
+ * not met" beside Standards of Conduct, written by the form card's save after
+ * the draft rather than by the draft. This pins the draft's half: whatever the
+ * model writes there, a stated Standards of Conduct leaves it blank.
+ */
+describe("the draft never writes Other beside a stated Standards of Conduct", () => {
+  it("drops the model's write-in and its other box", async () => {
+    const { create } = await conversation([D1]);
+    state.draft = {
+      values: {
+        observation: "Observed:\nTess Varga had not acknowledged the policies in Woven by the October 15, 2026 deadline.",
+        other_offense: "Failure to complete required task — Woven deadline of September 30, 2026 not met",
+      },
+      checked: { offense_type: ["under_performance"] },
+    };
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "other_offense")).toBeUndefined();
+    expect(JSON.stringify(form.values)).not.toMatch(/September 30/);
+  });
+});
