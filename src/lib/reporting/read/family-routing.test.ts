@@ -217,6 +217,9 @@ describe("questions that name a metric reach that metric's family", () => {
   const CASES: [string, ReportFamilyId][] = [
     ["What was our PPTA yesterday?", "sales-totals"],
     ["How many EFTs did we take?", "salon-performance"],
+    /* The EFT COUNT is Sales Totals' alone; the Comp Report has EFT dollars. */
+    ["How many EFTs did we take?", "sales-totals"],
+    ["How many EFT sales do we have this month?", "sales-totals"],
     ["Show me tans per bed by level", "bed-usage"],
     ["Is our Hydromassage getting competitive usage?", "spa-wellness"],
     ["What is our Spa Sessions per Unique Tanner per Spa Bed?", "spa-engagement"],

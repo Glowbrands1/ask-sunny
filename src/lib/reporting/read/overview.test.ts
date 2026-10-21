@@ -53,8 +53,15 @@ describe("formatUpdatedLabel", () => {
 });
 
 describe("formatSalesTotalsPeriodLabel", () => {
-  it("names the month the cumulative window belongs to", () => {
+  it("names the days the cumulative window covers, so it never reads as the whole month", () => {
+    expect(formatSalesTotalsPeriodLabel("2026-10-01", "2026-10-18")).toBe("MTD Oct 1–18, 2026");
+    expect(formatSalesTotalsPeriodLabel("2026-10-01", "2026-10-01")).toBe("MTD Oct 1, 2026");
+    expect(formatSalesTotalsPeriodLabel("2026-09-01", "2026-09-30")).toBe("MTD Sep 1–30, 2026");
+  });
+
+  it("names only the month when there is no report date in that month", () => {
     expect(formatSalesTotalsPeriodLabel("2026-09-01")).toBe("MTD Sep 2026");
+    expect(formatSalesTotalsPeriodLabel("2026-09-01", "2026-10-01")).toBe("MTD Sep 2026");
   });
 
   it("degrades to a plain window name rather than inventing a month", () => {

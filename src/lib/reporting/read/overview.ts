@@ -224,12 +224,28 @@ function formatShortReportDate(iso: string): string {
   });
 }
 
-/** `2026-09-01` -> `MTD Sep 2026`, from the report's own month anchor. */
-export function formatSalesTotalsPeriodLabel(monthStart: string): string {
+/**
+ * `2026-10-01` + `2026-10-18` -> `MTD Oct 1–18, 2026`: the days the cumulative
+ * window actually covers, from the report's own month anchor and report date.
+ *
+ * NOT `MTD Oct 2026`, which a salon director read as the whole of October and
+ * compared with a full-month KPI report — the same misreading
+ * `formatCompPeriodLabel` already avoids by naming its end date. Without a
+ * report date in the same month, the month alone is the honest label.
+ */
+export function formatSalesTotalsPeriodLabel(monthStart: string, reportDate?: string): string {
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(monthStart);
   if (!match) return "Month to date";
   const month = MONTH_SHORT[Number(match[2]) - 1];
-  return month ? `MTD ${month} ${match[1]}` : "Month to date";
+  if (!month) return "Month to date";
+  const through = reportDate ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(reportDate) : null;
+  if (!through || through[1] !== match[1] || through[2] !== match[2]) {
+    return `MTD ${month} ${match[1]}`;
+  }
+  const day = Number(through[3]);
+  return day === 1
+    ? `MTD ${month} 1, ${match[1]}`
+    : `MTD ${month} 1–${day}, ${match[1]}`;
 }
 
 /* -------------------------------------------------- salon performance ------ */
@@ -422,13 +438,13 @@ const salesTotals: OverviewFamily = {
     });
     if (!snapshot) return null;
 
-    const periodLabel = formatSalesTotalsPeriodLabel(snapshot.monthStart);
+    const periodLabel = formatSalesTotalsPeriodLabel(snapshot.monthStart, snapshot.reportDate);
 
     return {
       source: {
         key: salesTotals.key,
         label: salesTotals.label,
-        // The tiles say which month; the secondary line says how far into it.
+        // The tiles name the days covered; the secondary line adds the weekday.
         periodLabel: `${periodLabel}, through ${formatShortReportDate(snapshot.reportDate)}`,
         ingestedAt: snapshot.lineage.ingestedAt ?? latest.ingestedAt,
       },

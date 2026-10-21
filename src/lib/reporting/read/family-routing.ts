@@ -80,6 +80,11 @@ export const FAMILY_QUESTION_TERMS: Readonly<Record<ReportFamilyId, readonly str
    * SALES TOTALS — the daily signal, and the family a broad operational
    * question reaches first. Its six measures plus the words a manager uses for
    * "what happened yesterday".
+   *
+   * `eft` and `efts` are here AS WELL AS under Salon Performance: this report
+   * holds the only EFT COUNT the app has, while the Comp Report holds EFT
+   * revenue in dollars. "How many EFTs this month?" routed to the Comp Report
+   * alone had no count to answer with.
    */
   "sales-totals": [
     "sales totals",
@@ -89,6 +94,8 @@ export const FAMILY_QUESTION_TERMS: Readonly<Record<ReportFamilyId, readonly str
     "new customers",
     "new customer",
     "sunless sessions",
+    "eft",
+    "efts",
     "revenue",
     "sales",
     "takings",
