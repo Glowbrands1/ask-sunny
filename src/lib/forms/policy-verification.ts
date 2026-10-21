@@ -92,5 +92,7 @@ export function unverifiedPolicyFields(
  */
 export const POLICY_ACKNOWLEDGEMENT_REQUIRED = "policy_verification_required";
 
+export const POLICY_ACKNOWLEDGEMENT_TITLE = "Sunny does not see this policy in the knowledge base";
+
 export const POLICY_ACKNOWLEDGEMENT_MESSAGE =
-  "Official policy verification is incomplete. Ask Sunny could not verify one or more policy fields from an approved policy source. Review the applicable company policy before issuing this Corrective Action Form. If you have independently verified the policy, you may continue.";
+  "Sunny does not see this policy in the knowledge base, so the policy on this form has not been checked by Sunny. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";

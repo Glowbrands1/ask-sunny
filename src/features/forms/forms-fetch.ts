@@ -28,6 +28,20 @@ export function formsHeaders(role: Role, name: string): HeadersInit {
   };
 }
 
+/**
+ * A refused Forms request. `code` is the route's machine-readable reason, when
+ * it gives one — a caller keys off that, never off the wording.
+ */
+export class FormsFetchError extends Error {
+  readonly code: string | null;
+
+  constructor(message: string, code: string | null) {
+    super(message);
+    this.name = "FormsFetchError";
+    this.code = code;
+  }
+}
+
 /** `fetch` with those headers, and JSON errors turned into thrown messages. */
 export async function formsFetch<T>(
   url: string,
@@ -43,10 +57,14 @@ export async function formsFetch<T>(
   const response = await fetch(url, { ...init, headers });
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: string;
+    code?: string;
     problems?: string[];
   };
   if (!response.ok) {
-    throw new Error(payload.problems?.join(" ") ?? payload.error ?? "That did not work.");
+    throw new FormsFetchError(
+      payload.problems?.join(" ") ?? payload.error ?? "That did not work.",
+      typeof payload.code === "string" ? payload.code : null,
+    );
   }
   return payload;
 }
