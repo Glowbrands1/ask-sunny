@@ -288,7 +288,8 @@ const DIRECTORY = [
 /*
  * THE MANUAL AS THE KNOWLEDGE BASE HOLDS IT: each section on the sheet it is
  * printed on, with the page the manual prints. Wording shortened, never
- * reworded.
+ * reworded, except the last sentence under Late Opening, which stands in for
+ * its "$25.00 via payroll deduction".
  */
 const STANDARDS_OF_CONDUCT_CHUNK = {
   chunkIndex: 30,
@@ -320,7 +321,46 @@ const VISITORS_CHUNK = {
     "30 | P a g e\nVisitors in the Workplace\nTo provide for the safety and security of Employees and the facilities, only authorized visitors are\nallowed in the workplace. If the Employee is uncomfortable with allowing the visitor into the\nworkplace, the Supervisor or manager on duty must refuse to allow the visitor into the\nworkplace.",
 };
 
-const MANUAL = { chunks: [STANDARDS_OF_CONDUCT_CHUNK, ATTENDANCE_CHUNK, VISITORS_CHUNK] };
+const LATE_OPENING_CHUNK = {
+  chunkIndex: 34,
+  page: 16,
+  printedPage: 15,
+  sections: [{ heading: "Late Opening", page: 15 }],
+  section: "Late Opening",
+  content:
+    "15 | P a g e\nLate Opening\nWhen an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible. The employee will reimburse The\nCompany $25.00 via payroll deduction.",
+};
+
+const CELL_PHONE_CHUNK = {
+  chunkIndex: 43,
+  page: 20,
+  printedPage: 19,
+  sections: [{ heading: "Cell Phone/Smart Watch Policy", page: 19 }],
+  section: "Cell Phone/Smart Watch Policy",
+  content:
+    "19 | P a g e\nCell Phone/Smart Watch Policy\nPersonal Employee cell phones are permitted in the workplace but must be kept out of sight. It\nis the Employee's personal responsibility to protect the client's experience.",
+};
+
+/* Real headings an account's ordinary words also say: never cited unasked. */
+const PAYROLL_DEDUCTIONS_CHUNK = {
+  chunkIndex: 100,
+  page: 40,
+  printedPage: 39,
+  sections: [{ heading: "Payroll Deductions", page: 39 }],
+  section: "Payroll Deductions",
+  content: "39 | P a g e\nPayroll Deductions\nDeductions from an employee's pay are made only as required by law.",
+};
+
+const MANUAL = {
+  chunks: [
+    STANDARDS_OF_CONDUCT_CHUNK,
+    ATTENDANCE_CHUNK,
+    LATE_OPENING_CHUNK,
+    CELL_PHONE_CHUNK,
+    VISITORS_CHUNK,
+    PAYROLL_DEDUCTIONS_CHUNK,
+  ],
+};
 
 /* The production turns, with synthetic people. */
 const A1 =
@@ -737,5 +777,279 @@ describe("the draft never writes Other beside a stated Standards of Conduct", ()
     expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
     expect(field(form, "other_offense")).toBeUndefined();
     expect(JSON.stringify(form.values)).not.toMatch(/September 30/);
+  });
+});
+
+/* ========================================================================= */
+/* A CELL PHONE ACCOUNT, WITH NO POLICY NAMED                                */
+/* ========================================================================= */
+
+/*
+ * District Manager feedback, 21 Oct 2026: the account named no policy and was
+ * cited under the Standards of Conduct, not the manual's Cell Phone/Smart
+ * Watch Policy (printed page 19).
+ */
+const F1 =
+  "create a verbal corrective action form for remy calder. on 10-20-26 remy was talking on her cell phone for over 30 minutes";
+
+describe("an account of the conduct cites the manual section it describes", () => {
+  it("reads Verbal, and the draft cites the Cell Phone/Smart Watch Policy under Violation of Company Policies", async () => {
+    const { last, proposal, create } = await conversation([F1, A2]);
+
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(last.content).toMatch(/\*\*Type of Warning:\*\* Verbal Warning, as you said/);
+    expect(last.content).toMatch(
+      /\*\*Policy:\*\* "cell phone" reads as the policy manual's \*\*Cell Phone\/Smart Watch Policy\*\* \(page 19\)\. I'll quote it on the draft under \*\*Violation of Company Policies\*\*/,
+    );
+
+    /* The model files it under the catch-all. */
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Remy Calder was talking on her cell phone for over 30 minutes." },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "offense_type")!.checked).toEqual(["company_policies"]);
+    expect(field(form, "policy_violated")!.value).toBe("Violation of Company Policies — Cell Phone/Smart Watch Policy");
+    expect(policy).toContain("Personal Employee cell phones are permitted in the workplace");
+    expect(policy).toContain("Source: JBA Policy Manual — Cell Phone/Smart Watch Policy, p. 19");
+    expect(policy).not.toMatch(/Standards of Conduct/);
+    expect(field(form, "policy_language")!.provenance).toMatchObject({ verified: true });
+    const plan = field(form, "action_plan")!.value!;
+    expect(plan).toBe(`Management will review the Cell Phone/Smart Watch policy with Remy. ${CLOSING}`);
+    expect(plan).not.toMatch(/Policy policy/i);
+  });
+
+  it("a phone in an account a box with its own section governs leaves that box: a late arrival is Attendance", async () => {
+    const { last, create } = await conversation([
+      "create a verbal corrective action form for remy calder. on 10-20-26 remy was 40 minutes late because she was on her phone in the parking lot. no payroll deduct",
+    ]);
+    expect(last.content).not.toMatch(/Cell Phone/);
+
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Remy Calder arrived 40 minutes late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["tardiness"]);
+    expect(field(form, "policy_violated")!.value).toBe("Tardiness/Leaving Early");
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(field(form, "policy_language")!.value).not.toMatch(/Cell Phone/);
+  });
+
+  it("never replaces a box the draft ticked whose own section is specific", async () => {
+    const { create } = await conversation([
+      "create a verbal corrective action form for remy calder. on 10-20-26 remy stayed on her cell phone in the back room after her shift began. no payroll deduct",
+    ]);
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Remy Calder did not start her shift on time." },
+      checked: { offense_type: ["tardiness"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["tardiness"]);
+    expect(field(form, "policy_language")!.value).not.toMatch(/Cell Phone/);
+  });
+
+  it("an incidental mention describes nothing: the draft's own box stands", async () => {
+    const { last, create } = await conversation([
+      "create a verbal corrective action form for remy calder. on 10-20-26 remy was rude to a client. she left her phone number on the schedule. no payroll deduct",
+    ]);
+    expect(last.content).not.toMatch(/Cell Phone/);
+
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Remy Calder was rude to a client." },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Standards of Conduct, p. 12");
+    expect(field(form, "policy_language")!.value).not.toMatch(/Cell Phone/);
+  });
+
+  it("a named policy is never overridden by a described one", async () => {
+    const { create } = await conversation([
+      "create verbal CA for remy calder for violating visitors at work policy on 10-10-26. remy was on her cell phone with a friend who visited. no payroll deduct",
+    ]);
+    state.draft = { values: { observation: "Observed:\nRemy Calder had a visitor." }, checked: {} };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "policy_violated")!.value).toBe("Violation of Company Policies — Visitors in the Workplace");
+    expect(field(form, "policy_language")!.value).not.toMatch(/Cell Phone/);
+  });
+
+  it('"payroll deduct applies" names no policy: the manual\'s Payroll Deductions section is not cited', async () => {
+    const { create } = await conversation([
+      "create a verbal corrective action form for remy calder. on 10-20-26 remy was rude to a client. payroll deduct applies",
+    ]);
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Remy Calder was rude to a client." },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value).not.toContain("Payroll Deductions");
+  });
+});
+
+/* ========================================================================= */
+/* A LATE OPENING, WITH A PAYROLL DEDUCTION AND ITS AMOUNT                   */
+/* ========================================================================= */
+
+/*
+ * District Manager feedback, 21 Oct 2026: "… payroll deduct DOES apply and
+ * state $25 will be payroll deducted" — the form did not say $25 would be
+ * deducted.
+ */
+const G1 =
+  "create verbal ca for tess varga for opening the salon late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted";
+
+const LATE_OPENER_DRAFT = {
+  values: { observation: "Observed:\nOn October 1, 2026, Tess Varga opened the salon late." },
+  checked: { offense_type: ["tardiness"] },
+};
+
+describe("a late opening with a payroll deduction", () => {
+  it("reads the date, Verbal, the history and the $25, and the Action Plan states the $25", async () => {
+    const { last, proposal, create } = await conversation([G1]);
+
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(last.content).toMatch(/\*\*Type of Warning:\*\* Verbal Warning, as you said/);
+    expect(proposal.formDate).toBe("2026-10-01");
+    expect(proposal.payrollDeduct).toBe("yes");
+    expect(last.content).toMatch(/Is payroll deduct applicable\? \*\*Yes\*\*/);
+
+    state.draft = LATE_OPENER_DRAFT;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(field(form, "form_date")!.value).toBe("2026-10-01");
+    expect(field(form, "prior_actions")!.value).toBe("Coaching — JBA Policy Manual — signed 01/01/2026");
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["yes"]);
+    expect(field(form, "offense_type")!.checked).toEqual(["tardiness"]);
+    expect(policy).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
+    expect(policy.indexOf("Late Opening, p. 15")).toBeLessThan(policy.indexOf("Attendance, p. 14"));
+    /* The manager's amount, as they wrote it. */
+    expect(field(form, "action_plan")!.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Tess. $25 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+  });
+
+  it.each([
+    "payroll deduct applies. $25 will be payroll-deducted",
+    "a $25 payroll deduction applies",
+  ])('"%s" — the Action Plan states the amount', async (payroll) => {
+    const { create } = await conversation([
+      `create verbal ca for tess varga for opening the salon late on 10-1-26. ${payroll}`,
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toContain("$25 will be deducted from Tess's pay.");
+  });
+});
+
+/* ========================================================================= */
+/* POLICY VIOLATED NAMES THE SECTION DIRECT POLICY LEADS WITH BESIDE ITS BOX */
+/* ========================================================================= */
+
+/* District Manager feedback, 21 Oct 2026: "tardiness/leaving early vs late open policy pg.15". */
+describe("Policy Violated names a cited section beside any box", () => {
+  it("names Late Opening beside the Tardiness box, as Direct policy leads with it", async () => {
+    const { create } = await conversation([G1]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["tardiness"]);
+    expect(field(form, "policy_violated")!.value).toBe("Tardiness/Leaving Early — Late Opening");
+  });
+
+  it("a late arrival that is not an opening stays the Tardiness box alone", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga, she was 20 minutes late for her 2pm shift on 10-1-26. no payroll deduct",
+    ]);
+    state.draft = {
+      values: { observation: "Observed:\nOn October 1, 2026, Tess Varga arrived 20 minutes late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "policy_violated")!.value).toBe("Tardiness/Leaving Early");
+    expect(field(form, "action_plan")!.value).toBe(`Management will review the Attendance policy with Tess. ${CLOSING}`);
+  });
+});
+
+/* ========================================================================= */
+/* ON A YES WITH NO AMOUNT, THE ONE THE QUOTED SECTION STATES                */
+/* ========================================================================= */
+
+/*
+ * District Manager feedback, 21 Oct 2026, the late-opening form: the manual's
+ * Late Opening section states what a late opener reimburses ("$25.00 via
+ * payroll deduction"), but with payroll deduct Yes and no amount stated the
+ * plan said only "A payroll deduction applies."
+ */
+describe("the payroll amount the quoted section states", () => {
+  it("with no amount stated, states the $25.00 the quoted Late Opening section gives", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga for opening the salon late on 10-1-26. payroll deduct applies",
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "policy_language")!.value).toContain("$25.00 via payroll deduction");
+    expect(field(form, "action_plan")!.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Tess. $25.00 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+    expect(field(form, "action_plan")!.provenance).toMatchObject({ payroll: "$25.00", payrollAmountFrom: "manual" });
+  });
+
+  it("the manager's amount wins over the section's", async () => {
+    const { create } = await conversation([G1]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const plan = field(await review(reference.instanceId), "action_plan")!;
+    expect(plan.value).toContain("$25 will be deducted from Tess's pay.");
+    expect(plan.value).not.toContain("$25.00");
+    expect(plan.provenance).not.toHaveProperty("payrollAmountFrom");
+  });
+
+  it("a late arrival cites Attendance alone, and the plan invents no figure", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga, she was 20 minutes late for her 2pm shift on 10-1-26. payroll deduct applies",
+    ]);
+    state.draft = {
+      values: { observation: "Observed:\nOn October 1, 2026, Tess Varga arrived 20 minutes late." },
+      checked: { offense_type: ["tardiness"] },
+    };
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `Management will review the Attendance policy with Tess. A payroll deduction applies. ${CLOSING}`,
+    );
+  });
+
+  it("on No, the section's figure is not stated", async () => {
+    const { create } = await conversation([
+      "create verbal ca for tess varga for opening the salon late on 10-1-26. no payroll deduct",
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Tess. ${CLOSING}`,
+    );
   });
 });

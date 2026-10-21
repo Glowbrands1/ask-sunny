@@ -82,6 +82,27 @@ describe("1. Policy Violated is the ticked offense category", () => {
     ).toBe("Tardiness/Leaving Early, Absenteeism");
   });
 
+  it("names the section Direct policy cites beside its box, where it is not the box's own", () => {
+    expect(
+      offenseCategoryValue({
+        document: DOCUMENT,
+        variantKey: null,
+        checked: { offense_type: ["tardiness"] },
+        values: {},
+        sectionNames: { tardiness: "Late Opening" },
+      }),
+    ).toBe("Tardiness/Leaving Early — Late Opening");
+    expect(
+      offenseCategoryValue({
+        document: DOCUMENT,
+        variantKey: null,
+        checked: { offense_type: ["company_policies", "absenteeism"] },
+        values: {},
+        sectionNames: { company_policies: "Cell Phone/Smart Watch Policy", tardiness: "Late Opening" },
+      }),
+    ).toBe("Violation of Company Policies — Cell Phone/Smart Watch Policy, Absenteeism");
+  });
+
   it("is null when nothing is ticked, so the manager gets a blank line", () => {
     expect(
       offenseCategoryValue({

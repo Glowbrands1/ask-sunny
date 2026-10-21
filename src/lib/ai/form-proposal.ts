@@ -45,7 +45,12 @@ import {
   type CaPolicyReading,
   type NamedPolicyReading,
 } from "@/lib/forms/ca-policy";
-import { namedManualSection, namedPolicies } from "@/lib/forms/named-policy-section";
+import {
+  describedManualSection,
+  mayDescribeSection,
+  namedManualSection,
+  namedPolicies,
+} from "@/lib/forms/named-policy-section";
 import type { ManualChunk } from "@/lib/forms/official-policy-manual";
 import { offeredInChooser } from "@/lib/forms/chooser";
 import { exitDetailsSupplied, readExitDetails } from "@/lib/forms/exit-details";
@@ -1622,14 +1627,35 @@ function choice(summary: TemplateSummary): ChatFormChoice {
 async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
   if (readCaPolicy(text).stated !== null) return null;
   const named = namedPolicies(text);
-  if (named.length === 0) return null;
-  const phrase = named[named.length - 1]!.phrase;
-  let chunks: readonly ManualChunk[] | null = null;
-  try {
-    chunks = (await input.policyManual?.()) ?? null;
-  } catch {
-    chunks = null;
+  const chunksOf = async (): Promise<readonly ManualChunk[] | null> => {
+    try {
+      return (await input.policyManual?.()) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  /*
+   * NO POLICY NAMED: the section the account describes, if exactly one
+   * heading of the manual answers it and the manual titles it a Policy —
+   * "talking on her cell phone" is the Cell Phone/Smart Watch Policy
+   * (District Manager feedback, 21 Oct 2026). Said only where found;
+   * otherwise nothing, as before.
+   */
+  if (named.length === 0) {
+    if (!mayDescribeSection(text)) return null;
+    const described = describedManualSection({ text, chunks: await chunksOf() });
+    return described
+      ? {
+          phrase: described.phrase,
+          lookup: "described",
+          heading: described.section.heading,
+          page: described.section.page,
+          offenseKey: described.offenseKey,
+        }
+      : null;
   }
+  const phrase = named[named.length - 1]!.phrase;
+  const chunks = await chunksOf();
   if (!chunks || chunks.length === 0) return { phrase, lookup: "unknown" };
   const found = namedManualSection({ text, chunks });
   return found

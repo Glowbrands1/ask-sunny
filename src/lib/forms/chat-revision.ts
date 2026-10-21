@@ -56,6 +56,7 @@ import {
   stripUnsupportedPolicyClaims,
 } from "./policy-claim-guard";
 import { DERIVED_POLICY_FIELD_KEYS, formDerivedProvenance, offenseCategoryValue } from "./policy-fields";
+import { citedBoxSections } from "./policy-change";
 import { applyEmployeeName, employeeNameRules } from "./employee-reference";
 import { fixedActionPlanKey } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -534,6 +535,10 @@ export async function reviseActiveForm(input: {
       checked: { offense_type: saved.accepted.checked.offense_type ?? [] },
       values: Object.fromEntries(
         [...current.entries()].map(([key, entry]) => [key, saved.accepted.values[key] ?? entry.value ?? ""]),
+      ),
+      /* "Tardiness/Leaving Early — Late Opening": the section Direct policy cites under a box, where it is not the box's own. */
+      sectionNames: citedBoxSections(
+        loaded.values.find((row) => row.fieldKey === "policy_language")?.provenance,
       ),
     });
     if (derived) {

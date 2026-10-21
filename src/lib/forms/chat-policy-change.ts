@@ -16,12 +16,15 @@ import { changeOnEditableDraft } from "./editable-draft";
 import { authorizeInstance } from "./instance-scope";
 import { applyAssistantDraft, applyAssistantRevision } from "./instances";
 import {
+  COMPANY_POLICIES_OFFENSE,
+  boxSectionNames,
   findManualSection,
   manualDisplayTitle,
   officialManualProvenance,
   type ManualSection,
 } from "./official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "./policy-citation";
+import { formDerivedProvenance, offenseCategoryValue } from "./policy-fields";
 import {
   nextPolicySections,
   readPolicyChange,
@@ -34,6 +37,9 @@ import { asksForAnotherForm } from "./revision";
 
 /** The line on a Corrective Action Form and a Policy Review that quotes the manual. */
 const POLICY_KEY = "policy_language";
+
+/** The Corrective Action Form's Policy Violated line: the ticked box, and the section cited beside it. */
+const VIOLATED_KEY = "policy_violated";
 
 /** "Create a CA for …", "I need a new corrective action" — a new form, not this one. */
 const NEW_FORM = /\b(?:create|start|pull up|new|another|need an?|draft an?)\b/i;
@@ -154,13 +160,14 @@ export async function changeActiveFormPolicy(input: {
     }
     if (next.length === 0) {
       await applyAssistantRevision(input.instanceId, {}, [POLICY_KEY], actor.id);
+      const violated = await followOffense(input.instanceId, actor.id, loaded, document, []);
       /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
       const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
       return {
         ...reply(
           `Removed ${names(wanted)} from ${field.label} on the ${who}. That line is now blank — tell me which policy applies and I'll add it from the manual.${plan.length > 0 ? " The Action Plan has been updated to match." : ""} Everything else on the form is as it was.`,
         ),
-        formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...plan] },
+        formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...violated, ...plan] },
       };
     }
   }
@@ -193,6 +200,8 @@ export async function changeActiveFormPolicy(input: {
   if (!(POLICY_KEY in saved.accepted.values)) {
     return reply(`I couldn't save ${field.label} on the ${who}, so it is as it was. Type the policy into that line on the form instead.`);
   }
+  /* Policy Violated names the section now cited beside its box, as a first draft does. */
+  const violated = await followOffense(input.instanceId, actor.id, loaded, document, next);
   /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
   const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
 
@@ -231,8 +240,67 @@ export async function changeActiveFormPolicy(input: {
   );
   return {
     ...reply(lines.join("\n")),
-    formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...plan] },
+    formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...violated, ...plan] },
   };
+}
+
+/**
+ * ============================================================================
+ * POLICY VIOLATED NAMES THE SECTION DIRECT POLICY CITES BESIDE ITS BOX
+ * ============================================================================
+ *
+ * On a first draft Policy Violated reads "Violation of Company Policies —
+ * Visitors in the Workplace" for a section no other box covers, and
+ * "Tardiness/Leaving Early — Late Opening" for a late opening under Tardiness
+ * (`boxSectionNames`). When the open form's Direct policy line changes in
+ * chat, Policy Violated is re-derived from the boxes and the sections now
+ * cited, so the two lines never name different sections (District Manager
+ * feedback, 21 Oct 2026).
+ *
+ * NOTHING ELSE MOVES. The offense box is the manager's (or the draft's) and
+ * is not ticked or unticked here; a form with no section named beside a box,
+ * before or after, or whose Policy Violated a person wrote by hand, is left
+ * exactly as it is. Returns the keys it wrote.
+ */
+async function followOffense(
+  instanceId: string,
+  actorId: string,
+  loaded: Awaited<ReturnType<typeof authorizeInstance>>["loaded"],
+  document: ReturnType<typeof parseFormDocument>,
+  cited: readonly ManualSection[],
+): Promise<string[]> {
+  const variantKey = loaded.instance.variantKey;
+  if (!fieldsForVariant(document, variantKey).some((entry) => entry.key === VIOLATED_KEY)) return [];
+  const ticked = loaded.values.find((value) => value.fieldKey === "offense_type")?.checked ?? [];
+  const violated = loaded.values.find((value) => value.fieldKey === VIOLATED_KEY);
+  const sectionNames = boxSectionNames(cited.map((section) => section.heading));
+  /*
+   * Only where a section is, or was, named beside a box: Violation of Company
+   * Policies, a box now cited for a section not its own ("Late Opening" under
+   * Tardiness), or a line that named one before.
+   */
+  const names =
+    ticked.includes(COMPANY_POLICIES_OFFENSE) ||
+    ticked.some((key) => key in sectionNames) ||
+    / — /.test(violated?.value ?? "");
+  if (!names) return [];
+  if (violated && violated.filledBy === "manager" && (violated.value ?? "").trim() !== "") return [];
+
+  const derived = offenseCategoryValue({
+    document,
+    variantKey,
+    checked: { offense_type: ticked },
+    values: Object.fromEntries(loaded.values.map((value) => [value.fieldKey, value.value ?? ""])),
+    sectionNames,
+  });
+  if (!derived || derived === (violated?.value ?? "").trim()) return [];
+  const saved = await applyAssistantDraft(
+    instanceId,
+    { values: { [VIOLATED_KEY]: derived }, checked: {} },
+    actorId,
+    formDerivedProvenance([VIOLATED_KEY]),
+  );
+  return VIOLATED_KEY in saved.accepted.values ? [VIOLATED_KEY] : [];
 }
 
 /**

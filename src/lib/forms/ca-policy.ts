@@ -301,11 +301,12 @@ const ALTERNATIVE_WORDS: Record<CaPolicyReading["alternatives"][number], string>
  * A policy the manager named by a name this file does not know — "violating
  * visitors at work policy" — and what the pinned manual said about it:
  * `found` (its heading and printed page), `missing` (no heading, or more than
- * one, answers it), or `unknown` (the manual was not read). See
- * `named-policy-section.ts`.
+ * one, answers it), or `unknown` (the manual was not read). `described` is a
+ * section the account describes where no policy was named at all ("talking
+ * on her cell phone"). See `named-policy-section.ts`.
  */
 export type NamedPolicyReading =
-  | { phrase: string; lookup: "found"; heading: string; page: number; offenseKey: string }
+  | { phrase: string; lookup: "found" | "described"; heading: string; page: number; offenseKey: string }
   | { phrase: string; lookup: "missing" | "unknown" };
 
 /** The offense box a named section is cited under, as the form labels it. */
@@ -318,6 +319,14 @@ const OFFENSE_BOX_LABEL: Record<string, string> = {
 };
 
 function namedPolicyLine(named: NamedPolicyReading): string {
+  /*
+   * NOT NAMED, DESCRIBED: "on her cell phone" is the manual's Cell Phone/Smart
+   * Watch Policy. Said as a reading the manager can change, not as theirs.
+   */
+  if (named.lookup === "described") {
+    const box = OFFENSE_BOX_LABEL[named.offenseKey];
+    return `**Policy:** "${named.phrase}" reads as the policy manual's **${named.heading}** (page ${named.page}). I'll quote it on the draft${box ? ` under **${box}**` : ""} — tell me if a different policy applies.`;
+  }
   if (named.lookup === "found") {
     const box = OFFENSE_BOX_LABEL[named.offenseKey];
     return `**Policy:** ${named.heading}, as you said — the policy manual's section on page ${named.page}. I'll quote it on the draft${box ? ` under **${box}**` : ""}.`;

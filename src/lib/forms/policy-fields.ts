@@ -55,8 +55,12 @@ export function offenseCategoryValue(input: {
   readonly variantKey: string | null;
   readonly checked: Record<string, string[]>;
   readonly values: Record<string, string>;
-  /** The manual section the manager named under Violation of Company Policies, printed beside it. */
-  readonly companyPolicyName?: string | null;
+  /**
+   * The section Direct policy cites under a box, where it is not the box's
+   * own, printed beside it: "Violation of Company Policies — Visitors in the
+   * Workplace", "Tardiness/Leaving Early — Late Opening". See `boxSectionNames`.
+   */
+  readonly sectionNames?: Readonly<Record<string, string>> | null;
 }): string | null {
   const group = checkboxGroupsForVariant(input.document, input.variantKey).find(
     (candidate) => candidate.key === "offense_type",
@@ -73,10 +77,9 @@ export function offenseCategoryValue(input: {
         return written === "" ? null : written;
       }
       const label = group.options.find((option) => option.key === key)?.label ?? null;
-      // "Violation of Company Policies — Visitors in the Workplace": which policy, where the manager named it.
-      return label && key === "company_policies" && input.companyPolicyName
-        ? `${label} — ${input.companyPolicyName}`
-        : label;
+      // "Tardiness/Leaving Early — Late Opening": the section cited under this box, where it is not the box's own.
+      const section = input.sectionNames?.[key]?.trim();
+      return label && section ? `${label} — ${section}` : label;
     })
     .filter((label): label is string => label !== null && label !== "");
 
@@ -316,7 +319,7 @@ export function applyDerivedPolicyFields(input: {
   /** True on a version that HAS the appendix line, so absence can be reported. */
   readonly wantsEppPolicyReference?: boolean;
   /** See `offenseCategoryValue`. */
-  readonly companyPolicyName?: string | null;
+  readonly sectionNames?: Readonly<Record<string, string>> | null;
 }): DerivedPolicyFields {
   const values = { ...input.values };
   const derived: string[] = [];
@@ -340,7 +343,7 @@ export function applyDerivedPolicyFields(input: {
       variantKey: input.variantKey,
       checked: input.checked,
       values: input.values,
-      companyPolicyName: input.companyPolicyName ?? null,
+      sectionNames: input.sectionNames ?? null,
     }),
   );
   assign(

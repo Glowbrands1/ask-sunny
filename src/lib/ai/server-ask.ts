@@ -400,7 +400,9 @@ export async function answerQuestion(
       /*
        * THE PINNED POLICY MANUAL, read only when a Corrective Action request
        * names a policy by a name the forms do not know ("violating visitors at
-       * work policy"), so the reply can name the manual's own section. A
+       * work policy"), or describes one where nothing else decides it
+       * ("talking on her cell phone"), so the reply can name the manual's own
+       * section. A
        * failure reads as no manual, and the proposal says so — that handling
        * is the proposal's (`namedPolicyFor`), not this file's.
        */

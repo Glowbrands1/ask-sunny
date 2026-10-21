@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   OFFENSE_MANUAL_SECTIONS,
   OFFICIAL_POLICY_MANUAL,
+  boxSectionNames,
   findManualSection,
   isManagementTitle,
   manualSectionFor,
@@ -643,5 +644,22 @@ describe("6. resolving the manual out of a real corpus", () => {
     ];
 
     expect(resolvePolicyManual(both)).toEqual({ ok: false, problem: "ambiguous" });
+  });
+});
+
+describe("boxSectionNames — the section Policy Violated names beside a box", () => {
+  it("names a cited section that is not the box's own, the first under each box", () => {
+    expect(boxSectionNames(["Late Opening", "Attendance"])).toEqual({ tardiness: "Late Opening" });
+    expect(boxSectionNames(["Attendance", "Late Opening"])).toEqual({ tardiness: "Late Opening" });
+    expect(boxSectionNames(["Cell Phone/Smart Watch Policy"])).toEqual({ company_policies: "Cell Phone/Smart Watch Policy" });
+    expect(boxSectionNames(["Visitors in the Workplace", "Coupon Collection"])).toEqual({
+      company_policies: "Visitors in the Workplace",
+    });
+  });
+
+  it("never names a box's own section", () => {
+    expect(boxSectionNames(["Attendance"])).toEqual({});
+    expect(boxSectionNames(["Dress Code for The Company", "Standards of Conduct"])).toEqual({});
+    expect(boxSectionNames([])).toEqual({});
   });
 });
