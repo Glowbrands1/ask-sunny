@@ -163,6 +163,17 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => values.includes(row[column]));
     return this;
   }
+  /** Only `col.ilike.*word*` alternatives — the employee-name search — are modelled. */
+  or(expression: string) {
+    const tests = expression.split(",").map((part) => {
+      const match = /^(\w+)\.ilike\.\*([^*]*)\*$/.exec(part);
+      if (!match) throw new Error(`fake-supabase: or(${part}) unsupported`);
+      const [, column, word] = match;
+      return (row: Row) => String(row[column!] ?? "").toLowerCase().includes(word!.toLowerCase());
+    });
+    this.filters.push((row) => tests.some((test) => test(row)));
+    return this;
+  }
   order(column: string, options?: { ascending?: boolean }) {
     this.orderKey = column;
     this.ascending = options?.ascending !== false;

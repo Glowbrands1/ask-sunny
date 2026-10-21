@@ -187,3 +187,58 @@ describe("a labelled history list is listed item by item", () => {
     );
   });
 });
+
+/*
+ * District Manager feedback, 21 Oct 2026: the employee's earlier Coaching Form
+ * and Verbal CA were in Form Monitoring and the manager had to type them again.
+ */
+describe("the forms already on file are listed too", () => {
+  const onFile = [
+    { formDate: "2026-09-02", line: "Coaching — signed 09/02/2026" },
+    { formDate: "2026-09-21", line: "Verbal corrective action — signed 09/21/2026" },
+  ];
+
+  it("lists each finalized form on file when the manager named none", () => {
+    const result = groundPriorActions({
+      drafted: "",
+      notes: "Paisley missed the Woven deadline.",
+      today: TODAY,
+      onFile,
+    });
+    expect(result.value).toBe(
+      "Coaching — signed 09/02/2026\nVerbal corrective action — signed 09/21/2026",
+    );
+  });
+
+  it("keeps the manager's own words for a step they dated, and adds the rest", () => {
+    const result = groundPriorActions({
+      drafted: "Coaching — JBA Policy Manual — signed 09/02/2026",
+      notes: "previous coaching was jba policy manual 9-2-26",
+      today: TODAY,
+      onFile,
+    });
+    expect(result.value).toBe(
+      "Coaching — JBA Policy Manual — signed 09/02/2026\nVerbal corrective action — signed 09/21/2026",
+    );
+  });
+
+  it("keeps a drafted line dated from the record, not just from the notes", () => {
+    const result = groundPriorActions({
+      drafted: "Verbal corrective action — signed 09/21/2026",
+      notes: "Paisley missed the Woven deadline.",
+      today: TODAY,
+      onFile,
+    });
+    expect(result.removed).toEqual([]);
+  });
+
+  it("lets the record outweigh \"first time\"", () => {
+    const result = groundPriorActions({
+      drafted: "",
+      notes: "This is her first time.",
+      today: TODAY,
+      onFile: onFile.slice(0, 1),
+    });
+    expect(result.value).toBe("Coaching — signed 09/02/2026");
+  });
+});

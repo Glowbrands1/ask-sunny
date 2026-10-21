@@ -424,3 +424,73 @@ describe("\"create ca for Paulyne Test she was late today, got verbal warning on
     expect(values.find((row) => row.fieldKey === "previous_action_date")).toBeUndefined();
   });
 });
+
+/*
+ * District Manager feedback, 21 Oct 2026: the employee's earlier Coaching Form
+ * and Verbal CA were already in Form Monitoring, and the manager had to type
+ * them into the chat again for the history line.
+ */
+describe("a CA for somebody with forms already on file", () => {
+  it("reads the finalized ones back in chat and lists them on the drafted form", async () => {
+    const { createInstance, finalizeInstance, saveInstanceValues } = await import("@/lib/forms/instances");
+    const filed = async (templateKey: string, formDate: string, employeeName = "Dana Moss") => {
+      const instance = await createInstance({
+        templateKey,
+        variantKey: null,
+        employeeName,
+        locationId: "loc-0310",
+        createdBy: "manager-1",
+        source: "ask_sunny",
+        formDate,
+      });
+      if (templateKey === "dpoa") {
+        await saveInstanceValues(instance.id, { checked: { warning_type: ["verbal"] } }, "manager-1");
+      }
+      await finalizeInstance(instance.id, "manager-1", null, { acknowledgeUnverifiedPolicy: true });
+      return instance;
+    };
+    await filed("coaching", "2026-09-02");
+    await filed("dpoa", "2026-09-21");
+    // Neither of these is Dana's history: another person, and a form never finalized.
+    await filed("coaching", "2026-09-10", "Dana Smith");
+    await createInstance({
+      templateKey: "coaching",
+      variantKey: null,
+      employeeName: "Dana Moss",
+      locationId: "loc-0310",
+      createdBy: "manager-1",
+      source: "ask_sunny",
+      formDate: "2026-09-15",
+    });
+    joinOverview();
+
+    const { priorFormsForChat } = await import("@/lib/forms/prior-forms");
+    const actor = { role: state.role as never, scope: state.scope as AccessScope, subject: "manager-1", verified: true };
+    const message = said(
+      "I need a CA for Dana Moss. She was 30 minutes late today, verbal warning. Payroll deduct no.",
+    );
+    const response = await proposeFormForTurn({
+      history: [],
+      question: message.content,
+      questionMessageId: message.id,
+      actor,
+      summaries: await listTemplateSummaries(),
+      today: "2026-09-29",
+      priorFormsOnFile: (employeeName) => priorFormsForChat(actor, employeeName),
+    });
+    expect(response?.content).toContain(
+      "**On file in Form Monitoring for Dana Moss:** Coaching — signed 09/02/2026; Verbal corrective action — signed 09/21/2026.",
+    );
+
+    const result = await createInlineForm({
+      proposal: response!.formProposal!,
+      messages: [message],
+      call,
+      onCreated: () => {},
+    });
+    const { values } = await review(result.reference.instanceId);
+    expect(values.find((row) => row.fieldKey === "prior_actions")?.value).toBe(
+      "Coaching — signed 09/02/2026\nVerbal corrective action — signed 09/21/2026",
+    );
+  });
+});

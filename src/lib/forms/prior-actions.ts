@@ -135,7 +135,7 @@ export function statedPriorActions(notes: string, today: string): string[] {
  *   A line carrying a date the manager never gave is removed — an invented
  *   date on a disciplinary history is the worst thing this line can hold.
  *   Each step the manager dated in their own words and the draft left out is
- *   added as its own line.
+ *   added as its own line, and so is each finalized form on file for them.
  *   Left empty, and told "first time", it reads "None — first occurrence".
  *
  * Lines without a date are kept: "Coaching on attendance (date not given)" is
@@ -145,8 +145,18 @@ export function groundPriorActions(input: {
   drafted: string;
   notes: string;
   today: string;
+  /**
+   * The employee's finalized forms in Form Monitoring, as lines — see
+   * `prior-forms.ts`. A record, so its dates stand as the manager's do, and a
+   * step on file that the draft left out is listed.
+   */
+  onFile?: readonly { formDate: string; line: string }[];
 }): { value: string; added: string[]; removed: string[] } {
-  const stated = new Set(datesInText(input.notes, input.today).map((found) => found.iso));
+  const onFile = input.onFile ?? [];
+  const stated = new Set([
+    ...datesInText(input.notes, input.today).map((found) => found.iso),
+    ...onFile.map((form) => form.formDate),
+  ]);
   const removed: string[] = [];
 
   const kept = (input.drafted ?? "")
@@ -168,6 +178,12 @@ export function groundPriorActions(input: {
     if (present.has(step.iso)) continue;
     present.add(step.iso);
     added.push(priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic)));
+  }
+  // What the manager said of a step comes first; the record fills in the rest.
+  for (const form of onFile) {
+    if (present.has(form.formDate)) continue;
+    present.add(form.formDate);
+    added.push(form.line);
   }
 
   const lines = [...kept, ...added];
