@@ -1,4 +1,6 @@
+import { readCaPolicy } from "./ca-policy";
 import {
+  OFFENSE_MANUAL_SECTIONS,
   findManualSection,
   manualSectionHeadings,
   offenseKeyForManualHeading,
@@ -96,17 +98,30 @@ function sameWord(a: string, b: string): boolean {
   return short.length >= 4 && long.startsWith(short);
 }
 
-/** Whether the manager's words name this heading. */
+/**
+ * Whether the manager's words name this heading.
+ *
+ * A HEADING THAT PRINTS ALTERNATIVES — "Cell Phone/Smart Watch Policy" — is
+ * named by either of them: "the cell phone policy" leaves "smart watch" off,
+ * and every word it does use is still the heading's. "Phone" alone still
+ * names nothing.
+ */
 export function namesHeading(phrase: string, heading: string): boolean {
   const said = words(phrase);
   const printed = words(heading);
   if (said.length === 0 || printed.length === 0) return false;
+  const covered = (part: readonly string[]) =>
+    part.every((word) => OPTIONAL_HEADING_WORDS.has(word) || said.some((other) => sameWord(word, other)));
   return (
     said.every((word) => printed.some((other) => sameWord(word, other))) &&
-    printed.every(
-      (word) => OPTIONAL_HEADING_WORDS.has(word) || said.some((other) => sameWord(word, other)),
-    )
+    (covered(printed) || headingAlternatives(heading).some((part) => part.length > 0 && covered(part)))
   );
+}
+
+/** "Cell Phone/Smart Watch Policy" → [cell, phone], [smart, watch]; a heading with no slash has none. */
+function headingAlternatives(heading: string): string[][] {
+  const parts = heading.split("/");
+  return parts.length < 2 ? [] : parts.map(words);
 }
 
 /** Every policy the manager named, in the order they named them. Questions name none. */
@@ -153,3 +168,255 @@ export function namedManualSection(input: {
   }
   return null;
 }
+
+/**
+ * ============================================================================
+ * "REMY WAS TALKING ON HER CELL PHONE" — A POLICY THE MANAGER DESCRIBED
+ * ============================================================================
+ *
+ * District Manager feedback, 21 Oct 2026: "create a verbal corrective action
+ * form for <employee>. on 10-20-26 <employee> was talking on her cell phone
+ * for over 30 minutes" was cited under the Standards of Conduct. The manual
+ * has a section for it — "Cell Phone/Smart Watch Policy", printed page 19 —
+ * but the manager described the conduct rather than naming a policy, so the
+ * reading above never ran and the model's catch-all box stood.
+ *
+ * So the manager's ACCOUNT is read against the same pinned sheet headings, at
+ * runtime, by the words that tell one heading from another:
+ *
+ *   A HEADING'S DISTINCTIVE WORDS are its own, less filler and less the words
+ *   every salon account uses (company, employee, work, time, client, salon,
+ *   shift, form, action, payroll, …). A heading with one word of its own at
+ *   all ("Shoes", "Attendance", "Overtime") never answers; each side of a
+ *   heading's slash is its own candidate ("Cell Phone", "Smart Watch").
+ *
+ *   THE ACCOUNT MUST USE ALL OF THEM, IN ORDER — "cell phone", "smart watch"
+ *   — with only filler between. A word that merely appears ("left the door
+ *   open" is not the Open Door Policy) does not. One relaxation: the object
+ *   the employee had — "on her phone" — names the thing a two-word heading is
+ *   about ("Cell Phone") when that word is in no other heading of the manual.
+ *
+ *   INCIDENTAL MENTIONS ARE NOT ACCOUNTS: "her phone number", "called in by
+ *   phone", a question, or a sentence that states a rule ("belts must not
+ *   hold cell phones") names nothing.
+ *
+ *   EXACTLY ONE HEADING, counted over every heading of the manual. None, or
+ *   two ("a belt that holds her cell phone", social media under two
+ *   headings), and nothing is cited, as for a named policy.
+ *
+ *   AND ONLY A SECTION THE MANUAL TITLES A POLICY. Checked against all of the
+ *   real manual's headings: an account's ordinary words say plenty of
+ *   section names that are not policies ("payroll deduct applies" is
+ *   Payroll Deductions on every form that answered the payroll question;
+ *   "time records", "shift replacement", "visitors"). A section the manual
+ *   calls a Policy ("Cell Phone/Smart Watch Policy", "Social Media Policy")
+ *   is one a manager can be held to from their own description; any other is
+ *   cited only when the manager names it.
+ *
+ * NEVER OVER WHAT ALREADY DECIDES THE POLICY. A policy the manager named —
+ * one `ca-policy.ts` knows, or any "violating the … policy", found or not —
+ * and an account that reads as attendance, a late opening, dress code, or a
+ * conduct incident the Standards of Conduct lists, each leave this silent.
+ * The drafting route also leaves a box with its own specific section
+ * (Tardiness, Absenteeism, Dress Code) standing; the Standards of Conduct is
+ * the manual's catch-all, and the section the account describes is the more
+ * specific of the two.
+ *
+ * Pure. The headings, their pages and the box come from the manual's rows,
+ * exactly as for a named policy.
+ */
+
+/** Words every account uses, which tell no heading from another. */
+const GENERIC = new Set([
+  "employee", "employer", "employment", "work", "worked", "working", "workplace", "time", "times", "day",
+  "days", "hour", "hours", "minute", "minutes", "customer", "client", "guest", "salon", "store", "location",
+  "shop", "shift", "manager", "management", "team", "staff", "general", "other", "new", "service",
+  "product", "procedure", "use", "usage", "using", "used", "requirement", "information", "record", "form",
+  "action", "request", "status", "statement", "notification", "report", "reporting", "overview", "safety",
+  "outside", "termination", "account", "property", "pay", "payroll", "deduct", "deduction", "benefit",
+  "corrective", "warning", "verbal", "written", "final", "coaching", "manual", "jba", "proper", "no",
+  "non", "related", "recommendation", "guideline", "regulation", "it", "as", "per", "is", "be", "&",
+]);
+
+/** Words that may stand between a heading's words in an account: "talking on the cell phone". */
+const BETWEEN = new Set([...FILLER, "her", "his", "their", "my", "your", "its", "own", "personal"]);
+
+/** Whose thing it was: "on HER phone". */
+const POSSESSIVE = new Set(["her", "his", "their", "my", "your"]);
+
+/** What makes the word a label for something else: "phone number". */
+const SOMETHING_ELSE = new Set(["number", "numbers", "no", "#", "list", "book"]);
+
+/** A means of communication, not conduct: "called in by phone". */
+const BY_MEANS = /\b(?:by|via|over\s+the|through\s+the)\s*$/;
+
+/** A sentence stating a rule rather than what happened. */
+const RULE = /\b(?:must|shall|may\s+not|(?:is|are)\s+not\s+(?:allowed|permitted)|not\s+permitted|prohibited|polic(?:y|ies)\s+(?:says?|states?))\b/i;
+
+/** An account a box with its own section governs: attendance, a late opening, dress code. */
+const OWN_BOX =
+  /\b(?:late|lateness|tardy|tardiness|left early|leaving early|clocked out early|absent|absence|absences|absenteeism|no[- ]call|no[- ]show|called (?:out|off)|call[- ]?off|missed (?:her|his|their|a|the) shift|open(?:ed|ing)? (?:the |our |her |his )?(?:salon|store|location|shop|doors)|opener|dress(?:ed)?(?: code)?|uniform|apron|shirts?|pants|jeans|shorts|leggings|shoes|sneakers|sandals|flip[- ]flops|slippers|belts?|hair|beard|jewelry|piercings?|tattoos?|make[- ]?up|nails)\b/i;
+
+/** The manual titles the section a policy: "Cell Phone/Smart Watch Policy", "Social Media Policy". */
+const TITLED_POLICY = /\bpolic(?:y|ies)\b/i;
+
+function plain(word: string): string {
+  const w = word.replace(/'s$/, "").replace(/'/g, "");
+  if (w.length > 4 && w.endsWith("ies")) return `${w.slice(0, -3)}y`;
+  if (w.length > 4 && /(?:ches|shes|xes|sses)$/.test(w)) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
+  return w;
+}
+
+/**
+ * The same word, a plural of it, or — for a heading noun made from a verb —
+ * the verb's -ing form: a friend VISITING is a visitor. Not "visit" or
+ * "visited": a district manager's salon visit is not a visitor.
+ */
+function sameAccountWord(said: string, printed: string): boolean {
+  const a = plain(said);
+  const b = plain(printed);
+  if (a === b) return true;
+  const made = /^(.{4,}?)(?:or|ion)$/.exec(b);
+  return made !== null && a === `${made[1]}ing`;
+}
+
+function tokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .split(/[^a-z0-9'#&]+/)
+    .filter((token) => token !== "");
+}
+
+interface Candidate {
+  readonly heading: string;
+  /** The words an account must use, in order. */
+  readonly required: readonly string[];
+  /** Words that may stand alone after a possessive — "her phone" — because they name this heading only. */
+  readonly objects: readonly string[];
+}
+
+function candidatesOf(headings: readonly string[]): Candidate[] {
+  const parts = headings.flatMap((heading) =>
+    heading.split("/").map((part) => ({ heading, content: words(part).map(plain), alternative: heading.includes("/") })),
+  );
+  const out: Candidate[] = [];
+  for (const { heading, content, alternative } of parts) {
+    if (content.length < 2) continue;
+    const required = content.filter((word) => !GENERIC.has(word) && !OPTIONAL_HEADING_WORDS.has(word));
+    if (required.length === 0) continue;
+    /*
+     * ONE WORD OF ITS OWN IS ENOUGH only beside words the manager may leave
+     * off anyway ("Visitors in the Workplace"). Beside any other word it is
+     * not: "Schedule Requests", "Disciplinary Action", "Leave Requests".
+     */
+    if (required.length === 1 && content.some((word) => word !== required[0] && !OPTIONAL_HEADING_WORDS.has(word))) continue;
+    /*
+     * A HEADING THAT LISTS ALTERNATIVES NAMES THINGS — a cell phone, a smart
+     * watch — and the employee's own one ("her phone", "his cell") is that
+     * thing, where no other heading has the word.
+     */
+    const objects =
+      alternative && content.length === 2 && required.length === 2
+        ? required.filter(
+            (word) =>
+              !parts.some((other) => other.heading !== heading && other.content.some((printed) => sameAccountWord(word, printed))),
+          )
+        : [];
+    out.push({ heading, required, objects });
+  }
+  return out;
+}
+
+/** Where in these account words the candidate's words are used, as the manager wrote them, or null. */
+function usedIn(said: readonly string[], candidate: Candidate): string | null {
+  const before = (index: number) => said.slice(Math.max(0, index - 2), index).join(" ");
+  const settles = (end: number) => {
+    const next = said[end + 1];
+    return next === undefined || !SOMETHING_ELSE.has(next);
+  };
+  for (let start = 0; start < said.length; start += 1) {
+    if (!sameAccountWord(said[start]!, candidate.required[0]!)) continue;
+    if (BY_MEANS.test(before(start))) continue;
+    let at = start;
+    let ok = true;
+    for (const word of candidate.required.slice(1)) {
+      let next = at + 1;
+      while (next < said.length && next - at <= 3 && BETWEEN.has(said[next]!) && !sameAccountWord(said[next]!, word)) next += 1;
+      if (next >= said.length || !sameAccountWord(said[next]!, word)) {
+        ok = false;
+        break;
+      }
+      at = next;
+    }
+    if (ok && settles(at)) return said.slice(start, at + 1).join(" ");
+  }
+  for (const object of candidate.objects) {
+    for (let index = 1; index < said.length; index += 1) {
+      if (!sameAccountWord(said[index]!, object) || !POSSESSIVE.has(said[index - 1]!)) continue;
+      if (BY_MEANS.test(before(index - 1))) continue;
+      const next = said[index + 1];
+      if (next !== undefined && !BETWEEN.has(next) && !/^(?:while|during|when|instead|until|for)$/.test(next)) continue;
+      return said[index]!;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether an account could describe a section at all: no policy named, and
+ * nothing else deciding it (attendance, a late opening, dress code, a conduct
+ * incident). Cheap, so a caller can skip reading the manual when it is false.
+ */
+export function mayDescribeSection(text: string): boolean {
+  if (namedPolicies(text).length > 0) return false;
+  const reading = readCaPolicy(text);
+  if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous !== null) return false;
+  return !OWN_BOX.test(text);
+}
+
+/**
+ * The manual section the manager's account describes, or null. See above:
+ * only where no policy was named and nothing else decides it, only where
+ * exactly one heading of the manual answers, and only a section the manual
+ * titles a Policy.
+ */
+export function describedManualSection(input: {
+  readonly text: string;
+  readonly chunks: readonly ManualChunk[] | null;
+}): NamedManualSection | null {
+  if (!input.chunks || input.chunks.length === 0) return null;
+  const text = input.text ?? "";
+  if (!mayDescribeSection(text)) return null;
+
+  const candidates = candidatesOf(manualSectionHeadings(input.chunks));
+  const found = new Map<string, string>();
+  for (const sentence of text.matchAll(/[^.!?\n]+[.!?]*/g)) {
+    if (/\?\s*$/.test(sentence[0]) || RULE.test(sentence[0])) continue;
+    const said = tokens(sentence[0]);
+    for (const candidate of candidates) {
+      if (found.has(candidate.heading)) continue;
+      const phrase = usedIn(said, candidate);
+      if (phrase) found.set(candidate.heading, phrase);
+    }
+  }
+  /* One heading of the whole manual, and one the manual calls a policy. */
+  if (found.size !== 1) return null;
+  const [heading, phrase] = [...found.entries()][0]!;
+  if (!TITLED_POLICY.test(heading)) return null;
+  const section = findManualSection(input.chunks, [heading]);
+  if (!section) return null;
+  return { phrase, section, offenseKey: offenseKeyForManualHeading(section.heading) };
+}
+
+/**
+ * The boxes whose own section is specific — Tardiness and Absenteeism cite
+ * Attendance, Dress Code the Dress Code. A described section never replaces
+ * one the draft ticked. The Standards of Conduct is not among them: it is the
+ * manual's catch-all ("Failing to follow the policies and procedures of The
+ * Company"), and the section the account describes is the policy it means.
+ */
+export const SPECIFIC_SECTION_BOXES: ReadonlySet<string> = new Set(
+  Object.keys(OFFENSE_MANUAL_SECTIONS).filter((key) => key !== "standards_of_conduct"),
+);
