@@ -1121,14 +1121,14 @@ export function policyVerificationNoticeFor(
 
   const parts = [
     blank.length > 0
-      ? `${quote(blank)} ${blank.length === 1 ? "is" : "are"} blank because no approved policy matched what you described`
+      ? `${quote(blank)} ${blank.length === 1 ? "is" : "are"} blank because Woven does not see a matching policy in the knowledge base`
       : null,
     byHand.length > 0
       ? `${quote(byHand)} ${byHand.length === 1 ? "was" : "were"} entered by hand and ${byHand.length === 1 ? "has" : "have"} not been checked against the manual`
       : null,
   ].filter((part): part is string => part !== null);
 
-  return `Policy verification is still required: ${parts.join(", and ")}. Confirm the exact policy in the official manual before you issue this form — Ask Sunny will not write policy wording it cannot source, and it cannot vouch for wording it did not retrieve.`;
+  return `Policy verification is still required: ${parts.join(", and ")}. Woven does not see this policy in the knowledge base, so it cannot be verified — confirm the exact policy in the official manual before you issue this form.`;
 }
 
 /**
