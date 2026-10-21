@@ -8,6 +8,7 @@ import {
   employeeState,
   managerContext,
   resolveEmployee,
+  tidyTypedName,
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import {
@@ -573,7 +574,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    */
   const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, context) : null;
   const directory = await checkTypedEmployee(input, match, context, carried);
-  const employee = directory.resolution ?? carried;
+  const employee = directory.resolution ?? (await spelledForTheForm(input, match, carried ?? resolveEmployee(context)));
 
   const proposal = buildProposal({
     ...(employee ? { employee } : {}),
@@ -758,6 +759,32 @@ const NAME_CHECKED_TEMPLATES: ReadonlySet<string> = new Set([
   "tsd-epp",
 ]);
 
+/*
+ * ============================================================================
+ * THE NAME AS IT IS PRINTED, ON EVERY FORM
+ * ============================================================================
+ *
+ * A name the directory did not settle — no roster, nobody by that name, a name
+ * the manager chose to keep, or a form outside `NAME_CHECKED_TEMPLATES` — used
+ * to go on the card exactly as typed, so "paulyne camacho" was printed on a
+ * Demotion Form in lower case. Now: on the forms that keep their own name
+ * handling, an EXACT directory match still lends its spelling (nothing else —
+ * not the salon, and never a close match); otherwise the typed name is
+ * capitalised by `tidyTypedName`, which leaves "McDonald" alone.
+ */
+async function spelledForTheForm(
+  input: ProposalTurn,
+  match: TemplateSummary,
+  typed: EmployeeResolution,
+): Promise<EmployeeResolution> {
+  if (typed.kind !== "resolved") return typed;
+  if (!NAME_CHECKED_TEMPLATES.has(match.key)) {
+    const found = matchEmployeeName(typed.employeeName, await loadScopedRoster(input.actor.scope));
+    if (found.kind === "exact") return { kind: "resolved", employeeName: found.name };
+  }
+  return { kind: "resolved", employeeName: tidyTypedName(typed.employeeName) };
+}
+
 interface DirectoryCheck {
   /** Replaces the conversation's own reading of the employee. */
   resolution?: EmployeeResolution;
@@ -796,7 +823,7 @@ async function checkTypedEmployee(
 
   if (result.kind === "none") {
     return {
-      note: `I didn't find **${typed.employeeName}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
+      note: `I didn't find **${tidyTypedName(typed.employeeName)}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
     };
   }
 
