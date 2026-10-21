@@ -88,6 +88,14 @@ export function ConversationList({
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
+  /*
+   * ONE CONVERSATION'S DELETE IS CONFIRMED TOO. The trash control sits on the
+   * right edge of every thread card and is transparent until hovered, so on a
+   * touch screen — where nothing hovers — a tap meant for the card's right
+   * half landed on it and removed the thread from the account outright. Live
+   * QA lost a thread with a draft form in it exactly that way.
+   */
+  const [pendingDelete, setPendingDelete] = useState<ChatConversation | null>(null);
 
   const now = useHistoryNow();
 
@@ -199,7 +207,7 @@ export function ConversationList({
                       <Tooltip content="Delete conversation">
                         <button
                           type="button"
-                          onClick={() => onDelete(conversation.id)}
+                          onClick={() => setPendingDelete(conversation)}
                           aria-label={`Delete conversation: ${conversation.title}`}
                           className="absolute top-1/2 right-1 -translate-y-1/2 rounded-[var(--radius-xs)] p-1.5 text-muted-foreground opacity-0 transition-opacity group-hover/item:opacity-100 hover:bg-surface-muted hover:text-status-failed focus-visible:opacity-100"
                         >
@@ -308,6 +316,38 @@ export function ConversationList({
               }}
             >
               {clearing ? "Clearing…" : "Clear history"}
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <DialogContent
+          title="Delete this conversation?"
+          description={pendingDelete?.title ?? ""}
+        >
+          <p className="text-[13px] leading-relaxed text-muted-foreground">
+            {accountHistory
+              ? "This permanently removes the conversation from your Ask Sunny history on every device, and Sunny forgets what you told it here. Forms created from it are not deleted."
+              : "This permanently removes the conversation from this browser. Forms created from it are not deleted."}
+          </p>
+          <DialogActions>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (pendingDelete) onDelete(pendingDelete.id);
+                setPendingDelete(null);
+              }}
+            >
+              Delete conversation
             </Button>
           </DialogActions>
         </DialogContent>

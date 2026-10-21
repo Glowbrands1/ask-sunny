@@ -257,6 +257,13 @@ export function InlineForm({
    * previous "Finalize anyway" cannot silently authorise a later one.
    */
   const [confirmingPolicy, setConfirmingPolicy] = React.useState(false);
+  /*
+   * FINALIZE IS ASKED ONCE, TOO. It freezes an HR record that can only be
+   * replaced, never reopened, and in live QA a single click did that with no
+   * chance to stop. When the policy dialog above is going to open anyway it is
+   * the confirmation, so the manager is never asked twice.
+   */
+  const [confirmingFinalize, setConfirmingFinalize] = React.useState(false);
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -416,6 +423,15 @@ export function InlineForm({
    * their change and have no way to correct it but a revision. So the control
    * is disabled while the editor is dirty, and this is the second guard.
    */
+  function requestFinalize() {
+    if (action.kind === "busy") return;
+    if (save.kind === "dirty" || save.kind === "saving" || unresolvedPolicy.length > 0) {
+      void finalize();
+      return;
+    }
+    setConfirmingFinalize(true);
+  }
+
   async function finalize(acknowledgeUnverifiedPolicy = false) {
     if (action.kind === "busy") return;
     if (save.kind === "dirty" || save.kind === "saving") {
@@ -451,6 +467,7 @@ export function InlineForm({
     }
 
     setConfirmingPolicy(false);
+    setConfirmingFinalize(false);
     setAction({ kind: "busy", what: "finalize" });
     try {
       await call(`/api/forms/instances/${instanceId}`, {
@@ -847,7 +864,7 @@ export function InlineForm({
               <Button
                 variant="accent"
                 size="sm"
-                onClick={() => void finalize()}
+                onClick={requestFinalize}
                 disabled={action.kind === "busy" || save.kind === "dirty" || save.kind === "saving"}
               >
                 {action.kind === "busy" && action.what === "finalize" ? (
@@ -921,6 +938,41 @@ export function InlineForm({
                   <Loader2 className="animate-spin" />
                 ) : null}
                 Finalize anyway
+              </Button>
+            </DialogActions>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={confirmingFinalize}
+        onOpenChange={(open) => {
+          if (!open) setConfirmingFinalize(false);
+        }}
+      >
+        {confirmingFinalize ? (
+          <DialogContent
+            title="Finalize this form?"
+            description={`${loaded.instance.templateName} · ${loaded.instance.employeeName}`}
+          >
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              {loaded.instance.revisesInstanceId
+                ? "Its values are frozen and it replaces the finalized original. It can't be edited afterwards — only replaced by a new draft."
+                : "Its values are frozen and it can't be edited afterwards — only replaced by a new draft. Signatures are signed on paper."}
+            </p>
+            <DialogActions>
+              <Button variant="ghost" onClick={() => setConfirmingFinalize(false)}>
+                Keep editing
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void finalize()}
+                disabled={action.kind === "busy"}
+              >
+                {action.kind === "busy" && action.what === "finalize" ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Yes, finalize
               </Button>
             </DialogActions>
           </DialogContent>
