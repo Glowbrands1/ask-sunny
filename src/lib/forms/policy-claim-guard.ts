@@ -212,7 +212,7 @@ export function stripUnsupportedPolicyClaims(
  * a thing they can go and check.
  */
 export const POLICY_CLAIM_REMOVED_NOTICE =
-  "Ask Sunny kept the observation to what was seen. It removed the statement that a policy was breached, because no approved policy was retrieved to support it — confirm the exact policy in the official manual, then add the finding yourself.";
+  "Ask Sunny kept the observation to what was seen. It removed the statement that a policy was breached, because Woven does not see a policy in the knowledge base that supports it — confirm the exact policy in the official manual, then add the finding yourself.";
 
 /* ================================================================ */
 /*  AN ACTION PLAN MAY SET AN EXPECTATION. IT MAY NOT WRITE A RULE.   */
@@ -550,7 +550,7 @@ export const POLICY_ATTRIBUTION_REMOVED_NOTICE =
   "A sentence saying company policy requires something was removed: the JB & Associates manual sections that were checked do not state it. The coaching point is still on the form — add the requirement yourself if the manual does say so.";
 
 export const POLICY_REQUIREMENT_REMOVED_NOTICE =
-  "Ask Sunny kept the plan to what it can support. It removed a specific requirement — the kind of detail that only the manual can settle — because no approved policy was retrieved to back it, and replaced it with the general expectation. Add the exact requirement once you have confirmed it in the official manual.";
+  "Ask Sunny kept the plan to what it can support. It removed a specific requirement — the kind of detail that only the manual can settle — because Woven does not see a policy in the knowledge base that backs it, and replaced it with the general expectation. Add the exact requirement once you have confirmed it in the official manual.";
 
 /**
  * ============================================================================

@@ -709,7 +709,7 @@ describe("the Corrective Action Form's generation behaviour", () => {
 
       const payload = await post(SKIRT);
 
-      expect(String(payload.notice)).toMatch(/no approved policy matched/i);
+      expect(String(payload.notice)).toMatch(/Woven does not see a matching policy in the knowledge base/);
     });
 
     it("populates the policy fields once the manual actually answers", async () => {
@@ -819,7 +819,7 @@ describe("the Corrective Action Form's generation behaviour", () => {
       );
 
       // And the manager is told why the two fields are theirs.
-      expect(String(payload.notice)).toMatch(/policy fields are left for the manager/i);
+      expect(String(payload.notice)).toMatch(/policy fields are left for you to complete/i);
     });
 
     it("says so through the separation rules in the prompt as well", async () => {
@@ -973,7 +973,7 @@ describe("the mini-skirt case, end to end", () => {
   it("tells the manager everything it removed and why", async () => {
     const payload = await post(NOTES);
 
-    expect(String(payload.notice)).toMatch(/no approved policy matched/i);
+    expect(String(payload.notice)).toMatch(/Woven does not see a matching policy in the knowledge base/);
     expect(String(payload.notice)).toMatch(/removed the statement that a policy was breached/i);
     // The plan's invented requirement never reached a guard: the plan is built, not drafted.
     expect(String(payload.notice)).not.toMatch(/removed a specific requirement/i);
