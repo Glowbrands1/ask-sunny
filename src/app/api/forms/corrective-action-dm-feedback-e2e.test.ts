@@ -896,3 +896,62 @@ describe("an account of the conduct cites the manual section it describes", () =
     expect(field(form, "policy_language")!.value).not.toContain("Payroll Deductions");
   });
 });
+
+/* ========================================================================= */
+/* A LATE OPENING, WITH A PAYROLL DEDUCTION AND ITS AMOUNT                   */
+/* ========================================================================= */
+
+/*
+ * District Manager feedback, 21 Oct 2026: "… payroll deduct DOES apply and
+ * state $25 will be payroll deducted" — the form did not say $25 would be
+ * deducted.
+ */
+const G1 =
+  "create verbal ca for tess varga for opening the salon late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted";
+
+const LATE_OPENER_DRAFT = {
+  values: { observation: "Observed:\nOn October 1, 2026, Tess Varga opened the salon late." },
+  checked: { offense_type: ["tardiness"] },
+};
+
+describe("a late opening with a payroll deduction", () => {
+  it("reads the date, Verbal, the history and the $25, and the Action Plan states the $25", async () => {
+    const { last, proposal, create } = await conversation([G1]);
+
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(last.content).toMatch(/\*\*Type of Warning:\*\* Verbal Warning, as you said/);
+    expect(proposal.formDate).toBe("2026-10-01");
+    expect(proposal.payrollDeduct).toBe("yes");
+    expect(last.content).toMatch(/Is payroll deduct applicable\? \*\*Yes\*\*/);
+
+    state.draft = LATE_OPENER_DRAFT;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(field(form, "form_date")!.value).toBe("2026-10-01");
+    expect(field(form, "prior_actions")!.value).toBe("Coaching — JBA Policy Manual — signed 01/01/2026");
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["yes"]);
+    expect(field(form, "offense_type")!.checked).toEqual(["tardiness"]);
+    expect(policy).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
+    expect(policy.indexOf("Late Opening, p. 15")).toBeLessThan(policy.indexOf("Attendance, p. 14"));
+    /* The manager's amount, as they wrote it. */
+    expect(field(form, "action_plan")!.value).toBe(
+      `Management will review the Late Opening and Attendance policies with Tess. $25 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+  });
+
+  it.each([
+    "payroll deduct applies. $25 will be payroll-deducted",
+    "a $25 payroll deduction applies",
+  ])('"%s" — the Action Plan states the amount', async (payroll) => {
+    const { create } = await conversation([
+      `create verbal ca for tess varga for opening the salon late on 10-1-26. ${payroll}`,
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toContain("$25 will be deducted from Tess's pay.");
+  });
+});
