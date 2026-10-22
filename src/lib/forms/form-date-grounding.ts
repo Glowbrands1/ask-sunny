@@ -347,3 +347,20 @@ export function correctDraftedDates(
 
   return { values: next, corrected };
 }
+
+/**
+ * Every mention of one calendar day, in any spelling, moved to another —
+ * written the way a drafted form writes a date ("October 19, 2026"). For a
+ * form's date corrected in chat: the paragraph Ask Sunny drafted moves with
+ * it (QA audit, 22 Oct 2026). Returns the text unchanged when it never named
+ * that day.
+ */
+export function withDateMoved(text: string, fromIso: string, toIso: string): string {
+  const to = resolveFormDate(toIso);
+  if (!to || fromIso === toIso) return text;
+  const year = fromIso.slice(0, 4);
+  DATE_TOKEN.lastIndex = 0;
+  return text.replace(DATE_TOKEN, (token) =>
+    datesInText(token, `${year}-01-01`)[0]?.iso === fromIso ? to.long : token,
+  );
+}
