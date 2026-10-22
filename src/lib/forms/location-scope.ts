@@ -168,6 +168,13 @@ export function proposeLocation(
    * team-wide). See `fromEmployeeSalons` for where it sits in the order.
    */
   employeeSalonIds: readonly string[] = [],
+  /**
+   * The salons the manager's latest salon ANSWER names (`latestSalonAnswer`):
+   * "410" to "Which salon is this about?", or "sorry, it's omaha pacific".
+   * When present it replaces the reading of their words — and goes through the
+   * same scope check. See `fromAnsweredSalons`.
+   */
+  answeredSalonIds: readonly string[] | null = null,
 ): LocationProposal {
   if (!scope) {
     return {
@@ -178,7 +185,9 @@ export function proposeLocation(
 
   if (scope.level === "salon") {
     const allowed = authorizedSalonIds(scope);
-    const named = fromNamedSalons(allowed, managerText);
+    const named = answeredSalonIds
+      ? fromAnsweredSalons(allowed, answeredSalonIds)
+      : fromNamedSalons(allowed, managerText);
     if (named) return named;
     const employees = fromEmployeeSalons(allowed, employeeSalonIds);
     if (employees) return employees;
@@ -220,10 +229,10 @@ export function proposeLocation(
      * the id again — so "at Wornall" puts Wornall on the form, and "at Lincoln"
      * (three salons) asks which.
      */
-    const named = fromNamedSalons(
-      PRODUCTION_SALONS.map((salon) => salon.id),
-      managerText,
-    );
+    const everySalon = PRODUCTION_SALONS.map((salon) => salon.id);
+    const named = answeredSalonIds
+      ? fromAnsweredSalons(everySalon, answeredSalonIds)
+      : fromNamedSalons(everySalon, managerText);
     if (named) return named;
     /*
      * THE EMPLOYEE'S OWN SALON IS NOT INVENTED EITHER. A global actor filing
@@ -278,6 +287,27 @@ function fromNamedSalons(allowed: readonly string[], managerText: string): Locat
 
   const outOfScopeName =
     mentions.length === 1 && named.length === 1 ? rosterSalonName(named[0]!) : null;
+  return {
+    resolution: "needs_selection",
+    authorizedIds: [...allowed],
+    ...(outOfScopeName ? { outOfScopeName } : {}),
+  };
+}
+
+/**
+ * The salons an ANSWER to the salon question names (QA F-12). Stricter than
+ * `fromNamedSalons`: a reply that can mean several salons ("lincoln", "omaha",
+ * "306") is a question even when only one of them is the actor's — the
+ * manager answered with something ambiguous, so they confirm rather than have
+ * it picked. Only the actor's own salons are ever offered or filled in.
+ */
+function fromAnsweredSalons(allowed: readonly string[], answered: readonly string[]): LocationProposal | null {
+  const named = [...new Set(answered)];
+  const inScope = named.filter((id) => allowed.includes(id));
+  if (named.length === 1 && inScope.length === 1) return { resolution: "resolved", locationId: inScope[0]! };
+  if (inScope.length > 0) return { resolution: "needs_selection", authorizedIds: inScope };
+  if (allowed.length === 0) return null;
+  const outOfScopeName = named.length === 1 ? rosterSalonName(named[0]!) : null;
   return {
     resolution: "needs_selection",
     authorizedIds: [...allowed],

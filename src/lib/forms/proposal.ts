@@ -1622,6 +1622,8 @@ export interface ProposalInput {
   employee?: EmployeeResolution;
   /** The employee's salons, from the directory, already in the actor's scope. */
   employeeSalonIds?: readonly string[];
+  /** The salons the manager's latest salon answer names (`latestSalonAnswer`); null to read their words. */
+  answeredSalonIds?: readonly string[] | null;
 }
 
 /**
@@ -1704,6 +1706,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     input.scope,
     input.context.text,
     team ? [] : (input.employeeSalonIds ?? []),
+    input.answeredSalonIds ?? null,
   );
 
   const employeeName = team
