@@ -54,6 +54,10 @@ New end-to-end regression suite: `src/app/api/forms/hr-feedback-oct21-e2e.test.t
   report ask bar's form list (b87431c — Sunny lacks the feature).
 - Woven-affiliation designation (Bubbles 6d388ad) is not needed: both apps now
   show a manager the forms at every location Woven assigns them.
+- Sunny only: the Woven access local-stack suites delete the store mappings
+  they add (b9fe177, QA LS-1). Only Sunny has a later suite (month-to-date
+  reviews) that resets a mapped salon; Bubbles has no such suite, so its
+  leftover rows break nothing.
 
 ### Open decisions (not ported yet)
 
