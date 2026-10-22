@@ -1,0 +1,18 @@
+
+ RUN  v4.1.11 /home/user/ask-sunny
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"bbbbbbbb-2222-4222-8222-222222222222","where":"ConversationRating"}
+
+ ✓ src/features/chat/rollout-fixes.dom.test.tsx (18 tests | 17 skipped) 4916ms
+     ✓ does not carry a typed complaint onto another conversation's turn  4911ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 17 skipped (18)
+   Start at  12:48:11
+   Duration  6.65s (transform 2.66s, setup 0ms, import 502ms, tests 4.92s, environment 987ms)
+
+JSON report written to /home/user/qa-2026-10-22/evidence/phase2-ui-timeouts/isolated-branch-run3.json

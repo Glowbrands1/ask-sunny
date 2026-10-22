@@ -1,0 +1,150 @@
+
+ RUN  v4.1.11 /home/user/ask-sunny
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry an open rating form into another conversation
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > rating a conversation leaves the chat exactly where it was > opening Rate this conversation does not navigate
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > rating a conversation leaves the chat exactly where it was > clicking each star from 1 to 5 navigates nowhere, keeps the conversation and its messages, and changes only the rating
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"bbbbbbbb-2222-4222-8222-222222222222","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > shows an unrated conversation as unrated after leaving a rated one
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > shows an unrated conversation as unrated after leaving a rated one
+{"event":"feedback.host.rateable","turnId":"bbbbbbbb-2222-4222-8222-222222222222","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > a submitted rating reads as Rated, and survives a reload > submits stars, outcome and comment against this conversation's turn, then shows Rated ✓
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > a past conversation can be reopened and continued > loads the whole thread when one is selected from history
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > a past conversation can be reopened and continued > continues it in place rather than opening a duplicate
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > a past conversation can be reopened and continued > continues it in place rather than opening a duplicate
+{"event":"feedback.host.rateable","turnId":"cccccccc-3333-4333-8333-333333333333","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > a submitted rating reads as Rated, and survives a reload > shows the saved rating when the conversation is reloaded and reopened
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > says it is waiting instead of swallowing the press mid-turn
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > a submitted rating reads as Rated, and survives a reload > shows the saved rating when the conversation is reloaded and reopened
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+ ❯ src/features/chat/rating-stays-in-place.dom.test.tsx (4 tests | 1 failed) 9131ms
+     × opening Rate this conversation does not navigate 5047ms
+     ✓ clicking each star from 1 to 5 navigates nowhere, keeps the conversation and its messages, and changes only the rating  2196ms
+     ✓ submits stars, outcome and comment against this conversation's turn, then shows Rated ✓  906ms
+     ✓ shows the saved rating when the conversation is reloaded and reopened  978ms
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > says it is waiting instead of swallowing the press mid-turn
+{"event":"feedback.host.rateable","turnId":"eeeeeeee-5555-4555-8555-555555555555","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > never files a form from a choice whose request was refused
+{"event":"feedback.host.rateable","turnId":"dddddddd-4444-4444-8444-444444444444","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > never files a form from a choice whose request was refused
+{"event":"feedback.host.rateable","turnId":"ffffffff-6666-4666-8666-666666666666","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > still creates the form when the card's own choice is the one that answered
+{"event":"feedback.host.rateable","turnId":"dddddddd-4444-4444-8444-444444444444","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > still creates the form when the card's own choice is the one that answered
+{"event":"feedback.host.rateable","turnId":"99999999-7777-4777-8777-777777777777","where":"ConversationRating"}
+
+stderr | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > still creates the form when the card's own choice is the one that answered
+{"event":"form.draft.failed","templateKey":"coaching","where":"FormProposalCard","reason":"Your draft was created, but there wasn't enough in the conversation for Sunny to prefill it. You can complete it below."}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > offers the action in the header only below lg, beside a rail that is only at lg
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > sends the same request the rail sends
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > sends the same request the rail sends
+{"event":"feedback.host.rateable","turnId":"ffffffff-6666-4666-8666-666666666666","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is disabled while Sunny is answering, like the rail
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is disabled while Sunny is answering, like the rail
+{"event":"feedback.host.rateable","turnId":"abababab-7777-4777-8777-777777777777","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is offered only to an account that may create forms, like the rail
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is not offered before there is a conversation to act on
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > chat history is hidden until it is asked for > gets out of the way once a conversation is chosen
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > chat history is hidden until it is asked for > starts a new chat without opening history first
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+ ❯ src/features/chat/rollout-fixes.dom.test.tsx (18 tests | 1 failed) 13161ms
+     × does not carry an open rating form into another conversation 5022ms
+     ✓ does not carry a typed complaint onto another conversation's turn  1478ms
+     ✓ shows an unrated conversation as unrated after leaving a rated one  548ms
+     ✓ loads the whole thread when one is selected from history 281ms
+     ✓ continues it in place rather than opening a duplicate  962ms
+     ✓ says it is waiting instead of swallowing the press mid-turn  694ms
+     ✓ never files a form from a choice whose request was refused  942ms
+     ✓ still creates the form when the card's own choice is the one that answered  314ms
+     ✓ offers the action in the header only below lg, beside a rail that is only at lg 245ms
+     ✓ sends the same request the rail sends  338ms
+     ✓ is disabled while Sunny is answering, like the rail  668ms
+     ✓ is offered only to an account that may create forms, like the rail 246ms
+     ✓ is not offered before there is a conversation to act on  307ms
+     ✓ is closed on arrival 114ms
+     ✓ offers one clearly labelled control to open it, at any width 181ms
+     ✓ gets out of the way once a conversation is chosen 223ms
+     ✓ keeps every conversation — hiding the panel deletes nothing 269ms
+     ✓ starts a new chat without opening history first  323ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/chat/rating-stays-in-place.dom.test.tsx > rating a conversation leaves the chat exactly where it was > opening Rate this conversation does not navigate
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/features/chat/rating-stays-in-place.dom.test.tsx:255:3
+    253|
+    254| describe("rating a conversation leaves the chat exactly where it was",…
+    255|   it("opening Rate this conversation does not navigate", async () => {
+       |   ^
+    256|     const user = userEvent.setup();
+    257|     const fetchSpy = vi.fn();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry an open rating form into another conversation
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/features/chat/rollout-fixes.dom.test.tsx:268:3
+    266|
+    267| describe("rating is scoped to the conversation being rated", () => {
+    268|   it("does not carry an open rating form into another conversation", a…
+       |   ^
+    269|     const user = userEvent.setup();
+    270|     await renderChat();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 20 passed (22)
+   Start at  12:46:26
+   Duration  15.40s (transform 5.79s, setup 0ms, import 1.23s, tests 22.29s, environment 2.51s)
+
+JSON report written to /home/user/qa-2026-10-22/evidence/phase2-ui-timeouts/branch-run4.json

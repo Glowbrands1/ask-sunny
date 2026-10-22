@@ -1,0 +1,203 @@
+/**
+ * QA (not committed) — browser checks against a LIVE-mode build on the
+ * disposable local stack. Records evidence to QA_OUT; each test is independent.
+ *
+ *   criterion 4  open-form context survives turns and a reload (request bodies
+ *                carry `continueProposalTemplateKey`, the URL carries `?c=`)
+ *   criterion 1  a location-only reply does not overwrite the employee
+ *   criterion 5  the card offers only the manager's own locations; the server
+ *                refuses a forged one
+ */
+import { appendFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+
+const A = JSON.parse(process.env.QA_APP!) as {
+  app: "sunny" | "bubbles";
+  password: string;
+  adminEmail: string;
+  managerEmail: string;
+  ownLocations: { id: string; name: string }[];
+  ownReply: string;
+  otherReply: string;
+  forgedLocationId: string;
+};
+
+// Each app's own wording: salon for Sunny, store for Bubbles.
+const LOCATION_QUESTION = A.app === "sunny" ? /Which salon is this about\?/ : /Which store is this about\?/;
+
+// The manager types "pat rivera" and the employee directory is empty, so the typed spelling is kept (user decision, 22 Oct).
+const TYPED_NAME = "pat rivera";
+
+const record = (row: Record<string, unknown>) => appendFileSync(process.env.QA_OUT!, `${JSON.stringify({ app: A.app, ...row })}\n`);
+
+async function signIn(page: Page, email: string) {
+  await page.goto("/login");
+  await page.locator("#login-email").fill(email);
+  await page.locator("#login-password").fill(A.password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 60_000 });
+}
+
+interface Turn {
+  request: Record<string, unknown>;
+  response: Record<string, unknown>;
+  status: number;
+}
+
+async function send(page: Page, text: string): Promise<Turn> {
+  await page.getByRole("textbox").last().fill(text);
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => new URL(r.url()).pathname === "/api/chat" && r.request().method() === "POST", { timeout: 90_000 }),
+    page.getByRole("button", { name: "Send message" }).filter({ visible: true }).last().click(),
+  ]);
+  const turn = { request: response.request().postDataJSON() as Record<string, unknown>, response: (await response.json()) as Record<string, unknown>, status: response.status() };
+  // Let the thread render the answer.
+  await expect(page.getByText(text, { exact: true }).filter({ visible: true }).first()).toBeVisible();
+  await page.waitForTimeout(1_500);
+  return turn;
+}
+
+const card = (turn: Turn) => (turn.response.formProposal ?? null) as null | { templateKey: string; employeeName: string | null; locationId: string | null; status: string; authorizedLocationIds: string[] };
+const brief = (turn: Turn) => ({
+  status: turn.status,
+  sentContinueKey: turn.request.continueProposalTemplateKey ?? null,
+  sentHistoryLength: Array.isArray(turn.request.history) ? turn.request.history.length : null,
+  proposal: card(turn) ? { templateKey: card(turn)!.templateKey, employeeName: card(turn)!.employeeName, locationId: card(turn)!.locationId, status: card(turn)!.status } : null,
+  picker: Boolean(turn.response.formSelection),
+});
+
+// Tests are independent (each signs in and starts a new chat); the setup test runs first (file order, one worker).
+
+test("setup: an administrator opening Form Templates seeds the library", async ({ page }) => {
+  await signIn(page, A.adminEmail);
+  const response = await page.goto("/forms/templates");
+  await page.waitForTimeout(3_000);
+  record({ test: "setup", templatesPageStatus: response?.status() ?? null, url: page.url() });
+  expect(response?.status()).toBeLessThan(400);
+});
+
+test("criterion 4: the open form survives a follow-up and a reload", async ({ page }) => {
+  await signIn(page, A.managerEmail);
+  await page.goto("/chat");
+  const t1 = await send(page, "create coaching form for pat rivera, late 3 times this week");
+  const t2 = await send(page, "i already told you");
+  const addressAfter = page.url();
+  await expect(page.getByText(/pat rivera/i).filter({ visible: true }).first()).toBeVisible();
+  await page.reload();
+  await page.waitForTimeout(3_000);
+  const addressAfterReload = page.url();
+  const restoredQuestion = await page.getByText("create coaching form for pat rivera, late 3 times this week", { exact: true }).filter({ visible: true }).count();
+  const restoredCard = await page.getByText(/pat rivera/i).filter({ visible: true }).count();
+  const t3 = await send(page, "she was late again today");
+  const conversationInAddress = /[?&]c=/.test(addressAfter) && new URL(addressAfter).searchParams.get("c") === new URL(addressAfterReload).searchParams.get("c");
+  const pass =
+    card(t1)?.employeeName === TYPED_NAME &&
+    t2.request.continueProposalTemplateKey === "coaching" &&
+    card(t2)?.employeeName === TYPED_NAME &&
+    conversationInAddress &&
+    restoredQuestion > 0 &&
+    restoredCard > 0 &&
+    t3.request.continueProposalTemplateKey === "coaching" &&
+    (t3.request.history as unknown[]).length >= 4 &&
+    card(t3)?.employeeName === TYPED_NAME;
+  record({ test: "criterion 4 continuity", pass, t1: brief(t1), t2: brief(t2), addressAfter, addressAfterReload, restoredQuestion, restoredCard, t3: brief(t3) });
+  await page.screenshot({ path: `${process.env.QA_SHOTS}/${A.app}-continuity.png`, fullPage: true });
+  expect(pass).toBe(true);
+});
+
+for (const [label, reply] of [["an assigned location", A.ownReply], ["an unassigned location", A.otherReply]] as const) {
+  test(`criterion 1: a location-only reply (${label}) keeps the employee`, async ({ page }) => {
+    await signIn(page, A.managerEmail);
+    await page.goto("/chat");
+    const t1 = await send(page, "create coaching form for pat rivera, late 3 times this week");
+    const t2 = await send(page, reply);
+    const pass = card(t1)?.employeeName === TYPED_NAME && card(t2)?.employeeName === TYPED_NAME;
+    record({ test: `criterion 1 location-only reply (${label}: "${reply}")`, pass, t1: brief(t1), t2: brief(t2) });
+    await page.screenshot({ path: `${process.env.QA_SHOTS}/${A.app}-location-reply-${label.replace(/\W+/g, "-")}.png`, fullPage: true });
+    expect.soft(pass).toBe(true);
+  });
+}
+
+test("criterion 5: the card offers only the manager's own locations, and the server refuses a forged one", async ({ page }) => {
+  await signIn(page, A.managerEmail);
+  await page.goto("/chat");
+  const t1 = await send(page, "create coaching form for pat rivera, late 3 times this week");
+  const select = page.getByLabel(LOCATION_QUESTION).last();
+  const offered = (await select.count()) > 0 ? await select.locator("option").allTextContents() : [];
+  const offeredIds = (await select.count()) > 0 ? await select.locator("option").evaluateAll((options) => options.map((o) => (o as HTMLOptionElement).value).filter(Boolean)) : [];
+  const ownIds = A.ownLocations.map((l) => l.id).sort();
+  let created: unknown = null;
+  if ((await select.count()) > 0) {
+    await select.selectOption(A.ownLocations[1]!.id);
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => new URL(r.url()).pathname === "/api/forms/instances" && r.request().method() === "POST", { timeout: 60_000 }),
+      page.getByRole("button", { name: "Create draft" }).last().click(),
+    ]);
+    created = { status: response.status(), sentLocationId: (response.request().postDataJSON() as { locationId?: string }).locationId ?? null };
+  }
+  const forged = await page.request.post("/api/forms/instances", {
+    data: { templateKey: "coaching", employeeName: "Pat Rivera", locationId: A.forgedLocationId, source: "manual" },
+    headers: { origin: new URL(page.url()).origin },
+  });
+  const forgedBody = await forged.json().catch(() => null);
+  const pass =
+    JSON.stringify([...offeredIds].sort()) === JSON.stringify(ownIds) &&
+    (created as { status?: number } | null)?.status !== undefined &&
+    [200, 201].includes((created as { status: number }).status) &&
+    (created as { sentLocationId: string }).sentLocationId === A.ownLocations[1]!.id &&
+    forged.status() === 403;
+  record({ test: "criterion 5 location selection", pass, t1: brief(t1), proposalAuthorized: card(t1)?.authorizedLocationIds ?? null, offered, offeredIds, created, forged: { status: forged.status(), body: forgedBody } });
+  await page.screenshot({ path: `${process.env.QA_SHOTS}/${A.app}-location-select.png`, fullPage: true });
+  expect(pass).toBe(true);
+});
+
+const SAVED_CASES: { label: string; sentence: string; payroll: "yes" | "no" | "unanswered"; negative: boolean }[] = [
+  { label: "negative: will not", sentence: "create a verbal ca for pat rivera. she was late on 10/15. we will not payroll deduct $25", payroll: "no", negative: true },
+  { label: "negative: don't", sentence: "create a verbal ca for pat rivera. she was late on 10/15. don't payroll deduct $25", payroll: "no", negative: true },
+  { label: "negative: waived", sentence: "create a verbal ca for pat rivera. she was late on 10/15. the $25 payroll deduction was waived", payroll: "no", negative: true },
+  { label: "positive control", sentence: "create a verbal ca for pat rivera. she was late on 10/15. payroll deduct $25", payroll: "yes", negative: false },
+];
+
+for (const c of SAVED_CASES) {
+  test(`saved values (${c.label}): employee, authorized location, form date and payroll after save and read-back`, async ({ page }) => {
+    await signIn(page, A.managerEmail);
+    await page.goto("/chat");
+    const t1 = await send(page, c.sentence);
+    const select = page.getByLabel(LOCATION_QUESTION).last();
+    if ((await select.count()) > 0) await select.selectOption(A.ownLocations[0]!.id);
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => new URL(r.url()).pathname === "/api/forms/instances" && r.request().method() === "POST", { timeout: 60_000 }),
+      page.getByRole("button", { name: "Create draft" }).last().click(),
+    ]);
+    const sent = response.request().postDataJSON() as Record<string, unknown>;
+    const createdBody = (await response.json().catch(() => null)) as { instance?: { id?: string } } | null;
+    const id = createdBody?.instance?.id ?? null;
+    let stored: Record<string, unknown> | null = null;
+    if (id) {
+      const read = await page.request.get(`/api/forms/instances/${id}`);
+      const body = (await read.json().catch(() => null)) as { instance?: Record<string, unknown>; values?: { fieldKey: string; value: string | null; checked: string[]; filledBy?: string }[] } | null;
+      const value = (key: string) => body?.values?.find((v) => v.fieldKey === key) ?? null;
+      stored = {
+        readStatus: read.status(),
+        employeeName: body?.instance?.employeeName ?? null,
+        locationId: body?.instance?.locationId ?? null,
+        formDate: body?.instance?.formDate ?? null,
+        payroll_deduct: value("payroll_deduct"),
+        warning_type: value("warning_type"),
+      };
+    }
+    const payroll = (stored?.payroll_deduct as { checked?: string[] } | null)?.checked ?? [];
+    const payrollOk = c.payroll === "yes" ? payroll.includes("yes") && !payroll.includes("no") : c.payroll === "no" ? payroll.includes("no") && !payroll.includes("yes") : payroll.length === 0;
+    const pass =
+      card(t1)?.templateKey === "dpoa" &&
+      [200, 201].includes(response.status()) &&
+      stored?.readStatus === 200 &&
+      stored?.employeeName === "pat rivera" &&
+      stored?.locationId === A.ownLocations[0]!.id &&
+      stored?.formDate === "2026-10-15" &&
+      payrollOk;
+    record({ test: `saved values (${c.label})`, negativePayrollCase: c.negative, pass, sentence: c.sentence, expected: { employeeName: "pat rivera", locationId: A.ownLocations[0]!.id, formDate: "2026-10-15", payroll: c.payroll }, card: { ...brief(t1), payrollOnCard: (t1.response.formProposal as { payrollDeduct?: string } | undefined)?.payrollDeduct ?? null, formDateOnCard: (t1.response.formProposal as { formDate?: string } | undefined)?.formDate ?? null }, sentToCreate: { locationId: sent.locationId ?? null, payrollDeduct: sent.payrollDeduct ?? null, formDate: sent.formDate ?? null, employeeName: sent.employeeName ?? null }, createStatus: response.status(), id, stored });
+    await page.screenshot({ path: `${process.env.QA_SHOTS}/${A.app}-saved-${c.label.replace(/\W+/g, "-")}.png`, fullPage: true });
+    expect.soft(pass).toBe(true);
+  });
+}

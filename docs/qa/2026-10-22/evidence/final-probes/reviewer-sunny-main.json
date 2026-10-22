@@ -1,0 +1,127 @@
+[
+  {
+    "claim": "payroll",
+    "input": "we will not payroll deduct $25",
+    "want": "not yes",
+    "got": null
+  },
+  {
+    "claim": "payroll",
+    "input": "don't payroll deduct $25",
+    "want": "not yes",
+    "got": null
+  },
+  {
+    "claim": "payroll",
+    "input": "$25 payroll deduction was waived",
+    "want": "not yes",
+    "got": null
+  },
+  {
+    "claim": "payroll",
+    "input": "payroll deduct $25",
+    "want": "yes",
+    "got": null
+  },
+  {
+    "claim": "payroll",
+    "input": "no payroll deduct",
+    "want": "no",
+    "got": "no"
+  },
+  {
+    "claim": "payroll",
+    "input": "payroll deduct no",
+    "want": "no",
+    "got": null
+  },
+  {
+    "claim": "write-a intent",
+    "input": "can you write a summary of the corrective action policy",
+    "want": "not a creation request",
+    "got": {
+      "kind": "corrective_action",
+      "requestedCreation": false,
+      "templateKey": null
+    }
+  },
+  {
+    "claim": "write-a intent",
+    "input": "write a note explaining the corrective action steps",
+    "want": "not a creation request",
+    "got": {
+      "kind": "corrective_action",
+      "requestedCreation": false,
+      "templateKey": null
+    }
+  },
+  {
+    "claim": "write-a intent",
+    "input": "write an email to Paisley about her CA",
+    "want": "not a creation request",
+    "got": {
+      "kind": "corrective_action",
+      "requestedCreation": false,
+      "templateKey": null
+    }
+  },
+  {
+    "claim": "write-a intent",
+    "input": "write a CA for Paisley",
+    "want": "creation request",
+    "got": {
+      "kind": "corrective_action",
+      "requestedCreation": false,
+      "templateKey": null
+    }
+  },
+  {
+    "claim": "third-party filter",
+    "input": "Create a CA for the manager Jane Doe, she was late",
+    "want": "Jane Doe",
+    "got": [
+      "Jane Doe"
+    ]
+  },
+  {
+    "claim": "third-party filter",
+    "input": "coaching for her coworker Amy Lee",
+    "want": "Amy Lee",
+    "got": [
+      "Amy Lee"
+    ]
+  },
+  {
+    "claim": "third-party filter",
+    "input": "Create a coaching form for Jane Smith. Her coworker Amy Lee covered her shift",
+    "want": "Jane Smith only",
+    "got": [
+      "Jane Smith",
+      "Amy Lee"
+    ]
+  },
+  {
+    "claim": "escalation detector",
+    "input": "I already talked to her about the schedule and she still wants more hours",
+    "want": "no formal escalation",
+    "got": null
+  },
+  {
+    "claim": "escalation detector",
+    "input": "I already addressed the broken bed with the vendor again",
+    "want": "no formal escalation",
+    "got": null
+  },
+  {
+    "claim": "escalation detector",
+    "input": "I talked to her about being late and she was late again this week",
+    "want": "formal escalation",
+    "got": {
+      "kind": "concern",
+      "signals": [
+        "concern",
+        "management frame"
+      ]
+    }
+  }
+]

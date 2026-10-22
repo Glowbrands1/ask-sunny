@@ -1,0 +1,43 @@
+▲ Next.js 16.3.3
+- Local:         http://localhost:3200
+- Network:       http://192.0.2.2:3200
+✓ Ready in 178ms
+✓ Running next.config.ts took 71ms
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"62c04b63-78cb-429b-a7bb-87c243b948ee","surface":"main_chat","durationMs":24}
+{"event":"turn.close.succeeded","turnId":"62c04b63-78cb-429b-a7bb-87c243b948ee","durationMs":146}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"f2271c2a-3bf0-4988-b4da-244e58f8b764","surface":"main_chat","durationMs":43}
+{"event":"turn.close.succeeded","turnId":"f2271c2a-3bf0-4988-b4da-244e58f8b764","durationMs":126}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"058080e3-86c3-4ebe-8206-6ad3ef94c6f7","surface":"main_chat","durationMs":150}
+{"event":"turn.close.succeeded","turnId":"058080e3-86c3-4ebe-8206-6ad3ef94c6f7","durationMs":209}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"36466bb3-fdd4-45ac-9ff0-bdc01f8a124a","surface":"main_chat","durationMs":25}
+{"event":"turn.close.succeeded","turnId":"36466bb3-fdd4-45ac-9ff0-bdc01f8a124a","durationMs":89}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"7b3cd3b0-cefd-4eaa-91c8-73a0ca127ed1","surface":"main_chat","durationMs":30}
+{"event":"turn.close.succeeded","turnId":"7b3cd3b0-cefd-4eaa-91c8-73a0ca127ed1","durationMs":92}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"d5506658-19ee-44ca-9f81-e606e152eb1a","surface":"main_chat","durationMs":33}
+{"event":"turn.close.succeeded","turnId":"d5506658-19ee-44ca-9f81-e606e152eb1a","durationMs":92}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"27527a35-9202-4215-8e6c-d1c81e4b513b","surface":"main_chat","durationMs":19}
+{"event":"turn.close.succeeded","turnId":"27527a35-9202-4215-8e6c-d1c81e4b513b","durationMs":72}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"0bad9e22-3fd6-49c3-8646-bff19dc4425e","surface":"main_chat","durationMs":54}
+{"event":"turn.close.succeeded","turnId":"0bad9e22-3fd6-49c3-8646-bff19dc4425e","durationMs":118}
+[ask-sunny] forms/instance/draft: Error: 401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CgHPXpkBWSikBUBNxKEMp"}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"3fa2147e-1f3a-4856-993b-10a5139a5c32","surface":"main_chat","durationMs":36}
+{"event":"turn.close.succeeded","turnId":"3fa2147e-1f3a-4856-993b-10a5139a5c32","durationMs":183}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"312a1747-b697-438c-8cf7-f81e5415da5d","surface":"main_chat","durationMs":34}
+{"event":"turn.close.succeeded","turnId":"312a1747-b697-438c-8cf7-f81e5415da5d","durationMs":128}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"43f0d3c5-ff0e-409d-abe6-4c1aa321c785","surface":"main_chat","durationMs":33}
+{"event":"turn.close.succeeded","turnId":"43f0d3c5-ff0e-409d-abe6-4c1aa321c785","durationMs":106}
+{"event":"turn.open.started","surface":"main_chat","where":"chat"}
+{"event":"turn.open.succeeded","turnId":"49c9c714-823d-4967-910d-57da270329b6","surface":"main_chat","durationMs":33}
+{"event":"turn.close.succeeded","turnId":"49c9c714-823d-4967-910d-57da270329b6","durationMs":127}

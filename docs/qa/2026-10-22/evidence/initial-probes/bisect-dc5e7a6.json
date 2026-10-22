@@ -1,0 +1,107 @@
+[
+  {
+    "name": "A dir",
+    "turns": [
+      "my employee pat rivera was late again today, i need a coaching form"
+    ],
+    "rows": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "templateKey": "coaching",
+          "employeeName": "Pat Rivera",
+          "status": "ready",
+          "formDate": null
+        },
+        "formSelection": null
+      }
+    ]
+  },
+  {
+    "name": "A nodir",
+    "turns": [
+      "my employee pat rivera was late again today, i need a coaching form"
+    ],
+    "rows": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "templateKey": "coaching",
+          "employeeName": "Pat Rivera",
+          "status": "ready",
+          "formDate": null
+        },
+        "formSelection": null
+      }
+    ]
+  },
+  {
+    "name": "B open-key",
+    "turns": [
+      "create coaching form for pat rivera, late 3 times this week",
+      "i already told you"
+    ],
+    "rows": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "templateKey": "coaching",
+          "employeeName": "Pat Rivera",
+          "status": "ready",
+          "formDate": null
+        },
+        "formSelection": null
+      },
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "templateKey": "coaching",
+          "employeeName": "Pat Rivera",
+          "status": "ready",
+          "formDate": null
+        },
+        "formSelection": null
+      }
+    ]
+  },
+  {
+    "name": "B no-key",
+    "turns": [
+      "create coaching form for pat rivera, late 3 times this week",
+      "i already told you"
+    ],
+    "rows": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "templateKey": "coaching",
+          "employeeName": "Pat Rivera",
+          "status": "ready",
+          "formDate": null
+        },
+        "formSelection": null
+      },
+      "NULL (turn left the forms path)"
+    ]
+  },
+  {
+    "name": "C",
+    "turns": [
+      "create verbal ca for pat rivera. she was late on 10/5 and 10/15. no payroll deduct"
+    ],
+    "rows": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior",
+        "formProposal": {
+          "templateKey": "dpoa",
+          "employeeName": "Pat Rivera",
+          "status": "ready",
+          "formDate": "2026-10-05",
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formSelection": null
+      }
+    ]
+  }
+]

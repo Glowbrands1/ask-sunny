@@ -1,0 +1,895 @@
+
+ RUN  v4.1.11 /home/user/sunny-base-9548afb
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > rating a conversation leaves the chat exactly where it was > clicking each star from 1 to 5 navigates nowhere, keeps the conversation and its messages, and changes only the rating
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"bbbbbbbb-2222-4222-8222-222222222222","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > shows an unrated conversation as unrated after leaving a rated one
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > a submitted rating reads as Rated, and survives a reload > submits stars, outcome and comment against this conversation's turn, then shows Rated ✓
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > shows an unrated conversation as unrated after leaving a rated one
+{"event":"feedback.host.rateable","turnId":"bbbbbbbb-2222-4222-8222-222222222222","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > a past conversation can be reopened and continued > loads the whole thread when one is selected from history
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > a past conversation can be reopened and continued > continues it in place rather than opening a duplicate
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > a submitted rating reads as Rated, and survives a reload > shows the saved rating when the conversation is reloaded and reopened
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > a past conversation can be reopened and continued > continues it in place rather than opening a duplicate
+{"event":"feedback.host.rateable","turnId":"cccccccc-3333-4333-8333-333333333333","where":"ConversationRating"}
+
+stdout | src/features/chat/rating-stays-in-place.dom.test.tsx > a submitted rating reads as Rated, and survives a reload > shows the saved rating when the conversation is reloaded and reopened
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+ ❯ src/features/chat/rating-stays-in-place.dom.test.tsx (4 tests | 2 failed) 7962ms
+     × opening Rate this conversation does not navigate 5022ms
+     × clicking each star from 1 to 5 navigates nowhere, keeps the conversation and its messages, and changes only the rating 1276ms
+     ✓ submits stars, outcome and comment against this conversation's turn, then shows Rated ✓  870ms
+     ✓ shows the saved rating when the conversation is reloaded and reopened  790ms
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > says it is waiting instead of swallowing the press mid-turn
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > says it is waiting instead of swallowing the press mid-turn
+{"event":"feedback.host.rateable","turnId":"eeeeeeee-5555-4555-8555-555555555555","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > never files a form from a choice whose request was refused
+{"event":"feedback.host.rateable","turnId":"dddddddd-4444-4444-8444-444444444444","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > never files a form from a choice whose request was refused
+{"event":"feedback.host.rateable","turnId":"ffffffff-6666-4666-8666-666666666666","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > still creates the form when the card's own choice is the one that answered
+{"event":"feedback.host.rateable","turnId":"dddddddd-4444-4444-8444-444444444444","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > still creates the form when the card's own choice is the one that answered
+{"event":"feedback.host.rateable","turnId":"99999999-7777-4777-8777-777777777777","where":"ConversationRating"}
+
+stderr | src/features/chat/rollout-fixes.dom.test.tsx > create a form from this conversation > still creates the form when the card's own choice is the one that answered
+{"event":"form.draft.failed","templateKey":"coaching","where":"FormProposalCard","reason":"Your draft was created, but there wasn't enough in the conversation for Sunny to prefill it. You can complete it below."}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > offers the action in the header only below lg, beside a rail that is only at lg
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > sends the same request the rail sends
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > sends the same request the rail sends
+{"event":"feedback.host.rateable","turnId":"ffffffff-6666-4666-8666-666666666666","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is disabled while Sunny is answering, like the rail
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is disabled while Sunny is answering, like the rail
+{"event":"feedback.host.rateable","turnId":"abababab-7777-4777-8777-777777777777","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is offered only to an account that may create forms, like the rail
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > create a form below the rail's breakpoint > is not offered before there is a conversation to act on
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > chat history is hidden until it is asked for > gets out of the way once a conversation is chosen
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > chat history is hidden until it is asked for > starts a new chat without opening history first
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+ ❯ src/features/chat/rollout-fixes.dom.test.tsx (18 tests | 2 failed) 12535ms
+     × does not carry an open rating form into another conversation 5161ms
+     × does not carry a typed complaint onto another conversation's turn 1110ms
+     ✓ shows an unrated conversation as unrated after leaving a rated one  526ms
+     ✓ loads the whole thread when one is selected from history 271ms
+     ✓ continues it in place rather than opening a duplicate  880ms
+     ✓ says it is waiting instead of swallowing the press mid-turn  615ms
+     ✓ never files a form from a choice whose request was refused  843ms
+     ✓ still creates the form when the card's own choice is the one that answered 296ms
+     ✓ offers the action in the header only below lg, beside a rail that is only at lg 215ms
+     ✓ sends the same request the rail sends  305ms
+     ✓ is disabled while Sunny is answering, like the rail  557ms
+     ✓ is offered only to an account that may create forms, like the rail 264ms
+     ✓ is not offered before there is a conversation to act on  334ms
+     ✓ is closed on arrival 96ms
+     ✓ offers one clearly labelled control to open it, at any width 169ms
+     ✓ gets out of the way once a conversation is chosen 232ms
+     ✓ keeps every conversation — hiding the panel deletes nothing 291ms
+     ✓ starts a new chat without opening history first  364ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/features/chat/rating-stays-in-place.dom.test.tsx > rating a conversation leaves the chat exactly where it was > opening Rate this conversation does not navigate
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/features/chat/rating-stays-in-place.dom.test.tsx:255:3
+    253|
+    254| describe("rating a conversation leaves the chat exactly where it was",…
+    255|   it("opening Rate this conversation does not navigate", async () => {
+       |   ^
+    256|     const user = userEvent.setup();
+    257|     const fetchSpy = vi.fn();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/features/chat/rating-stays-in-place.dom.test.tsx > rating a conversation leaves the chat exactly where it was > clicking each star from 1 to 5 navigates nowhere, keeps the conversation and its messages, and changes only the rating
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name `/rate this conversation/i`
+
+Here are the accessible roles:
+
+  button:
+
+  Name "New chat":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px bg-selected text-selected-foreground shadow-soft hover:bg-hover-surface hover:text-hover-surface-foreground hover:ring-1 hover:ring-selected h-8 px-3 text-[13px] [&_svg]:size-3.5"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "History":
+  [36m<button[39m
+    [33maria-expanded[39m=[32m"false"[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Create a form":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Hide context":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"true"[39m
+    [33mclass[39m=[32m"items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 hidden text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:inline-flex"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Submit feedback":
+  [36m<button[39m
+    [33mclass[39m=[32m"pill-action bg-band text-band-foreground disabled:opacity-40"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Cancel":
+  [36m<button[39m
+    [33mclass[39m=[32m"text-[11.5px] font-bold text-muted-foreground underline underline-offset-2 hover:text-foreground"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Send message":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Send message"[39m
+    [33mclass[39m=[32m"grid size-[38px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"[39m
+    [33mdisabled[39m=[32m""[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "About answer modes and Sunny's limits":
+  [36m<button[39m
+    [33maria-label[39m=[32m"About answer modes and Sunny's limits"[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px hover:bg-hover-surface h-8 w-8 [&_svg]:size-3.5 shrink-0 text-band-muted-foreground hover:text-hover-surface-foreground"[39m
+    [33mdata-state[39m=[32m"closed"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Create a form from this conversation":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px bg-surface text-foreground border border-border-strong shadow-soft hover:bg-hover-surface h-8 px-3 text-[13px] [&_svg]:size-3.5 w-full justify-start"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  paragraph:
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"display hidden truncate text-[19px] text-band-foreground xl:block"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"mt-1.5 text-[9.5px] text-muted-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"leading-relaxed"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"mt-1.5 text-[9.5px] text-muted-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"leading-relaxed"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"min-w-50 flex-1 text-[10.5px] leading-snug text-band-label"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"text-[13px] font-semibold text-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"mt-1.5 text-xs leading-relaxed text-muted-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"eyebrow"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  group:
+
+  Name "How was your Ask Sunny experience?":
+  [36m<fieldset />[39m
+
+  Name "Did you get what you needed? (optional)":
+  [36m<fieldset />[39m
+
+  --------------------------------------------------
+  radiogroup:
+
+  Name "How was your Ask Sunny experience?":
+  [36m<div[39m
+    [33maria-label[39m=[32m"How was your Ask Sunny experience?"[39m
+    [33mclass[39m=[32m"mt-1.5 flex items-center gap-1"[39m
+    [33mrole[39m=[32m"radiogroup"[39m
+  [36m/>[39m
+
+  Name "Did you get what you needed? (optional)":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Did you get what you needed? (optional)"[39m
+    [33mclass[39m=[32m"mt-1.5 flex flex-wrap gap-2"[39m
+    [33mrole[39m=[32m"radiogroup"[39m
+  [36m/>[39m
+
+  Name "Answer mode":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Answer mode"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-0.5 rounded-full border border-border bg-surface-muted p-0.5"[39m
+    [33mdir[39m=[32m"ltr"[39m
+    [33mrole[39m=[32m"radiogroup"[39m
+    [33mstyle[39m=[32m"outline: none;"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  radio:
+
+  Name "1 — Not helpful":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"rating-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"1"[39m
+  [36m/>[39m
+
+  Name "2 — Slightly helpful":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"rating-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"2"[39m
+  [36m/>[39m
+
+  Name "3 — Somewhat helpful":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"rating-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"3"[39m
+  [36m/>[39m
+
+  Name "4 — Helpful":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"rating-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"4"[39m
+  [36m/>[39m
+
+  Name "5 — Very helpful":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"rating-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"5"[39m
+  [36m/>[39m
+
+  Name "Yes":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"outcome-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"yes"[39m
+  [36m/>[39m
+
+  Name "Partially":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"outcome-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"partially"[39m
+  [36m/>[39m
+
+  Name "No":
+  [36m<input[39m
+    [33mclass[39m=[32m"sr-only"[39m
+    [33mname[39m=[32m"outcome-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mtype[39m=[32m"radio"[39m
+    [33mvalue[39m=[32m"no"[39m
+  [36m/>[39m
+
+  Name "Quick":
+  [36m<button[39m
+    [33maria-checked[39m=[32m"false"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors text-muted-foreground hover:text-foreground data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"[39m
+    [33mdata-radix-collection-item[39m=[32m""[39m
+    [33mdata-state[39m=[32m"off"[39m
+    [33mrole[39m=[32m"radio"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Standard":
+  [36m<button[39m
+    [33maria-checked[39m=[32m"true"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors text-muted-foreground hover:text-foreground data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"[39m
+    [33mdata-radix-collection-item[39m=[32m""[39m
+    [33mdata-state[39m=[32m"on"[39m
+    [33mrole[39m=[32m"radio"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Detailed":
+  [36m<button[39m
+    [33maria-checked[39m=[32m"false"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors text-muted-foreground hover:text-foreground data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"[39m
+    [33mdata-radix-collection-item[39m=[32m""[39m
+    [33mdata-state[39m=[32m"off"[39m
+    [33mrole[39m=[32m"radio"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  textbox:
+
+  Name "Anything Sunny should do better? (optional)":
+  [36m<textarea[39m
+    [33mclass[39m=[32m"scroll-slim mt-1.5 w-full resize-none rounded-lg border border-border-strong bg-surface px-3 py-2 text-[13px] leading-snug text-foreground placeholder:text-placeholder-foreground focus-visible:border-brand-yellow focus-visible:outline-none"[39m
+    [33mid[39m=[32m"comment-aaaaaaaa-1111-4111-8111-111111111111"[39m
+    [33mmaxlength[39m=[32m"2000"[39m
+    [33mplaceholder[39m=[32m"What worked, what was missing — the more specific, the more we can fix."[39m
+    [33mrows[39m=[32m"3"[39m
+  [36m/>[39m
+
+  Name "Ask Sunny a question":
+  [36m<textarea[39m
+    [33mclass[39m=[32m"scroll-slim max-h-50 w-full resize-none bg-transparent text-[14px] leading-relaxed text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"[39m
+    [33mid[39m=[32m"chat-input"[39m
+    [33mplaceholder[39m=[32m"Ask about policy, coaching, operations or performance — or ask Sunny to draft a form"[39m
+    [33mrows[39m=[32m"1"[39m
+    [33mstyle[39m=[32m"height: 0px;"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  complementary:
+
+  Name "":
+  [36m<aside[39m
+    [33mclass[39m=[32m"hidden w-76 shrink-0 border-l border-border bg-background lg:block"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex h-[calc(100dvh-4rem)] min-h-0"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex min-h-0 min-w-0 flex-1 flex-col"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 sm:px-6 py-3.5"[39m
+          [33mstyle[39m=[32m""[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex min-w-0 gap-2 items-center"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center gap-2"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px bg-selected text-selected-foreground shadow-soft hover:bg-hover-surface hover:text-hover-surface-foreground hover:ring-1 hover:ring-selected h-8 px-3 text-[13px] [&_svg]:size-3.5"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-plus"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M5 12h14"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 5v14"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+                [0mNew chat[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-expanded[39m=[32m"false"[39m
+                [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-rotate-ccw-clock"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M3 3v5h5"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 7v5l4 2"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+                [0mHistory[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"display hidden truncate text-[19px] text-band-foreground xl:block"[39m
+            [36m>[39m
+              [0mAlpha thread[0m
+            [36m</p>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-3"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"hidden items-center gap-1.5 text-[10px] font-bold whitespace-nowrap text-band-label sm:flex"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"size-[7px] rounded-full bg-delta-up"[39m
+              [36m/>[39m
+              [0mClaude (Anthropic)[0m
+              [0m · [0m
+              [0mconnected[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"lucide lucide-file-stack"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M11 21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M21 6a2 2 0 0 0-.586-1.414l-2-2A2 2 0 0 0 17 2h-3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mCreate a form[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"true"[39m
+ ...
+ ❯ Object.getElementError ../ask-sunny/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../ask-sunny/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../ask-sunny/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../ask-sunny/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/features/chat/rating-stays-in-place.dom.test.tsx:287:29
+    285|     expect(await activeTitle(user)).toMatch(/^Alpha thread/);
+    286|
+    287|     await user.click(screen.getByRole("button", { name: /rate this con…
+       |                             ^
+    288|
+    289|     const href = window.location.href;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry an open rating form into another conversation
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/features/chat/rollout-fixes.dom.test.tsx:268:3
+    266|
+    267| describe("rating is scoped to the conversation being rated", () => {
+    268|   it("does not carry an open rating form into another conversation", a…
+       |   ^
+    269|     const user = userEvent.setup();
+    270|     await renderChat();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+TestingLibraryElementError: Unable to find an accessible element with the role "radio" and name `/^2 —/`
+
+Here are the accessible roles:
+
+  button:
+
+  Name "New chat":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px bg-selected text-selected-foreground shadow-soft hover:bg-hover-surface hover:text-hover-surface-foreground hover:ring-1 hover:ring-selected h-8 px-3 text-[13px] [&_svg]:size-3.5"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "History":
+  [36m<button[39m
+    [33maria-expanded[39m=[32m"false"[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Create a form":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Hide context":
+  [36m<button[39m
+    [33maria-pressed[39m=[32m"true"[39m
+    [33mclass[39m=[32m"items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 hidden text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:inline-flex"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Rate this conversation":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Send message":
+  [36m<button[39m
+    [33maria-label[39m=[32m"Send message"[39m
+    [33mclass[39m=[32m"grid size-[38px] shrink-0 place-items-center rounded-full bg-brand-yellow text-brand-yellow-foreground transition-opacity disabled:opacity-40"[39m
+    [33mdisabled[39m=[32m""[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "About answer modes and Sunny's limits":
+  [36m<button[39m
+    [33maria-label[39m=[32m"About answer modes and Sunny's limits"[39m
+    [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px hover:bg-hover-surface h-8 w-8 [&_svg]:size-3.5 shrink-0 text-band-muted-foreground hover:text-hover-surface-foreground"[39m
+    [33mdata-state[39m=[32m"closed"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Create a form from this conversation":
+  [36m<button[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px bg-surface text-foreground border border-border-strong shadow-soft hover:bg-hover-surface h-8 px-3 text-[13px] [&_svg]:size-3.5 w-full justify-start"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  paragraph:
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"display hidden truncate text-[19px] text-band-foreground xl:block"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"mt-1.5 text-[9.5px] text-muted-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"leading-relaxed"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"min-w-50 flex-1 text-[10.5px] leading-snug text-band-label"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"text-[13px] font-semibold text-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"mt-1.5 text-xs leading-relaxed text-muted-foreground"[39m
+  [36m/>[39m
+
+  Name "":
+  [36m<p[39m
+    [33mclass[39m=[32m"eyebrow"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  textbox:
+
+  Name "Ask Sunny a question":
+  [36m<textarea[39m
+    [33mclass[39m=[32m"scroll-slim max-h-50 w-full resize-none bg-transparent text-[14px] leading-relaxed text-foreground placeholder:text-placeholder-foreground focus-visible:outline-none"[39m
+    [33mid[39m=[32m"chat-input"[39m
+    [33mplaceholder[39m=[32m"Ask about policy, coaching, operations or performance — or ask Sunny to draft a form"[39m
+    [33mrows[39m=[32m"1"[39m
+    [33mstyle[39m=[32m"height: 0px;"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  radiogroup:
+
+  Name "Answer mode":
+  [36m<div[39m
+    [33maria-label[39m=[32m"Answer mode"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-0.5 rounded-full border border-border bg-surface-muted p-0.5"[39m
+    [33mdir[39m=[32m"ltr"[39m
+    [33mrole[39m=[32m"radiogroup"[39m
+    [33mstyle[39m=[32m"outline: none;"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  radio:
+
+  Name "Quick":
+  [36m<button[39m
+    [33maria-checked[39m=[32m"false"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors text-muted-foreground hover:text-foreground data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"[39m
+    [33mdata-radix-collection-item[39m=[32m""[39m
+    [33mdata-state[39m=[32m"off"[39m
+    [33mrole[39m=[32m"radio"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Standard":
+  [36m<button[39m
+    [33maria-checked[39m=[32m"true"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors text-muted-foreground hover:text-foreground data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"[39m
+    [33mdata-radix-collection-item[39m=[32m""[39m
+    [33mdata-state[39m=[32m"on"[39m
+    [33mrole[39m=[32m"radio"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  Name "Detailed":
+  [36m<button[39m
+    [33maria-checked[39m=[32m"false"[39m
+    [33mclass[39m=[32m"inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-[0.04em] uppercase transition-colors text-muted-foreground hover:text-foreground data-[state=on]:bg-brand-yellow data-[state=on]:text-brand-yellow-foreground"[39m
+    [33mdata-radix-collection-item[39m=[32m""[39m
+    [33mdata-state[39m=[32m"off"[39m
+    [33mrole[39m=[32m"radio"[39m
+    [33mtabindex[39m=[32m"-1"[39m
+    [33mtype[39m=[32m"button"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+  complementary:
+
+  Name "":
+  [36m<aside[39m
+    [33mclass[39m=[32m"hidden w-76 shrink-0 border-l border-border bg-background lg:block"[39m
+  [36m/>[39m
+
+  --------------------------------------------------
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex h-[calc(100dvh-4rem)] min-h-0"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex min-h-0 min-w-0 flex-1 flex-col"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex shrink-0 flex-wrap items-center justify-between gap-3 border-b-4 border-brand-yellow bg-band px-4 sm:px-6 py-3.5"[39m
+          [33mstyle[39m=[32m""[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex min-w-0 gap-2 items-center"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex items-center gap-2"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px bg-selected text-selected-foreground shadow-soft hover:bg-hover-surface hover:text-hover-surface-foreground hover:ring-1 hover:ring-selected h-8 px-3 text-[13px] [&_svg]:size-3.5"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-plus"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M5 12h14"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 5v14"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+                [0mNew chat[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-expanded[39m=[32m"false"[39m
+                [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"lucide lucide-rotate-ccw-clock"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mheight[39m=[32m"24"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-linejoin[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"24"[39m
+                  [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+                [36m>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M3 3v5h5"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 7v5l4 2"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+                [0mHistory[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<p[39m
+              [33mclass[39m=[32m"display hidden truncate text-[19px] text-band-foreground xl:block"[39m
+            [36m>[39m
+              [0mBeta thread[0m
+            [36m</p>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-3"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"hidden items-center gap-1.5 text-[10px] font-bold whitespace-nowrap text-band-label sm:flex"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"size-[7px] rounded-full bg-delta-up"[39m
+              [36m/>[39m
+              [0mClaude (Anthropic)[0m
+              [0m · [0m
+              [0mconnected[0m
+            [36m</span>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 active:translate-y-px h-8 px-3 text-[13px] [&_svg]:size-3.5 text-band-chip-foreground hover:bg-hover-surface hover:text-hover-surface-foreground lg:hidden"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"lucide lucide-file-stack"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M11 21a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M21 6a2 2 0 0 0-.586-1.414l-2-2A2 2 0 0 0 17 2h-3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1z"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mCreate a form[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"true"[39m
+  ...
+ ❯ Object.getElementError ../ask-sunny/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ ../ask-sunny/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ ../ask-sunny/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ ../ask-sunny/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/features/chat/rollout-fixes.dom.test.tsx:302:29
+    300|       "Alpha specific complaint",
+    301|     );
+    302|     await user.click(screen.getByRole("radio", { name: /^2 —/ }));
+       |                             ^
+    303|
+    304|     await openConversation(user, /^Beta thread/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 18 passed (22)
+   Start at  12:46:43
+   Duration  14.69s (transform 6.72s, setup 0ms, import 1.22s, tests 20.50s, environment 2.49s)
+
+JSON report written to /home/user/qa-2026-10-22/evidence/phase2-ui-timeouts/base-run5.json

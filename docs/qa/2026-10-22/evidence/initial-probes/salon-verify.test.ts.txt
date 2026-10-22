@@ -1,0 +1,7 @@
+import { writeFileSync } from "node:fs";
+import { it } from "vitest";
+import { readSalonMentions } from "@/lib/forms/salon-mention";
+it("salons", () => {
+  const rows = ["she got here at 410 today", "she sold a package at 140", "rang up a sale at 231 dollars", "we met at 409 for lunch", "she stayed at 410 for an hour", "at salon 0410", "she works at kearney"].map((t) => ({ input: t, got: readSalonMentions(t) }));
+  writeFileSync(process.env.PROBE_OUT!, JSON.stringify(rows, null, 2));
+});

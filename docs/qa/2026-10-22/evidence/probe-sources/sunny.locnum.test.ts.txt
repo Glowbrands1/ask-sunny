@@ -1,0 +1,214 @@
+/**
+ * QA PROBE — not committed. Replays manager conversations through Ask Sunny's
+ * real `answerQuestion` (forms gates, proposal, continuation) and RECORDS every
+ * turn's raw response. Each scenario is its own `it`, and no scenario asserts,
+ * so one failure cannot stop the rest. Verdicts are computed and written out.
+ */
+import { writeFileSync } from "node:fs";
+import { afterAll, beforeEach, it, vi } from "vitest";
+
+import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
+import type { AccessScope, ChatMessage } from "@/types";
+
+const store: FakeStore = {
+  form_instances: [],
+  form_instance_values: [],
+  form_instance_events: [],
+  form_template_versions: [],
+  form_templates: [],
+  form_template_current: [],
+  form_template_assets: [],
+};
+
+const state = vi.hoisted(() => ({ directory: [] as unknown[], claudeCalls: 0 }));
+
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+vi.mock("@/lib/config/server-env", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }),
+  };
+});
+vi.mock("@/lib/knowledge/providers/supabase", () => ({
+  SupabaseKnowledgeProvider: class {
+    readonly name = "probe";
+    async match() {
+      return [];
+    }
+    async search() {
+      return [];
+    }
+    async fetchRoleGrounding(role: { id: string }) {
+      const rows = ["SECTION 2 – PERFORMANCE MANAGEMENT LADDER", "SECTION 3 – COACHING FRAMEWORK", "SECTION 6 – DPOA FRAMEWORK", "SECTION 8 – FOLLOW-UP DOCUMENTATION FRAMEWORK"].map((locator, index) => ({ chunk_id: `pmf-${index}`, document_id: "doc-pmf", document_title: "PERFORMANCE MANAGEMENT FRAMEWORK", category: "leadership_coaching", locator, page: null, section: locator, content: `Framework text: ${locator}.`, similarity: 0 }));
+      return { ok: true, grounding: { role: { id: role.id }, documentId: "doc-pmf", documentTitle: "PERFORMANCE MANAGEMENT FRAMEWORK", matchedBy: "tag", rows, presentGroups: ["escalation_authority", "escalation_ladder", "coaching_framework", "epp_framework", "dpoa_framework", "follow_up_documentation", "final_operating_rule"] } };
+    }
+    async fetchOfficialPolicyManual() {
+      return { ok: false, reason: "probe: no manual" };
+    }
+  },
+}));
+vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
+vi.mock("@/lib/reporting/read/employee-facts", () => ({
+  loadEmployeeFacts: async () => null,
+  NO_EMPLOYEE_DATASET_REASON: "no dataset",
+  EMPLOYEE_DATA_HEADING: "CURRENT EMPLOYEE PERFORMANCE DATA",
+}));
+vi.mock("@/lib/ai/call-claude", () => ({
+  callClaude: async () => {
+    state.claudeCalls += 1;
+    return "[MODEL ANSWER — the turn left the forms path]";
+  },
+}));
+vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
+  return {
+    ...actual,
+    loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope),
+  };
+});
+
+process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+
+const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
+const { answerQuestion } = await import("@/lib/ai/server-ask");
+const { continuationFor } = await import("@/lib/forms/proposal-continuation");
+
+type Role = "salon_director" | "district_manager" | "regional_manager" | "owner";
+type Response = Awaited<ReturnType<typeof answerQuestion>>;
+
+const PAT = { id: "e-1", firstName: "Pat", lastName: "Rivera", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] };
+const PAT2 = { id: "e-2", firstName: "Pat", lastName: "Smith", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] };
+const SAM = { id: "e-3", firstName: "Sam", lastName: "Jones", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] };
+const SD: { role: Role; scope: AccessScope } = { role: "salon_director", scope: { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] } };
+const DM: { role: Role; scope: AccessScope } = { role: "district_manager", scope: { level: "district", primaryAreaId: "dist-dugan-rachael", alsoCoversAreaIds: [] } };
+const SD2: { role: Role; scope: AccessScope } = { role: "salon_director", scope: { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] } };
+const DM_OTHER: { role: Role; scope: AccessScope } = { role: "district_manager", scope: { level: "district", primaryAreaId: "dist-cotton-sarah", alsoCoversAreaIds: [] } };
+
+interface Scenario {
+  id: string;
+  group: string;
+  turns: string[];
+  actor?: { role: Role; scope: AccessScope };
+  directory?: unknown[];
+  expected: string;
+  /** Returns [pass, actual summary]. */
+  check: (r: Response[]) => [boolean, string];
+}
+
+const p = (r: Response) => r.formProposal;
+const sum = (r: Response | undefined) => {
+  if (!r) return "no response";
+  const fp = r.formProposal;
+  if (fp)
+    return `proposal ${fp.templateKey} employee=${JSON.stringify(fp.employeeName)} status=${fp.status} location=${fp.locationId ?? "null"}(${fp.locationResolution}) formDate=${fp.formDate ?? "null"} level=${fp.warningLevel ?? "null"} payroll=${fp.payrollDeduct ?? "null"}${fp.namedLocationOutOfScope ? ` outOfScope=${fp.namedLocationOutOfScope}` : ""}${fp.awaitingIncident ? " awaitingIncident" : ""}`;
+  if (r.formSelection) return `form picker: ${JSON.stringify((r.formSelection as { options?: { templateKey?: string }[] }).options?.map((o) => o.templateKey) ?? r.formSelection)}`;
+  return `no card; text: ${JSON.stringify(String(r.content).slice(0, 160))}`;
+};
+const last = (r: Response[]) => r[r.length - 1]!;
+
+const MULTI: { role: Role; scope: AccessScope } = { role: "salon_director", scope: { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0410"] } };
+const SCENARIOS: Scenario[] = [
+  { id: "E1", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at salon 0410, late 3 times"], directory: [], expected: "loc-0410", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E2", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at salon 410, late 3 times"], directory: [], expected: "loc-0410", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E3", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at store #410, late 3 times"], directory: [], expected: "loc-0410", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E4", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at location 410, late 3 times"], directory: [], expected: "loc-0410", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E5", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera #0410, late 3 times"], directory: [], expected: "loc-0410", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E6", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at 0410, late 3 times"], directory: [], expected: "loc-0410 (zero-padded)", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E7", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at omaha pacific, late 3 times"], directory: [], expected: "loc-0410 (name)", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E8", group: "Explicit identifier", actor: MULTI, turns: ["coaching form for pat rivera at store 254, late 3 times"], directory: [], expected: "loc-0410 (Google store code 254)", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E9", group: "Explicit identifier (reply)", actor: MULTI, turns: ["create a coaching form for pat rivera, late 3 times", "salon 410"], directory: [], expected: "reply sets loc-0410; employee kept", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E10", group: "Explicit identifier (reply)", actor: MULTI, turns: ["create a coaching form for pat rivera, late 3 times", "#0410"], directory: [], expected: "reply sets loc-0410; employee kept", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E11", group: "Explicit identifier (reply)", actor: MULTI, turns: ["create a coaching form for pat rivera, late 3 times", "omaha pacific"], directory: [], expected: "reply sets loc-0410; employee kept", check: (r) => [p(last(r))?.locationId === "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "E12", group: "Explicit identifier (reply)", actor: MULTI, turns: ["create a coaching form for pat rivera, late 3 times", "the 27th street salon"], directory: [], expected: "reply sets loc-0310; employee kept", check: (r) => [p(last(r))?.locationId === "loc-0310" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U1", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she got here at 410 today, late 3 times"], directory: [], expected: "time: not loc-0410", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U2", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she clocked in at 4:10, late 3 times"], directory: [], expected: "time: not loc-0410", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U3", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she clocked in at 410pm, late 3 times"], directory: [], expected: "time: not loc-0410", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U4", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she rang up a package at 254 dollars and was late 3 times"], directory: [], expected: "price: not loc-0410 (254 is a store code)", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U5", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she was on break for 410 minutes"], directory: [], expected: "quantity: not loc-0410", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U6", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she was late on 4/10"], directory: [], expected: "date: not loc-0410", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U7", group: "Bare number (not a location)", actor: MULTI, turns: ["coaching form for pat rivera, she sold 410 bottles of lotion and was late"], directory: [], expected: "quantity: not loc-0410", check: (r) => [p(last(r))?.locationId !== "loc-0410" && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+  { id: "U8", group: "Bare number reply (ambiguous)", actor: MULTI, turns: ["create a coaching form for pat rivera, late 3 times", "410"], directory: [], expected: "bare reply: asked or set to an AUTHORIZED salon only; employee kept", check: (r) => [["loc-0310","loc-0410",null,undefined].includes(p(last(r))?.locationId as never) && /pat rivera/i.test(p(last(r))?.employeeName ?? ""), r.map(sum).join(" | ")] },
+];
+
+function openAfter(responses: Response[]): string | null {
+  const messages: ChatMessage[] = [];
+  responses.forEach((r, i) =>
+    messages.push(
+      { id: `u${i}`, role: "user", content: "x", createdAt: "2026-10-21T18:00:00Z" } as ChatMessage,
+      { id: `a${i}`, role: "assistant", content: String(r.content), createdAt: "2026-10-21T18:00:01Z", ...(r.formProposal ? { formProposal: r.formProposal } : {}), ...(r.formSelection ? { formSelection: r.formSelection } : {}) } as ChatMessage,
+    ),
+  );
+  return continuationFor(messages)?.templateKey ?? null;
+}
+
+const results: unknown[] = [];
+
+beforeEach(async () => {
+  for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-21T18:00:00Z"));
+  await ensureTemplateLibrary("system");
+});
+
+for (const scenario of SCENARIOS) {
+  it(`${scenario.id} ${scenario.group}`, { timeout: 60_000 }, async () => {
+    state.directory = scenario.directory ?? [];
+    const actor = scenario.actor ?? SD;
+    const messages: ChatMessage[] = [];
+    const responses: Response[] = [];
+    let error: string | null = null;
+    try {
+      let n = 0;
+      for (const text of scenario.turns) {
+        n += 1;
+        const user = { id: `${scenario.id}-u${n}`, role: "user", content: text, createdAt: "2026-10-21T18:00:00Z" } as ChatMessage;
+        const response = await answerQuestion(
+          {
+            question: text,
+            mode: "standard",
+            history: messages,
+            questionMessageId: user.id,
+            scopeId: "sun-tan-city",
+            continueProposalTemplateKey: continuationFor(messages)?.templateKey,
+            context: { userName: "Probe Manager", locationName: "NE Lincoln 27th Street", todayIso: "2026-10-21" },
+          } as never,
+          { role: actor.role as never, scope: actor.scope },
+        );
+        responses.push(response);
+        messages.push(user, {
+          id: `${scenario.id}-a${n}`,
+          role: "assistant",
+          content: String(response.content ?? ""),
+          createdAt: "2026-10-21T18:00:01Z",
+          ...(response.formProposal ? { formProposal: response.formProposal } : {}),
+          ...(response.formSelection ? { formSelection: response.formSelection } : {}),
+        } as ChatMessage);
+      }
+    } catch (caught) {
+      error = caught instanceof Error ? `${caught.name}: ${caught.message}` : String(caught);
+    }
+    let verdict: [boolean, string] = [false, "not evaluated"];
+    if (!error) {
+      try {
+        verdict = scenario.check(responses);
+      } catch (caught) {
+        verdict = [false, `check threw: ${String(caught)}`];
+      }
+    }
+    results.push({
+      id: scenario.id,
+      group: scenario.group,
+      actor: actor.role,
+      turns: scenario.turns,
+      expected: scenario.expected,
+      pass: !error && verdict[0],
+      actual: error ?? verdict[1],
+      raw: responses.map((r) => ({ content: r.content, formProposal: r.formProposal ?? null, formSelection: r.formSelection ?? null, coverage: r.coverage ?? null })),
+    });
+  });
+}
+
+afterAll(() => {
+  writeFileSync(process.env.PROBE_OUT ?? "probe-out.json", JSON.stringify(results, null, 2));
+});

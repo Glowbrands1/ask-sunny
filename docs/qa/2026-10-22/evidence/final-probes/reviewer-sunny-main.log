@@ -1,0 +1,9 @@
+
+ RUN  v4.1.11 /home/user/sunny-main
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  13:00:28
+   Duration  880ms (transform 391ms, setup 0ms, import 474ms, tests 76ms, environment 0ms)
+

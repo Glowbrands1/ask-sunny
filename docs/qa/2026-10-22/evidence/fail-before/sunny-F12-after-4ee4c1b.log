@@ -1,0 +1,140 @@
+
+ RUN  v4.1.11 /home/user/ask-sunny
+
+ ✓ src/lib/forms/qa-f12-salon-reply.test.ts (43 tests) 33ms
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "410"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "0410"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "#410"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "salon 410"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "410."
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "254"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "310"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "omaha pacific"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "Omaha Pacific"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "the omaha pacific salon"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "lincoln 27th street"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > "it's omaha pacific"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > a correction to a salon already on the card: "sorry, it's omaha pacific"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > a correction to a salon already on the card: "no wait, it's omaha pacific"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > a correction to a salon already on the card: "actually, omaha pacific"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > a correction to a salon already on the card: "actually it's salon 410"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > a correction to a salon already on the card: "sorry, it's #0410"
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 5: a salon reply to the salon question keeps the intake and sets the salon > the answer is remembered on later turns
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 1: a bare number is read only when the salon question is open > "410" after a card that already has its salon
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 1: a bare number is read only when the salon question is open > "254" after a card that already has its salon
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 1: a bare number is read only when the salon question is open > "310" after a card that already has its salon
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 1: a bare number is read only when the salon question is open > 'actually 410' is not a salon: a number in a correction needs a salon word, # or its leading zero
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "she got here at 410 today" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "4:10" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "at 4:10" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "410pm" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "$254" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "254 dollars" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "for 410 minutes" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "4/10" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "410 bottles" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 2: times, prices, dates and quantities are never a salon > "410?" after the salon question
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > '306' names two salons (salon 0306 and Google code 306 = 0462): both offered, neither picked
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > 'lincoln' is three salons: the manager's two are offered, neither picked
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > 'omaha' is three salons: asked, even though only one of them is the manager's
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > an unassigned salon ("kearney") is named back and not filed against
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > an unassigned salon ("462") is named back and not filed against
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > an unassigned salon ("salon 0309") is named back and not filed against
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > an unassigned salon ("sorry, it's kearney") is named back and not filed against
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > a district manager stays fail-closed: the reply is not a salon on the form
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > a global administrator may name any roster salon in a correction
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 3: the employee and every other answer are kept, on the card and on the saved form > a Corrective Action answered '410' keeps the employee, level, payroll answer and incident date
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 3: the employee and every other answer are kept, on the card and on the saved form > a directory employee keeps the directory's spelling through the salon answer
+{"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
+
+ ✓ src/app/api/forms/qa-f12-salon-reply-e2e.test.ts (43 tests) 961ms
+
+ Test Files  2 passed (2)
+      Tests  86 passed (86)
+   Start at  14:07:01
+   Duration  4.56s (transform 2.86s, setup 0ms, import 3.75s, tests 994ms, environment 0ms)
+

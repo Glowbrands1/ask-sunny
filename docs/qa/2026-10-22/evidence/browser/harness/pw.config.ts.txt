@@ -1,0 +1,11 @@
+import { defineConfig } from "@playwright/test";
+export default defineConfig({
+  testDir: ".",
+  testMatch: /continuity\.spec\.ts/,
+  outputDir: process.env.QA_SHOTS + "/pw-output",
+  workers: 1,
+  retries: 0,
+  timeout: 240_000,
+  reporter: [["list"]],
+  use: { baseURL: process.env.QA_BASE_URL, browserName: "chromium", viewport: { width: 1440, height: 900 }, trace: "retain-on-failure", locale: "en-US", timezoneId: "America/Chicago" },
+});

@@ -1,0 +1,71 @@
+
+ RUN  v4.1.11 /home/user/sunny-main
+
+ERROR:  provision_auth_user_mismatch
+CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
+ERROR:  provision_auth_user_mismatch
+CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
+ERROR:  link_protected_account
+CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 28 at RAISE
+ERROR:  link_duplicate_email
+CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 54 at RAISE
+ERROR:  disable_not_terminated_in_latest_read
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
+ERROR:  disable_not_terminated_in_latest_read
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
+ERROR:  disable_status_not_managed
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 11 at RAISE
+ERROR:  disable_directory_not_current
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 23 at RAISE
+ERROR:  employee_access_actions is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  duplicate key value violates unique constraint "employee_account_links_one_account_per_employee"
+DETAIL:  Key (source_system, external_employee_id)=(woven, LS-169ebb-LINKED) already exists.
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_linked_names_employee"
+DETAIL:  Failing row contains (2c2d1479-33fc-4d48-a70e-8c6757e874cc, woven_linked, woven, null, admin_manual, f, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 13:37:14.684411+00, 2026-10-22 13:37:14.684411+00, null, null, null, null, 0, null).
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
+DETAIL:  Failing row contains (2c2d1479-33fc-4d48-a70e-8c6757e874cc, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 13:37:14.756483+00, 2026-10-22 13:37:14.756483+00, null, null, null, null, 0, null).
+ERROR:  update or delete on table "app_users" violates foreign key constraint "employee_account_links_app_user_id_fkey" on table "employee_account_links"
+DETAIL:  Key (id)=(cbaefe30-9e96-44d5-90e3-cadd9b71681a) is still referenced from table "employee_account_links".
+ERROR:  employee_access_actions is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  new row for relation "employee_access_actions" violates check constraint "employee_access_actions_action_check"
+DETAIL:  Failing row contains (3a1c4abf-bafd-4c62-84a5-719494ac1f4d, ed493e7a-ebd9-493b-8a91-99ddc9ac001f, BAD-2, null, DELETE_EVERYONE, t, {}, null, null, null, shadow, 2026-10-22 13:37:17.023683+00, null).
+CONTEXT:  SQL statement "insert into public.employee_access_actions (
+    access_run_id, external_employee_id, app_user_id, action, is_primary, reason_codes,
+    before_values, after_values, woven_source_at, result
+  )
+  select
+    v_run,
+    a ->> 'external_employee_id',
+    nullif(a ->> 'app_user_id', '')::uuid,
+    a ->> 'action',
+    coalesce((a ->> 'is_primary')::boolean, false),
+    coalesce(array(select jsonb_array_elements_text(a -> 'reason_codes')), '{}'),
+    a -> 'before_values',
+    a -> 'after_values',
+    nullif(a ->> 'woven_source_at', '')::timestamptz,
+    'shadow'
+  from jsonb_array_elements(p_actions) as a"
+PL/pgSQL function public.employee_access_record_shadow_run(text,uuid,text,text[],jsonb,jsonb) line 21 at SQL statement
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_access_actions
+ERROR:  permission denied for table employee_access_runs
+ERROR:  cannot insert into view "employee_access_accounts"
+DETAIL:  Views that do not select from a single table or view are not automatically updatable.
+HINT:  To enable inserting into the view, provide an INSTEAD OF INSERT trigger or an unconditional ON INSERT DO INSTEAD rule.
+ERROR:  new row for relation "employee_access_runs" violates check constraint "employee_access_runs_shadow_is_final"
+DETAIL:  Failing row contains (21980082-b922-4ca1-b02f-3a49d1dbf1ac, shadow, x, null, p, running, {}, {}, 2026-10-22 13:37:19.458024+00, null).
+
+ Test Files  2 passed (2)
+      Tests  38 passed (38)
+   Start at  13:36:46
+   Duration  33.39s (transform 3.88s, setup 0ms, import 505ms, tests 32.39s, environment 0ms)
+

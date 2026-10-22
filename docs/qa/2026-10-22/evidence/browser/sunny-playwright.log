@@ -1,0 +1,14 @@
+
+Running 9 tests using 1 worker
+
+  ✓  1 continuity.spec.ts:71:5 › setup: an administrator opening Form Templates seeds the library (6.1s)
+  ✓  2 continuity.spec.ts:79:5 › criterion 4: the open form survives a follow-up and a reload (11.4s)
+  ✓  3 continuity.spec.ts:109:7 › criterion 1: a location-only reply (an assigned location) keeps the employee (5.8s)
+  ✓  4 continuity.spec.ts:109:7 › criterion 1: a location-only reply (an unassigned location) keeps the employee (5.8s)
+  ✓  5 continuity.spec.ts:121:5 › criterion 5: the card offers only the manager's own locations, and the server refuses a forged one (4.7s)
+  ✓  6 continuity.spec.ts:162:7 › saved values (negative: will not): employee, authorized location, form date and payroll after save and read-back (4.8s)
+  ✓  7 continuity.spec.ts:162:7 › saved values (negative: don't): employee, authorized location, form date and payroll after save and read-back (4.9s)
+  ✓  8 continuity.spec.ts:162:7 › saved values (negative: waived): employee, authorized location, form date and payroll after save and read-back (4.8s)
+  ✓  9 continuity.spec.ts:162:7 › saved values (positive control): employee, authorized location, form date and payroll after save and read-back (4.7s)
+
+  9 passed (55.0s)

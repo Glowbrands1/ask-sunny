@@ -1,0 +1,180 @@
+/**
+ * QA PROBE (not committed) — criteria 3 (previous coaching in natural phrasing)
+ * and 5 (location authorization), through the real create route and the real
+ * chat answer path. Records only; no scenario can stop another.
+ */
+import { writeFileSync } from "node:fs";
+import { afterAll, beforeEach, it, vi } from "vitest";
+
+import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
+import type { AccessScope, ChatMessage } from "@/types";
+
+
+const store: FakeStore = { form_instances: [], form_instance_values: [], form_instance_events: [], form_template_versions: [], form_templates: [], form_template_current: [], form_template_assets: [] };
+const state = vi.hoisted(() => ({ role: "", scope: null as unknown, directory: [] as unknown[] }));
+
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+vi.mock("@/lib/api/respond", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/respond")>();
+  return { ...actual, assertLiveMode: () => {}, assertNoConfigurationProblems: () => {}, assertWithinRateLimit: () => {} };
+});
+vi.mock("@/lib/auth/server", async () => {
+  const { AuthError } = await import("@/lib/auth/types");
+  const permissions = await import("@/lib/permissions");
+  return {
+    authorizeRequest: async (_request: Request, permission: string) => {
+      if (!permissions.hasPermission(permissions.DEFAULT_PERMISSION_MATRIX, state.role as never, permission as never)) {
+        throw new AuthError("forbidden", "Your role does not have permission to do that.");
+      }
+      return { identity: { subject: `user-${state.role}`, email: "m@example.com", displayName: "Manager", role: state.role, scope: state.scope, verified: true }, permission, provider: "supabase" };
+    },
+  };
+});
+vi.mock("@/lib/config/server-env", async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }) }));
+vi.mock("@/lib/knowledge/providers/supabase", () => ({
+  SupabaseKnowledgeProvider: class {
+    readonly name = "probe";
+    async match() { return []; }
+    async search() { return []; }
+    async fetchRoleGrounding(role: { id: string }) {
+      const rows = ["SECTION 2 – PERFORMANCE MANAGEMENT LADDER", "SECTION 3 – COACHING FRAMEWORK", "SECTION 6 – DPOA FRAMEWORK", "SECTION 8 – FOLLOW-UP DOCUMENTATION FRAMEWORK"].map((locator, index) => ({ chunk_id: `pmf-${index}`, document_id: "doc-pmf", document_title: "PERFORMANCE MANAGEMENT FRAMEWORK", category: "leadership_coaching", locator, page: null, section: locator, content: `Framework text: ${locator}.`, similarity: 0 }));
+      return { ok: true, grounding: { role: { id: role.id }, documentId: "doc-pmf", documentTitle: "PERFORMANCE MANAGEMENT FRAMEWORK", matchedBy: "tag", rows, presentGroups: ["escalation_authority", "escalation_ladder", "coaching_framework", "epp_framework", "dpoa_framework", "follow_up_documentation", "final_operating_rule"] } };
+    }
+    async fetchOfficialPolicyManual() { return { ok: false, reason: "probe" }; }
+    async fetchNamedHandbook() { return { ok: false, reason: "probe" }; }
+  },
+}));
+vi.mock("@/lib/ai/call-claude", () => ({ callClaude: async () => "[MODEL ANSWER]" }));
+vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
+vi.mock("@/lib/reporting/read/employee-facts", () => ({ loadEmployeeFacts: async () => null, NO_EMPLOYEE_DATASET_REASON: "no dataset", EMPLOYEE_DATA_HEADING: "CURRENT EMPLOYEE PERFORMANCE DATA" }));
+vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
+  return { ...actual, loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope) };
+});
+
+process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
+const { answerQuestion } = await import("@/lib/ai/server-ask");
+const { continuationFor } = await import("@/lib/forms/proposal-continuation");
+const instancesRoute = await import("@/app/api/forms/instances/route");
+
+const results: Record<string, unknown>[] = [];
+const PAT = { id: "e-1", firstName: "Pat", lastName: "Rivera", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] };
+
+beforeEach(async () => {
+  for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-21T18:00:00Z"));
+  await ensureTemplateLibrary("system");
+  state.directory = [PAT];
+});
+
+async function converse(role: string, scope: AccessScope, turns: string[]) {
+  state.role = role;
+  state.scope = scope;
+  const messages: ChatMessage[] = [];
+  const out: Awaited<ReturnType<typeof answerQuestion>>[] = [];
+  let n = 0;
+  for (const text of turns) {
+    n += 1;
+    const user = { id: `u${n}`, role: "user", content: text, createdAt: "2026-10-21T18:00:00Z" } as ChatMessage;
+    const r = await answerQuestion({ question: text, mode: "standard", history: messages, questionMessageId: user.id, scopeId: "sun-tan-city", continueProposalTemplateKey: continuationFor(messages)?.templateKey, context: { userName: "Probe", locationName: "", todayIso: "2026-10-21" } } as never, { role: role as never, scope });
+    out.push(r);
+    messages.push(user, { id: `a${n}`, role: "assistant", content: String(r.content ?? ""), createdAt: "2026-10-21T18:00:01Z", ...(r.formProposal ? { formProposal: r.formProposal } : {}), ...(r.formSelection ? { formSelection: r.formSelection } : {}) } as ChatMessage);
+  }
+  return out;
+}
+
+/* ------------------------------------------------ criterion 5: create route */
+for (const [id, role, scope, locationId, expected] of [
+  ["SD own salon 0310", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] }, "loc-0310", 200],
+  ["SD other salon 0309 (refused)", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] }, "loc-0309", 403],
+  ["SD multi: also-covers 0311", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] }, "loc-0311", 200],
+  ["SD multi: unassigned 0306 (refused)", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] }, "loc-0306", 403],
+  ["SD forged id (refused)", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] }, "loc-9999", 403],
+  ["DM own-district salon 0309", "district_manager", { level: "district", primaryAreaId: "dist-dugan-rachael", alsoCoversAreaIds: [] }, "loc-0309", 200],
+  ["DM other-district salon 0306 (refused)", "district_manager", { level: "district", primaryAreaId: "dist-dugan-rachael", alsoCoversAreaIds: [] }, "loc-0306", 403],
+  ["owner global 0306", "owner", { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] }, "loc-0306", 200],
+  ["SD no location", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] }, null, 200],
+] as [string, string, AccessScope, string | null, number][]) {
+  it(`5-route ${id}`, { timeout: 60_000 }, async () => {
+    state.role = role;
+    state.scope = scope;
+    let status: number | string;
+    let body: unknown;
+    try {
+      const response = await instancesRoute.POST(new Request("https://app.test/api/forms/instances", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ templateKey: "coaching", employeeName: "Pat Rivera", locationId, source: "manual" }) }));
+      status = response.status;
+      body = await response.json();
+    } catch (e) {
+      status = `threw ${String(e)}`;
+    }
+    const stored = (store.form_instances ?? []).map((row) => (row as { location_id?: string | null }).location_id ?? null);
+    results.push({ criterion: 5, kind: "create route", id, role, scope, locationId, expected, actual: status, pass: status === expected, stored, error: (body as { error?: string })?.error ?? null });
+  });
+}
+
+/* ------------------------------------------- criterion 5: proposal in chat */
+for (const [id, role, scope, turns, expectation, check] of [
+  ["SD multi, none named: picks among own", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] }, ["create a coaching form for pat rivera, late 3 times"], "needs_selection among exactly [loc-0310, loc-0311] OR resolved to Pat's salon 0310", (p: any) => p?.locationId === "loc-0310" || (p?.locationResolution === "needs_selection" && JSON.stringify([...(p?.authorizedLocationIds ?? [])].sort()) === JSON.stringify(["loc-0310","loc-0311"]))],
+  ["SD multi, names own 2nd salon", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] }, ["create a coaching form for pat rivera at lincoln o street, late 3 times"], "resolved loc-0311", (p: any) => p?.locationId === "loc-0311"],
+  ["SD multi, names unassigned salon", "salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311"] }, ["create a coaching form for pat rivera at kearney, late 3 times"], "NOT loc-0309; out-of-scope flagged", (p: any) => p?.locationId !== "loc-0309"],
+  ["DM names own-district salon", "district_manager", { level: "district", primaryAreaId: "dist-dugan-rachael", alsoCoversAreaIds: [] }, ["create a coaching form for pat rivera at kearney, late 3 times"], "resolved loc-0309 (assigned district)", (p: any) => p?.locationId === "loc-0309"],
+  ["DM names other-district salon", "district_manager", { level: "district", primaryAreaId: "dist-dugan-rachael", alsoCoversAreaIds: [] }, ["create a coaching form for pat rivera at wornall, late 3 times"], "NOT loc-0306", (p: any) => p?.locationId !== "loc-0306"],
+] as [string, string, AccessScope, string[], string, (p: Record<string, unknown> | undefined) => boolean][]) {
+  it(`5-chat ${id}`, { timeout: 60_000 }, async () => {
+    let fp: Record<string, unknown> | undefined;
+    let error: string | null = null;
+    try {
+      const r = await converse(role, scope, turns);
+      fp = r.at(-1)?.formProposal as Record<string, unknown> | undefined;
+    } catch (e) {
+      error = String(e);
+    }
+    results.push({ criterion: 5, kind: "chat proposal", id, role, scope, turns, expected: expectation, actual: error ?? (fp ? { employeeName: fp.employeeName, status: fp.status, locationId: fp.locationId, locationResolution: fp.locationResolution, authorizedLocationIds: fp.authorizedLocationIds, namedLocationOutOfScope: fp.namedLocationOutOfScope ?? null } : "no proposal"), pass: !error && check(fp) });
+  });
+}
+
+/* --------------------------------------- criterion 3: prior coaching phrasing */
+const PRIOR_PHRASES = [
+  "I coached her on 10/1 for being late",
+  "she was coached last week about lateness",
+  "we had a talk with her about tardiness on 10/1",
+  "I already spoke to her about being late",
+  "she had a coaching on 10/1",
+  "previous coaching 10/1 for lateness",
+  "this is after her coaching on 10/1",
+  "she's been coached before for this",
+  "we discussed attendance with her on 10/1",
+  "she got a verbal warning on 10/1",
+  "I talked to pat about being late last month",
+  "she was written up for this in september",
+];
+for (const phrase of PRIOR_PHRASES) {
+  it(`3-ca ${phrase}`, { timeout: 60_000 }, async () => {
+    let r: Awaited<ReturnType<typeof answerQuestion>> | undefined;
+    let error: string | null = null;
+    try {
+      [r] = await converse("salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] }, [`create a verbal ca for pat rivera, she was late again today. ${phrase}`]);
+    } catch (e) {
+      error = String(e);
+    }
+    const content = String(r?.content ?? "");
+    const notRecognised = /won't guess at it|any prior coaching or corrective action\?/i.test(content);
+    const formDate = (r?.formProposal as { formDate?: string | null } | undefined)?.formDate ?? null;
+    results.push({ criterion: 3, kind: "CA request", id: phrase, expected: "prior step recognised as history (not 'I won't guess'); the prior date is not the form date", actual: error ?? { recognised: !notRecognised, formDate, excerpt: content.replace(/\n+/g, " / ").slice(0, 500) }, pass: !error && !notRecognised && formDate !== "2026-10-01" });
+  });
+  it(`3-offer ${phrase}`, { timeout: 60_000 }, async () => {
+    let r: Awaited<ReturnType<typeof answerQuestion>> | undefined;
+    let error: string | null = null;
+    try {
+      [r] = await converse("salon_director", { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] }, [`Pat Rivera was late again today. ${phrase}. what should I do?`]);
+    } catch (e) {
+      error = String(e);
+    }
+    const offered = JSON.stringify(r?.formSelection ?? null);
+    results.push({ criterion: 3, kind: "suggestion", id: phrase, expected: "Corrective Action offered beside Coaching (prior step + recurrence)", actual: error ?? { offered: r?.formSelection ? offered.slice(0, 200) : "no suggestion" }, pass: !error && offered.includes("dpoa") });
+  });
+}
+
+afterAll(() => writeFileSync(process.env.PROBE_OUT!, JSON.stringify(results, null, 2)));

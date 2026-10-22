@@ -1,0 +1,18 @@
+
+ RUN  v4.1.11 /home/user/sunny-base-9548afb
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"aaaaaaaa-1111-4111-8111-111111111111","where":"ConversationRating"}
+
+stdout | src/features/chat/rollout-fixes.dom.test.tsx > rating is scoped to the conversation being rated > does not carry a typed complaint onto another conversation's turn
+{"event":"feedback.host.rateable","turnId":"bbbbbbbb-2222-4222-8222-222222222222","where":"ConversationRating"}
+
+ ✓ src/features/chat/rollout-fixes.dom.test.tsx (18 tests | 17 skipped) 4630ms
+     ✓ does not carry a typed complaint onto another conversation's turn  4626ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 17 skipped (18)
+   Start at  12:48:18
+   Duration  6.23s (transform 2.42s, setup 0ms, import 438ms, tests 4.63s, environment 931ms)
+
+JSON report written to /home/user/qa-2026-10-22/evidence/phase2-ui-timeouts/isolated-base-run4.json

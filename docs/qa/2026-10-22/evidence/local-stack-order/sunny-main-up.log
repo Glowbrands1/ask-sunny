@@ -1,0 +1,8 @@
+== postgres
+== mailpit
+== supabase auth
+== migrations
+   applied 82 migrations
+== postgrest
+== gateway
+== up. Environment: /tmp/qa-stack-order-sunny-main/env

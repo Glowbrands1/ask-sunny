@@ -1,0 +1,27 @@
+/** QA PROBE (not committed): reproduce the Sunny reviewer's claims with the shared readers, in either app. */
+import { writeFileSync } from "node:fs";
+import { afterAll, it } from "vitest";
+import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { extractEmployeeNames } from "@/lib/forms/proposal";
+import { detectFormOpportunity } from "@/lib/forms/form-opportunity";
+
+const rows: unknown[] = [];
+const safe = (f: () => unknown) => { try { return f(); } catch (e) { return `threw ${String(e)}`; } };
+it("payroll", () => {
+  for (const [t, want] of [["we will not payroll deduct $25", "not yes"], ["don't payroll deduct $25", "not yes"], ["$25 payroll deduction was waived", "not yes"], ["payroll deduct $25", "yes"], ["no payroll deduct", "no"], ["payroll deduct no", "no"]] as const)
+    rows.push({ claim: "payroll", input: t, want, got: safe(() => statedPayrollDeduct(t)) });
+});
+it("intent", () => {
+  for (const [t, want] of [["can you write a summary of the corrective action policy", "not a creation request"], ["write a note explaining the corrective action steps", "not a creation request"], ["write an email to Paisley about her CA", "not a creation request"], ["write a CA for Paisley", "creation request"]] as const)
+    rows.push({ claim: "write-a intent", input: t, want, got: safe(() => { const i = detectTemplateIntent(t) as Record<string, unknown>; return { kind: i.kind, requestedCreation: i.requestedCreation ?? null, templateKey: (i as { templateKey?: string }).templateKey ?? null }; }) });
+});
+it("names", () => {
+  for (const [t, want] of [["Create a CA for the manager Jane Doe, she was late", "Jane Doe"], ["coaching for her coworker Amy Lee", "Amy Lee"], ["Create a coaching form for Jane Smith. Her coworker Amy Lee covered her shift", "Jane Smith only"]] as const)
+    rows.push({ claim: "third-party filter", input: t, want, got: safe(() => extractEmployeeNames(t)) });
+});
+it("opportunity", () => {
+  for (const [t, want] of [["I already talked to her about the schedule and she still wants more hours", "no formal escalation"], ["I already addressed the broken bed with the vendor again", "no formal escalation"], ["I talked to her about being late and she was late again this week", "formal escalation"]] as const)
+    rows.push({ claim: "escalation detector", input: t, want, got: safe(() => { const o = detectFormOpportunity({ context: { text: t }, employeeKnown: true } as never) as { kind?: string; signals?: string[] } | null; return o ? { kind: o.kind, signals: o.signals } : null; }) });
+});
+afterAll(() => writeFileSync(process.env.PROBE_OUT!, JSON.stringify(rows, null, 2)));
