@@ -1226,6 +1226,17 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
   });
 });
 
+describe("the browser's form history never fills in the card", () => {
+  it("turns autofill off on every typed field, the follow-up date included", async () => {
+    phase4();
+    const { container } = mounted();
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    const fields = [...container.querySelectorAll<HTMLElement>("textarea, input:not([type=checkbox])")];
+    expect(fields.some((field) => field.id === "follow-up-inst-42")).toBe(true);
+    for (const field of fields) expect(field.getAttribute("autocomplete"), field.id).toBe("off");
+  });
+});
+
 describe("P4. a finalized form offers the record, not the editor", () => {
   const finalized = () => {
     const row = loadedInstance();

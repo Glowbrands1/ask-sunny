@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils/cn";
 
 import { ResponsibilityChip } from "./chips";
 import { EditableText } from "./editable-text";
+import { NO_AUTOFILL } from "./autofill";
 
 /**
  * ONE BLOCK, RENDERED THREE WAYS.
@@ -181,6 +182,7 @@ function FieldSlot({
   if (field.input === "long_text") {
     return (
       <textarea
+        {...NO_AUTOFILL}
         id={field.key}
         aria-label={interpolate(field.label, variant)}
         value={value}
@@ -194,6 +196,7 @@ function FieldSlot({
 
   return (
     <input
+      {...NO_AUTOFILL}
       id={field.key}
       aria-label={interpolate(field.label, variant)}
       type={field.input === "date" ? "date" : "text"}
@@ -585,6 +588,7 @@ export function BlockView({
                 <span className="block min-w-0 border-b border-black/45 pb-[2px]">
                   {mayType ? (
                     <input
+                      {...NO_AUTOFILL}
                       value={values.values[row.key] ?? ""}
                       aria-label={`${text(block.planLabel)} ${text(row.category)}`}
                       onChange={(event) => onValue?.(row.key, event.target.value)}
@@ -691,6 +695,7 @@ export function BlockView({
                 <span className="min-w-0 flex-1 border-b border-black/45 pb-[2px]">
                   {mayType ? (
                     <input
+                      {...NO_AUTOFILL}
                       value={line}
                       aria-label={`${text(block.label)} ${index + 1}`}
                       onChange={(event) =>
