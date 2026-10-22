@@ -86,9 +86,18 @@ const NEGATIVE: readonly RegExp[] = [
    * The waiver may come after the subject or before it ("we waived the
    * payroll deduction"), within the clause.
    */
-  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven|cancell?ed|cancell?ing|called\s+off)\b`),
+  /*
+   * The waiver has to be said OF the deduction ("... was waived"): "payroll
+   * deduction of $25 for the cancelled order is applicable" cancels the order,
+   * not the deduction (QA, 22 Oct 2026).
+   */
+  new RegExp(
+    String.raw`\b${SUBJECT}\b[^.!?;,\n]{0,25}?\b(?:is|was|has\s+been|have\s+been|been|be|got|are|were)\s+(?:waived|forgiven|cancell?ed|called\s+off)\b`,
+  ),
   // "we cancelled the $25 payroll deduction" (QA, 22 Oct 2026): cancelled is waived.
-  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
+  new RegExp(
+    String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\s+(?:the\s+|a\s+|her\s+|his\s+|their\s+|this\s+|that\s+)?(?:\$\s?\d[\d,]*(?:\.\d{1,2})?\s+|\d[\d,]*(?:\.\d{2})?\s+)?${SUBJECT}\b`,
+  ),
   // "payroll deduct $25 does not apply", "$25 payroll deduction is not needed" (QA, 22 Oct 2026)
   new RegExp(
     String.raw`\b${SUBJECT}\s+\$\s?\d[\d,]*(?:\.\d{1,2})?\s+(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
