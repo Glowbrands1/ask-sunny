@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "claude/*": false,
+      "claude/**": false
+    }
+  },
   "crons": [
     {
       "path": "/api/reviews/apify/cron",
