@@ -246,7 +246,8 @@ describe("the box a named policy ticks", () => {
  * District Manager feedback, 21 Oct 2026: "create a written CA for <employee>
  * for not attending the monthly meeting on 10-20-26 …" was drafted under the
  * Standards of Conduct. The manual's Attendance section counts meetings as
- * scheduled shifts.
+ * scheduled shifts, and the owner decided (22 Oct 2026) that a missed meeting
+ * is Attendance — so these no longer ask "which policy?" (they did before).
  */
 describe("a meeting, seminar or training session not attended", () => {
   it.each([
@@ -260,7 +261,8 @@ describe("a meeting, seminar or training session not attended", () => {
   ])("%s -> %s", (text, event) => {
     const reading = readCaPolicy(text);
     expect(reading.missedEvent).toBe(event);
-    expect(reading.ambiguous).toEqual(["attendance", "standards_of_conduct"]);
+    expect(reading.stated).toBe("attendance");
+    expect(reading.ambiguous).toBeNull();
     expect(reading.suggestion).toBeNull();
   });
 
@@ -274,11 +276,12 @@ describe("a meeting, seminar or training session not attended", () => {
     expect(readCaPolicy(text).missedEvent).toBeNull();
   });
 
-  it("asks which policy, and the answer is the box: Attendance is Absenteeism", () => {
+  it("reads as Attendance, says so without claiming the manager named it, and ticks Absenteeism", () => {
     const account = "written CA for delphine for not attending the monthly meeting on 10-20-26";
     expect(caPolicyProposalLine(readCaPolicy(account))).toBe(
-      "**Which policy applies?** Missing the monthly meeting could fall under **Attendance** (as an absence from a scheduled shift) or **Standards of Conduct**. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
+      "**Policy:** Attendance — missing the monthly meeting is an absence from a scheduled shift. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.",
     );
+    expect(statedOffenseKeys(readCaPolicy(account), account)).toEqual(["absenteeism"]);
     expect(namesCaPolicy("attendance")).toBe(true);
 
     const answered = readCaPolicy([account, "attendance"].join(JOIN));
@@ -289,9 +292,8 @@ describe("a meeting, seminar or training session not attended", () => {
     expect(statedOffenseKeys(conduct, [account, "standards of conduct"].join(JOIN))).toEqual(["standards_of_conduct"]);
   });
 
-  it("a meeting missed beside a conduct incident is still asked, with Attendance among the choices", () => {
-    const reading = readCaPolicy("She missed the monthly meeting and did not complete her closing duties.");
-    expect(reading.ambiguous).toEqual(["standards_of_conduct", "attendance"]);
+  it("a meeting missed beside a conduct incident is still Attendance (owner decision); a policy named still wins", () => {
+    expect(readCaPolicy("She missed the monthly meeting and did not complete her closing duties.").stated).toBe("attendance");
   });
 
   const ATTENDANCE: ManualChunk = {
@@ -354,4 +356,30 @@ describe("a meeting, seminar or training session not attended", () => {
       groundMissedEvent({ reading: readCaPolicy("she missed the monthly meeting. standards of conduct"), chunks }),
     ).toEqual({ ok: false, reason: "no_event" });
   });
+});
+
+/* Owner decision, 22 Oct 2026: a missed meeting is Attendance (Absenteeism), not Standards of Conduct. */
+describe("a missed meeting reads as Attendance", () => {
+  it.each([
+    ["create a written CA for sela brandt for not attending the monthly meeting on 10-20-26"],
+    ["she missed the monthly meeting on 10-20-26"],
+    ["Sela didn't attend the salon meeting"],
+    ["he did not show up to the mandatory training on Monday"],
+    ["skipped the team meeting yesterday"],
+    ["failed to attend the required webinar"],
+    ["was a no show for the monthly mtg"],
+  ])('"%s"', (text) => {
+    const reading = readCaPolicy(text);
+    expect(reading.stated).toBe("attendance");
+    expect(statedOffenseKeys(reading, text)).toEqual(["absenteeism"]);
+  });
+  it("a policy the manager names still wins", () => {
+    expect(readCaPolicy("she missed the monthly meeting. use standards of conduct").stated).toBe("standards_of_conduct");
+  });
+  it.each([["she was late to the meeting"], ["she talked over the manager in the meeting"], ["we went over it in a meeting"]])(
+    'a meeting that was attended is not an absence: "%s"',
+    (text) => {
+      expect(readCaPolicy(text).stated).not.toBe("attendance");
+    },
+  );
 });

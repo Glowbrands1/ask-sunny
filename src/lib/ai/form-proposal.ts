@@ -1847,7 +1847,9 @@ function choice(summary: TemplateSummary): ChatFormChoice {
  * the draft, as before.
  */
 async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
-  if (readCaPolicy(text).stated !== null) return null;
+  const policyReading = readCaPolicy(text);
+  // A missed meeting reads as Attendance; the manual still says where (see `groundMissedEvent` below).
+  if (policyReading.stated !== null && !(policyReading.stated === "attendance" && policyReading.missedEvent)) return null;
   const named = namedPolicies(text);
   const chunksOf = async (): Promise<readonly ManualChunk[] | null> => {
     try {
@@ -1867,9 +1869,9 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
     /*
      * A MEETING NOT ATTENDED: the section the manual puts it under, with the
      * sentence that says so (District Manager feedback, 21 Oct 2026). Where
-     * the manual says nothing, the reading's own question asks which policy.
+     * the manual says nothing it is still Attendance, as the reading says.
      */
-    const reading = readCaPolicy(text);
+    const reading = policyReading;
     if (reading.missedEvent) {
       const grounded = groundMissedEvent({ reading, chunks: await chunksOf() });
       return grounded.ok

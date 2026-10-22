@@ -536,7 +536,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * policy the question the proposal asked. See `groundMissedEvent`.
      */
     const missedEvent =
-      caPolicy && caPolicy.stated === null && !namedSection && manual.ok
+      caPolicy && (caPolicy.stated === null || caPolicy.stated === "attendance") && !namedSection && manual.ok
         ? groundMissedEvent({ reading: caPolicy, chunks: manual.chunks, jobTitle: loaded.instance.employeeRole })
         : null;
     const eventSection =

@@ -548,61 +548,38 @@ describe("Q2 the production failure's shape: the level asked, then one-word answ
 /* 3, 4 — ASKED ONLY WHEN NEEDED; NOTHING UNSAID IS FILLED                    */
 /* ========================================================================= */
 
+/*
+ * OWNER DECISION, 22 Oct 2026: a missed meeting is Attendance. These used to
+ * ask "which policy applies?" where the manual's Attendance section says
+ * nothing about meetings; now the reading is Attendance either way, said
+ * without claiming the manager named it, and a policy the manager names
+ * still wins (dm-feedback "answered standards of conduct").
+ */
 describe("Q3 where the manual does not settle the policy", () => {
   beforeEach(() => {
     // The manual as the older fixtures hold it: its Attendance section says nothing about meetings.
     state.manual = MANUAL;
   });
 
-  it("asks once; answered in chat before the draft, the answer fills the form", async () => {
+  it("reads as Attendance without asking; the form ticks Absenteeism and quotes Attendance", async () => {
     const chat = new Chat();
-    expect(await chat.say(OCT21)).toMatch(/\*\*Which policy applies\?\*\* Missing the monthly meeting could fall under \*\*Attendance\*\*/);
-    expect(await chat.say("attendance")).not.toMatch(/Which policy applies/);
+    const reply = await chat.say(OCT21);
+    expect(reply).not.toMatch(/Which policy applies/);
+    expect(reply).toMatch(/\*\*Policy:\*\* Attendance — missing the monthly meeting is an absence from a scheduled shift\./);
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const form = await saved(await chat.create());
     expect(form).toMatchObject({ offense_type: ["absenteeism"], policy_violated: "Absenteeism", prior_actions: BOTH_PRIOR_ACTIONS });
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], form_date: "2026-10-20" });
   });
 
-  it("left unanswered, the draft ticks nothing and cites nothing — the model's pick is not saved", async () => {
-    const chat = new Chat();
-    await chat.say(OCT21);
-    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
-    const form = await saved(await chat.create());
-    expect(form.offense_type).toBeUndefined();
-    expect(form.policy_violated).toBeUndefined();
-    expect(form.policy_language).toBeUndefined();
-    expect(form.action_plan).toMatch(/^Management will review the applicable company policy with Tess\./);
-    // Everything that WAS said is still there.
-    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], prior_actions: BOTH_PRIOR_ACTIONS, form_date: "2026-10-20" });
-  });
-
-  it("answered after the draft exists, the open form is completed in place", async () => {
-    const chat = new Chat();
-    await chat.say(OCT21);
-    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
-    const id = await chat.create();
-    const reply = await chat.say("attendance");
-    expect(reply).toMatch(/Type of Offense now reads \*\*Absenteeism\*\*/);
-    const form = await saved(id);
-    expect(form).toMatchObject({
-      offense_type: ["absenteeism"],
-      policy_violated: "Absenteeism",
-      warning_type: ["written"],
-      payroll_deduct: ["no"],
-      prior_actions: BOTH_PRIOR_ACTIONS,
-    });
-    expect(form.action_plan).toMatch(/^Management will review the Attendance policy with Tess\./);
-    expect(store.form_instances).toHaveLength(1);
-  });
-
-  it("with no manual to read, it asks, cites nothing, and claims nothing about a policy", async () => {
+  it("with no manual to read, it is still Attendance, and nothing is quoted", async () => {
     state.manual = null;
     const chat = new Chat();
-    expect(await chat.say(OCT21)).toMatch(/Which policy applies\?/);
+    expect(await chat.say(OCT21)).not.toMatch(/Which policy applies\?/);
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const form = await saved(await chat.create());
-    expect(form.offense_type).toBeUndefined();
+    expect(form.offense_type).toEqual(["absenteeism"]);
     expect(form.policy_language).toBeUndefined();
   });
 });

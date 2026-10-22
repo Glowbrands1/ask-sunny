@@ -1128,14 +1128,13 @@ describe("G: a meeting not attended is cited where the manual puts it", () => {
     expect(field(form, "policy_language")!.value).toContain("is treated as a no call no show to a scheduled shift");
   });
 
-  it("where the manual does not say, it asks which policy — and the answer fills the form", async () => {
+  /* Owner decision, 22 Oct 2026: a missed meeting is Attendance, so this no longer asks "which policy?" first. */
+  it("where the manual does not say, it is still Attendance — and the form says so", async () => {
     // The manual as the other tests hold it: its Attendance section says nothing about meetings.
-    const { responses, create } = await conversation([E1, "attendance"]);
+    const { responses, create } = await conversation([E1]);
 
-    expect(responses[0]!.content).toMatch(
-      /\*\*Which policy applies\?\*\* Missing the monthly meeting could fall under \*\*Attendance\*\* \(as an absence from a scheduled shift\) or \*\*Standards of Conduct\*\*/,
-    );
-    expect(responses[1]!.content).not.toMatch(/Which policy applies/);
+    expect(responses[0]!.content).not.toMatch(/Which policy applies/);
+    expect(responses[0]!.content).toMatch(/\*\*Policy:\*\* Attendance — missing the monthly meeting is an absence from a scheduled shift\./);
 
     state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
     const { reference } = await create();

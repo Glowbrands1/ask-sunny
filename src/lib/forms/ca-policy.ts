@@ -252,15 +252,24 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
   const text = normalize(rawText);
   const turns = text.split(JOIN).map((turn) => turn.trim()).filter(Boolean);
 
+  const sentences = statements(text);
+  const missedEvent = missedEventIn(sentences);
+
   let stated: CaPolicyName | null = null;
   for (const turn of turns) stated = statedIn(turn) ?? stated;
+  /*
+   * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
+   * District Manager's 21 Oct report ("not attending the monthly meeting" was
+   * written up under Standards of Conduct). An account of missing a meeting,
+   * seminar or training reads as Attendance, as if the manager had named it,
+   * and ticks Absenteeism; `groundMissedEvent` still finds where the manual
+   * says so. A policy the manager does name still wins.
+   */
+  if (stated === null && missedEvent !== null) stated = "attendance";
 
-  const sentences = statements(text);
   const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
     ({ topic }) => topic,
   );
-
-  const missedEvent = missedEventIn(sentences);
 
   const alternatives: CaPolicyReading["alternatives"] = [];
   if (topics.length > 0) {
@@ -276,22 +285,6 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
       suggestion: stated === STANDARDS_OF_CONDUCT ? STANDARDS_OF_CONDUCT : null,
       source: stated === STANDARDS_OF_CONDUCT ? "stated" : null,
       ambiguous: null,
-      missedEvent,
-    };
-  }
-  /*
-   * A MISSED MEETING, AND NOTHING ELSE: Attendance or the Standards of
-   * Conduct. A question here; the manual settles it where it can (see
-   * `groundMissedEvent`), and the manager's answer settles it otherwise.
-   */
-  if (topics.length === 0 && missedEvent) {
-    return {
-      stated,
-      topics,
-      alternatives: ["attendance"],
-      suggestion: null,
-      source: null,
-      ambiguous: ["attendance", STANDARDS_OF_CONDUCT],
       missedEvent,
     };
   }
@@ -347,8 +340,7 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       return null;
     case "attendance": {
       const text = normalize(rawText);
-      // A meeting not attended is an absence from a scheduled shift, not a late arrival.
-      const absent = ABSENCE.test(text) || reading.missedEvent !== null || missedEventIn(statements(text)) !== null;
+      const absent = ABSENCE.test(text) || missedEventIn(statements(text)) !== null;
       const late = LATENESS.test(text);
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
@@ -505,11 +497,13 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    * One the manual does not answer is said so, unless the account still reads
    * as a policy below.
    */
-  if (!reading.stated && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
+  // A missed meeting reads as Attendance without being named; the manual's section for it is said the same way.
+  const readAsAttendance = reading.stated === "attendance" && reading.missedEvent !== null;
+  if ((!reading.stated || readAsAttendance) && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
     return namedPolicyLine(named);
   }
-  if (reading.ambiguous && reading.topics.length === 0 && reading.missedEvent) {
-    return `**${CA_POLICY_QUESTION}** Missing ${withArticle(reading.missedEvent)} could fall under **Attendance** (as an absence from a scheduled shift) or **Standards of Conduct**. Tell me which, or tick Type of Offense on the form — I won't pick one for you.`;
+  if (readAsAttendance) {
+    return `**Policy:** Attendance — missing ${withArticle(reading.missedEvent!)} is an absence from a scheduled shift. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
   }
   if (reading.ambiguous) {
     const others = reading.alternatives.map((name) => ALTERNATIVE_WORDS[name]);
@@ -688,7 +682,9 @@ export function groundMissedEvent(input: {
   jobTitle?: string | null;
 }): MissedEventGrounding {
   const event = input.reading.missedEvent;
-  if (!event || input.reading.stated !== null || input.reading.topics.length > 0) return { ok: false, reason: "no_event" };
+  // Attendance is what a missed event reads as (owner decision, 22 Oct 2026); any other policy named is the manager's.
+  const otherPolicy = input.reading.stated !== null && input.reading.stated !== "attendance";
+  if (!event || otherPolicy || input.reading.topics.length > 0) return { ok: false, reason: "no_event" };
   if (!input.chunks || input.chunks.length === 0) return { ok: false, reason: "no_manual" };
   const head = eventHead(event);
 
