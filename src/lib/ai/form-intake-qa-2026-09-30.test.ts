@@ -138,23 +138,24 @@ function expectAdvice(replay: Replay) {
 
 /* ============================================ 1. employee resolution === */
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("QA 1 — the employee is read the same way whatever the capitals", () => {
   it.each([
     // F06 failed; X01 (title case) passed.
-    ["coaching form\nemployee: avery testperson\nissue: skipped a tour", "Avery Testperson"],
+    ["coaching form\nemployee: avery testperson\nissue: skipped a tour", "avery testperson"],
     ["coaching form\nemployee: Avery Testperson\nissue: skipped a tour", "Avery Testperson"],
     // F13 failed; X02 passed.
-    ["avery testperson needs a coaching form today", "Avery Testperson"],
+    ["avery testperson needs a coaching form today", "avery testperson"],
     ["Avery Testperson needs a coaching form today", "Avery Testperson"],
     // F12: a lower-case name in a narrative position.
-    ["i coached avery testperson on client tours and need the form", "Avery Testperson"],
+    ["i coached avery testperson on client tours and need the form", "avery testperson"],
     ["coaching form, employee name: Avery Testperson, date: today", "Avery Testperson"],
-    ["coaching form for avery testperson", "Avery Testperson"],
-    ["COACHING FORM FOR AVERY TESTPERSON", "Avery Testperson"],
+    ["coaching form for avery testperson", "avery testperson"],
+    ["COACHING FORM FOR AVERY TESTPERSON", "AVERY TESTPERSON"],
   ])("%s", async (question, employee) => {
     const replay = await converse(question);
     expectCard(replay, "coaching", employee);
-    // THE SPELLING IS THE MANAGER'S, capitalised where they typed none (21 Oct 2026, `tidyTypedName`).
+    // THE SPELLING IS THE MANAGER'S, not a normalised copy.
     expect(replay.last.formProposal!.employeeName).toBe(employee);
   });
 

@@ -74,14 +74,14 @@ function ask(
   });
 }
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a demotion asked for in one sentence", () => {
   it("prefills what was said, asks for the rest in one question, and offers the form", async () => {
     const response = await ask("demote paulyne from manager to tanning consultant effective october 5");
     const proposal = response!.formProposal!;
 
     expect(proposal.templateKey).toBe("demotion");
-    // Printed capitalised: see `tidyTypedName`.
-    expect(proposal.employeeName).toBe("Paulyne");
+    expect(proposal.employeeName).toBe("paulyne");
     // The title they are moving FROM, never the one they are moving to.
     expect(proposal.employeeRole).toBe("Manager");
     // The effective date is not the form's date.
@@ -108,11 +108,11 @@ describe("a demotion asked for in one sentence", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("the three ways of naming the employee", () => {
-  // Every way of typing it is printed the same way on the form.
   it.each(["paulyne co", "PAULYNE CO", "Paulyne Co"])("%s", async (name) => {
     const response = await ask(`Create a demotion form for ${name}`);
-    expect(response!.formProposal!.employeeName).toBe("Paulyne Co");
+    expect(response!.formProposal!.employeeName).toBe(name);
   });
 });
 
@@ -145,6 +145,7 @@ describe("a transfer stated rather than requested", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("answering the grouped question", () => {
   it("continues the open form when the reply is only details", async () => {
     const history = [manager("m1", "demote paulyne from manager to tanning consultant effective october 5")];
@@ -153,7 +154,7 @@ describe("answering the grouped question", () => {
       continueTemplateKey: "demotion",
     });
     expect(response!.formProposal!.templateKey).toBe("demotion");
-    expect(response!.formProposal!.employeeName).toBe("Paulyne");
+    expect(response!.formProposal!.employeeName).toBe("paulyne");
     expect(response!.content).toContain(
       "FT Manager at $18.00/hr → PT Tanning Consultant at $12.00/hr, effective October 5, 2026, voluntary",
     );
@@ -194,22 +195,24 @@ describe("permissions", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("the exit form is the one Resignation/Exit Form", () => {
   it("proposes stc-exit, not an employment change form", async () => {
     const response = await ask("I need an exit form for JOHN SMITH");
     expect(response!.formProposal!.templateKey).toBe("stc-exit");
-    expect(response!.formProposal!.employeeName).toBe("John Smith");
+    expect(response!.formProposal!.employeeName).toBe("JOHN SMITH");
     expect(response!.formProposal!.supportsInlineDraft).toBe(true);
     expect(response!.content).not.toContain("not published");
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("found in hands-on QA: the chat copy", () => {
   it("does not read capitalised title and status abbreviations as other people", async () => {
     const response = await ask(
       "Create a demotion form for PAULYNE CO. She's a FT SD at $18/hr at STC 12 and asked to step down to a PT TC at $14/hr effective 10/5/26",
     );
-    expect(response!.formProposal!.employeeName).toBe("Paulyne Co");
+    expect(response!.formProposal!.employeeName).toBe("PAULYNE CO");
     expect(response!.formProposal!.status).toBe("ready");
     expect(response!.content).toContain(
       "FT Salon Director at $18.00/hr at STC 12 → PT Tanning Consultant at $14.00/hr, effective October 5, 2026, voluntary",
@@ -217,6 +220,7 @@ describe("found in hands-on QA: the chat copy", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("found in hands-on QA: facts from another employee's form never carry over", () => {
   it("reads a transfer for Jane from Jane's turn only, not from Paulyne's demotion before it", async () => {
     const history = [
@@ -231,7 +235,7 @@ describe("found in hands-on QA: facts from another employee's form never carry o
     );
     const proposal = response!.formProposal!;
     expect(proposal.templateKey).toBe("position-transfer");
-    expect(proposal.employeeName).toBe("Jane Doe");
+    expect(proposal.employeeName).toBe("jane doe");
     // Only Jane's own turn is sent to the draft, so the form cannot pick up Paulyne's $14.00/hr.
     expect(proposal.sourceMessageIds).toEqual(["msg-now"]);
     expect(response!.content).not.toContain("$14.00");

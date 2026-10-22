@@ -233,6 +233,7 @@ describe("the chat form picker and permissions", () => {
 
 /* ============================================================ the reply == */
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("what Ask Sunny says beside the proposal", () => {
   it("asks only who it is for when only the form was named — no numbered intake", async () => {
     const proposals = await load([exitForm()]);
@@ -293,14 +294,14 @@ describe("what Ask Sunny says beside the proposal", () => {
       ),
     );
     const proposal = response!.formProposal!;
-    expect(proposal.employeeName).toBe("Sarah Jones");
+    expect(proposal.employeeName).toBe("sarah jones");
     expect(proposal.employeeRole).toBe("Tanning Consultant");
     // The form is dated the day it is completed, never the first date in the chat.
     expect(proposal.formDate).toBeNull();
     expect(proposal.supportsInlineDraft).toBe(true);
 
     const content = response!.content;
-    expect(content).toMatch(/- \*\*Name:\*\* Sarah Jones/);
+    expect(content).toMatch(/- \*\*Name:\*\* sarah jones/);
     expect(content).toMatch(/- \*\*Job Title:\*\* Tanning Consultant/);
     expect(content).toMatch(/- \*\*Last Day Worked:\*\* September 15, 2026/);
     expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 1, 2026/);
@@ -480,11 +481,12 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("QA 1 — natural-language retrieval", () => {
   it.each([
     ["pull up the exit form", null],
-    ["create an STC exit for jane smith", "Jane Smith"],
-    ["resignation paperwork for JANE SMITH", "Jane Smith"],
+    ["create an STC exit for jane smith", "jane smith"],
+    ["resignation paperwork for JANE SMITH", "JANE SMITH"],
     ["termination/exit form for Jane", "Jane"],
     ["I need the exit paperwork for Jane Smith", "Jane Smith"],
     ["start the separation form for Jane Smith", "Jane Smith"],

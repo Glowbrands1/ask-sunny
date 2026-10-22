@@ -1463,28 +1463,19 @@ function completePartialName(
 
 /*
  * ============================================================================
- * "paulyne camacho" IS PRINTED "Paulyne Camacho"
+ * THE NAME IS PRINTED AS THE MANAGER TYPED IT
  * ============================================================================
  *
- * Production, 21 October 2026: Demotion, Position Transfer and Policy Review
- * cards carried the employee exactly as typed — "paulyne camacho" — onto a
- * document that is signed and filed. The directory's spelling is used where
- * the directory knows the person (see `form-proposal.ts`); otherwise a name
- * typed WITHOUT capitals, or entirely IN capitals, is capitalised word by word,
- * after each hyphen and apostrophe too ("mary-kate o'neil" → "Mary-Kate
- * O'Neil"). A word the manager capitalised themselves is theirs and is left
- * alone: "McDonald", "DeShawn", "JD".
+ * Production, 21 October 2026 capitalised a name typed in lower case or in
+ * capitals ("paulyne camacho" -> "Paulyne Camacho"). QA, 22 Oct 2026, reversed
+ * that by decision: the manager's own spelling is kept — capitalising guesses
+ * at "JD SMITH", "John Smith III", "mcdonald" and "de la cruz", and a record
+ * should say what the manager wrote — unless the employee directory has an
+ * EXACT match, whose spelling `form-proposal.ts` uses instead. Only spacing is
+ * tidied; the field stays editable on the form.
  */
 export function tidyTypedName(name: string): string {
-  const shouted = !/[a-z]/.test(name);
-  return name
-    .split(/\s+/)
-    .map((word) => {
-      const lower = word === word.toLowerCase();
-      if (!lower && !(shouted && word.length > 1)) return word;
-      return word.toLowerCase().replace(/(^|[-'’])([a-z])/g, (_, before: string, letter: string) => `${before}${letter.toUpperCase()}`);
-    })
-    .join(" ");
+  return name.trim().replace(/\s+/g, " ");
 }
 
 /* ------------------------------------------------------------- proposal -- */
