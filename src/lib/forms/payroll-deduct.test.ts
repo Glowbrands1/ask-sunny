@@ -364,3 +364,62 @@ describe("quotedDeductionAmount — the one amount the quoted section states for
     ).toBe("$25.00");
   });
 });
+
+/*
+ * QA audit, 22 Oct 2026 (ported from Ask Bubbles): amounts a manager writes
+ * without a dollar sign, a new amount for a form already filed, and the comma
+ * that ends a clause. Ask Sunny reads a Yes only when it is stated; an amount
+ * is what the Action Plan states once it is.
+ */
+describe("an amount written without a dollar sign", () => {
+  it.each([
+    ["payroll deduct 25 dollars", "$25"],
+    ["she will be payroll deducted 3.25", "$3.25"],
+    ["deduct 3.25 from her check", "$3.25"],
+    ["payroll deduction of 25.00 dollars applies", "$25.00"],
+    ["25 bucks will be payroll deducted", "$25"],
+  ])('"%s" states %s', (text, amount) => {
+    expect(payrollDeductAmount(text)).toBe(amount);
+  });
+
+  it("a stated Yes with an unsigned amount is a Yes", () => {
+    expect(statedPayrollDeduct("payroll deduction of 25.00 dollars applies")).toBe("yes");
+  });
+
+  it.each([
+    ["she was 25 minutes late, payroll deduct applies"],
+    ["store 25 was opened late, payroll deduct applies"],
+    ["deduct 25 from her check"],
+  ])('a bare number is not an amount: "%s"', (text) => {
+    expect(payrollDeductAmount(text)).toBeNull();
+  });
+
+  it.each([["do not payroll deduct 25 dollars"], ["the 3.25 payroll deduction is waived"]])(
+    'denied or waived without a dollar sign is never Yes: "%s"',
+    (text) => {
+      expect(statedPayrollDeduct(text)).not.toBe("yes");
+      expect(payrollDeductCorrection(text)).not.toBe("yes");
+    },
+  );
+
+  it('the comma ending a clause is not part of the amount: "payroll deduct $25, she was late"', () => {
+    expect(payrollDeductAmount("payroll deduct $25, she was late")).toBe("$25");
+    expect(payrollDeductAmount("deduct $1,250 from her check")).toBe("$1,250");
+  });
+});
+
+describe("an amount changed after the form exists", () => {
+  it.each([
+    ["change the payroll deduction to $5.00", "$5.00"],
+    ["update the deduction amount to $5", "$5"],
+    ["change payroll deduct to 5 dollars", "$5"],
+    ["set the payroll deduction to $12.50", "$12.50"],
+  ])('"%s" is Yes, %s', (text, amount) => {
+    expect(payrollDeductCorrection(text)).toBe("yes");
+    expect(payrollDeductAmount(text)).toBe(amount);
+  });
+
+  it("a change to No is still No, whatever amount was named", () => {
+    expect(payrollDeductCorrection("change the $5.00 payroll deduction to no")).toBe("no");
+  });
+});
