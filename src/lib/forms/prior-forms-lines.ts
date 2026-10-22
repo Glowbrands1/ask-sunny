@@ -53,7 +53,7 @@ function nameKey(name: string): string {
  * The employee's finalized Coaching and Corrective Action forms, oldest first,
  * each as its line on the list.
  *
- * WORD FOR WORD ON THE NAME. "Paisley Peklo" is not "Paisley Smith", and a
+ * WORD FOR WORD ON THE NAME. "Juniper Brandvold" is not "Juniper Smith", and a
  * history line on the wrong person's disciplinary record is the one mistake
  * this list cannot be allowed to make — so a partial match is no match.
  */

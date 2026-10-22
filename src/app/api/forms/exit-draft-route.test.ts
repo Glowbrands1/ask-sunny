@@ -378,30 +378,30 @@ describe("what is stored", () => {
 
 /*
  * ============================================================================
- * HR FEEDBACK, 30 SEP 2026 — THE COLENE EXIT FORM, THROUGH THE ROUTE
+ * HR FEEDBACK, 30 SEP 2026 — THE DELPHINE EXIT FORM, THROUGH THE ROUTE
  * ============================================================================
  *
  * The notes are the manager's two Production turns, and the model's Details is
  * the paragraph Production stored. HR: the notice box and both notice dates
  * were left blank although they were said, the tanning-consultant sentence
- * "can be omitted", and "I recommend stating Colene vs. she".
+ * "can be omitted", and "I recommend stating Delphine vs. she".
  */
-describe("HR feedback 30 Sep — the Colene exit form", () => {
-  const COLENE_NOTES = [
-    "create an exit form. employee name is colene schildt. colene was a tanning consultant at manhattan location. on 9-15-26 colene provided her resignation to management and her last day worked was 9-28-26",
-    "colene gave and worked 2 week notice. colene messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
+describe("HR feedback 30 Sep — the Delphine exit form", () => {
+  const DELPHINE_NOTES = [
+    "create an exit form. employee name is delphine ashworth. delphine was a tanning consultant at manhattan location. on 9-15-26 delphine provided her resignation to management and her last day worked was 9-28-26",
+    "delphine gave and worked 2 week notice. delphine messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
   ].join("\n\n");
   const PRODUCTION_DETAILS =
-    "Colene Schildt worked as a tanning consultant at the Manhattan location. On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
+    "Delphine Ashworth worked as a tanning consultant at the Manhattan location. On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
 
   beforeEach(() => {
     vi.setSystemTime(new Date("2026-09-30T19:13:00Z"));
-    state.instance = { employeeName: "colene schildt", employeeRole: "Tanning Consultant", locationName: "KS Manhattan" };
+    state.instance = { employeeName: "delphine ashworth", employeeRole: "Tanning Consultant", locationName: "KS Manhattan" };
   });
 
   it("asks the model for the name, not a pronoun, and for no header restatement — on the exit form", async () => {
     state.toolInput = { values: { details: PRODUCTION_DETAILS } };
-    await post(COLENE_NOTES);
+    await post(DELPHINE_NOTES);
     expect(system()).toMatch(/Do not restate the job title or location in Additional Details/);
     expect(system()).toMatch(/Refer to the employee by first name/);
     expect(system()).toMatch(/rather than opening sentences with "She", "He" or "They"/);
@@ -410,11 +410,11 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
 
   it("stores the notice date and tick from her words, and Details without the header sentence", async () => {
     state.toolInput = { values: { details: PRODUCTION_DETAILS } };
-    const payload = await post(COLENE_NOTES);
+    const payload = await post(DELPHINE_NOTES);
 
     expect(stored().values).toEqual({
       details:
-        "On 9-15-26, Colene provided a resignation to management, sending the message via Woven. Colene gave and worked a two week notice, and the last day worked was 9-28-26.",
+        "On 9-15-26, Delphine provided a resignation to management, sending the message via Woven. Delphine gave and worked a two week notice, and the last day worked was 9-28-26.",
       last_day_worked: "2026-09-28",
       notice_given_date: "2026-09-15",
     });
@@ -422,7 +422,7 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
     expect(stored().values).not.toHaveProperty("notice_fulfilled_date");
     expect(stored().checked).toEqual({ resignation_notice: ["submitted_fulfilled_notice"] });
     expect(payload.exitHeaderRestated).toEqual([
-      "Colene Schildt worked as a tanning consultant at the Manhattan location.",
+      "Delphine Ashworth worked as a tanning consultant at the Manhattan location.",
     ]);
     // Cutting a header sentence is not the "answers nobody gave" notice.
     expect(payload.notice).toBeNull();
@@ -436,9 +436,9 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
     // HR feedback, 3 Oct 2026: the first name, no pronoun, and no name repeated
     // as a possessive. Natural text like this passes through byte for byte.
     const written =
-      "On 9-15-26, Colene submitted a resignation to management, sending the message via Woven. Colene gave and worked a two week notice, and the last day worked was 9-28-26.";
+      "On 9-15-26, Delphine submitted a resignation to management, sending the message via Woven. Delphine gave and worked a two week notice, and the last day worked was 9-28-26.";
     state.toolInput = { values: { details: written } };
-    const payload = await post(COLENE_NOTES);
+    const payload = await post(DELPHINE_NOTES);
     expect(stored().values.details).toBe(written);
     expect(payload.exitHeaderRestated).toEqual([]);
   });

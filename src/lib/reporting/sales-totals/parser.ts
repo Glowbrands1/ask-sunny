@@ -11,7 +11,7 @@ import {
  * THE SALES TOTALS PARSER
  * ============================================================================
  *
- * A DAILY report. Curt receives one each morning, and each one carries two
+ * A DAILY report. Owen receives one each morning, and each one carries two
  * windows: the previous day, and month to date through that day. Every delivery
  * is therefore a HISTORICAL SNAPSHOT, not a correction of the last one —
  * the Sep 3 report's MTD covers Sep 1-2, the Sep 4 report's covers Sep 1-3, and

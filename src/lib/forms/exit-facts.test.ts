@@ -229,7 +229,7 @@ describe("the values the draft carries", () => {
 
 /*
  * ============================================================================
- * HR FEEDBACK, 30 SEP 2026 — THE COLENE EXIT FORM
+ * HR FEEDBACK, 30 SEP 2026 — THE DELPHINE EXIT FORM
  * ============================================================================
  *
  * HR's words: "Sunny did not check the box for submitted & fulfilled notice or
@@ -238,10 +238,10 @@ describe("the values the draft carries", () => {
  * and the handing-in after it ("On 9-15-26, she provided her resignation"), and
  * the notice was "gave and worked a two week notice" — no owner word.
  */
-describe("HR feedback 30 Sep: the Colene exit form", () => {
+describe("HR feedback 30 Sep: the Delphine exit form", () => {
   const PRODUCTION_TURNS = [
-    "create an exit form. employee name is colene schildt. colene was a tanning consultant at manhattan location. on 9-15-26 colene provided her resignation to management and her last day worked was 9-28-26",
-    "colene gave and worked 2 week notice. colene messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
+    "create an exit form. employee name is delphine ashworth. delphine was a tanning consultant at manhattan location. on 9-15-26 delphine provided her resignation to management and her last day worked was 9-28-26",
+    "delphine gave and worked 2 week notice. delphine messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
   ].join("\n\n");
   const FEEDBACK_WORDING =
     "On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
@@ -271,10 +271,10 @@ describe("HR feedback 30 Sep: the Colene exit form", () => {
 
   it.each([
     "On 9-15-26, she provided her resignation to management.",
-    "on 9/15 colene provided her resignation",
+    "on 9/15 delphine provided her resignation",
     "On 9/15 she gave her two weeks notice.",
     "She provided her resignation on 9/15.",
-    "Colene provided her two week notice on 9-15-26.",
+    "Delphine provided her two week notice on 9-15-26.",
   ])("reads the notice date from %s", (text) => {
     expect(read(text).noticeGiven).toBe("2026-09-15");
   });

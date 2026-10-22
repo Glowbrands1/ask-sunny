@@ -3,16 +3,16 @@ import { describe, expect, it } from "vitest";
 import { readReopenRequest } from "./reopen-request";
 
 /**
- * "Change exit for ashley rogers", "duplicate exit … and change date notice
+ * "Change exit for lacey morrow", "duplicate exit … and change date notice
  * given to 9-27-26", "show draft of exit" — the turns from production feedback
  * that were answered "I can't edit a form that already exists".
  */
 describe("reading a request for a form that already exists", () => {
   it.each([
-    ["change exit for ashley rogers", "stc-exit", false],
-    ["duplicate exit for ashley rogers and change date notice given to 9-27-26", "stc-exit", true],
-    ["edit the exit form for Ashley Rogers", "stc-exit", false],
-    ["revise ashley rogers exit form", "stc-exit", false],
+    ["change exit for lacey morrow", "stc-exit", false],
+    ["duplicate exit for lacey morrow and change date notice given to 9-27-26", "stc-exit", true],
+    ["edit the exit form for Lacey Morrow", "stc-exit", false],
+    ["revise lacey morrow exit form", "stc-exit", false],
     ["reopen the coaching form for Dana Moss", "coaching", false],
     ["can you edit the coaching form for Dana Moss to say she was late twice", "coaching", true],
     ["change her new location on the transfer form to salon 24", "position-transfer", true],
@@ -33,8 +33,8 @@ describe("reading a request for a form that already exists", () => {
   });
 
   it.each([
-    ["a new form", "create exit for Ashley Rogers"],
-    ["a new form, asked another way", "make a new exit form for Ashley Rogers"],
+    ["a new form", "create exit for Lacey Morrow"],
+    ["a new form, asked another way", "make a new exit form for Lacey Morrow"],
     ["a pull-up request", "pull up a transfer form for jane doe"],
     ["another one", "start another coaching form for Dana"],
     ["a question about forms", "how do I change an exit form after it's finalized?"],

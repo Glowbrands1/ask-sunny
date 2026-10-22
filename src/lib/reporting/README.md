@@ -210,7 +210,7 @@ Returns booleans only — never a value:
 
 ```sh
 curl -sS -X POST \
-  -F "file=@Comp Report 2026 08 30 - Bowen, Curt.xlsx" \
+  -F "file=@Comp Report 2026 08 30 - Tremaine, Owen.xlsx" \
   https://<preview-deployment>/api/admin/reporting/ingest
 ```
 

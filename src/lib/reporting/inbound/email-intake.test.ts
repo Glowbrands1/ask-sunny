@@ -35,8 +35,8 @@ import { isWorkbookCandidate, type ResendAttachment } from "./resend-client";
  * `intakeReportWorkbook` has its own suite.
  */
 
-const TEST_SENDER = "Paulyne.Camacho@glowbrands.com";
-const SAMUEL = "Samuel.Brockie@glowbrands.com";
+const TEST_SENDER = "Rosalyn.Calloway@glowbrands.com";
+const SAMUEL = "Elliot.Fairbanks@glowbrands.com";
 const EMAIL_ID = "invented-resend-email-id-9f2c";
 
 beforeEach(() => {
@@ -119,8 +119,8 @@ const REALISTIC_ATTACHMENTS: ResendAttachment[] = [
 function received(overrides: Partial<ReceivedEmail> = {}): ReceivedEmail {
   return {
     emailId: EMAIL_ID,
-    from: `Brockie, Samuel <${SAMUEL}>`,
-    subject: "Comp Report 2026 08 30 - Bowen, Curt",
+    from: `Fairbanks, Elliot <${SAMUEL}>`,
+    subject: "Comp Report 2026 08 30 - Tremaine, Owen",
     messageId: "<invented.upstream.message.id@glowbrands.com>",
     receivedAt: "2026-09-01T08:59:00.000Z",
     attachments: REALISTIC_ATTACHMENTS,
@@ -253,7 +253,7 @@ describe("a valid forwarded report", () => {
     const [write] = harness.repository.writes;
     expect(write.file.senderEmail).toBe(email.from);
     expect(write.file.receivedAt).toBe(email.receivedAt);
-    // The UPSTREAM Message-ID identifies the mail Samuel sent…
+    // The UPSTREAM Message-ID identifies the mail Elliot sent…
     expect(write.file.externalMessageId).toBe(email.messageId);
     // …and Resend's id names the copy it received. Two identities, both kept.
     expect(write.file.inboundEmailId).toBe(EMAIL_ID);
@@ -272,7 +272,7 @@ describe("a valid forwarded report", () => {
     const bytes = await buildCombinedCompReportWorkbook();
     const harness = await serving(bytes);
     const outcome = await intakeReceivedEmail(
-      received({ from: `Paulyne Camacho <${TEST_SENDER}>` }),
+      received({ from: `Rosalyn Calloway <${TEST_SENDER}>` }),
       harness.deps,
     );
     expect(outcome.status).toBe("ingested");
@@ -281,8 +281,8 @@ describe("a valid forwarded report", () => {
   it("accepts a subject naming the Comp Report whatever the date", async () => {
     const bytes = await buildCombinedCompReportWorkbook();
     for (const subject of [
-      "Comp Report 2026 08 30 - Bowen, Curt",
-      "Comp Report 2026 09 30 - Bowen, Curt",
+      "Comp Report 2026 08 30 - Tremaine, Owen",
+      "Comp Report 2026 09 30 - Tremaine, Owen",
       "Comp Report TEST",
     ]) {
       const harness = await serving(bytes);

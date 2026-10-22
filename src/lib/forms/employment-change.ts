@@ -273,8 +273,8 @@ function readSentence(sentence: string, facts: EmploymentChangeFacts, today: str
   /*
    * "Salon Director FT at $18/hr to TC PT at $12/hr" — the arrow in the
    * intake's own example, with no "from". Read only where the left side is
-   * nothing but a title and its details, so "demote paulyne to TC" is left to
-   * the reading below rather than making "Demote Paulyne" a job title.
+   * nothing but a title and its details, so "demote rosalyn to TC" is left to
+   * the reading below rather than making "Demote Rosalyn" a job title.
    */
   if (!/\bfrom\b/i.test(sentence)) {
     for (const clause of sentence.split(/,\s*(?!\d{4})/)) {

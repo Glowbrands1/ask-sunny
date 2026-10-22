@@ -154,7 +154,7 @@ should do.
 message rather than an HTTP call.
 
 ```
-Samuel emails Curt the Comp Report
+Elliot emails Owen the Comp Report
   -> an Outlook rule forwards a copy to the Resend inbound address
   -> Resend emits `email.received`
   -> this route verifies the signature, gates sender and subject,
@@ -197,7 +197,7 @@ nobody.
 
 The subject must contain `Comp Report`, case-insensitively, whitespace
 collapsed. A substring rather than an exact subject, because the date moves
-every month; `Comp Report 2026 08 30 - Bowen, Curt`, next month's, and
+every month; `Comp Report 2026 08 30 - Tremaine, Owen`, next month's, and
 `Comp Report TEST` all match.
 
 ### Choosing the workbook
@@ -279,7 +279,7 @@ signature check failed.
 | When Resend received it | `report_files.received_at` |
 
 The last two identities are kept **separate on purpose**: one names the message
-Samuel sent, the other the copy Resend received. Collapsing them would make
+Elliot sent, the other the copy Resend received. Collapsing them would make
 correlating a stored file back to the Resend dashboard impossible. When no
 upstream `Message-ID` survived the forward, `external_message_id` falls back to
 `resend-email:<id>`, prefixed so the two can never be confused when read back.

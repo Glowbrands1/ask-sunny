@@ -146,7 +146,7 @@ const RETRIEVED_NO_FRAMEWORK: MatchedChunkRow[] = Array.from({ length: 14 }, (_,
   };
 });
 
-const CONTEXT = { userName: "Paulyne", locationName: "Salon 0495", todayIso: "2026-09-09" };
+const CONTEXT = { userName: "Rosalyn", locationName: "Salon 0495", todayIso: "2026-09-09" };
 
 function promptFor(options: {
   hasFrameworkGrounding: boolean;

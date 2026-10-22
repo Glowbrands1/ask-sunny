@@ -493,7 +493,7 @@ export async function intakeReceivedEmail(
    *
    * LINEAGE. `externalMessageId` prefers the UPSTREAM `Message-ID` when the
    * forwarding transport preserved one, because that identifies the original
-   * mail Samuel sent rather than the forwarded copy; it falls back to Resend's
+   * mail Elliot sent rather than the forwarded copy; it falls back to Resend's
    * id, prefixed so the two can never be confused when read back.
    */
   try {

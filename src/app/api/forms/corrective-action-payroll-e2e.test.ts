@@ -386,12 +386,12 @@ describe("changing the answer after the form exists", () => {
  * and the same fix fills it: the dated step the manager described is an entry
  * on the list, put there by code, whatever the model wrote.
  */
-describe("\"create ca for Paulyne Test she was late today, got verbal warning on september 21\"", () => {
+describe("\"create ca for Rosalyn Test she was late today, got verbal warning on september 21\"", () => {
   it("lists the prior warning with its date from the manager's words, and keeps today as the form's date", async () => {
-    const question = "create ca for Paulyne Test she was late today, got verbal warning on september 21";
+    const question = "create ca for Rosalyn Test she was late today, got verbal warning on september 21";
     const { proposal, content, result } = await conversation([question, "no"]);
 
-    expect(proposal.employeeName).toBe("Paulyne Test");
+    expect(proposal.employeeName).toBe("Rosalyn Test");
     expect(proposal.formDate ?? null).toBeNull();
     expect(proposal.payrollDeduct).toBe("no");
     expect(content).not.toMatch(/who is this/i);
@@ -402,7 +402,7 @@ describe("\"create ca for Paulyne Test she was late today, got verbal warning on
 
     const { values } = await review(result.reference.instanceId);
     const byKey = Object.fromEntries(values.map((row) => [row.fieldKey, row]));
-    expect(byKey.employee_name?.value).toBe("Paulyne Test");
+    expect(byKey.employee_name?.value).toBe("Rosalyn Test");
     expect(byKey.form_date?.value).toBe("2026-09-29");
     expect(byKey.prior_actions?.value).toBe("Verbal warning — signed 09/21/2026");
     expect(byKey.prior_actions?.filledBy).toBe("ai");
@@ -420,7 +420,7 @@ describe("\"create ca for Paulyne Test she was late today, got verbal warning on
 
   it("records a first occurrence as one, and invents no prior date", async () => {
     const { result } = await conversation([
-      "create ca for Paulyne Test she was late today, verbal warning, first time",
+      "create ca for Rosalyn Test she was late today, verbal warning, first time",
       "no",
     ]);
     const { values } = await review(result.reference.instanceId);

@@ -63,7 +63,7 @@ const LEADER: LeaderRow = {
 const INVITED_LEADER: LeaderRow = {
   ...LEADER,
   userId: "44444444-4444-4444-8444-444444444444",
-  displayName: "Curt Bowen",
+  displayName: "Owen Tremaine",
   status: "invited",
   events: 0,
   forms: 0,
@@ -209,7 +209,7 @@ describe("columns are sized deliberately rather than stretched", () => {
 /* ------------------------------------------------------- identity group ---- */
 
 describe("a name and the badges about it read as one thing", () => {
-  it("keeps Curt Bowen, No activity and Invited in a single group", () => {
+  it("keeps Owen Tremaine, No activity and Invited in a single group", () => {
     /*
      * THE REPORTED SYMPTOM: they read as "three items spread across the card".
      * Being inside one inline-flex element is what makes them one identity and
@@ -217,7 +217,7 @@ describe("a name and the badges about it read as one thing", () => {
      * line in a narrow column.
      */
     leaders();
-    const link = screen.getByRole("link", { name: "Curt Bowen" });
+    const link = screen.getByRole("link", { name: "Owen Tremaine" });
     const group = link.parentElement;
 
     expect(group).not.toBeNull();

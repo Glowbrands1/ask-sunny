@@ -65,11 +65,11 @@ vi.mock("@/lib/store/app-store", () => ({
 
 vi.mock("@/lib/session/session-context", () => ({
   useSession: () => ({
-    user: { name: "Paulyne", isSalonAccount: false, title: "Owner", scope: {} },
+    user: { name: "Rosalyn", isSalonAccount: false, title: "Owner", scope: {} },
     role: "owner",
     can: () => true,
     primaryLocationName: "MO Kansas City Wornall",
-    managerDisplayName: "Paulyne",
+    managerDisplayName: "Rosalyn",
     demoMode: true,
     /* The band asks through the real provider, which needs the brand's scope. */
     brand: { knowledgeScopeId: "stc-core" },
@@ -149,7 +149,7 @@ describe("the follow-ups card", () => {
         followUps={followUps({ attention: { overdue: 2, dueThisWeek: 2, needsAttention: 4 } })}
       />,
     );
-    // Curt's explicit example.
+    // Owen's explicit example.
     expect(screen.getByText("4 follow-ups need attention")).toBeTruthy();
     expect(screen.getByText("2 overdue")).toBeTruthy();
     expect(screen.getByText("2 due this week")).toBeTruthy();

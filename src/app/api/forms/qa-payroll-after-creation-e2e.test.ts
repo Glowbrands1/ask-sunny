@@ -8,8 +8,8 @@ import type { AccessScope, ChatMessage } from "@/types";
  * EDITING AN OPEN CORRECTIVE ACTION FORM FROM THE CONVERSATION
  * ============================================================================
  *
- * Production feedback, 20 Oct 2026. With a Corrective Action Form for Ellie
- * Sendgraff open, "can you add late opening policy to the direct policy
+ * Production feedback, 20 Oct 2026. With a Corrective Action Form for Wren
+ * Halvorsen open, "can you add late opening policy to the direct policy
  * section of this from" was answered "No form has been created yet", and the
  * manager was told to create the form again. A manager has to be able to add
  * or swap a policy, change a detail, and answer a question — on the form that
@@ -209,7 +209,7 @@ beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   state.role = "salon_director";
   state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
-  state.toolValues = { observation: "Observed: Ellie did not open the salon on time.\nExpectation: Open on time.\nGoing Forward: Ellie will open on time." };
+  state.toolValues = { observation: "Observed: Wren did not open the salon on time.\nExpectation: Open on time.\nGoing Forward: Wren will open on time." };
   state.toolChecked = { warning_type: ["verbal"], offense_type: ["tardiness"] };
   state.systems = [];
   state.manualOk = true;
@@ -219,7 +219,7 @@ beforeEach(async () => {
 });
 
 /** This app's synthetic employee, as the harness above creates them. */
-const NAME = "Ellie Sendgraff";
+const NAME = "Wren Halvorsen";
 
 /*
  * ============================================================================

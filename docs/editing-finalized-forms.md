@@ -2,8 +2,8 @@
 
 ## The feedback
 
-A manager asked Sunny to "change exit for ashley rogers", then to "duplicate
-exit for ashley rogers and change date notice given to 9-27-26", then to "show
+A manager asked Sunny to "change exit for lacey morrow", then to "duplicate
+exit for lacey morrow and change date notice given to 9-27-26", then to "show
 draft of exit". Every answer said a created form can't be changed. The
 finalized card said "A correction is a revision", but nothing let the manager
 make one: `POST /api/forms/instances/[id] {action: "revise"}` existed, and no
@@ -41,7 +41,7 @@ Three ways in:
    opens the new draft and makes the correction there, instead of refusing.
    (`chat-correction.ts`, `chat-revision.ts`, via `editable-draft.ts`.)
 3. **Asking for a form on file by name and employee** — "change exit for
-   ashley rogers", "edit the coaching form for Dana Moss", "show draft of
+   lacey morrow", "edit the coaching form for Dana Moss", "show draft of
    exit" — finds it (the conversation's form when it is the one meant,
    otherwise the newest active one the actor may see, filtered exactly as Form
    Monitoring is) and puts its card in the thread: a draft as it is, a

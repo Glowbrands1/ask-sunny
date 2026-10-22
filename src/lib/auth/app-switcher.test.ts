@@ -62,10 +62,10 @@ describe("who is offered the app switcher", () => {
   });
 
   describe("the two named non-administrators", () => {
-    const [colene, dj] = APP_SWITCHER_USER_IDS;
+    const [delphine, dj] = APP_SWITCHER_USER_IDS;
 
-    it("Colene (district_manager) and DJ (regional_manager) are, by user id", async () => {
-      signedInAs("district_manager", true, colene);
+    it("Delphine (district_manager) and DJ (regional_manager) are, by user id", async () => {
+      signedInAs("district_manager", true, delphine);
       expect(await pageShowsAppSwitcher()).toBe(true);
       signedInAs("regional_manager", true, dj);
       expect(await pageShowsAppSwitcher()).toBe(true);
@@ -76,19 +76,19 @@ describe("who is offered the app switcher", () => {
         role: "district_manager",
         verified: true,
         subject: "other-id",
-        email: "colene.schildt@glowbrands.com",
+        email: "delphine.ashworth@glowbrands.com",
       };
       expect(await pageShowsAppSwitcher()).toBe(false);
     });
 
     it("an unverified identity carrying their id is not", async () => {
-      signedInAs("district_manager", false, colene);
+      signedInAs("district_manager", false, delphine);
       expect(await pageShowsAppSwitcher()).toBe(false);
     });
 
     it("demo mode is not, even with their id", async () => {
       page.enforced = false;
-      signedInAs("district_manager", true, colene);
+      signedInAs("district_manager", true, delphine);
       expect(await pageShowsAppSwitcher()).toBe(false);
     });
 

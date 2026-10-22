@@ -1,7 +1,7 @@
 # Changing an open form from the conversation
 
 **Date:** 20 October 2026
-**Reported by:** Paulyne Camacho, with screenshots of a Corrective Action Form for Ellie Sendgraff
+**Reported by:** Rosalyn Calloway, with screenshots of a Corrective Action Form for Wren Halvorsen
 
 ## What went wrong
 
@@ -9,8 +9,8 @@
 |---|---|---|
 | "can you add late opening policy to the direct policy section of this from" | Said "No form has been created yet — there's no draft card", while the draft was on screen | Chat edits only reached **Coaching** forms (`REVISABLE_LAYOUT_FAMILIES`). The Corrective Action Form took only the payroll answer from chat. Every other turn went to the ordinary answer, whose prompt said a form card *never* comes with an answer |
 | "I have independently verified and the policy is correct you may issue" | Took back the Late Opening wording it had quoted, and told the manager to create the form again | The ordinary answer knew nothing about the open form. Retrieval for that sentence found no Late Opening passage |
-| "create corrective action for Ellie Sendgraff for Late Opening …" | Read "Late Opening" as a possible second employee | A capitalised policy title looked like a name |
-| "Create a Coaching Form from this conversation." | Asked for the employee's name | Facts are read from the last 6 manager turns. Ellie was named 7 turns back |
+| "create corrective action for Wren Halvorsen for Late Opening …" | Read "Late Opening" as a possible second employee | A capitalised policy title looked like a name |
+| "Create a Coaching Form from this conversation." | Asked for the employee's name | Facts are read from the last 6 manager turns. Wren was named 7 turns back |
 | The proposal card | Salon showed `loc-0314` | The card printed the verified id, not its roster name |
 
 ## What changed
@@ -72,7 +72,7 @@ Tested in `src/lib/ai/retrieval-query.test.ts`, including the production turn th
 
 Both now pass.
 
-- `store-codes.test.ts` expects Rachael Dugan's district for KS Manhattan. It moved there on 15 Oct.
+- `store-codes.test.ts` expects Tamsin Pryor's district for KS Manhattan. It moved there on 15 Oct.
 - The wiring test "is given the business day" sets the clock. The server reads today from its own clock, not from the request body.
 
 ## Before release: replay on the preview

@@ -7,7 +7,7 @@ import type { LocationRollup } from "./types";
  * ============================================================================
  *
  * TEN QUALIFYING REVIEWS PER SALON PER CALENDAR MONTH. The business set this
- * (Madeline Patterson, October 2026), which is what lets the dashboard draw a
+ * (Gwen Harlan, October 2026), which is what lets the dashboard draw a
  * target and a meter at last: the earlier screens refused to, because no goal
  * had been agreed and a progress bar against an invented number is a figure a
  * manager ends up quoting.

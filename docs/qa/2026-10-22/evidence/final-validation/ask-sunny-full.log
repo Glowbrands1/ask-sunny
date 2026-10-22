@@ -1364,7 +1364,7 @@ stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguo
 stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 4: ambiguous or unassigned salons are asked about, never picked > a global administrator may name any roster salon in a correction
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
 
-stdout | src/app/api/forms/corrective-action-payroll-e2e.test.ts > "create ca for Paulyne Test she was late today, got verbal warning on september 21" > lists the prior warning with its date from the manager's words, and keeps today as the form's date
+stdout | src/app/api/forms/corrective-action-payroll-e2e.test.ts > "create ca for Rosalyn Test she was late today, got verbal warning on september 21" > lists the prior warning with its date from the manager's words, and keeps today as the form's date
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
 
 stdout | src/app/api/forms/qa-f12-salon-reply-e2e.test.ts > criterion 3: the employee and every other answer are kept, on the card and on the saved form > a Corrective Action answered '410' keeps the employee, level, payroll answer and incident date
@@ -1376,7 +1376,7 @@ stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > any other 
 stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > any other change to the open Corrective Action Form is made in place > puts the deduction in the Action Plan when payroll deduct is changed to Yes, and takes it out on No
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
 
-stdout | src/app/api/forms/corrective-action-payroll-e2e.test.ts > "create ca for Paulyne Test she was late today, got verbal warning on september 21" > records a first occurrence as one, and invents no prior date
+stdout | src/app/api/forms/corrective-action-payroll-e2e.test.ts > "create ca for Rosalyn Test she was late today, got verbal warning on september 21" > records a first occurrence as one, and invents no prior date
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
 
 stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > any other change to the open Corrective Action Form is made in place > is not a revision when the manager asks for another Corrective Action
@@ -1400,7 +1400,7 @@ stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > an ordinar
 stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > an ordinary answer knows the form is open > tells nobody about a form they may not see
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
 
-stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > changing to a different form keeps the person the conversation is about > carries Ellie Sendgraff into a Coaching Form asked for well after she was named
+stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > changing to a different form keeps the person the conversation is about > carries Wren Halvorsen into a Coaching Form asked for well after she was named
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}
 
 stdout | src/app/api/forms/corrective-action-chat-edits-e2e.test.ts > a section the form already cites > is said to be there, and nothing is rewritten
@@ -1978,7 +1978,7 @@ stdout | src/app/api/forms/coaching-feedback-e2e.test.ts > across the roles that
 
  ✓ src/app/api/forms/coaching-feedback-e2e.test.ts (25 tests) 609ms
  ✓ src/lib/ai/form-intake-qa-2026-10-20.test.ts (11 tests) 477ms
-     ✓ the reported message proposes the Coaching Form for Brandi Algya  324ms
+     ✓ the reported message proposes the Coaching Form for Corinne Valdez  324ms
  ✓ src/lib/admin/reset-link.test.ts (21 tests) 417ms
 stdout | src/app/api/forms/qa-payroll-after-creation-e2e.test.ts > QA 22 Oct 2026: a payroll answer corrected after the form exists is never left as a silent Yes > Yes, then 'we cancelled the $25 payroll deduction' → No on the form, and the Action Plan no longer states a deduction
 {"event":"forms.template_sync.completed","level":"info","created":["coaching","dpoa","policy-review","sdit-epp","tsd-epp","asd-sdit-epp","fttc-epp","dmit-epp-tsd","dmit-epp-dmit","follow-up-coaching","stc-exit","demotion","position-transfer","prescreen-phone-interview","tanning-consultant-interview","management-interview-round-1","management-interview-round-2"],"revised":[],"renamed":[],"heldBack":[],"failed":[],"repaired":[]}

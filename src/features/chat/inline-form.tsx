@@ -1167,7 +1167,7 @@ export function policyVerificationNoticeFor(
   /*
    * A DRAFT THAT WROTE NOTHING AT ALL. "No approved policy matched what you
    * described" is wrong when nothing was described: production, 20 Oct 2026,
-   * "create ca for Ellie Sendgraff" drafted zero fields, and the form was then
+   * "create ca for Wren Halvorsen" drafted zero fields, and the form was then
    * filled by hand — policy wording pasted in with no section or page.
    */
   const draftedNothing = !loaded.values.some(

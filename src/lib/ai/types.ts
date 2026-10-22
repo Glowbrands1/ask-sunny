@@ -99,7 +99,7 @@ export interface AskRequest {
    *
    * SET BY THE SERVER ONLY. `parseAskRequest` never copies it from the body:
    * the route reads it from the instance after `authorizeInstance`, so the
-   * prompt can say "the Corrective Action Form for Ellie is open" instead of
+   * prompt can say "the Corrective Action Form for Wren is open" instead of
    * denying a form that is on screen. See `lib/forms/open-form-summary.ts`.
    */
   openForm?: OpenFormSummary | null;
