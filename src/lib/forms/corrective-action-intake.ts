@@ -280,6 +280,22 @@ const LEVEL_BARE = new RegExp(
 const LEVEL_LABELLED =
   /\b(?:type\s+of\s+warning|warning\s*(?:level|type))\s*(?:is|should\s+be|[:=-])\s*(?:a\s+)?(verbal|written)\b/g;
 
+/**
+ * "verbal, payroll deduct no." — a bare level in a clause of its own, beside
+ * clauses that only answer the payroll question. HR, 21 Oct 2026 (ported from
+ * Ask Bubbles 9530112): the comma made the sentence more than a bare level, so
+ * the level was asked for again. Every other clause must state a payroll
+ * answer; anything else ("verbal, she was late") is not read.
+ */
+function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
+  const clauses = body.split(",").map((clause) => clause.trim());
+  if (clauses.length < 2) return null;
+  const levels = clauses.map((clause) => LEVEL_BARE.exec(clause));
+  if (levels.filter(Boolean).length !== 1) return null;
+  const others = clauses.filter((_, index) => !levels[index]);
+  return others.every((clause) => statedPayrollDeduct(clause) !== null) ? levels.find(Boolean)! : null;
+}
+
 /** The level one manager turn states for this form, or null. */
 export function statedWarningLevel(text: string): StatedWarningLevel | null {
   const levels = new Set<StatedWarningLevel>();
@@ -288,7 +304,7 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
     if (sentence[0].endsWith("?")) continue;
 
-    const bare = LEVEL_BARE.exec(body);
+    const bare = LEVEL_BARE.exec(body) ?? levelBesidePayrollAnswer(body);
     if (bare) levels.add(bare[1] as StatedWarningLevel);
 
     for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
