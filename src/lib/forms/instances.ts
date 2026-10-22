@@ -31,8 +31,12 @@ import {
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
+import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
+
+/** The form's own Date line — the same day as `form_instances.form_date`. */
+const FORM_DATE_KEY = "form_date";
 
 /**
  * THE FORMS THEMSELVES — one employee, one conversation, one record.
@@ -340,10 +344,20 @@ export async function loadInstance(id: string): Promise<LoadedInstance | null> {
   if (values.error) throw new Error(`Could not read the values: ${values.error.message}`);
   if (events.error) throw new Error(`Could not read the history: ${events.error.message}`);
 
+  const mapped = (values.data ?? []).map(mapValue);
+  /*
+   * THE DATE LINE IS THE FORM'S DATE. `writeValues` keeps the instance's
+   * column in step with it; a row written before it did is read as the line
+   * says, so the PDF, a redraft and the reopened form never disagree with
+   * what the form shows.
+   */
+  const dated = mapped.find((entry) => entry.fieldKey === FORM_DATE_KEY)?.value;
+  if (isIsoCalendarDate(dated)) instance.formDate = dated;
+
   return {
     instance,
     version,
-    values: (values.data ?? []).map(mapValue),
+    values: mapped,
     events: (events.data ?? []).map((event) => ({
       kind: String(event.kind),
       actor: String(event.actor),
@@ -513,6 +527,20 @@ async function writeValues(
     .from("form_instance_values")
     .upsert(rows, { onConflict: "instance_id,field_key" });
   if (error) throw new Error(`Could not save the form: ${error.message}`);
+
+  /*
+   * ONE DATE EVERYWHERE. QA follow-up, 22 Oct 2026 (ported from Ask Bubbles):
+   * `form_instances.form_date` — what the Forms Register lists, the PDF prints
+   * and the drafting route dates the form by — was set once at creation, so a
+   * Date changed on the card or in chat changed only the Date line. Whatever
+   * writes the line now moves the column with it. A blank or malformed line
+   * moves nothing.
+   */
+  const date = accepted.values[FORM_DATE_KEY];
+  if (isIsoCalendarDate(date)) {
+    const { error: dateError } = await supabase.from("form_instances").update({ form_date: date }).eq("id", instanceId);
+    if (dateError) throw new Error(`Could not save the form's date: ${dateError.message}`);
+  }
 }
 
 /**
@@ -953,6 +981,8 @@ export async function reviseInstance(
       source: loaded.instance.source,
       status: "draft",
       revises_instance_id: loaded.instance.id,
+      // The form's date, not the day it is reopened (the column defaults to today).
+      form_date: loaded.instance.formDate,
       /*
        * THE FOLLOW-UP COMES WITH IT. While this is a draft the original still
        * carries the tracking (see `followUpState`), so nothing is counted

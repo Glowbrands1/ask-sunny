@@ -759,14 +759,14 @@ describe("a finalized form renders read-only rather than assuming a draft", () =
 
 /** A create that succeeds, then a draft the test releases when it chooses. */
 function delayedDraft() {
-  let release: (drafted?: boolean) => void = () => {};
+  let release: (drafted?: boolean, notice?: string) => void = () => {};
   let failDraft: () => void = () => {};
   let drafted = false;
 
   const pending = new Promise<{ ok?: boolean; payload: unknown }>((resolve) => {
-    release = (didDraft = true) => {
+    release = (didDraft = true, notice?: string) => {
       drafted = didDraft;
-      resolve({ payload: { values: {}, checked: {}, withheld: [] } });
+      resolve({ payload: { values: {}, checked: {}, withheld: [], notice: notice ?? null } });
     };
     failDraft = () => resolve({ ok: false, payload: { error: "Sunny is unavailable." } });
   });
@@ -922,6 +922,36 @@ describe("R2-F1. the drafted values appear when prefill completes", () => {
       (made) => made.url === "/api/forms/instances/inst-42" && made.method === "GET",
     );
     expect(reads.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+/*
+ * QA audit, 22 Oct 2026: the drafting route's notice — an observation that
+ * lost a policy finding, a refused box, a policy it could not choose — was
+ * returned to the browser and dropped, so the manager saw an emptied section
+ * with no reason. The route's own rule: a shortened HR record is said out loud.
+ */
+describe("what the draft left out is said on the card", () => {
+  const NOTICE =
+    "Ask Sunny kept the observation to what was seen. It removed the statement that a policy was breached, because Woven does not see a policy in the knowledge base that supports it — confirm the exact policy in the official manual, then add the finding yourself.";
+
+  it("shows the drafting route's notice once prefill completes, and the form is editable", async () => {
+    const { release } = delayedDraft();
+    await createAndWait();
+    release(true, NOTICE);
+
+    await waitFor(() => expect(screen.getByDisplayValue("Sarah was late twice.")).toBeTruthy());
+    await waitFor(() => expect(renderResult!.container.textContent).toContain(NOTICE));
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy();
+  });
+
+  it("says nothing extra when the draft left nothing out", async () => {
+    const { release } = delayedDraft();
+    await createAndWait();
+    release(true);
+
+    await waitFor(() => expect(screen.getByDisplayValue("Sarah was late twice.")).toBeTruthy());
+    expect(renderResult!.container.textContent).not.toMatch(/Ask Sunny kept the observation/);
   });
 });
 

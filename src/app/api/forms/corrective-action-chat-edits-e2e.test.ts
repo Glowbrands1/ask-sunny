@@ -668,8 +668,9 @@ describe("QA 22 Oct: facts told after the form exists go onto the open form", ()
     await onOpenForm(id, history, "she also had a verbal ca on 9-1-26");
     expect((await row(id, "prior_actions"))?.value?.split("\n")).toHaveLength(2);
 
-    const dated = await onOpenForm(id, history, "it happened on 10/19/26");
-    expect(dated?.formUpdate?.updated).toEqual(["form_date"]);
+    // A date change is said as one; the form-date reader moves the drafted paragraphs' day with it (release merge, 22 Oct 2026).
+    const dated = await onOpenForm(id, history, "change the date to 10/19/26");
+    expect(dated?.formUpdate?.updated).toContain("form_date");
 
     const level = await onOpenForm(id, history, "make it a written");
     expect(level?.formUpdate?.updated).toEqual(["warning_type"]);

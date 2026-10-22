@@ -55,9 +55,15 @@ const NEGATIVE: readonly RegExp[] = [
    * The waiver may come after the subject or before it ("we waived the
    * payroll deduction"), within the clause.
    */
-  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven|cancell?ed|cancell?ing|called\s+off)\b`),
+  /*
+   * Said OF the deduction — "the deduction was/is waived", "cancel the $25
+   * deduction" — never a cancelled thing nearby: "payroll deduction of $25 for
+   * the cancelled order is applicable" is a Yes (review, 22 Oct 2026, from Ask
+   * Sunny's audit).
+   */
+  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;,\n]{0,25}?\b(?:is|was|has\s+been|have\s+been|been|be|got|are|were)\s+(?:waived|forgiven|cancell?ed|called\s+off)\b`),
   // "we cancelled the $25 payroll deduction" (QA, 22 Oct 2026): cancelled is waived.
-  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
+  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\s+(?:the\s+|a\s+|her\s+|his\s+|their\s+|this\s+|that\s+)?(?:\$\s?\d[\d,]*(?:\.\d{1,2})?\s+|\d[\d,]*(?:\.\d{2})?\s+)?${SUBJECT}\b`),
   // "payroll deduct $25 does not apply", "$25 payroll deduction is not needed" (QA, 22 Oct 2026)
   new RegExp(
     String.raw`\b${SUBJECT}\s+\$\s?\d[\d,]*(?:\.\d{1,2})?\s+(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
@@ -123,10 +129,10 @@ const POSITIVE_IMPLIED: readonly RegExp[] = [
   /\bdeduct(?:ing|ed)?\b[^.\n]{0,40}\bfrom\s+(?:her|his|their|the|its)?\s*(?:pay|paycheck|payroll|check|wages)\b/,
   // "it will be deducted", "we'll deduct", "needs to be deducted", "$25 will be payroll deducted"
   /\b(?:will|we'll|we will|going to|should|needs? to|has to|have to)\s+(?:be\s+)?(?:payroll\s+)?deduct(?:ed)?\b/,
-  // "payroll deduct $25", "deduct $3.25", "deduction of $25" — an amount to take is a yes
-  /\b(?:payroll\s+)?deduct(?:ion|ed|ing)?\s+(?:of\s+|for\s+)?\$\s?\d/,
-  // "$25 payroll deduction", "$25 payroll deduct"
-  /\$\s?\d[\d,]*(?:\.\d{1,2})?\s+payroll\s+deduct/,
+  // "payroll deduct $25", "deduct $3.25", "deduction of $25", "deduct 25 dollars" — an amount to take is a yes
+  /\b(?:payroll\s+)?deduct(?:ion|ed|ing)?\s+(?:of\s+|for\s+)?(?:\$\s?\d|\d[\d,]*(?:\.\d{2})?\s*(?:dollars?|bucks)\b|\d+\.\d{2}\b)/,
+  // "$25 payroll deduction", "$25 payroll deduct", "25 dollar payroll deduction"
+  /(?:\$\s?\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{2})?\s*(?:dollars?|bucks))\s+payroll\s+deduct/,
   // "dock her pay", "take it out of her check" (QA, 22 Oct 2026, round 3) — a Yes only when nothing beside it denies it
   /\bdock(?:ing|ed)?\s+(?:her|his|their)\s+(?:pay|paycheck|check|wages)\b/,
   /\b(?:take|taking|comes?|coming)\s+(?:it\s+|that\s+|this\s+|the\s+\w+\s+)?out\s+of\s+(?:her|his|their)\s+(?:pay|paycheck|check|wages)\b/,

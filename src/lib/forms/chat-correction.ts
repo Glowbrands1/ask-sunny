@@ -16,6 +16,8 @@ import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative
 import { changeOnEditableDraft } from "./editable-draft";
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
+import { formDateChange, formDateChangeUnclear, formDateReply } from "./form-date-answer";
+import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import {
@@ -27,11 +29,23 @@ import {
 } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { describesIncident, statedWarningLevel, WARNING_TYPE_KEY } from "./corrective-action-intake";
-import { extractFormDate, priorSteps } from "./form-date-answer";
 import { NO_PRIOR_ACTION, statedPriorActions } from "./prior-actions";
 import { detectTemplateIntent } from "./template-intent";
-import { saveInstanceValues } from "./instances";
+import { applyAssistantDraft, saveInstanceValues } from "./instances";
 import { enforcePersonEdit } from "./responsibility";
+
+/** The form's own Date line. */
+const FORM_DATE_KEY = "form_date";
+
+/*
+ * THE FORMS WHOSE DATE IS THE INCIDENT'S — corrected from chat, the drafted
+ * observation's date moving with it. The business decided this for the
+ * Corrective Action Form on 22 Oct 2026, after the QA audit of the District
+ * Manager's 21 Oct reports (ported from Ask Bubbles, where it is the forms
+ * registry's `formDateIsIncidentDate`). Its employee name is still corrected
+ * on the form, never from chat.
+ */
+const FORM_DATE_IS_INCIDENT_DATE: ReadonlySet<string> = new Set(["dpoa"]);
 
 /**
  * ============================================================================
@@ -80,7 +94,17 @@ export async function correctActiveForm(input: {
    * answer and asks again (see below), never leaving a Yes in place.
    */
   const payrollUnclear = !payroll && payrollDeductUnclear(input.question);
-  if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear) return correctCorrectiveActionFacts(input);
+  /*
+   * "CHANGE THE DATE TO 10-19-26" — read only where the date is named as what
+   * is corrected; "change the date" or "10-2 or 10-3" is asked about, never
+   * guessed. See `formDateChange`.
+   */
+  const newFormDate =
+    formDateChange(input.question, input.today) ?? formDateReply(input.question, lastAssistant, input.today);
+  const dateUnclear = newFormDate === null ? formDateChangeUnclear(input.question, input.today) : null;
+  if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear && !newFormDate && !dateUnclear) {
+    return correctCorrectiveActionFacts(input);
+  }
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -96,16 +120,24 @@ export async function correctActiveForm(input: {
   /*
    * "NO PAYROLL DEDUCTION" / "CHANGE PAYROLL DEDUCT TO YES" on a form whose
    * version asks "Is payroll deduct applicable?" — today the Corrective Action
-   * Form. That one answer is the only thing such a form takes from chat; its
-   * other lines are edited on the form. Read off the version's keys, so no
-   * template key is special-cased.
+   * Form. That answer and the form's date are what such a form takes from
+   * chat; its other lines are edited on the form. Read off the version's keys,
+   * so no template key is special-cased.
    */
   const asksPayroll = checkboxGroupsForVariant(document, variantKey).some(
     (group) => group.key === PAYROLL_DEDUCT_KEY,
   );
   // The Exit Form, read off the pinned version's keys as the drafting route does.
   const isExit = !kind && isExitDocumentKeys(responsibilityMap(document, variantKey).keys());
-  if (!kind && !isExit && !(asksPayroll && (payroll || payrollUnclear))) return null;
+  const datesTheIncident =
+    !kind &&
+    !isExit &&
+    FORM_DATE_IS_INCIDENT_DATE.has(loaded.instance.templateKey) &&
+    fieldsForVariant(document, variantKey).some((field) => field.key === FORM_DATE_KEY);
+  const correctsDate = datesTheIncident && newFormDate !== null;
+  const whichDate = datesTheIncident && dateUnclear ? whichDateQuestion(loaded.instance, dateUnclear.offered) : null;
+  const correctsOtherwise = kind || isExit || (asksPayroll && (payroll || payrollUnclear)) || correctsDate;
+  if (!correctsOtherwise && !whichDate) return null;
   /*
    * ==========================================================================
    * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
@@ -133,6 +165,8 @@ export async function correctActiveForm(input: {
   if (named.length > 0 && !named.some((name) => samePerson(name, loaded.instance.employeeName))) {
     return null;
   }
+  // Only now, past the new-request and other-employee guards: nothing else to correct, so ask which date.
+  if (!correctsOtherwise) return reply(whichDate!);
 
   /*
    * THE EXIT FORM'S CORRECTION is its own readers' reading, plus the one
@@ -154,7 +188,10 @@ export async function correctActiveForm(input: {
     ? employmentCorrection
     : isExit
       ? exitValues
-      : { values: {}, checked: payrollUnclear ? { [PAYROLL_DEDUCT_KEY]: [] } : payrollDeductChecked(payroll) };
+      : {
+          values: correctsDate ? { [FORM_DATE_KEY]: newFormDate! } : {},
+          checked: asksPayroll ? (payrollUnclear ? { [PAYROLL_DEDUCT_KEY]: [] } : payrollDeductChecked(payroll)) : {},
+        };
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
@@ -173,7 +210,7 @@ export async function correctActiveForm(input: {
     ? CORRECTABLE_KEYS
     : isExit
       ? EXIT_CORRECTABLE_KEYS
-      : new Set([PAYROLL_DEDUCT_KEY]);
+      : new Set([PAYROLL_DEDUCT_KEY, FORM_DATE_KEY]);
   const restrict = <T,>(entries: Record<string, T>) =>
     Object.fromEntries(Object.entries(entries).filter(([key]) => correctable.has(key)));
   const values = restrict(correction.values);
@@ -255,6 +292,29 @@ export async function correctActiveForm(input: {
    * leaves neither: the form can never hold "Salon 24" beside a reason that
    * still says "salon 23" because a second write failed after the first.
    */
+  /*
+   * THE OBSERVATION MOVES WITH THE DATE. A corrected form date also moves the
+   * day it replaces in what was observed, where Ask Sunny drafted it — so the
+   * Date line and the observation never disagree. Written as Ask Sunny's own,
+   * after the date, the way the Action Plan is kept in step, so it moves again
+   * on the next correction. Never Prior Actions, a policy line or a plan, and
+   * never a paragraph a person wrote or edited: that is named for them.
+   */
+  const movedDate: Record<string, string> = {};
+  const datedByHand: string[] = [];
+  if (correctsDate && updated.includes(FORM_DATE_KEY)) {
+    const was = loaded.values.find((row) => row.fieldKey === FORM_DATE_KEY)?.value ?? loaded.instance.formDate;
+    for (const field of fieldsForVariant(document, variantKey)) {
+      if (field.key === FORM_DATE_KEY || field.narrative !== "observed_expectation") continue;
+      const row = loaded.values.find((entry) => entry.fieldKey === field.key);
+      const text = row?.value ?? "";
+      if (!was || text.trim() === "") continue;
+      const moved = withDateMoved(text, was, newFormDate!);
+      if (moved === text) continue;
+      if (row!.filledBy === "ai") movedDate[field.key] = moved;
+      else datedByHand.push(field.label);
+    }
+  }
   const toSave = {
     values: { ...accepted.values, ...(syncedKey ? { [syncedKey]: sync!.text } : {}) },
     checked: accepted.checked,
@@ -301,6 +361,29 @@ export async function correctActiveForm(input: {
   } else if (reason && narrative.trim() !== "" && !rewritten) {
     lines.push("", `The ${paragraph} was written before this change — give it a quick read to make sure it still matches.`);
   }
+  const movedKeys =
+    Object.keys(movedDate).length > 0 && written.includes(FORM_DATE_KEY)
+      ? Object.keys(
+          (
+            await applyAssistantDraft(
+              input.instanceId,
+              { values: movedDate, checked: {} },
+              actor.id,
+              Object.fromEntries(
+                Object.keys(movedDate).map((key) => [key, loaded.values.find((row) => row.fieldKey === key)?.provenance ?? {}]),
+              ),
+            )
+          ).accepted.values,
+        )
+      : [];
+  if (movedKeys.length > 0) {
+    written.push(...movedKeys);
+    const labels = movedKeys.map((key) => fieldsForVariant(document, variantKey).find((field) => field.key === key)?.label ?? key);
+    lines.push("", `I moved the date in the ${labels.join(" and ")} too, so it matches the form.`);
+  }
+  if (datedByHand.length > 0) {
+    lines.push("", `The ${datedByHand.join(" and ")} still names the old date — you wrote that, so I left it; check it still says what you mean.`);
+  }
   if (planKeys.length > 0) {
     written.push(...planKeys);
     lines.push(
@@ -308,6 +391,7 @@ export async function correctActiveForm(input: {
       payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction.",
     );
   }
+  if (whichDate) lines.push("", whichDate);
   /*
    * AN UNCLEAR PAYROLL STATEMENT ABOUT THIS FORM CLEARS THE ANSWER AND ASKS.
    * QA, 22 Oct 2026: after a form with "Yes" was created, "hold off on the $25
@@ -325,6 +409,15 @@ export async function correctActiveForm(input: {
   }
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };
+}
+
+/** The question a date correction that names no single day is answered with. Nothing is changed. */
+function whichDateQuestion(instance: { templateName: string; employeeName: string }, offered: readonly string[]): string {
+  const who = `**${instance.templateName}** for **${instance.employeeName}**`;
+  const spelled = offered.map((iso) => resolveFormDate(iso)?.long ?? iso);
+  return spelled.length > 1
+    ? `Which date should the ${who} have — ${spelled.slice(0, -1).join(", ")} or ${spelled.at(-1)}? I haven't changed it.`
+    : `What date should the ${who} have? I haven't changed it — tell me the day, for example "change the date to 10-19-26".`;
 }
 
 /** "jane", "Jane Doe" and "JANE DOE" name the employee on a form for "Jane Doe". */
@@ -350,9 +443,8 @@ function samePerson(named: string, employee: string): boolean {
  *                                  there, and nothing on the list removed
  *   "first time", "no prior …"     "None — first occurrence", only where
  *                                  Prior Actions is empty
- *   the date of what happened      the form's date — never an earlier step's
- *                                  date, never a future one, and not where the
- *                                  turn tells a new incident
+ *   (the date is corrected by the form-date reader above, which also moves the
+ *    day in the paragraphs Sunny drafted, so the form never states two dates)
  *   the level for this form        Type of Warning — never a level on file,
  *                                  and a Termination or Demotion tick stays
  *
@@ -362,7 +454,6 @@ const NO_HISTORY =
   /\b(?:first\s+(?:time|offen[cs]e|occurrence|one)|no\s+(?:prior|previous|past|earlier)\b|no\s+(?:coaching|warnings?|write[- ]?ups?|corrective\s+actions?)\b|nothing\s+(?:on\s+file|prior|before))/i;
 
 const PRIOR_ACTIONS_KEY = "prior_actions";
-const FORM_DATE_KEY = "form_date";
 const WARNING_LEVEL_OPTIONS: ReadonlySet<string> = new Set(["verbal", "written"]);
 
 /** The step and the signed date a Prior Actions line names, for telling a repeat. */
@@ -381,13 +472,10 @@ async function correctCorrectiveActionFacts(input: {
   const text = input.question.trim();
   if (text.endsWith("?") || /^(?:what|why|how|when|where|which|who|is|are|does|do|did|should|can|could)\b/i.test(text)) return null;
   const priorLines = statedPriorActions(text, input.today);
-  const priorDates = new Set(priorSteps(text, input.today).map((step) => step.iso));
   const firstTime = priorLines.length === 0 && NO_HISTORY.test(text);
-  const said = extractFormDate(text, input.today);
   const anotherIncident = describesIncident(text) && !/\b(?:change|switch|set|update|correct|actually|not|was\s+on)\b/i.test(text);
-  const date = said && !priorDates.has(said) && said <= input.today && !anotherIncident ? said : null;
   const level = anotherIncident ? null : statedWarningLevel(text);
-  if (priorLines.length === 0 && !firstTime && !date && !level) return null;
+  if (priorLines.length === 0 && !firstTime && !level) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -432,8 +520,6 @@ async function correctCorrectiveActionFacts(input: {
     if (kept.length === 0 && existing[0] !== NO_PRIOR_ACTION) values[PRIOR_ACTIONS_KEY] = NO_PRIOR_ACTION;
     else if (kept.length > 0) notes.push(`Prior Actions already lists ${kept.length === 1 ? "an earlier step" : "earlier steps"}, so I left it as it is — change it on the form if that list is wrong.`);
   }
-  const currentDate = loaded.values.find((row) => row.fieldKey === FORM_DATE_KEY)?.value ?? "";
-  if (date && keys.has(FORM_DATE_KEY) && date !== currentDate) values[FORM_DATE_KEY] = date;
   if (level && warningGroup.options.some((option) => option.key === level)) {
     const ticked = loaded.values.find((row) => row.fieldKey === WARNING_TYPE_KEY)?.checked ?? [];
     const next = [...ticked.filter((option) => !WARNING_LEVEL_OPTIONS.has(option)), level];
