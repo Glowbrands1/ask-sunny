@@ -191,7 +191,7 @@ async function caFor(name: string, second = "verbal, payroll deduct no.", where 
       actor: actor(),
       summaries: await listTemplateSummaries(),
       today: "2026-09-29",
-      priorFormsOnFile: (employeeName) => priorFormsForChat(actor(), employeeName),
+      priorFormsOnFile: (employeeName, locationId) => priorFormsReadingForChat(actor(), employeeName, locationId),
       ...(proposal ? { continueTemplateKey: proposal.templateKey } : {}),
     });
     expect(response?.formProposal, text).toBeDefined();

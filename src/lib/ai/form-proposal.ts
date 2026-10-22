@@ -82,7 +82,7 @@ import {
   type EmploymentChangeKind,
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
-import { PRODUCTION_SALONS } from "@/data/salons";
+import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
@@ -110,7 +110,7 @@ import {
   suggestedTemplateKeys,
 } from "@/lib/forms/form-opportunity";
 import { type TemplateSummary } from "@/lib/forms/repository";
-import type { PriorFormOnFile } from "@/lib/forms/prior-forms-lines";
+import type { PriorFormOnFile, PriorFormsReading } from "@/lib/forms/prior-forms-lines";
 import { signedDate } from "@/lib/forms/prior-actions";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type {
@@ -353,9 +353,10 @@ export interface ProposalTurn {
    * Monitoring, under this manager's visibility — read only for a Corrective
    * Action, so the history already on file is read back before the form is
    * created. Never rejects: an unreadable record is an empty list. See
-   * `lib/forms/prior-forms.ts`.
+   * `lib/forms/prior-forms.ts`. Given the proposal's salon, so what the chat
+   * calls verified is exactly what the draft route will write (QA F-11).
    */
-  priorFormsOnFile?: (employeeName: string) => Promise<readonly PriorFormOnFile[]>;
+  priorFormsOnFile?: (employeeName: string, locationId: string | null) => Promise<PriorFormsReading>;
   /**
    * The server's business day (`YYYY-MM-DD`), which supplies the year for a
    * form date typed as month and day. See `lib/forms/form-date-answer.ts`.
@@ -816,8 +817,8 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
           namedPolicy: correctiveAction ? await namedPolicyFor(scoped.text, input) : null,
           priorOnFile:
             correctiveAction && proposal.employeeName && proposal.status !== "needs_employee"
-              ? ((await input.priorFormsOnFile?.(proposal.employeeName)) ?? [])
-              : [],
+              ? ((await input.priorFormsOnFile?.(proposal.employeeName, proposal.locationId)) ?? NO_PRIOR_FORMS)
+              : NO_PRIOR_FORMS,
         });
   const notes = [
     directory.note,
@@ -1790,7 +1791,7 @@ function proposalContent(
   today: string,
   extra: {
     readonly namedPolicy?: NamedPolicyReading | null;
-    readonly priorOnFile?: readonly PriorFormOnFile[];
+    readonly priorOnFile?: PriorFormsReading;
   } = {},
 ): string {
   /*
@@ -1970,7 +1971,7 @@ function proposalContent(
         readCaPolicy(context.text),
         statedPriorActions(context.text, today),
         extra.namedPolicy ?? null,
-        extra.priorOnFile ?? [],
+        extra.priorOnFile ?? NO_PRIOR_FORMS,
       );
     }
   }
@@ -1987,6 +1988,11 @@ function proposalContent(
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
     if (proposal.awaitingIncident) lines.push("", NO_INCIDENT_NOTE);
+    // No salon yet, so nothing on file is verified: say what is there and the rule (QA F-11).
+    const possibleNote = isCorrectiveActionForm(match)
+      ? possibleOnFileNote(proposal, extra.priorOnFile ?? NO_PRIOR_FORMS, statedPriorActions(context.text, today))
+      : null;
+    if (possibleNote) lines.push("", possibleNote);
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,
@@ -2109,6 +2115,36 @@ function correctiveActionEmployeeQuestion(
   return `Who is this **${templateName}** for? Give me their name and I'll draft it from what you've told me — you can set the warning level and anything else on the form itself.`;
 }
 
+const NO_PRIOR_FORMS: PriorFormsReading = { attach: [], possible: [], identity: "none" };
+
+/**
+ * Same-name forms on file whose identity is not established (QA F-11): shown,
+ * each with its salon from this app's own roster, and never added. The draft
+ * route classifies with the same salon, so nothing listed here is written.
+ */
+function possibleOnFileNote(
+  proposal: ChatFormProposal,
+  reading: PriorFormsReading,
+  priorActions: readonly string[],
+): string | null {
+  const possible = reading.possible.filter(
+    (form) => !priorActions.some((line) => line.includes(signedDate(form.formDate))),
+  );
+  if (possible.length === 0) return null;
+  const where = (form: PriorFormOnFile) =>
+    form.locationName ?? (form.locationId ? salonById(form.locationId)?.name : null) ?? "no salon";
+  const one = possible.length === 1;
+  return `**Possibly on file — not added:** ${possible.map((form) => `${form.line} (${where(form)})`).join("; ")}. ${POSSIBLE_REASON[reading.identity] ?? "I can't confirm these are this employee's"}, so I won't put ${one ? "it" : "them"} on the form. If ${one ? "it is" : "any are"} ${proposal.employeeName}'s, add ${one ? "it" : "them"} under prior coaching and corrective action yourself.`;
+}
+
+/** Why a same-name form on file is only a possible match (`classifyPriorForms`). */
+const POSSIBLE_REASON: Partial<Record<PriorFormsReading["identity"], string>> = {
+  other_locations: "The same name is on file at more than one salon, so I can't confirm these are this employee's",
+  no_form_location: "This form has no salon yet, and they're added only when they're at the form's own salon",
+  single_word_name: "Only a first name was given, so I can't confirm these are this employee's",
+  incomplete: "The record is too long to read in full, so I can't confirm these are this employee's",
+};
+
 /**
  * The prose beside a Corrective Action Form that is ready to be created.
  *
@@ -2126,12 +2162,12 @@ function correctiveActionReady(
   policy: CaPolicyReading,
   priorActions: readonly string[] = [],
   namedPolicy: NamedPolicyReading | null = null,
-  priorOnFile: readonly PriorFormOnFile[] = [],
+  priorOnFile: PriorFormsReading = NO_PRIOR_FORMS,
 ): string {
   // A step the manager already dated is theirs; the record adds only the rest.
-  const onFile = priorOnFile.filter(
-    (form) => !priorActions.some((line) => line.includes(signedDate(form.formDate))),
-  );
+  const notStated = (form: PriorFormOnFile) => !priorActions.some((line) => line.includes(signedDate(form.formDate)));
+  const onFile = priorOnFile.attach.filter(notStated);
+
   const outstanding = intake.missingRequired
     .filter(
       (item) =>
@@ -2198,6 +2234,8 @@ function correctiveActionReady(
       `**On file in Form Monitoring for ${proposal.employeeName}:** ${onFile.map((form) => form.line).join("; ")}. I'll list ${onFile.length === 1 ? "it" : "them"} under prior coaching and corrective action on the form — remove any that shouldn't count.`,
     );
   }
+  const possibleNote = possibleOnFileNote(proposal, priorOnFile, priorActions);
+  if (possibleNote) lines.push("", possibleNote);
 
   if (outstanding.length > 0) {
     lines.push(

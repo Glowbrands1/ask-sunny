@@ -133,10 +133,10 @@ async function readOnFile(input: {
  * visibility. Nothing when they may not read it or the read fails — the
  * manager's own account then stands alone.
  *
- * `locationId` is the salon on the proposal. Without one, the forms are only
- * read back when every same-name form the manager can see is at ONE salon (so
- * the name can mean one person); the draft still attaches them only when the
- * form's own salon is that salon.
+ * `locationId` is the salon on the proposal — the same input the draft route
+ * classifies with, so the chat promises exactly the lines the draft will write
+ * (QA F-11 follow-up). Without one, nothing is verified yet: every same-name
+ * form is a possible match until the form has a salon.
  */
 export async function priorFormsReadingForChat(
   actor: FormRecordsActor,
@@ -148,9 +148,7 @@ export async function priorFormsReadingForChat(
     if (!formsActor) return NOTHING;
     const found = await readOnFile({ actor: formsActor, employeeName });
     if (!found) return NOTHING;
-    const places = new Set([...found.sameNameLocations, ...found.forms.map((form) => form.locationId)]);
-    const only = places.size === 1 ? [...places][0]! : null;
-    return classifyPriorForms({ ...found, employeeName, locationId: locationId !== undefined ? locationId : only });
+    return classifyPriorForms({ ...found, employeeName, locationId: locationId ?? null });
   } catch {
     return NOTHING;
   }
@@ -163,6 +161,7 @@ export async function priorFormsReadingForChat(
 export async function priorFormsForChat(
   actor: FormRecordsActor,
   employeeName: string,
+  locationId: string | null = null,
 ): Promise<PriorFormOnFile[]> {
-  return [...(await priorFormsReadingForChat(actor, employeeName)).attach];
+  return [...(await priorFormsReadingForChat(actor, employeeName, locationId)).attach];
 }
