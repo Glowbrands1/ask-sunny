@@ -14,6 +14,8 @@ import { TemplateLibrary, type TemplateSummaryView } from "@/features/forms/temp
 import type { SourceFormat } from "@/lib/forms/source-format";
 import { proposalNeedsAttention } from "@/lib/forms/ingest/proposal";
 import { requirePagePermission } from "@/lib/auth/page";
+import { describeError } from "@/lib/api/redact";
+import { TemplateSyncReport } from "@/features/forms/template-sync-report";
 
 /**
  * FORM TEMPLATES — the authorized administration screen.
@@ -84,10 +86,13 @@ export default async function FormTemplatesPage() {
    * `template-sync-policy.ts`.
    */
   let syncSkipped: string | null = null;
+  /** What the sync did this visit, shown to the administrator. See `TemplateSyncReport`. */
+  let syncResult: Awaited<ReturnType<typeof ensureTemplateLibrary>> | null = null;
 
   try {
     const sync = await ensureTemplateLibrary("system");
     syncSkipped = sync.skipped?.reason ?? null;
+    syncResult = sync;
     const summaries = await listTemplateSummaries();
     templates = summaries.map((summary) => {
       const version = summary.currentVersion ?? summary.draftVersion;
@@ -154,7 +159,15 @@ export default async function FormTemplatesPage() {
       };
     });
   } catch (error) {
-    failure = (error as Error).message;
+    /*
+     * SHOWN ON SCREEN AND LOGGED. This used to be on screen only, so a failed
+     * run left nothing on the server. The message is redacted and truncated
+     * (`describeError`) before it is written or shown.
+     */
+    failure = describeError(error);
+    console.error(
+      JSON.stringify({ event: "forms.template_sync.page_failed", level: "error", reason: failure }),
+    );
   }
 
   return (
@@ -179,6 +192,8 @@ export default async function FormTemplatesPage() {
           {syncSkipped}
         </Notice>
       ) : null}
+
+      {syncResult ? <TemplateSyncReport result={syncResult} /> : null}
 
       {failure ? (
         <Notice tone="attention" title="The template library could not be read">

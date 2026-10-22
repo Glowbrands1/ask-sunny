@@ -1,5 +1,6 @@
 import "server-only";
 
+import { describeError } from "@/lib/api/redact";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import {
@@ -180,9 +181,18 @@ export interface LibrarySeedResult {
    */
   heldBack: { key: string; reason: string }[];
   /**
+   * Templates whose install, revision or rename FAILED, with a redacted reason.
+   * A failure on one template does not stop the others: each is attempted, and
+   * what did not happen is said here rather than thrown away with the rest of
+   * the run. Nothing is half-reported — a template listed here was not
+   * published as a new version (an earlier step of its own run may have
+   * completed, and the next run picks up from what is stored).
+   */
+  failed: { key: string; reason: string }[];
+  /**
    * Set when this deployment may not write the library at all — a Vercel
    * Preview, which shares Production's database. Nothing was read or written;
-   * the four lists above are empty. See `template-sync-policy.ts`.
+   * the lists above are empty. See `template-sync-policy.ts`.
    */
   skipped?: { environment: string; reason: string };
 }
@@ -237,6 +247,7 @@ export async function ensureTemplateLibrary(
       revised: [],
       renamed: [],
       heldBack: [],
+      failed: [],
       skipped: { environment: decision.environment, reason: decision.reason },
     };
   }
@@ -247,6 +258,7 @@ export async function ensureTemplateLibrary(
   const revised: string[] = [];
   const renamed: string[] = [];
   const heldBack: { key: string; reason: string }[] = [];
+  const failed: { key: string; reason: string }[] = [];
 
   const { data: rows, error } = await supabase
     .from("form_templates")
@@ -257,114 +269,171 @@ export async function ensureTemplateLibrary(
   );
 
   for (const seed of TEMPLATE_SEEDS) {
-    const row = known.get(seed.key);
-    if (row) {
-      const templateId = String(row.id);
-      if (await syncTemplateDisplay(templateId, row, seed)) renamed.push(seed.key);
-      const outcome = await publishSeedRevision(templateId, seed, actor);
-      if (outcome.published) revised.push(seed.key);
-      else if (outcome.reason) heldBack.push({ key: seed.key, reason: outcome.reason });
-      else existing.push(seed.key);
-      continue;
-    }
+    try {
+      const row = known.get(seed.key);
+      if (row) {
+        const templateId = String(row.id);
+        if (await syncTemplateDisplay(templateId, row, seed)) renamed.push(seed.key);
+        const outcome = await publishSeedRevision(templateId, seed, actor);
+        if (outcome.published) revised.push(seed.key);
+        else if (outcome.reason) heldBack.push({ key: seed.key, reason: outcome.reason });
+        else existing.push(seed.key);
+        continue;
+      }
 
-    const { data: template, error: templateError } = await supabase
-      .from("form_templates")
-      .insert({
-        key: seed.key,
-        name: seed.name,
-        short_name: seed.shortName,
-        description: seed.description,
-        category: seed.category,
-        layout_family: seed.layoutFamily,
-        required_permission: seed.requiredPermission,
-        // Stated rather than left to the column default: a seeded template that
-        // nobody can create a form from is a silent failure, and "active" is
-        // the flag `createInstance` refuses on.
-        active: true,
-        display_order: seed.displayOrder,
-      })
-      .select("id")
-      .single();
-    if (templateError || !template) {
-      throw new Error(`Could not create ${seed.key}: ${templateError?.message}`);
-    }
+      const { data: template, error: templateError } = await supabase
+        .from("form_templates")
+        .insert({
+          key: seed.key,
+          name: seed.name,
+          short_name: seed.shortName,
+          description: seed.description,
+          category: seed.category,
+          layout_family: seed.layoutFamily,
+          required_permission: seed.requiredPermission,
+          // Stated rather than left to the column default: a seeded template that
+          // nobody can create a form from is a silent failure, and "active" is
+          // the flag `createInstance` refuses on.
+          active: true,
+          display_order: seed.displayOrder,
+        })
+        .select("id")
+        .single();
+      if (templateError || !template) {
+        throw new Error(`Could not create ${seed.key}: ${templateError?.message}`);
+      }
 
-    const { data: version, error: versionError } = await supabase
-      .from("form_template_versions")
-      .insert({
+      const { data: version, error: versionError } = await supabase
+        .from("form_template_versions")
+        .insert({
+          template_id: template.id,
+          version: 1,
+          status: "published",
+          document: seed.document,
+          variants: seed.variants,
+          seed_revision: seed.revision,
+          notes: seed.revisionNote,
+          created_by: actor,
+          published_at: new Date().toISOString(),
+          published_by: actor,
+        })
+        .select("id")
+        .single();
+      if (versionError || !version) {
+        throw new Error(`Could not publish ${seed.key} v1: ${versionError?.message}`);
+      }
+
+      const { error: currentError } = await supabase
+        .from("form_template_current")
+        .insert({ template_id: template.id, version_id: version.id });
+      if (currentError) {
+        throw new Error(`Could not point ${seed.key} at v1: ${currentError.message}`);
+      }
+
+      /*
+       * The bundled default PDF, recorded as version 1 of the asset chain.
+       *
+       * It has no storage path on purpose: the bundled default IS the structured
+       * renderer, not a file somebody uploaded. Recording it anyway means
+       * "Replace with new PDF" produces version 2 rather than version 1, so the
+       * chain reads as a history from the beginning and reverting has somewhere
+       * to revert TO.
+       */
+      const { error: assetError } = await supabase.from("form_template_assets").insert({
         template_id: template.id,
         version: 1,
-        status: "published",
-        document: seed.document,
-        variants: seed.variants,
-        seed_revision: seed.revision,
-        notes: seed.revisionNote,
-        created_by: actor,
-        published_at: new Date().toISOString(),
-        published_by: actor,
-      })
-      .select("id")
-      .single();
-    if (versionError || !version) {
-      throw new Error(`Could not publish ${seed.key} v1: ${versionError?.message}`);
-    }
+        kind: "bundled_default",
+        status: "active",
+        file_name: seed.bundledPdfName,
+        uploaded_by: actor,
+        /*
+         * WHERE THIS FORM CAME FROM, ON THE ROW RATHER THAN IN A COMMENT.
+         *
+         * The default says "bundled": the renderer produces the PDF, and behind
+         * the template stands a paper form the business issues. A seed carrying
+         * `provenance` is the exception — a form defined by a section of an
+         * approved framework, with no paper original — and it says which document
+         * and which section, because "which official form is this?" has a
+         * different answer for it and somebody will ask.
+         */
+        validation: seed.provenance
+          ? {
+              source: seed.provenance.kind,
+              renderer: "structured",
+              sourceDocument: seed.provenance.document,
+              sourceLocator: seed.provenance.locator,
+              note: seed.provenance.note,
+            }
+          : {
+              source: "bundled",
+              renderer: "structured",
+              note: "Generated by the structured renderer from the published template version.",
+            },
+      });
+      if (assetError) {
+        throw new Error(`Could not record ${seed.key}'s bundled PDF: ${assetError.message}`);
+      }
 
-    const { error: currentError } = await supabase
-      .from("form_template_current")
-      .insert({ template_id: template.id, version_id: version.id });
-    if (currentError) {
-      throw new Error(`Could not point ${seed.key} at v1: ${currentError.message}`);
+      created.push(seed.key);
+    } catch (error) {
+      recordSyncFailure(failed, seed.key, "install_or_revise", error);
     }
-
-    /*
-     * The bundled default PDF, recorded as version 1 of the asset chain.
-     *
-     * It has no storage path on purpose: the bundled default IS the structured
-     * renderer, not a file somebody uploaded. Recording it anyway means
-     * "Replace with new PDF" produces version 2 rather than version 1, so the
-     * chain reads as a history from the beginning and reverting has somewhere
-     * to revert TO.
-     */
-    const { error: assetError } = await supabase.from("form_template_assets").insert({
-      template_id: template.id,
-      version: 1,
-      kind: "bundled_default",
-      status: "active",
-      file_name: seed.bundledPdfName,
-      uploaded_by: actor,
-      /*
-       * WHERE THIS FORM CAME FROM, ON THE ROW RATHER THAN IN A COMMENT.
-       *
-       * The default says "bundled": the renderer produces the PDF, and behind
-       * the template stands a paper form the business issues. A seed carrying
-       * `provenance` is the exception — a form defined by a section of an
-       * approved framework, with no paper original — and it says which document
-       * and which section, because "which official form is this?" has a
-       * different answer for it and somebody will ask.
-       */
-      validation: seed.provenance
-        ? {
-            source: seed.provenance.kind,
-            renderer: "structured",
-            sourceDocument: seed.provenance.document,
-            sourceLocator: seed.provenance.locator,
-            note: seed.provenance.note,
-          }
-        : {
-            source: "bundled",
-            renderer: "structured",
-            note: "Generated by the structured renderer from the published template version.",
-          },
-    });
-    if (assetError) {
-      throw new Error(`Could not record ${seed.key}'s bundled PDF: ${assetError.message}`);
-    }
-
-    created.push(seed.key);
   }
 
-  return { created, existing, revised, renamed, heldBack };
+  const result: LibrarySeedResult = { created, existing, revised, renamed, heldBack, failed };
+  logSyncOutcome(result);
+  return result;
+}
+
+/**
+ * ============================================================================
+ * A SYNC THAT FAILS LEAVES A TRACE
+ * ============================================================================
+ *
+ * The Form Templates page used to catch an error from the sync and show it on
+ * screen only, so a failed run left nothing in the server logs and nothing to
+ * find afterwards. These two helpers write ONE structured line per event.
+ *
+ * WHAT IS LOGGED: the event name, the template key, the step and a REDACTED,
+ * truncated reason (`redact` strips credential-shaped text and cuts the length,
+ * because a database error can quote the row it refused). WHAT IS NOT: the
+ * document, the stack, the cause chain, the actor, any key or token.
+ *
+ * `logSyncOutcome` writes only when something happened — a run over an
+ * up-to-date database is silent, so opening the page does not fill the log.
+ */
+function recordSyncFailure(
+  failed: { key: string; reason: string }[],
+  key: string,
+  step: string,
+  error: unknown,
+): void {
+  const reason = describeError(error);
+  failed.push({ key, reason });
+  console.error(
+    JSON.stringify({ event: "forms.template_sync.failed", level: "error", key, step, reason }),
+  );
+}
+
+function logSyncOutcome(result: LibrarySeedResult): void {
+  const noteworthy =
+    result.created.length +
+    result.revised.length +
+    result.renamed.length +
+    result.heldBack.length +
+    result.failed.length;
+  if (noteworthy === 0) return;
+  const line = JSON.stringify({
+    event: "forms.template_sync.completed",
+    level: result.failed.length > 0 ? "error" : "info",
+    created: result.created,
+    revised: result.revised,
+    renamed: result.renamed,
+    heldBack: result.heldBack.map((entry) => entry.key),
+    failed: result.failed.map((entry) => entry.key),
+  });
+  if (result.failed.length > 0) console.error(line);
+  else console.info(line);
 }
 
 /**
