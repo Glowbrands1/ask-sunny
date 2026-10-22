@@ -436,7 +436,12 @@ export function payrollDeductCorrection(text: string): PayrollDeductAnswer | nul
  * A register short $3.25 is not, on its own, an amount to deduct. Never an
  * amount the manager did not write.
  */
-const MONEY = String.raw`\$\s?\d[\d,]*(?:\.\d{1,2})?`;
+/*
+ * "$1,250" — a comma only BETWEEN digit groups. "payroll deduct $25, she was
+ * late" put "$25," on the Action Plan ("$25, will be deducted from …'s pay"):
+ * the comma ending the clause was read as part of the amount (QA, 22 Oct 2026).
+ */
+const MONEY = String.raw`\$\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?![\d,]\d)`;
 const AMOUNT_PATTERNS: readonly RegExp[] = [
   new RegExp(String.raw`\b(?:payroll\s+)?deduct(?:ion|ions|ed|ing)?\s+(?:of\s+|for\s+|is\s+|will\s+be\s+|amount\s+(?:of\s+|is\s+)?)?(${MONEY})`, "gi"),
   /*

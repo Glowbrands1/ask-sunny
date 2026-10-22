@@ -106,3 +106,24 @@ describe("in a conversation, a later unclear statement withdraws an earlier Yes"
     ).toBe("yes");
   });
 });
+
+describe("the Action Plan's amount never carries the comma that ends the clause", () => {
+  it.each([
+    ["payroll deduct $25, she was late", "$25"],
+    ["she was late, payroll deduct $25, and coached", "$25"],
+    ["deduction of $3.25, effective today", "$3.25"],
+    ["$1,250 payroll deduction", "$1,250"],
+    ["payroll deduct $1,250.50", "$1,250.50"],
+    ["payroll deduct $25.", "$25"],
+  ])("%s → %s", (text, amount) => {
+    expect(payrollDeductAmount(text)).toBe(amount);
+    expect(payrollDeductSentence({ answer: "yes", amount: payrollDeductAmount(text), firstName: "Pat" })).toBe(
+      `${amount} will be deducted from Pat's pay.`,
+    );
+  });
+
+  it("an amount followed by a comma and then the deduction is not read as the amount", () => {
+    expect(payrollDeductAmount("she owes $25, payroll deduction applies")).toBeNull();
+    expect(payrollDeductSentence({ answer: "yes", amount: null, firstName: "Pat" })).toBe("A payroll deduction applies.");
+  });
+});
