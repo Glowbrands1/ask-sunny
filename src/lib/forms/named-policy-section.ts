@@ -392,7 +392,7 @@ function usedIn(said: readonly string[], candidate: Candidate): string | null {
 export function mayDescribeSection(text: string): boolean {
   if (namedPolicies(text).length > 0) return false;
   const reading = readCaPolicy(text);
-  if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous !== null || reading.described) {
+  if (reading.stated !== null || reading.suggestion !== null || reading.ambiguous !== null) {
     return false;
   }
   return !OWN_BOX.test(text);

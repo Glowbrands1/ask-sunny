@@ -82,12 +82,8 @@ export interface CaPolicyReading {
   source: "stated" | "incident" | null;
   /** Policies to ask between, when the account reads more than one way and none was named. */
   ambiguous: CaPolicyName[] | null;
-  /**
-   * A policy the account describes without naming it: a required meeting that
-   * was missed is Attendance. Only when nothing was named and no conduct
-   * incident was described. See `MISSED_MEETING`.
-   */
-  described?: "attendance" | null;
+  /** Attendance read from a missed meeting, not named by the manager. */
+  missedMeeting?: true;
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -159,6 +155,10 @@ const ATTENDANCE =
  * missing one is Attendance, and the box is Absenteeism. A training that was
  * not COMPLETED is assigned work (`CONDUCT_TOPICS`), so only a session,
  * class, seminar, webinar or meeting that was not attended counts here.
+ *
+ * With the owner's rule (`MISSED_MEETING_STATED`, below) it reads as if
+ * Attendance were named; this one adds the wording that one doesn't catch
+ * ("bailed on the in-service", "no call no showed to the meeting").
  */
 const MISSED_MEETING = new RegExp(
   String.raw`\b(?:(?:${FAILED}|not|never)\s+(?:attend(?:ing|ed)?|show(?:ing|ed)?\s+(?:up\s+)?(?:to|for|at)|(?:go|going|went)\s+to|(?:come|coming|came)\s+to|mak(?:e|ing)\s+(?:it\s+)?to|join(?:ing|ed)?|be(?:ing)?\s+at)|miss(?:ed|ing|es)?|skip(?:ped|ping|s)?|(?:blew|blow(?:n|s|ing)?)\s+off|bail(?:ed|s|ing)?\s+on|ditch(?:ed|es|ing)?|flak(?:ed|es|ing)\s+on|no[- ]show(?:ed)?\s+(?:to|for|at)|no[- ]call(?:[\s,/&-]+no[- ]show)?(?:ed)?\s+(?:to|for|at)|absent\s+(?:from|at))\s+(?:\S+\s+){0,4}?(?:meetings?|seminars?|webinars?|training\s+(?:sessions?|class(?:es)?)|in[- ]?services?)\b`,
@@ -166,6 +166,18 @@ const MISSED_MEETING = new RegExp(
 
 const TARGET =
   /\b(?:sales|quota|ppta|upgrades?|conversions?|close rate|closing rate|kpis?|metrics|scorecard|revenue|(?:her|his|their|the) numbers|(?:sales|membership|monthly|weekly) goals?|below (?:goal|target)|(?:hit|hitting|meet|meeting|missed|missing) (?:her|his|their|the) (?:goal|goals|target|targets))\b/;
+
+/**
+ * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
+ * District Manager's 21 Oct report ("not attending the monthly meeting" was
+ * written up under Standards of Conduct). The manual's Attendance section
+ * counts "Seminars/Meetings/ Training sessions" as scheduled shifts, so an
+ * account of missing one reads as Attendance, as if the manager had named it,
+ * and ticks Absenteeism. A policy the manager does name still wins.
+ */
+const missesAMeeting = (text: string) => MISSED_MEETING_STATED.test(text) || MISSED_MEETING.test(text);
+const MISSED_MEETING_STATED =
+  /\b(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?|did\s*n[o']?t\s+(?:attend|go\s+to|show\s+up\s+(?:to|for|at)|come\s+to|make\s+it\s+to)|not\s+attend(?:ing)?|never\s+(?:attended|showed\s+up\s+(?:to|for|at)|came\s+to)|fail(?:ed|ure)?\s+to\s+attend|no[- ]show(?:ed)?\s+(?:to|for|at)|absent\s+from|was\s*n[o']?t\s+at)\s+(?:\S+\s+){0,3}?(?:meetings?|mtgs?|seminars?|webinars?|trainings?|training\s+sessions?|huddles?)\b/;
 
 /**
  * A POLICY NAMED. The Standards of Conduct is a policy's name wherever it
@@ -219,6 +231,8 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
 
   let stated: CaPolicyName | null = null;
   for (const turn of turns) stated = statedIn(turn) ?? stated;
+  const missedMeeting = stated === null && statements(text).some((sentence) => missesAMeeting(sentence));
+  if (missedMeeting) stated = "attendance";
 
   const sentences = statements(text);
   const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
@@ -226,9 +240,8 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
   );
 
   const alternatives: CaPolicyReading["alternatives"] = [];
-  const missedMeeting = sentences.some((s) => MISSED_MEETING.test(s));
   if (topics.length > 0) {
-    if (sentences.some((s) => ATTENDANCE.test(s)) || missedMeeting) alternatives.push("attendance");
+    if (sentences.some((s) => ATTENDANCE.test(s))) alternatives.push("attendance");
     if (sentences.some((s) => TARGET.test(s))) alternatives.push("under_performance");
   }
 
@@ -240,19 +253,11 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
       suggestion: stated === STANDARDS_OF_CONDUCT ? STANDARDS_OF_CONDUCT : null,
       source: stated === STANDARDS_OF_CONDUCT ? "stated" : null,
       ambiguous: null,
-      described: null,
+      ...(missedMeeting ? { missedMeeting: true as const } : {}),
     };
   }
   if (topics.length === 0) {
-    return {
-      stated,
-      topics,
-      alternatives,
-      suggestion: null,
-      source: null,
-      ambiguous: null,
-      described: missedMeeting ? "attendance" : null,
-    };
+    return { stated, topics, alternatives, suggestion: null, source: null, ambiguous: null };
   }
   if (alternatives.length > 0) {
     return {
@@ -262,18 +267,9 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
       suggestion: null,
       source: null,
       ambiguous: [STANDARDS_OF_CONDUCT, ...alternatives],
-      described: null,
     };
   }
-  return {
-    stated,
-    topics,
-    alternatives,
-    suggestion: STANDARDS_OF_CONDUCT,
-    source: "incident",
-    ambiguous: null,
-    described: null,
-  };
+  return { stated, topics, alternatives, suggestion: STANDARDS_OF_CONDUCT, source: "incident", ambiguous: null };
 }
 
 /** Whether a reply names a policy — the answer to "which policy applies?". */
@@ -303,7 +299,7 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       return null;
     case "attendance": {
       const text = normalize(rawText);
-      const absent = ABSENCE.test(text);
+      const absent = ABSENCE.test(text) || missesAMeeting(text);
       const late = LATENESS.test(text);
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
@@ -311,34 +307,6 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
     default:
       return [reading.stated];
   }
-}
-
-/**
- * The manual's own line a missed meeting rests on (JBA Policy Manual,
- * Attendance): "Seminars/Meetings/ Training sessions are considered scheduled
- * shifts."
- */
-const MEETINGS_ARE_SHIFTS =
-  /seminars?\s*\/\s*meetings?\s*\/\s*training\s+sessions?\s+are\s+considered\s+scheduled\s+shifts|meetings?\b[^.\n]{0,60}\bconsidered\s+(?:a\s+)?scheduled\s+shifts?/i;
-
-/**
- * The Type of Offense for a policy the account describes without naming it —
- * a missed meeting is Absenteeism, under Attendance — and ONLY where the pinned
- * manual's own Attendance section, as it reads today, says a meeting is a
- * scheduled shift. A manual without that line, or no manual, leaves the box to
- * the draft, exactly as `groundConductPolicy` does for Standards of Conduct.
- * Never a stated policy's: that is `statedOffenseKeys`, and a section the
- * manager named wins over this.
- */
-export function describedOffenseKeys(
-  reading: CaPolicyReading,
-  chunks: readonly ManualChunk[] | null,
-): string[] | null {
-  if (reading.stated !== null || reading.described !== "attendance") return null;
-  if (!chunks || chunks.length === 0) return null;
-  const section = manualSectionsFor({ chunks, offenseKeys: ["absenteeism"] })[0];
-  if (!section) return null;
-  return MEETINGS_ARE_SHIFTS.test(sectionText(chunks, section)) ? ["absenteeism"] : null;
 }
 
 /**
@@ -455,14 +423,14 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   if (reading.suggestion && reading.source === "stated") {
     return "**Policy:** Standards of Conduct, as you said. I'll quote that section from the current policy manual on the draft.";
   }
+  if (reading.missedMeeting) {
+    return "**Policy:** this reads as **Attendance** — a required meeting that was missed. I'll quote that section from the current policy manual on the draft under **Absenteeism**. Tell me if a different policy applies.";
+  }
   if (reading.stated === "attendance" || reading.stated === "dress_code") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. I'll quote that section from the current policy manual on the draft.`;
   }
   if (reading.stated === "under_performance" || reading.stated === "company_policies") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. The policy manual has no single section to quote for it, so Direct policy is left for you to complete.`;
-  }
-  if (reading.described === "attendance") {
-    return "**Policy:** this reads as **Attendance** — a required meeting that was missed. I'll check it against the current policy manual and quote that section on the draft under **Absenteeism**; if the manual doesn't support it, I'll leave the policy for you. Tell me if a different policy applies.";
   }
   if (reading.suggestion && reading.source === "incident") {
     const what = reading.topics.map((topic) => TOPIC_WORDS[topic]).join(" and ");

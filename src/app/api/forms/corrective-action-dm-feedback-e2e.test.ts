@@ -1090,7 +1090,12 @@ describe("a missed meeting is Attendance", () => {
     expect(field(form, "action_plan")!.value).toBe(`Management will review the Attendance policy with Tess. ${CLOSING}`);
   });
 
-  it("ticks nothing the manual does not support: without its meetings line, the draft's box stands", async () => {
+  /*
+   * Changed on purpose at the release merge (22 Oct 2026): the owner's decision
+   * on `main` reads a missed meeting as Attendance whatever the manual's
+   * wording, so Absenteeism is ticked even where the meetings line is gone.
+   */
+  it("is Absenteeism by the owner's decision, even without the manual's meetings line", async () => {
     state.manual = {
       chunks: (state.manual!.chunks as { section?: string; content: string }[]).map((chunk) =>
         chunk.section === "Attendance"
@@ -1102,7 +1107,7 @@ describe("a missed meeting is Attendance", () => {
     state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
     const { reference } = await create();
     const form = await review(reference.instanceId);
-    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
   });
 
   it("a policy the manager named still wins", async () => {

@@ -110,7 +110,7 @@ describe("a missed meeting is Attendance; assigned work blown off is conduct", (
     "she no call no showed to the store meeting tuesday",
     "he skipped the training session on 10/3",
   ])("attendance: %s", (text) => {
-    expect(readCaPolicy(text).described).toBe("attendance");
+    expect(readCaPolicy(text).stated).toBe("attendance");
   });
 
   it.each(["tess varga blew off her woven training due 10/15/26", "he ignored his woven modules again"])(
@@ -118,13 +118,13 @@ describe("a missed meeting is Attendance; assigned work blown off is conduct", (
     (text) => {
       const reading = readCaPolicy(text);
       expect(reading.topics).toContain("task");
-      expect(reading.described).toBeNull();
+      expect(reading.stated).toBeNull();
     },
   );
 
   it.each(["is skipping a meeting an attendance issue?", "she didn't show for her shift"])("neither: %s", (text) => {
     const reading = readCaPolicy(text);
-    expect(reading.described).toBeNull();
+    expect(reading.stated).toBeNull();
     expect(reading.topics).toEqual([]);
   });
 
