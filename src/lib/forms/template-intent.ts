@@ -637,6 +637,27 @@ function leadsWithTheForm(q: string, original: string): boolean {
 }
 
 /**
+ * ============================================================================
+ * "WRITE A …" IS A REQUEST ONLY WHEN WHAT IS WRITTEN IS THE FORM
+ * ============================================================================
+ *
+ * "write a CA for Paisley" was read as a question about the progression and
+ * the manager was told to rephrase (October 2026), so "write a" / "write an"
+ * were made creation verbs. QA, 22 Oct 2026 (F-04): as bare verbs they also
+ * turned "can you write a summary of the corrective action policy", "write a
+ * note explaining the corrective action steps" and "write an email to Paisley
+ * about her CA" into requests to create a Corrective Action Form. Writing is a
+ * request for the form only when its object IS the form or the warning;
+ * "how do I write a CA?" is still ruled a question before this is consulted.
+ */
+const WRITES_THE_FORM =
+  /\bwrite\s+(?:up\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:(?:new|formal|first|second|third|final|verbal|written|official)\s+){0,2}(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
+
+function writesTheForm(q: string): boolean {
+  return WRITES_THE_FORM.test(q);
+}
+
+/**
  * Verbs that mean "make me one", as opposed to "tell me about it".
  *
  * "corrective action" on its own is a manager asking how the process works.
@@ -651,6 +672,10 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
+  /* "write a CA for Paisley" is read by `writesTheForm`, not by a bare "write a". */
+  "write her up",
+  "write him up",
+  "write them up",
   "fill out",
   "generate",
   "prepare",
@@ -1014,6 +1039,15 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
   while (run.length < 2 && couldBeName(words[run.length])) run.push(words[run.length]!);
   const next = words[run.length]?.toLowerCase();
   if (run.length > 0 && next !== undefined && NAME_RUN_ENDS.has(next)) return found(run);
+  /*
+   * "COACHING FORM PAULYNE CAMACHO LATE 3 TIMES" (production, 21 October
+   * 2026). In capitals or in lower case, no capital says where the name ends,
+   * and "late" is not a word that introduces the rest of a sentence — but it
+   * is a word that is never part of a name. A FULL name (two words) followed
+   * by one of those, or by a number, is the name; one word is not enough
+   * ("coaching avery late" stays unread rather than risk "coaching floor late").
+   */
+  if (run.length === 2 && next !== undefined && (NOT_A_TYPED_NAME.has(next) || /^\d/.test(next))) return found(run);
   return null;
 }
 
@@ -1468,6 +1502,7 @@ export function detectTemplateIntent(question: string): TemplateIntent {
       requestedCreation:
         !informational &&
         (CREATION_VERBS.some((verb) => mentions(q, verb)) ||
+          writesTheForm(q) ||
           leadsWithTheForm(q, question) ||
           /*
            * "corrective action for employee test for attendance": a subject, then

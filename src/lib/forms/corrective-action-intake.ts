@@ -267,6 +267,20 @@ const PREVIOUS_SOME: readonly RegExp[] = [
   /\b(?:second|third|fourth|2nd|3rd|4th|repeat|repeated|recurring|ongoing)\s+(?:time|occurrence|occasion|offence|offense|incident|warning)\b/,
   /\b(?:she|he|they) (?:has|have|had) been (?:coached|warned|written up|disciplined)\b/,
   /\bthis (?:has )?happened (?:again|before)\b/,
+  /*
+   * THE EARLIER CONVERSATION, TOLD AS ONE. QA, 22 Oct 2026: "we had a talk
+   * with her about tardiness on 10/1", "we discussed attendance with her on
+   * 10/1", "I talked to pat about being late last month" and "this is after
+   * her coaching on 10/1" were each answered "You'll set any prior coaching
+   * … I won't guess at it". A conversation counts only with a time that puts
+   * it BEFORE — "last month", "on 10/1", "two weeks ago", "before",
+   * "already" — because "I talked to her today" is this form's own account,
+   * not its history. What this form follows ("after her coaching") is history
+   * by its words.
+   */
+  /\b(?:had|has had|have had|held)\s+(?:a\s+|an\s+)?(?:(?:verbal|formal|quick|serious)\s+)?(?:talk|conversation|chat|sit[- ]?down|discussion|one[- ]on[- ]one)\s+with\b[^.\n]{0,60}\b(?:last\s+(?:week|month|year|time)|previously|before|already|\d+\s+(?:days?|weeks?|months?)\s+ago|on\s+\d{1,2}\/\d{1,2}|on\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})/,
+  /\b(?:discussed|went over|talked (?:to|with)|spoke (?:to|with)|sat down with)\b[^.\n]{0,50}\b(?:last\s+(?:week|month|year|time)|previously|before|already|\d+\s+(?:days?|weeks?|months?)\s+ago|on\s+\d{1,2}\/\d{1,2}|on\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})/,
+  /\b(?:after|since|following|despite)\s+(?:her|his|their|the)\s+(?:(?:last|previous|prior|recent|verbal|written)\s+)?(?:coaching|warning|write[- ]?up|talk|conversation|corrective action)\b/,
 ];
 
 /**

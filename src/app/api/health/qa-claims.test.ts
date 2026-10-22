@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 
@@ -10,7 +10,8 @@ import { extname, join } from "node:path";
  * `/api/health` tells a reviewer opening a Preview deployment which half of the
  * product is safe to QA there:
  *
- *   "All five reports read the reporting tables in Supabase in either mode."
+ *   "All five reports read the reporting tables in Supabase" — and, in demo
+ *   mode, show as not connected, because demo mode refuses the key they need.
  *   "In demo mode the assistant answers through a mock provider."
  *
  * Both are claims about the CODE, not about configuration, and a note in a JSON
@@ -110,4 +111,42 @@ describe("the endpoint discloses no value of any environment variable", () => {
 
     expect(route).not.toMatch(/getSupabaseAdmin|\.from\(|salonCount|loadReport/);
   });
+});
+
+describe("the reporting note matches what a report shows in each mode", () => {
+  const ORIGINAL = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+    vi.resetModules();
+  });
+
+  async function reportingNote(demo: "true" | "false") {
+    process.env.NEXT_PUBLIC_DEMO_MODE = demo;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
+    process.env.SUPABASE_SECRET_KEY = ["sb", "secret", "TESTFIXTURE"].join("_");
+    vi.resetModules();
+    const { supabaseSecretKeyConfigured } = await import("@/lib/config/server-env");
+    const { GET } = await import("./route");
+    const body = (await (await GET()).json()) as {
+      qa: { reporting: { dependsOnMode: boolean; note: string } };
+    };
+    return { keyUsable: supabaseSecretKeyConfigured(), reporting: body.qa.reporting };
+  }
+
+  it("in demo mode the key is refused, and the note says reports are not connected", async () => {
+    const { keyUsable, reporting } = await reportingNote("true");
+
+    expect(keyUsable).toBe(false);
+    expect(reporting.dependsOnMode).toBe(true);
+    expect(reporting.note).toMatch(/not connected/);
+    expect(reporting.note).not.toMatch(/QA is valid/);
+  }, 30_000);
+
+  it("in live mode the note says report QA is valid", async () => {
+    const { keyUsable, reporting } = await reportingNote("false");
+
+    expect(keyUsable).toBe(true);
+    expect(reporting.note).toMatch(/Report QA is valid here/);
+  }, 30_000);
 });

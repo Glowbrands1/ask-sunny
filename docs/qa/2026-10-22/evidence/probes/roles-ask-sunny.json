@@ -1,0 +1,487 @@
+[
+ {
+  "kind": "matrix",
+  "role": "employee",
+  "permissions": [
+   "ask_questions",
+   "view_knowledge",
+   "view_videos"
+  ]
+ },
+ {
+  "kind": "matrix",
+  "role": "assistant_salon_director",
+  "permissions": [
+   "ask_questions",
+   "create_coaching",
+   "view_daily_stats",
+   "view_form_monitoring",
+   "view_google_reviews",
+   "view_knowledge",
+   "view_manager_resources",
+   "view_overview",
+   "view_videos"
+  ]
+ },
+ {
+  "kind": "matrix",
+  "role": "salon_director",
+  "permissions": [
+   "ask_questions",
+   "create_coaching",
+   "create_coaching_form",
+   "create_corrective_action",
+   "create_employment_change_form",
+   "create_exit_form",
+   "create_hiring_form",
+   "create_policy_review",
+   "view_daily_stats",
+   "view_form_monitoring",
+   "view_forms_workspace",
+   "view_google_reviews",
+   "view_knowledge",
+   "view_manager_resources",
+   "view_overview",
+   "view_reports",
+   "view_videos"
+  ]
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "coaching",
+  "requiredPermission": "create_coaching_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "dpoa",
+  "requiredPermission": "create_corrective_action",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "policy-review",
+  "requiredPermission": "create_policy_review",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "sdit-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "tsd-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "asd-sdit-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "fttc-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "dmit-epp-tsd",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "dmit-epp-dmit",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "follow-up-coaching",
+  "requiredPermission": "create_coaching_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "stc-exit",
+  "requiredPermission": "create_exit_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "demotion",
+  "requiredPermission": "create_employment_change_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "position-transfer",
+  "requiredPermission": "create_employment_change_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "prescreen-phone-interview",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "tanning-consultant-interview",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "management-interview-round-1",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "employee",
+  "template": "management-interview-round-2",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "chat",
+  "role": "employee",
+  "question": "create a coaching form for pat rivera, late 3 times this week",
+  "out": {
+   "proposal": false,
+   "selection": false,
+   "content": "Your role cannot create a **Coaching Form**, so I will not propose one.\n\nAsk your district manager which forms your role should cover."
+  }
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "coaching",
+  "requiredPermission": "create_coaching_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "dpoa",
+  "requiredPermission": "create_corrective_action",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "policy-review",
+  "requiredPermission": "create_policy_review",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "sdit-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "tsd-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "asd-sdit-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "fttc-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "dmit-epp-tsd",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "dmit-epp-dmit",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "follow-up-coaching",
+  "requiredPermission": "create_coaching_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "stc-exit",
+  "requiredPermission": "create_exit_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "demotion",
+  "requiredPermission": "create_employment_change_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "position-transfer",
+  "requiredPermission": "create_employment_change_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "prescreen-phone-interview",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "tanning-consultant-interview",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "management-interview-round-1",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "assistant_salon_director",
+  "template": "management-interview-round-2",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "chat",
+  "role": "assistant_salon_director",
+  "question": "create a coaching form for pat rivera, late 3 times this week",
+  "out": {
+   "proposal": false,
+   "selection": false,
+   "content": "Your role cannot create a **Coaching Form**, so I will not propose one.\n\nAsk your district manager which forms your role should cover."
+  }
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "coaching",
+  "requiredPermission": "create_coaching_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "dpoa",
+  "requiredPermission": "create_corrective_action",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "policy-review",
+  "requiredPermission": "create_policy_review",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "sdit-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "tsd-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "asd-sdit-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "fttc-epp",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "dmit-epp-tsd",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "dmit-epp-dmit",
+  "requiredPermission": "create_epp",
+  "active": true,
+  "status": 403
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "follow-up-coaching",
+  "requiredPermission": "create_coaching_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "stc-exit",
+  "requiredPermission": "create_exit_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "demotion",
+  "requiredPermission": "create_employment_change_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "position-transfer",
+  "requiredPermission": "create_employment_change_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "prescreen-phone-interview",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "tanning-consultant-interview",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "management-interview-round-1",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "create",
+  "role": "salon_director",
+  "template": "management-interview-round-2",
+  "requiredPermission": "create_hiring_form",
+  "active": true,
+  "status": 200
+ },
+ {
+  "kind": "chat",
+  "role": "salon_director",
+  "question": "create a coaching form for pat rivera, late 3 times this week",
+  "out": {
+   "proposal": true,
+   "selection": false,
+   "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft"
+  }
+ }
+]

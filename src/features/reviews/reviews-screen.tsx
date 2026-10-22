@@ -1011,7 +1011,7 @@ function RatingBreakdown({
                 tab: "reviews",
                 rating: String(rating) as ReviewFilters["rating"],
               })}
-              className="group flex items-center gap-2.5"
+              className="group flex min-h-6 items-center gap-2.5"
             >
               <span className="w-8 shrink-0 text-[11px] font-black tabular-nums">
                 {rating}★
@@ -1111,7 +1111,7 @@ function DistrictGoalTable({
                       district: district.district,
                       storeCode: null,
                     })}
-                    className="text-[12px] font-bold text-foreground hover:underline"
+                    className="inline-flex min-h-6 items-center text-[12px] font-bold text-foreground hover:underline"
                   >
                     {district.district}
                   </Link>

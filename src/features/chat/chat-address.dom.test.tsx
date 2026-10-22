@@ -131,4 +131,25 @@ describe("the open conversation is kept in the address", () => {
     // And that thread is still there after hydration: not a fixture thread.
     expect(address().get("c")).not.toMatch(/^conv-fixture/);
   });
+
+  it("writes the address again when the router commits its own after a client-side arrival", async () => {
+    window.history.replaceState(null, "", "/chat?q=How%20do%20I%20close%20the%20register%3F");
+    const view = renderChat();
+    await waitFor(() => expect(address().get("c")).toBeTruthy(), { timeout: 4000 });
+    const opened = address().get("c");
+
+    // Next's router finishes committing the link's own address after the
+    // effect first ran, putting ?q= back and dropping ?c=.
+    window.history.replaceState(null, "", "/chat?q=How%20do%20I%20close%20the%20register%3F");
+    view.rerender(
+      <Providers>
+        <ChatScreen />
+      </Providers>,
+    );
+
+    await waitFor(() => expect(address().get("c")).toBe(opened));
+    expect(address().get("q")).toBeNull();
+    // And the question was not asked a second time.
+    expect(screen.getAllByText("How do I close the register?")).toHaveLength(1);
+  });
 });

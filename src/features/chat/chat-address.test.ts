@@ -26,9 +26,9 @@ describe("chatAddressFor", () => {
   });
 
   it("keeps the report context parameters", () => {
-    expect(chatAddressFor("?report=store-sales&location=store-66", "conv-1")).toBe(
-      "report=store-sales&location=store-66&c=conv-1",
+    expect(chatAddressFor("?report=salon-sales&location=salon-66", "conv-1")).toBe(
+      "report=salon-sales&location=salon-66&c=conv-1",
     );
-    expect(chatAddressFor("?report=store-sales&c=conv-1", null)).toBe("report=store-sales");
+    expect(chatAddressFor("?report=salon-sales&c=conv-1", null)).toBe("report=salon-sales");
   });
 });

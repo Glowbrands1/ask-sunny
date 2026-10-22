@@ -3,12 +3,12 @@
  * THE OPEN CONVERSATION IS PART OF THE ADDRESS
  * ============================================================================
  *
- * The chat screen already reopened a conversation named by `/chat?c=<id>`, but
- * nothing ever wrote the id: picking a thread from the rail, or asking the
- * first question of a new one, left the address at `/chat`. A refresh then
- * landed on an empty "How can Sunny help today?" screen, and a manager midway
- * through a Corrective Action had to find the thread again in History (QA, 22
- * Oct 2026).
+ * `/chat?c=<id>` already opened a conversation — the Overview band's "Continue
+ * in Ask Sunny" link uses it. What was missing was the other direction:
+ * picking a thread from the rail or the History drawer, or asking the first
+ * question of a new one, never wrote the id back, so a reload landed on an
+ * empty chat and the manager had to go looking for the draft they were in the
+ * middle of.
  *
  * `?q=` LEAVES THE ADDRESS AS SOON AS A CONVERSATION IS OPEN. It is a question
  * to ask once, on arrival. Left in place it would be asked again on the next

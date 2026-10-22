@@ -7,7 +7,8 @@ import { ensureTemplateLibrary, listTemplateSummaries } from "@/lib/forms/reposi
 /**
  * GET  /api/forms/templates   the library, with each template's current
  *                             version, open draft and active PDF
- * POST /api/forms/templates   installs the nine templates if they are missing
+ * POST /api/forms/templates   installs the library's templates if they are missing
+ *                             and publishes newer seed revisions
  *
  * Both need `manage_form_templates`. Seeding is idempotent by key and never
  * overwrites an existing template — a published version an administrator
@@ -43,7 +44,13 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
-    return NextResponse.json(result);
+    /*
+     * A PARTIAL FAILURE IS NOT A 200. Each template is attempted on its own, so
+     * some may have been published while others failed; 207 says both things
+     * and the body lists them (`revised`, `heldBack`, `failed` with a redacted
+     * reason). The same lines are in the server log.
+     */
+    return NextResponse.json(result, { status: result.failed.length > 0 ? 207 : 200 });
   } catch (error) {
     return errorResponse(error, "forms/templates/seed");
   }

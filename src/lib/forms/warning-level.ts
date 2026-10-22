@@ -2,7 +2,7 @@
  * The warning level a manager states for the Corrective Action Form being
  * written — read from their own words, never from the model's.
  *
- * ITS OWN MODULE, WITH NO IMPORTS, ON PURPOSE. `template-intent.ts` reads it
+ * ITS OWN MODULE, IMPORTING ONLY THE IMPORT-FREE PAYROLL READER, ON PURPOSE. `template-intent.ts` reads it
  * to tell a request from a remark, and `corrective-action-intake.ts` (which
  * imports `payroll-deduct.ts`, which imports `template-intent.ts`) re-exports
  * it. Living inside the intake, it closed an import cycle that a production
@@ -10,6 +10,8 @@
  * the forms routes failed with "Cannot access … before initialization"
  * (local production-build check, 22 Oct 2026). Pure and browser-safe.
  */
+
+import { statedPayrollDeduct } from "./payroll-deduct-answer";
 
 /** Lower-cased, with horizontal runs collapsed and newlines kept (the same reading as the intake's). */
 function normalize(text: string): string {
@@ -135,7 +137,7 @@ const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rathe
 const LEVEL_SUBJECT = String.raw`(?:it'?s|make\s+it|just|only|it'?ll\s+be|this'?ll\s+be|(?:it|this)(?:\s+one)?\s+(?:is|will\s+be|should\s+be|needs\s+to\s+be)|(?:it\s+|this\s+)?should(?:'ve|\s+have)\s+been|(?:let'?s\s+)?go\s+with|(?:bump(?:ed)?|move[ds]?|upgrade[ds]?|downgrade[ds]?|drop(?:ped)?|bring|take)\s+(?:it\s+|this\s+|that\s+|her\s+|him\s+|them\s+)?(?:up\s+|down\s+|back\s+)?to)`;
 
 const LEVEL_BARE = new RegExp(
-  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:${LEVEL_SUBJECT}\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
+  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:${LEVEL_SUBJECT}|keep\s+(?:it|this)(?:\s+(?:as|at))?)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
 );
 
 const LEVEL_LABELLED =
@@ -169,6 +171,22 @@ function clauseLevelAfterRequest(sentence: string): StatedWarningLevel | null {
   return null;
 }
 
+/**
+ * "verbal, payroll deduct no." — a bare level in a clause of its own, beside
+ * clauses that only answer the payroll question. HR, 21 Oct 2026 (ported from
+ * Ask Bubbles 9530112): the comma made the sentence more than a bare level, so
+ * the level was asked for again. Every other clause must state a payroll
+ * answer; anything else ("verbal, she was late") is not read.
+ */
+function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
+  const clauses = body.split(",").map((clause) => clause.trim());
+  if (clauses.length < 2) return null;
+  const levels = clauses.map((clause) => LEVEL_BARE.exec(clause));
+  if (levels.filter(Boolean).length !== 1) return null;
+  const others = clauses.filter((_, index) => !levels[index]);
+  return others.every((clause) => statedPayrollDeduct(clause) !== null) ? levels.find(Boolean)! : null;
+}
+
 /** The level one manager turn states for this form, or null. */
 export function statedWarningLevel(text: string): StatedWarningLevel | null {
   const levels = new Set<StatedWarningLevel>();
@@ -177,7 +195,7 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
     if (sentence[0].endsWith("?") && !POLITE_LEVEL_REQUEST.test(body)) continue;
 
-    const bare = LEVEL_BARE.exec(body);
+    const bare = LEVEL_BARE.exec(body) ?? levelBesidePayrollAnswer(body);
     if (bare) levels.add(bare[1] as StatedWarningLevel);
     const clause = clauseLevelAfterRequest(body);
     if (clause) levels.add(clause);

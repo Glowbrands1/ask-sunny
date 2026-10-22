@@ -1,0 +1,25 @@
+stack:up exit 0
+test:local-stack exit 0
+ Test Files  6 passed (6)
+      Tests  78 passed (78)
+seed exit 0
+next build exit 0
+✓ Ready in 185ms
+login page HTTP 200
+playwright exit 0
+
+  ✓   1 continuity.spec.ts:71:5 › setup: an administrator opening Form Templates seeds the library (5.9s)
+  ✓   2 continuity.spec.ts:79:5 › criterion 4: the open form survives a follow-up and a reload (11.3s)
+  ✓   3 continuity.spec.ts:109:7 › criterion 1: a location-only reply (an assigned location) keeps the employee (5.5s)
+  ✓   4 continuity.spec.ts:109:7 › criterion 1: a location-only reply (an unassigned location) keeps the employee (5.5s)
+  ✓   5 continuity.spec.ts:121:5 › criterion 5: the card offers only the manager's own locations, and the server refuses a forged one (4.4s)
+  ✓   6 continuity.spec.ts:162:7 › saved values (negative: will not): employee, authorized location, form date and payroll after save and read-back (4.5s)
+  ✓   7 continuity.spec.ts:162:7 › saved values (negative: don't): employee, authorized location, form date and payroll after save and read-back (4.4s)
+  ✓   8 continuity.spec.ts:162:7 › saved values (negative: waived): employee, authorized location, form date and payroll after save and read-back (4.3s)
+  ✓   9 continuity.spec.ts:162:7 › saved values (positive control): employee, authorized location, form date and payroll after save and read-back (4.2s)
+  ✓  10 continuity.spec.ts:213:7 › payroll corrected after creation (change to No): saved value and chat agree, never a silent Yes (8.0s)
+  ✓  11 continuity.spec.ts:213:7 › payroll corrected after creation (cancelled): saved value and chat agree, never a silent Yes (8.2s)
+  ✓  12 continuity.spec.ts:213:7 › payroll corrected after creation (ambiguous): saved value and chat agree, never a silent Yes (8.2s)
+
+  12 passed (1.3m)
+stack:down exit 0

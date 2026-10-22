@@ -58,6 +58,12 @@ export interface UnverifiedPolicyField {
   readonly label: string;
   /** True when somebody typed something into it that was never verified. */
   readonly filled: boolean;
+  /**
+   * Quoted from the policy manual, but from a manual found only by its title:
+   * no administrator has tagged it as the approved policy source. The quote is
+   * the manual's text; what is missing is the approval. See `unverifiedPolicyFields`.
+   */
+  readonly unapprovedSource?: boolean;
 }
 
 /**
@@ -75,12 +81,34 @@ export function unverifiedPolicyFields(
 
   return fieldsForVariant(document, variantKey)
     .filter((field) => field.policyGrounded)
-    .filter((field) => rows.get(field.key)?.provenance?.verified !== true)
+    .filter((field) => {
+      const provenance = rows.get(field.key)?.provenance;
+      return provenance?.verified !== true || unapprovedManual(provenance);
+    })
     .map((field) => ({
       key: field.key,
       label: field.label,
       filled: (rows.get(field.key)?.value ?? "").trim() !== "",
+      ...(unapprovedManual(rows.get(field.key)?.provenance) ? { unapprovedSource: true } : {}),
     }));
+}
+
+/*
+ * ============================================================================
+ * AN UNAPPROVED MANUAL IS NOT OFFICIAL VERIFICATION
+ * ============================================================================
+ *
+ * Release requirement, 22 Oct 2026: a policy manual nobody has approved must
+ * not be treated as officially verified. The manual is found by an
+ * administrator's `official-policy-manual` tag, or — when nothing is tagged —
+ * by its title (`matchedBy: "fallback"`). A title proves nothing about
+ * approval, so a quote from a title-matched manual is still the manual's text
+ * (and drafts, the Action Plan and chat changes use it as before) but finalize
+ * says plainly that the manual is not confirmed and asks the manager to
+ * acknowledge it. Tagging the approved manual removes the warning.
+ */
+function unapprovedManual(provenance: Record<string, unknown> | undefined): boolean {
+  return provenance?.source === "official_policy_manual" && provenance.matchedBy !== "tag";
 }
 
 /**
@@ -113,6 +141,11 @@ export const POLICY_ACKNOWLEDGEMENT_MESSAGE =
  * filled in where Sunny wrote nothing was never verified, so it is not called
  * an edit, and a blank field still means Woven matched no policy.
  */
+export const POLICY_UNAPPROVED_TITLE = "This policy manual is not confirmed as approved";
+
+export const POLICY_UNAPPROVED_MESSAGE =
+  "The policy on this form is quoted from the policy manual, but that manual has not been confirmed as the company's approved policy source, so it is not officially verified. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
+
 export const POLICY_EDITED_TITLE = "You edited the policy wording";
 
 export const POLICY_EDITED_MESSAGE =
@@ -133,22 +166,27 @@ export function assistantWroteField(events: readonly PolicyEventRow[], key: stri
 
 /** True when every unverified policy field holds a person's change to wording Sunny had written. */
 export function policyWordingEdited(
-  fields: readonly Pick<UnverifiedPolicyField, "key" | "filled">[],
+  fields: readonly Pick<UnverifiedPolicyField, "key" | "filled" | "unapprovedSource">[],
   events: readonly PolicyEventRow[],
   isRevision = false,
 ): boolean {
   return (
     fields.length > 0 &&
-    fields.every((field) => field.filled && (isRevision || assistantWroteField(events, field.key)))
+    fields.every(
+      (field) => !field.unapprovedSource && field.filled && (isRevision || assistantWroteField(events, field.key)),
+    )
   );
 }
 
 /** The acknowledgement's title and message for these unverified fields. */
 export function policyAcknowledgementWording(
-  fields: readonly Pick<UnverifiedPolicyField, "key" | "filled">[],
+  fields: readonly Pick<UnverifiedPolicyField, "key" | "filled" | "unapprovedSource">[],
   events: readonly PolicyEventRow[],
   isRevision = false,
 ): { title: string; message: string } {
+  if (fields.length > 0 && fields.every((field) => field.unapprovedSource)) {
+    return { title: POLICY_UNAPPROVED_TITLE, message: POLICY_UNAPPROVED_MESSAGE };
+  }
   return policyWordingEdited(fields, events, isRevision)
     ? { title: POLICY_EDITED_TITLE, message: POLICY_EDITED_MESSAGE }
     : { title: POLICY_ACKNOWLEDGEMENT_TITLE, message: POLICY_ACKNOWLEDGEMENT_MESSAGE };

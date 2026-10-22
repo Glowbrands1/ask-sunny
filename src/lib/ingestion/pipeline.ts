@@ -6,6 +6,7 @@ import { EMBEDDING_DIMENSIONS } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
 import { getEmbeddingProvider } from "@/lib/embeddings";
 import { KNOWLEDGE_BUCKET, getSupabaseAdmin } from "@/lib/supabase/server";
+import { escapeLike } from "@/lib/supabase/like";
 import type { KnowledgeCategory, KnowledgeDocument } from "@/types";
 import { rowToDocument, type KnowledgeDocumentRow } from "@/lib/knowledge/mappers";
 import { chunkSegments, type DocumentChunk } from "./chunking";
@@ -344,10 +345,16 @@ async function findByTitle(
     .select("*")
     .eq("knowledge_scope_id", scopeId)
     .eq("source", source)
-    .ilike("title", title)
+    .ilike("title", escapeLike(title))
     .order("version", { ascending: false })
-    .limit(1);
-  return ((data ?? [])[0] as KnowledgeDocumentRow | undefined) ?? null;
+    .limit(20);
+  /*
+   * ILIKE is only the narrowing step: PostgREST also reads `*` in the pattern as a
+   * wildcard, which escapeLike cannot neutralise, so the match is made exact here.
+   */
+  const wanted = title.toLowerCase();
+  const rows = (data ?? []) as KnowledgeDocumentRow[];
+  return rows.find((row) => String(row.title ?? "").toLowerCase() === wanted) ?? null;
 }
 
 async function findById(

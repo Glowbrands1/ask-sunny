@@ -193,10 +193,13 @@ describe("the level reader stays out of the intake's import cycle", () => {
    * saw it. `warning-level.ts` is where the level reader lives so that it can
    * import nothing; this keeps it that way.
    */
-  it("warning-level.ts imports nothing", async () => {
+  // It may use the payroll reader, which imports nothing itself; `src/lib/import-cycles.test.ts` guards the rest.
+  it("warning-level.ts imports only the import-free payroll reader", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const source = readFileSync(join(process.cwd(), "src/lib/forms/warning-level.ts"), "utf8");
-    expect(source).not.toMatch(/^\s*import\s/m);
+    const imports = (path: string) =>
+      [...readFileSync(join(process.cwd(), path), "utf8").matchAll(/^\s*import\s.*from\s+"([^"]+)"/gm)].map((m) => m[1]);
+    expect(imports("src/lib/forms/warning-level.ts")).toEqual(["./payroll-deduct-answer"]);
+    expect(imports("src/lib/forms/payroll-deduct-answer.ts")).toEqual([]);
   });
 });

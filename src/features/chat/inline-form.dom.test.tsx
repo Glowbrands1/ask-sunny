@@ -1145,6 +1145,7 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
     await waitFor(() => expect(screen.getByText("Saved")).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /yes, finalize/i }));
 
     await waitFor(() => expect(server().instance.status).toBe("finalized"));
     await waitFor(() => expect(container.textContent).toContain("Finalized"));
@@ -1156,6 +1157,56 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
     ).toBe(true);
     expect(container.textContent).toMatch(/edit it as a new\s+draft/i);
     expect(screen.getByRole("button", { name: /edit as new draft/i })).toBeTruthy();
+  });
+
+  it("asks before freezing the record, and Keep editing changes nothing", async () => {
+    const { server } = phase4();
+    mounted();
+
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Finalize this form?" });
+    // Worded the way the finalized card is: changed later only as a new draft.
+    expect(dialog.textContent).toMatch(/edit it as a new draft/i);
+    expect(recorded.some((made) => made.method === "POST" && made.body.action === "finalize")).toBe(
+      false,
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: /keep editing/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server().instance.status).toBe("draft");
+    expect(recorded.some((made) => made.method === "POST" && made.body.action === "finalize")).toBe(
+      false,
+    );
+  });
+
+  it("asks once when the policy dialog is the confirmation", async () => {
+    // An unverified policy field: the acknowledgement opens, and nothing else.
+    const row = loadedInstance();
+    const document = {
+      ...COACHING_DOCUMENT,
+      blocks: [
+        ...COACHING_DOCUMENT.blocks,
+        {
+          kind: "field" as const,
+          field: {
+            key: "policy_violated",
+            label: "Policy Violated",
+            input: "text" as const,
+            responsibility: "ai" as const,
+            policyGrounded: true,
+          },
+        },
+      ],
+    };
+    phase4({ ...row, version: { ...row.version, document } } as typeof row);
+    mounted();
+
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    fireEvent.click(screen.getByRole("button", { name: /^finalize$/i }));
+    expect(
+      await screen.findByRole("dialog", { name: /does not see this policy/i }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Finalize this form?" })).toBeNull();
   });
 
   it("sends the canonical follow-up date with the action", async () => {
@@ -1170,8 +1221,20 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
     await waitFor(() => expect(server().instance.followUpDate).toBe("2026-09-21"));
 
     fireEvent.click(screen.getByRole("button", { name: /finalize/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /yes, finalize/i }));
     await waitFor(() => expect(server().instance.status).toBe("finalized"));
     expect(server().instance.followUpDate).toBe("2026-09-21");
+  });
+});
+
+describe("the browser's form history never fills in the card", () => {
+  it("turns autofill off on every typed field, the follow-up date included", async () => {
+    phase4();
+    const { container } = mounted();
+    await screen.findByDisplayValue("Arrived late on three shifts this week.");
+    const fields = [...container.querySelectorAll<HTMLElement>("textarea, input:not([type=checkbox])")];
+    expect(fields.some((field) => field.id === "follow-up-inst-42")).toBe(true);
+    for (const field of fields) expect(field.getAttribute("autocomplete"), field.id).toBe("off");
   });
 });
 
@@ -1383,6 +1446,10 @@ describe("a finalized form is edited as a new draft of it", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /save changes/i })).toBeTruthy());
     expect(screen.getByText(/replaces the finalized original/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^finalize$/i }));
+    // A new draft's confirmation says what it replaces.
+    const confirm = await screen.findByRole("dialog", { name: "Finalize this form?" });
+    expect(confirm.textContent).toMatch(/replaces the finalized original/i);
+    fireEvent.click(within(confirm).getByRole("button", { name: /yes, finalize/i }));
     await waitFor(() => expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull());
     cleanup();
 

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { SOURCE_PROMISE } from "@/data/answer-modes";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
 import { quickQuestionsFor } from "@/lib/ai/quick-questions";
+import { FORM_CREATION_PERMISSIONS } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -60,6 +61,8 @@ export function ChatScreen() {
     () => authorFromSession(user, managerDisplayName),
     [user, managerDisplayName],
   );
+  /* Whether this account may create any form — see `FORM_CREATION_PERMISSIONS`. */
+  const mayCreateForms = FORM_CREATION_PERMISSIONS.some((permission) => can(permission));
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftMessages, setDraftMessages] = useState<ChatMessage[]>([]);
@@ -416,8 +419,8 @@ export function ChatScreen() {
   );
 
   /**
-   * Accept ?c= — a conversation that was STARTED INLINE on the Overview, or
-   * the one that was open before a refresh (`chat-address.ts` writes it).
+   * Accept ?c= — a conversation that was STARTED INLINE on the Overview, or the
+   * one that was open before a reload (`chat-address.ts` writes it).
    *
    * The band writes its turn to the same store this screen reads, so "Continue
    * in Ask Sunny" does not replay the question: it adopts the existing thread,
@@ -448,9 +451,11 @@ export function ChatScreen() {
     const query = searchParams.get("q");
     if (!query) return;
     /*
-     * NOT BEFORE THE STORED HISTORY HAS LOADED. Once a sent question puts its
-     * thread in the address, hydration replacing the conversation list after
-     * it would drop that thread and the reload would find nothing.
+     * NOT BEFORE THE STORED HISTORY HAS LOADED. On a cold load the question
+     * used to go out first, and the store's hydration then replaced the
+     * conversation list with what the account and this browser had saved —
+     * dropping the thread the question had just started, so the answer never
+     * appeared.
      */
     if (!storeReady) return;
     /*
@@ -467,13 +472,15 @@ export function ChatScreen() {
   }, [searchParams, send, activeId, storeReady]);
 
   /**
-   * The open conversation goes into the address, so a refresh reopens it — see
+   * The open conversation goes into the address, so a reload reopens it — see
    * `chat-address.ts`. Declared AFTER the ?q= effect on purpose: that effect
    * has to read `?q=` and mark it seeded before this one drops it.
    *
    * `searchParams` IS A DEPENDENCY so the address is written again when the
-   * router puts its own back after a client-side arrival (a dashboard chip's
-   * `?q=`). Once the address matches, `chatAddressFor` returns null and nothing
+   * router puts its own back. Arriving by a client-side link (the Overview's
+   * prompt chips) the router finishes committing `?q=` AFTER this effect first
+   * runs, which left the old address in place and asked the question again on
+   * reload. Once the address matches, `chatAddressFor` returns null and nothing
    * is written, so this cannot loop.
    */
   useEffect(() => {
@@ -833,9 +840,11 @@ export function ChatScreen() {
               rail and does not see this.
 
               Offered once there is a conversation, because that is what it
-              acts on.
+              acts on — and only to an account that may create a form, the
+              same rule the rail's button follows. A control the server would
+              refuse is not offered.
             */}
-            {!isEmpty ? (
+            {!isEmpty && mayCreateForms ? (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1061,7 +1070,7 @@ export function ChatScreen() {
         <aside className="hidden w-76 shrink-0 border-l border-border bg-background lg:block">
           <ContextPanel
             messages={messages}
-            onCreateForm={createFormFromConversation}
+            onCreateForm={mayCreateForms ? createFormFromConversation : undefined}
             busy={busy}
           />
         </aside>

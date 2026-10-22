@@ -1,0 +1,86 @@
+
+ RUN  v4.1.11 <repo>
+
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  employee_account_links: only managed_status, managed_location and managed_role can change (and, through the lifecycle functions, the invitation and termination record); a link's identity never does
+CONTEXT:  PL/pgSQL function public.employee_account_links_guard_update() line 10 at RAISE
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
+DETAIL:  Failing row contains (70061185-bdfe-4974-86e1-01eb31ef8316, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 20:49:14.304058+00, 2026-10-22 20:49:15.061889+00, null, null, null, null, 0, null).
+ERROR:  permission denied for function auth_clear_user_credentials
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+ERROR:  duplicate key value violates unique constraint "employee_account_links_one_account_per_employee"
+DETAIL:  Key (source_system, external_employee_id)=(woven, LS-7e613f-LINKED) already exists.
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_linked_names_employee"
+DETAIL:  Failing row contains (a0ae332e-0302-4d85-90c2-8bce3149e931, woven_linked, woven, null, admin_manual, f, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 20:49:32.720675+00, 2026-10-22 20:49:32.720675+00, null, null, null, null, 0, null).
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
+DETAIL:  Failing row contains (a0ae332e-0302-4d85-90c2-8bce3149e931, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 20:49:32.774695+00, 2026-10-22 20:49:32.774695+00, null, null, null, null, 0, null).
+ERROR:  update or delete on table "app_users" violates foreign key constraint "employee_account_links_app_user_id_fkey" on table "employee_account_links"
+DETAIL:  Key (id)=(55126974-f66b-42d4-bc84-b2f8c0cc3efe) is still referenced from table "employee_account_links".
+ERROR:  employee_access_actions is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  new row for relation "employee_access_actions" violates check constraint "employee_access_actions_action_check"
+DETAIL:  Failing row contains (d45717fd-e291-4d81-aa3a-56774ac6f1f6, ca9d5905-686b-4879-94ae-507d7f6ff7d0, BAD-2, null, DELETE_EVERYONE, t, {}, null, null, null, shadow, 2026-10-22 20:49:34.890102+00, null).
+CONTEXT:  SQL statement "insert into public.employee_access_actions (
+    access_run_id, external_employee_id, app_user_id, action, is_primary, reason_codes,
+    before_values, after_values, woven_source_at, result
+  )
+  select
+    v_run,
+    a ->> 'external_employee_id',
+    nullif(a ->> 'app_user_id', '')::uuid,
+    a ->> 'action',
+    coalesce((a ->> 'is_primary')::boolean, false),
+    coalesce(array(select jsonb_array_elements_text(a -> 'reason_codes')), '{}'),
+    a -> 'before_values',
+    a -> 'after_values',
+    nullif(a ->> 'woven_source_at', '')::timestamptz,
+    'shadow'
+  from jsonb_array_elements(p_actions) as a"
+PL/pgSQL function public.employee_access_record_shadow_run(text,uuid,text,text[],jsonb,jsonb) line 21 at SQL statement
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_access_actions
+ERROR:  permission denied for table employee_access_runs
+ERROR:  cannot insert into view "employee_access_accounts"
+DETAIL:  Views that do not select from a single table or view are not automatically updatable.
+HINT:  To enable inserting into the view, provide an INSTEAD OF INSERT trigger or an unconditional ON INSERT DO INSTEAD rule.
+ERROR:  new row for relation "employee_access_runs" violates check constraint "employee_access_runs_shadow_is_final"
+DETAIL:  Failing row contains (006c4601-291a-4dc1-9002-a0c87443832e, shadow, x, null, p, running, {}, {}, 2026-10-22 20:49:36.828522+00, null).
+ERROR:  provision_auth_user_mismatch
+CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
+ERROR:  provision_auth_user_mismatch
+CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
+ERROR:  link_protected_account
+CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 28 at RAISE
+ERROR:  link_duplicate_email
+CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 54 at RAISE
+ERROR:  disable_not_terminated_in_latest_read
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
+ERROR:  disable_not_terminated_in_latest_read
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
+ERROR:  disable_status_not_managed
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 11 at RAISE
+ERROR:  disable_directory_not_current
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 23 at RAISE
+ERROR:  employee_access_actions is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+
+ Test Files  6 passed (6)
+      Tests  78 passed (78)
+   Start at  20:49:13
+   Duration  44.53s (transform 3.42s, setup 0ms, import 1.04s, tests 42.27s, environment 1ms)
+

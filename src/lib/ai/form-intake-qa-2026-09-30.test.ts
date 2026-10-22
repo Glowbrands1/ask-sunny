@@ -138,6 +138,7 @@ function expectAdvice(replay: Replay) {
 
 /* ============================================ 1. employee resolution === */
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("QA 1 — the employee is read the same way whatever the capitals", () => {
   it.each([
     // F06 failed; X01 (title case) passed.

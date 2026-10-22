@@ -496,3 +496,28 @@ describe("who may act", () => {
     expect(ui.getByRole("button", { name: /pdf/i })).toBeTruthy();
   });
 });
+
+/* ------------------------------------------------------- tap targets --- */
+
+/*
+ * AT LEAST 24PX TO TAP, on a phone. The PDF link, Mark followed up, Start
+ * tracking and the row menu were 7-28px high, so a thumb meant for one landed
+ * on the row or on its neighbour. jsdom does no layout, so the sizing classes
+ * are what can be pinned: min-h-8 / size-8 is 32px.
+ */
+describe("small row controls are big enough to tap", () => {
+  const sized = (element: HTMLElement) => /\b(?:min-h-8|size-8)\b/.test(element.className);
+
+  it("Start tracking, PDF and the row menu", () => {
+    table([form({ employeeName: "Filed One" })]);
+    const { ui } = rowFor("Filed One");
+    expect(sized(ui.getByRole("button", { name: /start tracking/i }))).toBe(true);
+    expect(sized(ui.getByRole("button", { name: /pdf/i }))).toBe(true);
+    expect(sized(ui.getByRole("button", { name: "More actions for Filed One" }))).toBe(true);
+  });
+
+  it("Mark followed up", () => {
+    table([form({ employeeName: "Late One", followUpDate: "2026-09-01" })]);
+    expect(sized(rowFor("Late One").ui.getByRole("button", { name: /mark followed up/i }))).toBe(true);
+  });
+});

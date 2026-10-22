@@ -11,7 +11,7 @@ import {
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
-import { loadPriorFormsOnFile } from "@/lib/forms/prior-forms";
+import { readPriorFormsOnFile } from "@/lib/forms/prior-forms";
 import {
   parseFormVariants,
   interpolate,
@@ -1208,12 +1208,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
            * AND THE FORMS ALREADY ON FILE FOR THEM — their finalized Coaching
            * and Corrective Action forms, read from Form Monitoring under this
            * manager's own visibility. See `prior-forms.ts`.
+           *
+           * ONLY WHERE THE NAME IS ONE PERSON (QA F-11, 22 Oct 2026): a full
+           * name, on file only at this form's own salon, dated on or before
+           * this form. A same-name record elsewhere is never written here.
            */
-          onFile: await loadPriorFormsOnFile({
-            actor,
-            employeeName: loaded.instance.employeeName ?? "",
-            excludeInstanceId: loaded.instance.id,
-          }),
+          onFile: (
+            await readPriorFormsOnFile({
+              actor,
+              employeeName: loaded.instance.employeeName ?? "",
+              excludeInstanceId: loaded.instance.id,
+              locationId: loaded.instance.locationId ?? null,
+              before: loaded.instance.formDate,
+            })
+          ).attach,
         })
       : null;
     /*
