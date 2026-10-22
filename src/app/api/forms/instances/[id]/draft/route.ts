@@ -105,6 +105,9 @@ import {
   STANDARDS_OF_CONDUCT,
   caPolicyAmbiguousNotice,
   groundConductPolicy,
+  groundMissedEvent,
+  MISSED_EVENT_OFFENSE,
+  missedEventPhrase,
   readCaPolicy,
   statedOffenseKeys,
   withConductOffense,
@@ -515,6 +518,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const describedSection =
       caPolicy && caPolicy.stated === null && !namedSection && manual.ok
         ? describedManualSection({ text: notes, chunks: manual.chunks })
+        : null;
+    /*
+     * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — "Seminars/
+     * Meetings/ Training sessions are considered scheduled shifts" (District
+     * Manager feedback, 21 Oct 2026). Ticked Absenteeism and quoted, over
+     * whatever box the model chose; a manual that says nothing leaves the
+     * policy the question the proposal asked. See `groundMissedEvent`.
+     */
+    const missedEvent =
+      caPolicy && caPolicy.stated === null && !namedSection && manual.ok
+        ? groundMissedEvent({ reading: caPolicy, chunks: manual.chunks, jobTitle: loaded.instance.employeeRole })
+        : null;
+    const eventSection =
+      missedEvent?.ok && caPolicy?.missedEvent
+        ? { phrase: missedEventPhrase(caPolicy.missedEvent), section: missedEvent.section, offenseKey: MISSED_EVENT_OFFENSE }
         : null;
 
     /*
@@ -1258,6 +1276,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const policySection =
       namedSection ??
+      eventSection ??
       (describedSection && !(enforced.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
         ? describedSection
         : null);
@@ -1751,7 +1770,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
         exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
-        caPolicy ? caPolicyAmbiguousNotice(caPolicy) : null,
+        caPolicy && !eventSection ? caPolicyAmbiguousNotice(caPolicy) : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,

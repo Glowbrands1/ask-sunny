@@ -857,6 +857,17 @@ const DESCRIBED_SECTIONS: readonly {
       /\b(?:late[- ]open(?:ing|ed)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
     headings: ["Late Opening"],
   },
+  /*
+   * A SEMINAR OR WEBINAR NOT ATTENDED is an absence from a scheduled shift,
+   * and the manual's Seminar/Webinar Attendance section is the one that says
+   * so (District Manager feedback, 21 Oct 2026). Cited ahead of Attendance
+   * under the Absenteeism box. See `groundMissedEvent` in `ca-policy.ts`.
+   */
+  {
+    offenseKey: "absenteeism",
+    describes: /\b(?:seminars?|webinars?)\b/i,
+    headings: ["Seminar/Webinar Attendance"],
+  },
 ];
 
 /**

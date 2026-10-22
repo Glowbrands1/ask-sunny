@@ -41,6 +41,9 @@ import {
   CA_POLICY_QUESTION,
   caPolicyProposalLine,
   namesCaPolicy,
+  groundMissedEvent,
+  MISSED_EVENT_OFFENSE,
+  missedEventPhrase,
   readCaPolicy,
   type CaPolicyReading,
   type NamedPolicyReading,
@@ -1642,6 +1645,25 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
    * otherwise nothing, as before.
    */
   if (named.length === 0) {
+    /*
+     * A MEETING NOT ATTENDED: the section the manual puts it under, with the
+     * sentence that says so (District Manager feedback, 21 Oct 2026). Where
+     * the manual says nothing, the reading's own question asks which policy.
+     */
+    const reading = readCaPolicy(text);
+    if (reading.missedEvent) {
+      const grounded = groundMissedEvent({ reading, chunks: await chunksOf() });
+      return grounded.ok
+        ? {
+            phrase: missedEventPhrase(reading.missedEvent),
+            lookup: "described",
+            heading: grounded.section.heading,
+            page: grounded.section.page,
+            offenseKey: MISSED_EVENT_OFFENSE,
+            anchor: grounded.anchor,
+          }
+        : null;
+    }
     if (!mayDescribeSection(text)) return null;
     const described = describedManualSection({ text, chunks: await chunksOf() });
     return described
