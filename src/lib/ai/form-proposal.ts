@@ -1348,6 +1348,17 @@ const ALREADY_SAID =
 
 const ABOUT_THE_EMPLOYEE = /^(?:and\s+|also\s+|then\s+)?(?:she|he|they)(?:['’](?:s|d|ve|re|ll))?\b/i;
 
+/*
+ * A DAY ON ITS OWN. QA, 22 Oct 2026: with a ready Coaching card open, "i
+ * already told you" and then "today" ended the intake — `extractFormDate`
+ * reads calendar dates ("10/20") and not the day words managers type, so the
+ * turn went to retrieval and the card had to be asked for again. Only a reply
+ * that is nothing but the day counts; a sentence that mentions today still
+ * has to read as part of the intake on its own.
+ */
+const ONLY_A_DAY =
+  /^(?:(?:it\s+)?(?:was|happened)\s+)?(?:on\s+)?(?:today|yesterday|this\s+morning|last\s+night|tonight|(?:last\s+)?(?:mon|tues|wednes|thurs|fri|satur|sun)day)[\s.!]*$/i;
+
 function continuesIntake(continued: string, input: ProposalTurn): boolean {
   const question = input.question.trim();
   if (endsIntake(question) || ASKS_FOR_ADVICE.test(question)) return false;
@@ -1373,6 +1384,7 @@ function continuesIntake(continued: string, input: ProposalTurn): boolean {
   return (
     describesIncident(question) ||
     extractFormDate(question, input.today ?? businessToday()) !== null ||
+    ONLY_A_DAY.test(question) ||
     TOPIC_STATEMENT.test(question) ||
     CARRIES_ON.test(question) ||
     ABOUT_THE_EMPLOYEE.test(question)
