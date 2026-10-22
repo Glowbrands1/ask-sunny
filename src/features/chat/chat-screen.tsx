@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { SOURCE_PROMISE } from "@/data/answer-modes";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
 import { quickQuestionsFor } from "@/lib/ai/quick-questions";
+import { FORM_CREATION_PERMISSIONS } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
@@ -60,6 +61,8 @@ export function ChatScreen() {
     () => authorFromSession(user, managerDisplayName),
     [user, managerDisplayName],
   );
+  /* Whether this account may create any form — see `FORM_CREATION_PERMISSIONS`. */
+  const mayCreateForms = FORM_CREATION_PERMISSIONS.some((permission) => can(permission));
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftMessages, setDraftMessages] = useState<ChatMessage[]>([]);
@@ -837,9 +840,11 @@ export function ChatScreen() {
               rail and does not see this.
 
               Offered once there is a conversation, because that is what it
-              acts on.
+              acts on — and only to an account that may create a form, the
+              same rule the rail's button follows. A control the server would
+              refuse is not offered.
             */}
-            {!isEmpty ? (
+            {!isEmpty && mayCreateForms ? (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1065,7 +1070,7 @@ export function ChatScreen() {
         <aside className="hidden w-76 shrink-0 border-l border-border bg-background lg:block">
           <ContextPanel
             messages={messages}
-            onCreateForm={createFormFromConversation}
+            onCreateForm={mayCreateForms ? createFormFromConversation : undefined}
             busy={busy}
           />
         </aside>

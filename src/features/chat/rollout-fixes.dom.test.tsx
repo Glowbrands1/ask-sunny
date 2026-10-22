@@ -225,7 +225,9 @@ afterEach(() => {
   process.env = { ...ORIGINAL };
 });
 
-async function renderChat() {
+async function renderChat(
+  role: "salon_director" | "assistant_salon_director" = "salon_director",
+) {
   const { Providers } = await import("@/app/providers");
   const { ChatScreen } = await import("./chat-screen");
   const view = render(
@@ -234,7 +236,7 @@ async function renderChat() {
         subject: "11111111-1111-4111-8111-aaaaaaaaaaaa",
         email: "sd@example.com",
         displayName: "Salon Director",
-        role: "salon_director",
+        role,
         scope: { level: "salon", primaryAreaId: "loc-0306", alsoCoversAreaIds: [] },
       }}
       productionAuth
@@ -654,6 +656,20 @@ describe("create a form below the rail's breakpoint", () => {
     release?.();
     await waitFor(() => expect(screen.getByText(/an answer/)).toBeTruthy());
     expect(narrowAction()!.disabled).toBe(false);
+  });
+
+  it("is offered only to an account that may create forms, like the rail", async () => {
+    // An Assistant Salon Director sees Form Monitoring but creates no forms.
+    const user = userEvent.setup();
+    await renderChat("assistant_salon_director");
+    await openConversation(user, /^Alpha thread/);
+
+    expect(narrowAction()).toBeNull();
+    // Nor is the rail's: absent, or disabled.
+    const rail = screen.queryByRole("button", {
+      name: /create a form from this conversation/i,
+    }) as HTMLButtonElement | null;
+    expect(rail === null || rail.disabled).toBe(true);
   });
 
   it("is not offered before there is a conversation to act on", async () => {
