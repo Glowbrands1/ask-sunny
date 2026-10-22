@@ -60,6 +60,8 @@ const DATE_IN_TEXT = new RegExp(
      */
     String.raw`(?<![\d-])(\d{1,2})-(\d{1,2})-(\d{4}|\d{2})(?![\d-])`,
     String.raw`\b(${MONTH_NAME})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?`,
+    // "10.20.26": month-day-year with dots, the year required (QA, 22 Oct 2026, round 3). "$3.25" has two parts.
+    String.raw`(?<![\d.$])(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?![\d.]*\d)`,
   ].join("|"),
   "gi",
 );
@@ -81,7 +83,7 @@ const FOLLOW_UP_BEFORE =
  * warning on 10/2" — an instruction about this form — is not affected.
  */
 const PRIOR_STEP_BEFORE =
-  /\b(?:got|gotten|received|was given|were given|been given|given|had|issued|gave|was|were|previous(?:ly)?|prior|already|last time)\b[^.;\n]{0,40}\b(?:warn(?:ing|ings|ed)|write[- ]?ups?|written up|coach(?:ed|ing)?|corrective actions?|disciplin\w*)\b[^.;\n]{0,20}$/i;
+  /\b(?:got|gotten|received|was given|were given|been given|given|had|issued|gave|was|were|previous(?:ly)?|prior|already|last time)\b[^.;\n]{0,40}\b(?:warn(?:ing|ings|ed)|write[- ]?ups?|written up|coach(?:ed|ing)?|corrective actions?|cas?|c\/a|disciplin\w*|(?:a|an)\s+(?:final\s+)?(?:verbal|written)(?!\s+up))\b(?:[^.;,\n]{0,20}|\s+(?:on|about|for|over|regarding)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:[a-z]+\s+){0,3}?(?:back\s+)?(?:on|in)\s+)$/i;
 
 /*
  * ============================================================================
@@ -153,17 +155,32 @@ interface LabelledStep {
   topic: string;
 }
 
+/*
+ * "PRIOR COACHING JBA POLICY MANUAL 1-1-26, VERBAL CA 9-1-26" — THE SAME
+ * LIST WITHOUT THE COLON. QA, 22 Oct 2026: given as its own answer, the verbal
+ * CA was dropped from the prior actions. Without a colon or a dash the label
+ * does not open a list of anything; an item that names its own step ("verbal
+ * ca", "written warning", "coaching") straight after a labelled step is still
+ * history, and anything else is read as before.
+ */
+const NAMES_A_STEP = new RegExp(String.raw`\b${STEP_NOUN}\b`, "i");
+
 /** Every date in `dates` that is a labelled earlier step, by its offset, with its label and topic. */
 function labelledSteps(text: string, dates: readonly DateInText[]): Map<number, LabelledStep> {
   const found = new Map<number, LabelledStep>();
   // The label of the list the previous date was an item of, while the list is still open.
   let list: string | null = null;
+  // An unmarked label: only an item naming its own step continues it.
+  let listNeedsStep = false;
   let previousEnd = 0;
   for (const date of dates) {
     const item = list === null ? null : LIST_ITEM_BEFORE.exec(text.slice(previousEnd, date.index));
     previousEnd = date.end;
-    if (list !== null && item) {
-      found.set(date.index, { named: `${list}${item[1] ?? ""}`, topic: (item[1] ?? "").trim() });
+    if (list !== null && item && (!listNeedsStep || NAMES_A_STEP.test(item[1] ?? ""))) {
+      found.set(date.index, {
+        named: listNeedsStep ? (item[1] ?? "") : `${list}${item[1] ?? ""}`,
+        topic: listNeedsStep ? "" : (item[1] ?? "").trim(),
+      });
       continue;
     }
     list = null;
@@ -172,7 +189,8 @@ function labelledSteps(text: string, dates: readonly DateInText[]): Map<number, 
     if (ahead) {
       const topic = ahead.groups?.topic ?? "";
       found.set(date.index, { named: ahead[0], topic: topic.trim() });
-      if (ahead.groups?.marker) list = ahead[0].slice(0, ahead[0].length - topic.length);
+      list = ahead[0].slice(0, ahead[0].length - topic.length);
+      listNeedsStep = !ahead.groups?.marker;
       continue;
     }
     const after = LABELLED_STEP_AFTER.exec(text.slice(date.end));
@@ -270,12 +288,12 @@ export function datesInText(text: string, today: string): DateInText[] {
   const found: DateInText[] = [];
   DATE_IN_TEXT.lastIndex = 0;
   for (const match of (text ?? "").matchAll(DATE_IN_TEXT)) {
-    const [, isoY, isoM, isoD, slashM, slashD, slashY, dashM, dashD, dashY, name, nameD, nameY] =
+    const [, isoY, isoM, isoD, slashM, slashD, slashY, dashM, dashD, dashY, name, nameD, nameY, dotM, dotD, dotY] =
       match;
-    // The slashed and the dashed U.S. shapes read the same way.
-    const numM = slashM ?? dashM;
-    const numD = slashD ?? dashD;
-    const numY = slashY ?? dashY;
+    // The slashed, dashed and dotted U.S. shapes read the same way.
+    const numM = slashM ?? dashM ?? dotM;
+    const numD = slashD ?? dashD ?? dotD;
+    const numY = slashY ?? dashY ?? dotY;
     let iso: string | null = null;
 
     if (isoY !== undefined) {
@@ -307,6 +325,42 @@ export function datesInText(text: string, today: string): DateInText[] {
  * `PRIOR_STEP_BEFORE`) is skipped, and so is anything that is not a real day
  * ("13/40", "Feb 30").
  */
+/*
+ * ============================================================================
+ * "WAIT, THE MEETING WAS 10/19" CORRECTS THE DATE, IT DOES NOT ADD ONE
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026, round 3: "need a CA for tess varga for missing the 10/20/26
+ * meeting", then "wait, the meeting was 10/19/26", was dated 10/20 — the first
+ * date typed. A turn that corrects the date — said as a correction,
+ * with one incident date in it — replaces the earlier one. The latest such
+ * turn wins; otherwise the first date typed still dates the form.
+ */
+const CORRECTS_DATE =
+  /\b(?:wait|actually|sorry|oops|correction|i\s+meant|i\s+mean|not\s+(?:on\s+)?\d|instead|scratch\s+that|my\s+bad|(?:it|that|the\s+(?:meeting|incident|date|shift|deadline|day))\s+(?:was|is)\s+(?:actually\s+|really\s+)?(?:on\s+)?(?=\d|\w+\s+\d)|happened\s+on|change\s+the\s+date)\b/i;
+
+/* "actually she also missed 10/21" adds an incident; it does not move the first one. */
+const ANOTHER_DATE = /\b(?:also|again|too|another|as\s+well|second|both)\b/i;
+
+const NOT_THIS_DATE = /\b(?:not|instead\s+of|rather\s+than|wasn'?t|isn'?t)\s+(?:on\s+|the\s+)?$/i;
+
+export function correctedIncidentDate(turns: readonly string[], today: string): string | null {
+  for (let index = turns.length - 1; index > 0; index -= 1) {
+    const turn = turns[index]!;
+    if (!CORRECTS_DATE.test(turn) || ANOTHER_DATE.test(turn) || /\?\s*$/.test(turn.trim())) continue;
+    // "it was 10/16 not 10/15" — the date it was NOT is not a candidate.
+    const dates = [
+      ...new Set(
+        listFormDates(turn, today)
+          .filter((found) => !NOT_THIS_DATE.test(turn.slice(Math.max(0, found.index - 16), found.index)))
+          .map((found) => found.iso),
+      ),
+    ].filter((iso) => iso <= today);
+    if (dates.length === 1) return dates[0]!;
+  }
+  return null;
+}
+
 export function extractFormDate(text: string, today: string): string | null {
   return listFormDates(text, today)[0]?.iso ?? null;
 }

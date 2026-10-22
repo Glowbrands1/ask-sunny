@@ -25,6 +25,8 @@
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
+// From its own module: importing it from the intake closed a cycle that broke a production build (see `warning-level.ts`).
+import { statedWarningLevel } from "./warning-level";
 
 export type TemplateIntent =
   /** The manager named a template. Still validated against the library. */
@@ -545,7 +547,12 @@ export function canonicalShorthand(text: string): string {
 
 /** Every rewrite a form request goes through before it is read. */
 export function canonicalFormWording(text: string): string {
-  return canonicalCorrectiveAction(canonicalShorthand(text));
+  return canonicalCorrectiveAction(
+    canonicalShorthand(
+      // "a verbal corrective", "written corrective for …" — the noun left off (QA, 22 Oct 2026, round 3).
+      text.replace(/\b(verbal|written)\s+corrective\b(?!\s+actions?\b)/gi, "$1 corrective action"),
+    ),
+  );
 }
 
 /** "corrective action" however it was typed; everything else unchanged. */
@@ -603,7 +610,30 @@ function leadsWithTheForm(q: string, original: string): boolean {
    * how most managers write, and it means the same thing.
    */
   const named = /^\s*(?:please\s+)?(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?\s+for\s+(\S+)/i.exec(original);
-  return named !== null && couldBeName(named[1]);
+  if (named !== null && couldBeName(named[1])) return true;
+  /*
+   * "AVERY TESTPERSON'S CA FOR NO CALL NO SHOW 10/18", "Ellie's CA - she was
+   * late" (reference platform, 21 October 2026): whose CA it is, then the
+   * details. The possessive is the person, exactly as "CA for <name>" is. Only
+   * where the details visibly start after it — the end, a separator, or
+   * "for"/"about" — so "Ellie's CA was filed last week" is still a remark
+   * about one.
+   */
+  const owned =
+    /^\s*(?:please\s+)?(\S+?)(?:\s+(\S+?))?['’]s\s+(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?(?=\s*$|\s*[,:;]|\s+[-–—]\s|\s+(?:for|about|regarding|re|because)\b)/i.exec(
+      original,
+    );
+  if (owned !== null && couldBeName(owned[1]) && (owned[2] === undefined || couldBeName(owned[2]))) return true;
+  /*
+   * "REMY CALDER - CA - WRITTEN - NO CALL NO SHOW …" (QA, 22 Oct 2026, round 3):
+   * the person, then the form as a field of its own between separators. The
+   * same as "<name>'s CA - …"; "Remy Calder - CA was filed" is still a remark.
+   */
+  const labelled =
+    /^\s*(?:please\s+)?([a-z][a-z'’-]*)(?:\s+([a-z][a-z'’-]*))?\s*[-–—:|/]\s*(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?\s*(?:$|[-–—:|/,;])/i.exec(
+      original,
+    );
+  return labelled !== null && couldBeName(labelled[1]!) && (labelled[2] === undefined || couldBeName(labelled[2]));
 }
 
 /**
@@ -645,6 +675,22 @@ const CREATION_VERBS = [
   "give her a",
   "give him a",
   "give them a",
+  /*
+   * QA, 22 Oct 2026, round 3: "Doc a CA on Tess Varga", "I'd like a verbal
+   * corrective for …", "file a CA", "log a write-up".
+   */
+  "doc a",
+  "doc an",
+  "document a",
+  "document an",
+  "file a",
+  "log a",
+  "record a",
+  "put in a",
+  "i'd like",
+  "i would like",
+  "let's do",
+  "lets do",
 ];
 
 /**
@@ -851,6 +897,51 @@ function couldBeName(raw: string | undefined): boolean {
     !NOT_A_TYPED_NAME.has(lower) &&
     !FORM_VOCABULARY.has(lower)
   );
+}
+
+/*
+ * ============================================================================
+ * WRITING A PERSON UP, WHOEVER THEY ARE
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026. "Write her up" named the Corrective Action Form, but "write
+ * up Tess Varga for missing the meeting" read as "some form", and "please write
+ * tess varga up" as nothing at all. Writing a PERSON up is the formal step
+ * whatever the person is called, typed in any case; writing up a THING ("write
+ * up a summary", "write it up", "write up the notes") is not, and is untouched.
+ */
+const NOT_WRITTEN_UP = new Set([
+  "a", "an", "the", "this", "that", "these", "those", "it", "my", "our", "your", "some", "any",
+  "everything", "something", "notes", "note", "summary", "report", "recap", "plan", "list", "form",
+  "document", "paperwork", "minutes", "agenda", "schedule", "email", "post", "review", "her", "him", "them",
+]);
+const WRITE_UP_THEN_PERSON = /\bwrit(?:e|ing)\s+up\s+([a-z][a-z'’-]*)(?:\s+([a-z][a-z'’-]*))?/;
+const WRITE_PERSON_UP = /\bwrit(?:e|ing)\s+([a-z][a-z'’-]*)(?:\s+([a-z][a-z'’-]*))?\s+up\b/;
+
+const WRITE_UP_FOR = /\bwrite[- ]?ups?\s+(?:for|on)\s+([a-z][a-z'’-]*)/;
+const NEEDS_A_WRITE_UP =
+  /\b(?:needs?|needed|deserves?|gets?|getting|due\s+for|earned)\s+(?:a\s+|another\s+|her\s+|his\s+|their\s+)?(?:formal\s+)?write[- ]?up\b(?!\s+(?:of|on\s+the|about\s+the)\b)|\b(?:needs?|has|have|should|must|will|gonna|going)\s+(?:to\s+)?(?:be|get)\s+written\s+up\b/;
+
+function writesAPersonUp(q: string): boolean {
+  const person = (first: string | undefined, second: string | undefined, secondRequired: boolean) =>
+    first !== undefined &&
+    !NOT_WRITTEN_UP.has(first) &&
+    couldBeName(first) &&
+    (second === undefined ? !secondRequired : !NOT_WRITTEN_UP.has(second) && couldBeName(second));
+  const after = WRITE_UP_THEN_PERSON.exec(q);
+  if (after && person(after[1], undefined, false)) return true;
+  const around = WRITE_PERSON_UP.exec(q);
+  if (around !== null && person(around[1], around[2], false)) return true;
+  /*
+   * THE WRITE-UP AS A NOUN. QA, 22 Oct 2026, round 3: "tess varga needs a write
+   * up" and "write up for tess varga, missed meeting …" were asked "Which form
+   * do you need?", and the account typed next was answered as a policy
+   * question. A write-up somebody needs, or one for a person, is the
+   * Corrective Action Form; "a write-up of the meeting" is not.
+   */
+  const forPerson = WRITE_UP_FOR.exec(q);
+  if (forPerson && (/^(?:her|him|them)$/.test(forPerson[1]!) || person(forPerson[1], undefined, false))) return true;
+  return NEEDS_A_WRITE_UP.test(q);
 }
 
 export interface LeadingFormRequest {
@@ -1272,12 +1363,35 @@ export function asksAboutForms(question: string): boolean {
   return /\?\s*$/.test(q);
 }
 
+/** A polite request that files something: "can we put …", "could you write … up". */
+const POLITE_REQUEST =
+  /^\s*(?:hey,?\s+|hi,?\s+|ok,?\s+)?(?:can|could|would|will)\s+(?:you|we|i|u)\s+(?:please\s+|pls\s+)?(?:help\s+(?:me|us)\s+(?:to\s+)?)?(?:put|write|start|create|make|do|issue|give|document|doc|file|draft|open|get)\b/i;
+
+/*
+ * THE LEVEL, NAMED AS THE THING TO ISSUE. QA, 22 Oct 2026, round 3: "tess varga
+ * — no call to the meeting, issue a verbal", "put Tess Varga on a written",
+ * "give her a written for it" named no form, and were answered as nothing. A
+ * verbal or written that is being issued, given or put on somebody is the
+ * Corrective Action Form; a written statement, test or note is not. A level
+ * on file ("she had a verbal before") has no issuing verb, and is not read.
+ */
+/* A level followed by its noun ("a written CA") is read by the corrective-action rules, not here. */
+const LEVEL_FOLLOW = String.raw`(?=\s*(?:$|[.,;:!—–-]|for\b|on\b|about\b|because|regarding|over\b|this\b|today|please|pls|and\b|since|due|after|then\b|is\s+(?:fine|enough|ok)))`;
+const LEVEL_AS_DOCUMENT = new RegExp(
+  String.raw`\b(?:(?:issue|issuing|give|giving)\s+(?:[a-z'’-]+\s+){0,2}?|(?:put\s+(?:[a-z'’-]+\s+){1,3}?on|start|do|need|needs|want|document|doc|file|log|(?:i|we)'?d\s+like|(?:i|we)\s+would\s+like|write\s+(?:her|him|them)\s+up\s+with)\s+(?:her\s+|him\s+|them\s+)?)an?\s+(?:final\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}|\b(?:just|only)\s+(?:a\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}`,
+);
+
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
 
 export function detectTemplateIntent(question: string): TemplateIntent {
   const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
-  const informational = asksAboutForms(question);
+  /*
+   * "Can we put Tess Varga on a written for skipping the meeting?", "could you
+   * write her up?" — a request asked politely is still a request (QA, 22 Oct
+   * 2026, round 3). Only where the verb is one that files something.
+   */
+  const informational = asksAboutForms(question) && !POLITE_REQUEST.test(question);
 
   /*
    * ==========================================================================
@@ -1335,6 +1449,12 @@ export function detectTemplateIntent(question: string): TemplateIntent {
    */
   if (!informational && namesOnlyTheForm(q)) return { kind: "explicit", templateKey: "dpoa" };
 
+  /* "write up Tess Varga …", "write tess varga up" — see `writesAPersonUp`. */
+  if (!informational && writesAPersonUp(q)) return { kind: "explicit", templateKey: "dpoa" };
+
+  /* "issue a verbal", "put tess varga on a written" — see `LEVEL_AS_DOCUMENT`. */
+  if (!informational && LEVEL_AS_DOCUMENT.test(q)) return { kind: "explicit", templateKey: "dpoa" };
+
   /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it — and not
    * negated: "document this as coaching, not CA, for Avery" names what the
@@ -1354,7 +1474,19 @@ export function detectTemplateIntent(question: string): TemplateIntent {
            * a reason. A topic alone ("corrective action for repeated lateness")
            * has no second clause and stays a question.
            */
-          /^(?:please\s+)?(?:a\s+|new\s+)?corrective actions?(?:\s+form)?\s+for\s+\S+(?:\s+\S+){0,3}?\s+(?:for|about|regarding|because)\s+\S/.test(q)),
+          /^(?:please\s+)?(?:a\s+|new\s+)?corrective actions?(?:\s+form)?\s+for\s+\S+(?:\s+\S+){0,3}?\s+(?:for|about|regarding|because)\s+\S/.test(q) ||
+          /*
+           * A LEVEL FOR THIS FORM IS A DOCUMENT, NOT THE LADDER. QA, 22 Oct
+           * 2026: "Written CA for Tess Varga: missed the meeting", "… written
+           * CA please", "Tess Varga needs a verbal CA" read as questions about
+           * the process. A verbal or written CA stated for THIS form — not one
+           * on file ("previous coaching: …, verbal ca 9-1-26", "she had a
+           * written CA in August") — is the form being asked for. The reading
+           * is `statedWarningLevel`'s, which already tells the two apart.
+           */
+          statedWarningLevel(question) !== null ||
+          // "… CA please", "corrective action form please"
+          /\bcorrective actions?(?:\s+form)?[\s,]+please\b/.test(q)),
     };
   }
   if (informational) return { kind: "none" };

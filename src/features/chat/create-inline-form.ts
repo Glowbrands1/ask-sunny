@@ -51,6 +51,12 @@ export interface CreateInlineFormResult {
   reference: ChatFormInstanceRef;
   /** Set when the instance was created but Sunny could not prefill it. */
   draftWarning: string | null;
+  /**
+   * The server returned the form this card already made (a lost response, a
+   * second tab, a reopened conversation) instead of creating another. It is
+   * shown as stored; nothing is drafted again.
+   */
+  reused?: boolean;
 }
 
 export const DRAFT_FAILED_WARNING =
@@ -98,7 +104,7 @@ export async function createInlineForm({
    * docs/chat-phase-3.md. A validated id with no name is honest; a validated id
    * with a demo name beside it is not.
    */
-  const created = await call<{ instance: { id: string } }>("/api/forms/instances", {
+  const created = await call<{ instance: { id: string }; reused?: boolean }>("/api/forms/instances", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -140,6 +146,13 @@ export async function createInlineForm({
       locationId: proposal.locationId,
       source: "ask_sunny",
       /*
+       * WHICH CARD THIS IS. A second press of the same card — after a lost
+       * response, from another tab, or after the conversation was reopened —
+       * gets back the form it already made. A different card always files a
+       * new form. See `create-once.ts` (server side).
+       */
+      proposalId: proposal.proposalId,
+      /*
        * THE CONVERSATION AS IT STANDS NOW, not as it stood when the card was
        * drawn. The server re-reads who and which form it now names and
        * refuses a card the manager has since corrected.
@@ -168,6 +181,13 @@ export async function createInlineForm({
    * see `draftNotesFromConversation`. An assistant turn cannot reach this, and
    * neither can a turn the bounded window dropped.
    */
+  /*
+   * A FORM THAT ALREADY EXISTED IS NOT DRAFTED AGAIN. Its prefill already ran,
+   * and the manager may already have edited it; prefilling again would spend a
+   * model call to overwrite their work.
+   */
+  if (created.reused) return { reference, draftWarning: null, reused: true };
+
   const notes = draftNotesFromConversation(messages, proposal.sourceMessageIds);
   if (!draftNotesAreUsable(notes)) {
     return { reference, draftWarning: NO_NOTES_WARNING };

@@ -242,3 +242,24 @@ describe("the forms already on file are listed too", () => {
     expect(result.value).toBe("Coaching — signed 09/02/2026");
   });
 });
+
+/*
+ * QA, 22 Oct 2026: the same list given as its own answer, with no colon after
+ * the label. The second item names its own step, so it is history too; an
+ * item that names no step is read as before.
+ */
+describe("a history list without a colon", () => {
+  const DAY = "2026-10-21";
+
+  it("lists an item that names its own step", () => {
+    expect(statedPriorActions("prior coaching JBA Policy Manual 1-1-26, verbal ca 9-1-26", DAY)).toEqual([
+      "Coaching — JBA Policy Manual — signed 01/01/2026",
+      "Verbal corrective action — signed 09/01/2026",
+    ]);
+  });
+
+  it("does not take an incident date after it as history", () => {
+    const lines = statedPriorActions("previous coaching jba manual 1-1-26, late again 10-20-26", DAY);
+    expect(lines).toEqual(["Coaching — JBA Manual — signed 01/01/2026"]);
+  });
+});

@@ -578,6 +578,15 @@ describe("statedWarningLevel — the level stated for this form", () => {
     ["5. verbal", "verbal"],
     ["warning level: written", "written"],
     ["Sarah Test, Kearny, today, mini skirt, verbal warning, first time", "verbal"],
+    // HR, 22 Oct 2026, with a synthetic name.
+    [
+      "make corrective action for tess varga. this is a verbal. previous coaching JBA Policy Manual 7-29-26. payroll deduct not applicable",
+      "verbal",
+    ],
+    ["this is a written", "written"],
+    ["this one is a verbal warning", "verbal"],
+    ["it will be a written", "written"],
+    ["this should be a verbal", "verbal"],
   ])("%s → %s", (text, level) => {
     expect(statedWarningLevel(text)).toBe(level);
   });
@@ -645,6 +654,27 @@ describe("a verbal CA in a labelled history list is history", () => {
     "missed the monthly meeting on 10-20-26. prior actions - written warning",
     "missed the monthly meeting on 10-20-26. previous coaching: jba policy manual attendance and punctuality review, verbal ca",
   ])("undated, under the label: %s", (text) => {
+    expect(statedWarningLevel(text)).toBeNull();
+  });
+});
+
+/*
+ * QA, 22 Oct 2026: a level as a clause of its own right after the request,
+ * and a dated level listed after a history label without a colon.
+ */
+describe("a level said beside the request", () => {
+  it.each([
+    ["please write tess varga up — verbal — she missed the woven deadline on 10/15/26", "verbal"],
+    ["write up tess varga, verbal warning. she blew the 10/15/26 woven deadline", "verbal"],
+    ["woven deadline 10/15/26 missed — tess varga. verbal ca please", "verbal"],
+  ])("%s → %s", (text, level) => {
+    expect(statedWarningLevel(text)).toBe(level);
+  });
+
+  it.each([
+    "prior coaching JBA Policy Manual 1-1-26, verbal ca 9-1-26",
+    "write up tess varga, prior written warning 8/1/26",
+  ])("%s states no level for this form", (text) => {
     expect(statedWarningLevel(text)).toBeNull();
   });
 });

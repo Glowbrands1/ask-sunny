@@ -140,6 +140,10 @@ describe("a stated answer", () => {
     ["deduct the $40 shortage from her paycheck", "yes"],
     ["the shortage will be deducted", "yes"],
     ["payroll-deduct applies", "yes"],
+    // QA, 22 Oct 2026: the answer last in its clause.
+    ["she blew the 10/15/26 woven deadline. payroll deduct no", "no"],
+    ["payroll deduction applicable no.", "no"],
+    ["payroll deduct yes", "yes"],
   ])("%s -> %s", (text, expected) => {
     expect(statedPayrollDeduct(text)).toBe(expected);
   });
@@ -153,6 +157,7 @@ describe("a stated answer", () => {
     "first time, verbal warning",
     "no prior corrective action",
     "Sarah Test",
+    "payroll deduct no longer applies to uniforms?",
   ])("%s states nothing", (text) => {
     expect(statedPayrollDeduct(text)).toBeNull();
   });

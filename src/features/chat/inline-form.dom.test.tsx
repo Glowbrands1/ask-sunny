@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { MessageBubble } from "./message-bubble";
 import {
   InlineForm,
+  policySourceNoticeFor,
   policyVerificationNoticeFor,
   reviewConversationNoticeFor,
 } from "./inline-form";
@@ -1570,6 +1571,39 @@ describe("the policy-verification notice", () => {
     expect(notice).toMatch(/“Direct policy from official manual” is blank/);
   });
 
+  /*
+   * HR, 22 Oct 2026: Sunny quoted the manual, the manager rewrote the quote,
+   * and the warning said Woven does not see the policy. It does; the wording
+   * is what changed.
+   */
+  it('says "you edited the policy wording" when every unverified field was typed by hand', () => {
+    const verified = { grounded: true, verified: true, sources: [{ documentId: "d1" }] };
+    const loaded = correctiveInstance([
+      { fieldKey: "policy_violated", value: "Standards of Conduct", provenance: verified },
+      { fieldKey: "policy_language", value: "The Company expects Employees to follow rules of conduct." },
+    ]);
+    // Sunny wrote both fields; the manager then rewrote Direct policy.
+    loaded.events[1] = { ...loaded.events[1]!, detail: { fields: ["policy_violated", "policy_language"] } } as never;
+    const notice = policyVerificationNoticeFor(loaded, false);
+
+    expect(notice).toMatch(/^You edited the policy wording: “Direct policy from official manual” was changed by hand/);
+    expect(notice).not.toMatch(/Woven does not see/);
+  });
+
+  it("does not call it an edit when the manager filled in a policy field Sunny never wrote", () => {
+    const verified = { grounded: true, verified: true, sources: [{ documentId: "d1" }] };
+    const loaded = correctiveInstance([
+      { fieldKey: "policy_violated", value: "Standards of Conduct", provenance: verified },
+      { fieldKey: "policy_language", value: "Typed in from the manager's own copy." },
+    ]);
+    // Sunny wrote Policy Violated only; Direct policy was blank until the manager typed it.
+    loaded.events[1] = { ...loaded.events[1]!, detail: { fields: ["policy_violated"] } } as never;
+    const notice = policyVerificationNoticeFor(loaded, false);
+
+    expect(notice).not.toMatch(/You edited the policy wording/);
+    expect(notice).toMatch(/entered by hand/);
+  });
+
   it("treats provenance that is present but unverified as unverified", () => {
     const notice = policyVerificationNoticeFor(
       correctiveInstance([
@@ -1777,5 +1811,28 @@ describe("the Corrective Action Form's payroll-deduct Yes / No", () => {
     await waitFor(() => expect(recorded.some((made) => made.method === "PATCH")).toBe(true));
     const patch = recorded.find((made) => made.method === "PATCH")!;
     expect((patch.body.checked as Record<string, string[]>).payroll_deduct).toEqual(["no"]);
+  });
+});
+
+/*
+ * QA, 22 Oct 2026: the manual is found by its name, not by an approval tag.
+ * See `policySourceNoticeFor`.
+ */
+describe("a policy quoted from a manual found by its name", () => {
+  const withProvenance = (provenance: Record<string, unknown>) =>
+    ({
+      ...loadedInstance(),
+      values: [{ fieldKey: "policy_language", value: "Quoted.", checked: [], filledBy: "ai", provenance }],
+    }) as never;
+
+  it("says the manual is not yet a confirmed source", () => {
+    expect(policySourceNoticeFor(withProvenance({ verified: true, matchedBy: "fallback" }))).toMatch(
+      /hasn't been confirmed as Sun Tan City's approved policy source/,
+    );
+  });
+
+  it("says nothing for a tagged manual, or for wording nobody verified", () => {
+    expect(policySourceNoticeFor(withProvenance({ verified: true, matchedBy: "tag" }))).toBeNull();
+    expect(policySourceNoticeFor(withProvenance({}))).toBeNull();
   });
 });

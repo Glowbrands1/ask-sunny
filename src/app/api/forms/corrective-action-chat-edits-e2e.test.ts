@@ -628,3 +628,150 @@ describe("a section the form already cites", () => {
     expect(answer?.formUpdate).toBeUndefined();
   });
 });
+
+/* ========================================================================= */
+/* QA, 22 Oct 2026 — the open form, told its facts one turn at a time         */
+/* ========================================================================= */
+
+/*
+ * The chat route's order for a turn with a form open: correction, policy
+ * change, revision (`app/api/chat/route.ts`). Whatever takes the turn, the
+ * stored form is read back after it.
+ */
+async function onOpenForm(id: string, history: ChatMessage[], question: string) {
+  const correction = await correctActiveForm({ request: chat(), instanceId: id, question, today: "2026-10-20", history });
+  const policy = correction ? null : await changeActiveFormPolicy({ request: chat(), instanceId: id, question, history });
+  const revision =
+    correction || policy ? null : await reviseActiveForm({ request: chat(), instanceId: id, question, history, today: "2026-10-20" });
+  const answer = correction ?? policy ?? revision;
+  history.push(said(question), {
+    id: `a-${history.length}`,
+    role: "assistant",
+    content: answer?.content ?? "(ordinary answer)",
+    createdAt: "2026-10-20T15:00:01Z",
+  } as ChatMessage);
+  return answer;
+}
+
+describe("QA 22 Oct: facts told after the form exists go onto the open form", () => {
+  it("prior steps, the date, the level and payroll, each in its own turn, with nothing lost", async () => {
+    const { id, history } = await createdForm();
+
+    const coaching = await onOpenForm(id, history, "prior coaching JBA Policy Manual 7-29-26");
+    expect(coaching?.formUpdate?.updated).toEqual(["prior_actions"]);
+    expect((await row(id, "prior_actions"))?.value).toBe("Coaching — JBA Policy Manual — signed 07/29/2026");
+
+    await onOpenForm(id, history, "she also had a verbal ca on 9-1-26");
+    expect((await row(id, "prior_actions"))?.value).toBe(
+      "Coaching — JBA Policy Manual — signed 07/29/2026\nVerbal corrective action — signed 09/01/2026",
+    );
+    await onOpenForm(id, history, "she also had a verbal ca on 9-1-26");
+    expect((await row(id, "prior_actions"))?.value?.split("\n")).toHaveLength(2);
+
+    const dated = await onOpenForm(id, history, "it happened on 10/19/26");
+    expect(dated?.formUpdate?.updated).toEqual(["form_date"]);
+
+    const level = await onOpenForm(id, history, "make it a written");
+    expect(level?.formUpdate?.updated).toEqual(["warning_type"]);
+    await onOpenForm(id, history, "no payroll deduct");
+
+    expect((await row(id, "warning_type"))?.checked).toEqual(["written"]);
+    expect((await row(id, "payroll_deduct"))?.checked).toEqual(["no"]);
+    expect((await row(id, "form_date"))?.value).toBe("2026-10-19");
+    expect((await row(id, "prior_actions"))?.value?.split("\n")).toHaveLength(2);
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it('"first time, no prior coaching" fills an empty Prior Actions, and never overwrites a list', async () => {
+    const { id, history } = await createdForm();
+    await onOpenForm(id, history, "first time, no prior coaching");
+    expect((await row(id, "prior_actions"))?.value).toBe("None — first occurrence");
+
+    await onOpenForm(id, history, "prior coaching JBA Policy Manual 7-29-26");
+    expect((await row(id, "prior_actions"))?.value).toBe("Coaching — JBA Policy Manual — signed 07/29/2026");
+    const kept = await onOpenForm(id, history, "it's her first time");
+    expect(kept?.content).toMatch(/Prior Actions already lists/);
+    expect((await row(id, "prior_actions"))?.value).toBe("Coaching — JBA Policy Manual — signed 07/29/2026");
+  });
+
+  it("a new incident, a question, a level on file, or another person is not a fact about this form", async () => {
+    const { id, history } = await createdForm();
+    const before = (await review(id)).values;
+    for (const question of [
+      "she was late again on 10/19",
+      "when did she have prior coaching?",
+      "Remy Calder had a verbal ca on 9-1-26",
+    ]) {
+      const answer = await correctActiveForm({ request: chat(), instanceId: id, question, today: "2026-10-20", history });
+      expect(answer?.formUpdate, question).toBeUndefined();
+    }
+    const history2 = await correctActiveForm({
+      request: chat(), instanceId: id, question: "she had a written warning on 8/1", today: "2026-10-20", history,
+    });
+    expect(history2?.formUpdate?.updated ?? []).not.toContain("warning_type");
+    expect((await review(id)).values.find((entry) => entry.fieldKey === "warning_type")).toEqual(
+      before.find((entry) => entry.fieldKey === "warning_type"),
+    );
+  });
+});
+
+describe("QA 22 Oct, round 3: corrections in everyday wording change only what they name", () => {
+  it("level, date, prior coaching, payroll and policy, one turn each, every other field untouched", async () => {
+    const { id, history } = await createdForm();
+    const snapshot = async () =>
+      Object.fromEntries(
+        (await review(id)).values.map((entry) => [entry.fieldKey, JSON.stringify([entry.value ?? null, entry.checked ?? []])]),
+      );
+    const changedBy = async (question: string) => {
+      const before = await snapshot();
+      const answer = await onOpenForm(id, history, question);
+      const after = await snapshot();
+      const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+      return { answer, changed: keys.filter((key) => before[key] !== after[key]).sort() };
+    };
+    const values = async () => Object.fromEntries((await review(id)).values.map((entry) => [entry.fieldKey, entry]));
+    const observation = (await values()).observation?.value;
+    expect(observation).toBeTruthy();
+
+    expect((await changedBy("oops, should've been written")).changed).toEqual(["warning_type"]);
+    expect((await values()).warning_type?.checked).toEqual(["written"]);
+
+    expect((await changedBy("the date was actually 10/18/26")).changed).toEqual(["form_date"]);
+    expect((await values()).form_date?.value).toBe("2026-10-18");
+
+    expect((await changedBy("she was coached on the handbook 6/3/26 too")).changed).toEqual(["prior_actions"]);
+    expect((await values()).prior_actions?.value).toMatch(/^Coaching.* — signed 06\/03\/2026$/);
+
+    const planBefore = (await values()).action_plan?.value ?? "";
+    const payroll = await changedBy("actually we are docking her pay for this one");
+    // The Action Plan may gain the one payroll sentence that depends on the answer, and says so; nothing else moves.
+    expect(payroll.changed.filter((key) => key !== "action_plan")).toEqual(["payroll_deduct"]);
+    expect((await values()).payroll_deduct?.checked).toEqual(["yes"]);
+    if (payroll.changed.includes("action_plan")) {
+      const planAfter = (await values()).action_plan?.value ?? "";
+      expect(planAfter.replace(/\s*A payroll deduction applies\./, "")).toBe(planBefore);
+      expect(payroll.answer?.content).toMatch(/Action Plan now states the payroll deduction/);
+    }
+
+    const policy = await changedBy("switch the policy to dress code");
+    // Only the policy's own sections move; nothing the manager stated does.
+    for (const key of ["warning_type", "form_date", "prior_actions", "payroll_deduct", "observation", "employee_name"]) {
+      expect(policy.changed, key).not.toContain(key);
+    }
+    expect(policy.changed).toContain("policy_language");
+    expect((await values()).policy_language?.value ?? "").toMatch(/Dress Code/);
+    expect((await values()).policy_language?.value ?? "").not.toMatch(/Attendance/);
+
+    // A section the manual does not have is said so, and nothing changes.
+    const missing = await changedBy("change the policy to moon landing");
+    expect(missing.answer?.content).toMatch(/couldn't find a section called "moon landing"/);
+    expect(missing.changed).toEqual([]);
+
+    const form = await values();
+    expect(form.warning_type?.checked).toEqual(["written"]);
+    expect(form.form_date?.value).toBe("2026-10-18");
+    expect(form.payroll_deduct?.checked).toEqual(["yes"]);
+    expect(form.observation?.value).toBe(observation);
+    expect(store.form_instances).toHaveLength(1);
+  });
+});

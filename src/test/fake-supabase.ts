@@ -53,7 +53,24 @@ export interface FakeStore {
    * once — and never twice — would have nothing to run against.
    */
   form_template_assets?: Row[];
+  /**
+   * Present so the ONE-FORM-PER-CARD claim can be tested. Its primary key
+   * (created_by, proposal_id) is modelled: a second insert of the same pair
+   * returns Postgres' unique-violation code, 23505, as the real table does.
+   * Absent, the table does not exist — as before the migration is applied.
+   */
+  form_create_claims?: Row[];
 }
+
+/** Primary keys the fake enforces on insert, by table. */
+const PRIMARY_KEYS: Record<string, string[]> = {
+  form_create_claims: ["created_by", "proposal_id"],
+  // Only an id the caller chose can collide; the fake's own are unique.
+  form_instances: ["id"],
+};
+
+type FakeError = { code: string; message: string };
+type FakeResult = { data: unknown; error: FakeError | null };
 
 /** The view is a read of the same array — see the note above. */
 const VIEW_SOURCE: Record<string, keyof FakeStore> = {
@@ -63,7 +80,7 @@ const VIEW_SOURCE: Record<string, keyof FakeStore> = {
 /** The children that go when a form goes, as the foreign keys declare. */
 const CASCADES = ["form_instance_values", "form_instance_events"] as const;
 
-class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
+class FakeQuery implements PromiseLike<FakeResult> {
   private op: "select" | "delete" | "update" | "insert" | "upsert" | null = null;
   private upsertRows: Row[] = [];
   private insertRows: Row[] | null = null;
@@ -159,6 +176,10 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => String(row[column] ?? "").startsWith(prefix));
     return this;
   }
+  gte(column: string, value: unknown) {
+    this.filters.push((row) => String(row[column] ?? "") >= String(value));
+    return this;
+  }
   in(column: string, values: unknown[]) {
     this.filters.push((row) => values.includes(row[column]));
     return this;
@@ -199,7 +220,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     return this;
   }
 
-  private run(): { data: unknown; error: null } {
+  private run(): FakeResult {
     const rows = this.rows();
 
     if (this.op === "upsert") {
@@ -229,6 +250,10 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
         const inserted = this.insertRows.map(stamped);
         rows.push(...inserted);
         return { data: this.oneRow ? (inserted[0] ?? null) : inserted, error: null };
+      }
+      const key = PRIMARY_KEYS[this.table];
+      if (key && rows.some((row) => key.every((column) => row[column] === this.payload[column]))) {
+        return { data: null, error: { code: "23505", message: `duplicate key value violates unique constraint "${this.table}_pkey"` } };
       }
       const inserted = stamped(this.payload);
       rows.push(inserted);
@@ -264,8 +289,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     return { data: this.oneRow ? (data[0] ?? null) : data, error: null };
   }
 
-  then<TResult1 = { data: unknown; error: null }, TResult2 = never>(
-    onfulfilled?: ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = FakeResult, TResult2 = never>(
+    onfulfilled?: ((value: FakeResult) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): PromiseLike<TResult1 | TResult2> {
     return Promise.resolve(this.run()).then(onfulfilled, onrejected);

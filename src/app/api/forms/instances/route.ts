@@ -10,6 +10,7 @@ import {
   WARNING_LEVEL_STATED_KEYS,
   WARNING_TYPE_KEY,
 } from "@/lib/forms/corrective-action-intake";
+import { createAssistantInstanceOnce } from "@/lib/forms/create-once";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import {
   applyStatedFacts,
@@ -23,6 +24,7 @@ import {
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
+import { isProposalId } from "@/lib/forms/proposal-id";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
@@ -127,6 +129,8 @@ export async function POST(request: Request) {
       warningLevel?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
+      /** The chat card this create came from. See `create-once.ts`. */
+      proposalId?: unknown;
     } | null;
 
     if (!body?.templateKey || !body.employeeName?.trim()) {
@@ -216,7 +220,7 @@ export async function POST(request: Request) {
     /* See `resolveLocationName`. */
     const locationName = resolveLocationName(locationId, body.locationName ?? null);
 
-    const instance = await createInstance({
+    const fields = {
       templateKey: body.templateKey,
       variantKey: body.variantKey ?? null,
       employeeName: body.employeeName.trim().slice(0, 120),
@@ -225,10 +229,35 @@ export async function POST(request: Request) {
       locationName,
       createdBy: actor.id,
       createdByRole: actor.role,
-      source: body.source === "ask_sunny" ? "ask_sunny" : "manual",
+      source: body.source === "ask_sunny" ? ("ask_sunny" as const) : ("manual" as const),
       // A real calendar day or nothing, in which case the form is dated today.
       formDate: isIsoCalendarDate(body.formDate) ? body.formDate : undefined,
-    });
+    };
+
+    /*
+     * ONE FORM PER CHAT CARD. A press of a card whose create already succeeded
+     * — the response was lost, the card was pressed in another tab, or the
+     * conversation was reopened — returns that form instead of filing a second
+     * record, and runs nothing below again. After the stale-card and salon
+     * checks above, so a reused form is never a way around either. A new card
+     * (a new request, a second incident for the same person) always creates.
+     * See `create-once.ts`.
+     */
+    const proposalId = body.source === "ask_sunny" && isProposalId(body.proposalId) ? body.proposalId : undefined;
+    let instance;
+    if (proposalId) {
+      const result = await createAssistantInstanceOnce({ ...fields, proposalId });
+      if (result.kind === "in_progress") {
+        return NextResponse.json(
+          { error: "This form is still being created. Try again in a moment.", code: "create_in_progress" },
+          { status: 409 },
+        );
+      }
+      if (result.kind === "reused") return NextResponse.json({ instance: result.instance, reused: true });
+      instance = result.instance;
+    } else {
+      instance = await createInstance(fields);
+    }
 
     /*
      * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.

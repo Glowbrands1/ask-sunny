@@ -386,6 +386,38 @@ describe("a new coaching form", () => {
     expect(finalized.status).toBe("finalized");
   });
 
+  /*
+   * HR, 22 Oct 2026: the manager rewrote Sunny's verified quote, and the
+   * refusal said Woven does not see the policy. It says what happened.
+   */
+  it("A. says the manager edited the policy wording when they rewrote a verified quote", async () => {
+    const instance = await correctiveFormWithVerifiedPolicy();
+    await saveInstanceValues(
+      instance.id,
+      { values: { policy_language: "The Company expects Employees to follow rules of conduct, as reworded." } },
+      "dana",
+    );
+
+    const failure = await finalizeInstance(instance.id, "dana", null).catch((error) => error);
+    expect(failure).toBeInstanceOf(UnverifiedPolicyError);
+    expect((failure as Error).message).toMatch(/^You edited the policy wording on this form/);
+    expect((failure as Error).message).not.toMatch(/Woven does not see/);
+  });
+
+  it("B. a policy typed into a field Sunny never wrote is not called an edit", async () => {
+    const instance = await startCorrectiveForm();
+    await saveInstanceValues(instance.id, { values: { policy_language: "Typed from the manager's own copy." } }, "dana");
+    const failure = await finalizeInstance(instance.id, "dana", null).catch((error) => error);
+    expect((failure as Error).message).not.toMatch(/You edited the policy wording/);
+    expect((failure as Error).message).toMatch(/^Woven does not see this policy/);
+  });
+
+  it("B. a blank policy still says Woven does not see it", async () => {
+    const instance = await startCorrectiveForm();
+    const failure = await finalizeInstance(instance.id, "dana", null).catch((error) => error);
+    expect((failure as Error).message).toMatch(/^Woven does not see this policy in the knowledge base/);
+  });
+
   it("C. leaves the form a draft when the manager does not acknowledge", async () => {
     const instance = await startCorrectiveForm();
 

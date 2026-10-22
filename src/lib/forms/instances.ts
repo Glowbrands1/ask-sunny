@@ -12,6 +12,7 @@ import {
 import { refuseUnverifiedPolicyValues } from "./policy-grounding";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
+  policyAcknowledgementWording,
   unverifiedPolicyFields,
 } from "./policy-verification";
 import {
@@ -365,6 +366,25 @@ export interface NewInstance {
   createdByRole?: string | null;
   source: InstanceSource;
   formDate?: string;
+  /** The chat card this form was created from; recorded so a repeated press finds it. See `create-once.ts`. */
+  proposalId?: string;
+  /**
+   * The row's id, when the caller derives it (`create-once.ts`: one id per
+   * manager and card, so the primary key itself admits one form). Absent, the
+   * database chooses.
+   */
+  id?: string;
+}
+
+/** The id the caller chose is already a form: the same card, pressed again. */
+export class DuplicateInstanceIdError extends Error {
+  readonly instanceId: string;
+
+  constructor(instanceId: string) {
+    super("That form already exists.");
+    this.name = "DuplicateInstanceIdError";
+    this.instanceId = instanceId;
+  }
 }
 
 /**
@@ -404,9 +424,11 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
       source: input.source,
       status: "draft",
       ...(input.formDate ? { form_date: input.formDate } : {}),
+      ...(input.id ? { id: input.id } : {}),
     })
     .select("id")
     .single();
+  if (input.id && (error as { code?: string } | null)?.code === "23505") throw new DuplicateInstanceIdError(input.id);
   if (error || !data) throw new Error(`Could not start the form: ${error?.message}`);
 
   /*
@@ -450,6 +472,7 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
     variantKey: input.variantKey,
     source: input.source,
     seededFromRecord: Object.keys(seeded),
+    ...(input.proposalId ? { proposalId: input.proposalId } : {}),
   });
 
   const loaded = await loadInstance(String(data.id));
@@ -768,8 +791,8 @@ export async function applyAssistantRevision(
 export class UnverifiedPolicyError extends Error {
   readonly fields: string[];
 
-  constructor(fields: string[]) {
-    super(POLICY_ACKNOWLEDGEMENT_MESSAGE);
+  constructor(fields: string[], message: string = POLICY_ACKNOWLEDGEMENT_MESSAGE) {
+    super(message);
     this.name = "UnverifiedPolicyError";
     this.fields = fields;
   }
@@ -806,14 +829,16 @@ export async function finalizeInstance(
   const before = await loadInstance(instanceId);
   if (!before) throw new Error("That form no longer exists.");
 
-  const unverified = unverifiedPolicyFields(
+  const unverifiedFields = unverifiedPolicyFields(
     parseFormDocument(before.version.document),
     before.instance.variantKey,
     before.values,
-  ).map((field) => field.key);
+  );
+  const unverified = unverifiedFields.map((field) => field.key);
 
   if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
-    throw new UnverifiedPolicyError(unverified);
+    throw new UnverifiedPolicyError(unverified, policyAcknowledgementWording(unverifiedFields, before.events, Boolean(before.instance.revisesInstanceId))
+        .message);
   }
 
   const supabase = getSupabaseAdmin();

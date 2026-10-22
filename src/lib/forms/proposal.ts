@@ -127,10 +127,25 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  * `whole` requires every word to be part of the name: it is the test for a
  * message (or an intake line) that consists of nothing else.
  */
+/*
+ * "A WRITTEN CA FOR MISSING THE MEETING" NAMES NOBODY CALLED MISSING. QA, 22
+ * Oct 2026: the word after "<form> for" was read as a name, so "Tess Varga
+ * needs a written CA for missing the meeting" named two people, Missing and
+ * Tess Varga, and the create was refused as ambiguous. A lower-case word in
+ * -ing followed by what a verb takes ("the", "her", "to", "work", "late") is
+ * the start of the reason, never a first name.
+ */
+const GERUND = /^[a-z]{3,}ing$/;
+const GERUND_OBJECT = /^(?:the|a|an|her|his|their|my|our|its|this|that|these|those|to|work|shifts?|out|up|on|in|at|for|late|early|off|over|into|with|without|any|all|company|store|salon|policy|policies|cash|money|time|clients?|customers?|guests?)$/;
+
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
   let endedOnPunctuation = false;
-  for (const raw of words) {
+  for (const [index, raw] of words.entries()) {
+    if (parts.length === 0 && GERUND.test(raw) && GERUND_OBJECT.test((words[index + 1] ?? "").replace(WRAPPER_AFTER, "").toLowerCase())) {
+      if (whole) return null;
+      break;
+    }
     // A third part only where a name position was read — see below.
     if (parts.length === (whole ? 2 : 3)) break;
     // An opening wrapper can only precede the name, so only the first word loses one.

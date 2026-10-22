@@ -119,11 +119,17 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
      * employee's name has always been, and it is null unless the MANAGER said
      * it — see `extractJobTitle`.
      */
+    /*
+     * `proposalId` names the card, so a repeated press returns the form it
+     * already made (QA, 22 Oct 2026). It is compared for equality with an id
+     * the server recorded itself, for the same manager, and asserts nothing.
+     */
     expect(Object.keys(calls[0]!.body).sort()).toEqual([
       "conversation",
       "employeeName",
       "employeeRole",
       "locationId",
+      "proposalId",
       "source",
       "templateKey",
       "variantKey",

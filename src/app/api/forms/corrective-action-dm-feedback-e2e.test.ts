@@ -308,7 +308,7 @@ const ATTENDANCE_CHUNK = {
   sections: [{ heading: "Attendance", page: 14 }],
   section: "Attendance",
   content:
-    "14 | P a g e\nAttendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.",
+    "14 | P a g e\nAttendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.\no Seminars/Meetings/ Training sessions are considered scheduled shifts. (See\nSeminar/Webinar Attendance section)",
 };
 
 const VISITORS_CHUNK = {
@@ -1051,5 +1051,487 @@ describe("the payroll amount the quoted section states", () => {
     expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
       `Management will review the Late Opening and Attendance policies with Tess. ${CLOSING}`,
     );
+  });
+});
+
+/* ========================================================================= */
+/* I — A MISSED MEETING IS ATTENDANCE                                         */
+/* ========================================================================= */
+
+/*
+ * HR, 21 Oct 2026: E1 came back ticked Standards of Conduct, the model's
+ * choice. The manual's Attendance section counts meetings as scheduled
+ * shifts, so a missed meeting is Absenteeism, quoted from Attendance.
+ */
+describe("a missed meeting is Attendance", () => {
+  it("is proposed as Attendance and drafted under Absenteeism, whatever box the model ticked", async () => {
+    const { last, create } = await conversation([E1]);
+    expect(last.content).toMatch(/\*\*Policy:\*\* this reads as \*\*Attendance\*\* — a required meeting that was missed/);
+
+    state.draft = {
+      values: { observation: "Observed:\nTess Varga did not attend the monthly meeting on October 20, 2026." },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
+    expect(field(form, "policy_violated")!.value).toBe("Absenteeism");
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(field(form, "policy_language")!.value).not.toMatch(/Standards of Conduct/);
+    expect(field(form, "action_plan")!.value).toBe(`Management will review the Attendance policy with Tess. ${CLOSING}`);
+  });
+
+  it("ticks nothing the manual does not support: without its meetings line, the draft's box stands", async () => {
+    state.manual = {
+      chunks: (state.manual!.chunks as { section?: string; content: string }[]).map((chunk) =>
+        chunk.section === "Attendance"
+          ? { ...chunk, content: chunk.content.replace(/\no Seminars\/Meetings[\s\S]*$/, "") }
+          : chunk,
+      ),
+    };
+    const { create } = await conversation([E1]);
+    state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+  });
+
+  it("a policy the manager named still wins", async () => {
+    const { create } = await conversation([
+      "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. the policy violated is the standards of conduct. payroll deduct not applicable",
+    ]);
+    state.draft = { values: {}, checked: { offense_type: ["absenteeism"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+  });
+});
+
+/* ========================================================================= */
+/* QA, 22 Oct 2026 — HR's incidents, end to end (mocked)                      */
+/* ========================================================================= */
+
+/*
+ * Synthetic people only. The routes, the proposal flow, the drafting guard
+ * and the store are the real code; Supabase is the in-memory fake and the
+ * model's tool call is `state.draft`. "Reopen" is a fresh GET of the stored
+ * form, which is what the chat card and Form Monitoring both do.
+ */
+async function finalize(id: string, acknowledge = false) {
+  joinOverview();
+  const response = await instanceRoute.POST(
+    new Request(`https://app.test/api/forms/instances/${id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "finalize", ...(acknowledge ? { acknowledgeUnverifiedPolicy: true } : {}) }),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+  return { status: response.status, body: (await response.json()) as { error?: string; code?: string } };
+}
+
+/** The card's Save: every value on the card, as the browser sends it. */
+async function saveAll(id: string, changes: Record<string, string>) {
+  const current = await review(id);
+  const values = Object.fromEntries(current.values.map((entry) => [entry.fieldKey, entry.value ?? ""]));
+  joinOverview();
+  const response = await instanceRoute.PATCH(
+    new Request(`https://app.test/api/forms/instances/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ values: { ...values, ...changes } }),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+  expect(response.status).toBe(200);
+}
+
+/**
+ * The chat as it really runs: a turn the form intake does not take goes to an
+ * ordinary answer (stood in for here), stays in the history, and the open card
+ * is still the one continued. Returns which turns the intake took.
+ */
+async function chatTurns(turns: string[]) {
+  const messages: ChatMessage[] = [];
+  const taken: boolean[] = [];
+  /* Whether the form intake answered the turn at all, rather than an ordinary answer. */
+  const replied: boolean[] = [];
+  let lastProposal: NonNullable<Awaited<ReturnType<typeof proposeFormForTurn>>> | null = null;
+  let open: string | undefined;
+  for (const text of turns) {
+    const message = said(text);
+    const response = await proposeFormForTurn({
+      history: messages,
+      question: message.content,
+      questionMessageId: message.id,
+      actor: { role: state.role as never, scope: state.scope as AccessScope },
+      summaries: await listTemplateSummaries(),
+      today: "2026-10-21",
+      policyManual: async () => (state.manual?.chunks as never) ?? null,
+      ...(open ? { continueTemplateKey: open } : {}),
+    });
+    taken.push(Boolean(response?.formProposal));
+    replied.push(response !== null && response !== undefined);
+    if (response?.formProposal) {
+      lastProposal = response;
+      open = response.formProposal.templateKey;
+    }
+    messages.push(message, {
+      id: `a${sequence}`,
+      role: "assistant",
+      content: response?.content ?? "Noted.",
+      createdAt: "2026-10-21T15:00:01Z",
+      ...(response?.formProposal ? { formProposal: response.formProposal } : {}),
+    } as ChatMessage);
+  }
+  return {
+    taken,
+    replied,
+    get last() {
+      return lastProposal!;
+    },
+    // Read only where a form was proposed; a turn that started none leaves it unread.
+    get proposal() {
+      return lastProposal!.formProposal!;
+    },
+    create: async () => createInlineForm({ proposal: lastProposal!.formProposal!, messages, call, onCreated: () => {} }),
+  };
+}
+
+const WOVEN_OBSERVATION = {
+  values: { observation: "Observed:\nTess Varga did not complete the assigned Woven items by the October 15, 2026 deadline." },
+  checked: { offense_type: ["standards_of_conduct"] },
+};
+
+/* HR, 21 Oct 2026, four turns, the name replaced. */
+const WOVEN_DEADLINE_TURNS = [
+  "create a verbal corrective action for tess varga for missing the 10-15-26 woven deadline",
+  "prior coaching JBA Policy Manual 7-29-26",
+  "no payroll deduct",
+  "Create a Corrective Action Form from this conversation.",
+];
+
+describe("QA 22 Oct: the 21 Oct Woven-deadline conversation, created, saved, reopened, finalized", () => {
+  it("keeps every turn's answer on one draft, cites Sunny's own manual, and a Save does not un-verify it", async () => {
+    const { proposal, last, create } = await chatTurns(WOVEN_DEADLINE_TURNS);
+    expect(proposal.employeeName).toBe("Tess Varga");
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(proposal.payrollDeduct).toBe("no");
+    expect(last.content).toMatch(/Standards of Conduct/);
+
+    state.draft = WOVEN_OBSERVATION;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["no"]);
+    expect(field(form, "prior_actions")!.value).toContain("07/29/2026");
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Standards of Conduct, p. 12");
+    expect(field(form, "policy_language")!.provenance?.verified).toBe(true);
+    // Sunny's tenant only: nothing from another company's sources.
+    expect(JSON.stringify(form.values)).not.toMatch(/Buff City|Bubbles|BCS\b|Makery/i);
+    expect(form.values.some((entry) => /signature/i.test(entry.fieldKey))).toBe(false);
+
+    // 21 Oct: Save sent every value and the policy came back unverified.
+    await saveAll(reference.instanceId, { observation: "Observed:\nTess Varga missed the 10/15/2026 Woven deadline." });
+    const saved = await review(reference.instanceId);
+    expect(field(saved, "policy_language")!.provenance?.verified).toBe(true);
+    expect(field(saved, "observation")!.value).toContain("10/15/2026 Woven deadline");
+    expect(field(saved, "prior_actions")!.value).toBe(field(form, "prior_actions")!.value);
+
+    expect((await finalize(reference.instanceId)).status).toBe(200);
+  });
+
+  it("a rewritten quote asks before Finalize and says the wording was edited", async () => {
+    const { create } = await chatTurns(WOVEN_DEADLINE_TURNS);
+    state.draft = WOVEN_OBSERVATION;
+    const { reference } = await create();
+
+    await saveAll(reference.instanceId, { policy_language: " The Company expects Employees to follow rules of conduct." });
+    const refused = await finalize(reference.instanceId);
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("policy_verification_required");
+    expect(refused.body.error).toMatch(/^You edited the policy wording on this form/);
+    expect((await finalize(reference.instanceId, true)).status).toBe(200);
+  });
+});
+
+describe("QA 22 Oct: the 22 Oct one-message request", () => {
+  const MESSAGE =
+    "make corrective action for tess varga. this is a verbal. previous coaching JBA Policy Manual 7-29-26. payroll deduct not applicable";
+
+  it("reads the level, the history and the payroll answer, and invents no incident", async () => {
+    const { proposal, last, create } = await conversation([MESSAGE]);
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(proposal.payrollDeduct).toBe("no");
+    expect(last.content).not.toMatch(/You'll set the verbal\/written warning level/);
+    expect(last.content).toMatch(/\*\*Type of Warning:\*\* Verbal Warning, as you said|Verbal Warning, as you said/);
+
+    // The model is given nothing to describe and writes nothing.
+    state.draft = { values: {}, checked: {} };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["no"]);
+    expect(field(form, "observation")?.value ?? "").toBe("");
+    expect(field(form, "offense_type")?.checked ?? []).toEqual([]);
+  });
+
+  it("the account given in the next turn is drafted onto the same request", async () => {
+    const { proposal, create } = await conversation([
+      MESSAGE,
+      "she missed the 10-15-26 woven deadline",
+    ]);
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(proposal.payrollDeduct).toBe("no");
+
+    state.draft = WOVEN_OBSERVATION;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "prior_actions")!.value).toContain("07/29/2026");
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(described()).toContain("woven deadline");
+  });
+});
+
+/*
+ * QA, 22 Oct 2026: production, 21 Oct, answered "prior coaching JBA Policy
+ * Manual 7-29-26" as a question while the card was open. Every turn of that
+ * conversation now continues the card (`statesOpenCorrectiveActionFact`).
+ */
+describe("QA 22 Oct: answers while the card is open", () => {
+  it("every turn of the 21 Oct conversation continues the card", async () => {
+    const { taken } = await chatTurns(WOVEN_DEADLINE_TURNS);
+    expect(taken).toEqual([true, true, true, true]);
+  });
+});
+
+describe("QA 22 Oct: answers given one at a time while the card is open", () => {
+  const TURNS = [
+    "create a CA for tess varga for missing the 10-15-26 woven deadline",
+    "verbal",
+    "prior coaching JBA Policy Manual 1-1-26, verbal ca 9-1-26",
+    "no payroll deduct",
+  ];
+
+  it("the final card holds every answer", async () => {
+    const { taken, proposal, create } = await chatTurns(TURNS);
+    expect(taken).toEqual([true, true, true, true]);
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(proposal.payrollDeduct).toBe("no");
+
+    state.draft = WOVEN_OBSERVATION;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["no"]);
+    expect(field(form, "prior_actions")!.value).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026",
+    );
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+  });
+});
+
+describe("QA 22 Oct: Woven-deadline wording not in any earlier example", () => {
+  it.each([
+    "need a verbal ca for tess varga, she blew the 10/15/26 woven deadline. payroll deduct no",
+    "create a verbal corrective action for tess varga — her woven training was overdue on 10/15/26. payroll deduct n/a",
+  ])("%s", async (text) => {
+    const { proposal, last, create } = await chatTurns([text]);
+    expect(proposal.employeeName).toBe("Tess Varga");
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(proposal.payrollDeduct).toBe("no");
+    expect(last.content).toMatch(/Standards of Conduct/);
+
+    state.draft = { ...WOVEN_OBSERVATION, checked: { offense_type: ["under_performance"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "prior_actions")?.value ?? "").toBe("");
+  });
+});
+
+/*
+ * QA, 22 Oct 2026, round 2: requests worded the way managers word them, none
+ * of them an earlier example. Each is created and the stored form read back.
+ * The first two were known gaps in round 1.
+ */
+describe("QA 22 Oct: requests in new wording, through to the saved form", () => {
+  it.each([
+    // [message, level, payroll, date]
+    ["tess varga didn't finish her woven items by 10-15-26. create a verbal CA for her. no payroll deduct", "verbal", "no", "2026-10-15"],
+    ["write up tess varga, verbal warning. she blew the 10/15/26 woven deadline. no payroll deduction", "verbal", "no", "2026-10-15"],
+    ["please write tess varga up — verbal — she missed the woven deadline on 10/15/26", "verbal", null, "2026-10-15"],
+    ["can you write up tess varga? she missed the 10/15/26 woven deadline. it's a verbal", "verbal", null, "2026-10-15"],
+    ["Tess Varga needs a written CA for missing the woven deadline on 10-15-26", "written", null, "2026-10-15"],
+    ["verbal CA for tess varga: woven items overdue since 10/15/26. payroll deduct not applicable", "verbal", "no", "2026-10-15"],
+    ["woven deadline 10/15/26 missed — tess varga. verbal ca please", "verbal", null, "2026-10-15"],
+    ["Tess Varga missed the woven deadline on 10/15/26. Create a verbal CA for her.", "verbal", null, "2026-10-15"],
+  ])("%s", async (text, level, payroll, date) => {
+    const { proposal, create } = await chatTurns([text]);
+    expect(proposal.templateKey).toBe("dpoa");
+    expect(proposal.employeeName).toBe("Tess Varga");
+    expect(proposal.warningLevel ?? null).toBe(level);
+    expect(proposal.payrollDeduct ?? null).toBe(payroll);
+    expect(proposal.formDate).toBe(date);
+
+    state.draft = WOVEN_OBSERVATION;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "employee_name")!.value).toBe("Tess Varga");
+    expect(field(form, "warning_type")!.checked).toEqual([level]);
+    expect(field(form, "payroll_deduct")?.checked ?? []).toEqual(payroll ? [payroll] : []);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "prior_actions")?.value ?? "").toBe("");
+  });
+
+  it("\"Write up Tess Varga for missing the meeting.\" opens her form and asks what it does not know", async () => {
+    const { proposal, last } = await chatTurns(["Write up Tess Varga for missing the meeting."]);
+    expect(proposal.employeeName).toBe("Tess Varga");
+    expect(proposal.warningLevel ?? null).toBeNull();
+    expect(last.content).toMatch(/payroll deduct applicable/i);
+  });
+
+  it("a level on file is never this form's", async () => {
+    const { proposal } = await chatTurns([
+      "tess varga had a written CA in august. she missed the 10/15/26 woven deadline. verbal ca please",
+    ]);
+    expect(proposal.warningLevel).toBe("verbal");
+  });
+});
+
+describe("QA 22 Oct: corrections while the card is open, before Create", () => {
+  it("every turn updates the same card, the latest answer wins, and nothing earlier is lost", async () => {
+    const { taken, proposal, create } = await chatTurns([
+      "create a CA for tess varga for missing the woven deadline",
+      "it was on 10/15/26",
+      "make it written",
+      "actually verbal",
+      "prior coaching jba policy manual 7-29-26",
+      "no payroll deduct",
+    ]);
+    expect(taken).toEqual([true, true, true, true, true, true]);
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(proposal.payrollDeduct).toBe("no");
+    expect(proposal.formDate).toBe("2026-10-15");
+
+    state.draft = WOVEN_OBSERVATION;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "form_date")!.value).toBe("2026-10-15");
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["no"]);
+    expect(field(form, "prior_actions")!.value).toBe("Coaching — JBA Policy Manual — signed 07/29/2026");
+    expect(store.form_instances).toHaveLength(1);
+  });
+});
+
+/*
+ * A second Create for the same card — a lost response retried, a second tab,
+ * the conversation reopened — returns the draft already filed (QA, 22 Oct
+ * 2026; `create-once.ts`). Concurrency and the claim table are covered in
+ * `duplicate-create-route.test.ts` and `create-claims.integration.test.ts`.
+ */
+describe("QA 22 Oct: a repeated Create", () => {
+  it("reuses the draft instead of filing a second", async () => {
+    const { create } = await chatTurns(WOVEN_DEADLINE_TURNS);
+    state.draft = WOVEN_OBSERVATION;
+    const first = await create();
+    const second = await create();
+    expect(second.reference.instanceId).toBe(first.reference.instanceId);
+    expect(store.form_instances).toHaveLength(1);
+  });
+});
+
+/*
+ * ============================================================================
+ * ROUND 3 (QA, 22 Oct 2026): HOW MANAGERS ACTUALLY TYPE IT, THROUGH TO THE SAVED FORM
+ * ============================================================================
+ *
+ * Two sets of phrasings: the ten the round-3 report found wanting, and sixteen
+ * written afterwards, without looking at the readers, to test wording nobody
+ * tuned for. Each conversation runs through the real proposal flow, is
+ * created, and the SAVED form is read back — never only the card. Every turn
+ * after the first request must stay with the form (no ordinary answer in the
+ * middle of an account). `offense` null leaves the box unchecked here: lateness
+ * and a short register are asked about rather than guessed.
+ */
+const NEUTRAL_DRAFT = { values: { observation: "Observed:\nAs the manager described." }, checked: {} };
+
+type Round3Case = {
+  turns: string[];
+  employee: string;
+  level: "verbal" | "written";
+  payroll: "yes" | "no";
+  date: string;
+  offense: string | null;
+  prior: RegExp | "" | "none";
+};
+
+const ROUND3_CASES: Round3Case[] = [
+  // The ten from the round-3 report.
+  { turns: ["Hey, I need to document a written warning for Tess Varga — she didn't show for our 10/20/26 staff meeting. No deduction from her pay. She got coached on the handbook back on 1/1/26."], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: /^Coaching — signed 01\/01\/2026$/ },
+  { turns: ["tess varga — no call to the 10/20/26 manager meeting, issue a verbal, previously verbally warned 9/1/26, payroll not applicable"], employee: "Tess Varga", level: "verbal", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: /^Verbal warning — signed 09\/01\/2026$/ },
+  { turns: ["Doc a CA on Tess Varga. Missed mandatory meeting 10.20.26. Level: written. Payroll ded: N"], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: "" },
+  { turns: ["Can we put Tess Varga on a written for skipping the 10/20/26 meeting? She's had a verbal before on 9/1/26. Don't deduct."], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: /^Verbal warning — signed 09\/01\/2026$/ },
+  { turns: ["I'd like a verbal corrective for Remy Calder, register was $5 short on 10/19/26, $5 payroll deduction applies"], employee: "Remy Calder", level: "verbal", payroll: "yes", date: "2026-10-19", offense: null, prior: "" },
+  { turns: ["remy calder came in 45 min late on 10/19/26 — write her up, verbal, payroll deduct none"], employee: "Remy Calder", level: "verbal", payroll: "no", date: "2026-10-19", offense: null, prior: "" },
+  { turns: ["I have to write someone up", "Tess Varga", "she skipped the monthly meeting on 10/20/26", "written", "she had coaching on the jba manual 1/1/26 and a verbal ca 9/1/26", "no deduction"], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: /^Coaching — signed 01\/01\/2026\nVerbal corrective action — signed 09\/01\/2026$/ },
+  { turns: ["need a CA for tess varga for missing the 10/20/26 meeting, verbal", "sorry, make that written", "wait, the meeting was 10/19/26", "she was coached 1-1-26 on the jba manual", "payroll deduct n/a"], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-19", offense: "absenteeism", prior: /^Coaching — signed 01\/01\/2026$/ },
+  { turns: ["tess varga blew off her woven training due 10/15/26", "can you start a verbal ca for that", "first offense", "no payroll"], employee: "Tess Varga", level: "verbal", payroll: "no", date: "2026-10-15", offense: "standards_of_conduct", prior: "none" },
+  // Written afterwards, unseen by the readers.
+  { turns: ["Tess Varga missed our team meeting yesterday 10/21/26 without telling anyone. I want to give her a written. No payroll deduction. She was coached on attendance 8/15/26."], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-21", offense: "absenteeism", prior: /^Coaching.* — signed 08\/15\/2026$/ },
+  { turns: ["Need to write up Remy Calder. He was 30 minutes late to his shift on 10/18/26. Verbal warning. Payroll deduct: no."], employee: "Remy Calder", level: "verbal", payroll: "no", date: "2026-10-18", offense: null, prior: "" },
+  { turns: ["remy calder's drawer came up $20 short on 10/17/26. lets do a written ca, deduct the $20 from payroll"], employee: "Remy Calder", level: "written", payroll: "yes", date: "2026-10-17", offense: null, prior: "" },
+  { turns: ["could you draft a verbal corrective action for Tess Varga? she skipped the 10/14/26 store meeting. not deducting pay"], employee: "Tess Varga", level: "verbal", payroll: "no", date: "2026-10-14", offense: "absenteeism", prior: "" },
+  { turns: ["Tess Varga ditched the 10/20/26 all-hands meeting. Final step isn't needed yet, just a verbal. Payroll: N/A. No prior coaching."], employee: "Tess Varga", level: "verbal", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: "none" },
+  { turns: ["Please document a written CA for Remy Calder — she didn't finish her Woven modules by the 10/12/26 deadline. She got a verbal for the same thing 9/10/26. No deduction."], employee: "Remy Calder", level: "written", payroll: "no", date: "2026-10-12", offense: "standards_of_conduct", prior: /^Verbal warning.* — signed 09\/10\/2026$/ },
+  { turns: ["I need a corrective action", "it's for remy calder", "she ignored her woven training that was due 10/16/26", "verbal", "nothing prior", "no deduct"], employee: "Remy Calder", level: "verbal", payroll: "no", date: "2026-10-16", offense: "standards_of_conduct", prior: "none" },
+  { turns: ["tess varga needs a write up", "she bailed on the 10/19/26 meeting", "make it a written warning", "oh and she had a verbal 9/2/26", "payroll no"], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-19", offense: "absenteeism", prior: /^Verbal warning — signed 09\/02\/2026$/ },
+  { turns: ["write up for tess varga, missed meeting 10/20/26, written", "actually make it verbal", "no payroll deduction"], employee: "Tess Varga", level: "verbal", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: "" },
+  { turns: ["corrective action for remy calder for being late 10/15/26, verbal, no deduct", "correction: it was 10/16/26 not 10/15"], employee: "Remy Calder", level: "verbal", payroll: "no", date: "2026-10-16", offense: null, prior: "" },
+  { turns: ["Remy Calder - CA - written - no call no show to manager meeting 10/13/26 - payroll deduction no - prior coaching 7/1/26"], employee: "Remy Calder", level: "written", payroll: "no", date: "2026-10-13", offense: "absenteeism", prior: /^Coaching — signed 07\/01\/2026$/ },
+  { turns: ["Hi, can you help me start a written warning for Tess Varga? She never came to the 10/20/26 monthly meeting. We aren't docking her pay."], employee: "Tess Varga", level: "written", payroll: "no", date: "2026-10-20", offense: "absenteeism", prior: "" },
+  { turns: ["I'd like to issue Remy Calder a verbal for showing up late on 10/18/26. No payroll deduction. First time."], employee: "Remy Calder", level: "verbal", payroll: "no", date: "2026-10-18", offense: null, prior: "none" },
+];
+
+describe("QA 22 Oct, round 3: everyday wording, single messages and multi-turn, through to the saved form", () => {
+  it.each(ROUND3_CASES.map((c) => [c.turns.join(" ⏎ "), c] as const))("%s", async (_label, c) => {
+    const { taken, replied, proposal, create } = await chatTurns(c.turns);
+    // Once the form is asked for, every later turn stays with it.
+    const first = taken.indexOf(true);
+    expect(first, "no turn produced the form").toBeGreaterThanOrEqual(0);
+    expect(replied.slice(first), "a turn after the request left the form").toEqual(replied.slice(first).map(() => true));
+    expect(taken.slice(first)).toEqual(taken.slice(first).map(() => true));
+
+    expect(proposal.templateKey).toBe("dpoa");
+    expect(proposal.employeeName).toBe(c.employee);
+    expect(proposal.warningLevel).toBe(c.level);
+    expect(proposal.payrollDeduct).toBe(c.payroll);
+    expect(proposal.formDate).toBe(c.date);
+
+    state.draft = NEUTRAL_DRAFT;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "employee_name")!.value).toBe(c.employee);
+    expect(field(form, "warning_type")!.checked).toEqual([c.level]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual([c.payroll]);
+    expect(field(form, "form_date")!.value).toBe(c.date);
+    expect(field(form, "offense_type")?.checked ?? []).toEqual(c.offense ? [c.offense] : []);
+    const prior = field(form, "prior_actions")?.value ?? "";
+    if (c.prior === "none") expect(prior).toBe("None — first occurrence");
+    else if (c.prior === "") expect(prior).toBe("");
+    else expect(prior).toMatch(c.prior);
+  });
+
+  it.each([
+    "What's our policy on missing meetings?",
+    "how do I write up an employee?",
+    "can you give me a written summary of the attendance policy",
+    "I want everyone to get a written copy of the schedule",
+  ])("a question or an unrelated request starts no form: %s", async (text) => {
+    const { taken } = await chatTurns([text]);
+    expect(taken).toEqual([false]);
   });
 });

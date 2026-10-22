@@ -19,9 +19,9 @@ import { useSession } from "@/lib/session/session-context";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
 import {
-  POLICY_ACKNOWLEDGEMENT_MESSAGE,
   POLICY_ACKNOWLEDGEMENT_REQUIRED,
-  POLICY_ACKNOWLEDGEMENT_TITLE,
+  policyAcknowledgementWording,
+  policyWordingEdited,
   unverifiedPolicyFields,
 } from "@/lib/forms/policy-verification";
 import type {
@@ -351,6 +351,7 @@ export function InlineForm({
   const notice = prefillNoticeFor(prefill, loaded);
   const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
+  const policySourceNotice = prefilling ? null : policySourceNoticeFor(loaded);
   /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
    * form started by hand in the old Create a Form screen (since removed; its
@@ -364,6 +365,11 @@ export function InlineForm({
     loaded.version.document,
     loaded.instance.variantKey,
     loaded.values,
+  );
+  const policyWording = policyAcknowledgementWording(
+    unresolvedPolicy,
+    loaded.events,
+    Boolean(loaded.instance.revisesInstanceId),
   );
   const policySources = storedPolicySources(loaded.values);
   const variant =
@@ -656,6 +662,11 @@ export function InlineForm({
           {policyNotice}
         </Notice>
       ) : null}
+      {policySourceNotice ? (
+        <Notice tone="attention" className="mt-3">
+          {policySourceNotice}
+        </Notice>
+      ) : null}
 
       {/*
         WHERE THE POLICY CAME FROM, WITH ITS PAGE.
@@ -914,8 +925,8 @@ export function InlineForm({
       >
         {confirmingPolicy ? (
           <DialogContent
-            title={POLICY_ACKNOWLEDGEMENT_TITLE}
-            description={POLICY_ACKNOWLEDGEMENT_MESSAGE}
+            title={policyWording.title}
+            description={policyWording.message}
           >
             <dl className="space-y-3 text-[13px]">
               <div>
@@ -1054,6 +1065,27 @@ export function storedPolicySources(values: LoadedValueRow[]): StoredPolicySourc
   return [...seen.values()];
 }
 
+/*
+ * ============================================================================
+ * A MANUAL FOUND BY ITS NAME IS NOT YET AN APPROVED SOURCE
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026 (`docs/policy-source-validation-2026-10-22.md`): Ask Sunny's
+ * official policy manual is found by its file name — no document carries the
+ * `official-policy-manual` tag and no approval names it — so every citation is
+ * stored `matchedBy: "fallback"`. The quote is still the manual's own words and
+ * the draft keeps it; what the app cannot say is that a person approved that
+ * manual as Sun Tan City's source for Corrective Actions, so the card says so
+ * until an administrator tags it. A citation from a tagged manual says nothing.
+ */
+export function policySourceNoticeFor(loaded: LoadedInstance): string | null {
+  const fallback = loaded.values.some(
+    (row) => row.provenance?.verified === true && row.provenance?.matchedBy === "fallback",
+  );
+  if (!fallback) return null;
+  return "The policy on this form is quoted from a manual Ask Sunny found by its name. It hasn't been confirmed as Sun Tan City's approved policy source, so check the policy before you issue this form.";
+}
+
 export function policyVerificationNoticeFor(
   loaded: LoadedInstance,
   prefilling: boolean,
@@ -1118,6 +1150,21 @@ export function policyVerificationNoticeFor(
   const byHand = unresolved.filter((field) => filled(field.key));
   const quote = (fields: typeof grounded) =>
     fields.map((field) => `“${field.label}”`).join(" and ");
+
+  /*
+   * EVERY UNVERIFIED FIELD IS A PERSON'S CHANGE TO WORDING SUNNY WROTE. Woven
+   * matched the policy; the wording is what changed (HR, 22 Oct 2026). See
+   * `policyWordingEdited`.
+   */
+  if (
+    policyWordingEdited(
+      unresolved.map((field) => ({ key: field.key, filled: filled(field.key) })),
+      loaded.events,
+      Boolean(loaded.instance.revisesInstanceId),
+    )
+  ) {
+    return `You edited the policy wording: ${quote(byHand)} ${byHand.length === 1 ? "was" : "were"} changed by hand, so Ask Sunny can't confirm ${byHand.length === 1 ? "it matches" : "they match"} the policy manual. Check the wording against the official manual before you issue this form.`;
+  }
 
   const parts = [
     blank.length > 0

@@ -500,3 +500,46 @@ describe("2e. a form's name leading the message, for every form", () => {
     expect(leadingFormRequest("the exit process")).toBeNull();
   });
 });
+
+/*
+ * QA, 22 Oct 2026: requests in the words managers use, and the turns that
+ * must stay what they were.
+ */
+describe("a corrective action asked for in everyday words", () => {
+  it.each([
+    "Write up Tess Varga for missing the meeting.",
+    "please write tess varga up — verbal — she missed the meeting",
+    "can you write up tess varga? she skipped the meeting",
+    "writing up remy calder for the register shortage",
+  ])("writing a person up names the form: %s", (text) => {
+    expect(detectTemplateIntent(text)).toEqual({ kind: "explicit", templateKey: "dpoa" });
+  });
+
+  it.each([
+    "Written CA for Tess Varga: missed the meeting.",
+    "Tess Varga skipped the store meeting 10-20-26 — written CA please",
+    "Tess Varga needs a written CA for missing the meeting",
+    "missed the deadline — tess varga. verbal ca please",
+    "Tess Varga missed the deadline. Create a verbal CA for her.",
+  ])("a level stated for this form asks for it: %s", (text) => {
+    expect(detectTemplateIntent(text)).toEqual({ kind: "corrective_action", requestedCreation: true });
+  });
+
+  it.each([
+    "write up a summary of the meeting",
+    "can you write it up for me",
+    "write up the notes from today",
+  ])("writing up a thing is not the form: %s", (text) => {
+    expect(detectTemplateIntent(text)).not.toEqual({ kind: "explicit", templateKey: "dpoa" });
+  });
+
+  it.each([
+    "prior coaching JBA Policy Manual 1-1-26, verbal ca 9-1-26",
+    "she had a written CA in august",
+    "what is a verbal CA?",
+    "how does corrective action work",
+  ])("history and questions are not a request: %s", (text) => {
+    const intent = detectTemplateIntent(text);
+    expect(intent.kind === "corrective_action" ? intent.requestedCreation : false).toBe(false);
+  });
+});
