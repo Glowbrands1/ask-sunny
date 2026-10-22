@@ -1343,9 +1343,6 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   return { kind: "explicit", templateKey: continued };
 }
 
-/** Said on the card when the manager has not stated the level. */
-export const WARNING_LEVEL_SUGGESTION_LINE =
-  "**Type of Warning:** Verbal or Written? Tell me here — or I'll suggest one on the draft from the performance framework, marked as a suggestion. Confirm it or choose another whenever you like.";
 
 /** "Sorry, … not 9-1-26", "actually it was 10-19": the turn corrects what the intake already holds. */
 function correctsTheIntake(question: string, today: string): boolean {
@@ -2309,15 +2306,9 @@ function correctiveActionReady(
         (item.key === "warning_level" && !proposal.warningLevel) ||
         (item.key === "previous_action" && priorActions.length === 0 && onFile.length === 0),
     )
-    .map((item) => item.key);
-  /*
-   * THE LEVEL IS SUGGESTED, THEN CONFIRMED (owner decision, 22 Oct 2026). The
-   * draft may carry the level the performance framework suggests; it is only
-   * a suggestion until the manager confirms it or chooses another, and the
-   * suggestion is labelled as one on the form, with a Confirm button.
-   */
-  const levelOpen = outstanding.includes("warning_level");
-  const historyOpen = outstanding.includes("previous_action");
+    .map((item) =>
+      item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
+    );
 
   const lines = proposal.awaitingIncident
     ? [`I can create a **${proposal.templateName}** for **${proposal.employeeName}**.`, "", NO_INCIDENT_NOTE]
@@ -2380,11 +2371,11 @@ function correctiveActionReady(
   const possibleNote = possibleOnFileNote(proposal, priorOnFile, priorActions);
   if (possibleNote) lines.push("", possibleNote);
 
-  if (levelOpen) {
-    lines.push("", WARNING_LEVEL_SUGGESTION_LINE);
-  }
-  if (historyOpen) {
-    lines.push("", "You'll set any prior coaching or corrective action on the form — I won't guess at it.");
+  if (outstanding.length > 0) {
+    lines.push(
+      "",
+      `You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`,
+    );
   }
 
   /*

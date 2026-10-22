@@ -6,13 +6,10 @@ import { caDateQuestion, readCaDateEdit, rewriteDate, type CaDateEdit } from "./
 import { checkboxGroupsForVariant, displayDate, fieldsForVariant, parseFormDocument } from "./document";
 import { changeOnEditableDraft } from "./editable-draft";
 import { authorizeInstance } from "./instance-scope";
-import { confirmWarningLevel, recordChatCorrection, saveInstanceValues } from "./instances";
-import { warningLevelConfirmed } from "./warning-level-gate";
+import { recordChatCorrection, saveInstanceValues } from "./instances";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { correctedDates, priorSteps } from "./form-date-answer";
 import { enforcePersonEdit } from "./responsibility";
 import { detectTemplateIntent } from "./template-intent";
-import { readWarningConfirmation } from "./warning-confirmation";
 
 /**
  * ============================================================================
@@ -25,8 +22,6 @@ import { readWarningConfirmation } from "./warning-confirmation";
  *   DATES        the form's Date line, the incident's date and a prior
  *                action's date may each be corrected; which one is read by
  *                `readCaDateEdit`, and a date with no field is asked about.
- *   THE LEVEL    a suggested Type of Warning is confirmed, or another chosen,
- *                with "confirm the written warning" (`readWarningConfirmation`).
  *
  * Tried by `correctActiveForm` before its own readers. Null for anything else,
  * so every other turn is answered as before. Every change is the manager's own
@@ -40,18 +35,9 @@ export async function correctCaFromChat(input: {
   question: string;
   today: string;
   lastAssistant?: string;
-  /**
-   * The level this turn states for the form, read by the app's own warning
-   * reader where its other correction paths would save it as the assistant's
-   * ("make it a verbal instead"). A stated level is the manager's selection.
-   */
-  statedLevel?: "verbal" | "written" | null;
 }): Promise<AskResponse | null> {
   const question = (input.question ?? "").trim();
-  // A turn about prior actions or their dates ("the verbal ca was 9-2-26, not 9-1-26") never sets this form's level.
-  const aboutHistory = priorSteps(question, input.today).length > 0 || correctedDates(question, input.today).size > 0;
-  const confirmation = readWarningConfirmation(question) ?? (input.statedLevel && !aboutHistory ? { level: input.statedLevel } : null);
-  if (!confirmation && !mayCorrectDates(question)) return null;
+  if (!mayCorrectDates(question)) return null;
 
   // A request for another form is not a correction to this one.
   const intent = detectTemplateIntent(question);
@@ -84,33 +70,6 @@ export async function correctCaFromChat(input: {
   const who = `**${instance.templateName}** for **${instance.employeeName}**`;
   const onDraft = () =>
     changeOnEditableDraft(input.request, input.instanceId, (draftId) => correctCaFromChat({ ...input, instanceId: draftId }));
-
-  /* ------------------------------------------------ the level, confirmed -- */
-  if (confirmation) {
-    const row = loaded.values.find((entry) => entry.fieldKey === "warning_type");
-    const current = (row?.checked ?? []).filter((key) => key === "verbal" || key === "written");
-    const level = confirmation.level ?? (current.length === 1 ? current[0]! : null);
-    const label = (key: string) => warningGroup.options.find((option) => option.key === key)?.label ?? key;
-    if (!level || !warningGroup.options.some((option) => option.key === level)) {
-      return reply(`There's no single Type of Warning on the ${who} to confirm yet. Tell me Verbal or Written and I'll set it as your decision.`);
-    }
-    if (warningLevelConfirmed(row) && current.length === 1 && current[0] === level) {
-      return reply(`**${label(level)}** is already confirmed as your decision on the ${who}. Nothing needed changing.`);
-    }
-    if (instance.status !== "draft") return onDraft();
-    await confirmWarningLevel(input.instanceId, actor.id, level);
-    const suggested = row?.filledBy === "ai" ? current : [];
-    const changed = current.length !== 1 || current[0] !== level;
-    const was = suggested.length === 1 && suggested[0] !== level ? ` — it had suggested ${label(suggested[0]!)}` : "";
-    return {
-      ...reply(
-        changed
-          ? `Type of Warning → **${label(level)}** on the ${who}, as your decision${was}. Everything else on the form is as it was.`
-          : `Confirmed **${label(level)}** as your decision on the ${who}. Everything else on the form is as it was.`,
-      ),
-      formUpdate: { instanceId: input.instanceId, updated: ["warning_type"] },
-    };
-  }
 
   /* ------------------------------------------------------------ the dates -- */
   const value = (key: string) => loaded.values.find((entry) => entry.fieldKey === key)?.value ?? "";

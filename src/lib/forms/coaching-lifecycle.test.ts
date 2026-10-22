@@ -258,16 +258,13 @@ describe("a new coaching form", () => {
    * That is the fact the event now carries.
    */
   async function startCorrectiveForm() {
-    const instance = await createInstance({
+    return createInstance({
       templateKey: "dpoa",
       variantKey: null,
       employeeName: "Sarah Test",
       createdBy: "dana",
       source: "ask_sunny",
     });
-    // The manager's level: a CA is filed only with one they chose or confirmed (`warning-level-gate.ts`).
-    await saveInstanceValues(instance.id, { values: {}, checked: { warning_type: ["verbal"] } }, "dana");
-    return instance;
   }
 
   function finalizedEvent(

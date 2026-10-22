@@ -3,18 +3,11 @@ import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/api/respond";
 import { POLICY_ACKNOWLEDGEMENT_REQUIRED } from "@/lib/forms/policy-verification";
 import {
-  FinalizedFormError,
-  UnconfirmedWarningLevelError,
-  WARNING_LEVEL_CONFIRMATION_REQUIRED,
-  WarningLevelNotOfferedError,
-} from "@/lib/forms/warning-level-gate";
-import {
   authorizeInstance,
   InstanceNotVisibleError,
 } from "@/lib/forms/instance-scope";
 import {
   archiveInstance,
-  confirmWarningLevel,
   deleteInstance,
   finalizeInstance,
   UnverifiedPolicyError,
@@ -97,9 +90,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params;
     const { actor } = await authorizeInstance(request, id, "edit");
     const body = (await request.json().catch(() => null)) as {
-      action?: "finalize" | "revise" | "reevaluate" | "confirm_warning_level";
-      /** The level the manager confirms or chooses, for `confirm_warning_level`. */
-      level?: unknown;
+      action?: "finalize" | "revise" | "reevaluate";
       followUpDate?: string | null;
       /**
        * The manager was shown the unverified-policy warning and chose to
@@ -114,17 +105,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         acknowledgeUnverifiedPolicy: body.acknowledgeUnverifiedPolicy === true,
       });
       return NextResponse.json({ instance });
-    }
-    /*
-     * THE MANAGER'S DECISION ON THE TYPE OF WARNING, from the form's own
-     * button (owner decision, 22 Oct 2026) — the same write the chat's
-     * "confirm the written warning" makes, recorded as theirs.
-     */
-    if (body?.action === "confirm_warning_level") {
-      if (typeof body.level !== "string") return NextResponse.json({ error: "Choose a Type of Warning." }, { status: 400 });
-      await confirmWarningLevel(id, actor.id, body.level, "form_confirmation");
-      const loaded = await loadInstance(id);
-      return NextResponse.json({ instance: loaded?.instance ?? null });
     }
     if (body?.action === "revise" || body?.action === "reevaluate") {
       const instance = await reviseInstance(
@@ -146,16 +126,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * message is for a person, and a client that matched on prose would break
      * the first time the wording improved.
      */
-    /* 409 with its own code: the level is the manager's to confirm, not a dead end. */
-    if (error instanceof WarningLevelNotOfferedError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    if (error instanceof FinalizedFormError) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
-    }
-    if (error instanceof UnconfirmedWarningLevelError) {
-      return NextResponse.json({ error: error.message, code: WARNING_LEVEL_CONFIRMATION_REQUIRED }, { status: 409 });
-    }
     if (error instanceof UnverifiedPolicyError) {
       return NextResponse.json(
         {

@@ -18,7 +18,7 @@ import {
 import { useSession } from "@/lib/session/session-context";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
-import { manualStandingNotice, warningLevelStandingNotice } from "@/lib/forms/standing-notices";
+import { manualStandingNotice } from "@/lib/forms/standing-notices";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   POLICY_ACKNOWLEDGEMENT_REQUIRED,
@@ -152,7 +152,7 @@ type SaveState =
 
 type ActionState =
   | { kind: "idle" }
-  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "revise" | "confirm-level" }
+  | { kind: "busy"; what: "follow-up" | "finalize" | "pdf" | "revise" }
   | { kind: "error"; message: string };
 
 type LoadState =
@@ -362,29 +362,11 @@ export function InlineForm({
   const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
   /*
-   * WHAT THE RECORD STILL NEEDS DECIDED (owner decisions, 22 Oct 2026), read
-   * off the stored values so a refresh or a reopened draft says it too: a
-   * manual no owner confirmed, and a Type of Warning that is only a
-   * suggestion (or blank). See `standing-notices.ts`.
+   * WHERE THE QUOTED POLICY CAME FROM (owner decision, 22 Oct 2026), read off
+   * the stored provenance so a refresh or a reopened draft says it too: a
+   * manual no owner has confirmed. See `standing-notices.ts`.
    */
   const manualNotice = prefilling ? null : manualStandingNotice(loaded.values);
-  const levelNotice = prefilling
-    ? null
-    : warningLevelStandingNotice({
-        status: loaded.instance.status,
-        document: loaded.version.document,
-        variantKey: loaded.instance.variantKey,
-        rows: loaded.values,
-      });
-  const suggestedLevel = levelNotice
-    ? (loaded.values.find((row) => row.fieldKey === "warning_type" && row.filledBy === "ai")?.checked ?? [])
-    : [];
-  const suggestedLabel =
-    suggestedLevel.length === 1
-      ? (checkboxGroupsForVariant(loaded.version.document, loaded.instance.variantKey)
-          .find((group) => group.key === "warning_type")
-          ?.options.find((option) => option.key === suggestedLevel[0])?.label ?? null)
-      : null;
   /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
    * form started by hand in the old Create a Form screen (since removed; its
@@ -436,31 +418,6 @@ export function InlineForm({
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ date: followUp }),
-      });
-      await reload();
-      setAction({ kind: "idle" });
-    } catch (error) {
-      setAction({ kind: "error", message: (error as Error).message });
-    }
-  }
-
-  /**
-   * THE MANAGER CONFIRMS THE SUGGESTED TYPE OF WARNING, as their decision.
-   * The server records it (`confirm_warning_level`); ticking another level
-   * on the form and saving is the other way to decide it.
-   */
-  async function confirmLevel(level: string) {
-    if (action.kind === "busy") return;
-    if (save.kind === "dirty" || save.kind === "saving") {
-      setAction({ kind: "error", message: "Save your changes first, then confirm the Type of Warning." });
-      return;
-    }
-    setAction({ kind: "busy", what: "confirm-level" });
-    try {
-      await call(`/api/forms/instances/${instanceId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "confirm_warning_level", level }),
       });
       await reload();
       setAction({ kind: "idle" });
@@ -736,26 +693,6 @@ export function InlineForm({
         </Notice>
       ) : null}
 
-      {levelNotice ? (
-        <Notice
-          tone="attention"
-          className="mt-3"
-          action={
-            suggestedLabel && !readOnly ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void confirmLevel(suggestedLevel[0]!)}
-                disabled={action.kind === "busy"}
-              >
-                {action.kind === "busy" && action.what === "confirm-level" ? "Confirming…" : `Confirm ${suggestedLabel}`}
-              </Button>
-            ) : undefined
-          }
-        >
-          {levelNotice}
-        </Notice>
-      ) : null}
 
       {/*
         WHERE THE POLICY CAME FROM, WITH ITS PAGE.

@@ -1847,7 +1847,7 @@ describe("the Corrective Action Form's payroll-deduct Yes / No", () => {
   });
 });
 
-describe("a reopened Corrective Action says what is still the manager's to decide (owner decisions, 22 Oct 2026)", () => {
+describe("a reopened Corrective Action says where its policy came from (owner decision, 22 Oct 2026)", () => {
   const corrective = TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")!;
 
   function correctiveDraft(level: { checked: string[]; filledBy: "ai" | "manager" }, ownerConfirmed: boolean) {
@@ -1884,34 +1884,18 @@ describe("a reopened Corrective Action says what is still the manager's to decid
     );
   }
 
-  it("names a suggested level as Ask Sunny's suggestion, and Confirm records it as the manager's", async () => {
-    let confirmed = false;
-    fakeFetch((url, init) => {
-      if (init.method === "POST" && url === "/api/forms/instances/inst-42") {
-        confirmed = true;
-        return { payload: { instance: { id: "inst-42" } } };
-      }
-      return { payload: correctiveDraft({ checked: ["written"], filledBy: confirmed ? "manager" : "ai" }, false) };
-    });
+  it("says the manual requires owner confirmation on reopening, and offers no level notice or Confirm button", async () => {
+    fakeFetch(() => ({ payload: correctiveDraft({ checked: ["written"], filledBy: "ai" }, false) }));
     open();
-
-    expect(await screen.findByText(/Written Warning is Ask Sunny's suggestion\. Confirm it/)).toBeTruthy();
-    expect(screen.getByText(/requires owner confirmation as Ask Sunny's approved policy manual/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Confirm Written Warning" }));
-    await waitFor(() =>
-      expect(recorded.find((made) => made.method === "POST")?.body).toEqual({ action: "confirm_warning_level", level: "written" }),
-    );
-    await waitFor(() => expect(screen.queryByText(/is Ask Sunny's suggestion\. Confirm it/)).toBeNull());
-    // The manual's standing is the owner's to settle, not the manager's: it stays.
-    expect(screen.getByText(/requires owner confirmation/)).toBeTruthy();
+    expect(await screen.findByText(/requires owner confirmation as Ask Sunny's approved policy manual/)).toBeTruthy();
+    expect(screen.queryByText(/Type of Warning:/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
   });
 
-  it("says nothing once the manager decided the level and the manual is confirmed", async () => {
+  it("says nothing once the manual is confirmed", async () => {
     fakeFetch(() => ({ payload: correctiveDraft({ checked: ["verbal"], filledBy: "manager" }, true) }));
     open();
     await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
-    expect(screen.queryByText(/suggestion\. Confirm it/)).toBeNull();
     expect(screen.queryByText(/Choose the Type of Warning/)).toBeNull();
     expect(screen.queryByText(/requires owner confirmation/)).toBeNull();
   });

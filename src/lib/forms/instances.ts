@@ -5,13 +5,6 @@ import { createHash } from "node:crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { isProposalId } from "./proposal-id";
-import {
-  FinalizedFormError,
-  WARNING_GROUP_KEY,
-  WarningLevelNotOfferedError,
-} from "./warning-level-gate";
-
-export { FinalizedFormError, WarningLevelNotOfferedError };
 
 import {
   checkboxGroupsForVariant,
@@ -920,39 +913,6 @@ export class UnverifiedPolicyError extends Error {
   }
 }
 
-/**
- * The manager confirms the level on the form — Ask Sunny's suggestion, or the
- * one they name. Written as theirs, with where it came from, and recorded.
- */
-const CONFIRMABLE_LEVELS = new Set(["verbal", "written"]);
-
-export async function confirmWarningLevel(
-  instanceId: string,
-  actor: string,
-  level: string,
-  via: "chat_confirmation" | "form_confirmation" = "chat_confirmation",
-): Promise<void> {
-  const loaded = await loadInstance(instanceId);
-  if (!loaded) throw new Error("That form no longer exists.");
-  if (loaded.instance.status !== "draft") throw new FinalizedFormError();
-  const group = checkboxGroupsForVariant(parseFormDocument(loaded.version.document), loaded.instance.variantKey).find(
-    (entry) => entry.key === WARNING_GROUP_KEY,
-  );
-  // A warning LEVEL only: Termination and Demotion are ticked by the manager on the form, never confirmed from a suggestion.
-  if (!CONFIRMABLE_LEVELS.has(level) || !group || !group.options.some((option) => option.key === level)) {
-    throw new WarningLevelNotOfferedError();
-  }
-  const before = loaded.values.find((row) => row.fieldKey === WARNING_GROUP_KEY);
-  // Anything else ticked on the group stays as it is; only the level is replaced.
-  const kept = (before?.checked ?? []).filter((key) => !CONFIRMABLE_LEVELS.has(key));
-  await writeValues(instanceId, { values: {}, checked: { [WARNING_GROUP_KEY]: [...kept, level] } }, "manager", {
-    [WARNING_GROUP_KEY]: { source: "manager_confirmation", suggested: before?.filledBy === "ai" ? before.checked : [] },
-  });
-  await recordEvent(instanceId, "edited", actor, {
-    via,
-    changes: [{ field: WARNING_GROUP_KEY, from: before ? { checked: before.checked, filledBy: before.filledBy } : null, to: { checked: [...kept, level], filledBy: "manager" } }],
-  });
-}
 
 export interface FinalizeOptions {
   /**

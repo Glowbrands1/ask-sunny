@@ -392,7 +392,7 @@ beforeEach(async () => {
 /* "VERBAL CA" AND A BARE "VERBAL." ARE THE TYPE OF WARNING                  */
 /* ========================================================================= */
 
-const LEVEL_LEFT_OPEN = /\*\*Type of Warning:\*\* Verbal or Written\?/;
+const LEVEL_LEFT_OPEN = /verbal\/written warning level/;
 
 describe("the warning level in the request is read, not left open", () => {
   it('"create verbal CA for …" reads back Verbal Warning, and the form is ticked Verbal', async () => {

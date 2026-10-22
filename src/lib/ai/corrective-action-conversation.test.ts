@@ -729,13 +729,10 @@ describe("\"Create a corrective action for Sarah.\"", () => {
     expect(answer.content).toMatch(/create the draft here/i);
 
     /*
-     * WHAT IS UNRESOLVED IS NAMED, NOT DEMANDED. The level may be told here or
-     * suggested on the draft for the manager to confirm (owner decision, 22
-     * Oct 2026); the history is the manager's to set on the form.
+     * WHAT IS UNRESOLVED IS NAMED, NOT REQUESTED — the manager sets it on the
+     * form, which has tick boxes for it and a chat does not.
      */
-    expect(answer.content).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\? Tell me here — or I'll suggest one on the draft/);
-    expect(answer.content).toMatch(/marked as a suggestion\. Confirm it or choose another whenever you like\./);
-    expect(answer.content).not.toMatch(/can't be filed/);
+    expect(answer.content).toMatch(/You'll set .*warning level.* on the form/i);
     expect(answer.content).toMatch(/won't guess/i);
   });
 
@@ -1178,11 +1175,11 @@ describe("the fast path — a draft from what the manager already said", () => {
     expect(answer.formProposal!.status).toBe("ready");
   });
 
-  it("5. leaves the warning level to the manager — told here, or suggested for them to confirm", async () => {
+  it("5. leaves the warning level for the form, and says so without asking", async () => {
     const answer = await ask("Create a corrective action for Sarah Test. She wore a mini skirt today.");
 
-    // The manager's decision: a suggestion is only ever that (owner decision, 22 Oct 2026)...
-    expect(answer.content).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\? Tell me here — or I'll suggest one on the draft/);
+    // Named as the manager's to set...
+    expect(answer.content).toMatch(/You'll set the verbal\/written warning level/);
     // ...and not asked as a question.
     expect(answer.content).not.toMatch(/Whether this is a verbal or written warning/);
     expect(answer.formProposal!.supportsInlineDraft).toBe(true);

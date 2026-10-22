@@ -512,7 +512,7 @@ describe("Q1 the original 21 Oct request, as typed", () => {
 describe("Q2 the production failure's shape: the level asked, then one-word answers", () => {
   it('"written", then "no", keep the account, the history and the date', async () => {
     const chat = new Chat();
-    expect(await chat.say(OCT21_WITHOUT_LEVEL)).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\?/);
+    expect(await chat.say(OCT21_WITHOUT_LEVEL)).toMatch(/You'll set the verbal\/written warning level/);
     expect(await chat.say("written")).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
     const last = await chat.say("no");
     expect(last).toMatch(/\*\*Prior actions:\*\* Coaching — JBA Policy Manual — signed 01\/01\/2026; Verbal corrective action — signed 09\/01\/2026/);
@@ -625,7 +625,7 @@ describe("Q4 nothing the manager did not say is put on the form", () => {
   it("an account with no history, level or payroll answer: those stay open, and nothing says no call/no show", async () => {
     const chat = new Chat();
     const reply = await chat.say("create a CA for tess varga, she skipped the monthly meeting on 10-20-26");
-    expect(reply).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\?/);
+    expect(reply).toMatch(/You'll set the verbal\/written warning level/);
     expect(reply).toMatch(/Is payroll deduct applicable\?\*\* Yes or No/);
     state.draft = {
       values: {
@@ -1067,7 +1067,7 @@ describe("Q12 dates corrected after the draft exists", () => {
   });
 });
 
-describe("Q14 the warning level: a suggestion is never the manager's decision", () => {
+describe("Q14 the warning level: Finalize behaves as on main, and a suggestion is never turned into the manager's decision", () => {
   it("Finalize is never blocked by the level, and a suggestion stays the assistant's when it is filed (owner, 22 Oct 2026)", async () => {
     const chat = new Chat();
     await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26. no payroll deduct");
@@ -1083,32 +1083,6 @@ describe("Q14 the warning level: a suggestion is never the manager's decision", 
     await applyAssistantDraft(suggested, { values: {}, checked: { warning_type: ["written"] } }, "assistant");
     expect((await finalize(suggested)).status).toBe(200);
     expect(await valueRow(suggested, "warning_type")).toMatchObject({ checked: ["written"], filledBy: "ai" });
-  });
-
-  it("the manager's confirmation or change is recorded as theirs, and not asked again", async () => {
-    const chat = new Chat();
-    await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26. no payroll deduct");
-    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
-    const id = await chat.create();
-    // The assistant's own tick (a suggestion) is still not the manager's.
-    const { applyAssistantDraft } = await import("@/lib/forms/instances");
-    await applyAssistantDraft(id, { values: {}, checked: { warning_type: ["written"] } }, "assistant");
-    expect((await valueRow(id, "warning_type"))?.filledBy).toBe("ai");
-
-    expect(await chat.say("confirm the written warning")).toMatch(/Confirmed \*\*Written Warning\*\* as your decision/);
-    const level = await valueRow(id, "warning_type");
-    expect(level).toMatchObject({ checked: ["written"], filledBy: "manager" });
-    expect(level?.provenance).toMatchObject({ source: "manager_confirmation", suggested: ["written"] });
-    expect(eventsOf(id).some((event) => event.detail.via === "chat_confirmation")).toBe(true);
-
-    const events = eventsOf(id).length;
-    expect(await chat.say("confirm the written warning")).toMatch(/already confirmed/);
-    expect(eventsOf(id)).toHaveLength(events);
-
-    expect(await chat.say("make it a verbal instead")).toMatch(/Verbal Warning/);
-    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["verbal"], filledBy: "manager" });
-    expect((await saved(id)).payroll_deduct).toEqual(["no"]);
-    expect((await finalize(id)).status).toBe(200);
   });
 
   it("a level stated in the request is the manager's, and files", async () => {
@@ -1234,7 +1208,7 @@ describe("Q17 the manual's standing: kept, cited by section and page, and marked
   });
 });
 
-const { manualStandingNotice, warningLevelStandingNotice } = await import("@/lib/forms/standing-notices");
+const { manualStandingNotice } = await import("@/lib/forms/standing-notices");
 const APP = "Ask Sunny";
 const ACTOR = "manager-1";
 /** Whether a citation stored before `ownerConfirmed` existed reads as unconfirmed in this app. */
@@ -1244,32 +1218,10 @@ const LEGACY_CITATION_UNCONFIRMED = true;
 /* QA ROUND 3 — 22 OCT 2026 (overnight): drafts already open when this ships */
 /* ========================================================================= */
 
-/** The form as the card reads it on reopening: its values, its template and its standing notices. */
+/** The form as the card reads it on reopening: its values and the manual notice it shows. */
 async function reopened(id: string) {
   const form = (await review(id)) as Awaited<ReturnType<typeof review>> & { version: { document: unknown } };
-  const status = String(form.instance.status);
-  return {
-    form,
-    level: warningLevelStandingNotice({
-      status,
-      document: form.version.document as never,
-      variantKey: (form.instance.variantKey as string | null) ?? null,
-      rows: form.values,
-    }),
-    manual: manualStandingNotice(form.values),
-  };
-}
-
-/** Pressing the notice's Confirm button (or another level's). */
-async function confirmOnForm(id: string, level: unknown) {
-  const response = await instanceRoute.POST(
-    new Request(`https://app.test/api/forms/instances/${id}`, {
-      method: "POST",
-      body: JSON.stringify({ action: "confirm_warning_level", level }),
-    }),
-    { params: Promise.resolve({ id }) },
-  );
-  return { status: response.status, body: (await response.json()) as { error?: string } };
+  return { form, manual: manualStandingNotice(form.values) };
 }
 
 /** A draft as it sits in production today: the Type of Warning ticked by the assistant, not the manager. */
@@ -1305,82 +1257,40 @@ async function legacyDraft(level: string | null) {
   return { chat, id };
 }
 
-describe("Q18 drafts already open at rollout: reviewed, decided and filed without recreating them", () => {
-  it("an assistant-ticked level stays a suggestion on every reopening until the manager confirms it on the form", async () => {
+describe("Q18 drafts already open at rollout open, change and file as they stand", () => {
+  it("an assistant-ticked level is left as it is through every reopening and through Finalize; nothing else moves", async () => {
     const { id } = await legacyDraft("written");
     const before = await saved(id);
     for (let opened = 0; opened < 3; opened += 1) {
-      const view = await reopened(id);
-      expect(view.level).toMatch(new RegExp(`Type of Warning: Written Warning is ${APP}'s suggestion\\. Confirm it or choose another`));
-      expect((await valueRow(id, "warning_type"))?.filledBy).toBe("ai");
+      await reopened(id);
+      expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["written"], filledBy: "ai" });
+      expect(rowOf(id).status).toBe("draft");
     }
-    expect(rowOf(id).status).toBe("draft");
-
-    expect((await confirmOnForm(id, "written")).status).toBe(200);
-    expect(await valueRow(id, "warning_type")).toMatchObject({
-      checked: ["written"],
-      filledBy: "manager",
-      provenance: { source: "manager_confirmation", suggested: ["written"] },
-    });
-    const recorded = eventsOf(id).filter((event) => event.detail.via === "form_confirmation");
-    expect(recorded).toHaveLength(1);
-    expect(recorded[0]!.actor).toBe(ACTOR);
-    expect((await reopened(id)).level).toBeNull();
-    const after = await saved(id);
-    for (const key of Object.keys(before)) if (key !== "warning_type") expect(after[key], key).toEqual(before[key]);
+    expect(await saved(id)).toEqual(before);
     expect((await finalize(id)).status).toBe(200);
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["written"], filledBy: "ai" });
     expect(store.form_instances).toHaveLength(1);
   });
 
-  it("the manager chooses the other level instead: ticked on the form, it is theirs and files", async () => {
+  it("the manager changes the level on the form: it is theirs and files", async () => {
     const { id } = await legacyDraft("written");
     await managerSaves(id, { checked: { warning_type: ["verbal"] } });
     expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["verbal"], filledBy: "manager" });
-    expect((await reopened(id)).level).toBeNull();
     expect((await finalize(id)).status).toBe(200);
   });
 
-  it("the manager confirms in the chat instead, after a refresh", async () => {
-    const { chat, id } = await legacyDraft("written");
-    chat.reload();
-    expect(await chat.say("yes, confirm the written warning")).toMatch(/Confirmed \*\*Written Warning\*\* as your decision/);
-    expect((await finalize(id)).status).toBe(200);
-  });
-
-  it("a blank level asks for a decision; a level the form does not offer is refused and nothing is written", async () => {
+  it("a blank level files as it is, as before", async () => {
     const { id } = await legacyDraft(null);
-    // A blank level is the manager's to fill in, as before: no notice, and nothing blocks Finalize.
-    expect((await reopened(id)).level).toBeNull();
-    const before = await saved(id);
-    expect((await confirmOnForm(id, "termination")).status).toBe(400);
-    expect((await confirmOnForm(id, 7)).status).toBe(400);
-    expect(await saved(id)).toEqual(before);
-    expect((await confirmOnForm(id, "verbal")).status).toBe(200);
     expect((await finalize(id)).status).toBe(200);
+    expect((await saved(id)).warning_type).toBeUndefined();
   });
 
-  it("confirming the level keeps anything else ticked on Type of Warning, and never confirms Termination or Demotion", async () => {
-    const { id } = await legacyDraft("written");
-    const row = ((store.form_instance_values ?? []) as Record<string, unknown>[]).find(
-      (entry) => entry.instance_id === id && entry.field_key === "warning_type",
-    )!;
-    row.checked = ["written", "demotion"];
-    expect((await confirmOnForm(id, "demotion")).status).toBe(400);
-    expect((await confirmOnForm(id, "written")).status).toBe(200);
-    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["demotion", "written"], filledBy: "manager" });
-  });
-
-  it("a form already finalized stays as it was: no notice, no confirmation, values unchanged; its new draft asks", async () => {
+  it("a form already finalized stays as it was; its new draft carries the same values", async () => {
     const { id } = await legacyDraft("written");
     const row = rowOf(id);
     row.status = "finalized";
     row.finalized_at = "2026-10-21T15:00:00Z";
     const before = await saved(id);
-    expect((await reopened(id)).level).toBeNull();
-    expect((await confirmOnForm(id, "written")).status).toBe(409);
-    expect(await saved(id)).toEqual(before);
-    expect(await valueRow(id, "warning_type")).toMatchObject({ filledBy: "ai" });
-
     joinOverview();
     const revised = await instanceRoute.POST(
       new Request(`https://app.test/api/forms/instances/${id}`, { method: "POST", body: JSON.stringify({ action: "revise" }) }),
@@ -1389,8 +1299,9 @@ describe("Q18 drafts already open at rollout: reviewed, decided and filed withou
     expect(revised.status).toBe(200);
     const draftId = String(((await revised.json()) as { instance: { id: string } }).instance.id);
     joinOverview();
-    expect((await reopened(draftId)).level).toMatch(/suggestion\. Confirm it or choose another/);
     expect(rowOf(id).status).toBe("finalized");
+    expect(await saved(id)).toEqual(before);
+    expect((await saved(draftId)).warning_type).toEqual(["written"]);
   });
 
   it("the manual's standing is said again on every reopening, from what was stored", async () => {
@@ -1432,10 +1343,11 @@ describe("Q19 changes of mind, interruptions and what was never said", () => {
     const id = await chat.create();
     const before = await saved(id);
     await chat.say("make it a verbal instead");
-    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["verbal"], filledBy: "manager" });
+    // Main's revision path applies the change (as before this release, it is stored as the assistant's edit).
+    expect((await valueRow(id, "warning_type"))?.checked).toEqual(["verbal"]);
     chat.reload();
     await chat.say("change it back to written");
-    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["written"], filledBy: "manager" });
+    expect((await valueRow(id, "warning_type"))?.checked).toEqual(["written"]);
     const after = await saved(id);
     for (const key of Object.keys(before)) if (key !== "warning_type") expect(after[key], key).toEqual(before[key]);
     expect(store.form_instances).toHaveLength(1);
@@ -1470,8 +1382,8 @@ describe("Q19 changes of mind, interruptions and what was never said", () => {
   });
 });
 
-describe("Q20 an existing draft through rollout: nothing about it changes except the decision the manager makes", () => {
-  it("reopened and confirmed: still a draft until Finalize; employee, dates, prior actions and every earlier event kept", async () => {
+describe("Q20 an existing draft through rollout: nothing about it changes except what the manager changes", () => {
+  it("reopened and its level changed: still a draft until Finalize; employee, dates, prior actions and every earlier event kept", async () => {
     const { chat, id } = await legacyDraft("written");
     await chat.say("prior coaching: jba policy manual 1-1-26, verbal ca 9-1-26");
     const before = await saved(id);
@@ -1482,7 +1394,7 @@ describe("Q20 an existing draft through rollout: nothing about it changes except
     expect(rowOf(id).status).toBe("draft");
     expect(eventsOf(id).map((event) => JSON.stringify(event))).toEqual(eventsBefore);
 
-    expect((await confirmOnForm(id, "verbal")).status).toBe(200);
+    await managerSaves(id, { checked: { warning_type: ["verbal"] } });
     expect(rowOf(id).status).toBe("draft");
     const after = await saved(id);
     for (const key of ["employee_name", "form_date", "prior_actions", "observation", "payroll_deduct", "offense_type", "policy_language"]) {

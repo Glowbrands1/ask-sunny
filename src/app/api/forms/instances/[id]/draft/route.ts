@@ -1711,19 +1711,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         row.checked.length > 0 &&
         row.provenance?.source === "manager_statement",
     );
-    /*
-     * A LEVEL THE MODEL TICKED IS A SUGGESTION (owner decision, 22 Oct 2026):
-     * written as Ask Sunny's, named as a suggestion in the notice, and not
-     * fileable until the manager confirms it (`warningLevelConfirmed`).
-     */
-    // None where the manager stated the level, or where their own tick on the box is kept.
-    const suggestedLevel =
-      statedWarning || keeps(WARNING_TYPE_KEY)
-        ? []
-        : (validated.checked[WARNING_TYPE_KEY] ?? []).map(
-            (key) =>
-              groups.find((group) => group.key === WARNING_TYPE_KEY)?.options.find((option) => option.key === key)?.label ?? key,
-          );
     const guarded = await applyAssistantDraft(
       id,
       {
@@ -1829,9 +1816,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
          */
         manual.ok && manual.matchedBy === "fallback" && (manualSections.length > 0 || eppPassages.length > 0)
           ? unconfirmedManualNotice(manual.documentTitle)
-          : null,
-        suggestedLevel.length > 0
-          ? `Type of Warning: ${suggestedLevel.join(", ")} is Ask Sunny's suggestion. Confirm it or choose another — tick it on the form, or tell me in the chat.`
           : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
         attributions.adjusted.length + attributions.emptied.length > 0
