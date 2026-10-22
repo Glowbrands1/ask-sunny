@@ -1,4 +1,4 @@
-import { datesInText } from "./form-date-answer";
+import { datesInText, listFormDates } from "./form-date-answer";
 
 /**
  * ============================================================================
@@ -180,6 +180,48 @@ export function groundedSourceWithFormDate(
   return `${notes}\n${[...resolved.spellings, ...noteDateSpellings(notes, resolved.iso.slice(0, 4))].join(" ")}`;
 }
 
+/** The manager naming the day itself, so the form's date — resolved from it — is theirs. */
+const SAID_THE_DAY = /\b(?:today|tonight|this (?:morning|afternoon|evening))\b/i;
+
+const NOT_CONTEXT = new Set([
+  "the", "and", "for", "was", "were", "has", "had", "her", "his", "their", "she", "him", "they", "that",
+  "this", "with", "from", "into", "onto", "not", "did", "does", ...MONTHS.map((month) => month.toLowerCase()),
+]);
+
+/**
+ * The words just before and after a date — what a sentence and the manager's
+ * notes can share when they mean the same date ("by the … deadline").
+ */
+function neighbourWords(text: string, start: number, end: number): Set<string> {
+  const words = (part: string) => part.toLowerCase().match(/[a-z]{3,}/g) ?? [];
+  const before = words(text.slice(Math.max(0, start - 40), start)).slice(-4);
+  const after = words(text.slice(end, end + 40)).slice(0, 4);
+  return new Set([...before, ...after].filter((word) => !NOT_CONTEXT.has(word)));
+}
+
+/**
+ * A day stated twice in one sentence is stated once: the later mention goes,
+ * with the "on" that carried it. "On October 20, 2026, Marlo did not follow
+ * the attendance policy on October 20, 2026." keeps the first.
+ */
+function withEachDayOnce(sentence: string, isoOf: (token: string) => string | null): string {
+  DATE_TOKEN.lastIndex = 0;
+  const seen = new Set<string>();
+  const repeats: { start: number; end: number }[] = [];
+  for (const found of sentence.matchAll(DATE_TOKEN)) {
+    const day = isoOf(found[0]) ?? found[0].toLowerCase();
+    if (seen.has(day)) repeats.push({ start: found.index!, end: found.index! + found[0].length });
+    else seen.add(day);
+  }
+  let out = sentence;
+  for (const { start, end } of repeats.reverse()) {
+    const before = out.slice(0, start);
+    const lead = /\s*,?\s*(?:\b(?:on|of)\s+)?$/i.exec(before)![0];
+    out = before.slice(0, before.length - lead.length) + out.slice(end);
+  }
+  return out;
+}
+
 export interface FormDateCorrection {
   values: Record<string, string>;
   /** Field keys whose date was rewritten to the form's own. */
@@ -210,12 +252,44 @@ export function correctDraftedDates(
    * Manager feedback, 21 Oct 2026).
    */
   const year = resolved.iso.slice(0, 4);
-  const given = new Set(datesInText(notes, `${year}-01-01`).map((found) => found.iso));
+  const noted = datesInText(notes, `${year}-01-01`);
+  const given = new Set(noted.map((found) => found.iso));
+  const isoOf = (token: string) => datesInText(token, `${year}-01-01`)[0]?.iso ?? null;
   const isSupplied = (token: string) =>
     supplied.includes(token.toLowerCase()) ||
     datesInText(token, `${year}-01-01`).some((found) => given.has(found.iso));
+  /*
+   * THE FORM'S DATE IS ONLY THE MANAGER'S WHEN THEY GAVE IT. A form whose
+   * date was left at the day it was created — the manager gave other dates
+   * and chose none — does not make that day theirs. QA, 22 Oct 2026: "by
+   * the 10-15-26 deadline" drafted as "by the October 21, 2026 deadline"
+   * was kept, because October 21 was the form's date.
+   */
+  const formDateIsTheManagers = given.size === 0 || given.has(resolved.iso) || SAID_THE_DAY.test(notes);
   const meansThisDay = (token: string) =>
+    formDateIsTheManagers &&
     resolved.spellings.some((spelling) => spelling.toLowerCase() === token.toLowerCase());
+  /*
+   * WHICH OF THE MANAGER'S DATES A WRONG ONE STANDS FOR. Where the form's
+   * date is not theirs, putting it in place of a wrong date is the very
+   * mistake being corrected. The manager's date whose neighbouring words the
+   * sentence shares — "deadline", "woven" — is the one meant; with no such
+   * date, the only incident date they gave; failing both, the form's.
+   */
+  const replacementFor = (sentence: string, token: string): string => {
+    if (formDateIsTheManagers) return resolved.long;
+    const around = neighbourWords(sentence, sentence.indexOf(token), sentence.indexOf(token) + token.length);
+    const scored = noted.map((found) => ({
+      iso: found.iso,
+      score: [...neighbourWords(notes, found.index, found.end)].filter((word) => around.has(word)).length,
+    }));
+    const best = Math.max(0, ...scored.map((entry) => entry.score));
+    const winners = new Set(scored.filter((entry) => entry.score === best).map((entry) => entry.iso));
+    if (best > 0 && winners.size === 1) return resolveFormDate([...winners][0]!)?.long ?? resolved.long;
+    const incidents = new Set(listFormDates(notes, `${year}-01-01`).map((found) => found.iso));
+    if (incidents.size === 1) return resolveFormDate([...incidents][0]!)?.long ?? resolved.long;
+    return resolved.long;
+  };
 
   const next: Record<string, string> = {};
   const corrected: string[] = [];
@@ -247,10 +321,17 @@ export function correctDraftedDates(
 
             // Two invented dates is an account of events nobody described,
             // not a formatting slip. Left for the narrative guard to remove.
-            if (wrong.length !== 1) return sentence;
+            // The same invented day written twice is one slip, written twice.
+            const wrongDays = new Set(wrong.map((token) => isoOf(token) ?? token));
+            let next = sentence;
+            if (wrongDays.size === 1) {
+              const replacement = replacementFor(sentence, wrong[0]!);
+              for (const token of new Set(wrong)) next = next.split(token).join(replacement);
+            }
 
-            changed = true;
-            return sentence.replace(wrong[0]!, resolved.long);
+            next = withEachDayOnce(next, isoOf);
+            if (next !== sentence) changed = true;
+            return next;
           })
           .join(" "),
       )
