@@ -179,11 +179,11 @@ describe("guards", () => {
 
 describe("CREATE_USER + invite", () => {
   it("creates an unconfirmed auth user with NO password, provisions profile + link, and Supabase emails the invitation to the Woven email", async () => {
-    const f = fakes(planOf([employee("E1", { emailAddress: "Carley.R@Gmail.com" })]));
+    const f = fakes(planOf([employee("E1", { emailAddress: "Harper.L@Gmail.com" })]));
     const outcome = await run(f);
     expect(outcome).toMatchObject({ status: "completed", tally: { applied: { CREATE_USER: 1 } } });
     expect(f.auth.createUser).toHaveBeenCalledWith({
-      email: "carley.r@gmail.com",
+      email: "harper.l@gmail.com",
       email_confirm: false,
       app_metadata: { provisioned_by: "woven", external_employee_id: "E1" },
     });
@@ -192,11 +192,11 @@ describe("CREATE_USER + invite", () => {
     expect(f.callOf("employee_access_provision_account")).toMatchObject({
       p_app_user_id: "aaaaaaaa-0000-4000-8000-000000000001",
       p_external_employee_id: "E1",
-      p_email: "carley.r@gmail.com",
+      p_email: "harper.l@gmail.com",
       p_role: "salon_director",
       p_primary_area_id: "loc-0307",
     });
-    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("carley.r@gmail.com", { redirectTo: REDIRECT });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("harper.l@gmail.com", { redirectTo: REDIRECT });
     expect(f.callOf("employee_access_record_invite")).toMatchObject({ p_outcome: "sent", p_error_code: null });
     expect(f.recorded.find((r) => r.action === "CREATE_USER")).toMatchObject({ result: "applied", result_code: "created.invite_sent", app_user_id: "aaaaaaaa-0000-4000-8000-000000000001" });
   });

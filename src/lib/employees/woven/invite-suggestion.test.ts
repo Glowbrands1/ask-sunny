@@ -13,8 +13,8 @@ function row(overrides: Partial<DirectoryRow> = {}): DirectoryRow {
   return {
     id: "d1",
     externalEmployeeId: "E-1",
-    firstName: "Carley",
-    lastName: "Rowe",
+    firstName: "Harper",
+    lastName: "Lyle",
     preferredFirstName: null,
     emailAddress: "harper.lyle@suntancity.com",
     employmentStatus: "active",
@@ -102,7 +102,7 @@ describe("a Woven employee with one location", () => {
   it("suggests name, role, scope and primary, with no additional locations", () => {
     const { suggestion, notes } = found(suggest(row()));
     expect(suggestion).toEqual({
-      displayName: "Carley Rowe",
+      displayName: "Harper Lyle",
       role: "salon_director",
       scopeLevel: "salon",
       primaryAreaId: "loc-0306",
@@ -261,7 +261,7 @@ describe("who gets a suggestion at all", () => {
 describe("what the suggestion reveals", () => {
   it("carries no email, Woven id or internal location id", () => {
     const text = JSON.stringify(found(suggest(row({ additionalLocations: [{ wovenLocationId: "L-0394", name: "Liberty", number: null }] }))));
-    expect(text).not.toContain("carley.rowe@");
+    expect(text).not.toContain("harper.lyle@");
     expect(text).not.toContain("E-1");
     expect(text).not.toContain("L-0394");
   });
