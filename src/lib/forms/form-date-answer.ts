@@ -343,8 +343,14 @@ export function listFormDates(text: string, today: string): { iso: string; index
  * effective date — those are other lines, read elsewhere.
  */
 const THE_DATE = String.raw`\b(?:the\s+|this\s+|her\s+|his\s+|their\s+)?(?:form(?:'s)?\s+|incident\s+|offen[cs]e\s+)?date\b(?:\s+(?:of|on|for)\s+(?:the\s+|this\s+)?(?:incident|offen[cs]e|form))?`;
+/*
+ * "the date" and then straight to the new value — or ", it should be" after
+ * it. Nothing else between: "change the date on the action plan to …", "move
+ * the date of the meeting to …" and "change the date she was hired to …" name
+ * another date (review, 22 Oct 2026).
+ */
 const NAMES_THE_DATE_TO = new RegExp(
-  String.raw`\b(?:change|update|correct|fix|set|make|move)\s+${THE_DATE}[^.?!\n]{0,30}?(?:\b(?:to|is|as|should\s+be)\b|[=:])\s*`,
+  String.raw`\b(?:change|update|correct|fix|set|make|move)\s+${THE_DATE}(?:\s*,\s*it)?\s*(?:\b(?:to|is|as|should\s+be)\b|[=:])\s*`,
   "i",
 );
 const THE_DATE_SHOULD_BE = new RegExp(
@@ -397,7 +403,7 @@ export function formDateChange(text: string, today: string): string | null {
 
 /** "change the date", "the date is wrong" — the date named as what is wrong, with no single day given. */
 const THE_DATE_IS_WRONG_ALONE = new RegExp(
-  String.raw`\b(?:change|update|correct|fix)\s+${THE_DATE}|${THE_DATE}\s+(?:is|was)\s+(?:wrong|incorrect|off)\b`,
+  String.raw`\b(?:change|update|correct|fix)\s+${THE_DATE}\s*(?:[.!]|$)|${THE_DATE}\s+(?:is|was)\s+(?:wrong|incorrect|off)\b`,
   "i",
 );
 
@@ -413,4 +419,23 @@ export function formDateChangeUnclear(text: string, today: string): { offered: s
   if (formDateChange(said, today) !== null) return null;
   if (!THE_DATE_IS_WRONG_ALONE.test(said) && !NAMES_THE_DATE_TO.test(said) && !THE_DATE_SHOULD_BE.test(said)) return null;
   return { offered: [...new Set(datesInText(said, today).map((found) => found.iso))] };
+}
+
+/** Ask Sunny' own question about the form's date — see `formDateChangeUnclear`. */
+const ASKED_WHICH_DATE = /\b(?:Which|What) date should the\b/;
+/** The words a bare answer may carry beside the date: "it's october 3", "use 10/3". */
+const ANSWER_FILLER = /^(?:[\s,.!]|it'?s|it is|that'?s|use|make it|the|on|date|please|one)*$/i;
+
+/**
+ * The day a manager answers Ask Sunny' "which date?" question with — "October
+ * 3", "10/3/26", "it's october 3" — read only straight after that question,
+ * and only when the reply is that one date and nothing else (review, 22 Oct 2026).
+ */
+export function formDateReply(text: string, lastAssistant: string, today: string): string | null {
+  if (!ASKED_WHICH_DATE.test(lastAssistant ?? "")) return null;
+  const said = (text ?? "").trim();
+  const dates = datesInText(said, today);
+  if (dates.length !== 1) return null;
+  const rest = said.slice(0, dates[0]!.index) + " " + said.slice(dates[0]!.end);
+  return ANSWER_FILLER.test(rest) ? dates[0]!.iso : null;
 }

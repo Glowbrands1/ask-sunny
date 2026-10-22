@@ -302,3 +302,17 @@ describe("a date correction that does not settle the date", () => {
     },
   );
 });
+
+/* Review, 22 Oct 2026: another date, named with "the date", is not the form's. */
+describe("a date that is not the form's, named with \"the date\"", () => {
+  const TODAY = "2026-10-21";
+  it.each([
+    ["change the date on the action plan to 11-1-26"],
+    ["move the date of the meeting to 10-25-26"],
+    ["change the date she was hired to 1-5-24"],
+    ["update the date she was told to fix it to 10-15-26"],
+  ])('"%s" is not a correction to the form\'s date, and is not asked about', (text) => {
+    expect(formDateChange(text, TODAY)).toBeNull();
+    expect(formDateChangeUnclear(text, TODAY)).toBeNull();
+  });
+});

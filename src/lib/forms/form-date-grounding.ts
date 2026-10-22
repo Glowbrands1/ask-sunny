@@ -200,9 +200,11 @@ function neighbourWords(text: string, start: number, end: number): Set<string> {
 }
 
 /**
- * A day stated twice in one sentence is stated once: the later mention goes,
- * with the "on" that carried it. "On October 20, 2026, Marlo did not follow
- * the attendance policy on October 20, 2026." keeps the first.
+ * A day stated twice in one sentence is stated once — but only where the later
+ * mention is a trailing "on <day>", so nothing is left hanging: "On October
+ * 20, 2026, Marlo did not follow the attendance policy on October 20, 2026."
+ * keeps the first. "…finish the training by October 20, 2026" and "from …
+ * to …" are left exactly as written (review, 22 Oct 2026).
  */
 function withEachDayOnce(sentence: string, isoOf: (token: string) => string | null): string {
   DATE_TOKEN.lastIndex = 0;
@@ -216,8 +218,9 @@ function withEachDayOnce(sentence: string, isoOf: (token: string) => string | nu
   let out = sentence;
   for (const { start, end } of repeats.reverse()) {
     const before = out.slice(0, start);
-    const lead = /\s*,?\s*(?:\b(?:on|of)\s+)?$/i.exec(before)![0];
-    out = before.slice(0, before.length - lead.length) + out.slice(end);
+    const lead = /\s+on\s+$/i.exec(before);
+    if (!lead || !/^\s*[.!?]?\s*$/.test(out.slice(end))) continue;
+    out = before.slice(0, before.length - lead[0].length) + out.slice(end);
   }
   return out;
 }
@@ -248,8 +251,7 @@ export function correctDraftedDates(
   /*
    * A DATE THE MANAGER GAVE, IN ANY SPELLING. "by the 10-15-26 deadline" drafted
    * as "by the October 15, 2026 deadline" is their date, and was being
-   * rewritten to the form's — the spelling was checked, not the day (District
-   * Manager feedback, 21 Oct 2026).
+   * rewritten to the form's (District Manager feedback, 21 Oct 2026).
    */
   const year = resolved.iso.slice(0, 4);
   const noted = datesInText(notes, `${year}-01-01`);
@@ -265,7 +267,16 @@ export function correctDraftedDates(
    * the 10-15-26 deadline" drafted as "by the October 21, 2026 deadline"
    * was kept, because October 21 was the form's date.
    */
-  const formDateIsTheManagers = given.size === 0 || given.has(resolved.iso) || SAID_THE_DAY.test(notes);
+  /*
+   * Only the dates of WHAT HAPPENED count here — never an earlier step's
+   * ("got a verbal warning on 10-01-26"): review, 22 Oct 2026, where the
+   * prior warning's date was put on the incident.
+   */
+  const incidentAt = new Set(listFormDates(notes, `${year}-01-01`).map((found) => found.index));
+  const incidents = noted.filter((found) => incidentAt.has(found.index));
+  const incidentDays = new Set(incidents.map((found) => found.iso));
+  const formDateIsTheManagers =
+    incidentDays.size === 0 || incidentDays.has(resolved.iso) || SAID_THE_DAY.test(notes);
   const meansThisDay = (token: string) =>
     formDateIsTheManagers &&
     resolved.spellings.some((spelling) => spelling.toLowerCase() === token.toLowerCase());
@@ -279,15 +290,14 @@ export function correctDraftedDates(
   const replacementFor = (sentence: string, token: string): string => {
     if (formDateIsTheManagers) return resolved.long;
     const around = neighbourWords(sentence, sentence.indexOf(token), sentence.indexOf(token) + token.length);
-    const scored = noted.map((found) => ({
+    const scored = incidents.map((found) => ({
       iso: found.iso,
       score: [...neighbourWords(notes, found.index, found.end)].filter((word) => around.has(word)).length,
     }));
     const best = Math.max(0, ...scored.map((entry) => entry.score));
     const winners = new Set(scored.filter((entry) => entry.score === best).map((entry) => entry.iso));
     if (best > 0 && winners.size === 1) return resolveFormDate([...winners][0]!)?.long ?? resolved.long;
-    const incidents = new Set(listFormDates(notes, `${year}-01-01`).map((found) => found.iso));
-    if (incidents.size === 1) return resolveFormDate([...incidents][0]!)?.long ?? resolved.long;
+    if (incidentDays.size === 1) return resolveFormDate([...incidentDays][0]!)?.long ?? resolved.long;
     return resolved.long;
   };
 

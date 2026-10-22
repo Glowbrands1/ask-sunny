@@ -78,9 +78,15 @@ const NEGATIVE: readonly RegExp[] = [
    * deduction, "payroll" or not.
    */
   /\b(?:don't|dont|do not|won't|wont|will not|would not|wouldn't|not going to|(?:is|are|am)n't going to|(?:is|are|am) not going to|no longer|never|not|no need to|shouldn't|should not|can't|cannot|can not|(?:decided|chose|choose) not to)\s+(?:be\s+)?(?:payroll[\s-]+)?deduct(?:ing|ed|ion|ions)?\b/,
-  // "the $25 payroll deduction was waived", "cancel the payroll deduction": a waived or cancelled deduction is not one.
-  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven|cancell?ed|cancell?ing|called\s+off)\b`),
-  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
+  /*
+   * "the $25 payroll deduction was waived", "cancel the payroll deduction": a
+   * waived or cancelled deduction is not one. Said OF the deduction — "the
+   * deduction was/is waived", "cancel the $25 deduction" — never a cancelled
+   * thing nearby ("…of $25 for the cancelled order is applicable"; review,
+   * 22 Oct 2026).
+   */
+  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;,\n]{0,25}?\b(?:is|was|has\s+been|have\s+been|been|be|got|are|were)\s+(?:waived|forgiven|cancell?ed|called\s+off)\b`),
+  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\s+(?:the\s+|a\s+|her\s+|his\s+|their\s+|this\s+|that\s+)?(?:\$\s?\d[\d,]*(?:\.\d{1,2})?\s+|\d[\d,]*(?:\.\d{2})?\s+)?${SUBJECT}\b`),
   // "payroll deduct $25 does not apply"
   new RegExp(
     String.raw`\b${SUBJECT}\s+\$\s?\d[\d,]*(?:\.\d{1,2})?\s+(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
@@ -92,7 +98,7 @@ const NEGATIVE: readonly RegExp[] = [
  * not a No — and reading it as a Yes would be a guess. The clause states
  * nothing.
  */
-const DENIED_WAIVER = /(?:\b(?:not|never|no)\b|n't)\s+(?:[a-z']+\s+){0,2}(?:waiv|cancel|call(?:ed)?\s+off)/;
+const DENIED_WAIVER = /(?:\b(?:not|never)\b|n't)\s+(?:been\s+|be\s+)?(?:waiv|cancel|call(?:ed)?\s+off)/;
 
 const POSITIVE: readonly RegExp[] = [
   // "payroll deduct of $3.25 is applicable", "payroll deduction for the shortage applies"
@@ -136,6 +142,12 @@ function normalize(text: string): string {
  * available mistake on a record about someone's pay.
  */
 export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
+  const reading = readStated(text);
+  // A deduction of nothing is no deduction (review, 22 Oct 2026: "$0" read as Yes).
+  return reading === "yes" && deductsNothing(text) ? "no" : reading;
+}
+
+function readStated(text: string): PayrollDeductAnswer | null {
   // An answered question is a statement: "…applicable? no" -> "…applicable: no".
   const source = normalize(text).replace(/\?\s*(yes|no|y|n)\b/g, ": $1");
   let answer: PayrollDeductAnswer | null = null;
@@ -320,7 +332,9 @@ export function payrollDeductCorrection(text: string): PayrollDeductAnswer | nul
     const to = /\b(?:to|as|=|:)\s*(yes|no)\b/.exec(after);
     if (to) return to[1] as PayrollDeductAnswer;
     /* "change the payroll deduction to $5.00": a new amount to take is a Yes, said in so many words. */
-    if (new RegExp(String.raw`\bto\s+${ANY_MONEY}`).test(after) && !NOT_TAKEN.test(after)) return "yes";
+    if (new RegExp(String.raw`\bto\s+${ANY_MONEY}`).test(after) && !NOT_TAKEN.test(after)) {
+      return deductsNothing(text) ? "no" : "yes";
+    }
   }
   return statedPayrollDeduct(text);
 }
@@ -377,6 +391,12 @@ const AMOUNT_PATTERNS: readonly RegExp[] = [
 
 /** The amount the manager said would be deducted — "$3.25" — or null. The latest one stated wins. */
 export function payrollDeductAmount(text: string): string | null {
+  const amount = latestAmount(text);
+  return amount === null || isZero(amount) ? null : amount;
+}
+
+/** The latest amount stated for the deduction, zero included. */
+function latestAmount(text: string): string | null {
   let found: { at: number; amount: string } | null = null;
   for (const pattern of AMOUNT_PATTERNS) {
     for (const match of (text ?? "").matchAll(pattern)) {
@@ -385,6 +405,14 @@ export function payrollDeductAmount(text: string): string | null {
     }
   }
   return found?.amount ?? null;
+}
+
+const isZero = (amount: string) => Number(amount.replace(/[$,]/g, "")) === 0;
+
+/** Whether the latest amount stated for the deduction is zero — "$0", "0 dollars". */
+function deductsNothing(text: string): boolean {
+  const amount = latestAmount(text);
+  return amount !== null && isZero(amount);
 }
 
 /**

@@ -388,3 +388,30 @@ describe("one invented date, written twice, is one slip, and the date is stated 
     expect(corrected.values.observation).toBe(drafted.observation);
   });
 });
+
+/* Review, 22 Oct 2026: a day stated twice is trimmed only where nothing is left hanging. */
+describe("a day stated twice is trimmed only as a trailing \"on <day>\"", () => {
+  const keys = new Set(["observation"]);
+  it.each([
+    "Observed:\nOn October 20, 2026, she was told to finish the training by October 20, 2026.",
+    "Observed:\nThe schedule from October 20, 2026 to October 20, 2026 was posted.",
+  ])("leaves %j as written", (observation) => {
+    const corrected = correctDraftedDates({ observation }, keys, "on 10-20-26 she missed the training", resolveFormDate("2026-10-20"));
+    expect(corrected.values.observation).toBe(observation);
+  });
+});
+
+/* Review, 22 Oct 2026: an earlier step's date is never put on the incident. */
+describe("an earlier step's date never stands in for the incident's", () => {
+  const keys = new Set(["observation"]);
+  it("a prior verbal warning dated 10-01-26 leaves the form's date on what happened", () => {
+    const drafted = { observation: "Observed:\nOn October 22, 2026, Maria arrived late." };
+    const corrected = correctDraftedDates(
+      drafted,
+      keys,
+      "Maria arrived late again. She got a verbal warning on 10-01-26 for arriving late.",
+      resolveFormDate("2026-10-22"),
+    );
+    expect(corrected.values.observation).toBe(drafted.observation);
+  });
+});

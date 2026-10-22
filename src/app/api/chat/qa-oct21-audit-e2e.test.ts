@@ -1310,6 +1310,24 @@ describe("date corrections that are ambiguous, combined, or near other dates", (
     expect((await form(id)).text("form_date")).toBe("2026-10-03");
   });
 
+  it.each([["October 3"], ["10/3/26"], ["it's october 3, 2026"]])(
+    'answered "%s" straight after the question, the date is set',
+    async (answer) => {
+      const { thread, id } = await created();
+      await thread.say("the date should be 10-2-26 or 10-3-26");
+      await thread.say(answer);
+      expect((await form(id)).text("form_date")).toBe("2026-10-03");
+    },
+  );
+
+  it("a new request for someone else that mentions a date is a new request, not a date question", async () => {
+    const { thread, id, before } = await created();
+    const answer = await thread.say("Create a new CA for Sela Brandt, she was on her phone. The date is wrong on her timecard");
+    expect(answer.content).not.toMatch(/What date should|Which date should/);
+    expect(answer.formProposal?.employeeName).toBe("Sela Brandt");
+    expect((await form(id)).text("form_date")).toBe(before.text("form_date"));
+  });
+
   it("asks on a finalized form without opening a draft of it", async () => {
     const { thread, id } = await created();
     expect((await act(id, { action: "finalize", followUpDate: null })).status).toBe(200);

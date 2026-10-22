@@ -16,7 +16,7 @@ import { CORRECTABLE_KEYS, correctionValues, employmentChangeKind, syncNarrative
 import { changeOnEditableDraft } from "./editable-draft";
 import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
-import { formDateChange, formDateChangeUnclear } from "./form-date-answer";
+import { formDateChange, formDateChangeUnclear, formDateReply } from "./form-date-answer";
 import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -85,7 +85,8 @@ export async function correctActiveForm(input: {
    * is corrected; "change the date" or "10-2 or 10-3" is asked about, never
    * guessed. See `formDateChange`.
    */
-  const newFormDate = formDateChange(input.question, input.today);
+  const newFormDate =
+    formDateChange(input.question, input.today) ?? formDateReply(input.question, lastAssistant, input.today);
   const dateUnclear = newFormDate === null ? formDateChangeUnclear(input.question, input.today) : null;
   if (!employmentCorrection && !exitCorrection && !payroll && !newFormDate && !dateUnclear) return null;
 
@@ -119,10 +120,8 @@ export async function correctActiveForm(input: {
     fieldsForVariant(document, variantKey).some((field) => field.key === FORM_DATE_KEY);
   const correctsDate = datesTheIncident && newFormDate !== null;
   const whichDate = datesTheIncident && dateUnclear ? whichDateQuestion(loaded.instance, dateUnclear.offered) : null;
-  if (!kind && !isExit && !(asksPayroll && payroll) && !correctsDate) {
-    // Nothing else to correct: ask which date, change nothing.
-    return whichDate ? reply(whichDate) : null;
-  }
+  const correctsOtherwise = kind || isExit || (asksPayroll && payroll) || correctsDate;
+  if (!correctsOtherwise && !whichDate) return null;
   /*
    * ==========================================================================
    * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
@@ -150,6 +149,8 @@ export async function correctActiveForm(input: {
   if (named.length > 0 && !named.some((name) => samePerson(name, loaded.instance.employeeName))) {
     return null;
   }
+  // Only now, past the new-request and other-employee guards: nothing else to correct, so ask which date.
+  if (!correctsOtherwise) return reply(whichDate!);
 
   /*
    * THE EXIT FORM'S CORRECTION is its own readers' reading, plus the one

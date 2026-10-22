@@ -4,7 +4,7 @@
  * ============================================================================
  *
  * A District Manager's Corrective Action "Other" box arrived filled with text
- * from an earlier form. Nothing in Ask Bubbles copies one form's answers into
+ * from an earlier form. Nothing in Ask Sunny copies one form's answers into
  * another; the browser does. Every form field has the same id on every form
  * of that template, so the browser's own form history offered — and on a tap,
  * entered — what was typed into the last one, about somebody else.

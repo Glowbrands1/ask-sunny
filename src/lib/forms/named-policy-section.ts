@@ -131,13 +131,24 @@ function headingAlternatives(heading: string): string[][] {
  */
 const POLICY_LINE = /^\s*(?:the\s+|our\s+)?((?:[a-z][a-z'&/-]*\s+){1,5}?)polic(?:y|ies)\s*[.!]?\s*$/i;
 
+/*
+ * "SHE KNOWS THE POLICY." is a sentence about a policy, not its name — a
+ * person or a verb in the words before "policy" (review, 22 Oct 2026: it was
+ * read as a policy called "She knows the", and the described Cell Phone/Smart
+ * Watch Policy was lost).
+ */
+const NOT_A_NAME =
+  /\b(?:she|he|they|i|we|you|her|his|their|him|them|it|was|were|is|are|has|had|have|knows?|knew|signed|read|reviewed|reminded|told|understands?|acknowledged|got|received|explained|about|of|with|by|to)\b/i;
+
 export function namedPolicies(text: string): NamedPolicy[] {
   const found: NamedPolicy[] = [];
   for (const sentence of (text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0])) continue;
     // A line that is only the name — not "violation of company policy", which names none.
     const line = /\b(?:violat|breach|broke|against|follow)/i.test(sentence[0]) ? null : POLICY_LINE.exec(sentence[0]);
-    if (line && words(line[1]!).length > 0) found.push({ phrase: line[1]!.trim(), index: sentence.index });
+    if (line && words(line[1]!).length > 0 && !NOT_A_NAME.test(line[1]!)) {
+      found.push({ phrase: line[1]!.trim(), index: sentence.index });
+    }
     for (const match of sentence[0].matchAll(NAMED_POLICY)) {
       const phrase = match[1]!.trim();
       if (words(phrase).length === 0) continue;

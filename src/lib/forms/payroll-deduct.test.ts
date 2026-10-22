@@ -452,3 +452,26 @@ describe("a deduction cancelled, waived or denied", () => {
     },
   );
 });
+
+/* Review, 22 Oct 2026. */
+describe("review: zero, a cancelled order, and \"no cancel\"", () => {
+  it.each([["change the payroll deduction to $0"], ["change the payroll deduction to $0.00"], ["change payroll deduct to 0 dollars"]])(
+    '"%s" is No, and states no amount',
+    (text) => {
+      expect(payrollDeductCorrection(text)).toBe("no");
+      expect(payrollDeductAmount(text)).toBeNull();
+    },
+  );
+  it.each([
+    ["Payroll deduction of $25 for the cancelled order is applicable."],
+    ["Payroll deduct of $25 is applicable, the refund she cancelled was never rung."],
+  ])('a cancelled thing that is not the deduction leaves the Yes: "%s"', (text) => {
+    expect(statedPayrollDeduct(text)).toBe("yes");
+  });
+  it.each([["no cancel the payroll deduction"], ["Payroll deduct of $25 is applicable. No cancel the payroll deduction"]])(
+    '"%s" is No',
+    (text) => {
+      expect(statedPayrollDeduct(text)).toBe("no");
+    },
+  );
+});

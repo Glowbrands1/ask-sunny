@@ -250,3 +250,19 @@ describe("a line that is only a policy's name", () => {
     expect(namedPolicies(text)).toEqual([]);
   });
 });
+
+/* Review, 22 Oct 2026: a sentence about a policy is not its name. */
+describe("a sentence about a policy names none", () => {
+  it.each([["She knows the policy."], ["She was reminded of the policy."], ["She signed the policy."]])("%s", (text) => {
+    expect(namedPolicies(text)).toEqual([]);
+  });
+  it("and the described Cell Phone/Smart Watch Policy is still found beside one", () => {
+    const MANUAL: ManualChunk[] = [sheet(30, "Standards of Conduct", 12), sheet(43, "Cell Phone/Smart Watch Policy", 19)];
+    expect(
+      describedManualSection({ text: "on 10-20-26 she was on her cell phone on the floor. She knows the policy.", chunks: MANUAL })?.section.heading,
+    ).toBe("Cell Phone/Smart Watch Policy");
+  });
+  it.each([["the cell phone policy", "cell phone"], ["social media policy.", "social media"]])('"%s" still names "%s"', (text, phrase) => {
+    expect(namedPolicies(text).map((found) => found.phrase)).toContain(phrase);
+  });
+});
