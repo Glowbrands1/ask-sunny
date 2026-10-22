@@ -1455,3 +1455,32 @@ describe("Q19 changes of mind, interruptions and what was never said", () => {
     expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
   });
 });
+
+describe("Q20 an existing draft through rollout: nothing about it changes except the decision the manager makes", () => {
+  it("reopened and confirmed: still a draft until Finalize; employee, dates, prior actions and every earlier event kept", async () => {
+    const { chat, id } = await legacyDraft("written");
+    await chat.say("prior coaching: jba policy manual 1-1-26, verbal ca 9-1-26");
+    const before = await saved(id);
+    const eventsBefore = eventsOf(id).map((event) => JSON.stringify(event));
+    const rowBefore = { ...rowOf(id) };
+
+    for (let opened = 0; opened < 2; opened += 1) await reopened(id);
+    expect(rowOf(id).status).toBe("draft");
+    expect(eventsOf(id).map((event) => JSON.stringify(event))).toEqual(eventsBefore);
+
+    expect((await confirmOnForm(id, "verbal")).status).toBe(200);
+    expect(rowOf(id).status).toBe("draft");
+    const after = await saved(id);
+    for (const key of ["employee_name", "form_date", "prior_actions", "observation", "payroll_deduct", "offense_type", "policy_language"]) {
+      expect(after[key], key).toEqual(before[key]);
+    }
+    expect(after.warning_type).toEqual(["verbal"]);
+    for (const column of ["employee_name", "location_id", "form_date", "created_by", "template_version_id"]) {
+      expect(rowOf(id)[column], column).toEqual(rowBefore[column]);
+    }
+    const eventsAfter = eventsOf(id).map((event) => JSON.stringify(event));
+    expect(eventsAfter.slice(0, eventsBefore.length)).toEqual(eventsBefore);
+    expect(eventsAfter).toHaveLength(eventsBefore.length + 1);
+    expect(store.form_instances).toHaveLength(1);
+  });
+});
