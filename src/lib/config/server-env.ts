@@ -172,8 +172,13 @@ export function supabaseSecretKeyConfigured(): boolean {
   );
 }
 
-/** Which name supplied the key, for honest reporting. Never the value. */
+/**
+ * Which name supplied the key, for honest reporting. Never the value.
+ * Null in demo mode, like supabaseSecretKeyConfigured(): the key is never used
+ * there, and readiness must not try to read what supabaseSecretKey() refuses.
+ */
 export function supabaseSecretKeySource(): "current" | "legacy" | null {
+  if (isDemoMode()) return null;
   if (process.env[SUPABASE_SECRET_KEY_ENV]?.trim()) return "current";
   if (process.env[SUPABASE_SECRET_KEY_ENV_LEGACY]?.trim()) return "legacy";
   return null;

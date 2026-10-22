@@ -120,6 +120,12 @@ describe("a labelled earlier step is listed with what it was about", () => {
     ],
     ["register shortage on 10-20-26. previous coaching - jba policy manual 1-20-26.", "Coaching — JBA Policy Manual — signed 01/20/2026"],
     ["late again on 10/20. prior CA 9/1", "Corrective action — signed 09/01/2026"],
+    // HR, 21 Oct 2026 (ported from Ask Bubbles): what it was for, said after the date, is kept.
+    [
+      "on her phone again on 10-20-26. previous coaching was 9/15 for cell phone use and she was on her phone again",
+      "Coaching for cell phone use — signed 09/15/2026",
+    ],
+    ["late again on 10/20. prior CA 9/1 about tardiness.", "Corrective action about tardiness — signed 09/01/2026"],
   ])("%s", (notes, line) => {
     expect(statedPriorActions(notes, DAY)).toEqual([line]);
     expect(groundPriorActions({ drafted: "", notes, today: DAY }).value).toBe(line);

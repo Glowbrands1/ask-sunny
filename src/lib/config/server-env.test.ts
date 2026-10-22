@@ -372,6 +372,19 @@ describe("demo mode never holds the privileged key", () => {
     expect(() => env.supabaseSecretKey()).toThrow(env.DemoModeRefusesPrivilegedKeyError);
   });
 
+  it("readiness still reports instead of throwing in demo mode with a key set (regression: /api/health returned 500)", async () => {
+    process.env.NEXT_PUBLIC_DEMO_MODE = "true";
+    configureAll();
+    const env = await import("./server-env");
+
+    expect(env.supabaseSecretKeySource()).toBeNull();
+    expect(() => env.configurationProblems()).not.toThrow();
+    expect(() => env.liveReadiness()).not.toThrow();
+    expect(env.liveReadiness().supabase.ready).toBe(false);
+    expect(env.liveReadiness().supabase.missing).toContain("SUPABASE_SECRET_KEY");
+    expect(env.liveReadiness().supabaseSecretKeySource).toBeNull();
+  });
+
   it("still returns it in live mode", async () => {
     process.env.NEXT_PUBLIC_DEMO_MODE = "false";
     configureAll();

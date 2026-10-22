@@ -1370,6 +1370,7 @@ describe("nothing stored by the old name breaks", () => {
  * could be created — while "Paulyne Co" worked. Neither the casing nor a
  * missing surname decides whether the draft can be created.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a Corrective Action Form for a name typed in any case", () => {
   const NAMES = [
     "Paulyne Co",
@@ -1433,6 +1434,7 @@ describe("a Corrective Action Form for a name typed in any case", () => {
  * form exactly as the bare name does, and a name whose own spelling carries an
  * apostrophe or hyphen keeps it.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a Corrective Action Form for a name wrapped in punctuation", () => {
   const CASES: [string, string][] = [
     ["(paulyne)", "paulyne"],
@@ -1553,6 +1555,7 @@ describe("the form date, from the request or from a follow-up answer", () => {
  *
  * The names here are invented; the SHAPE is the manager's.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("the coaching intake answered on one line", () => {
   const INTAKE_HISTORY = [
     { id: "h1", role: "user", content: "one of my managers isnt showing the ownership i need from her running her store" },
@@ -1792,6 +1795,7 @@ describe("the payroll-deduct question on a form that does not ask it yet", () =>
  * AND the employee, with no "which form?" and no "who is this for?". One rule
  * for the whole library — see `leadingFormRequest` in `template-intent.ts`.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a form's name leading the message, across the library", () => {
   it.each([
     ["CA for paulyne co", "dpoa", "paulyne co"],

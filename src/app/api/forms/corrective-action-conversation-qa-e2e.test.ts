@@ -955,7 +955,7 @@ describe("Q11 prior coaching given as a follow-up", () => {
     await chat.say("prior coaching: jba policy manual 1-1-26, verbal ca 9-1-26");
     const form = await saved(id);
     expect(form.prior_actions).toBe(
-      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026\nCoaching — signed 09/15/2026",
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026\nCoaching about attendance — signed 09/15/2026",
     );
     for (const key of ["warning_type", "payroll_deduct", "observation", "form_date", "offense_type"]) expect(form[key], key).toEqual(before[key]);
     const recorded = eventsOf(id).filter((event) => event.detail.via === "chat_correction");
@@ -1482,5 +1482,27 @@ describe("Q20 an existing draft through rollout: nothing about it changes except
     expect(eventsAfter.slice(0, eventsBefore.length)).toEqual(eventsBefore);
     expect(eventsAfter).toHaveLength(eventsBefore.length + 1);
     expect(store.form_instances).toHaveLength(1);
+  });
+});
+
+describe("Q21 a corrected incident date is the answer, not a second incident (release merge, 22 Oct 2026)", () => {
+  it("\"the meeting was actually on 10-19-26\" dates the form 10/19 and never asks which date", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    const reply = await chat.say("the meeting was actually on 10-19-26");
+    expect(reply).not.toMatch(/Which date goes on the form/);
+    expect(chat.card?.formDate).toBe("2026-10-19");
+    expect(await chat.say("no payroll deduct")).not.toMatch(/Which date goes on the form/);
+    expect(chat.card?.formDate).toBe("2026-10-19");
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 19, 2026.");
+    expect((await saved(await chat.create())).form_date).toBe("2026-10-19");
+  });
+
+  it("two different incidents are still a question", async () => {
+    const chat = new Chat();
+    const reply = await chat.say(
+      "create a written CA for tess varga, she missed the monthly meeting on 10-13-26 and the training on 10-20-26. no payroll deduct",
+    );
+    expect(reply).toMatch(/Which date goes on the form/);
   });
 });

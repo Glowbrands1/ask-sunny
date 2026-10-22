@@ -578,6 +578,11 @@ describe("statedWarningLevel — the level stated for this form", () => {
     ["5. verbal", "verbal"],
     ["warning level: written", "written"],
     ["Sarah Test, Kearny, today, mini skirt, verbal warning, first time", "verbal"],
+    // HR, 21 Oct 2026 (ported from Ask Bubbles): the level beside the payroll answer.
+    ["Verbal warning, payroll deduct no.", "verbal"],
+    ["verbal, payroll deduct no.", "verbal"],
+    ["no payroll deduct, written.", "written"],
+    ["tess was late on 10/20. verbal, payroll deduct of $3.25 is applicable.", "verbal"],
   ])("%s → %s", (text, level) => {
     expect(statedWarningLevel(text)).toBe(level);
   });
@@ -595,6 +600,8 @@ describe("statedWarningLevel — the level stated for this form", () => {
     "is it verbal?",
     "he gave her a verbal heads-up about the schedule",
     "she was written up",
+    "verbal, she was late",
+    "verbal, written, no payroll deduct",
   ])("%s states no level for this form", (text) => {
     expect(statedWarningLevel(text)).toBeNull();
   });

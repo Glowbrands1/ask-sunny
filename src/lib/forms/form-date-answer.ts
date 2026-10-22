@@ -83,6 +83,134 @@ const FOLLOW_UP_BEFORE =
 const PRIOR_STEP_BEFORE =
   /\b(?:got|gotten|received|was given|were given|been given|given|had|issued|gave|was|were|previous(?:ly)?|prior|already|last time)\b[^.;\n]{0,40}\b(?:warn(?:ing|ings|ed)|write[- ]?ups?|written up|coach(?:ed|ing)?|corrective actions?|disciplin\w*)\b[^.;\n]{0,20}$/i;
 
+/**
+ * A step that is hers already, with no past-tense verb: "despite / after /
+ * since / following her written warning on 9/15", "her verbal warning on
+ * 9/21". The warning-level reader reads these as history, and the history
+ * line agrees — but ONLY for a date before today (`priorSteps`): "her
+ * written warning should be dated 10/9" or "…will be delivered 10/12" is
+ * this form's warning, and must never become a step nobody took. The cue
+ * must sit right before the warning, and "give her a written warning on
+ * 10/2" (an article, or an issuing verb) is this form.
+ */
+const OWNED_STEP_BEFORE = new RegExp(
+  [
+    String.raw`\b(?:despite|after|since|following)\s+(?:(?:her|his|their|the|a|an)\s+)?(?:(?:last|previous|prior|recent|verbal|written|final|formal)\s+){0,2}(?:warn(?:ing|ings)|write[- ]?ups?|coaching|corrective actions?)\b[^.;\n]{0,20}$`,
+    String.raw`(?<!\b(?:give|gives|giving|issue|issues|issuing|write|writes|writing|needs?|get|gets|getting|make|deserves?)\s+)\b(?:her|his|their)\s+(?!a\b|an\b)(?:[a-z]+\s+){0,2}?(?:warn(?:ing|ings)|write[- ]?ups?|coaching|corrective actions?)\b[^.;\n]{0,20}$`,
+  ].join("|"),
+  "i",
+);
+
+/**
+ * "I verbally coached her on 10/5", "talked to him on 9/1": an earlier step told
+ * as something the manager DID, which carries no "had / got / previous" marker.
+ * Requires an object pronoun, so "coaching form on 10/2" is unaffected.
+ * Admin feedback, 16 Oct 2026: with "late on 10/15 … I coached her on 10/5" the
+ * coaching date counted as a second incident date.
+ */
+const DID_STEP_BEFORE =
+  /\b(?:verbal(?:ly)?\s+)?(?:coached|counsel(?:ed|led)|warned|talked to|spoke (?:to|with)|discussed (?:it |this )?with|addressed (?:it|this) with)\s+(?:her|him|them|the employee)\b[^.;\n]{0,30}$/i;
+
+/**
+ * THE SAME EARLIER STEP, TOLD THE OTHER WAYS MANAGERS TELL IT. QA, 22 Oct
+ * 2026: "we had a talk with her about tardiness on 10/1" and "we discussed
+ * attendance with her on 10/1" dated the Corrective Action 10/1 — the day of
+ * the conversation, not of anything she did — and "I talked to pat about being
+ * late on 10/1" did the same with a name for the pronoun. A conversation held
+ * WITH her, or a topic gone over WITH her, is an earlier step wherever the
+ * topic sits; so is "talked to / spoke with / coached <name> about …". As with
+ * `DID_STEP_BEFORE`, the step must come before its date in the same clause, so
+ * "she was late on 10/15 after I talked to her" leaves 10/15 the incident.
+ */
+const TALKED_STEP_BEFORE = new RegExp(
+  [
+    String.raw`\b(?:had|have had|has had|held)\s+(?:a\s+|an\s+)?(?:(?:verbal|formal|quick|serious|long)\s+)?(?:talk|conversation|chat|sit[- ]?down|discussion|one[- ]on[- ]one|meeting|coaching(?:\s+(?:conversation|session|talk))?)\s+with\s+(?:her|him|them|the employee)\b[^.;\n]{0,40}$`,
+    String.raw`\b(?:discussed|went over|reviewed|addressed)\s+(?:[\w'’-]+\s+){1,4}?with\s+(?:her|him|them|the employee)\b[^.;\n]{0,30}$`,
+    String.raw`\b(?:coached|counsel(?:ed|led)|warned|talked to|talked with|spoke to|spoke with|sat down with)\s+(?!(?:her|him|them|the employee)\b)[a-z][\w'’-]*(?:\s+[a-z][\w'’-]*)?\s+(?:about|regarding|over|on|for)\b[^.;\n]{0,30}$`,
+  ].join("|"),
+  "i",
+);
+
+/**
+ * "…about BEING LATE on 10/1": the date is what she did, not when they talked.
+ * After the conversation's topic word, an account of the behaviour keeps the
+ * date an incident date; a topic named as a noun ("about tardiness on 10/1")
+ * leaves it the conversation's.
+ */
+const ACCOUNT_IN_TOPIC =
+  /\b(?:being|was|were|is|she|he|they|show(?:s|ed|ing)?\s+up|c(?:ame|oming)\s+in|call(?:s|ed|ing)?|miss(?:es|ed|ing)?|leav(?:es|ing)|left|arriv(?:es|ed|ing)|late|absent|no[- ]show)\b/i;
+
+function talkedStep(before: string): boolean {
+  const match = TALKED_STEP_BEFORE.exec(before);
+  if (!match) return false;
+  const cut = match[0].search(/\b(?:about|regarding|over|for)\b|\bwith\s+(?:her|him|them|the employee)\b/i);
+  const topic = (cut >= 0 ? match[0].slice(cut) : match[0]).replace(/^\S+\s*/, "");
+  return !ACCOUNT_IN_TOPIC.test(topic);
+}
+
+/*
+ * ============================================================================
+ * "DATED 10/20" IS THE FORM'S DATE, NOT ANOTHER INCIDENT
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026: "create verbal ca for pat rivera dated 10/20. she was late
+ * on 10/5 and 10/15" was asked which of 10/5, 10/15 and 10/20 goes on the
+ * form — the manager had just said. A date the manager explicitly gives the
+ * FORM ("dated 10/20", "date the form 10/20", "form date: 10/20") is the
+ * form's Date. It is never offered as an incident date, and it outranks one.
+ * A date that is an earlier step or a follow-up is never read this way, so
+ * "her written warning dated 9/21" stays history.
+ */
+const EXPLICIT_FORM_DATE_BEFORE =
+  /\b(?:dated|date\s+(?:the\s+form|it|this(?:\s+(?:form|one))?)(?:\s+(?:as|for|to))?|(?:the\s+)?form(?:['’]s)?\s+date(?:\s+(?:is|should\s+be|of|as))?\s*[:=-]?|(?:the\s+)?form\s+(?:should\s+be\s+|is\s+)?dated(?:\s+(?:as|for))?)\s*(?:on\s+)?$/i;
+
+/*
+ * ============================================================================
+ * ON A COACHING FORM, THE COACHING IS THE FORM'S DATE
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026: "coaching form for pat rivera, she was late on 10/5 and
+ * 10/15, I coached her on 10/16" dated the Coaching Form 10/5 — the coaching
+ * it documents was read as an EARLIER step and skipped. On a Corrective Action
+ * that reading is right (the coaching is history the form escalates from); on
+ * a Coaching Form the conversation the manager held IS the event. Only a
+ * coaching the manager says they held ("I coached her on…", "we had a coaching
+ * conversation with him on…", "I sat down with her on…"), never a labelled
+ * earlier one ("previous coaching on 9/1"), and only when nothing she did is
+ * dated after it — "I coached her on 9/1 and she was late again on 10/15" is a
+ * new coaching about 10/15, with 9/1 its history. See `incident-dates.ts`.
+ */
+const HELD_COACHING_BEFORE =
+  /\b(?:i|we)\s+(?:(?:verbally|formally|also|then|just)\s+)?(?:coached|counsel(?:ed|led)|(?:had|held)\s+(?:a\s+)?(?:coaching(?:\s+(?:conversation|session|talk))?|talk|conversation|sit[- ]?down)\s+with|sat down with|met with|talked (?:to|with)|spoke (?:to|with))\s+(?:her|him|them|the employee|[a-z][\w'’-]*(?:\s+[a-z][\w'’-]*)?)\b[^.;\n]{0,30}$/i;
+
+const EARLIER_CUE = /\b(?:previous(?:ly)?|prior|earlier|already|before|last time)\b/i;
+
+/*
+ * ============================================================================
+ * A DEADLINE IS NEITHER WHAT SHE DID NOR THE FORM'S DATE
+ * ============================================================================
+ *
+ * District Manager feedback, 21 Oct 2026 (QA, 22 Oct 2026): "… violating
+ * standards of conduct policy on 10-20-26. tess failed to acknowledge
+ * policies in woven by the 10-15-26 deadline." — the deadline was read as a
+ * second incident date, so the form's date became a question (or, before,
+ * whichever came first). "by the 10-15-26 deadline", "the deadline was 10/15",
+ * "due 10/15", "was supposed to finish it by 10/15" name when something was
+ * DUE: it stays in the account, and is never an incident or the form's date.
+ */
+const DEADLINE_BEFORE = /\b(?:deadline|due\s+date)\s*(?:of|is|was|was\s+on|:)?\s*$|\bdue\s+(?:by\s+|on\s+)?$/i;
+const BY_BEFORE = /\bby\s+(?:the\s+)?$/i;
+const DEADLINE_AFTER = /^\s*(?:deadline|due\s+date)\b/i;
+const OWED_IN_CLAUSE = /\b(?:supposed|due|needed|had|required|expected|asked)\s+to\b/i;
+
+function isDeadline(text: string, found: DateInText): boolean {
+  const before = text.slice(Math.max(0, found.index - 60), found.index);
+  if (DEADLINE_BEFORE.test(before)) return true;
+  if (DEADLINE_AFTER.test(text.slice(found.end, found.end + 20))) return true;
+  const clause = before.slice(Math.max(before.search(/[^.;\n]*$/), 0));
+  return BY_BEFORE.test(before) && OWED_IN_CLAUSE.test(clause);
+}
+
 /*
  * ============================================================================
  * "PREVIOUS COACHING WAS JBA POLICY MANUAL 1-1-26" — A LABELLED EARLIER STEP
@@ -95,15 +223,15 @@ const PRIOR_STEP_BEFORE =
  *   "previous coaching - jba policy manual 1-20-26"
  *   "jba manual 1-1-26 for previous coaching"
  *
- * The topic between the label and the date is longer than `PRIOR_STEP_BEFORE`
- * allows, and in the last one the label comes after the date — so the
- * coaching's date could become the form's own (a request whose only date was
- * the coaching's was dated by it), and never reached the prior-actions line.
- * A step named "previous / prior / past / last / earlier …" is history
- * wherever its date sits: up to five words of topic after the label, or the
- * label right after the date. The topic words stop at anything that starts an
- * account ("previous coaching was about lateness and she was late on 10/20"
- * leaves 10/20 an incident date).
+ * None of them has the past-tense verb `PRIOR_STEP_BEFORE` waits for, and the
+ * topic between the label and the date is longer than it allows — so the
+ * coaching's date was offered as a date for the form ("You mentioned more than
+ * one date (1/1, 10/10). Which date goes on the form?") and never reached the
+ * prior-actions line. A step named "previous / prior / past / last …" is
+ * history wherever its date sits: up to five words of topic after the label,
+ * or the label right after the date. The topic words stop at anything that
+ * starts an account ("previous coaching was about lateness and she was late
+ * on 10/20" leaves 10/20 an incident date).
  */
 const STEP_NOUN = String.raw`(?:coachings?|coached|warnings?|write[- ]?ups?|written\s+up|corrective\s+actions?|(?:disciplinary\s+)?actions?|cas|ca|c\/a|disciplin\w*)`;
 const HISTORY_LABEL = String.raw`(?:previous|prior|past|last|earlier)\s+${STEP_NOUN}`;
@@ -135,11 +263,11 @@ const TOPIC_BEFORE_DATE = new RegExp(String.raw`(?:^|[.;\n,]\s*)((?:${TOPIC_WORD
  * whole history, and EVERY item in it is history: coaching, a verbal or
  * written CA or warning, a policy acknowledgement. Only the first item sat
  * right after the label, so the second ("verbal ca 9-1-26") was dropped from
- * the prior actions and handed to the drafting model as one of the manager's
- * dates for the form. The list runs from one dated item to the next across a
- * comma, "and", "&" or a new bulleted line, each item up to five words before
- * its date; it ends at the end of the sentence, or at anything that starts an
- * account ("…1-1-26, late again on 10/20").
+ * the prior actions and offered as a date for the form ("You mentioned more
+ * than one date (9/1, 10/20)…"). The list runs from one dated item to the
+ * next across a comma, "and", "&" or a new bulleted line, each item up to
+ * five words before its date; it ends at the end of the sentence, or at
+ * anything that starts an account ("…1-1-26, late again on 10/20").
  */
 const LIST_ITEM_BEFORE = new RegExp(
   String.raw`^\s*(?:,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+|\s*\n\s*(?:[-*•]|\d+[.)])\s*)((?:${TOPIC_WORD}\s+){0,5}?)(?:(?:on|dated|signed)\s+)?$`,
@@ -186,6 +314,9 @@ function isOtherDate(text: string, found: DateInText, labelled: ReadonlyMap<numb
   return (
     FOLLOW_UP_BEFORE.test(before) ||
     PRIOR_STEP_BEFORE.test(before) ||
+    OWNED_STEP_BEFORE.test(before) ||
+    DID_STEP_BEFORE.test(before) ||
+    talkedStep(before) ||
     labelled.has(found.index)
   );
 }
@@ -213,7 +344,7 @@ export function priorStepDate(text: string, today: string): string | null {
 export function priorSteps(
   text: string,
   today: string,
-): { iso: string; named: string; topic?: string }[] {
+): { iso: string; named: string; topic?: string; about?: string }[] {
   /*
    * A DATE THE MANAGER CORRECTED IS THE STEP'S DATE: "the verbal ca was on
    * 9-2-26 not 9-1-26" moves the verbal CA listed on 9/1 to 9/2, once.
@@ -260,19 +391,74 @@ export function correctedDates(text: string, today: string): Map<string, string>
 function stepsAsWritten(
   text: string,
   today: string,
-): { iso: string; named: string; topic?: string }[] {
+): { iso: string; named: string; topic?: string; about?: string }[] {
   const dates = datesInText(text, today);
   const steps = labelledSteps(text, dates);
   return dates.flatMap((found) => {
     const before = text.slice(0, found.index);
+    const about = reasonAfter(text.slice(found.end));
+    const withAbout = about ? { about } : {};
     // "previous coaching was jba policy manual 1-1-26": what it was about, as the manager wrote it.
     const labelled = steps.get(found.index);
     if (labelled) {
-      return [{ iso: found.iso, named: labelled.named, ...(labelled.topic ? { topic: labelled.topic } : {}) }];
+      return [{
+        iso: earlierYearIfAhead(found, text, today),
+        named: labelled.named,
+        ...(labelled.topic ? { topic: labelled.topic } : withAbout),
+      }];
     }
     const match = PRIOR_STEP_BEFORE.exec(before);
-    return match ? [{ iso: found.iso, named: match[0] }] : [];
+    // "she was late, give her a written warning on 10/2": the cue was the incident's, the warning is this form's.
+    if (match && !ISSUES_THIS_FORM.test(match[0])) {
+      // A date ahead of today is last year's only after a verb of receiving one ("got … on 12/20" in
+      // January); after a bare "was/were" it is a date still to come, and not an earlier step.
+      if (found.iso > today && /^(?:was|were)\b/i.test(match[0])) return [];
+      return [{ iso: earlierYearIfAhead(found, text, today), named: match[0], ...withAbout }];
+    }
+    // A step that is hers already counts only on a day before today — never rolled back a year.
+    const owned = OWNED_STEP_BEFORE.exec(before);
+    if (owned && !ISSUES_THIS_FORM.test(owned[0]) && found.iso < today) {
+      return [{ iso: found.iso, named: owned[0], ...withAbout }];
+    }
+    return [];
   });
+}
+
+/**
+ * WHAT AN EARLIER STEP WAS FOR, SAID AFTER ITS DATE: "previous coaching was
+ * 9/15 for cell phone use" → "for cell phone use" (HR feedback, 21 Oct 2026,
+ * ported from Ask Bubbles: the line read "Coaching — signed 09/15/2026" and
+ * lost what it was for). The manager's own words, opening with for / about /
+ * regarding / over, to the end of the clause — and not past "and she …",
+ * which is the account again. Nothing when the words after the date are
+ * anything else.
+ */
+function reasonAfter(after: string): string | null {
+  const match =
+    /^\s*,?\s*((?:for|about|regarding|over)\s+[^.;,!?\n]{2,60}?)(?=\s*(?:$|[.;,!?\n]|\s+(?:and|but|then|so)\s+(?:she|he|they|now|today|again|this|it)\b|\s+(?:and|but)\s+(?:was|is|has)\b))/i.exec(
+      after,
+    );
+  return match ? match[1]!.trim() : null;
+}
+
+/** An issuing verb between the cue and the warning: the warning is the one being issued now. */
+const ISSUES_THIS_FORM =
+  /\b(?:give|gives|giving|issue|issues|issuing|needs?|deserves?|requires?|make\s+(?:it|this)|document(?:ing)?|write\s+(?:her|him|them)\s+(?:up|a)|do\s+a|should|will|is\s+dated|dated|effective|deliver\w*|present\w*|sign(?:ing|s)?|schedul\w*|meet(?:ing)?|set\s+for|receive|receives|receiving|this\s+is)\b/i;
+
+/**
+ * AN EARLIER STEP CANNOT BE IN THE FUTURE. A month and day with no year take
+ * the current one, so "got a verbal warning on 12/20", read on January 5,
+ * came out as next December. Where the manager gave no year and the date is
+ * after today, it is last year's. A year they typed is kept as typed.
+ */
+function earlierYearIfAhead(found: DateInText, text: string, today: string): string {
+  if (found.iso <= today) return found.iso;
+  const typed = text.slice(found.index, found.end);
+  const hasYear = /\d{4}/.test(typed) || (typed.match(/[/-]/g)?.length ?? 0) >= 2;
+  if (hasYear) return found.iso;
+  const year = Number(found.iso.slice(0, 4)) - 1;
+  const earlier = `${String(year).padStart(4, "0")}${found.iso.slice(4)}`;
+  return isIsoCalendarDate(earlier) ? earlier : found.iso;
 }
 
 /** A real `YYYY-MM-DD` on the calendar — no February 30th. */
@@ -358,7 +544,7 @@ export function datesInText(text: string, today: string): DateInText[] {
  * ("13/40", "Feb 30").
  */
 export function extractFormDate(text: string, today: string): string | null {
-  return listFormDates(text, today)[0]?.iso ?? null;
+  return listIncidentDates(text, today)[0]?.iso ?? null;
 }
 
 /**
@@ -376,10 +562,58 @@ export function listFormDates(text: string, today: string): { iso: string; index
   const corrected = correctedDates(text, today);
   const stepDates = new Set(stepsAsWritten(text, today).map((step) => step.iso));
   const correctsAStep = new Set([...corrected].filter(([from]) => stepDates.has(from)).map(([, to]) => to));
-  return dates
+  const kept = dates
     .filter((found) => !isOtherDate(text, found, labelled))
-    .filter((found) => !corrected.has(found.iso) && !correctsAStep.has(found.iso))
-    .map(({ iso, index }) => ({ iso, index }));
+    .filter((found) => !corrected.has(found.iso) && !correctsAStep.has(found.iso));
+  // A date given to the FORM leads — the last one typed first, so a later "date it 10/21" corrects an earlier one.
+  const explicit = kept.filter((found) => isExplicitFormDate(text, found)).reverse();
+  return [...explicit, ...kept.filter((found) => !explicit.includes(found))].map(({ iso, index }) => ({ iso, index }));
+}
+
+/**
+ * The dates that can date the form: `listFormDates` without a deadline ("by
+ * the 10-15-26 deadline" names when something was due, see `isDeadline`). A
+ * date given to the form leads. The deadline stays in `listFormDates`, which
+ * is also the list of the manager's own dates the draft is told to keep.
+ */
+export function listIncidentDates(text: string, today: string): { iso: string; index: number }[] {
+  const dates = datesInText(text, today);
+  const deadlines = new Set(dates.filter((found) => isDeadline(text, found)).map((found) => found.index));
+  return listFormDates(text, today).filter((found) => !deadlines.has(found.index));
+}
+
+function isExplicitFormDate(text: string, found: DateInText): boolean {
+  return EXPLICIT_FORM_DATE_BEFORE.test(text.slice(Math.max(0, found.index - 40), found.index));
+}
+
+/**
+ * The date the manager explicitly gave the FORM ("dated 10/20", "date the
+ * form 10/20", "form date: 10/20"), or null. The last one typed wins. Never an
+ * earlier step's or a follow-up's date. See `EXPLICIT_FORM_DATE_BEFORE`.
+ */
+export function explicitFormDate(text: string, today: string): string | null {
+  const dates = datesInText(text, today);
+  const labelled = labelledSteps(text, dates);
+  const explicit = dates.filter((found) => !isOtherDate(text, found, labelled) && isExplicitFormDate(text, found));
+  return explicit.length > 0 ? explicit[explicit.length - 1]!.iso : null;
+}
+
+/**
+ * The days the manager says they HELD a coaching conversation ("I coached her
+ * on 10/16"), oldest first, none in the future — the dates a Coaching Form
+ * documents. A labelled earlier one ("previous coaching 9/1", "I already
+ * coached her on 9/1") is history and not listed. See `HELD_COACHING_BEFORE`.
+ */
+export function heldCoachingDates(text: string, today: string): string[] {
+  const dates = datesInText(text, today);
+  const labelled = labelledSteps(text, dates);
+  const held = dates.filter((found) => {
+    if (found.iso > today || labelled.has(found.index)) return false;
+    const before = text.slice(0, found.index);
+    const clause = before.slice(Math.max(before.search(/[^.;\n]*$/), 0));
+    return HELD_COACHING_BEFORE.test(before) && !EARLIER_CUE.test(clause);
+  });
+  return [...new Set(held.map((found) => found.iso))].sort();
 }
 
 /*

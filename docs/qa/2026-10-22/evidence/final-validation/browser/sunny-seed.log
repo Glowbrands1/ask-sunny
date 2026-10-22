@@ -1,0 +1,2 @@
+created qa-admin@local.test admin {"scope_level":"global","scope_primary_area_id":null,"scope_also_covers_area_ids":[]}
+created qa-sd@local.test salon_director {"scope_level":"salon","scope_primary_area_id":"loc-0310","scope_also_covers_area_ids":["loc-0311"]}

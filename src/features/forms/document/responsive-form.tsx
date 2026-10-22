@@ -20,6 +20,7 @@ import {
 } from "@/lib/forms/document";
 import { canPersonEdit } from "@/lib/forms/responsibility";
 import { cn } from "@/lib/utils/cn";
+import { NO_AUTOFILL } from "./autofill";
 
 /**
  * ============================================================================
@@ -333,6 +334,7 @@ function BlockField({
                 {`${text(block.planLabel)} — ${text(row.category)}`}
               </Label>
               <Textarea
+                {...NO_AUTOFILL}
                 id={`plan-${row.key}`}
                 className="min-w-0"
                 rows={2}
@@ -425,6 +427,7 @@ function BlockField({
                   {index + 1}.
                 </span>
                 <Input
+                  {...NO_AUTOFILL}
                   className="min-w-0 flex-1"
                   aria-label={`${text(block.label)} ${index + 1}`}
                   value={line}
@@ -495,6 +498,7 @@ function FieldControl({
       <Label htmlFor={id}>{label}</Label>
       {field.input === "long_text" ? (
         <Textarea
+          {...NO_AUTOFILL}
           id={id}
           className="min-w-0"
           rows={Math.max(4, field.minLines ?? 0)}
@@ -505,6 +509,7 @@ function FieldControl({
         />
       ) : (
         <Input
+          {...NO_AUTOFILL}
           id={id}
           className="min-w-0"
           /*

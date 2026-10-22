@@ -145,9 +145,22 @@ describe("chat history panel", () => {
     await user.click(screen.getByRole("button", { name: /^Policy Question – Attendance/ }));
     expect(props.onSelect).toHaveBeenCalledWith("conv_c");
 
+    /* One tap only asks — a stray touch on the hidden control removes nothing. */
     await user.click(
       screen.getByRole("button", { name: "Delete conversation: Employee Corrective Action Form" }),
     );
+    expect(props.onDelete).not.toHaveBeenCalled();
+    const confirm = await screen.findByRole("dialog", { name: "Delete this conversation?" });
+    expect(within(confirm).getByText("Employee Corrective Action Form")).toBeTruthy();
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(props.onDelete).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "Delete conversation: Employee Corrective Action Form" }),
+    );
+    const again = await screen.findByRole("dialog", { name: "Delete this conversation?" });
+    await user.click(within(again).getByRole("button", { name: "Delete conversation" }));
+    expect(props.onDelete).toHaveBeenCalledTimes(1);
     expect(props.onDelete).toHaveBeenCalledWith("conv_b");
 
     await user.click(screen.getByRole("button", { name: "Clear history" }));

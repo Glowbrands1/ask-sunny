@@ -1,0 +1,883 @@
+[
+  {
+    "id": "E1",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at salon 0410, late 3 times"
+    ],
+    "expected": "loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "17393f46-5ce2-44e6-a3cb-25d7f35903c3",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E1-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E2",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at salon 410, late 3 times"
+    ],
+    "expected": "loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "e833cca2-bac2-4527-83d8-8a183cfa6526",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E2-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E3",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at store #410, late 3 times"
+    ],
+    "expected": "loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "ce51c355-1e72-4efa-b463-73fd263e49bf",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E3-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E4",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at location 410, late 3 times"
+    ],
+    "expected": "loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "92c6675b-dc42-417f-808e-78c3d8813072",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E4-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E5",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera #0410, late 3 times"
+    ],
+    "expected": "loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "e78b1a10-ccdf-4e59-89e3-112b133f5361",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E5-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E6",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at 0410, late 3 times"
+    ],
+    "expected": "loc-0410 (zero-padded)",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "896ee13c-fe8a-4904-aa3e-f57036b4dcac",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E6-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E7",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at omaha pacific, late 3 times"
+    ],
+    "expected": "loc-0410 (name)",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "f3e77829-7bb0-4445-b631-6f78b8070c3e",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E7-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E8",
+    "group": "Explicit identifier",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera at store 254, late 3 times"
+    ],
+    "expected": "loc-0410 (Google store code 254)",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your message above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "5893caf8-e00a-4f64-8394-f54308fd1115",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E8-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E9",
+    "group": "Explicit identifier (reply)",
+    "actor": "salon_director",
+    "turns": [
+      "create a coaching form for pat rivera, late 3 times",
+      "salon 410"
+    ],
+    "expected": "reply sets loc-0410; employee kept",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null | proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "c9a4be33-3282-4aa2-b5e3-ffe43de942c8",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "E9-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "d6e6ccb9-24cc-4277-b209-88ec1fd731f8",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E9-u1",
+            "E9-u2"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E10",
+    "group": "Explicit identifier (reply)",
+    "actor": "salon_director",
+    "turns": [
+      "create a coaching form for pat rivera, late 3 times",
+      "#0410"
+    ],
+    "expected": "reply sets loc-0410; employee kept",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null | proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "7b5f3bbb-b1aa-420f-8079-5d2b391093f1",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "E10-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "e46063fa-3fb6-4628-8f5d-8f8600e807e2",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E10-u1",
+            "E10-u2"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E11",
+    "group": "Explicit identifier (reply)",
+    "actor": "salon_director",
+    "turns": [
+      "create a coaching form for pat rivera, late 3 times",
+      "omaha pacific"
+    ],
+    "expected": "reply sets loc-0410; employee kept",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null | proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "485a7bda-f85c-4131-8196-32d381f14bf8",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "E11-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "c5f86612-9bfe-4200-a6fb-dc22ec8c973c",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E11-u1",
+            "E11-u2"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "E12",
+    "group": "Explicit identifier (reply)",
+    "actor": "salon_director",
+    "turns": [
+      "create a coaching form for pat rivera, late 3 times",
+      "the 27th street salon"
+    ],
+    "expected": "reply sets loc-0310; employee kept",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null | proposal coaching employee=\"pat rivera\" status=ready location=loc-0310(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "9d9b31f4-dc56-46d5-b83f-398574452012",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "E12-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "a447a8d4-35d1-49ed-9dd9-8e17efe8dc8c",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "E12-u1",
+            "E12-u2"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U1",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she got here at 410 today, late 3 times"
+    ],
+    "expected": "time: not loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "e9f6e0f1-f3d7-4e48-861a-d97db38d981c",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U1-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U2",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she clocked in at 4:10, late 3 times"
+    ],
+    "expected": "time: not loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "21aa511d-cea1-4fb5-ad56-93ca6dab5431",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U2-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U3",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she clocked in at 410pm, late 3 times"
+    ],
+    "expected": "time: not loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "38caec01-988f-450e-bad0-ce35ab19fd6a",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U3-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U4",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she rang up a package at 254 dollars and was late 3 times"
+    ],
+    "expected": "price: not loc-0410 (254 is a store code)",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "8a33f1b9-3a8a-47ce-8395-d58046c08183",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U4-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U5",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she was on break for 410 minutes"
+    ],
+    "expected": "quantity: not loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "a0875099-8ea2-4dc8-95ed-27ac948b127b",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U5-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U6",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she was late on 4/10"
+    ],
+    "expected": "date: not loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=2026-04-10 level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "c23494fc-879e-480c-89b7-963ce1869d5a",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": "2026-04-10",
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U6-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U7",
+    "group": "Bare number (not a location)",
+    "actor": "salon_director",
+    "turns": [
+      "coaching form for pat rivera, she sold 410 bottles of lotion and was late"
+    ],
+    "expected": "quantity: not loc-0410",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "cc95cf4b-7d72-41b7-b470-ae0f6ad626e2",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U7-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U8",
+    "group": "Bare number reply (ambiguous)",
+    "actor": "salon_director",
+    "turns": [
+      "create a coaching form for pat rivera, late 3 times",
+      "410"
+    ],
+    "expected": "bare reply: asked or set to an AUTHORIZED salon only; employee kept",
+    "pass": true,
+    "actual": "proposal coaching employee=\"pat rivera\" status=needs_location location=null(needs_selection) formDate=null level=null payroll=null | proposal coaching employee=\"pat rivera\" status=ready location=loc-0410(resolved) formDate=null level=null payroll=null",
+    "raw": [
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nI won't choose which salon this belongs to. Which salon is this about?\n\n**Nothing has been created yet.** Choose the salon below, or tell me which one, and you can create the draft here.",
+        "formProposal": {
+          "proposalId": "548953f5-a28d-44f5-8a87-19ae53adfd75",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": false,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": null,
+          "locationName": null,
+          "locationResolution": "needs_selection",
+          "authorizedLocationIds": [
+            "loc-0310",
+            "loc-0410"
+          ],
+          "status": "needs_location",
+          "sourceMessageIds": [
+            "U8-u1"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "Here is what I would put on a **Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "5a5a653b-9fa7-4ba4-b9d1-1618b487982f",
+          "templateKey": "coaching",
+          "templateName": "Coaching Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "pat rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0410",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U8-u1",
+            "U8-u2"
+          ]
+        },
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  }
+]
