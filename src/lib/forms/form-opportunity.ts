@@ -105,6 +105,52 @@ const FORMAL: readonly RegExp[] = [
   /\bdocument(?:ed|ing)? (?:this|it|her|him|them)\b/,
 ];
 
+/**
+ * THE MANAGER HAS ALREADY TRIED THE FIRST RUNG. "I verbally coached her … and
+ * she still is out of dress code" is a prior conversation plus a repeat, which
+ * the framework answers with the next rung, not another coaching form. Both
+ * halves are required, so a coaching conversation that worked ("I coached her
+ * and she improved") and a first offence raise nothing.
+ *
+ * Ask Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): that exact
+ * account was offered a Coaching Form alone, and the form that carries the
+ * policy to acknowledge was never on the card.
+ */
+const PRIOR_ACTION: readonly RegExp[] = [
+  /\b(?:verbal(?:ly)?|already)\s+(?:coach\w*|warn\w*|talk\w*|address\w*|spoke|spoken|discuss\w*|counsel\w*)\b/,
+  /\b(?:coached|counseled|counselled|warned|talked to|spoke (?:to|with)|addressed|discussed (?:it |this )?with)\s+(?:her|him|them)\b/,
+  /*
+   * THE SAME FIRST RUNG, IN THE OTHER WAYS MANAGERS SAY IT. QA, 22 Oct 2026:
+   * "I talked to Pat Rivera about being late and she was late again", "she
+   * was coached last week", "she's been coached before", "she had a coaching
+   * on 10/1", "previous coaching 10/1", "this is after her coaching", "we had
+   * a talk with her", "we discussed attendance with her" each offered the
+   * Coaching Form alone. A name for the pronoun, a passive, a conversation
+   * held with her, an earlier step named as one, or what this follows.
+   */
+  /\b(?:coached|counseled|counselled|warned|talked (?:to|with)|spoke (?:to|with)|sat down with)\s+(?!(?:her|him|them)\b)[a-z][\w'’-]*(?:\s+[a-z][\w'’-]*)?\s+(?:about|regarding|over|on|for)\b/,
+  /\b(?:was|were|(?:has|have|had)\s+been|['’]s\s+been)\s+(?:verbally\s+|formally\s+)?(?:coached|counseled|counselled|warned|written up|talked to|spoken to)\b/,
+  /\b(?:had|has had|have had|got|received|was given)\s+(?:a\s+|an\s+)?(?:(?:verbal|written|formal)\s+)?(?:coaching|talk|conversation|sit[- ]?down|warning|write[- ]?up)\b/,
+  /\b(?:previous|prior|earlier|last)\s+(?:(?:verbal|written)\s+)?(?:coaching|warning|write[- ]?up|talk|conversation|corrective action)s?\b/,
+  /\b(?:after|since|following|despite)\s+(?:her|his|their|the|our|my)\s+(?:(?:last|previous|prior|recent|verbal|written)\s+)?(?:coaching|warning|write[- ]?up|talk|conversation|corrective action)\b/,
+  /\b(?:discussed|went over|reviewed)\s+(?:[\w'’-]+\s+){1,4}?with\s+(?:her|him|them)\b/,
+];
+const RECURRENCE: readonly RegExp[] = [
+  /\b(?:still|again|continu\w+|keeps?|repeated\w*|no change|did ?n[o']?t (?:change|improve|listen)|didn't (?:change|improve|listen))\b/,
+];
+
+/** What she keeps doing is ASKING for something, or the repeat is somebody else's (see `escalated`). */
+const NOT_HER_CONDUCT: readonly RegExp[] = [
+  /\b(?:still|keeps?|again|continues to)\s+(?:\w+\s+){0,2}?(?:wants?|wanting|asks?|asking|requests?|requesting|hopes?|hoping)\b/,
+  /\b(?:wants?|asking for|asks for|requested|requesting)\s+(?:more\s+hours|fewer\s+hours|time off|(?:a\s+)?days?\s+off|(?:saturdays?|sundays?|weekends?)\s+off|a\s+raise|a\s+schedule\s+change)\b/,
+  /\bwith\s+(?:the|our|a)\s+(?:vendor|landlord|contractor|supplier|maintenance|repair\w*|technician|corporate|customer|client|guest|delivery)\b/,
+];
+
+/** The manager says the coaching worked: no next rung. */
+const COACHING_WORKED: readonly RegExp[] = [
+  /\b(?:she|he|they|it)\s+(?:has\s+|have\s+)?(?:improved|got better|has gotten better|stopped|fixed it|turned it around)\b/,
+];
+
 /** The manager is already asking for management help, not for information. */
 const MANAGEMENT_FRAME: readonly RegExp[] = [
   /\b(?:coach|coaching|address|addressing|sit down with|talk to (?:her|him|them)|coach (?:her|him|them))\b/,
@@ -146,6 +192,22 @@ export function detectFormOpportunity(input: {
   const concern = any(text, CONCERN);
   const strength = any(text, STRENGTH);
   const formal = any(text, FORMAL);
+  /*
+   * A REPEAT THAT IS NOT HER CONDUCT, OR A COACHING THAT WORKED, IS NOT THE
+   * NEXT RUNG. QA, 22 Oct 2026: "I already talked to her about the schedule
+   * and she still wants more hours" and "I already addressed the broken bed
+   * with the vendor again" read as a coaching that did not work, and put the
+   * Corrective Action Form on the card. A request she keeps making, or
+   * something taken up with a vendor or a customer, is not a behaviour that
+   * repeated after coaching — unless a behaviour worth documenting is named
+   * too. And "I coached her about dress code and she improved" is the
+   * framework's success case, whatever else follows it.
+   */
+  const escalated =
+    any(text, PRIOR_ACTION) &&
+    any(text, RECURRENCE) &&
+    !any(text, COACHING_WORKED) &&
+    (concern || !any(text, NOT_HER_CONDUCT));
   const framed = any(text, MANAGEMENT_FRAME);
 
   /*
@@ -153,7 +215,7 @@ export function detectFormOpportunity(input: {
    * thing to say about somebody and the start of no document. A development
    * conversation needs the other half.
    */
-  if (!concern && !formal) return null;
+  if (!concern && !formal && !escalated) return null;
 
   /*
    * A CONCERN ON ITS OWN NEEDS A FRAME. One word off the concern list is not a
@@ -168,7 +230,7 @@ export function detectFormOpportunity(input: {
    * productivity" are both a manager setting one against the other, which
    * nobody does in passing.
    */
-  if (!formal && !framed && !(strength && concern)) return null;
+  if (!formal && !escalated && !framed && !(strength && concern)) return null;
 
   /*
    * AND A ROTA NOTE IS A ROTA NOTE, whatever words it happens to contain.
@@ -186,11 +248,12 @@ export function detectFormOpportunity(input: {
     concern ? "concern" : null,
     strength ? "strength" : null,
     formal ? "formal step named" : null,
+    escalated ? "prior coaching and recurrence" : null,
     framed ? "management frame" : null,
   ].filter((signal): signal is string => signal !== null);
 
   return {
-    kind: formal ? "formal" : strength ? "development" : "concern",
+    kind: formal || escalated ? "formal" : strength ? "development" : "concern",
     role: extractJobTitle(input.context.text),
     signals,
   };
@@ -211,17 +274,24 @@ export function detectFormOpportunity(input: {
  * plan to lead with, and coaching leads: it is the first documented rung and
  * the form most of these conversations end in.
  *
- * THE CORRECTIVE FORM IS LAST, ALWAYS, and only where the manager raised a
- * formal step themselves. Offering it first to somebody describing lateness
- * would be the product suggesting a warning, which is exactly the substitution
- * §7 of the framework refuses.
+ * THE CORRECTIVE FORM IS LAST, and only where the manager raised a formal step
+ * themselves. Offering it first to somebody describing lateness would be the
+ * product suggesting a warning, which is exactly the substitution §7 of the
+ * framework refuses.
+ *
+ * UNLESS THEY ASKED FOR IT. A manager who wrote "write a CA for Paisley" or
+ * "I need it to be a corrective action form" has made the decision; leading
+ * with the Coaching Form is the same substitution in the other direction.
  */
 export function suggestedTemplateKeys(input: {
   readonly opportunity: FormOpportunity;
   /** The plan the stated role names, from `eppTemplateForRole`. */
   readonly rolePlanKey: string | null;
+  /** The manager's own turns asked for a Corrective Action Form. */
+  readonly correctiveActionRequested?: boolean;
 }): string[] {
   const keys: string[] = [];
+  if (input.correctiveActionRequested) keys.push("dpoa");
   if (input.rolePlanKey) keys.push(input.rolePlanKey);
   keys.push("coaching");
   if (input.opportunity.kind === "formal") keys.push("dpoa");

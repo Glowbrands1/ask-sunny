@@ -96,6 +96,22 @@ export const PERMISSIONS: Permission[] = [
   "manage_integrations",
 ];
 
+/**
+ * THE PERMISSIONS THAT CREATE A FORM — one per family of templates, each the
+ * `requiredPermission` of the templates it covers. An account holding none of
+ * them can create no form at all, so a "Create a form" control is not offered
+ * to it: the server would refuse every template it could propose.
+ */
+export const FORM_CREATION_PERMISSIONS: Permission[] = [
+  "create_coaching_form",
+  "create_corrective_action",
+  "create_epp",
+  "create_policy_review",
+  "create_hiring_form",
+  "create_exit_form",
+  "create_employment_change_form",
+];
+
 export const PERMISSION_LABEL: Record<Permission, string> = {
   ask_questions: "Ask Sunny questions",
   view_overview: "View the Overview dashboard",

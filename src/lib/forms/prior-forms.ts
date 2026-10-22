@@ -6,9 +6,23 @@ import type { FormsActor } from "./access";
 import { chatFormsActor, type FormRecordsActor } from "./chat-form-records";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances } from "./instances";
-import { priorFormsFromRows, type PriorFormOnFile } from "./prior-forms-lines";
+import {
+  classifyPriorForms,
+  priorFormsFromRows,
+  sameName,
+  type PriorFormOnFile,
+  type PriorFormsReading,
+} from "./prior-forms-lines";
 
-export type { PriorFormOnFile } from "./prior-forms-lines";
+export type { PriorFormOnFile, PriorFormsReading } from "./prior-forms-lines";
+
+/**
+ * How many forms one read may return. A full page means older forms may be
+ * missing, so the reading is "incomplete" and nothing is attached (QA F-11).
+ */
+const READ_LIMIT = 200;
+
+const NOTHING: PriorFormsReading = { attach: [], possible: [], identity: "none" };
 
 /**
  * ============================================================================
@@ -28,29 +42,53 @@ export type { PriorFormOnFile } from "./prior-forms-lines";
  *
  * A RECORD, NOT A GUESS. Only FINALIZED forms count — a draft was never
  * signed, and a revised one has been replaced by its revision — and only where
- * the employee's name matches word for word; see `prior-forms-lines.ts`. Never
- * throws: a failed read lists nothing, and the manager's own account stands.
+ * the employee's name matches word for word; see `prior-forms-lines.ts`.
+ *
+ * A NAME IS NOT AN IDENTITY (QA F-11, 22 Oct 2026). What comes back is split
+ * by `classifyPriorForms`: `attach` only when the name can mean one person at
+ * the form's own salon; everything else is `possible`, for the manager to
+ * confirm, and is never written onto a form. Never throws: a failed read lists
+ * nothing, and the manager's own account stands. Nothing on file is changed.
  */
-export async function loadPriorFormsOnFile(input: {
+export async function readPriorFormsOnFile(input: {
   actor: FormsActor;
   employeeName: string;
   /** The form being drafted, which is never its own history. */
   excludeInstanceId?: string;
-}): Promise<PriorFormOnFile[]> {
+  /** The salon on the form being drafted; null when it has none. */
+  locationId: string | null;
+  /** The form being drafted's own date: anything dated after it is not "previous". */
+  before?: string;
+}): Promise<PriorFormsReading> {
+  const found = await readOnFile(input);
+  return found ? classifyPriorForms({ ...found, employeeName: input.employeeName, locationId: input.locationId }) : NOTHING;
+}
+
+interface OnFile {
+  forms: PriorFormOnFile[];
+  sameNameLocations: (string | null)[];
+  complete: boolean;
+}
+
+/** One bounded read under the actor's visibility; null when there is nothing to read or it failed. */
+async function readOnFile(input: {
+  actor: FormsActor;
+  employeeName: string;
+  excludeInstanceId?: string;
+  before?: string;
+}): Promise<OnFile | null> {
   const words = input.employeeName
     .toLowerCase()
     .split(/[^a-z]+/)
     .filter((word) => word.length >= 2);
-  if (words.length === 0) return [];
+  if (words.length === 0) return null;
 
   try {
-    const rows = visibleInstances(
-      input.actor,
-      await listInstances("all", 50, {
-        ...instanceListFilterFor(input.actor),
-        employeeNameWords: words,
-      }),
-    );
+    const read = await listInstances("all", READ_LIMIT, {
+      ...instanceListFilterFor(input.actor),
+      employeeNameWords: words,
+    });
+    const rows = visibleInstances(input.actor, read);
 
     const correctiveIds = rows
       .filter((row) => row.templateKey === "dpoa" && row.status === "finalized")
@@ -71,30 +109,59 @@ export async function loadPriorFormsOnFile(input: {
       }
     }
 
-    return priorFormsFromRows({
+    const forms = priorFormsFromRows({
       rows,
       employeeName: input.employeeName,
       excludeInstanceId: input.excludeInstanceId,
+      before: input.before,
       warningLevels,
     });
+    return {
+      forms,
+      sameNameLocations: rows
+        .filter((row) => row.id !== input.excludeInstanceId && sameName(row.employeeName, input.employeeName))
+        .map((row) => row.locationId ?? null),
+      complete: read.length < READ_LIMIT,
+    };
   } catch {
-    return [];
+    return null;
   }
 }
 
 /**
- * The same list for a chat turn, under the caller's Form Monitoring
- * visibility. Empty when they may not read it or the read fails — the
+ * The same reading for a chat turn, under the caller's Form Monitoring
+ * visibility. Nothing when they may not read it or the read fails — the
  * manager's own account then stands alone.
+ *
+ * `locationId` is the salon on the proposal — the same input the draft route
+ * classifies with, so the chat promises exactly the lines the draft will write
+ * (QA F-11 follow-up). Without one, nothing is verified yet: every same-name
+ * form is a possible match until the form has a salon.
+ */
+export async function priorFormsReadingForChat(
+  actor: FormRecordsActor,
+  employeeName: string,
+  locationId?: string | null,
+): Promise<PriorFormsReading> {
+  try {
+    const formsActor = await chatFormsActor(actor);
+    if (!formsActor) return NOTHING;
+    const found = await readOnFile({ actor: formsActor, employeeName });
+    if (!found) return NOTHING;
+    return classifyPriorForms({ ...found, employeeName, locationId: locationId ?? null });
+  } catch {
+    return NOTHING;
+  }
+}
+
+/**
+ * The lines the chat may promise to put on the form: only those whose identity
+ * is established. Possible matches are not among them (QA F-11).
  */
 export async function priorFormsForChat(
   actor: FormRecordsActor,
   employeeName: string,
+  locationId: string | null = null,
 ): Promise<PriorFormOnFile[]> {
-  try {
-    const formsActor = await chatFormsActor(actor);
-    return formsActor ? await loadPriorFormsOnFile({ actor: formsActor, employeeName }) : [];
-  } catch {
-    return [];
-  }
+  return [...(await priorFormsReadingForChat(actor, employeeName, locationId)).attach];
 }

@@ -4,10 +4,12 @@ import { randomUUID } from "node:crypto";
 
 import {
   buildProposal,
+  correctsTheEmployee,
   extractEmployeeNames,
   employeeState,
   managerContext,
   resolveEmployee,
+  tidyTypedName,
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import {
@@ -58,6 +60,7 @@ import {
   PAYROLL_DEDUCT_KEY,
   PAYROLL_DEDUCT_LABEL,
   payrollDeductFromConversation,
+  payrollDeductUnclear,
 } from "@/lib/forms/payroll-deduct";
 import { checkboxGroupsForVariant } from "@/lib/forms/document";
 import { exitFactsSupplied, readExitFacts } from "@/lib/forms/exit-facts";
@@ -80,10 +83,13 @@ import {
   type EmploymentChangeKind,
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
-import { PRODUCTION_SALONS } from "@/data/salons";
+import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
+import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { answersSalon, latestSalonAnswer } from "@/lib/forms/salon-reply";
 import {
   answersNameConfirmation,
   matchEmployeeName,
@@ -106,7 +112,7 @@ import {
   suggestedTemplateKeys,
 } from "@/lib/forms/form-opportunity";
 import { type TemplateSummary } from "@/lib/forms/repository";
-import type { PriorFormOnFile } from "@/lib/forms/prior-forms-lines";
+import type { PriorFormOnFile, PriorFormsReading } from "@/lib/forms/prior-forms-lines";
 import { signedDate } from "@/lib/forms/prior-actions";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import type {
@@ -349,9 +355,10 @@ export interface ProposalTurn {
    * Monitoring, under this manager's visibility — read only for a Corrective
    * Action, so the history already on file is read back before the form is
    * created. Never rejects: an unreadable record is an empty list. See
-   * `lib/forms/prior-forms.ts`.
+   * `lib/forms/prior-forms.ts`. Given the proposal's salon, so what the chat
+   * calls verified is exactly what the draft route will write (QA F-11).
    */
-  priorFormsOnFile?: (employeeName: string) => Promise<readonly PriorFormOnFile[]>;
+  priorFormsOnFile?: (employeeName: string, locationId: string | null) => Promise<PriorFormsReading>;
   /**
    * The server's business day (`YYYY-MM-DD`), which supplies the year for a
    * form date typed as month and day. See `lib/forms/form-date-answer.ts`.
@@ -602,6 +609,20 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
   return proposeTemplate(input, match);
 }
 
+/** The manager's turns without the ones that only answer the date question — for the name readers. */
+function withoutDateAnswers(context: ManagerContext, input: ProposalTurn): ManagerContext {
+  const answered = dateAnswerTurns([...input.history, { role: "user", content: input.question }]);
+  if (answered.size === 0) return context;
+  const messages = context.messages.filter((message) => !answered.has(message.content.trim()));
+  if (messages.length === 0) return context;
+  return {
+    ...context,
+    messages,
+    ids: messages.map((message) => message.id).filter((id): id is string => typeof id === "string" && id.length > 0),
+    text: messages.map((message) => message.content).join("\n\n"),
+  };
+}
+
 /**
  * Builds the proposal for a template that has already passed both checks.
  *
@@ -620,13 +641,17 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * See `checkTypedEmployee`: an exact match takes the directory's spelling and
    * salon, a close one is asked about, and nothing is ever autocorrected.
    */
-  const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, context) : null;
-  const directory = await checkTypedEmployee(input, match, context, carried);
-  const employee = directory.resolution ?? carried;
+  // "most recent", answering "Which date goes on the form?", is not a name (see `dateAnswerTurns`).
+  const named = withoutDateAnswers(context, input);
+  const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, named) : null;
+  const directory = await checkTypedEmployee(input, match, named, carried);
+  const employee = directory.resolution ?? (await spelledForTheForm(input, match, carried ?? resolveEmployee(named)));
 
   const proposal = buildProposal({
     ...(employee ? { employee } : {}),
     employeeSalonIds: directory.salonIds ?? [],
+    // "410" to "Which salon is this about?", or "sorry, it's omaha pacific" (QA F-12).
+    answeredSalonIds: latestSalonAnswer(input.history, input.question),
     /*
      * SERVER-GENERATED, never taken from the request. A proposal id is how a
      * later confirmation step will name the thing being confirmed; a
@@ -697,7 +722,10 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   const correctiveAction = isCorrectiveActionForm(match);
   const scoped =
     changeKind || correctiveAction
-      ? turnsAboutThisForm(context, match.key, proposal.employeeName, { correctiveActionForm: correctiveAction })
+      ? turnsAboutThisForm(context, match.key, proposal.employeeName, {
+          correctiveActionForm: correctiveAction,
+          answers: dateAnswerTurns([...input.history, { role: "user", content: input.question }]),
+        })
       : context;
 
   if (correctiveAction) {
@@ -764,6 +792,26 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     proposal.sourceMessageIds = scoped.ids;
   }
 
+  /*
+   * THE FORM'S DATE, BY WHAT EACH DATE MEANS (QA, 22 Oct 2026): a date given
+   * to the form, the coaching a Coaching Form documents, or — with several
+   * incident dates — the manager's answer to "which date?", asked once; until
+   * then the form is dated the day it is created, never whichever incident was
+   * typed first. As Ask Bubbles does; see `decideFormDate`.
+   */
+  let dateQuestion: string | undefined;
+  if (!changeKind && proposal.employeeName !== null) {
+    const decided = decideFormDate({
+      text: (correctiveAction ? scoped : context).text,
+      templateKey: match.key,
+      history: input.history,
+      conversation: [...input.history, { role: "user", content: input.question }],
+      today: input.today ?? businessToday(),
+    });
+    if (decided.formDate !== undefined) proposal.formDate = decided.formDate;
+    dateQuestion = decided.question;
+  }
+
   if (directory.question) return turn(directory.question, proposal);
 
   const content =
@@ -773,14 +821,15 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
           namedPolicy: correctiveAction ? await namedPolicyFor(scoped.text, input) : null,
           priorOnFile:
             correctiveAction && proposal.employeeName && proposal.status !== "needs_employee"
-              ? ((await input.priorFormsOnFile?.(proposal.employeeName)) ?? [])
-              : [],
+              ? ((await input.priorFormsOnFile?.(proposal.employeeName, proposal.locationId)) ?? NO_PRIOR_FORMS)
+              : NO_PRIOR_FORMS,
         });
   const notes = [
     directory.note,
     carried?.kind === "resolved" && proposal.employeeName
       ? `I took **${proposal.employeeName}** from earlier in this conversation — if this form is for somebody else, tell me who.`
       : undefined,
+    dateQuestion,
   ].filter((note): note is string => Boolean(note));
   return turn([content, ...notes].join("\n\n"), proposal);
 }
@@ -844,6 +893,32 @@ const NAME_CHECKED_TEMPLATES: ReadonlySet<string> = new Set([
   "tsd-epp",
 ]);
 
+/*
+ * ============================================================================
+ * THE NAME AS IT IS PRINTED, ON EVERY FORM
+ * ============================================================================
+ *
+ * A name the directory did not settle — no roster, nobody by that name, a name
+ * the manager chose to keep, or a form outside `NAME_CHECKED_TEMPLATES` — used
+ * to go on the card exactly as typed, so "paulyne camacho" was printed on a
+ * Demotion Form in lower case. Now: on the forms that keep their own name
+ * handling, an EXACT directory match still lends its spelling (nothing else —
+ * not the salon, and never a close match); otherwise the typed name is
+ * capitalised by `tidyTypedName`, which leaves "McDonald" alone.
+ */
+async function spelledForTheForm(
+  input: ProposalTurn,
+  match: TemplateSummary,
+  typed: EmployeeResolution,
+): Promise<EmployeeResolution> {
+  if (typed.kind !== "resolved") return typed;
+  if (!NAME_CHECKED_TEMPLATES.has(match.key)) {
+    const found = matchEmployeeName(typed.employeeName, await loadScopedRoster(input.actor.scope));
+    if (found.kind === "exact") return { kind: "resolved", employeeName: found.name };
+  }
+  return { kind: "resolved", employeeName: tidyTypedName(typed.employeeName) };
+}
+
 interface DirectoryCheck {
   /** Replaces the conversation's own reading of the employee. */
   resolution?: EmployeeResolution;
@@ -882,7 +957,7 @@ async function checkTypedEmployee(
 
   if (result.kind === "none") {
     return {
-      note: `I didn't find **${typed.employeeName}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
+      note: `I didn't find **${tidyTypedName(typed.employeeName)}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
     };
   }
 
@@ -990,6 +1065,17 @@ export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null 
      * same role to the same template.
      */
     rolePlanKey: eppTemplateForRole(context.text),
+    /*
+     * Read turn by turn through the same detector the explicit path uses, so
+     * "not a CA, coaching" and "what is corrective action?" do not count.
+     */
+    correctiveActionRequested: context.messages.some((message) => {
+      const intent = detectTemplateIntent(message.content);
+      return (
+        (intent.kind === "explicit" && intent.templateKey === "dpoa") ||
+        (intent.kind === "corrective_action" && intent.requestedCreation)
+      );
+    }),
   });
 
   /*
@@ -1160,6 +1246,14 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
       { role: "user", content: input.question },
     ]);
     if (replied) return { kind: "explicit", templateKey: continued };
+    /*
+     * A STATEMENT ABOUT THE DEDUCTION THAT IS NOT A CLEAR YES OR NO —
+     * "actually we're not doing the $25 payroll deduction" — still belongs to
+     * this form: it withdraws the answer the card shows, and the card must ask
+     * again. Sent to retrieval, it left the card's earlier Yes standing (QA,
+     * 22 Oct 2026).
+     */
+    if (payrollDeductUnclear(input.question)) return { kind: "explicit", templateKey: continued };
   }
 
   /*
@@ -1249,17 +1343,48 @@ const TOPIC_STATEMENT =
 const CARRIES_ON =
   /\b(?:keep\s+(?:this|it)\s+as|still\s+(?:a\s+)?coaching|same\s+form|this\s+form|continue|go\s+ahead|that'?s\s+(?:it|all|everything|right)|yes|yep|yeah|correct)\b/i;
 
+const ALREADY_SAID =
+  /\b(?:i|we)\s+(?:already|just)\s+(?:told|said|gave|mentioned|provided|wrote|typed|sent)\b|\balready\s+(?:told|gave)\s+(?:you|sunny)\b/i;
+
 const ABOUT_THE_EMPLOYEE = /^(?:and\s+|also\s+|then\s+)?(?:she|he|they)(?:['’](?:s|d|ve|re|ll))?\b/i;
+
+/*
+ * A DAY ON ITS OWN. QA, 22 Oct 2026: with a ready Coaching card open, "i
+ * already told you" and then "today" ended the intake — `extractFormDate`
+ * reads calendar dates ("10/20") and not the day words managers type, so the
+ * turn went to retrieval and the card had to be asked for again. Only a reply
+ * that is nothing but the day counts; a sentence that mentions today still
+ * has to read as part of the intake on its own.
+ */
+const ONLY_A_DAY =
+  /^(?:(?:it\s+)?(?:was|happened)\s+)?(?:on\s+)?(?:today|yesterday|this\s+morning|last\s+night|tonight|(?:last\s+)?(?:mon|tues|wednes|thurs|fri|satur|sun)day)[\s.!]*$/i;
 
 function continuesIntake(continued: string, input: ProposalTurn): boolean {
   const question = input.question.trim();
   if (endsIntake(question) || ASKS_FOR_ADVICE.test(question)) return false;
   if (extractEmployeeNames(question).length > 0) return true;
   if (answersEmploymentChange(continued, input)) return true;
+  /*
+   * A SALON, OR "I ALREADY TOLD YOU", IS AN ANSWER TO THE INTAKE TOO. Ask
+   * Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): with a
+   * Corrective Action intake open, "I already told you the employee name. She
+   * is at Dodge" named nobody, so the turn left the intake for free-form chat,
+   * which told the manager to retype their request — and the form was never
+   * built. Naming where she works, or objecting to being asked again, carries
+   * the open form forward; a question still does not.
+   */
+  if (!isQuestion(question) && readSalonMentions(question).length > 0) return true;
+  // "410" or "omaha pacific" to "Which salon is this about?"; "sorry, it's omaha pacific" (QA F-12).
+  if (answersSalon(input.history, question)) return true;
+  // "most recent", "the 15th", "today": the answer to "Which date goes on the form?" (see `incident-dates.ts`).
+  const today = input.today ?? businessToday();
+  if (answersDateQuestion(input.history, question, incidentDates(managerContext(input.history, { content: question }).text, today), today)) return true;
+  if (ALREADY_SAID.test(question)) return true;
   if (isQuestion(question)) return false;
   return (
     describesIncident(question) ||
     extractFormDate(question, input.today ?? businessToday()) !== null ||
+    ONLY_A_DAY.test(question) ||
     TOPIC_STATEMENT.test(question) ||
     CARRIES_ON.test(question) ||
     ABOUT_THE_EMPLOYEE.test(question)
@@ -1335,7 +1460,11 @@ function turnsAboutThisForm(
   context: ManagerContext,
   templateKey: string,
   employeeName: string | null,
-  options: { readonly correctiveActionForm?: boolean } = {},
+  options: {
+    readonly correctiveActionForm?: boolean;
+    /** Turns that only answer the date question ("most recent"): they name nobody. See `dateAnswerTurns`. */
+    readonly answers?: ReadonlySet<string>;
+  } = {},
 ): ManagerContext {
   const same = (name: string) => {
     if (!employeeName) return true;
@@ -1356,6 +1485,8 @@ function turnsAboutThisForm(
   let start = 0;
   /* The latest request for this form, for this employee, inside the turns kept so far. */
   let requestAt = -1;
+  /* Whether the turns kept so far start just after a turn about somebody else. */
+  let afterAnotherPerson = false;
   context.messages.forEach((message, index) => {
     const intent = detectTemplateIntent(message.content);
     /*
@@ -1369,10 +1500,27 @@ function turnsAboutThisForm(
     const otherForm =
       (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
       (intent.kind === "corrective_action" && !thisForm);
-    const names = extractEmployeeNames(message.content);
+    const names = options.answers?.has(message.content.trim()) ? [] : extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
-    if (otherForm || otherPerson) start = index + 1;
+    if (otherForm || otherPerson) {
+      start = index + 1;
+      afterAnotherPerson = otherPerson;
+    }
     if (requestAt < start) requestAt = -1;
+    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
+    /*
+     * THE ANSWERS GIVEN FOR SOMEBODY ELSE STAY THEIRS. Production, 21 Oct
+     * 2026 (ported from Ask Bubbles b1047ab): a Corrective Action for one
+     * employee, then "no payroll deduct", then "create a verbal corrective
+     * action form for <another employee> …" — the new form was read back with
+     * the first employee's payroll answer, because the short reply names nobody
+     * and so was kept. The first request for this employee after turns about
+     * another person starts this form's turns. A correction of the person
+     * ("actually it's for …") is not a new request, and keeps the account.
+     */
+    if (forThisEmployee && requestAt < 0 && afterAnotherPerson && start < index && !correctsTheEmployee(message.content)) {
+      start = index;
+    }
     /*
      * A NEW REQUEST IS A NEW FORM. District Manager feedback, 21 Oct 2026: a
      * second Corrective Action request for the same employee that says what
@@ -1381,7 +1529,6 @@ function turnsAboutThisForm(
      * and payroll answer are not this one's. One that only repeats the request
      * ("create ca form for <employee>") keeps the account already given.
      */
-    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
     if (
       options.correctiveActionForm === true &&
       forThisEmployee &&
@@ -1670,7 +1817,7 @@ function proposalContent(
   today: string,
   extra: {
     readonly namedPolicy?: NamedPolicyReading | null;
-    readonly priorOnFile?: readonly PriorFormOnFile[];
+    readonly priorOnFile?: PriorFormsReading;
   } = {},
 ): string {
   /*
@@ -1850,7 +1997,7 @@ function proposalContent(
         readCaPolicy(context.text),
         statedPriorActions(context.text, today),
         extra.namedPolicy ?? null,
-        extra.priorOnFile ?? [],
+        extra.priorOnFile ?? NO_PRIOR_FORMS,
       );
     }
   }
@@ -1867,6 +2014,11 @@ function proposalContent(
   } else if (proposal.status === "needs_location") {
     lines.push(locationQuestion(proposal));
     if (proposal.awaitingIncident) lines.push("", NO_INCIDENT_NOTE);
+    // No salon yet, so nothing on file is verified: say what is there and the rule (QA F-11).
+    const possibleNote = isCorrectiveActionForm(match)
+      ? possibleOnFileNote(proposal, extra.priorOnFile ?? NO_PRIOR_FORMS, statedPriorActions(context.text, today))
+      : null;
+    if (possibleNote) lines.push("", possibleNote);
   } else {
     lines.push(
       `Everything I need is here, drawn from ${context.messages.length === 1 ? "your message" : "your messages"} above.`,
@@ -1989,6 +2141,36 @@ function correctiveActionEmployeeQuestion(
   return `Who is this **${templateName}** for? Give me their name and I'll draft it from what you've told me — you can set the warning level and anything else on the form itself.`;
 }
 
+const NO_PRIOR_FORMS: PriorFormsReading = { attach: [], possible: [], identity: "none" };
+
+/**
+ * Same-name forms on file whose identity is not established (QA F-11): shown,
+ * each with its salon from this app's own roster, and never added. The draft
+ * route classifies with the same salon, so nothing listed here is written.
+ */
+function possibleOnFileNote(
+  proposal: ChatFormProposal,
+  reading: PriorFormsReading,
+  priorActions: readonly string[],
+): string | null {
+  const possible = reading.possible.filter(
+    (form) => !priorActions.some((line) => line.includes(signedDate(form.formDate))),
+  );
+  if (possible.length === 0) return null;
+  const where = (form: PriorFormOnFile) =>
+    form.locationName ?? (form.locationId ? salonById(form.locationId)?.name : null) ?? "no salon";
+  const one = possible.length === 1;
+  return `**Possibly on file — not added:** ${possible.map((form) => `${form.line} (${where(form)})`).join("; ")}. ${POSSIBLE_REASON[reading.identity] ?? "I can't confirm these are this employee's"}, so I won't put ${one ? "it" : "them"} on the form. If ${one ? "it is" : "any are"} ${proposal.employeeName}'s, add ${one ? "it" : "them"} under prior coaching and corrective action yourself.`;
+}
+
+/** Why a same-name form on file is only a possible match (`classifyPriorForms`). */
+const POSSIBLE_REASON: Partial<Record<PriorFormsReading["identity"], string>> = {
+  other_locations: "The same name is on file at more than one salon, so I can't confirm these are this employee's",
+  no_form_location: "This form has no salon yet, and they're added only when they're at the form's own salon",
+  single_word_name: "Only a first name was given, so I can't confirm these are this employee's",
+  incomplete: "The record is too long to read in full, so I can't confirm these are this employee's",
+};
+
 /**
  * The prose beside a Corrective Action Form that is ready to be created.
  *
@@ -2006,12 +2188,12 @@ function correctiveActionReady(
   policy: CaPolicyReading,
   priorActions: readonly string[] = [],
   namedPolicy: NamedPolicyReading | null = null,
-  priorOnFile: readonly PriorFormOnFile[] = [],
+  priorOnFile: PriorFormsReading = NO_PRIOR_FORMS,
 ): string {
   // A step the manager already dated is theirs; the record adds only the rest.
-  const onFile = priorOnFile.filter(
-    (form) => !priorActions.some((line) => line.includes(signedDate(form.formDate))),
-  );
+  const notStated = (form: PriorFormOnFile) => !priorActions.some((line) => line.includes(signedDate(form.formDate)));
+  const onFile = priorOnFile.attach.filter(notStated);
+
   const outstanding = intake.missingRequired
     .filter(
       (item) =>
@@ -2078,6 +2260,8 @@ function correctiveActionReady(
       `**On file in Form Monitoring for ${proposal.employeeName}:** ${onFile.map((form) => form.line).join("; ")}. I'll list ${onFile.length === 1 ? "it" : "them"} under prior coaching and corrective action on the form — remove any that shouldn't count.`,
     );
   }
+  const possibleNote = possibleOnFileNote(proposal, priorOnFile, priorActions);
+  if (possibleNote) lines.push("", possibleNote);
 
   if (outstanding.length > 0) {
     lines.push(

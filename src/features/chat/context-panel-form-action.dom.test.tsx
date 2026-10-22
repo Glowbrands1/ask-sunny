@@ -163,6 +163,6 @@ describe("RR-D. the request it sends is deliberately unspecified", () => {
     // The whole existing pipeline runs: bounded manager context, template
     // intent, continuation hint, authorized list, permission check.
     expect(chat).toContain("send(CREATE_FORM_FROM_CONVERSATION)");
-    expect(chat).toContain("onCreateForm={createFormFromConversation}");
+    expect(chat).toContain("onCreateForm={mayCreateForms ? createFormFromConversation : undefined}");
   });
 });

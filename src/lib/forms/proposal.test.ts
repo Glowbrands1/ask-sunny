@@ -975,6 +975,54 @@ describe("a month named beside the employee is a date, not a second person", () 
 });
 
 /*
+ * HR feedback, 21 Oct 2026 (ported from Ask Bubbles): a visitors-policy
+ * account names the visitor, and the form was asked "for Pat Rivera or for Sam
+ * Jones?". A name right after "her friend", "her coworker", "a client" is the
+ * other person in what happened.
+ */
+describe("somebody else in the account is not a second employee", () => {
+  it.each([
+    "CA for Pat Rivera. She let her friend Sam Jones behind the counter for an hour",
+    "CA for Pat Rivera. She yelled at her coworker Avery Smith in front of clients",
+    "CA for Pat Rivera. She argued with a client, Dana Moss, at the front desk",
+  ])("%s → Pat Rivera", (text) => {
+    expect(resolveEmployee(managerContext([], { id: "msg-current", content: text }))).toEqual({
+      kind: "resolved",
+      employeeName: "Pat Rivera",
+    });
+  });
+
+  it("a name also given as the form's subject still counts", () => {
+    const resolution = resolveEmployee(
+      managerContext([], { id: "msg-current", content: "CA for Sam Jones. Pat Rivera let her friend Sam Jones in" }),
+    );
+    expect(resolution.kind).not.toBe("none");
+    expect(resolution.kind === "resolved" ? resolution.employeeName : resolution).not.toBe("Pat Rivera");
+  });
+});
+
+/*
+ * Ask Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): "my employee
+ * tiffany lempka was late …" was answered "give me their name".
+ */
+describe('"my employee <name>" typed in lower case', () => {
+  it.each([
+    ["my employee tiffany lempka was late on 10/5 and 10/15. please create a CA form.", "Tiffany Lempka"],
+    ["my employee pat rivera was late again today, i need a coaching form", "Pat Rivera"],
+    ["our team member pat rivera missed her shift", "Pat Rivera"],
+  ])("%s → %s", (text, name) => {
+    const resolution = resolveEmployee(managerContext([], { id: "msg-current", content: text }));
+    expect(resolution.kind).toBe("resolved");
+    // Read as typed; the card capitalises it.
+    expect(resolution.kind === "resolved" && resolution.employeeName.toLowerCase()).toBe(name.toLowerCase());
+  });
+
+  it.each(["my employee handbook says to clock in", "my employee was late again today"])("%s names nobody", (text) => {
+    expect(resolveEmployee(managerContext([], { id: "msg-current", content: text })).kind).toBe("missing");
+  });
+});
+
+/*
  * District Manager feedback, 21 Oct 2026: "create ca for Marisol Quade … Marisol
  * failed to have Jaya Penrose …" was asked which of the two it was for.
  */

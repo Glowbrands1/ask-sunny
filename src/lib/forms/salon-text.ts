@@ -1,5 +1,6 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
+import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
 
 /**
  * ============================================================================
@@ -51,6 +52,53 @@ function withoutPrefix(name: string): string {
   return name.replace(/^[A-Z]{2}\s+/, "");
 }
 
+/*
+ * ============================================================================
+ * "STORE 373" IS A GOOGLE STORE CODE; "SALON 0307" IS A SALON NUMBER
+ * ============================================================================
+ *
+ * Managers type a salon's number two ways: the zero-padded salon number
+ * reporting joins on ("0307"), and the three-digit store code Google lists the
+ * salon under ("373" is KS Overland Park, salon 0476). The two systems overlap
+ * WITHOUT agreeing — see `store-codes.ts` — so a three-digit number is read
+ * BOTH ways, and used only when both readings land on the same salon or only
+ * one of them lands anywhere:
+ *
+ *   "0307", "#0307"     typed with its zero: a salon number, nothing else
+ *   "373"               store code 373 → 0476; there is no salon 0373 → 0476
+ *   "476"               no store code 476; salon 0476 → 0476
+ *   "306"               store code 306 is KS Manhattan (0462), salon 0306 is
+ *                       Wornall → NOTHING. Likewise 307 and 314.
+ *
+ * Fail safe: a blank salon is a question the manager answers in a second; the
+ * wrong one files a record against a salon nobody named.
+ */
+/**
+ * Every salon a typed number can mean: its salon number, its Google store code,
+ * or both when they disagree ("306" is salon 0306 AND the code of salon 0462).
+ * `salonForTypedNumber` is the one-salon reading; this is the list a question
+ * is asked from (QA F-12).
+ */
+export function salonsForTypedNumber(digits: string): (typeof PRODUCTION_SALONS)[number][] {
+  if (!/^\d{1,4}$/.test(digits)) return [];
+  const bySalonNumber = PRODUCTION_SALONS.find((salon) => salon.salonNumber === digits.padStart(4, "0")) ?? null;
+  if (digits.length !== 3) return bySalonNumber ? [bySalonNumber] : [];
+  const code = GOOGLE_REVIEW_LOCATIONS.find((entry) => entry.storeCode === digits);
+  const byStoreCode = code ? (PRODUCTION_SALONS.find((salon) => salon.salonNumber === code.salonNumber) ?? null) : null;
+  return [...new Set([bySalonNumber, byStoreCode].filter((salon) => salon !== null))];
+}
+
+export function salonForTypedNumber(digits: string): (typeof PRODUCTION_SALONS)[number] | null {
+  if (!/^\d{1,4}$/.test(digits)) return null;
+  const bySalonNumber = PRODUCTION_SALONS.find((salon) => salon.salonNumber === digits.padStart(4, "0")) ?? null;
+  // Typed with its leading zero, or as four digits: the salon number alone.
+  if (digits.length !== 3) return bySalonNumber;
+  const code = GOOGLE_REVIEW_LOCATIONS.find((entry) => entry.storeCode === digits);
+  const byStoreCode = code ? (PRODUCTION_SALONS.find((salon) => salon.salonNumber === code.salonNumber) ?? null) : null;
+  if (bySalonNumber && byStoreCode && bySalonNumber.id !== byStoreCode.id) return null;
+  return bySalonNumber ?? byStoreCode;
+}
+
 /**
  * The roster salon a typed phrase names, when it names exactly one.
  */
@@ -59,10 +107,7 @@ export function rosterSalonFor(text: string): (typeof PRODUCTION_SALONS)[number]
   if (!key) return null;
 
   const number = /^(?:(?:salon|store|stc|sun tan city|location|loc)\s*)?#?\s*(\d{1,4})$/.exec(key)?.[1];
-  if (number) {
-    const padded = number.padStart(4, "0");
-    return PRODUCTION_SALONS.find((salon) => salon.salonNumber === padded) ?? null;
-  }
+  if (number) return salonForTypedNumber(number);
 
   const byName = PRODUCTION_SALONS.filter(
     (salon) => storeNameKey(salon.name) === key || storeNameKey(withoutPrefix(salon.name)) === key,

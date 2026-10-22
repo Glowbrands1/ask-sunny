@@ -114,6 +114,18 @@ describe("which forms get offered, and in what order", () => {
     expect(keys[keys.length - 1]).toBe("dpoa");
   });
 
+  it("leads with the Corrective Action Form when the manager asked for one", () => {
+    /*
+     * October 2026 (ported from Ask Bubbles 4cbb84c): "write a CA for
+     * Paisley", "I need it to be a corrective action form" — and the card that
+     * came back led with Coaching.
+     */
+    const formal = read("Paisley needs a verbal warning for not finishing her training.")!;
+    expect(
+      suggestedTemplateKeys({ opportunity: formal, rolePlanKey: null, correctiveActionRequested: true }),
+    ).toEqual(["dpoa", "coaching"]);
+  });
+
   it("offers a short list, never the library", () => {
     const opportunity = read("Jessica is an SDIT, great with clients but late several times.")!;
     expect(
