@@ -88,6 +88,7 @@ import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } f
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { answersSalon, latestSalonAnswer } from "@/lib/forms/salon-reply";
 import {
   answersNameConfirmation,
   matchEmployeeName,
@@ -648,6 +649,8 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   const proposal = buildProposal({
     ...(employee ? { employee } : {}),
     employeeSalonIds: directory.salonIds ?? [],
+    // "410" to "Which salon is this about?", or "sorry, it's omaha pacific" (QA F-12).
+    answeredSalonIds: latestSalonAnswer(input.history, input.question),
     /*
      * SERVER-GENERATED, never taken from the request. A proposal id is how a
      * later confirmation step will name the thing being confirmed; a
@@ -1351,6 +1354,8 @@ function continuesIntake(continued: string, input: ProposalTurn): boolean {
    * the open form forward; a question still does not.
    */
   if (!isQuestion(question) && readSalonMentions(question).length > 0) return true;
+  // "410" or "omaha pacific" to "Which salon is this about?"; "sorry, it's omaha pacific" (QA F-12).
+  if (answersSalon(input.history, question)) return true;
   // "most recent", "the 15th", "today": the answer to "Which date goes on the form?" (see `incident-dates.ts`).
   const today = input.today ?? businessToday();
   if (answersDateQuestion(input.history, question, incidentDates(managerContext(input.history, { content: question }).text, today), today)) return true;

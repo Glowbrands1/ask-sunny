@@ -73,6 +73,21 @@ function withoutPrefix(name: string): string {
  * Fail safe: a blank salon is a question the manager answers in a second; the
  * wrong one files a record against a salon nobody named.
  */
+/**
+ * Every salon a typed number can mean: its salon number, its Google store code,
+ * or both when they disagree ("306" is salon 0306 AND the code of salon 0462).
+ * `salonForTypedNumber` is the one-salon reading; this is the list a question
+ * is asked from (QA F-12).
+ */
+export function salonsForTypedNumber(digits: string): (typeof PRODUCTION_SALONS)[number][] {
+  if (!/^\d{1,4}$/.test(digits)) return [];
+  const bySalonNumber = PRODUCTION_SALONS.find((salon) => salon.salonNumber === digits.padStart(4, "0")) ?? null;
+  if (digits.length !== 3) return bySalonNumber ? [bySalonNumber] : [];
+  const code = GOOGLE_REVIEW_LOCATIONS.find((entry) => entry.storeCode === digits);
+  const byStoreCode = code ? (PRODUCTION_SALONS.find((salon) => salon.salonNumber === code.salonNumber) ?? null) : null;
+  return [...new Set([bySalonNumber, byStoreCode].filter((salon) => salon !== null))];
+}
+
 export function salonForTypedNumber(digits: string): (typeof PRODUCTION_SALONS)[number] | null {
   if (!/^\d{1,4}$/.test(digits)) return null;
   const bySalonNumber = PRODUCTION_SALONS.find((salon) => salon.salonNumber === digits.padStart(4, "0")) ?? null;
