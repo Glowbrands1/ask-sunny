@@ -252,7 +252,7 @@ WOVEN_ACCESS_APPLY_EMPLOYEE_IDS=<id>,<id>                                 # opti
 
 The scheduled sync runs the lifecycle after a successful directory sync only. The response carries codes and counts, never names or emails.
 
-**The 16 existing SD/ASD links** become status-managed (role and location off) through the reviewed one-time file `supabase/data-changes/20261006_woven_status_managed_sd_asd.sql`. It is not a migration, and it is run only with approval. It refuses unless all 16 still qualify. It writes `managed_flags_changed` audits and is safe to run twice.
+**The 16 existing SD/ASD links** become status-managed (role and location off) through a reviewed one-time data change, applied in production on 8 Oct 2026 (its `managed_flags_changed` audits record each link). The script names real accounts, so it is kept outside this repository with the operational records.
 
 **Access Preview** leads with the five outcomes (filter chips), the reason and the invitation state. The planner's detailed actions are under *Details*.
 

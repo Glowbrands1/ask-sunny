@@ -235,7 +235,7 @@ afterEach(() => {
 
 const EMPLOYEE: Options = { subject: "emp", role: "assistant_salon_director", scope: STORE_A };
 const STORE_MANAGER: Options = { subject: "sm", role: "salon_director", scope: STORE_A };
-const COLENE: Options = { subject: "colene", role: "district_manager", scope: GLOBAL, designated: ["colene"] };
+const DELPHINE: Options = { subject: "delphine", role: "district_manager", scope: GLOBAL, designated: ["delphine"] };
 const DJ: Options = { subject: "dj", role: "regional_manager", scope: GLOBAL, designated: ["dj"] };
 const ADMIN: Options = { subject: "admin", role: "admin", scope: GLOBAL };
 const AMBER: Options = {
@@ -243,7 +243,7 @@ const AMBER: Options = {
   role: "district_manager",
   scope: GLOBAL,
   woven: { amber: "b" },
-  designated: ["colene", "dj"],
+  designated: ["delphine", "dj"],
 };
 const NO_STORE: Options = { subject: "nobody", role: "salon_director", scope: GLOBAL, woven: {} };
 
@@ -254,8 +254,8 @@ describe("the list API: who sees which stores' forms", () => {
   it("a store manager sees only their home store", async () => {
     expect(await listedIds(STORE_MANAGER)).toEqual([FORM_A]);
   });
-  it("Colene (designated) sees every store", async () => {
-    expect(await listedIds(COLENE)).toEqual([FORM_A, FORM_B, FORM_C]);
+  it("Delphine (designated) sees every store", async () => {
+    expect(await listedIds(DELPHINE)).toEqual([FORM_A, FORM_B, FORM_C]);
   });
   it("DJ (designated) sees every store", async () => {
     expect(await listedIds(DJ)).toEqual([FORM_A, FORM_B, FORM_C]);
@@ -326,17 +326,17 @@ describe("a manager with multiple locations", () => {
 
 describe("designation fails closed", () => {
   it("a revoked or absent designation grants nothing", async () => {
-    expect(await listedIds({ ...COLENE, designated: [] })).toEqual([]);
+    expect(await listedIds({ ...DELPHINE, designated: [] })).toEqual([]);
   });
   it("a failing designation lookup (table missing) grants nothing", async () => {
-    expect(await listedIds({ ...COLENE, designationFails: true })).toEqual([]);
+    expect(await listedIds({ ...DELPHINE, designationFails: true })).toEqual([]);
   });
   it("a failing lookup does not take administrators down", async () => {
     expect(await listedIds({ ...ADMIN, designationFails: true })).toEqual([FORM_A, FORM_B, FORM_C]);
   });
   it("a designation belongs to one account id, not to a name", async () => {
     expect(
-      await listedIds({ subject: "other", role: "district_manager", scope: GLOBAL, designated: ["colene"] }),
+      await listedIds({ subject: "other", role: "district_manager", scope: GLOBAL, designated: ["delphine"] }),
     ).toEqual([]);
   });
 });
@@ -381,8 +381,8 @@ describe("direct URL / API access to another store's form", () => {
     const { detail } = await load(NO_STORE);
     for (const id of Object.keys(ROWS)) expect((await detail.GET(get(), params(id))).status).toBe(404);
   });
-  it("serves every store's form to Colene, DJ and an admin", async () => {
-    for (const who of [COLENE, DJ, ADMIN]) {
+  it("serves every store's form to Delphine, DJ and an admin", async () => {
+    for (const who of [DELPHINE, DJ, ADMIN]) {
       const { detail } = await load(who);
       for (const id of Object.keys(ROWS)) expect((await detail.GET(get(), params(id))).status).toBe(200);
     }
@@ -407,7 +407,7 @@ describe("the server pages (Form Monitoring, Overview, rail badge) apply the sam
     expect(await pageFormsAccess(identity(NO_STORE))).toMatchObject({ locationIds: [], noSalon: true });
   });
   it("leaves designated accounts and admins unrestricted", async () => {
-    for (const who of [COLENE, DJ, ADMIN]) {
+    for (const who of [DELPHINE, DJ, ADMIN]) {
       const { pageFormsAccess } = await load(who);
       expect(await pageFormsAccess(identity(who))).toMatchObject({ locationIds: null, noSalon: false });
     }

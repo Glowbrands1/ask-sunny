@@ -1363,21 +1363,21 @@ describe("nothing stored by the old name breaks", () => {
 /* ==================================================================== */
 
 /**
- * THE BLOCKER. "Create a Corrective Action form for paulyne" and "paulyne co"
+ * THE BLOCKER. "Create a Corrective Action form for rosalyn" and "rosalyn co"
  * typed as the answer to "who is this for?" produced no employee, so no form
- * could be created — while "Paulyne Co" worked. Neither the casing nor a
+ * could be created — while "Rosalyn Co" worked. Neither the casing nor a
  * missing surname decides whether the draft can be created.
  */
 describe("a Corrective Action Form for a name typed in any case", () => {
   const NAMES = [
-    "Paulyne Co",
-    "paulyne co",
-    "PAULYNE CO",
-    "pAuLyNe Co",
+    "Rosalyn Co",
+    "rosalyn co",
+    "ROSALYN CO",
+    "rOsAlYn Co",
     "test test",
     "Test Test",
-    "paulyne",
-    "PAULYNE",
+    "rosalyn",
+    "ROSALYN",
   ];
 
   it.each(NAMES)("is created from the request: %s", async (name) => {
@@ -1407,7 +1407,7 @@ describe("a Corrective Action Form for a name typed in any case", () => {
   });
 
   it("does not pick one of two people the manager named", async () => {
-    const answer = await ask("Create a Corrective Action form for paulyne and Marco Diaz.");
+    const answer = await ask("Create a Corrective Action form for rosalyn and Marco Diaz.");
 
     expect(answer.formProposal?.employeeName ?? null).toBeNull();
     expect(answer.formProposal?.status).toBe("needs_employee");
@@ -1427,19 +1427,19 @@ describe("a Corrective Action Form for a name typed in any case", () => {
 });
 
 /**
- * A NAME WRAPPED IN PUNCTUATION — "(paulyne)", "\"PAULYNE CO\"" — creates the
+ * A NAME WRAPPED IN PUNCTUATION — "(rosalyn)", "\"ROSALYN CO\"" — creates the
  * form exactly as the bare name does, and a name whose own spelling carries an
  * apostrophe or hyphen keeps it.
  */
 describe("a Corrective Action Form for a name wrapped in punctuation", () => {
   const CASES: [string, string][] = [
-    ["(paulyne)", "paulyne"],
-    ['"paulyne"', "paulyne"],
-    ["'paulyne'", "paulyne"],
-    ["paulyne,", "paulyne"],
-    ["paulyne.", "paulyne"],
-    ["(paulyne co)", "paulyne co"],
-    ['"PAULYNE CO"', "PAULYNE CO"],
+    ["(rosalyn)", "rosalyn"],
+    ['"rosalyn"', "rosalyn"],
+    ["'rosalyn'", "rosalyn"],
+    ["rosalyn,", "rosalyn"],
+    ["rosalyn.", "rosalyn"],
+    ["(rosalyn co)", "rosalyn co"],
+    ['"ROSALYN CO"', "ROSALYN CO"],
     ["(test test)", "test test"],
     ["O'Connor", "O'Connor"],
     ["Anne-Marie", "Anne-Marie"],
@@ -1785,17 +1785,17 @@ describe("the payroll-deduct question on a form that does not ask it yet", () =>
  * ANY FORM'S NAME IS THE REQUEST — NO VERB, AND THE NAME IS READ WITH IT
  * ============================================================================
  *
- * Operations, 29 September 2026: "CA for paulyne co", "Coaching for paulyne
+ * Operations, 29 September 2026: "CA for rosalyn co", "Coaching for rosalyn
  * co", "Demotion for Jane Smith" and "Exit for John Doe" each select the form
  * AND the employee, with no "which form?" and no "who is this for?". One rule
  * for the whole library — see `leadingFormRequest` in `template-intent.ts`.
  */
 describe("a form's name leading the message, across the library", () => {
   it.each([
-    ["CA for paulyne co", "dpoa", "paulyne co"],
+    ["CA for rosalyn co", "dpoa", "rosalyn co"],
     ["ca for Dana Moss", "dpoa", "Dana Moss"],
     ["Corrective Action for John Smith", "dpoa", "John Smith"],
-    ["Coaching for paulyne co", "coaching", "paulyne co"],
+    ["Coaching for rosalyn co", "coaching", "rosalyn co"],
     ["coaching Dana Moss", "coaching", "Dana Moss"],
     ["Demotion for Jane Smith", "demotion", "Jane Smith"],
     ["Demotion jane smith", "demotion", "jane smith"],
@@ -1826,21 +1826,21 @@ describe("a form's name leading the message, across the library", () => {
 
   /*
    * THE EXACT PRODUCTION FAILURE. The Corrective Action Form was selected but
-   * "paulyne co" was not read, so Ask Sunny asked who the form was for. And
+   * "rosalyn co" was not read, so Ask Sunny asked who the form was for. And
    * September 21 is the date of the PRIOR verbal warning, so it is not the
    * form's date; "today" is, which is the form's default.
    */
-  it("create ca for paulyne co she was late today, got verbal warning on september 21", async () => {
-    const question = "create ca for paulyne co she was late today, got verbal warning on september 21";
+  it("create ca for rosalyn co she was late today, got verbal warning on september 21", async () => {
+    const question = "create ca for rosalyn co she was late today, got verbal warning on september 21";
     const answer = await ask(question);
 
     expect(answer.formProposal?.templateKey).toBe("dpoa");
-    expect(answer.formProposal?.employeeName).toBe("paulyne co");
+    expect(answer.formProposal?.employeeName).toBe("rosalyn co");
     expect(answer.formProposal?.status).toBe("ready");
     expect(answer.formProposal?.formDate ?? null).toBeNull();
     expect(answer.formSelection).toBeUndefined();
     expect(answer.content).not.toMatch(/who is this/i);
-    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*paulyne co\*\*/);
+    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*rosalyn co\*\*/);
     // What happened, the warning and the prior warning were all given: none is asked again.
     expect(answer.content).not.toMatch(/^\d\. /m);
     expect(answer.content).not.toMatch(/warning level/i);
@@ -1872,8 +1872,8 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
   });
 
   it.each([
-    "Create a corrective action for Colene for missing the Woven deadline.",
-    "write a corrective action for colene schildt, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
+    "Create a corrective action for Delphine for missing the Woven deadline.",
+    "write a corrective action for delphine ashworth, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
   ])("suggests the Standards of Conduct for: %s", async (question) => {
     // The Manhattan manager, as in Production.
     const answer = await ask(question, { scope: { level: "salon", primaryAreaId: "loc-0462", alsoCoversAreaIds: [] } });
@@ -1886,15 +1886,15 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
   });
 
   it.each([
-    ["Create a corrective action for Colene, she hasn't completed her required Woven training.", "assigned work that wasn't completed"],
-    ["Create a corrective action for Colene. She was told to restock the lotion wall and refused.", "a manager's direction that wasn't followed"],
+    ["Create a corrective action for Delphine, she hasn't completed her required Woven training.", "assigned work that wasn't completed"],
+    ["Create a corrective action for Delphine. She was told to restock the lotion wall and refused.", "a manager's direction that wasn't followed"],
   ])("suggests it for the other conduct cases: %s", async (question, reason) => {
     const answer = await ask(question);
     expect(answer.content).toContain(`this reads as **Standards of Conduct** — ${reason}.`);
   });
 
   it("asks which, rather than choosing, when the account also reads as attendance", async () => {
-    const answer = await ask("Create a corrective action for Colene. She came in late and didn't finish her opening tasks.");
+    const answer = await ask("Create a corrective action for Delphine. She came in late and didn't finish her opening tasks.");
     expect(answer.formProposal?.templateKey).toBe("dpoa");
     expect(answer.content).toMatch(/\*\*Which policy applies\?\*\* This could fall under \*\*Standards of Conduct\*\*/);
     expect(answer.content).toMatch(/\*\*Attendance\*\*, if it comes down to being late or absent/);
@@ -1903,24 +1903,24 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
   });
 
   it("says nothing about a policy it does not recognise", async () => {
-    const answer = await ask("Create a corrective action for Colene. She wore slippers today.");
+    const answer = await ask("Create a corrective action for Delphine. She wore slippers today.");
     expect(answer.content).not.toMatch(/\*\*Policy:\*\*|Which policy applies\?/);
   });
 
   const ASKED = [
-    { id: "h1", role: "user", content: "Create a corrective action for Colene. She came in late and didn't finish her opening tasks." },
+    { id: "h1", role: "user", content: "Create a corrective action for Delphine. She came in late and didn't finish her opening tasks." },
     {
       id: "h2",
       role: "assistant",
       content:
-        "I'll draft a **Corrective Action Form** for **Colene** from what you've described.\n\n**Which policy applies?** This could fall under **Standards of Conduct** (assigned work that wasn't completed) or **Attendance**, if it comes down to being late or absent. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
+        "I'll draft a **Corrective Action Form** for **Delphine** from what you've described.\n\n**Which policy applies?** This could fall under **Standards of Conduct** (assigned work that wasn't completed) or **Attendance**, if it comes down to being late or absent. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
     },
   ];
 
   it("takes the answer to its policy question as part of the same form", async () => {
     const answer = await ask("standards of conduct", { continueTemplateKey: "dpoa", history: ASKED });
     expect(answer.formProposal?.templateKey).toBe("dpoa");
-    expect(answer.formProposal?.employeeName).toBe("Colene");
+    expect(answer.formProposal?.employeeName).toBe("Delphine");
     expect(answer.content).toMatch(
       /\*\*Policy:\*\* Standards of Conduct, as you said\. I'll quote that section from the current policy manual on the draft\./,
     );
@@ -1930,7 +1930,7 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
   it("takes a different policy as the answer too, and says so", async () => {
     const answer = await ask("attendance", { continueTemplateKey: "dpoa", history: ASKED });
     expect(answer.formProposal?.templateKey).toBe("dpoa");
-    expect(answer.formProposal?.employeeName).toBe("Colene");
+    expect(answer.formProposal?.employeeName).toBe("Delphine");
     expect(answer.content).toMatch(
       /\*\*Policy:\*\* Attendance, as you said\. I'll quote that section from the current policy manual on the draft\./,
     );

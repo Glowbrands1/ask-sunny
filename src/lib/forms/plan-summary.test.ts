@@ -24,7 +24,7 @@ const VARIANT = parseFormVariants(seed("sdit-epp").variants)[0]!;
 function input(overrides: Partial<PlanSummaryInput> = {}): PlanSummaryInput {
   return {
     templateName: "SDIT EPP",
-    employeeName: "Paulyne Co",
+    employeeName: "Rosalyn Co",
     document: SDIT,
     variantKey: VARIANT.key,
     values: {},
@@ -36,13 +36,13 @@ function input(overrides: Partial<PlanSummaryInput> = {}): PlanSummaryInput {
 /** The values a drafted plan actually holds. */
 const DRAFTED = {
   where_succeeding:
-    "Paulyne consistently provides friendly, welcoming client interactions and maintains positive engagement that supports the client experience.",
+    "Rosalyn consistently provides friendly, welcoming client interactions and maintains positive engagement that supports the client experience.",
   needs_improvement:
-    "Paulyne needs to improve punctuality and consistently arrive ready to work at her scheduled shift start time.",
+    "Rosalyn needs to improve punctuality and consistently arrive ready to work at her scheduled shift start time.",
   top_strengths: "Client service and rapport with regulars\nPositive salon atmosphere",
   improvement_areas: "Punctuality\nProactive communication about scheduling conflicts",
   plan_of_action:
-    "Paulyne and her manager will review scheduled start times and clock-in records each week during the review period. Management will monitor and coach as needed.",
+    "Rosalyn and her manager will review scheduled start times and clock-in records each week during the review period. Management will monitor and coach as needed.",
 };
 
 /* ================================================================= shape == */
@@ -50,9 +50,9 @@ const DRAFTED = {
 describe("the summary a manager reads after the plan is drafted", () => {
   it("names the focus, the strength and the plan, then what to do next", () => {
     expect(planSummary(input({ values: DRAFTED }))).toBe(
-      "The SDIT EPP draft for Paulyne Co focuses on punctuality while continuing to build on client service and rapport with regulars. " +
-        "The plan of action: Paulyne and her manager will review scheduled start times and clock-in records each week during the review period. " +
-        "Review the SDIT EPP with Paulyne Co and download the PDF when you're ready. Leave the signature fields blank until you've had the review conversation.",
+      "The SDIT EPP draft for Rosalyn Co focuses on punctuality while continuing to build on client service and rapport with regulars. " +
+        "The plan of action: Rosalyn and her manager will review scheduled start times and clock-in records each week during the review period. " +
+        "Review the SDIT EPP with Rosalyn Co and download the PDF when you're ready. Leave the signature fields blank until you've had the review conversation.",
     );
   });
 
@@ -72,10 +72,10 @@ describe("the summary a manager reads after the plan is drafted", () => {
       }),
     )!;
     expect(summary).toContain(
-      "focuses on Paulyne needs to improve punctuality and consistently arrive ready to work at her scheduled shift start time",
+      "focuses on Rosalyn needs to improve punctuality and consistently arrive ready to work at her scheduled shift start time",
     );
     // The employee's own name keeps its capital wherever it opens a clause.
-    expect(summary).not.toContain("paulyne needs");
+    expect(summary).not.toContain("rosalyn needs");
   });
 
   it("falls back to the expectations the manager marked", () => {
@@ -128,7 +128,7 @@ describe("a blank field is omitted, not filled in", () => {
 
   it("gives the instruction alone when nothing at all was drafted", () => {
     expect(planSummary(input())).toBe(
-      "Review the SDIT EPP with Paulyne Co and download the PDF when you're ready. " +
+      "Review the SDIT EPP with Rosalyn Co and download the PDF when you're ready. " +
         "Leave the signature fields blank until you've had the review conversation.",
     );
   });
@@ -201,7 +201,7 @@ describe("every word of it is already on the form", () => {
     const onTheForm = [
       FRAME,
       "SDIT EPP",
-      "Paulyne Co",
+      "Rosalyn Co",
       ...Object.values(values),
       ...SDIT.blocks.flatMap((block) =>
         block.kind === "expectation_checklist" ? block.options.map((o) => o.label) : [],

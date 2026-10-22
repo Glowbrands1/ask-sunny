@@ -18,7 +18,7 @@ instances `01c02bf5…`, `29c17ffa…` and `0dd17fad…`). Production was `9cd8d
 | 2c | Date notice was fulfilled blank | **Deliberate, unchanged.** The reader never takes the fulfilled date from the last day worked (see *Needs a decision*). |
 | 2d | "via Woven" not read as the method | No Woven entry in `METHODS`. |
 | 2e | Details restates title/location and opens with "She" | No Exit drafting rule against either; the coaching name/grammar rules are coaching-only. The prompt's "Keep the manager's specifics" encouraged keeping the title/location sentence. |
-| 3 | Reason for Resignation ran into the next line (Kayla Koehn, 2 Oct) | `reasonIn` collapsed newlines into spaces before looking for where the reason ends, so the line break never ended it. |
+| 3 | Reason for Resignation ran into the next line (Mira Castellan, 2 Oct) | `reasonIn` collapsed newlines into spaces before looking for where the reason ends, so the line break never ended it. |
 
 ## What changed
 
@@ -58,7 +58,7 @@ instances `01c02bf5…`, `29c17ffa…` and `0dd17fad…`). Production was `9cd8d
 
 ## Found, not fixed
 
-- **Eligible for Rehire read as No** on the 2 Oct Kayla Koehn form
+- **Eligible for Rehire read as No** on the 2 Oct Mira Castellan form
   (`ab430f4b…`). The manager typed "Store items returned payroll deduction does
   not apply eligible for rehire" on one unpunctuated line. The "not" of "does
   not apply" is within the negation window (`NEGATED_BEFORE`, three words) of

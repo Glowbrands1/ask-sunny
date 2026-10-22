@@ -23,7 +23,7 @@ import type { AccessScope, Role } from "@/types";
  *
  *   all salons   an administrator role, or an account with an unrevoked row in
  *                `forms_all_store_access` (admin-managed, keyed to the account
- *                id; Colene and DJ). Independent of Woven verification.
+ *                id; Delphine and DJ). Independent of Woven verification.
  *   their salons everyone else, whatever their role: the salons on a `salon`
  *                scope, PLUS every location Woven assigns them — the primary
  *                and each active additional or unexpired temporary location

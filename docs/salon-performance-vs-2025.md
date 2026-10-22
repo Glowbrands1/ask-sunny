@@ -1,7 +1,7 @@
 # Salon Performance — `vs 2025`, and why the first fix did not show
 
 **Date:** 14 September 2026
-**Source:** `Comp Report 2026 09 08 - Bowen Curt.xlsx`, supplied by the business.
+**Source:** `Comp Report 2026 09 08 - Tremaine Owen.xlsx`, supplied by the business.
 Not committed: it carries salon-level financials and manager names.
 
 ---
@@ -336,10 +336,10 @@ above.
 
 | | |
 |---|---|
-| File | `Comp Report 2026 09 13 - Bowen, Curt.xlsx` |
+| File | `Comp Report 2026 09 13 - Tremaine, Owen.xlsx` |
 | Size | 613,750 bytes |
 | SHA-256 | begins `510bb1c6f6d4995d` |
-| Storage | `reporting-sources/comp_sales/mtd-2026-09-13/510bb1c6f6d4995d/Comp-Report-2026-09-13-Bowen-Curt.xlsx` |
+| Storage | `reporting-sources/comp_sales/mtd-2026-09-13/510bb1c6f6d4995d/Comp-Report-2026-09-13-Tremaine-Owen.xlsx` |
 | Arrived | by email, source `comp_report_email`, 2026-09-14 14:42 UTC |
 | Parsed by | `comp_sales_mtd_vs_2024` (562 facts) and `comp_sales_mtd_rolling` **v1** (360 facts) |
 

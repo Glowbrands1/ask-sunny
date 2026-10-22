@@ -13,9 +13,9 @@ import {
 /**
  * WHO MAY FILE A COMP REPORT BY EMAIL, AND WHICH OF THEIR MAILS COUNTS.
  *
- * `Paulyne.Camacho@glowbrands.com` is the operator's own address and is here as
+ * `Rosalyn.Calloway@glowbrands.com` is the operator's own address and is here as
  * the test sender the allowlist has to admit today and stop admitting later
- * without a code change. `Samuel.Brockie@glowbrands.com` is the real sender.
+ * without a code change. `Elliot.Fairbanks@glowbrands.com` is the real sender.
  * Everything else in this file is invented.
  *
  * The tests worth reading are the negative ones. This gate decides whether an
@@ -24,8 +24,8 @@ import {
  * carrying a second address, a case difference.
  */
 
-const TEST_SENDER = "Paulyne.Camacho@glowbrands.com";
-const SAMUEL = "Samuel.Brockie@glowbrands.com";
+const TEST_SENDER = "Rosalyn.Calloway@glowbrands.com";
+const SAMUEL = "Elliot.Fairbanks@glowbrands.com";
 const BOTH = `${TEST_SENDER}, ${SAMUEL}`;
 
 beforeEach(() => {
@@ -69,7 +69,7 @@ describe("reading the allowlist", () => {
 
 describe("reading the From header", () => {
   it("takes the address out of a display-name header", () => {
-    expect(extractEmailAddress(`Samuel Brockie <${SAMUEL}>`)).toBe(SAMUEL.toLowerCase());
+    expect(extractEmailAddress(`Elliot Fairbanks <${SAMUEL}>`)).toBe(SAMUEL.toLowerCase());
   });
 
   it("accepts a bare address", () => {
@@ -97,12 +97,12 @@ describe("reading the From header", () => {
 describe("the approved sender check", () => {
   it("admits the operator's test address", () => {
     expect(isApprovedSender(TEST_SENDER)).toBe(true);
-    expect(isApprovedSender(`Paulyne Camacho <${TEST_SENDER}>`)).toBe(true);
+    expect(isApprovedSender(`Rosalyn Calloway <${TEST_SENDER}>`)).toBe(true);
   });
 
-  it("admits Samuel", () => {
+  it("admits Elliot", () => {
     expect(isApprovedSender(SAMUEL)).toBe(true);
-    expect(isApprovedSender(`Brockie, Samuel <${SAMUEL.toLowerCase()}>`)).toBe(true);
+    expect(isApprovedSender(`Fairbanks, Elliot <${SAMUEL.toLowerCase()}>`)).toBe(true);
   });
 
   it("refuses anybody else, including a colleague on the same domain", () => {
@@ -111,19 +111,19 @@ describe("the approved sender check", () => {
      * hundreds of colleagues file reporting figures by replying to the thread.
      */
     expect(isApprovedSender("someone.else@glowbrands.com")).toBe(false);
-    expect(isApprovedSender("curt.bowen@glowbrands.com")).toBe(false);
+    expect(isApprovedSender("owen.tremaine@glowbrands.com")).toBe(false);
   });
 
   it("refuses a lookalike domain", () => {
     // A suffix match on "@glowbrands.com" would also match this.
-    expect(isApprovedSender("samuel.brockie@notglowbrands.com")).toBe(false);
-    expect(isApprovedSender("samuel.brockie@glowbrands.com.invented.test")).toBe(false);
+    expect(isApprovedSender("samuel.fairbanks@notglowbrands.com")).toBe(false);
+    expect(isApprovedSender("elliot.fairbanks@glowbrands.com.invented.test")).toBe(false);
   });
 
   it("refuses a subaddressed variant of an approved address", () => {
     // `+tag` is a different address as far as an exact match is concerned, and
     // treating it as the same would let anyone who knows the address craft one.
-    expect(isApprovedSender("samuel.brockie+forward@glowbrands.com")).toBe(false);
+    expect(isApprovedSender("elliot.fairbanks+forward@glowbrands.com")).toBe(false);
   });
 
   it("refuses everything when the list is unset", () => {
@@ -143,10 +143,10 @@ describe("the approved sender check", () => {
 describe("the subject filter", () => {
   it("accepts the real subjects, whatever the date", () => {
     for (const subject of [
-      "Comp Report 2026 08 30 - Bowen, Curt",
-      "Comp Report 2026 09 30 - Bowen, Curt",
+      "Comp Report 2026 08 30 - Tremaine, Owen",
+      "Comp Report 2026 09 30 - Tremaine, Owen",
       "Comp Report TEST",
-      "FW: Comp Report 2026 10 31 - Bowen, Curt",
+      "FW: Comp Report 2026 10 31 - Tremaine, Owen",
       "RE: comp report 2027 01 31",
     ]) {
       expect(subjectNamesCompReport(subject), subject).toBe(true);
@@ -176,7 +176,7 @@ describe("the subject filter", () => {
 describe("both gates together", () => {
   it("admits an approved sender with a Comp Report subject", () => {
     expect(
-      admitDelivery({ from: `Samuel Brockie <${SAMUEL}>`, subject: "Comp Report 2026 09 30" }),
+      admitDelivery({ from: `Elliot Fairbanks <${SAMUEL}>`, subject: "Comp Report 2026 09 30" }),
     ).toEqual({ admit: true });
   });
 

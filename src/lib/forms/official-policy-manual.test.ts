@@ -473,7 +473,7 @@ describe("4. the offense box decides which section", () => {
    * the manager pasted the Late Opening wording in by hand with no source.
    */
   it.each([
-    "Ellie was scheduled to open the salon at 9:30 and did not arrive until 11:23",
+    "Wren was scheduled to open the salon at 9:30 and did not arrive until 11:23",
     "she was the opener today and came in late",
     "late opening on 10/16",
     "she didn't open the store until 10",

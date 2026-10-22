@@ -16,7 +16,7 @@ function row(overrides: Partial<DirectoryRow> = {}): DirectoryRow {
     firstName: "Carley",
     lastName: "Rowe",
     preferredFirstName: null,
-    emailAddress: "carley.rowe@suntancity.com",
+    emailAddress: "harper.lyle@suntancity.com",
     employmentStatus: "active",
     positionId: "P-SD",
     positionName: "Salon Director",
@@ -112,7 +112,7 @@ describe("a Woven employee with one location", () => {
   });
 
   it("matches the email case-insensitively and ignoring surrounding space", () => {
-    expect(found(suggest(row(), undefined, undefined, "  CARLEY.Rowe@SunTanCity.com ")).suggestion?.role).toBe("salon_director");
+    expect(found(suggest(row(), undefined, undefined, "  HARPER.Lyle@SunTanCity.com ")).suggestion?.role).toBe("salon_director");
   });
 });
 
@@ -240,7 +240,7 @@ describe("who gets a suggestion at all", () => {
   });
 
   it("two Woven employees sharing the address suggest nothing", () => {
-    const result = suggestionForEmail("carley.rowe@suntancity.com", [row(), row({ id: "d2", externalEmployeeId: "E-2" })], [position()], LOCATIONS);
+    const result = suggestionForEmail("harper.lyle@suntancity.com", [row(), row({ id: "d2", externalEmployeeId: "E-2" })], [position()], LOCATIONS);
     expect(result.status).toBe("ambiguous");
     expect(JSON.stringify(result)).not.toContain("salon_director");
   });

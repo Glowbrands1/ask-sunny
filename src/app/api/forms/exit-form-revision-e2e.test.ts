@@ -9,7 +9,7 @@ import type { AccessScope, ChatMessage } from "@/types";
  * ============================================================================
  *
  * The production feedback, replayed through the real routes: an exit form for
- * Ashley Rogers is created and finalized; "duplicate exit for ashley rogers
+ * Lacey Morrow is created and finalized; "duplicate exit for lacey morrow
  * and change date notice given to 9-27-26" opens a new draft of it with the
  * change made; the draft is finalized and replaces the original — or deleted,
  * and the original is exactly as it was.
@@ -263,10 +263,10 @@ async function act(id: string, body: Record<string, unknown>) {
   return payload.instance!;
 }
 
-/** Ashley Rogers' exit form, created from chat and finalized with a follow-up. */
+/** Lacey Morrow' exit form, created from chat and finalized with a follow-up. */
 async function finalizedExit() {
   const { result } = await fromConversation([
-    said("m1", "Create an STC exit for Ashley Rogers at lincoln o street. She quit by text on 9/20, last day 9/19. She returned her key."),
+    said("m1", "Create an STC exit for Lacey Morrow at lincoln o street. She quit by text on 9/20, last day 9/19. She returned her key."),
   ]);
   const id = result.reference.instanceId;
   await act(id, { action: "finalize", followUpDate: "2026-10-05" });
@@ -291,7 +291,7 @@ describe("a finalized exit form, edited as a new draft", () => {
     const original = await finalizedExit();
     const before = (await review(original)).values;
 
-    const response = await reopen("duplicate exit for ashley rogers and change date notice given to 9-27-26");
+    const response = await reopen("duplicate exit for lacey morrow and change date notice given to 9-27-26");
     const draft = response!.formOpened!.instanceId;
     expect(draft).not.toBe(original);
     expect(response!.formOpened!.revisesInstanceId).toBe(original);
@@ -311,7 +311,7 @@ describe("a finalized exit form, edited as a new draft", () => {
     expect((await listOutstandingFollowUps(50, null)).map((row) => row.id)).toEqual([original]);
 
     // Asking again lands on the same draft — no second revision.
-    const again = await reopen("change exit for ashley rogers");
+    const again = await reopen("change exit for lacey morrow");
     expect(again!.formOpened!.instanceId).toBe(draft);
     expect(store.form_instances).toHaveLength(2);
 

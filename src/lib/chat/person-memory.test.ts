@@ -63,9 +63,9 @@ describe("namesToRecall — who this turn may be about", () => {
   it("leaves the manager's own name out", () => {
     expect(
       namesToRecall({
-        question: "Paulyne here — how do I coach Jordan Avery?",
+        question: "Rosalyn here — how do I coach Jordan Avery?",
         history: [],
-        userName: "Paulyne",
+        userName: "Rosalyn",
       }).map((person) => person.name),
     ).toEqual(["Jordan Avery"]);
   });
@@ -144,8 +144,8 @@ describe("excerptFor — the manager's own words, from where the person comes up
 
 describe("renderMemoryBlock", () => {
   it("is null when nothing was recalled", () => {
-    expect(renderMemoryBlock([], "Paulyne")).toBeNull();
-    expect(renderMemoryBlock([{ name: "Sarah", conversations: [], forms: [] }], "Paulyne")).toBeNull();
+    expect(renderMemoryBlock([], "Rosalyn")).toBeNull();
+    expect(renderMemoryBlock([{ name: "Sarah", conversations: [], forms: [] }], "Rosalyn")).toBeNull();
   });
 
   it("says what it is and quotes the manager", () => {
@@ -166,7 +166,7 @@ describe("renderMemoryBlock", () => {
           ],
         },
       ],
-      "Paulyne",
+      "Rosalyn",
     )!;
 
     expect(block.startsWith(MEMORY_SECTION)).toBe(true);

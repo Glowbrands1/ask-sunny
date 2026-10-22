@@ -57,10 +57,9 @@ describe("0. what the manual actually contains", () => {
     const attendance = chunk(33);
     expect(attendance.locator).toBe("Page 14 — Attendance");
     expect(attendance.sections).toEqual([{ heading: "Attendance", page: 14 }]);
-    expect(attendance.content).toContain(
-      "It is the responsibility of each employee to know his or her work schedule and to always be on\ntime.",
-    );
-    expect(attendance.content).toContain("If an employee is going to be tardy or absent");
+    /* The fixture's wording is synthetic; the heading is what the lookup reads. */
+    expect(attendance.content).toMatch(/ Attendance$/m);
+    expect(attendance.content).toContain("Synthetic policy wording");
   });
 
   it("has no section headed tardiness — the rule lives under Attendance", () => {
@@ -73,7 +72,7 @@ describe("0. what the manual actually contains", () => {
 
   it("prints its Smoking/Vaping rule on page 12", () => {
     expect(chunk(27).locator).toBe("Page 12 — Smoking/Vaping");
-    expect(chunk(27).content).toContain("All locations,\nincluding but not limited to all facilities");
+    expect(chunk(27).content).toContain("Synthetic policy wording");
   });
 
   it("spreads its table of contents over fifteen chunks, printed pages 2 to 5", () => {

@@ -30,8 +30,8 @@ import {
 function row(overrides: Record<string, unknown> = {}) {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    email: "curt.bowen@suntancity.test",
-    display_name: "Curt Bowen",
+    email: "owen.tremaine@suntancity.test",
+    display_name: "Owen Tremaine",
     role: "admin",
     status: "active",
     scope_level: "global",
@@ -54,8 +54,8 @@ describe("a row that describes an active user", () => {
     if (!result.ok) return;
 
     expect(result.profile.role).toBe("admin");
-    expect(result.profile.email).toBe("curt.bowen@suntancity.test");
-    expect(result.profile.displayName).toBe("Curt Bowen");
+    expect(result.profile.email).toBe("owen.tremaine@suntancity.test");
+    expect(result.profile.displayName).toBe("Owen Tremaine");
     expect(result.profile.scope.level).toBe("global");
   });
 
@@ -312,7 +312,7 @@ describe("the code cannot read a role from anywhere else", () => {
      */
     for (const file of [source, provider]) {
       expect(file).not.toMatch(/suntancity\.com/i);
-      expect(file).not.toMatch(/curt/i);
+      expect(file).not.toMatch(/owen/i);
     }
   });
 

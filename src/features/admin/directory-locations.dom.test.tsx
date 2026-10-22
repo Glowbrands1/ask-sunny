@@ -282,7 +282,7 @@ describe("Woven suggestions", () => {
   it("shows a match but fills nothing until the administrator applies it", async () => {
     wovenAnswer = FOUND;
     const { ui, dialog } = await openInvite();
-    await typeEmail(dialog, ui, "carley.rowe@suntancity.com");
+    await typeEmail(dialog, ui, "harper.lyle@suntancity.com");
     await within(dialog).findByText("Found in Woven");
 
     expect((within(dialog).getByLabelText("Full name") as HTMLInputElement).value).toBe("");
@@ -294,7 +294,7 @@ describe("Woven suggestions", () => {
   it("applies the suggestion on request, and every field stays editable", async () => {
     wovenAnswer = FOUND;
     const { ui, dialog } = await openInvite();
-    await typeEmail(dialog, ui, "carley.rowe@suntancity.com");
+    await typeEmail(dialog, ui, "harper.lyle@suntancity.com");
     await ui.click(await within(dialog).findByRole("button", { name: "Apply suggestions" }));
 
     expect((within(dialog).getByLabelText("Full name") as HTMLInputElement).value).toBe("Carley Rowe");

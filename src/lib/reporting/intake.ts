@@ -87,7 +87,7 @@ export interface ReportIntakeInput {
    * Resend's id for the received email, when the delivery arrived by mail.
    *
    * Kept separate from `externalMessageId`, which holds the upstream
-   * `Message-ID` of the mail Samuel sent. Two different identities: one names
+   * `Message-ID` of the mail Elliot sent. Two different identities: one names
    * the original message, the other names the copy Resend received, and
    * collapsing them would make a correlation back to the Resend dashboard
    * impossible.

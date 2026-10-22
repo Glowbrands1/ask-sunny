@@ -132,7 +132,7 @@ const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
 const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+(?:${CARRIES_ON})\\b`);
 
 /*
- * "BRANDI ALGYA ASD LINCOLN O ST": NAME, ROLE, SALON. Managers sign a person
+ * "CORINNE VALDEZ ASD LINCOLN O ST": NAME, ROLE, SALON. Managers sign a person
  * off the way the paperwork does, and the role is what says a place follows.
  * Only for a name of two or more words — "SD Lawrence" can be the salon
  * director called Lawrence, but nobody is called "Lincoln O St".

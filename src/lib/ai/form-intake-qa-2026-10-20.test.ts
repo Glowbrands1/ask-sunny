@@ -11,11 +11,11 @@ import type { AccessScope, ChatMessage } from "@/types";
  * A manager asked, verbatim:
  *
  *     "Can you create a coaching form for a manager on the onboarding
- *      process? Brandi Algya ASD Lincoln O St. Properly uploading
+ *      process? Corinne Valdez ASD Lincoln O St. Properly uploading
  *      documentation for onboarding, reading through the list of acceptable
  *      documentation"
  *
- * The form was recognised, but "Brandi Algya ASD Lincoln O St" was read as one
+ * The form was recognised, but "Corinne Valdez ASD Lincoln O St" was read as one
  * capitalised run and discarded because "ASD" is a role. Sunny asked who the
  * form was for; the manager answered with the same line, which was discarded
  * again, the intake ended, and the reply told them to retype the request. See
@@ -106,38 +106,38 @@ function expectReadyCoaching(last: ChatMessage, employee: string) {
 }
 
 const REPORTED =
-  "Can you create a coaching form for a manager on the onboarding process? Brandi Algya ASD Lincoln O St. Properly uploading documentation for onboarding, reading through the list of acceptable documentation";
+  "Can you create a coaching form for a manager on the onboarding process? Corinne Valdez ASD Lincoln O St. Properly uploading documentation for onboarding, reading through the list of acceptable documentation";
 
 describe("QA 20 Oct — a name followed by a role and a salon", () => {
-  it("the reported message proposes the Coaching Form for Brandi Algya", async () => {
+  it("the reported message proposes the Coaching Form for Corinne Valdez", async () => {
     const last = await converse(REPORTED);
-    expectReadyCoaching(last, "Brandi Algya");
+    expectReadyCoaching(last, "Corinne Valdez");
     expect(last.formProposal!.employeeRole).toBe("ASD");
   });
 
   it.each([
-    "can you create a coaching form for Brandi Algya ASD Lincoln O St. Properly uploading documentation",
-    "can you please create a coaching form for Brandi Algya ASD Lincoln O St. Properly uploading documentation",
-    "can u pls create a coaching form for Brandi Algya ASD Lincoln O St. Properly uploading documentation",
-    "Can you pls create a coaching frm for a manager. Brandi Algya ASD Lincoln O St, onboarding documentation",
+    "can you create a coaching form for Corinne Valdez ASD Lincoln O St. Properly uploading documentation",
+    "can you please create a coaching form for Corinne Valdez ASD Lincoln O St. Properly uploading documentation",
+    "can u pls create a coaching form for Corinne Valdez ASD Lincoln O St. Properly uploading documentation",
+    "Can you pls create a coaching frm for a manager. Corinne Valdez ASD Lincoln O St, onboarding documentation",
   ])("%s", async (question) => {
-    expectReadyCoaching(await converse(question), "Brandi Algya");
+    expectReadyCoaching(await converse(question), "Corinne Valdez");
   });
 
   it("the replayed conversation: a date, then the name line on its own, keeps the form", async () => {
     const last = await converse(
       "Can you create a coaching form for a manager on the onboarding process?",
       "10/9/2026",
-      "Brandi Algya ASD Lincoln O St",
+      "Corinne Valdez ASD Lincoln O St",
     );
-    expectReadyCoaching(last, "Brandi Algya");
+    expectReadyCoaching(last, "Corinne Valdez");
     expect(last.formProposal!.formDate).toBe("2026-10-09");
   });
 
   it.each([
-    ["Brandi Algya SD Lincoln O St", "Brandi Algya"],
-    ["Brandi Algya SDIT NE Kearney", "Brandi Algya"],
-    ["Brandi Algya TC", "Brandi Algya"],
+    ["Corinne Valdez SD Lincoln O St", "Corinne Valdez"],
+    ["Corinne Valdez SDIT NE Kearney", "Corinne Valdez"],
+    ["Corinne Valdez TC", "Corinne Valdez"],
   ])("answers 'who is this for?' with %s", async (answer, employee) => {
     expectReadyCoaching(await converse("I need a coaching form", answer), employee);
   });
@@ -150,7 +150,7 @@ describe("QA 20 Oct — a name followed by a role and a salon", () => {
   it("a manager over several Lincoln salons gets the one named after the role", async () => {
     const lincoln: AccessScope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0311", "loc-0312"] };
     const last = await converseAs(lincoln, REPORTED);
-    expectReadyCoaching(last, "Brandi Algya");
+    expectReadyCoaching(last, "Corinne Valdez");
     expect(last.formProposal!.locationId).toBe("loc-0311");
   });
 });

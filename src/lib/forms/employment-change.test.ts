@@ -150,10 +150,10 @@ describe("the employment change forms in the library", () => {
 
 describe("asking for one in chat", () => {
   it.each([
-    ["Create a demotion form for paulyne co", "demotion"],
+    ["Create a demotion form for rosalyn co", "demotion"],
     ["create a demotion form", "demotion"],
-    ["demote paulyne from manager to tanning consultant effective october 5", "demotion"],
-    ["I need to do a demotion for paulyne", "demotion"],
+    ["demote rosalyn from manager to tanning consultant effective october 5", "demotion"],
+    ["I need to do a demotion for rosalyn", "demotion"],
     ["she's stepping down to TC effective 10/5", "demotion"],
     ["pull up a transfer form for Jane Doe", "position-transfer"],
     ["make a transfer form", "position-transfer"],
@@ -193,16 +193,16 @@ describe("asking for one in chat", () => {
 
 describe("the employee's name, in any case", () => {
   it.each([
-    ["Create a demotion form for paulyne co", "paulyne co"],
-    ["Create a demotion form for PAULYNE CO", "PAULYNE CO"],
-    ["Create a demotion form for Paulyne Co", "Paulyne Co"],
+    ["Create a demotion form for rosalyn co", "rosalyn co"],
+    ["Create a demotion form for ROSALYN CO", "ROSALYN CO"],
+    ["Create a demotion form for Rosalyn Co", "Rosalyn Co"],
     ["I need an exit form for JOHN SMITH", "JOHN SMITH"],
     ["make a resignation form for maria", "maria"],
     ["pull up a transfer form for Jane Doe", "Jane Doe"],
     ["Position Transfer Form for Jane Doe", "Jane Doe"],
     ["Jane is transferring from salon 12 to salon 18", "Jane"],
     ["jane's transferring to lawrence", "jane"],
-    ["demote paulyne from manager to tanning consultant effective october 5", "paulyne"],
+    ["demote rosalyn from manager to tanning consultant effective october 5", "rosalyn"],
     ["transfer jane from FT to PT, involuntary", "jane"],
     ["create an exit form for mike, last day was 9/25", "mike"],
     ["mike quit, last day was 9/25", "mike"],
@@ -248,7 +248,7 @@ describe("dates, in the formats managers type", () => {
 
 describe("the facts of the change", () => {
   it("reads direction from 'from ... to'", () => {
-    const facts = read("demote paulyne from manager to tanning consultant effective october 5");
+    const facts = read("demote rosalyn from manager to tanning consultant effective october 5");
     expect(facts.current.title).toBe("Manager");
     expect(facts.next.title).toBe("Tanning Consultant");
     expect(facts.effectiveDate).toBe("2026-10-05");
@@ -256,7 +256,7 @@ describe("the facts of the change", () => {
 
   it("reads a whole sentence of details, in any casing", () => {
     const facts = read(
-      "Create a demotion form for paulyne co. She's a full time SD at $18/hr at KS Lawrence and asked to step down to a part time TC at $12.50/hr starting 10-05-2026",
+      "Create a demotion form for rosalyn co. She's a full time SD at $18/hr at KS Lawrence and asked to step down to a part time TC at $12.50/hr starting 10-05-2026",
     );
     expect(facts.current).toEqual({
       title: "Salon Director",
@@ -351,7 +351,7 @@ describe("the facts of the change", () => {
 
 describe("what is still asked for", () => {
   it("groups each side's status and pay, and asks for nothing already given", () => {
-    const facts = read("demote paulyne from manager to tanning consultant effective october 5");
+    const facts = read("demote rosalyn from manager to tanning consultant effective october 5");
     expect(missingDetails("demotion", facts).map((item) => item.phrase)).toEqual([
       "the current status (FT/PT) and pay rate",
       "the new status (FT/PT) and pay rate",
@@ -419,7 +419,7 @@ describe("a correction typed after the form exists", () => {
     ["change her new location to salon 24", { new_location: "Salon 24" }],
     ["new title is shift lead", { new_job_title: "Shift Lead" }],
     ["change her current title to SD", { job_title: "Salon Director" }],
-    ["change the name to Paulyne Camacho", { employee_name: "Paulyne Camacho" }],
+    ["change the name to Rosalyn Calloway", { employee_name: "Rosalyn Calloway" }],
     ["change the date to 9/27", { form_date: "2026-09-27" }],
     ["make the new pay $13.25/hr", { new_pay_rate: "$13.25/hr" }],
   ])("%s", (text, values) => {
@@ -542,7 +542,7 @@ describe("found in production QA: the employee's name", () => {
     expect(extractEmployeeNames(PRODUCTION.transfer[0]!)).toEqual(["Transfer Beta Test"]);
     /*
      * A bare "Transfer Beta Test." reads "Transfer" as the verb, exactly as
-     * "Demote Paulyne Co" must: a form word at the start of a message is never
+     * "Demote Rosalyn Co" must: a form word at the start of a message is never
      * glued onto the name. In the conversation it is completed to the full name
      * the manager gave earlier — see the conversation tests.
      */
@@ -623,7 +623,7 @@ describe("found in review: a marked name never overrides the form's subject", ()
     ["Coaching form for Sarah Jones, she ignored the Employee Handbook", ["Sarah Jones"]],
     ["Employee Name: Jane Doe", ["Jane Doe"]],
     ["Employee: Jane Doe", ["Jane Doe"]],
-    ["Demote Paulyne Co", ["Paulyne Co"]],
+    ["Demote Rosalyn Co", ["Rosalyn Co"]],
     ["Transfer Jane Doe", ["Jane Doe"]],
     // Read after a leading form name since #51 — the form word itself is never part of the name.
     ["Exit Jane Smith", ["Jane Smith"]],
@@ -647,7 +647,7 @@ describe("found in review: a marked name never overrides the form's subject", ()
       "Transfer Beta Test",
     ]);
     expect(extractEmployeeNames("Demotion form. Employee Name: Jane Doe")).toEqual(["Jane Doe"]);
-    expect(extractEmployeeNames("coaching form for employee named paulyne co")).toEqual(["paulyne co"]);
+    expect(extractEmployeeNames("coaching form for employee named rosalyn co")).toEqual(["rosalyn co"]);
   });
 });
 

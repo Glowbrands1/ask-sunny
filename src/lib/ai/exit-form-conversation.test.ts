@@ -144,7 +144,7 @@ describe("the employee, in any case and by first name", () => {
     ["create an STC exit for sarah jones", "sarah jones"],
     ["CREATE AN STC EXIT FOR SARAH JONES", "SARAH JONES"],
     ["Create an STC exit for Sarah Jones. She walked out mid-shift.", "Sarah Jones"],
-    ["exit form for paulyne because she quit", "paulyne"],
+    ["exit form for rosalyn because she quit", "rosalyn"],
     ["resignation paperwork for (Maria)", "Maria"],
     ["Sarah Jones was a No Call No Show on Saturday", "Sarah Jones"],
     ["Immediate Voluntary Resignation for Dan Smith", "Dan Smith"],
@@ -437,16 +437,16 @@ const MULTI: AccessScope = {
 const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } as never;
 
 /*
- * HR FEEDBACK, 30 SEP 2026. The Colene exit form: the notice was given and
+ * HR FEEDBACK, 30 SEP 2026. The Delphine exit form: the notice was given and
  * worked, the dates were said, and Woven was the channel — and the proposal
  * still listed both notice dates and the Resignation Details boxes as blank
  * and asked how and when she resigned. The turns are the ones typed.
  */
-describe("HR feedback 30 Sep — the Colene exit form", () => {
+describe("HR feedback 30 Sep — the Delphine exit form", () => {
   const FIRST =
-    "create an exit form. employee name is colene schildt. colene was a tanning consultant at manhattan location. on 9-15-26 colene provided her resignation to management and her last day worked was 9-28-26";
+    "create an exit form. employee name is delphine ashworth. delphine was a tanning consultant at manhattan location. on 9-15-26 delphine provided her resignation to management and her last day worked was 9-28-26";
   const FEEDBACK =
-    "Create a resignation form for Colene Schildt. She worked as a tanning consultant at the Manhattan location. On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
+    "Create a resignation form for Delphine Ashworth. She worked as a tanning consultant at the Manhattan location. On 9-15-26, she provided her resignation to management, sending the message via Woven. She gave and worked a two week notice, and her last day worked was 9-28-26.";
 
   it("lists the notice date, the notice tick and Woven, and asks only what nobody said", async () => {
     const proposals = await load([exitForm()]);
@@ -466,7 +466,7 @@ describe("HR feedback 30 Sep — the Colene exit form", () => {
     const proposals = await load([exitForm()]);
     const content = (await proposals.proposeFormForTurn({
       ...turn(
-        "colene gave and worked 2 week notice. colene messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
+        "delphine gave and worked 2 week notice. delphine messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
         { history: [said("m1", FIRST)] },
       ),
       // The open exit-form proposal the reply answers, as in Production.
@@ -724,11 +724,11 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
   it.each([
     ["one fact per line", "\n"],
     ["the lines run together", " "],
-  ])("drafts Kayla Koehn's exit as described, without questions (%s)", async (_label, sep) => {
+  ])("drafts Mira Castellan's exit as described, without questions (%s)", async (_label, sep) => {
     const proposals = await load([exitForm()]);
     const response = await proposals.proposeFormForTurn({
       ...turn(
-        "Kayla Koehn\nTanning Consultant\n" +
+        "Mira Castellan\nTanning Consultant\n" +
         [
           "Gave notice - fulfilled notice",
           "Gave notice 9/25/26 - date notice fulfilled 10/9/26",
@@ -740,7 +740,7 @@ describe("QA 4 — what the manager said is filled; nothing else is inferred", (
       continueTemplateKey: "stc-exit",
     });
     const content = response!.content;
-    expect(response!.formProposal!.employeeName).toBe("Kayla Koehn");
+    expect(response!.formProposal!.employeeName).toBe("Mira Castellan");
     expect(content).toMatch(/- \*\*Date that notice was given:\*\* September 25, 2026/);
     expect(content).toMatch(/- \*\*Date that notice was fulfilled:\*\* October 9, 2026/);
     // The notice ran to 10/9, so that is the last day worked.

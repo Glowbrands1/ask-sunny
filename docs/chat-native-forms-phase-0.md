@@ -4,7 +4,7 @@ Branch: `feature/chat-native-forms-marissa-feedback`
 Base: `feature/ask-sunny-forms-template-engine` @ `22e63da`
 Status: **audit only.** No source changed, no migration, no deployment.
 Review verdict: **Phase 0 PASS — implementation planning approved.** Sequencing in
-§15 is the approved one. No phase starts without a bounded brief from Paulyne.
+§15 is the approved one. No phase starts without a bounded brief from Rosalyn.
 
 Every claim below was read out of the tree at the base commit. Where something is
 a proposal rather than a finding it says so.
@@ -620,7 +620,7 @@ exposure visible instead of invisible. Fail-closed everywhere becomes correct th
 day a real salon roster lands — which is the same dependency as auto-filling a
 location and as the 12-vs-15 salon count.
 
-**Paulyne's call, in the Phase 2 brief.** This document does not decide it.
+**Rosalyn's call, in the Phase 2 brief.** This document does not decide it.
 
 > **DECIDED — FAIL CLOSED EVERYWHERE.** The Phase 2 brief overrode the
 > recommendation above: *"For an HR record, an unverifiable salon must not be

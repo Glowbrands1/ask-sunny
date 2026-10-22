@@ -447,7 +447,7 @@ const INCIDENT_TOPIC: readonly RegExp[] = [
 const OBSERVATIONAL_CLAUSE: readonly RegExp[] = [
   /\b(?:she|he|they|the employee|[a-z]+)\s+(?:was|were|has been|have been|had been)\s+\w+/,
   /\b(?:she|he|they)\s+(?:arrived|showed up|came in|left|wore|refused|failed|forgot|ignored|walked out|clocked)\b/,
-  /* "Ellie arrived at 11:23", "came in after ten": an arrival with its time, whoever the subject is. */
+  /* "Wren arrived at 11:23", "came in after ten": an arrival with its time, whoever the subject is. */
   /\b(?:arrived|showed up|came in|clocked in|got in)\s+(?:at|around|after|late|\d)/,
   /\b(?:didn't|did not|hasn't|has not|wouldn't|would not)\s+\w+/,
   /\bi (?:saw|observed|watched|found|noticed|had to)\b/,
@@ -576,7 +576,7 @@ export function describesIncident(text: string): boolean {
  * ============================================================================
  *
  * `describesIncident` reads vocabulary, and a manager's account does not have
- * to use any of it: "Ellie got to the salon at 11:23 for a 9:30 shift" names
+ * to use any of it: "Wren got to the salon at 11:23 for a 9:30 shift" names
  * no topic and no pronoun. On its own that would ask for "what happened" a
  * second time, to a manager who has just answered it.
  *
@@ -606,8 +606,8 @@ const NO_INCIDENT_MARKER = "You haven't told me what happened yet";
  * as undescribed would ask a manager to repeat what they just said. So the
  * test that holds a draft back is narrower: did the manager say ANYTHING
  * beyond asking for the form, naming the person, the salon, a date, a title
- * and answering the form's own yes/no questions? "create ca for Ellie
- * Sendgraff" did not; "a CA for Colene for missing the Woven deadline" did.
+ * and answering the form's own yes/no questions? "create ca for Wren
+ * Halvorsen" did not; "a CA for Delphine for missing the Woven deadline" did.
  *
  * Words, not meaning: what is left after the request vocabulary and the
  * employee's name are removed. Three or more of them is an account.

@@ -208,7 +208,7 @@ describe("2c. CA and the Corrective Action Form's own name", () => {
     expect(detectTemplateIntent("policy review for Sarah")).toEqual({ kind: "explicit", templateKey: "policy-review" });
     expect(detectTemplateIntent("coaching form for Sarah")).toEqual({ kind: "explicit", templateKey: "coaching" });
     expect(detectTemplateIntent("I need an exit form for Jane")).toEqual({ kind: "explicit", templateKey: "stc-exit" });
-    expect(detectTemplateIntent("demote paulyne effective october 5")).toEqual({ kind: "explicit", templateKey: "demotion" });
+    expect(detectTemplateIntent("demote rosalyn effective october 5")).toEqual({ kind: "explicit", templateKey: "demotion" });
     expect(detectTemplateIntent("start an EPP")).toEqual({ kind: "ambiguous", family: "epp" });
     expect(detectTemplateIntent("create a form")).toEqual({ kind: "ambiguous" });
   });
@@ -431,11 +431,11 @@ describe("2e. a form's name leading the message, for every form", () => {
   it.each([
     ["CA", "dpoa"],
     ["ca", "dpoa"],
-    ["CA for paulyne co", "dpoa"],
+    ["CA for rosalyn co", "dpoa"],
     ["ca for Dana Moss", "dpoa"],
     ["Corrective Action for John Smith", "dpoa"],
-    ["create ca for paulyne co she was late today, got verbal warning on september 21", "dpoa"],
-    ["Coaching for paulyne co", "coaching"],
+    ["create ca for rosalyn co she was late today, got verbal warning on september 21", "dpoa"],
+    ["Coaching for rosalyn co", "coaching"],
     ["coaching Dana Moss", "coaching"],
     ["COACHING FOR DANA MOSS", "coaching"],
     ["coaching", "coaching"],
@@ -491,9 +491,9 @@ describe("2e. a form's name leading the message, for every form", () => {
   });
 
   it("returns the words after the form's name, as typed", () => {
-    expect(leadingFormRequest("CA for paulyne co she was late today")).toEqual({
+    expect(leadingFormRequest("CA for rosalyn co she was late today")).toEqual({
       templateKey: "dpoa",
-      subject: ["paulyne", "co", "she", "was", "late", "today"],
+      subject: ["rosalyn", "co", "she", "was", "late", "today"],
     });
     expect(leadingFormRequest("Exit John Doe")).toEqual({ templateKey: "stc-exit", subject: ["John", "Doe"] });
     expect(leadingFormRequest("Coaching")).toEqual({ templateKey: "coaching", subject: [] });

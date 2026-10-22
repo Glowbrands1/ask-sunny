@@ -234,7 +234,7 @@ function headingOrder(): string[] {
 describe("the page's shape", () => {
   it("opens on the month's goal, then how many reviews are arriving, then the holdings", () => {
     /*
-     * THE OVERVIEW LEADS WITH THE MONTHLY GOAL, at Madeline Patterson's request:
+     * THE OVERVIEW LEADS WITH THE MONTHLY GOAL, at Gwen Harlan's request:
      * qualifying reviews this week and month to date, against ten per salon.
      * The volume chart and what ASK Sunny holds follow, as before.
      */
@@ -277,7 +277,7 @@ describe("the page's shape", () => {
 
 /* ---------------------------------------------- what Madeline asked for -- */
 
-describe("the reporting views, as Madeline Patterson asked for them", () => {
+describe("the reporting views, as Gwen Harlan asked for them", () => {
   it("DRAWS THE MONTHLY TARGET THE BUSINESS SET, against every salon", () => {
     draw();
 

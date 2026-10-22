@@ -48,7 +48,7 @@ export function employeeFirstName(employeeName: string | null | undefined): stri
   const first = name.split(/\s+/)[0]!.replace(/[,.;:]+$/, "");
   if (!/^[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'’-]*$/.test(first)) return null;
   if (NOT_A_NAME.has(first.toLowerCase())) return null;
-  // A name typed as "colene" or "COLENE" is still written "Colene" on the form;
+  // A name typed as "delphine" or "DELPHINE" is still written "Delphine" on the form;
   // one with its own mixed case ("McKenna", "DeShawn") is left as given.
   const single = first === first.toLowerCase() || first === first.toUpperCase();
   return single ? first[0]!.toUpperCase() + first.slice(1).toLowerCase() : first;
@@ -226,7 +226,7 @@ interface SentenceResult {
 
 /**
  * Nouns that read naturally with "a" rather than "the" once the possessive is
- * gone — "Colene submitted a resignation", not "the resignation".
+ * gone — "Delphine submitted a resignation", not "the resignation".
  */
 const INDEFINITE_NOUNS = new Set([
   "resignation", "request", "complaint", "letter", "apology", "explanation", "statement",
@@ -244,7 +244,7 @@ const PRONOUN_TOKEN = /\b(she|he|him|his|hers|her|they|them|their|theirs)(?:['�
  * NATURAL, NOT MECHANICAL
  * ============================================================================
  *
- * Swapping every pronoun for the name produces "Colene provided Colene's
+ * Swapping every pronoun for the name produces "Delphine provided Delphine's
  * resignation" — no pronoun, and no person would write it. So the sentence is
  * read left to right, knowing whether the employee has ALREADY been named in
  * it, and each pronoun is restructured rather than substituted:
@@ -253,7 +253,7 @@ const PRONOUN_TOKEN = /\b(she|he|him|his|hers|her|they|them|their|theirs)(?:['�
  *     "Her last day was Sept 26."            -> "Jane's last day was Sept 26."
  *   POSSESSIVE, name already in the sentence   an article — whose it is, is
  *                                              already said
- *     "Colene provided her resignation."     -> "Colene provided a resignation."
+ *     "Delphine provided her resignation."     -> "Delphine provided a resignation."
  *     "Jessica did not clock in for her shift." -> "... for the shift."
  *   SUBJECT after "and" / "but" / "then", name already the subject
  *                                              dropped — one subject, two verbs

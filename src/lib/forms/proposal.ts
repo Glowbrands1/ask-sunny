@@ -105,8 +105,8 @@ export function managerContext(
 /* ------------------------------------------------------- employee intent -- */
 
 /*
- * PUNCTUATION AROUND A NAME IS NOT PART OF IT. "(paulyne)", "\"paulyne co\""
- * and "'paulyne'" are the same answer as "paulyne", and a manager should not
+ * PUNCTUATION AROUND A NAME IS NOT PART OF IT. "(rosalyn)", "\"rosalyn co\""
+ * and "'rosalyn'" are the same answer as "rosalyn", and a manager should not
  * have to retype it bare. Only the OUTSIDE edges are stripped — opening
  * brackets and quotes before the first word, closing ones and sentence
  * punctuation after the last — so the apostrophe in O'Connor and the hyphen in
@@ -121,7 +121,7 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  *
  * At most TWO words — a first name and a surname or initial. Without capitals
  * nothing marks where a name ends, and a third lower-case word is more often
- * the start of the sentence ("paulyne co wore slippers") than a middle name. A
+ * the start of the sentence ("rosalyn co wore slippers") than a middle name. A
  * capitalised name of any length is still read by the patterns above.
  *
  * `whole` requires every word to be part of the name: it is the test for a
@@ -156,7 +156,7 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
   /*
    * A MIDDLE NAME IS KEPT ONLY WHERE THE NAME VISIBLY ENDS AFTER IT. "for mary
    * anne cruz to salon 24" and "for john michael doe effective october 2" are
-   * three-part names, because what follows is plainly not a name; "for paulyne
+   * three-part names, because what follows is plainly not a name; "for rosalyn
    * co wore slippers" is a two-part name and the start of a sentence. So a
    * third word stays only when it ends the message, carries the punctuation,
    * or is followed by a word that cannot be part of a name.
@@ -251,14 +251,14 @@ export type EmployeeResolution =
  *
  * CASE IS NOT REQUIRED where the position says a name is being given — the
  * whole message, item 1 of a numbered answer, or directly after "<form> for".
- * There "paulyne", "paulyne co" and "PAULYNE CO" read exactly as "Paulyne Co"
+ * There "rosalyn", "rosalyn co" and "ROSALYN CO" read exactly as "Rosalyn Co"
  * does, and a first name alone is a name. See `readTypedName`.
  */
 /**
  * A capitalised run made only of words that are never anybody's name — "Late
  * Opening", "Dress Code", "Cell Phones". Production, 20 Oct 2026: "create
- * corrective action for Ellie Sendgraff for Late Opening" asked whether the
- * form was for Ellie Sendgraff or for Late Opening. A policy is named in
+ * corrective action for Wren Halvorsen for Late Opening" asked whether the
+ * form was for Wren Halvorsen or for Late Opening. A policy is named in
  * capitals as naturally as a person is; one word that could be a name keeps
  * the run a candidate.
  */
@@ -341,10 +341,10 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * A SURNAME GIVEN AS AN INITIAL IS STILL A NAME
    * ==========================================================================
    *
-   * `NAME` requires two characters, so "Paulyne C" matched nothing at all. A
+   * `NAME` requires two characters, so "Rosalyn C" matched nothing at all. A
    * manager answering "who is this form for?" with
    *
-   *     "Paulyne C she was wearing slippers today and was already given
+   *     "Rosalyn C she was wearing slippers today and was already given
    *      verbal warning on aug 21"
    *
    * got the identical question back, having just answered it — and everything
@@ -353,10 +353,10 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * people, so this was not an edge case.
    *
    * TRAILING ONLY, AND NEVER ON ITS OWN. The first part must still be a real
-   * word: "C Paulyne" is not a name, and a lone capital anywhere would turn
+   * word: "C Rosalyn" is not a name, and a lone capital anywhere would turn
    * every sentence-initial "I" into somebody's employee. `(?![a-zA-Z])` is what
    * keeps the initial distinct from the first letter of a longer surname, so
-   * "Paulyne Camacho" still matches `NAME` and not this.
+   * "Rosalyn Calloway" still matches `NAME` and not this.
    *
    * The two lone capitals that ARE ordinary English — "I" and "A" — are in
    * NOT_A_NAME, which is checked on every part below.
@@ -484,7 +484,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     }
   }
   marked.push(...labelledNames(text));
-  // "employee named paulyne co": the same marker, for a name typed without capitals.
+  // "employee named rosalyn co": the same marker, for a name typed without capitals.
   if (marked.length === 0) {
     for (const match of text.matchAll(/\b(?:employee|team member|staff member)\s+named\s+(\S+(?:\s+\S+)?)/gi)) {
       const candidate = readTypedName(match[1]!.split(/\s+/), false);
@@ -508,7 +508,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * "Position Transfer Form for Transfer Beta Test". That position already
    * says a person follows, and the form has already been named. Kept only
    * where at least two ordinary name words follow the form word. A message
-   * that merely STARTS with a form word ("Demote Paulyne Co", "Exit Jane
+   * that merely STARTS with a form word ("Demote Rosalyn Co", "Exit Jane
    * Smith") is never read this way.
    */
   // Case-sensitive on the name; the form noun before "for" is checked in any case.
@@ -604,17 +604,17 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * ==========================================================================
    *
    * Everything above reads a capital letter as the evidence. That made
-   * "Create a Corrective Action form for paulyne", "paulyne co" and "test test"
-   * unreadable — no employee, so no form — while "Paulyne Co" worked. It also
-   * lost names in an all-caps sentence ("…FORM FOR PAULYNE CO", where the full
+   * "Create a Corrective Action form for rosalyn", "rosalyn co" and "test test"
+   * unreadable — no employee, so no form — while "Rosalyn Co" worked. It also
+   * lost names in an all-caps sentence ("…FORM FOR ROSALYN CO", where the full
    * pattern swallowed the whole line) and dropped a surname followed by a
-   * capitalised word ("for Paulyne Co She wore…" yielded "Paulyne").
+   * capitalised word ("for Rosalyn Co She wore…" yielded "Rosalyn").
    *
    * Without capitals, THE POSITION IS THE EVIDENCE, and only three positions
    * are strong enough to carry it:
    *
    *   1. directly after a FORM plus "for" / "about" / "regarding" —
-   *      "corrective action form for paulyne", "coaching for test test";
+   *      "corrective action form for rosalyn", "coaching for test test";
    *   2. the WHOLE MESSAGE, optionally introduced as "for …" / "it's for …" —
    *      the answer a manager types when Sunny has asked who the form is for;
    *   3. item 1 of a NUMBERED answer, which is the employee's name because the
@@ -652,7 +652,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * 1b. THE PERSON A CHANGE IS DONE TO, OR WHO IS MAKING ONE
    * ==========================================================================
    *
-   * "demote paulyne from manager to TC" and "transfer jane to salon 18" put the
+   * "demote rosalyn from manager to TC" and "transfer jane to salon 18" put the
    * name straight after the verb; "Jane is transferring from salon 12" and
    * "mike quit, last day was 9/25" put it at the start of the sentence, before
    * the change. Both positions are as strong as "<form> for <name>": the verb
@@ -757,18 +757,18 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
 
 /*
  * ============================================================================
- * "BRANDI ALGYA ASD LINCOLN O ST": THE NAME, THE ROLE, THE SALON
+ * "CORINNE VALDEZ ASD LINCOLN O ST": THE NAME, THE ROLE, THE SALON
  * ============================================================================
  *
  * Reported from production, 20 October 2026. Managers sign a person off the
  * way the salon's paperwork does — name, role, salon — with no commas:
  *
  *     "Can you create a coaching form for a manager on the onboarding
- *      process? Brandi Algya ASD Lincoln O St. Properly uploading …"
+ *      process? Corinne Valdez ASD Lincoln O St. Properly uploading …"
  *
  * The capitalised-run reader took all six words as one run, found "ASD" in it
  * (a role, so never a name) and threw the whole run away. Sunny asked who the
- * form was for, was told "Brandi Algya ASD Lincoln O St" on its own, and threw
+ * form was for, was told "Corinne Valdez ASD Lincoln O St" on its own, and threw
  * that away too — so the intake ended and the manager got advice instead of a
  * form.
  *
@@ -981,7 +981,7 @@ function formRecipient(subjects: readonly string[], strong: readonly string[], w
   // Every spelling: "for Remy Calder/Tess Varga" reads the subject as "Remy".
   const spellings = [recipient, ...weak.filter((name) => samePerson(name, recipient))];
   const escape = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
-  // "for (paulyne) and Marco Diaz": the wrapping is not the join.
+  // "for (rosalyn) and Marco Diaz": the wrapping is not the join.
   const JOIN = "[)\\]\"'”’*_]*\\s*(?:,\\s*(?:and\\s+|or\\s+)?|\\s(?:and|or|plus)\\s+|\\s*[&/]\\s*)[(\\[\"'“‘*_]*";
   const joined = others.some((name) =>
     spellings.some((spelling) =>
@@ -1048,7 +1048,7 @@ const FORM_NOUNS =
  * THE PERSON A FORM IS FOR: "<FORM> FOR <NAME>"
  * ============================================================================
  *
- * "corrective action form for paulyne", "coaching for test test": directly
+ * "corrective action form for rosalyn", "coaching for test test": directly
  * after a form plus "for" / "about" / "regarding", in any case. Also the
  * subject a marked name ("employee named …") must agree with before it is
  * taken alone. A description of the person that leads into the marked name
@@ -1118,10 +1118,10 @@ function distinctNames(found: readonly string[]): string[] {
   /*
    * ONE SPELLING PER PERSON, BEFORE ANYTHING IS COUNTED.
    *
-   * "Paulyne C." matches both the sentence pattern and the whole-message one,
+   * "Rosalyn C." matches both the sentence pattern and the whole-message one,
    * with and without the full stop, and the de-duplication below compares a
    * bare first name against a full one — it would have let those through as
-   * TWO candidates and asked the manager which of the two Paulynes they meant.
+   * TWO candidates and asked the manager which of the two Rosalyns they meant.
    * Dropping the stop off a trailing initial makes them the same string.
    */
   const spellings = found.map((name) =>
@@ -1131,8 +1131,8 @@ function distinctNames(found: readonly string[]): string[] {
   /*
    * De-duplicated, and a bare first name that is part of a full name already
    * found is the same person rather than a second candidate. COMPARED WITHOUT
-   * CASE: "PAULYNE CO" found by the capitalised pattern and by the typed-name
-   * one is one person, and "Paulyne" beside "paulyne co" is not two.
+   * CASE: "ROSALYN CO" found by the capitalised pattern and by the typed-name
+   * one is one person, and "Rosalyn" beside "rosalyn co" is not two.
    */
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   const first = (name: string) => name.split(/\s+/)[0]!;
@@ -1302,7 +1302,7 @@ function completePartialName(
   /*
    * "BETA TEST" AFTER "EMPLOYEE TRANSFER BETA TEST" IS TRANSFER BETA TEST. A
    * bare "Transfer Beta Test." reads "Transfer" as the verb, as "Demote
-   * Paulyne Co" must. Where the manager's own earlier turn named the full
+   * Rosalyn Co" must. Where the manager's own earlier turn named the full
    * name, and the only extra words are form words, that is who they mean.
    */
   if (/\s/.test(name.trim())) {

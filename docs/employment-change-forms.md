@@ -21,7 +21,7 @@ Neither form needed a migration. On the next Forms page load, `ensureTemplateLib
 - **Permission:** `create_employment_change_form`. It's granted to Salon Director and above, which are the roles that can already file a Corrective Action Form.
 - **Layout family:** `coaching` (the single-page layout that isn't a rung of the Performance Management ladder). A new enum value would need an approved migration before the seeder could insert the rows.
 - **Reading the manager's words:** `src/lib/forms/employment-change.ts`. It reuses `extractFormDate`, which now also reads `10-05-2026`, `extractJobTitle`/`JOB_TITLES`, the existing employee-name reader, and reporting's `storeNameKey` for salons (`salon-text.ts`). Dates go through `datesInText` (`form-date-answer.ts`), the same reader the Exit form uses.
-- **Chat:** `template-intent.ts` (aliases, plus change statements such as "Jane is transferring from salon 12 to salon 18"), `proposal.ts` (name positions such as "demote paulyne …"), and `lib/ai/form-proposal.ts` (the prefilled summary, one grouped question, and continuing when a reply contains only details).
+- **Chat:** `template-intent.ts` (aliases, plus change statements such as "Jane is transferring from salon 12 to salon 18"), `proposal.ts` (name positions such as "demote rosalyn …"), and `lib/ai/form-proposal.ts` (the prefilled summary, one grouped question, and continuing when a reply contains only details).
 - **Prefill:** `POST /api/forms/instances/[id]/draft` calls `applyStatedFacts` before the model runs.
 - **Corrections after creation:** `lib/forms/chat-correction.ts`, called from `/api/chat` when the conversation has a created form.
 

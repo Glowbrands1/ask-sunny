@@ -51,7 +51,7 @@ export const SALES_TOTALS_SENDERS_ENV = "SALES_TOTALS_APPROVED_SENDERS";
  * The subject fragment a Sales Totals delivery must carry.
  *
  * An OVERRIDE now, not a requirement. The observed subject is "Sales Totals for
- * Bowen", so the fragment below is the default — the same reasoning the Comp
+ * Tremaine", so the fragment below is the default — the same reasoning the Comp
  * Report's constant carries: which report an endpoint ingests is a property of
  * the parser behind it, not a deployment setting. The variable stays so a
  * deployment can narrow it without a release.
@@ -160,7 +160,7 @@ const compReport: ReportFamily = {
 /**
  * SALES TOTALS — now a complete email path, gated on one variable.
  *
- * THE SUBJECT IS KNOWN ("Sales Totals for Bowen") and has a default. THE SENDER
+ * THE SUBJECT IS KNOWN ("Sales Totals for Tremaine") and has a default. THE SENDER
  * ADDRESS IS STILL CONFIGURATION, and deliberately: an allowlist of exact
  * addresses is the one thing that must be changeable without a release — a test
  * address has to come out again, and a hard-coded default would ship a

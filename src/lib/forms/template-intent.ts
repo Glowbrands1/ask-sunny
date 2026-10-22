@@ -383,11 +383,11 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
 
 /**
  * ============================================================================
- * "DEMOTE PAULYNE FROM MANAGER TO TC" NAMES THE DEMOTION FORM
+ * "DEMOTE ROSALYN FROM MANAGER TO TC" NAMES THE DEMOTION FORM
  * ============================================================================
  *
  * The subject of the change is how managers actually ask for these: "Jane is
- * transferring from salon 12 to salon 18", "demote paulyne ... effective
+ * transferring from salon 12 to salon 18", "demote rosalyn ... effective
  * october 5". Neither says "form", and
  * answering them with a knowledge search is the assistant not listening.
  *
@@ -397,7 +397,7 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
  *
  *   - asks for something to be made (a creation verb: create, make, start,
  *     pull up, fill out, need, do ...), or
- *   - opens with the change as an instruction ("demote paulyne ...",
+ *   - opens with the change as an instruction ("demote rosalyn ...",
  *     "transfer jane ..."), or
  *   - STATES the change with its particulars and is not a question — a
  *     "from ... to", an arrow, an "effective" date, a last day, or a
@@ -770,7 +770,7 @@ const EPP_FAMILY_REQUEST = [
  * THE FORM'S NAME IS THE REQUEST — FOR EVERY FORM, NO VERB REQUIRED
  * ============================================================================
  *
- * "CA for Dana Moss", "Coaching for paulyne co", "Demotion jane smith", "Exit
+ * "CA for Dana Moss", "Coaching for rosalyn co", "Demotion jane smith", "Exit
  * for John Doe", "Transfer for Mary Cruz": a manager who leads with a form's
  * name and then names the person is asking for that form, exactly as "create
  * a …" would. Requested by Operations, 29 September 2026.
@@ -788,7 +788,7 @@ const EPP_FAMILY_REQUEST = [
  *
  *   nothing                  "CA", "coaching", "demotion form"
  *   a separator + details    "CA, she was late today", "Exit: John Doe"
- *   for/about/regarding + a  "Coaching for paulyne co", "Exit for John Doe
+ *   for/about/regarding + a  "Coaching for rosalyn co", "Exit for John Doe
  *   word that can be a name  effective 10/2" — but not "corrective action for
  *                            repeated lateness", which is about a topic
  *   a name, directly         "coaching Dana Moss", "Demotion jane smith" —
@@ -1206,7 +1206,7 @@ function coachingRequest(q: string): "form" | "clarify" | null {
  *   a question mark      with no person named
  *
  * AND WHAT STILL MAKES IT A REQUEST, whatever else it says: somebody it is
- * for ("CA for Paulyne Test", "coaching form for Jane"), or a message that
+ * for ("CA for Rosalyn Test", "coaching form for Jane"), or a message that
  * opens with making one ("create…", "make…", "start…", "open…", "draft…").
  * Shorthand creation therefore keeps working — it names a person — and no
  * request needs a verb.
@@ -1239,7 +1239,7 @@ function requestsCreation(q: string, original: string): boolean {
   const leading = leadingFormRequest(original);
   if (leading && leading.subject.length > 0) return true;
   /*
-   * "…for paulyne test" / "…for Paulyne Test": somebody the form is for — a
+   * "…for rosalyn test" / "…for Rosalyn Test": somebody the form is for — a
    * word after "for" that can be a name (see `couldBeName`), judged the same
    * in any case. "for attendance", "for policy violations" are what a form is
    * ABOUT and are not names.
@@ -1323,7 +1323,7 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   }
 
   /*
-   * THE FORM'S NAME, LEADING THE MESSAGE — "Coaching for paulyne co", "Exit
+   * THE FORM'S NAME, LEADING THE MESSAGE — "Coaching for rosalyn co", "Exit
    * John Doe", "CA". See `leadingFormRequest`.
    */
   const leading = informational ? null : leadingFormRequest(question);

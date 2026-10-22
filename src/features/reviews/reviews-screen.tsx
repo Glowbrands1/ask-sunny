@@ -359,7 +359,7 @@ export function ReviewsScreen({
  * THE DEFAULT VIEW: the month's goal, every salon's progress toward it, then
  * how many reviews are arriving and what ASK Sunny holds.
  *
- * The goal section is what Madeline Patterson asked for: qualifying reviews
+ * The goal section is what Gwen Harlan asked for: qualifying reviews
  * this week and month to date, against ten per salon. The over-time chart, the
  * holdings and the rating breakdown below it are unchanged.
  */

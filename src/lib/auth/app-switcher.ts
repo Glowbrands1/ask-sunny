@@ -5,12 +5,13 @@ import { pageAuthorizationEnforced, pageIdentity } from "./page";
 
 /**
  * Supabase Auth user ids (`auth.users.id` = `app_users.id`, Ask Sunny project)
- * of people who are offered the switcher without being administrators:
- * Colene Schildt (district_manager) and DJ Wade (regional_manager).
+ * of people who are offered the switcher without being administrators: one
+ * District Manager and one Regional Manager, by owner approval. Ids only — the
+ * people are not named in this repository.
  */
 export const APP_SWITCHER_USER_IDS: readonly string[] = [
-  "03a11228-ac36-4d2d-908d-ff2e171b866a", // Colene Schildt
-  "e66addda-5d3d-4afc-b24d-064c6409e83b", // DJ Wade
+  "03a11228-ac36-4d2d-908d-ff2e171b866a", // a District Manager
+  "e66addda-5d3d-4afc-b24d-064c6409e83b", // a Regional Manager
 ];
 
 /**

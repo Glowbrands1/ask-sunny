@@ -8,8 +8,8 @@ import type { AccessScope, ChatMessage } from "@/types";
  * EDITING AN OPEN CORRECTIVE ACTION FORM FROM THE CONVERSATION
  * ============================================================================
  *
- * Production feedback, 20 Oct 2026. With a Corrective Action Form for Ellie
- * Sendgraff open, "can you add late opening policy to the direct policy
+ * Production feedback, 20 Oct 2026. With a Corrective Action Form for Wren
+ * Halvorsen open, "can you add late opening policy to the direct policy
  * section of this from" was answered "No form has been created yet", and the
  * manager was told to create the form again. A manager has to be able to add
  * or swap a policy, change a detail, and answer a question — on the form that
@@ -210,14 +210,14 @@ const said = (content: string): ChatMessage => ({
 const chat = () => new Request("https://app.test/api/chat", { method: "POST" });
 
 /**
- * A verbal warning for Ellie, created in chat. The account says she was late
+ * A verbal warning for Wren, created in chat. The account says she was late
  * rather than naming Late Opening, so the first draft cites Attendance and the
  * Late Opening section is what the conversation then asks to add. (Named in
  * the account, the first draft cites Late Opening by itself — see
  * `DESCRIBED_SECTIONS`.)
  */
 async function createdForm() {
-  const message = said("create corrective action for Ellie Sendgraff, she was late to work today. It is a verbal warning");
+  const message = said("create corrective action for Wren Halvorsen, she was late to work today. It is a verbal warning");
   const response = await proposeFormForTurn({
     history: [],
     question: message.content,
@@ -228,7 +228,7 @@ async function createdForm() {
   });
   const proposal = response!.formProposal!;
   expect(proposal.templateKey).toBe("dpoa");
-  expect(proposal.employeeName).toBe("Ellie Sendgraff");
+  expect(proposal.employeeName).toBe("Wren Halvorsen");
   const result = await createInlineForm({ proposal, messages: [message], call, onCreated: () => {} });
   joinOverview();
   const id = (store.form_instances ?? [])[0]!.id as string;
@@ -243,7 +243,7 @@ beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   state.role = "salon_director";
   state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
-  state.toolValues = { observation: "Observed: Ellie did not open the salon on time.\nExpectation: Open on time.\nGoing Forward: Ellie will open on time." };
+  state.toolValues = { observation: "Observed: Wren did not open the salon on time.\nExpectation: Open on time.\nGoing Forward: Wren will open on time." };
   state.toolChecked = { warning_type: ["verbal"], offense_type: ["tardiness"] };
   state.systems = [];
   state.manualOk = true;
@@ -256,7 +256,7 @@ describe("a policy named in the conversation goes onto the open form", () => {
   it("adds Late Opening to Direct policy, in the manual's own words, as verified", async () => {
     const { id, history } = await createdForm();
     /* The Action Plan Ask Sunny built names what Direct policy cites (District Manager feedback, 21 Oct 2026). */
-    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Attendance policy with Ellie. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Attendance policy with Wren. ${CLOSING}`);
 
     const answer = await changeActiveFormPolicy({
       request: chat(),
@@ -271,12 +271,12 @@ describe("a policy named in the conversation goes onto the open form", () => {
     /* Policy Violated names the section beside its box, as a first draft does (District Manager feedback, 21 Oct 2026). */
     expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early — Late Opening");
     /* The Action Plan follows Direct policy: both sections, in the order cited. */
-    expect(answer?.content).toContain("The Action Plan now says management will review the Attendance and Late Opening policies with Ellie.");
+    expect(answer?.content).toContain("The Action Plan now says management will review the Attendance and Late Opening policies with Wren.");
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Attendance and Late Opening policies with Ellie. ${CLOSING}`,
+      `Management will review the Attendance and Late Opening policies with Wren. ${CLOSING}`,
     );
     const policy = await row(id, "policy_language");
-    expect(policy?.value).toContain("When an employee assigned to open a location");
+    expect(policy?.value).toContain("Synthetic policy wording");
     expect(policy?.value).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
     expect(policy?.filledBy).toBe("ai");
   });
@@ -322,7 +322,7 @@ describe("a policy named in the conversation goes onto the open form", () => {
     expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early");
     expect(answer?.content).toContain("The Action Plan has been updated to match.");
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Tardiness/Leaving Early policy with Ellie. ${CLOSING}`,
+      `Management will review the Tardiness/Leaving Early policy with Wren. ${CLOSING}`,
     );
   });
 
@@ -380,7 +380,7 @@ describe("any other change to the open Corrective Action Form is made in place",
     state.toolValues = {
       policy_language: "Invented policy text.",
       policy_violated: "Something else",
-      action_plan: "Ellie must apologise to the whole team before her next shift.",
+      action_plan: "Wren must apologise to the whole team before her next shift.",
     };
     state.toolChecked = { warning_type: ["written"], offense_type: ["absenteeism"] };
 
@@ -399,7 +399,7 @@ describe("any other change to the open Corrective Action Form is made in place",
     expect((await row(id, "policy_language"))?.value).toBe(before);
     /* The Action Plan is built, not drafted: a revision that did not name it keeps the built plan. */
     expect((await row(id, "action_plan"))?.value).toBe(plan);
-    expect(plan).toBe(`Management will review the Attendance policy with Ellie. ${CLOSING}`);
+    expect(plan).toBe(`Management will review the Attendance policy with Wren. ${CLOSING}`);
     const system = state.systems.at(-1) ?? "";
     expect(system).toContain("Corrective Action Form");
     expect(system).not.toContain("COACHING IS NOT ALWAYS ABOUT A PROBLEM");
@@ -444,7 +444,7 @@ describe("any other change to the open Corrective Action Form is made in place",
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "use the late opening policy instead", history });
     await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "take the late opening policy off the form", history });
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Tardiness/Leaving Early policy with Ellie. ${CLOSING}`,
+      `Management will review the Tardiness/Leaving Early policy with Wren. ${CLOSING}`,
     );
     state.toolValues = {};
     state.toolChecked = { offense_type: ["absenteeism"] };
@@ -457,23 +457,23 @@ describe("any other change to the open Corrective Action Form is made in place",
       today: "2026-10-20",
     });
     expect(answer?.formUpdate?.updated).toEqual(expect.arrayContaining(["offense_type", "policy_violated", "action_plan"]));
-    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Absenteeism policy with Ellie. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Absenteeism policy with Wren. ${CLOSING}`);
   });
 
   it("changes the Action Plan only when the manager names it, and then leaves their wording alone", async () => {
     const { id, history } = await createdForm();
-    state.toolValues = { action_plan: "Ellie will retake the attendance training this week." };
+    state.toolValues = { action_plan: "Wren will retake the attendance training this week." };
     state.toolChecked = {};
 
     const answer = await reviseActiveForm({
       request: chat(),
       instanceId: id,
-      question: "change the action plan to say Ellie will retake the attendance training this week",
+      question: "change the action plan to say Wren will retake the attendance training this week",
       history,
       today: "2026-10-20",
     });
     expect(answer?.formUpdate?.updated).toContain("action_plan");
-    expect((await row(id, "action_plan"))?.value).toBe(`Ellie will retake the attendance training this week. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Wren will retake the attendance training this week. ${CLOSING}`);
 
     /* Asked for in their words, so a later policy or payroll change does not rebuild it. */
     const policy = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
@@ -486,12 +486,12 @@ describe("any other change to the open Corrective Action Form is made in place",
       history,
     });
     expect(payroll?.formUpdate?.updated).toEqual(["payroll_deduct"]);
-    expect((await row(id, "action_plan"))?.value).toBe(`Ellie will retake the attendance training this week. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Wren will retake the attendance training this week. ${CLOSING}`);
   });
 
   it("leaves a plan the manager typed on the form when the policy or payroll changes in chat", async () => {
     const { id, history } = await createdForm();
-    await saveInstanceValues(id, { values: { action_plan: "Ellie and I agreed she will set two alarms." }, checked: {} }, "user-1");
+    await saveInstanceValues(id, { values: { action_plan: "Wren and I agreed she will set two alarms." }, checked: {} }, "user-1");
     expect((await row(id, "action_plan"))?.filledBy).toBe("manager");
 
     const policy = await changeActiveFormPolicy({ request: chat(), instanceId: id, question: "add the late opening policy", history });
@@ -504,7 +504,7 @@ describe("any other change to the open Corrective Action Form is made in place",
       history,
     });
     expect(payroll?.formUpdate?.updated).toEqual(["payroll_deduct"]);
-    expect((await row(id, "action_plan"))?.value).toBe(`Ellie and I agreed she will set two alarms. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Wren and I agreed she will set two alarms. ${CLOSING}`);
   });
 
   it("puts the deduction in the Action Plan when payroll deduct is changed to Yes, and takes it out on No", async () => {
@@ -520,7 +520,7 @@ describe("any other change to the open Corrective Action Form is made in place",
     expect(yes?.formUpdate?.updated).toEqual(["payroll_deduct", "action_plan"]);
     expect(yes?.content).toMatch(/The Action Plan now states the payroll deduction/);
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Attendance policy with Ellie. $3.25 will be deducted from Ellie's pay. ${CLOSING}`,
+      `Management will review the Attendance policy with Wren. $3.25 will be deducted from Wren's pay. ${CLOSING}`,
     );
 
     const no = await correctActiveForm({
@@ -532,12 +532,12 @@ describe("any other change to the open Corrective Action Form is made in place",
     });
     expect(no?.formUpdate?.updated).toEqual(["payroll_deduct", "action_plan"]);
     expect(no?.content).toMatch(/The Action Plan no longer states a payroll deduction/);
-    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Attendance policy with Ellie. ${CLOSING}`);
+    expect((await row(id, "action_plan"))?.value).toBe(`Management will review the Attendance policy with Wren. ${CLOSING}`);
 
     /* Yes again, with no amount this turn: no figure is invented. */
     await correctActiveForm({ request: chat(), instanceId: id, question: "change payroll deduct to yes", today: "2026-10-20", history });
     expect((await row(id, "action_plan"))?.value).toBe(
-      `Management will review the Attendance policy with Ellie. A payroll deduction applies. ${CLOSING}`,
+      `Management will review the Attendance policy with Wren. A payroll deduction applies. ${CLOSING}`,
     );
   });
 
@@ -547,7 +547,7 @@ describe("any other change to the open Corrective Action Form is made in place",
       await reviseActiveForm({
         request: chat(),
         instanceId: id,
-        question: "create a new corrective action for Ellie Sendgraff",
+        question: "create a new corrective action for Wren Halvorsen",
         history,
         today: "2026-10-20",
       }),
@@ -577,7 +577,7 @@ describe("an ordinary answer knows the form is open", () => {
   it("describes the form, its employee and what it says, for the prompt", async () => {
     const { id } = await createdForm();
     const summary = await describeOpenForm(chat(), id);
-    expect(summary).toMatchObject({ templateName: "Corrective Action Form", employeeName: "Ellie Sendgraff", status: "draft" });
+    expect(summary).toMatchObject({ templateName: "Corrective Action Form", employeeName: "Wren Halvorsen", status: "draft" });
     expect(summary!.lines.map((line) => line.label)).toEqual(
       expect.arrayContaining(["Type of Warning", "Direct policy from official manual"]),
     );
@@ -591,9 +591,9 @@ describe("an ordinary answer knows the form is open", () => {
 });
 
 describe("changing to a different form keeps the person the conversation is about", () => {
-  it("carries Ellie Sendgraff into a Coaching Form asked for well after she was named", async () => {
+  it("carries Wren Halvorsen into a Coaching Form asked for well after she was named", async () => {
     const turns = [
-      "create corrective action for Ellie Sendgraff for Late Opening from the policy manual. It is a verbal warning",
+      "create corrective action for Wren Halvorsen for Late Opening from the policy manual. It is a verbal warning",
       "can you add late opening policy to the direct policy section of this form",
       "I have independently verified and the policy is correct",
       "what does the manual say about reimbursing the company?",
@@ -613,7 +613,7 @@ describe("changing to a different form keeps the person the conversation is abou
       today: "2026-10-20",
     });
     expect(response?.formProposal?.templateKey).toBe("coaching");
-    expect(response?.formProposal?.employeeName).toBe("Ellie Sendgraff");
+    expect(response?.formProposal?.employeeName).toBe("Wren Halvorsen");
     expect(response?.content).toContain("from earlier in this conversation");
     expect(response?.content).not.toMatch(/employee's full name/i);
   });

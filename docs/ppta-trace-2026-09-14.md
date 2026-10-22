@@ -131,7 +131,7 @@ them, and keeps the rule that a zero is never ranked on.
    2026-09-12: daily 2.38, MTD 2.12 — precisely what Sunny reported. Ingestion
    is faithful to what the reviewer saw.
 
-## 8. Two data-quality findings for Paulyne — not code defects
+## 8. Two data-quality findings for Rosalyn — not code defects
 
 **8.1 — Two days were never delivered.** The window 2026-09-01 to 2026-09-12
 should hold twelve daily deliveries. It holds ten: **2026-09-05 and 2026-09-08

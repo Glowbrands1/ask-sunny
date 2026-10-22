@@ -342,12 +342,12 @@ describe("11. a name the manager actually gave is used verbatim", () => {
 
 /**
  * ============================================================================
- * "PAULYNE C" IS A NAME
+ * "ROSALYN C" IS A NAME
  * ============================================================================
  *
  * Asked who a Corrective Action Form was for, a manager answered
  *
- *     "Paulyne C she was wearing slippers today and was already given verbal
+ *     "Rosalyn C she was wearing slippers today and was already given verbal
  *      warning on aug 21"
  *
  * and got the identical question back. Every other fact in that sentence was
@@ -363,28 +363,28 @@ describe("11b. a surname given as an initial", () => {
   it.each([
     [
       "the sentence that was answered with the same question",
-      "Paulyne C she was wearing slippers today and was already given verbal warning on aug 21",
-      "Paulyne C",
+      "Rosalyn C she was wearing slippers today and was already given verbal warning on aug 21",
+      "Rosalyn C",
     ],
-    ["with a full stop", "Paulyne C.", "Paulyne C"],
-    ["as the whole answer", "Paulyne C", "Paulyne C"],
-    ["after a preposition", "Corrective action for Paulyne C, she wore slippers", "Paulyne C"],
+    ["with a full stop", "Rosalyn C.", "Rosalyn C"],
+    ["as the whole answer", "Rosalyn C", "Rosalyn C"],
+    ["after a preposition", "Corrective action for Rosalyn C, she wore slippers", "Rosalyn C"],
     ["mid-sentence", "Sarah T was late again today", "Sarah T"],
   ])("%s", (_label, sentence, expected) => {
     expect(extractEmployeeNames(sentence)).toEqual([expected]);
   });
 
   /*
-   * ONE SPELLING PER PERSON. "Paulyne C." matches both the sentence pattern
+   * ONE SPELLING PER PERSON. "Rosalyn C." matches both the sentence pattern
    * and the whole-message one, with and without the stop — two candidates for
    * one person would have been read as ambiguous and asked about.
    */
   it("does not turn one person into two candidates", () => {
-    expect(extractEmployeeNames("Paulyne C.")).toHaveLength(1);
+    expect(extractEmployeeNames("Rosalyn C.")).toHaveLength(1);
   });
 
   it("still reads a real surname as a surname", () => {
-    expect(extractEmployeeNames("Paulyne Camacho was late")).toEqual(["Paulyne Camacho"]);
+    expect(extractEmployeeNames("Rosalyn Calloway was late")).toEqual(["Rosalyn Calloway"]);
   });
 
   /*
@@ -413,24 +413,24 @@ describe("11b. a surname given as an initial", () => {
 
 /**
  * ============================================================================
- * "paulyne co" IS THE SAME ANSWER AS "Paulyne Co"
+ * "rosalyn co" IS THE SAME ANSWER AS "Rosalyn Co"
  * ============================================================================
  *
  * The capital letter was the only evidence a word was a name, so a manager who
- * typed the name in lower case — or asked for a form "for paulyne" — got no
+ * typed the name in lower case — or asked for a form "for rosalyn" — got no
  * employee and therefore no form. Where the sentence itself says a name is
  * being given, the casing no longer decides whether it is read.
  */
 describe("11c. capitalisation does not decide whether a name is read", () => {
   const NAMES = [
-    "Paulyne Co",
-    "paulyne co",
-    "PAULYNE CO",
-    "pAuLyNe Co",
+    "Rosalyn Co",
+    "rosalyn co",
+    "ROSALYN CO",
+    "rOsAlYn Co",
     "test test",
     "Test Test",
-    "paulyne",
-    "PAULYNE",
+    "rosalyn",
+    "ROSALYN",
   ];
 
   it.each(NAMES)("as the whole answer: %s", (name) => {
@@ -451,38 +451,38 @@ describe("11c. capitalisation does not decide whether a name is read", () => {
   });
 
   it("collapses stray spaces rather than treating them as part of the name", () => {
-    expect(extractEmployeeNames("   paulyne    co  ")).toEqual(["paulyne co"]);
-    expect(extractEmployeeNames("coaching form for  paulyne   co")).toEqual(["paulyne co"]);
+    expect(extractEmployeeNames("   rosalyn    co  ")).toEqual(["rosalyn co"]);
+    expect(extractEmployeeNames("coaching form for  rosalyn   co")).toEqual(["rosalyn co"]);
   });
 
   it("reads an answer introduced as who it is for", () => {
-    expect(extractEmployeeNames("for paulyne")).toEqual(["paulyne"]);
-    expect(extractEmployeeNames("it's for paulyne co")).toEqual(["paulyne co"]);
+    expect(extractEmployeeNames("for rosalyn")).toEqual(["rosalyn"]);
+    expect(extractEmployeeNames("it's for rosalyn co")).toEqual(["rosalyn co"]);
   });
 
   it("stops at the sentence that follows the name", () => {
-    expect(extractEmployeeNames("coaching form for paulyne because she was late")).toEqual([
-      "paulyne",
+    expect(extractEmployeeNames("coaching form for rosalyn because she was late")).toEqual([
+      "rosalyn",
     ]);
-    expect(extractEmployeeNames("form for paulyne co she wore slippers today")).toEqual([
-      "paulyne co",
+    expect(extractEmployeeNames("form for rosalyn co she wore slippers today")).toEqual([
+      "rosalyn co",
     ]);
   });
 
   it("keeps a surname followed by a capitalised word, which used to be dropped", () => {
-    expect(extractEmployeeNames("Corrective action for Paulyne Co She wore slippers")).toEqual([
-      "Paulyne Co",
+    expect(extractEmployeeNames("Corrective action for Rosalyn Co She wore slippers")).toEqual([
+      "Rosalyn Co",
     ]);
   });
 
   it("reads the name out of an all-caps request", () => {
-    expect(extractEmployeeNames("CREATE A CORRECTIVE ACTION FORM FOR PAULYNE CO")).toEqual([
-      "PAULYNE CO",
+    expect(extractEmployeeNames("CREATE A CORRECTIVE ACTION FORM FOR ROSALYN CO")).toEqual([
+      "ROSALYN CO",
     ]);
   });
 
   it("is one person however many ways the message spells them", () => {
-    expect(extractEmployeeNames("Form for PAULYNE CO. Paulyne Co was late.")).toHaveLength(1);
+    expect(extractEmployeeNames("Form for ROSALYN CO. Rosalyn Co was late.")).toHaveLength(1);
   });
 
   /*
@@ -506,7 +506,7 @@ describe("11c. capitalisation does not decide whether a name is read", () => {
   it("still finds two different people, whatever the case", () => {
     expect(
       resolveEmployee(
-        managerContext([], { id: "msg-current", content: "coaching form for paulyne and Marco Diaz" }),
+        managerContext([], { id: "msg-current", content: "coaching form for rosalyn and Marco Diaz" }),
       ).kind,
     ).toBe("ambiguous");
   });
@@ -518,7 +518,7 @@ describe("11c. capitalisation does not decide whether a name is read", () => {
  * stays editable on the form.
  */
 describe("11d. a first name alone is enough to create the draft", () => {
-  it.each(["paulyne", "PAULYNE", "Paulyne"])("%s", (name) => {
+  it.each(["rosalyn", "ROSALYN", "Rosalyn"])("%s", (name) => {
     const proposal = propose([], `Create a Corrective Action form for ${name}`);
     expect(proposal.employeeName).toBe(name);
     expect(proposal.status).toBe("ready");
@@ -528,31 +528,31 @@ describe("11d. a first name alone is enough to create the draft", () => {
   it("answers the question 'who is this for?' with a lower-case name", () => {
     const proposal = propose(
       [userTurn("I need a coaching form"), assistantTurn("Who is this form for?")],
-      "paulyne co",
+      "rosalyn co",
     );
-    expect(proposal.employeeName).toBe("paulyne co");
+    expect(proposal.employeeName).toBe("rosalyn co");
     expect(proposal.status).toBe("ready");
   });
 });
 
 /**
- * PUNCTUATION WRAPPED AROUND A NAME IS NOT PART OF IT. "(paulyne)" and
- * "\"paulyne co\"" are the answer "paulyne" / "paulyne co", and the apostrophe
+ * PUNCTUATION WRAPPED AROUND A NAME IS NOT PART OF IT. "(rosalyn)" and
+ * "\"rosalyn co\"" are the answer "rosalyn" / "rosalyn co", and the apostrophe
  * or hyphen INSIDE a real name is left exactly as typed.
  */
 describe("11e. a name wrapped in punctuation is still the name", () => {
   const WRAPPED: [string, string][] = [
-    ["(paulyne)", "paulyne"],
-    ['"paulyne"', "paulyne"],
-    ["'paulyne'", "paulyne"],
-    ["“paulyne”", "paulyne"],
-    ["paulyne,", "paulyne"],
-    ["paulyne.", "paulyne"],
-    ["(paulyne co)", "paulyne co"],
-    ['"paulyne co"', "paulyne co"],
-    ['"PAULYNE CO"', "PAULYNE CO"],
-    ["PAULYNE CO,", "PAULYNE CO"],
-    ["(pAuLyNe Co)", "pAuLyNe Co"],
+    ["(rosalyn)", "rosalyn"],
+    ['"rosalyn"', "rosalyn"],
+    ["'rosalyn'", "rosalyn"],
+    ["“rosalyn”", "rosalyn"],
+    ["rosalyn,", "rosalyn"],
+    ["rosalyn.", "rosalyn"],
+    ["(rosalyn co)", "rosalyn co"],
+    ['"rosalyn co"', "rosalyn co"],
+    ['"ROSALYN CO"', "ROSALYN CO"],
+    ["ROSALYN CO,", "ROSALYN CO"],
+    ["(rOsAlYn Co)", "rOsAlYn Co"],
     ["(test test)", "test test"],
     ['"john smith"', "john smith"],
     ["maria cruz,", "maria cruz"],
@@ -580,7 +580,7 @@ describe("11e. a name wrapped in punctuation is still the name", () => {
   it("still sees two wrapped people as two", () => {
     expect(
       resolveEmployee(
-        managerContext([], { id: "msg-current", content: "coaching form for (paulyne) and Marco Diaz" }),
+        managerContext([], { id: "msg-current", content: "coaching form for (rosalyn) and Marco Diaz" }),
       ).kind,
     ).toBe("ambiguous");
   });
@@ -907,16 +907,16 @@ describe("17. asking order is employee first, then salon", () => {
  * THE NAME GIVEN WITH THE FORM'S NAME, FOR EVERY FORM
  * ============================================================================
  *
- * Production: "create ca for paulyne co she was late today, got verbal warning
+ * Production: "create ca for rosalyn co she was late today, got verbal warning
  * on september 21" selected the Corrective Action Form and read no employee,
  * because "ca" was missing from a hand-written list of form words. The lead
  * words now come from the library's own namings.
  */
 describe("the employee named with the form, across the library", () => {
   it.each([
-    ["create ca for paulyne co she was late today, got verbal warning on september 21", "paulyne co"],
-    ["CA for paulyne co", "paulyne co"],
-    ["CA for paulyne co she was late today", "paulyne co"],
+    ["create ca for rosalyn co she was late today, got verbal warning on september 21", "rosalyn co"],
+    ["CA for rosalyn co", "rosalyn co"],
+    ["CA for rosalyn co she was late today", "rosalyn co"],
     ["ca for Dana Moss", "Dana Moss"],
     ["Coaching for dana moss", "dana moss"],
     ["coaching Dana Moss", "Dana Moss"],
@@ -927,13 +927,13 @@ describe("the employee named with the form, across the library", () => {
     ["Exit for john michael doe effective october 2", "john michael doe"],
     ["Exit John Doe", "John Doe"],
     ["Resignation for John Doe", "John Doe"],
-    ["verbal warning for paulyne co", "paulyne co"],
+    ["verbal warning for rosalyn co", "rosalyn co"],
   ])("%s -> %s", (text, name) => {
     expect(extractEmployeeNames(text)).toEqual([name]);
   });
 
   it("stops the name where the sentence goes on", () => {
-    expect(extractEmployeeNames("coaching for paulyne co wore slippers today")).toEqual(["paulyne co"]);
+    expect(extractEmployeeNames("coaching for rosalyn co wore slippers today")).toEqual(["rosalyn co"]);
     expect(extractEmployeeNames("CA for dana moss late again")).toEqual(["dana moss"]);
   });
 

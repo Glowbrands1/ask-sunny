@@ -4,7 +4,7 @@ Branch: `feature/chat-native-forms-marissa-feedback`
 Started from: `f31aacb`
 Status: **implemented, automated gate green, Preview QA outstanding.**
 
-Three requests from Paulyne's manual Preview review. **No forms behaviour, no
+Three requests from Rosalyn's manual Preview review. **No forms behaviour, no
 Supabase schema change, no migration, no chat-persistence change, nothing
 deployed, nothing merged.** The Knowledge bucket stays private.
 
@@ -20,7 +20,7 @@ There were **two** source surfaces, not one:
    rendering the same material a second time.
 
 Phase 1 touched neither. Removing only the first would have left the request
-half-done, and the rail is the one whose heading Paulyne quoted.
+half-done, and the rail is the one whose heading Rosalyn quoted.
 
 Both are gone. Not collapsed, not behind a "View sources" affordance, not
 reduced to a count badge — each of those would be a smaller version of the thing

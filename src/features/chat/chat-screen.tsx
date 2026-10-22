@@ -352,7 +352,7 @@ export function ChatScreen() {
           formSelection: response.formSelection,
           /*
            * A form already on file that this turn opened — "edit the exit form
-           * for Ashley Rogers", or the new draft of a finalized one — as a card
+           * for Lacey Morrow", or the new draft of a finalized one — as a card
            * on this answer. A pointer, like a created form's.
            */
           formInstanceRef: openedFormReference(response.formOpened),

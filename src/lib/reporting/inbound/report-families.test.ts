@@ -20,12 +20,12 @@ import {
  * families stay SEPARATE: approval for one report must never confer approval
  * for another, and a forged header must never get a file to the wrong parser.
  *
- * `Samuel.Brockie@glowbrands.com` is the real Comp Report sender. Everything
+ * `Elliot.Fairbanks@glowbrands.com` is the real Comp Report sender. Everything
  * else — including every Sales Totals address — is invented, because the real
  * Sales Totals sender is not yet known and is exactly what must not be guessed.
  */
 
-const SAMUEL = "Samuel.Brockie@glowbrands.com";
+const SAMUEL = "Elliot.Fairbanks@glowbrands.com";
 const INVENTED_STC = "stc-reports@invented.test";
 
 beforeEach(() => {
@@ -49,7 +49,7 @@ describe("Sales Totals activation", () => {
   it("is inactive with no allowlist, and says exactly what is missing", () => {
     /*
      * ONE GAP NOW, NOT TWO. The subject line is known — "Sales Totals for
-     * Bowen" — so it has a default, exactly as the Comp Report's fragment is a
+     * Tremaine" — so it has a default, exactly as the Comp Report's fragment is a
      * constant. The SENDER allowlist stays the activation gate: a hard-coded
      * default address would ship a permanent allowlist entry that no
      * deployment could remove without a release.
@@ -83,9 +83,9 @@ describe("Sales Totals activation", () => {
     const family = familyByKey("sales_totals")!;
     // The real forwarding rule's subject, and the variants a mail client makes.
     for (const subject of [
-      "Sales Totals for Bowen",
-      "sales totals for bowen",
-      "FW: Sales  Totals for Bowen",
+      "Sales Totals for Tremaine",
+      "sales totals for tremaine",
+      "FW: Sales  Totals for Tremaine",
     ]) {
       expect(family.admitsSubject(subject), String(subject)).toBe(true);
     }
@@ -97,15 +97,15 @@ describe("Sales Totals activation", () => {
 
   it("lets a deployment narrow the subject without a release", () => {
     const family = familyByKey("sales_totals")!;
-    process.env[SALES_TOTALS_SUBJECT_ENV] = "sales totals for bowen";
-    expect(family.admitsSubject("Sales Totals for Bowen")).toBe(true);
+    process.env[SALES_TOTALS_SUBJECT_ENV] = "sales totals for tremaine";
+    expect(family.admitsSubject("Sales Totals for Tremaine")).toBe(true);
     // Narrower than the default: another recipient's copy no longer matches.
     expect(family.admitsSubject("Sales Totals for Someone Else")).toBe(false);
   });
 
   it("refuses a delivery from an unapproved sender, whatever the subject says", () => {
     // No allowlist configured: the subject now matches, and it changes nothing.
-    const outcome = routeDelivery({ from: INVENTED_STC, subject: "Sales Totals for Bowen" });
+    const outcome = routeDelivery({ from: INVENTED_STC, subject: "Sales Totals for Tremaine" });
     expect(outcome.routed).toBe(false);
     if (!outcome.routed) expect(outcome.code).toBe("no_family_matched_sender");
   });
@@ -128,8 +128,8 @@ describe("Sales Totals activation", () => {
 describe("the Comp Report is unchanged", () => {
   it("still routes from its approved sender and subject", () => {
     const outcome = routeDelivery({
-      from: `Brockie, Samuel <${SAMUEL}>`,
-      subject: "Comp Report 2026 08 30 - Bowen, Curt",
+      from: `Fairbanks, Elliot <${SAMUEL}>`,
+      subject: "Comp Report 2026 08 30 - Tremaine, Owen",
     });
     expect(outcome.routed).toBe(true);
     if (outcome.routed) expect(outcome.family.key).toBe("comp_report");
@@ -162,7 +162,7 @@ describe("approval for one report is not approval for another", () => {
     /*
      * THE WIDENING THIS PREVENTS. Reusing one allowlist for every family would
      * mean anybody cleared for one report could file any report's financials.
-     * Samuel is approved for the Comp Report and for nothing else.
+     * Elliot is approved for the Comp Report and for nothing else.
      */
     activateSalesTotals();
     expect(familyByKey("sales_totals")!.admitsSender(SAMUEL)).toBe(false);

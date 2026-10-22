@@ -79,9 +79,9 @@ describe("storage path", () => {
       grain: "mtd",
       periodEnd: "2026-08-30",
       sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-      originalFilename: "Comp Report 2026 08 30 - Bowen, Curt.xlsx",
+      originalFilename: "Comp Report 2026 08 30 - Tremaine, Owen.xlsx",
     });
-    expect(path).toBe("comp_sales/mtd-2026-08-30/abcdef0123456789/Comp-Report-2026-08-30-Bowen-Curt.xlsx");
+    expect(path).toBe("comp_sales/mtd-2026-08-30/abcdef0123456789/Comp-Report-2026-08-30-Tremaine-Owen.xlsx");
   });
 
   it("cannot be escaped by a crafted file name", () => {

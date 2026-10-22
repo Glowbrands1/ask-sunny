@@ -344,7 +344,7 @@ export function exitFormDocument(): FormDocument {
        * DETAILS — HR'S LABELLED LINES, THEN THE MANAGER'S ACCOUNT
        * ======================================================================
        *
-       * Revision 2, from HR (Colene Schildt, 28 Sep 2026): Details must state
+       * Revision 2, from HR (Delphine Ashworth, 28 Sep 2026): Details must state
        * the resignation date, how and why the employee left, whether store
        * items and the salon key came back (a missing key is a $25 payroll
        * deduction), whether payroll deduction applies, whether they are

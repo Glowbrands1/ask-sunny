@@ -178,12 +178,12 @@ describe("a form request typed into Ask Sunny", () => {
   });
 
   /*
-   * PRODUCTION, 20 OCT 2026: "create ca for Ellie Sendgraff" drafted an empty
+   * PRODUCTION, 20 OCT 2026: "create ca for Wren Halvorsen" drafted an empty
    * form, and its policy line was filled in by hand with no section or page.
    * The form is still offered on a name alone — and the card says why its
    * policy line cannot be cited yet, and how to get it cited.
    */
-  it.each(["create ca for Ellie Sendgraff", "Create a corrective action form for Jane Smith"])(
+  it.each(["create ca for Wren Halvorsen", "Create a corrective action form for Jane Smith"])(
     "%s is offered, with a note that the policy cannot be cited yet",
     async (question) => {
       const { proposals } = await load(LIBRARY());
@@ -201,11 +201,11 @@ describe("a form request typed into Ask Sunny", () => {
 
   it("offers the draft once the manager's reply says what happened, in any words", async () => {
     const { proposals } = await load(LIBRARY());
-    const asked = await proposals.proposeFormForTurn(turn("create ca for Ellie Sendgraff"));
+    const asked = await proposals.proposeFormForTurn(turn("create ca for Wren Halvorsen"));
     const response = await proposals.proposeFormForTurn(
-      turn("Ellie got to the salon at 11:23 for a 9:30 shift on Oct 16", {
+      turn("Wren got to the salon at 11:23 for a 9:30 shift on Oct 16", {
         history: [
-          { id: "m1", role: "user", content: "create ca for Ellie Sendgraff" },
+          { id: "m1", role: "user", content: "create ca for Wren Halvorsen" },
           { id: "m2", role: "assistant", content: asked!.content },
         ] as never,
         continueTemplateKey: "dpoa",

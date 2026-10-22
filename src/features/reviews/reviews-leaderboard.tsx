@@ -37,7 +37,7 @@ import {
  * THE SALON LEADERBOARD — WHO IS CLOSEST TO TEN THIS MONTH
  * ============================================================================
  *
- * Asked for by Madeline Patterson (October 2026): "I want the team to be able
+ * Asked for by Gwen Harlan (October 2026): "I want the team to be able
  * to hop on the leaderboard and see how many each store has gotten to their
  * required 10 reviews/month." So the leaderboard is now a RANKING by qualifying
  * reviews month to date, each salon drawn against the monthly target, with the
