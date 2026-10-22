@@ -138,6 +138,17 @@ const TARGET =
   /\b(?:sales|quota|ppta|upgrades?|conversions?|close rate|closing rate|kpis?|metrics|scorecard|revenue|(?:her|his|their|the) numbers|(?:sales|membership|monthly|weekly) goals?|below (?:goal|target)|(?:hit|hitting|meet|meeting|missed|missing) (?:her|his|their|the) (?:goal|goals|target|targets))\b/;
 
 /**
+ * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
+ * District Manager's 21 Oct report ("not attending the monthly meeting" was
+ * written up under Standards of Conduct). The manual's Attendance section
+ * counts "Seminars/Meetings/ Training sessions" as scheduled shifts, so an
+ * account of missing one reads as Attendance, as if the manager had named it,
+ * and ticks Absenteeism. A policy the manager does name still wins.
+ */
+const MISSED_MEETING =
+  /\b(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?|did\s*n[o']?t\s+(?:attend|go\s+to|show\s+up\s+(?:to|for|at)|come\s+to|make\s+it\s+to)|not\s+attend(?:ing)?|never\s+(?:attended|showed\s+up\s+(?:to|for|at)|came\s+to)|fail(?:ed|ure)?\s+to\s+attend|no[- ]show(?:ed)?\s+(?:to|for|at)|absent\s+from|was\s*n[o']?t\s+at)\s+(?:\S+\s+){0,3}?(?:meetings?|mtgs?|seminars?|webinars?|trainings?|training\s+sessions?|huddles?)\b/;
+
+/**
  * A POLICY NAMED. The Standards of Conduct is a policy's name wherever it
  * appears; the others are also everyday words ("her attendance", "out of dress
  * code"), so they count only as an answer — a short reply, or a sentence that
@@ -185,6 +196,7 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
 
   let stated: CaPolicyName | null = null;
   for (const turn of turns) stated = statedIn(turn) ?? stated;
+  if (stated === null && statements(text).some((sentence) => MISSED_MEETING.test(sentence))) stated = "attendance";
 
   const sentences = statements(text);
   const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
@@ -250,7 +262,7 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       return null;
     case "attendance": {
       const text = normalize(rawText);
-      const absent = ABSENCE.test(text);
+      const absent = ABSENCE.test(text) || MISSED_MEETING.test(text);
       const late = LATENESS.test(text);
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];

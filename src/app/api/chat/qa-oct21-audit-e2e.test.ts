@@ -575,6 +575,27 @@ describe("Issue 2: a request answered with one word drafts the whole form", () =
     expectHrPlan(f.text("action_plan"), /^Management will review the .+ with Sela\.$/, null);
   });
 
+  /*
+   * OWNER DECISION, 22 Oct 2026: a missed monthly meeting is Attendance, not
+   * Standards of Conduct. The manual's Attendance section says
+   * "Seminars/Meetings/ Training sessions" count as scheduled shifts; the
+   * model's Standards of Conduct box is not kept.
+   */
+  it("a missed monthly meeting is cited under Attendance, never Standards of Conduct", async () => {
+    const thread = new Thread();
+    await thread.say(ISSUE_2);
+    state.draft = MEETING_MODEL;
+    const { id } = await thread.create();
+    const f = await form(id);
+    expect(f.ticks("offense_type")).toEqual(["absenteeism"]);
+    expect(f.text("policy_violated")).toMatch(/Attendance|Absenteeism/);
+    expect(f.text("policy_violated")).not.toMatch(/Standards of Conduct/);
+    expect(f.text("policy_language")).toMatch(/Attendance/);
+    expect(f.text("policy_language")).toMatch(/Seminars\/Meetings\/ Training sessions/);
+    expect(f.text("policy_language")).not.toMatch(/Standards of Conduct/);
+    expectHrPlan(f.text("action_plan"), /^Management will review the Attendance policy with Sela\.$/, null);
+  });
+
   it.each([["verbal"], ["Verbal warning"], ["it's a verbal"], ["written warning please"]])(
     'a request with no level, answered "%s", keeps the account and the answer',
     async (reply) => {
