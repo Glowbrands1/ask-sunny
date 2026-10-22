@@ -3,17 +3,17 @@ import { asksAboutForms, detectTemplateIntent, leadingFormRequest } from "./temp
 
 /**
  * ============================================================================
- * "CHANGE EXIT FOR ASHLEY ROGERS" — ASKING FOR A FORM THAT ALREADY EXISTS
+ * "CHANGE EXIT FOR LACEY MORROW" — ASKING FOR A FORM THAT ALREADY EXISTS
  * ============================================================================
  *
  * The reading `chat-reopen.ts` acts on. PURE: no I/O, no identity — what it
  * returns is an intent, and the form it names still has to be found among the
  * forms the actor may see and re-authorized before anything is opened.
  *
- *   EDIT   "change exit for ashley rogers", "duplicate exit for ashley rogers
+ *   EDIT   "change exit for lacey morrow", "duplicate exit for lacey morrow
  *          and change date notice given to 9-27-26", "edit the coaching form
  *          for Dana Moss", "reopen her exit form" — open it to change.
- *   SHOW   "show draft of exit", "show me the exit form for Ashley Rogers" —
+ *   SHOW   "show draft of exit", "show me the exit form for Lacey Morrow" —
  *          put it back in the thread as it is.
  *
  * NEVER A NEW FORM. "Create", "make", "start", "new", "another", "pull up a

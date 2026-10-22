@@ -213,7 +213,7 @@ export interface ModerationInput {
  *
  * THE HANDS ARE STAMPED ON THE TRANSITION THAT EARNED THEM. Moving to
  * `resolved` or `dismissed` records who closed it and when; reopening to
- * `pending` or `in_review` CLEARS both, because a stale "resolved by Paulyne,
+ * `pending` or `in_review` CLEARS both, because a stale "resolved by Rosalyn,
  * 3 September" sitting on an open item is a lie about who is holding it. The
  * note survives reopening — it is the working history, not the closing act.
  *

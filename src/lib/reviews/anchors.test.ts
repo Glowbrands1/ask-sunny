@@ -298,11 +298,11 @@ describe("applyAnchors", () => {
     const rpc = fakeAdmin([{ status: "baseline_set", assignedAbove: 0 }]);
 
     await applyAnchors([{ storeCode: "306", fromNewestHeld: true }], {
-      credentialId: "admin:paulyne@example.test",
+      credentialId: "admin:rosalyn@example.test",
     });
 
     expect(rpc.mock.calls[0][1]).toMatchObject({
-      p_credential_id: "admin:paulyne@example.test",
+      p_credential_id: "admin:rosalyn@example.test",
     });
   });
 

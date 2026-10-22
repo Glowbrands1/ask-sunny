@@ -59,7 +59,7 @@ vi.mock("next/navigation", () => ({
 /** Stands in for `window.location.replace`, which jsdom will not perform. */
 const locationReplace = vi.fn();
 
-const EMAIL = "paulyne.camacho@glowbrands.test";
+const EMAIL = "rosalyn.calloway@glowbrands.test";
 const PASSWORD = "a-correct-horse-battery";
 
 beforeEach(() => {

@@ -140,7 +140,7 @@ comment on column public.app_users.email is
 /*
  * EMAIL IS UNIQUE CASE-INSENSITIVELY.
  *
- * `Curt.Bowen@suntancity.com` and `curt.bowen@suntancity.com` are one person.
+ * `Owen.Tremaine@suntancity.com` and `owen.tremaine@suntancity.com` are one person.
  * A plain unique constraint would admit both and leave two profiles competing
  * to describe the same account, so the index is on `lower(email)` and every
  * lookup lowercases. `citext` would do the same job; an expression index needs
@@ -247,7 +247,7 @@ create trigger app_users_no_self_elevation
 -- IN THE DATABASE, NOT IN A ROUTE, and generic rather than keyed to any
 -- person's address. A check in one API handler protects that handler; a trigger
 -- protects every path, including a future bulk update, a repair script, and the
--- privileged client. Curt is the first administrator but nothing here knows or
+-- privileged client. Owen is the first administrator but nothing here knows or
 -- cares who he is.
 --
 -- "Administrative" means the roles that reach the admin console: admin, owner,

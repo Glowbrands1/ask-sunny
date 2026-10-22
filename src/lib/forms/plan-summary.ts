@@ -89,7 +89,7 @@ export function isReviewedWithEmployee(
  * rows instead of a paragraph; see `objectiveRowOpening`.
  *
  * THE SHORT LISTS ARE PREFERRED OVER THE PROSE, deliberately. "Punctuality"
- * reads as a clause; "Paulyne needs to improve punctuality and consistently
+ * reads as a clause; "Rosalyn needs to improve punctuality and consistently
  * arrive ready to work at her scheduled shift start time" is a sentence, and a
  * sentence inside a sentence is how a summary becomes unreadable. Both are the
  * form's own words either way.
@@ -188,7 +188,7 @@ function markedExpectations(
  *
  * "Punctuality" is a list entry and starts a line; inside "focuses on
  * punctuality" it should not be capitalised. AN ACRONYM AND A NAME ARE LEFT
- * ALONE — "PPTA" and "Paulyne" are capitalised because of what they are, not
+ * ALONE — "PPTA" and "Rosalyn" are capitalised because of what they are, not
  * because of where they sat.
  */
 function asClause(phrase: string, employeeName: string): string {

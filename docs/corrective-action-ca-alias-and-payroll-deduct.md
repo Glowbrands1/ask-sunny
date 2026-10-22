@@ -1,7 +1,7 @@
 # Corrective Action Form — "CA" aliases and "Is payroll deduct applicable?"
 
 **Date:** 29 September 2026
-**Requested by:** Madeline Patterson (Regional Director of Operations), via Paulyne Camacho
+**Requested by:** Gwen Harlan (Regional Director of Operations), via Rosalyn Calloway
 
 ## 1. "CA" opens the Corrective Action Form
 
@@ -73,9 +73,9 @@ A mention elsewhere in a sentence doesn't count.
 `transfer policy` no longer opens the Transfer form: the "transfer <word>" instruction now needs a word that could be a name.
 
 **Names (`proposal.ts`).**
-- The "<form> for <person>" reader uses the same list of form names (`FORM_NAME_PATTERN`). The production failure, `create ca for paulyne co …`, happened because "ca" was missing from the hand-written list this replaces.
+- The "<form> for <person>" reader uses the same list of form names (`FORM_NAME_PATTERN`). The production failure, `create ca for rosalyn co …`, happened because "ca" was missing from the hand-written list this replaces.
 - The words after a leading form name are read as the person: `Exit John Doe`.
-- A third, middle name is kept when the name visibly ends after it: `mary anne cruz to salon 24`, `john michael doe effective october 2`. It's dropped when the sentence carries on: `paulyne co wore slippers`.
+- A third, middle name is kept when the name visibly ends after it: `mary anne cruz to salon 24`, `john michael doe effective october 2`. It's dropped when the sentence carries on: `rosalyn co wore slippers`.
 - Names are kept as typed.
 - The stop-word lists moved to `name-words.ts` so the router and the reader share them.
 

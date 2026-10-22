@@ -100,7 +100,7 @@ async function ask(memory: { memoryOwnerId?: string } = { memoryOwnerId: "user-1
       history: [],
       scopeId: "stc-core",
       conversationId: "conv_current",
-      context: { userName: "Paulyne", locationName: "Salon 0495", todayIso: "2026-10-20" },
+      context: { userName: "Rosalyn", locationName: "Salon 0495", todayIso: "2026-10-20" },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,7 +122,7 @@ describe("what the manager told Sunny before", () => {
       userId: "user-1",
       question: "What should I do about Sarah Test now?",
       conversationId: "conv_current",
-      userName: "Paulyne",
+      userName: "Rosalyn",
     });
   });
 

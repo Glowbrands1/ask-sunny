@@ -2,7 +2,7 @@
  * District corrections applied while a workbook is ingested.
  *
  * The reporting workbook names each salon's district by its manager, and it
- * still lists KS Manhattan (0462) under Patterson, Madeline. Rachael Dugan runs
+ * still lists KS Manhattan (0462) under Patterson, Madeline. Tamsin Pryor runs
  * Manhattan, so every import would write `Patterson, Madeline` back over a
  * corrected `salon_period_attributes.district_label`. This table is applied on
  * the way in so the correction survives the next import.

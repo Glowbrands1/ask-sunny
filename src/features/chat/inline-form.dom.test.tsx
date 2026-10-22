@@ -31,7 +31,7 @@ import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types
 
 vi.mock("@/lib/session/session-context", () => ({
   useSession: () => ({
-    user: { avatarInitials: "PC", name: "Paulyne" },
+    user: { avatarInitials: "PC", name: "Rosalyn" },
     role: "salon_director",
     isAdmin: false,
   }),
@@ -1706,7 +1706,7 @@ describe("a performance plan says what has to happen before it is signed", () =>
         templateVersion: 2,
         templateVersionId: "v2",
         variantKey: template.variants[0]?.key ?? null,
-        employeeName: "Paulyne Co",
+        employeeName: "Rosalyn Co",
         locationId: "loc-0101",
         locationName: "Kearney",
         source: "ask_sunny" as const,
@@ -1724,7 +1724,7 @@ describe("a performance plan says what has to happen before it is signed", () =>
 
   it("tells the manager to review it and leave the signatures blank", () => {
     const notice = reviewConversationNoticeFor(planInstance("sdit-epp"), false);
-    expect(notice).toContain("Review the SDIT EPP with Paulyne Co");
+    expect(notice).toContain("Review the SDIT EPP with Rosalyn Co");
     expect(notice).toMatch(/download the PDF/i);
     expect(notice).toMatch(/leave the signature fields blank/i);
   });
@@ -1749,10 +1749,10 @@ describe("a performance plan says what has to happen before it is signed", () =>
 
     const notice = reviewConversationNoticeFor(loaded, false)!;
     expect(notice).toContain(
-      "The SDIT EPP draft for Paulyne Co focuses on punctuality while continuing to build on client service.",
+      "The SDIT EPP draft for Rosalyn Co focuses on punctuality while continuing to build on client service.",
     );
     expect(notice).toContain("The plan of action: Review clock-in times together each week.");
-    expect(notice).toContain("Review the SDIT EPP with Paulyne Co");
+    expect(notice).toContain("Review the SDIT EPP with Rosalyn Co");
   });
 
   it("says nothing while Sunny is still writing, or once the form is finalized", () => {
@@ -1795,12 +1795,12 @@ describe("a performance plan says what has to happen before it is signed", () =>
 
     const notice = reviewConversationNoticeFor(loaded, false)!;
     expect(notice).toContain(
-      "The TSD EPP draft for Paulyne Co focuses on punctuality while continuing to build on team coaching.",
+      "The TSD EPP draft for Rosalyn Co focuses on punctuality while continuing to build on team coaching.",
     );
     expect(notice).toContain(
       "The plan of action: Coaching and Development: Coach the team on shift-start readiness each week.",
     );
-    expect(notice).toContain("Review the TSD EPP with Paulyne Co");
+    expect(notice).toContain("Review the TSD EPP with Rosalyn Co");
     /* The seven rows nobody supported contribute nothing. */
     expect(notice).not.toContain("Bench");
     expect(notice).not.toContain("District Outreach");

@@ -64,7 +64,7 @@ function printed(blocks: readonly FormBlock[]): string[] {
 }
 
 /**
- * WHAT HR ADDED IN REVISION 2 (Colene Schildt, 28 Sep 2026), and nothing else.
+ * WHAT HR ADDED IN REVISION 2 (Delphine Ashworth, 28 Sep 2026), and nothing else.
  * Every other printed string must still be the Word document's own.
  */
 const HR_ADDED = new Set<string>([

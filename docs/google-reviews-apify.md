@@ -379,7 +379,7 @@ your sign-off before anybody writes it**, which is why nothing here assumes it.
 
 ### Decided, 20 October 2026: count by the date Google says a review was posted
 
-Signed off by Paulyne Camacho, and built in
+Signed off by Rosalyn Calloway, and built in
 `20261020001100_google_review_count_by_posted_date.sql`.
 
 **Why.** The anchor failed silently three ways in October: the anchored review

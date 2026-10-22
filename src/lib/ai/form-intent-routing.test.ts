@@ -96,11 +96,11 @@ const INFORMATIONAL = [
 ];
 
 const CREATION: [string, string][] = [
-  ["CA for Paulyne Test", "dpoa"],
-  ["corrective action for Paulyne Test", "dpoa"],
-  ["coaching for Paulyne Test", "coaching"],
-  ["exit for Paulyne Test", "stc-exit"],
-  ["create a corrective action for Paulyne", "dpoa"],
+  ["CA for Rosalyn Test", "dpoa"],
+  ["corrective action for Rosalyn Test", "dpoa"],
+  ["coaching for Rosalyn Test", "coaching"],
+  ["exit for Rosalyn Test", "stc-exit"],
+  ["create a corrective action for Rosalyn", "dpoa"],
   ["make a coaching form for John", "coaching"],
   ["open an exit form for Sarah", "stc-exit"],
   ["exit for John Smith", "stc-exit"],
@@ -147,8 +147,8 @@ describe("library questions still answer from the library", () => {
  * CAPITALS ARE NEVER EVIDENCE
  * ============================================================================
  *
- * Managers type in lower case. "ca for paulyne test" means exactly what "CA
- * for Paulyne Test" means, and "difference between CA and coaching" is a
+ * Managers type in lower case. "ca for rosalyn test" means exactly what "CA
+ * for Rosalyn Test" means, and "difference between CA and coaching" is a
  * question in any case. Every phrasing below is routed in its typed form and
  * in lower case, UPPER case, Title Case and a mixed variant; all must agree —
  * on the intent, on whether a form opens, which one, and who it is for.
@@ -171,12 +171,12 @@ async function reading(question: string) {
 
 describe("lower-case, upper-case and mixed-case input route identically", () => {
   it.each([
-    ["CA for Paulyne Test", "dpoa"],
-    ["ca for paulyne test", "dpoa"],
-    ["corrective action for paulyne test", "dpoa"],
-    ["coaching for paulyne test", "coaching"],
-    ["exit for paulyne test", "stc-exit"],
-    ["coaching paulyne test", "coaching"],
+    ["CA for Rosalyn Test", "dpoa"],
+    ["ca for rosalyn test", "dpoa"],
+    ["corrective action for rosalyn test", "dpoa"],
+    ["coaching for rosalyn test", "coaching"],
+    ["exit for rosalyn test", "stc-exit"],
+    ["coaching rosalyn test", "coaching"],
     ["coaching form for jane", "coaching"],
   ])("creation: %s → %s, with the employee recognised, in every case", async (question, key) => {
     const expected = await reading(question);

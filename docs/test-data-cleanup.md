@@ -1,6 +1,6 @@
 # Removing the test records from the Overview queue
 
-**For Paulyne.** This is a production data action, so nothing here was done for
+**For Rosalyn.** This is a production data action, so nothing here was done for
 you. It is written so it can be carried out without re-deriving any of it.
 
 ## 1. What the review saw
@@ -25,10 +25,10 @@ Sixteen outstanding follow-ups — the "16" the review counted. By origin:
 | Janine Test ×2 | *(none)* | *(none)* | 2026-09-09 | **Yes** |
 | Sara Test | *(none)* | *(none)* | 2026-09-09 | **Yes** |
 | Sarah Test | *(none)* | *(none)* | 2026-09-10 | **Yes** |
-| Paulyne Test ×3 | *(none)* | *(none)* | 2026-09-09 … 09-11 | **Yes** |
+| Rosalyn Test ×3 | *(none)* | *(none)* | 2026-09-09 … 09-11 | **Yes** |
 | Sarah | *(none)* | *(none)* | 2026-09-16 | **Yes** |
-| Paulyne Co ×3 | *(none)* | *(none)* | 2026-09-17 … 09-23 | **Yes** |
-| For Paulyne Co | *(none)* | `loc-0306` | 2026-09-18 | **Yes** — real salon |
+| Rosalyn Co ×3 | *(none)* | *(none)* | 2026-09-17 … 09-23 | **Yes** |
+| For Rosalyn Co | *(none)* | `loc-0306` | 2026-09-18 | **Yes** — real salon |
 
 **Three of the sixteen are filtered structurally.** The rest carry no salon at
 all, and a record with no salon cannot be judged by a roster — which is correct
@@ -69,20 +69,20 @@ are the only ones classified as test data without judgement:
 | 2 | Janine Test | Coaching | 2026-09-09 | `e6bbe2ad-c654-454d-9a5b-3a272127575e` |
 | 3 | Janine Test | Coaching | 2026-09-09 | `5c78edd3-65b7-45cb-92a6-e8feb0ebd328` |
 | 4 | Sara Test | Coaching | 2026-09-09 | `594c89aa-d923-423f-99dd-fd69882ab20e` |
-| 5 | Paulyne Test | Coaching | 2026-09-09 | `0d8e223a-5f8b-4a75-9aae-458d7311e18e` |
-| 6 | Paulyne Test | Coaching | 2026-09-09 | `c40443e9-cdfb-4ff3-8a9d-0f673a9a6e36` |
+| 5 | Rosalyn Test | Coaching | 2026-09-09 | `0d8e223a-5f8b-4a75-9aae-458d7311e18e` |
+| 6 | Rosalyn Test | Coaching | 2026-09-09 | `c40443e9-cdfb-4ff3-8a9d-0f673a9a6e36` |
 | 7 | Sarah Test | Coaching | 2026-09-10 | `055a1aad-5d9a-485b-94d9-e705ce253dce` |
-| 8 | Paulyne Test | Corrective Action | 2026-09-11 | `74fd108f-6cb8-4054-b7dd-45f378c3d725` |
+| 8 | Rosalyn Test | Corrective Action | 2026-09-11 | `74fd108f-6cb8-4054-b7dd-45f378c3d725` |
 
 ### Do NOT archive these without deciding first
 
 | Employee | Form | Follow-up | Why it needs judgement |
 |---|---|---|---|
 | Sarah | Coaching | 2026-09-16 | No "Test" in the name. Could be a real person. |
-| Paulyne Co | Coaching | 2026-09-17 | Looks like your own account doing real work |
-| Paulyne Co | Corrective Action | 2026-09-18 | As above |
-| Paulyne Co | Corrective Action | 2026-09-23 | As above |
-| For Paulyne Co | Corrective Action | 2026-09-18 | **Filed against MO Kansas City Wornall, a real salon** |
+| Rosalyn Co | Coaching | 2026-09-17 | Looks like your own account doing real work |
+| Rosalyn Co | Corrective Action | 2026-09-18 | As above |
+| Rosalyn Co | Corrective Action | 2026-09-23 | As above |
+| For Rosalyn Co | Corrective Action | 2026-09-18 | **Filed against MO Kansas City Wornall, a real salon** |
 | Joe | Coaching | 2026-09-09 | Already filtered (Maple Crossing), but the person may be real |
 
 Jordan Vance (test) and suzy sunshine are already filtered structurally. Leave
@@ -110,7 +110,7 @@ document keeps its immutability. See `archiveInstance` in `lib/forms/instances.t
 case- and whitespace-insensitively. **Empty by default**, so it excludes nothing
 until you set it.
 
-    ASK_SUNNY_EXCLUDED_EMPLOYEE_NAMES=Ace Test,Janine Test,Sara Test,Sarah Test,Paulyne Test
+    ASK_SUNNY_EXCLUDED_EMPLOYEE_NAMES=Ace Test,Janine Test,Sara Test,Sarah Test,Rosalyn Test
 
 **Effect:** those records stop reaching the Overview queue and stay in Form
 Monitoring.

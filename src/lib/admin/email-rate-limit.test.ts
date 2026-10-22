@@ -41,8 +41,8 @@ function rateLimitError() {
 /** An active account, for the recovery path to find. */
 const EXISTING_ROW = {
   id: "22222222-2222-4222-8222-222222222222",
-  email: "marissa.lempka@glowbrands.com",
-  display_name: "Marissa Lempka",
+  email: "celeste.ostrander@glowbrands.com",
+  display_name: "Celeste Ostrander",
   role: "admin",
   status: "active",
   scope_level: "global",
@@ -139,8 +139,8 @@ const ACTOR = { id: "actor-1", email: "admin@glowbrands.com", role: "admin" as n
 
 function invitation() {
   return {
-    email: "curt.bowen@suntancity.com",
-    displayName: "Curt Bowen",
+    email: "owen.tremaine@suntancity.com",
+    displayName: "Owen Tremaine",
     role: "admin",
     scope: { level: "global" },
     redirectTo: "https://example.test/auth/accept",
@@ -207,7 +207,7 @@ describe("inviting when the email allowance is spent", () => {
     const { directory } = await loadDirectory({ sendError: rateLimitError() });
     const error = await directory.inviteUser(invitation(), ACTOR).catch((e: unknown) => e);
 
-    expect((error as Error).message).not.toContain("curt.bowen@suntancity.com");
+    expect((error as Error).message).not.toContain("owen.tremaine@suntancity.com");
   });
 
   it("recognises the refusal by status alone if the code ever changes", async () => {

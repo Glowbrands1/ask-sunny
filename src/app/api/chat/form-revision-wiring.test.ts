@@ -50,7 +50,7 @@ async function load(revision: unknown, policyChange: unknown = null) {
   vi.doMock("@/lib/forms/open-form-summary", () => ({
     describeOpenForm: async (_request: Request, id: string) => ({
       templateName: "Corrective Action Form",
-      employeeName: "Ellie Sendgraff",
+      employeeName: "Wren Halvorsen",
       status: "draft",
       lines: [],
       unverifiedPolicy: [],
@@ -171,7 +171,7 @@ describe("a policy named for the open form", () => {
     const { route, seen } = await load(
       { content: "should not be used" },
       {
-        content: "Updated Direct policy from official manual on the **Corrective Action Form** for **Ellie Sendgraff**.",
+        content: "Updated Direct policy from official manual on the **Corrective Action Form** for **Wren Halvorsen**.",
         citations: [],
         coverage: "not_applicable",
         recommendedVideoIds: [],

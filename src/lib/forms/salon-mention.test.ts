@@ -29,8 +29,8 @@ describe("a salon the manager names", () => {
     ["late at Lincoln O. Street this morning", ["loc-0311"]],
     ["late at Omaha 144th & Center", ["loc-0314"]],
     // Name, role, salon — production QA, 20 October 2026.
-    ["Brandi Algya ASD Lincoln O St. Properly uploading documentation", ["loc-0311"]],
-    ["Brandi Algya SD Pine Lake", ["loc-0312"]],
+    ["Corinne Valdez ASD Lincoln O St. Properly uploading documentation", ["loc-0311"]],
+    ["Corinne Valdez SD Pine Lake", ["loc-0312"]],
   ])("reads %s", (text, ids) => {
     expect(named(text)).toEqual(ids);
   });
@@ -141,7 +141,7 @@ describe("a salon set off by punctuation", () => {
     ["Avery Testperson, lincoln 27th st", ["loc-0310"]],
     ["Avery Testperson (Overland Park)", ["loc-0476"]],
     ["she works at kearney, needs a coaching form", ["loc-0309"]],
-    ["coaching form: Brandi Algya, ASD, Lincoln O St", ["loc-0311"]],
+    ["coaching form: Corinne Valdez, ASD, Lincoln O St", ["loc-0311"]],
   ])("reads %s", (text, ids) => {
     expect(named(text)).toEqual(ids);
   });

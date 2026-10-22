@@ -1,10 +1,10 @@
-# PPTA in the knowledge base — what conflicts, and what Paulyne must change
+# PPTA in the knowledge base — what conflicts, and what Rosalyn must change
 
 The review's finding: *"The employee framework calls it Product Productivity
 Average and directs Sunny to verify the formula elsewhere."*
 
 Every indexed chunk mentioning PPTA was searched. This records exactly what was
-found, what the app now does about it, and the one thing only Paulyne can do.
+found, what the app now does about it, and the one thing only Rosalyn can do.
 
 ## 1. The authoritative definition
 
@@ -88,7 +88,7 @@ even when the answer comes mostly from a document. The rules now:
 
 Pinned by `report-briefing.test.ts`.
 
-## 5. What only Paulyne can do
+## 5. What only Rosalyn can do
 
 The documents live in `knowledge_documents` / `knowledge_chunks` in Supabase.
 They are uploaded artifacts; there is **no editable source in this repository**,

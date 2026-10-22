@@ -14,7 +14,7 @@ import { readReopenRequest } from "./reopen-request";
 
 /**
  * ============================================================================
- * "CHANGE EXIT FOR ASHLEY ROGERS" — A FORM ON FILE, BROUGHT BACK INTO CHAT
+ * "CHANGE EXIT FOR LACEY MORROW" — A FORM ON FILE, BROUGHT BACK INTO CHAT
  * ============================================================================
  *
  * Production feedback: a manager asked to change, then to duplicate, an exit
@@ -37,7 +37,7 @@ import { readReopenRequest } from "./reopen-request";
  * `visibleInstances`, exactly as Form Monitoring lists them — and then
  * re-authorized for "edit" before anything is opened.
  *
- * NOTHING NEW IS EVER CREATED HERE. "Create an exit form for Ashley Rogers"
+ * NOTHING NEW IS EVER CREATED HERE. "Create an exit form for Lacey Morrow"
  * is not read as a reopen request; it still proposes a new form.
  */
 export async function reopenRequestedForm(input: {
@@ -160,7 +160,7 @@ function toTarget(row: Pick<InstanceRow, "id" | "templateName" | "employeeName">
   return { id: row.id, templateName: row.templateName, employeeName: row.employeeName };
 }
 
-/** "ashley rogers exit form": the employee's whole name, as words, in any case. */
+/** "lacey morrow exit form": the employee's whole name, as words, in any case. */
 function mentionsFullName(question: string, employee: string): boolean {
   const words = employee.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length < 2) return false;

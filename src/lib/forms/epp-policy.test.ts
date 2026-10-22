@@ -146,7 +146,7 @@ describe("the topic comes from what the manager actually reported", () => {
 
 describe("a topic resolves to the section the JBA manual actually prints", () => {
   it("sends punctuality to Attendance, Time Records and Late Opening", () => {
-    expect(headings("Paulyne needs to improve her punctuality")).toEqual([
+    expect(headings("Rosalyn needs to improve her punctuality")).toEqual([
       "Attendance",
       "Time Records",
       "Late Opening",

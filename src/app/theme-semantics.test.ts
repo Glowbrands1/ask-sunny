@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
  *
  * The approved palette was signed off on the condition that colours correlate
  * with categories and states across the app, rather than being applied for
- * decoration. Curt's example was explicit: the pink on "4 follow-ups need
+ * decoration. Owen's example was explicit: the pink on "4 follow-ups need
  * attention" should mean that same thing everywhere it appears.
  *
  * A convention like that decays quietly. Somebody needs a card to stand out,

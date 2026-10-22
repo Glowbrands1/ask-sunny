@@ -29,7 +29,7 @@ import type { AuthenticatedSession } from "./authenticated-user";
 
 const scope: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
 
-const CURT: AuthenticatedSession = {
+const OWEN: AuthenticatedSession = {
   subject: "11111111-1111-4111-8111-111111111111",
   email: "an.admin@suntancity.test",
   displayName: "An Admin",
@@ -150,14 +150,14 @@ describe("a real session", () => {
      * and a shell that rendered as a stranger and then corrected itself would
      * be visible on every page load.
      */
-    renderReal(CURT);
+    renderReal(OWEN);
     expect(value("signed-in")).toBe("true");
     expect(value("hydrated")).toBe("true");
     expect(value("authenticated")).toBe("true");
   });
 
   it("takes the role, name and email from the server's identity", () => {
-    renderReal(CURT);
+    renderReal(OWEN);
     expect(value("role")).toBe("admin");
     expect(value("name")).toBe("An Admin");
     expect(value("email")).toBe("an.admin@suntancity.test");
@@ -196,7 +196,7 @@ describe("the demo role controls are unreachable", () => {
      * appears to work; a throw is a bug report. The UI does not render either
      * control in real mode, so reaching one means something is wrong.
      */
-    renderReal(CURT);
+    renderReal(OWEN);
     fireEvent.click(screen.getByText("switch role"));
 
     expect(value("outcome")).toMatch(
@@ -207,7 +207,7 @@ describe("the demo role controls are unreachable", () => {
   });
 
   it("THROWS when something tries a demo sign-in", () => {
-    renderReal(CURT);
+    renderReal(OWEN);
     fireEvent.click(screen.getByText("demo sign in"));
 
     expect(value("outcome")).toMatch(

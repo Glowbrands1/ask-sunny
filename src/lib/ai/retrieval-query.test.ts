@@ -52,7 +52,7 @@ const sunny = (content: string) => ({ role: "assistant", content });
 
 const OPEN_CA: OpenFormSummary = {
   templateName: "Corrective Action Form",
-  employeeName: "Ellie Sendgraff",
+  employeeName: "Wren Halvorsen",
   status: "draft",
   lines: [
     { label: "Type of Warning", value: "Verbal Warning" },

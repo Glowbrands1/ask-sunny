@@ -1202,7 +1202,7 @@ describe("an instance pinned to the older published version", () => {
  * answers, and NOTHING appears when it does not.
  */
 describe("the official policy manual, pinned", () => {
-  const NOTES = "Paulyne was wearing slippers on shift today.";
+  const NOTES = "Rosalyn was wearing slippers on shift today.";
 
   /**
    * The real manual's shape: the heading opens the sheet, the extractor kept it
@@ -1251,7 +1251,7 @@ describe("the official policy manual, pinned", () => {
     state.policyHits = [];
     state.policyManual = MANUAL;
     state.toolInput = {
-      values: { observation: "Observed: Paulyne wore slippers on shift." },
+      values: { observation: "Observed: Rosalyn wore slippers on shift." },
       checked: { offense_type: ["dress_code"], warning_type: ["verbal"] },
     };
   });
@@ -1352,7 +1352,7 @@ describe("the official policy manual, pinned", () => {
       checked: { offense_type: ["tardiness"] },
     };
 
-    await post("Paulyne was twenty minutes late today.");
+    await post("Rosalyn was twenty minutes late today.");
 
     expect(state.persisted[0]!.values.policy_language).toBe(
       "It is the responsibility of each employee to know his or her work schedule\n\nSource: JBA Policy Manual — Attendance, p. 14",
@@ -1449,7 +1449,7 @@ describe("the official policy manual, pinned", () => {
     state.toolInput = {
       values: {
         observation:
-          "Observed: Paulyne wore slippers on shift, which is not in compliance with the dress code policy.",
+          "Observed: Rosalyn wore slippers on shift, which is not in compliance with the dress code policy.",
       },
       checked: { offense_type: ["dress_code"] },
     };
@@ -1641,10 +1641,10 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   const CITED = `${SOC_OPENING}\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12`;
 
-  /** What the model ticked for Colene in Production. */
+  /** What the model ticked for Delphine in Production. */
   const PRODUCTION_TICKS = {
     values: {
-      observation: "Observed:\nColene did not meet the Woven deadline.",
+      observation: "Observed:\nDelphine did not meet the Woven deadline.",
       other_offense: "Failure to complete required task — Woven deadline not met",
     },
     checked: { offense_type: ["under_performance"], warning_type: ["verbal"] },
@@ -1658,8 +1658,8 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   });
 
   it.each([
-    "Create a corrective action for Colene for missing the Woven deadline.",
-    "write a corrective action for colene schildt, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
+    "Create a corrective action for Delphine for missing the Woven deadline.",
+    "write a corrective action for delphine ashworth, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.",
   ])("cites the Standards of Conduct from the current manual for: %s", async (notes) => {
     const payload = await post(notes);
     const stored = state.persisted[0]!;
@@ -1682,7 +1682,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   });
 
   it("rests a direction not followed on the manual's insubordination line", async () => {
-    const payload = await post("Colene was told to restock the lotion wall before close and refused.");
+    const payload = await post("Delphine was told to restock the lotion wall before close and refused.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
     expect(state.persisted[0]!.values.policy_language).toBe(CITED);
     expect(payload.caPolicy).toMatchObject({
@@ -1693,7 +1693,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   it("keeps every other box the model ticked", async () => {
     state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["dress_code", "under_performance"] } };
-    await post("Colene missed the Woven deadline and wore flip flops on shift.");
+    await post("Delphine missed the Woven deadline and wore flip flops on shift.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct", "dress_code"]);
   });
 
@@ -1701,7 +1701,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   it("does not tick it when the manual's section lists no such infraction", async () => {
     state.policyManual = SECTION_WITHOUT_INFRACTIONS;
-    const payload = await post("Create a corrective action for Colene for missing the Woven deadline.");
+    const payload = await post("Create a corrective action for Delphine for missing the Woven deadline.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(payload.withheld).toContain("policy_language");
@@ -1710,7 +1710,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   it("does not tick it when there is no manual to check", async () => {
     state.policyManual = { ok: false, reason: "not indexed" };
-    const payload = await post("Create a corrective action for Colene for missing the Woven deadline.");
+    const payload = await post("Create a corrective action for Delphine for missing the Woven deadline.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_manual" });
@@ -1718,7 +1718,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   it("does not tick it when the section is not in the manual at all", async () => {
     state.policyManual = { ...PRODUCTION_MANUAL, chunks: [PRODUCTION_MANUAL.chunks[2]] };
-    const payload = await post("Create a corrective action for Colene for missing the Woven deadline.");
+    const payload = await post("Create a corrective action for Delphine for missing the Woven deadline.");
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_section" });
   });
@@ -1727,7 +1727,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   it("chooses nothing when the account also reads as attendance, and says so", async () => {
     state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["tardiness"] } };
-    const payload = await post("Colene came in late and didn't finish her opening tasks.");
+    const payload = await post("Delphine came in late and didn't finish her opening tasks.");
     /* The model's pick is a guess the manager was asked about: it is not ticked (QA, 22 Oct 2026). */
     expect(state.persisted[0]!.checked.offense_type ?? []).toEqual([]);
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
@@ -1747,7 +1747,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
     // Named outright: the section is quoted for them even where it lists no matching line.
     state.policyManual = SECTION_WITHOUT_INFRACTIONS;
     const payload = await post(
-      "Create a corrective action for Colene for missing the Woven deadline.\n\nthe policy violated is the standards of conduct",
+      "Create a corrective action for Delphine for missing the Woven deadline.\n\nthe policy violated is the standards of conduct",
     );
     expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
     expect(state.persisted[0]!.values.policy_language).toBe(
@@ -1769,7 +1769,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   it("ticks a different policy the manager named over the model's choice", async () => {
     state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["standards_of_conduct"] } };
     const payload = await post(
-      "Create a corrective action for Colene because she came in late and didn't finish her opening tasks.\n\nstandards of conduct\n\nactually use attendance",
+      "Create a corrective action for Delphine because she came in late and didn't finish her opening tasks.\n\nstandards of conduct\n\nactually use attendance",
     );
     expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
     expect(state.persisted[0]!.values.policy_violated).toBe("Tardiness/Leaving Early");
@@ -1782,7 +1782,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   it("ticks a named policy with no section, and leaves Direct policy blank rather than inventing one", async () => {
     state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["standards_of_conduct"] } };
     const payload = await post(
-      "Create a corrective action for Colene for missing the Woven deadline.\n\nit's under performance",
+      "Create a corrective action for Delphine for missing the Woven deadline.\n\nit's under performance",
     );
     expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
@@ -1792,7 +1792,7 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
 
   it("leaves a case it does not recognise to the model, as before", async () => {
     state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["dress_code"] } };
-    const payload = await post("Colene wore slippers on shift today.");
+    const payload = await post("Delphine wore slippers on shift today.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["dress_code"]);
     expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_suggestion" });
   });

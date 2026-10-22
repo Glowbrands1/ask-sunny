@@ -60,7 +60,7 @@ export type NameMatch =
  *
  * CONSERVATIVE BY CONSTRUCTION. A row is left out only when EVERY word of its
  * name is a word for a department, a role or a system — so "Risk Management"
- * goes and "Kim Keller" cannot, and neither can a real person with one such
+ * goes and "Kim Ferrante" cannot, and neither can a real person with one such
  * word in their name ("Hope Office" keeps "Hope"). Nothing is written to the
  * directory; the row is simply never a name suggestion on a form.
  */
