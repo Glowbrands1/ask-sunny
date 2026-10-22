@@ -89,6 +89,53 @@ describe("ordinary prose is not a salon", () => {
   });
 });
 
+/*
+ * QA F-05, 22 Oct 2026: a bare number after "at" filed a salon nobody named.
+ * Times, prices, quantities and dates are never salons; a location word or the
+ * zero-padded salon number is what makes a number a salon.
+ */
+describe("a number is a salon only when something says so", () => {
+  it.each([
+    // Times.
+    "she got here at 410 today",
+    "she stayed at 410 for an hour",
+    "she clocked in at 4:10",
+    "she showed up at 410pm",
+    "she came in at 410 p.m.",
+    "we met at 409 for lunch",
+    // Prices and quantities.
+    "she sold a package at 140",
+    "rang up a sale at 231 dollars",
+    "she sold it at $231",
+    "she was 140 minutes late",
+    "for 410 minutes",
+    // Dates.
+    "she was late on 10/15",
+    "she was late at 10/15 opening",
+    // A bare Google store code after "at": a price as often as a salon.
+    "she was at 373 yesterday",
+  ])("%s", (text) => {
+    expect(named(text)).toEqual([]);
+  });
+
+  it.each([
+    ["she works at salon 0410", ["loc-0410"]],
+    ["salon 410", ["loc-0410"]],
+    ["store #0410", ["loc-0410"]],
+    ["#0410", ["loc-0410"]],
+    ["location 0306", ["loc-0306"]],
+    ["she works at 0307", ["loc-0307"]],
+    ["she was late at store 373", ["loc-0476"]],
+  ])("reads %s", (text, ids) => {
+    expect(named(text)).toEqual(ids);
+  });
+
+  it("keeps the 306/307/314 rule: a number that names two salons names neither", () => {
+    expect(named("store 306")).toEqual([]);
+    expect(named("salon 314")).toEqual([]);
+  });
+});
+
 describe("a salon set off by punctuation", () => {
   it.each([
     ["Avery Testperson, lincoln 27th st", ["loc-0310"]],
