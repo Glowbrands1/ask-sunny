@@ -215,13 +215,22 @@ const CITY_PATTERNS: readonly { pattern: RegExp; salonIds: readonly string[] }[]
   });
 
 /**
- * `store 373`, `salon #0306`, `#0306`, and a bare `at 0306` / `at 373`. Read
- * through `salonForTypedNumber`: a zero-padded number is a salon number, a
+ * `store 373`, `salon #0306`, `#0306`, and a bare `at 0306`. Read through
+ * `salonForTypedNumber`: a zero-padded number is a salon number, a
  * three-digit one is a salon number OR a Google store code and counts only
  * when the two readings do not disagree ("306" names two salons, so none).
+ *
+ * A NUMBER IS A SALON ONLY WHEN SOMETHING SAYS SO (QA F-05, 22 Oct 2026). A
+ * bare "at <number>" used to be read as a salon unless a clock word came
+ * first, so "she got here at 410 today", "she sold a package at 140" (Google
+ * code 140 → Wornall), "rang up a sale at 231 dollars" and "we met at 409 for
+ * lunch" each filed a salon nobody named. A time, a price, a quantity or a
+ * date is far more often what follows "at" than a salon. Now a number counts
+ * only with a location word ("salon 410", "store #373", "location 0306", "#0410")
+ * or, after "at", only in the zero-padded form salons print ("at 0306").
  */
 const SALON_NUMBER = /(?:\b(?:salon|store|location)\s*#?\s*|#\s*)(\d{3,4})\b/gi;
-const AT_NUMBER = /\bat\s+(\d{3,4})\b(?!\s*(?::|\.\d|am\b|pm\b|a\.m|p\.m|o['’]?clock))/gi;
+const AT_NUMBER = /\bat\s+(0\d{3})\b(?!\s*(?::|\.\d|am\b|pm\b|a\.m|p\.m|o['’]?clock))/gi;
 /*
  * "SHE WAS LATE AT 310" IS A TIME. A bare number after "at" is a salon only
  * where the words before it are not about a clock: arriving, leaving, a shift.

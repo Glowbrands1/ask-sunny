@@ -229,7 +229,8 @@ describe("4. salon and store numbers", () => {
   it.each([
     // Google store code 373 is KS Overland Park; there is no salon 0373.
     ["coaching form for Jane Doe store 373", "loc-0476"],
-    ["coaching form for Jane Doe at 373", "loc-0476"],
+    // QA F-05 (22 Oct): a bare number after "at" is not a salon (a price or time as often as a store code); "store 373" above still is.
+    ["coaching form for Jane Doe at 373", null],
     // No store code 462; salon 0462 is KS Manhattan.
     ["coaching form for Jane Doe at store 462", "loc-0462"],
     // Zero-padded is a salon number, whatever store code shares the digits.
