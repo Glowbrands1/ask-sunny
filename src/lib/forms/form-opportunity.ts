@@ -211,17 +211,24 @@ export function detectFormOpportunity(input: {
  * plan to lead with, and coaching leads: it is the first documented rung and
  * the form most of these conversations end in.
  *
- * THE CORRECTIVE FORM IS LAST, ALWAYS, and only where the manager raised a
- * formal step themselves. Offering it first to somebody describing lateness
- * would be the product suggesting a warning, which is exactly the substitution
- * §7 of the framework refuses.
+ * THE CORRECTIVE FORM IS LAST, and only where the manager raised a formal step
+ * themselves. Offering it first to somebody describing lateness would be the
+ * product suggesting a warning, which is exactly the substitution §7 of the
+ * framework refuses.
+ *
+ * UNLESS THEY ASKED FOR IT. A manager who wrote "write a CA for Paisley" or
+ * "I need it to be a corrective action form" has made the decision; leading
+ * with the Coaching Form is the same substitution in the other direction.
  */
 export function suggestedTemplateKeys(input: {
   readonly opportunity: FormOpportunity;
   /** The plan the stated role names, from `eppTemplateForRole`. */
   readonly rolePlanKey: string | null;
+  /** The manager's own turns asked for a Corrective Action Form. */
+  readonly correctiveActionRequested?: boolean;
 }): string[] {
   const keys: string[] = [];
+  if (input.correctiveActionRequested) keys.push("dpoa");
   if (input.rolePlanKey) keys.push(input.rolePlanKey);
   keys.push("coaching");
   if (input.opportunity.kind === "formal") keys.push("dpoa");

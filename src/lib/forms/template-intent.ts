@@ -621,6 +621,17 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
+  /*
+   * "write a CA for Paisley" was read as a question about the progression and
+   * the manager was told to rephrase (October 2026; ported from Ask Bubbles
+   * 4cbb84c, which took it from an Ask Sunny branch that never merged). "How
+   * do I write a CA?" is still a question: it is ruled informational first.
+   */
+  "write a",
+  "write an",
+  "write her up",
+  "write him up",
+  "write them up",
   "fill out",
   "generate",
   "prepare",

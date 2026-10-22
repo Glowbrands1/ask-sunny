@@ -990,6 +990,17 @@ export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null 
      * same role to the same template.
      */
     rolePlanKey: eppTemplateForRole(context.text),
+    /*
+     * Read turn by turn through the same detector the explicit path uses, so
+     * "not a CA, coaching" and "what is corrective action?" do not count.
+     */
+    correctiveActionRequested: context.messages.some((message) => {
+      const intent = detectTemplateIntent(message.content);
+      return (
+        (intent.kind === "explicit" && intent.templateKey === "dpoa") ||
+        (intent.kind === "corrective_action" && intent.requestedCreation)
+      );
+    }),
   });
 
   /*
