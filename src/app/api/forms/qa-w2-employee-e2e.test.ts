@@ -420,6 +420,24 @@ describe("F-02: a salon reply never replaces the employee — on the card or on 
   });
 });
 
+describe("F-09: a role before the name names the subject", () => {
+  it.each([
+    ["Create a CA for the manager Jane Doe, she was late", "dpoa", "Jane Doe"],
+    ["coaching form for her coworker Amy Lee, she was late twice", "coaching", "Amy Lee"],
+    ["coaching form for my assistant manager jane doe, late twice", "coaching", "jane doe"],
+  ])("%s", async (text, templateKey, employee) => {
+    const { last } = await conversation([text]);
+    expect(last.formProposal?.templateKey).toBe(templateKey);
+    expect(last.formProposal?.employeeName).toBe(employee);
+    expect(last.content).not.toMatch(/who is this/i);
+  });
+
+  it("someone else in the account is not asked about", async () => {
+    const { proposal } = await conversation(["Create a coaching form for Jane Smith. Her coworker Amy Lee covered her shift"]);
+    expect(proposal.employeeName).toBe("Jane Smith");
+  });
+});
+
 describe("spelling: the manager's own, unless the directory matches exactly", () => {
   it("off the directory: as typed, on the card and on the saved form", async () => {
     const { proposal, form } = await filed(["coaching form for jane doe, late twice"], "Jane was late.");

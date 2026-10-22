@@ -475,7 +475,9 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   const AT_A_PLACE = new RegExp(`\\b(?:at|in)\\s+(${NAME}(?:\\s+${PART})+)`, "g");
   const AS_A_PERSON = (candidate: string) =>
     new RegExp(
-      `\\b(?:for|about|with|regarding)\\s+${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      // "for the manager Jane Doe": a role between "for" and the name still names the subject (`SUBJECT_LEAD`).
+      `\\b(?:for|about|with|regarding)\\s+(?:${SUBJECT_LEAD}\\s+)?${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i",
     ).test(text);
   /*
    * ==========================================================================
@@ -527,7 +529,13 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * as a place does.
    */
   const OTHER_PARTY = new RegExp(
-    `\\b(?:her|his|their|a|an|the|this|that)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|co-?workers?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?|manager|supervisor),?\\s+(${NAME}(?:\\s+${PART})+)`,
+    /*
+     * "Her coworker Amy Lee covered her shift", "A client Amy Lee complained": a
+     * sentence that OPENS with the relation is still about someone else (QA
+     * F-09). Capitalised "A/The/This" only before somebody who is never staff —
+     * "The manager Jane Doe was late" is still about the manager.
+     */
+    `(?:\\b(?:[Hh]er|[Hh]is|[Tt]heir|a|an|the|this|that)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|co-?workers?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?|manager|supervisor)|\\b(?:A|An|The|This|That)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?)),?\\s+(${NAME}(?:\\s+${PART})+)`,
     "g",
   );
 
@@ -1230,21 +1238,48 @@ const FORM_NOUNS =
  * ("form for synthetic test employee Transfer Beta Test") is not a subject:
  * "synthetic test" is followed by "employee", so the name comes after it.
  */
+/*
+ * ============================================================================
+ * "FOR THE MANAGER JANE DOE", "FOR HER COWORKER AMY LEE": WHO, THEN THE NAME
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026 (F-09). A role or relationship between "for" and the name
+ * hid the person: "Create a CA for the manager Jane Doe" and "coaching for her
+ * coworker Amy Lee" named nobody — the lower-case reader stopped at "the" and
+ * "her", and the someone-else-in-the-account filter (`OTHER_PARTY`) took the
+ * capitalised name out. After "for", a role is a description of the subject,
+ * so it is skipped and the name after it is the person. Elsewhere ("she let
+ * her friend Sam Jones behind the counter") it still marks somebody else.
+ */
+const SUBJECT_LEAD =
+  "(?:(?:the|my|our|her|his|their|a|an|this|that)\\s+)?(?:(?:new|current)\\s+)?(?:(?:assistant|store|salon|shift|general|district|team|staff)\\s+){0,2}(?:managers?|supervisors?|co-?workers?|employees?|associates?|members?|directors?|leads?|trainees?|sd|asd|tsd|sdit|dmit|tc|fttc|pttc|mgr|gm|dm)";
+const SUBJECT_LEAD_AT_START = new RegExp(`^${SUBJECT_LEAD}\\s+`, "i");
+
+/** `words` with a leading role or relationship ("the manager", "my assistant manager") taken off, when a name follows it. */
+function withoutSubjectLead(words: readonly string[]): string[] {
+  const lead = SUBJECT_LEAD_AT_START.exec(`${words.join(" ")} `)?.[0];
+  if (!lead) return [...words];
+  const rest = words.slice(lead.trim().split(/\s+/).length);
+  return rest.length > 0 ? rest : [...words];
+}
+
 function formSubjectNames(text: string): string[] {
   const subjects: string[] = [];
   const FORM_THEN_PERSON = new RegExp(
-    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(for|about|regarding|on)\\s+(\\S+(?:\\s+\\S+){0,3})`,
+    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(for|about|regarding|on)\\s+(?=\\S)`,
     "gi",
   );
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
+    // Everything after the preposition; "for the manager jane doe" — the role describes the subject (`withoutSubjectLead`).
+    const after = withoutSubjectLead(text.slice((match.index ?? 0) + match[0].length).trim().split(/\s+/));
     /*
      * "COACHING ABOUT OPENING THE SALON LATE" IS A TOPIC. Found in production
      * QA: "about" + a word ending "-ing" put "opening" on the form in place of
      * the confirmed employee. A form is ABOUT an activity far more often than
      * about a person; "for" is how a person is introduced, and it is unchanged.
      */
-    if (!/^for$/i.test(match[1]!) && /ing$/i.test(match[2]!.split(/\s+/)[0]!)) continue;
-    const candidate = readTypedName(match[2]!.split(/\s+/), false);
+    if (!/^for$/i.test(match[1]!) && /ing$/i.test(after[0]!)) continue;
+    const candidate = readTypedName(after.slice(0, 4), false);
     if (!candidate) continue;
     /*
      * "A coaching ON avery testperson" (production QA). "On" introduces a topic
@@ -1252,10 +1287,7 @@ function formSubjectNames(text: string): string[] {
      * first name AND a surname are read as somebody.
      */
     if (/^on$/i.test(match[1]!) && candidate.split(/\s+/).length < 2) continue;
-    const following = `${match[2]!} ${text.slice((match.index ?? 0) + match[0].length)}`
-      .trim()
-      .split(/\s+/)
-      .slice(candidate.split(/\s+/).length);
+    const following = after.slice(candidate.split(/\s+/).length);
     if (/^(?:employee|team|staff|named)$/i.test(following[0] ?? "")) continue;
     subjects.push(candidate);
   }

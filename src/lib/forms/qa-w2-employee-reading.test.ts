@@ -81,6 +81,47 @@ describe("F-02: a reply that names a salon never replaces the employee", () => {
   });
 });
 
+describe("F-09: a role before the name names the subject", () => {
+  it.each([
+    ["Create a CA for the manager Jane Doe, she was late", ["Jane Doe"]],
+    ["coaching for her coworker Amy Lee", ["Amy Lee"]],
+    ["create a coaching form for my assistant manager Jane Doe", ["Jane Doe"]],
+    ["coaching form for my assistant manager jane doe", ["jane doe"]],
+    ["coaching form for team member Jane Doe", ["Jane Doe"]],
+    ["coaching form for team member jane doe", ["jane doe"]],
+    ["create a corrective action for our salon director dana moss", ["dana moss"]],
+    ["coaching form for the new employee jordan lee, late twice", ["jordan lee"]],
+  ])("%s", (text, names) => {
+    expect(extractEmployeeNames(text)).toEqual(names);
+  });
+
+  describe("somebody else in the account is still somebody else", () => {
+    it.each([
+      ["Create a coaching form for Jane Smith. Her coworker Amy Lee covered her shift", ["Jane Smith"]],
+      ["create verbal ca for pat rivera, she let her friend Sam Jones behind the counter", ["pat rivera"]],
+      ["CA for Dana Moss. A client Amy Lee complained about her", ["Dana Moss"]],
+    ])("%s", (text, names) => {
+      expect(extractEmployeeNames(text)).toEqual(names);
+    });
+  });
+
+  describe("a role with no name after it names nobody", () => {
+    it.each(["coaching form for the manager", "coaching form for my employee", "coaching form for the team", "coaching form for her coworker"])(
+      "%s",
+      (text) => {
+        expect(extractEmployeeNames(text)).toEqual([]);
+      },
+    );
+  });
+
+  it("a multi-turn intake keeps the role-led subject", () => {
+    expect(after("Create a CA for the manager Jane Doe, she was late", "verbal")).toEqual({
+      kind: "resolved",
+      employeeName: "Jane Doe",
+    });
+  });
+});
+
 describe("spelling: the manager's own", () => {
   it.each([
     ["coaching form for jane doe", "jane doe"],
