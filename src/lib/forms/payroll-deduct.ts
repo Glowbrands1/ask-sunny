@@ -72,7 +72,27 @@ const NEGATIVE: readonly RegExp[] = [
   // "we won't deduct", "don't deduct it from her pay", "not deducting"
   /\b(?:don't|dont|do not|won't|wont|will not|not|no need to|shouldn't|should not)\s+(?:be\s+)?deduct(?:ing|ed)?\b/,
   /\bwithout\s+(?:a\s+|any\s+)?(?:payroll\s+)?deduction\b/,
+  /*
+   * QA audit, 22 Oct 2026, ported from Ask Bubbles (PR #67): "we will not
+   * payroll deduct $25", "don't payroll deduct the $3.25" — any negation of the
+   * deduction, "payroll" or not.
+   */
+  /\b(?:don't|dont|do not|won't|wont|will not|would not|wouldn't|not going to|(?:is|are|am)n't going to|(?:is|are|am) not going to|no longer|never|not|no need to|shouldn't|should not|can't|cannot|can not|(?:decided|chose|choose) not to)\s+(?:be\s+)?(?:payroll[\s-]+)?deduct(?:ing|ed|ion|ions)?\b/,
+  // "the $25 payroll deduction was waived", "cancel the payroll deduction": a waived or cancelled deduction is not one.
+  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven|cancell?ed|cancell?ing|called\s+off)\b`),
+  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
+  // "payroll deduct $25 does not apply"
+  new RegExp(
+    String.raw`\b${SUBJECT}\s+\$\s?\d[\d,]*(?:\.\d{1,2})?\s+(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
+  ),
 ];
+
+/*
+ * "WE DID NOT WAIVE THE PAYROLL DEDUCTION": a waiver that is itself denied is
+ * not a No — and reading it as a Yes would be a guess. The clause states
+ * nothing.
+ */
+const DENIED_WAIVER = /(?:\b(?:not|never|no)\b|n't)\s+(?:[a-z']+\s+){0,2}(?:waiv|cancel|call(?:ed)?\s+off)/;
 
 const POSITIVE: readonly RegExp[] = [
   // "payroll deduct of $3.25 is applicable", "payroll deduction for the shortage applies"
@@ -124,6 +144,7 @@ export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
   for (const clause of source.split(/(?<=[!?;\n]|\.(?!\d))/)) {
     const trimmed = clause.trim();
     if (trimmed === "" || trimmed.endsWith("?")) continue;
+    if (DENIED_WAIVER.test(trimmed)) continue;
     if (NEGATIVE.some((pattern) => pattern.test(trimmed))) answer = "no";
     else if (POSITIVE.some((pattern) => pattern.test(trimmed))) answer = "yes";
   }

@@ -423,3 +423,32 @@ describe("an amount changed after the form exists", () => {
     expect(payrollDeductCorrection("change the $5.00 payroll deduction to no")).toBe("no");
   });
 });
+
+/*
+ * QA audit, 22 Oct 2026: on a created form with Yes, "actually cancel the
+ * payroll deduction" read as nothing, and the form kept Yes and the plan's
+ * deduction sentence (fixed in Ask Bubbles' PR #67, never ported). A
+ * withdrawn, waived or cancelled deduction is No; a waiver that is itself
+ * denied is not.
+ */
+describe("a deduction cancelled, waived or denied", () => {
+  it.each([
+    ["actually cancel the payroll deduction"],
+    ["we cancelled the $25 payroll deduction"],
+    ["the $25 payroll deduction was waived"],
+    ["waive the payroll deduction"],
+    ["we will not payroll deduct $25"],
+    ["don't payroll deduct the $3.25"],
+    ["payroll deduct $25 does not apply"],
+  ])('"%s" is No', (text) => {
+    expect(statedPayrollDeduct(text)).toBe("no");
+    expect(payrollDeductCorrection(text)).toBe("no");
+  });
+
+  it.each([["we did not waive the payroll deduction"], ["the payroll deduction was not cancelled"]])(
+    'a denied waiver is never No: "%s"',
+    (text) => {
+      expect(statedPayrollDeduct(text)).not.toBe("no");
+    },
+  );
+});
