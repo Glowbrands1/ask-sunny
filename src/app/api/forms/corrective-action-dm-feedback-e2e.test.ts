@@ -272,9 +272,11 @@ async function conversation(turns: string[]) {
     responses,
     last,
     proposal: last.formProposal!,
-    create: async () => {
-      expect(last.formProposal!.supportsInlineDraft).toBe(true);
-      return createInlineForm({ proposal: last.formProposal!, messages, call, onCreated: () => {} });
+    /* `salon`: the card's salon picker, sent as the browser sends it. */
+    create: async (salon?: string) => {
+      if (!salon) expect(last.formProposal!.supportsInlineDraft).toBe(true);
+      const proposal = salon ? { ...last.formProposal!, locationId: salon } : last.formProposal!;
+      return createInlineForm({ proposal, messages, call, onCreated: () => {} });
     },
   };
 }
@@ -1051,5 +1053,297 @@ describe("the payroll amount the quoted section states", () => {
     expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
       `Management will review the Late Opening and Attendance policies with Tess. ${CLOSING}`,
     );
+  });
+});
+
+/* ========================================================================= */
+/* "CREATE CA FOR <NAME>" IS THE RECIPIENT; THE INCIDENT'S OTHER NAMES ARE NOT */
+/* ========================================================================= */
+
+/*
+ * The production request word for word, with only the two people's names
+ * replaced by synthetic ones. Sunny asked "Which of them is this Corrective
+ * Action Form for — <the recipient> or <the new hire>?", then which salon,
+ * and no form was made.
+ */
+const RECIPIENT_REPORT =
+  "create ca for Marisol Quade, Salon Director for violating standards of conduct. Marisol failed to have Jaya Penrose complete required policy acknowledgements in woven during Jaya's onboarding on 9-28-26 as reflected on the woven policy acknowledgement report run on 10-16-26.";
+
+/* The manual's words under its own heading, as the draft must quote them. */
+const STANDARDS_OF_CONDUCT_TEXT = STANDARDS_OF_CONDUCT_CHUNK.content.replace(/^12 \| P a g e\nStandards of Conduct\n/, "");
+
+const ACKNOWLEDGEMENT_DRAFT = {
+  values: {
+    observation:
+      "Observed:\nRemy Calder did not have Tess Varga complete the required policy acknowledgements in Woven during onboarding on September 28, 2026.",
+  },
+  checked: { offense_type: ["other"] },
+};
+
+async function finalize(id: string) {
+  const response = await instanceRoute.POST(
+    new Request(`https://app.test/api/forms/instances/${id}`, {
+      method: "POST",
+      body: JSON.stringify({ action: "finalize" }),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+  return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+}
+
+describe("the production request names Marisol Quade as the recipient", () => {
+  it("is not asked which of the two it is for, and reads Standards of Conduct", async () => {
+    const { last, proposal } = await conversation([RECIPIENT_REPORT]);
+
+    expect(last.content).not.toMatch(/Which of them/);
+    expect(last.content).not.toMatch(/Who is this/);
+    expect(proposal.employeeName).toBe("Marisol Quade");
+    expect(proposal.status).toBe("ready");
+    expect(proposal.employeeRole).toBe("Salon Director");
+    expect(last.content).toMatch(/\*\*Policy:\*\* Standards of Conduct, as you said/);
+    /* Not on this salon's roster: the typed name is kept, and the manager is told. */
+    expect(last.content).toContain("I didn't find **Marisol Quade** in the employee list for your salons");
+  });
+
+  it("drafts for Marisol Quade, keeps Jaya Penrose in the account, and quotes the manual", async () => {
+    const { create } = await conversation([RECIPIENT_REPORT]);
+    state.draft = {
+      values: { observation: "Observed:\nMarisol Quade did not have Jaya Penrose complete the required policy acknowledgements." },
+      checked: { offense_type: ["other"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+
+    expect(form.instance.status).toBe("draft");
+    expect(field(form, "employee_name")!.value).toBe("Marisol Quade");
+    expect(field(form, "job_title")!.value).toBe("Salon Director");
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_violated")!.value).toBe("Standards of Conduct");
+    expect(field(form, "policy_language")!.value).toContain(STANDARDS_OF_CONDUCT_TEXT);
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Standards of Conduct, p. 12");
+    expect(field(form, "policy_language")!.provenance).toMatchObject({ verified: true });
+    /* Jaya Penrose is the incident's, not the form's: the model is given the whole account. */
+    expect(state.modelNotes.at(-1)).toContain("Jaya Penrose");
+    expect(state.modelNotes.at(-1)).not.toMatch(/Which of them/);
+  });
+
+  /*
+   * The reporting account is a District Manager with global scope, and the
+   * directory places the recipient at two salons — so the salon is the one
+   * question, and its choices are Marisol's salons, never Jaya's. Directory rows
+   * here are synthetic.
+   */
+  it("as the reporting account's own scope (district manager, global): the salon is asked among Marisol's, never the employee", async () => {
+    state.role = "district_manager";
+    state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+    state.directory = [
+      ...DIRECTORY,
+      { id: "e-10", firstName: "Marisol", lastName: "Quade", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310", "loc-0311"] },
+      { id: "e-11", firstName: "Jaya", lastName: "Penrose", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0312"] },
+    ];
+    const { last, proposal, create } = await conversation([RECIPIENT_REPORT]);
+
+    expect(last.content).not.toMatch(/Which of them/);
+    expect(last.content).toMatch(/Which salon is this about\?/);
+    expect(proposal).toMatchObject({
+      employeeName: "Marisol Quade",
+      status: "needs_location",
+      locationResolution: "needs_selection",
+      locationId: null,
+      authorizedLocationIds: ["loc-0310", "loc-0311"],
+    });
+
+    /* The card's salon picker, then Create draft. */
+    state.draft = { values: { observation: "Observed:\nMarisol Quade did not complete onboarding acknowledgements." }, checked: {} };
+    const { reference } = await create("loc-0311");
+    const form = await review(reference.instanceId);
+    expect(form.instance.status).toBe("draft");
+    expect(form.instance.locationId).toBe("loc-0311");
+    expect(field(form, "employee_name")!.value).toBe("Marisol Quade");
+    expect(field(form, "policy_language")!.value).toContain(STANDARDS_OF_CONDUCT_TEXT);
+  });
+
+  it("global scope with no directory row for the recipient: no salon is invented", async () => {
+    state.role = "district_manager";
+    state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+    const { proposal } = await conversation([RECIPIENT_REPORT]);
+    expect(proposal).toMatchObject({ employeeName: "Marisol Quade", status: "ready", locationResolution: "not_applicable", locationId: null });
+  });
+});
+
+describe("the recipient is whoever the CA is for, wherever the request says it", () => {
+  it.each([
+    [
+      "first",
+      "create ca for Remy Calder for violating standards of conduct. Remy failed to have Tess Varga complete policy acknowledgements in woven on 9-28-26.",
+    ],
+    [
+      "middle",
+      "Tess Varga started on 9-28-26. Please create a corrective action for Remy Calder, Salon Director, for violating standards of conduct; Remy never had Tess complete her woven acknowledgements.",
+    ],
+    [
+      "last",
+      "Tess Varga did not complete her policy acknowledgements in woven during onboarding on 9-28-26. create ca for Remy Calder for violating standards of conduct",
+    ],
+  ])("named %s in the message", async (_where, request) => {
+    const { last, proposal } = await conversation([request]);
+    expect(last.content).not.toMatch(/Which of them/);
+    expect(proposal.employeeName).toBe("Remy Calder");
+    expect(proposal.status).toBe("ready");
+    /* The recipient's own salon, from the directory. */
+    expect(proposal.locationId).toBe("loc-0310");
+  });
+
+  it("drafts and files for the recipient only, and nothing is finalized until the manager does it", async () => {
+    const { create } = await conversation([
+      "Tess Varga did not complete her policy acknowledgements in woven during onboarding on 9-28-26. create verbal ca for Remy Calder for violating standards of conduct. no payroll deduct",
+    ]);
+    state.draft = ACKNOWLEDGEMENT_DRAFT;
+    const { reference } = await create();
+
+    /* Create draft: one create, one draft. No finalize. */
+    expect(requests.map((entry) => entry.url)).toEqual([
+      "/api/forms/instances",
+      `/api/forms/instances/${reference.instanceId}/draft`,
+    ]);
+    let form = await review(reference.instanceId);
+    expect(form.instance.status).toBe("draft");
+    expect(field(form, "employee_name")!.value).toBe("Remy Calder");
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value).toContain(STANDARDS_OF_CONDUCT_TEXT);
+    expect(field(form, "observation")!.value).toContain("Tess Varga");
+
+    /* The manager reviews and saves an edit … */
+    const saved = await instanceRoute.PATCH(
+      new Request(`https://app.test/api/forms/instances/${reference.instanceId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          values: { observation: `${ACKNOWLEDGEMENT_DRAFT.values.observation}\nReviewed with Remy.` },
+        }),
+      }),
+      { params: Promise.resolve({ id: reference.instanceId }) },
+    );
+    expect(saved.status).toBe(200);
+    form = await review(reference.instanceId);
+    expect(form.instance.status).toBe("draft");
+
+    /* … and finalizes it themselves. The verified citation needs no acknowledgement. */
+    const finalized = await finalize(reference.instanceId);
+    expect(finalized.status).toBe(200);
+    form = await review(reference.instanceId);
+    expect(form.instance.status).toBe("finalized");
+    expect(field(form, "employee_name")!.value).toBe("Remy Calder");
+    expect(field(form, "observation")!.value).toContain("Reviewed with Remy.");
+    expect(field(form, "policy_language")!.value).toContain(STANDARDS_OF_CONDUCT_TEXT);
+  });
+});
+
+describe("a recipient that is not settled is still asked", () => {
+  it("two people the CA is for, joined: asked which", async () => {
+    const { last, proposal } = await conversation([
+      "create ca for Remy Calder and Tess Varga for violating standards of conduct on 10-20-26",
+    ]);
+    expect(proposal.status).toBe("needs_employee");
+    expect(last.content).toMatch(/Which of them is this \*\*Corrective Action Form\*\* for — \*\*Remy Calder\*\* or \*\*Tess Varga\*\*\?/);
+  });
+
+  it("a second person named for a CA of their own: asked which", async () => {
+    const { proposal } = await conversation([
+      "create ca for Remy Calder for violating standards of conduct. Tess Varga needs a CA too.",
+    ]);
+    expect(proposal.status).toBe("needs_employee");
+    expect(proposal.employeeName).toBeNull();
+  });
+
+  it("two names and no recipient: the first is not chosen", async () => {
+    const { last, proposal } = await conversation([
+      "Remy Calder and Tess Varga skipped their woven acknowledgements on 10-20-26. create a ca for violating standards of conduct",
+    ]);
+    expect(proposal.status).toBe("needs_employee");
+    expect(proposal.employeeName).toBeNull();
+    expect(last.content).toMatch(/Which of them/);
+  });
+
+  it("nobody named: asked who", async () => {
+    const { last, proposal } = await conversation(["create a ca for violating standards of conduct on 10-20-26"]);
+    expect(proposal.status).toBe("needs_employee");
+    expect(last.content).toMatch(/Who is this \*\*Corrective Action Form\*\* for\?/);
+  });
+
+  it("a misspelled recipient is confirmed against the roster, not taken", async () => {
+    const { last, proposal } = await conversation([
+      "create ca for Remy Caldor for violating standards of conduct. Remy failed to have Tess Varga complete acknowledgements.",
+    ]);
+    expect(proposal.status).not.toBe("ready");
+    expect(last.content).toMatch(/^Did you mean \*\*Remy Calder\*\*\?/);
+  });
+
+  it("a first name two people on the roster share is put to the manager", async () => {
+    state.directory = [
+      ...DIRECTORY,
+      { id: "e-3", firstName: "Remy", lastName: "Dalton", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] },
+    ];
+    const { last, proposal } = await conversation([
+      "create ca for Remy for violating standards of conduct. Remy failed to have Tess Varga complete acknowledgements.",
+    ]);
+    expect(proposal.status).not.toBe("ready");
+    expect(last.content).toContain("Remy Calder");
+    expect(last.content).toContain("Remy Dalton");
+  });
+});
+
+describe("salon access is unchanged by the recipient reading", () => {
+  it("a district manager covering several salons gets the recipient's own salon", async () => {
+    state.role = "district_manager";
+    state.scope = { level: "salon", primaryAreaId: "loc-0311", alsoCoversAreaIds: ["loc-0310"] };
+    const { proposal } = await conversation([
+      "create ca for Remy Calder for violating standards of conduct. Remy failed to have Tess Varga complete acknowledgements.",
+    ]);
+    expect(proposal).toMatchObject({ employeeName: "Remy Calder", locationId: "loc-0310", status: "ready" });
+  });
+
+  it("an employee outside the manager's salons is never matched, and never moves the form to their salon", async () => {
+    state.role = "district_manager";
+    state.scope = { level: "salon", primaryAreaId: "loc-0311", alsoCoversAreaIds: [] };
+    /* Somebody at the manager's own salon, so the roster is not empty. */
+    state.directory = [
+      ...DIRECTORY,
+      { id: "e-4", firstName: "Jo", lastName: "Pell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0311"] },
+    ];
+    const { last, proposal } = await conversation([
+      "create ca for Remy Calder for violating standards of conduct. Remy failed to have Tess Varga complete acknowledgements.",
+    ]);
+    expect(last.content).toContain("I didn't find **Remy Calder** in the employee list for your salons");
+    expect(proposal.locationId).toBe("loc-0311");
+  });
+
+  it("a district-scoped account still fails closed on the salon", async () => {
+    state.role = "district_manager";
+    state.scope = { level: "district", primaryAreaId: "dist-patterson-madeline", alsoCoversAreaIds: [] };
+    const { last, proposal } = await conversation([RECIPIENT_REPORT]);
+    expect(last.content).not.toMatch(/Which of them/);
+    expect(proposal).toMatchObject({ employeeName: "Marisol Quade", locationResolution: "unavailable", supportsInlineDraft: false });
+  });
+
+  it("a salon picked outside the manager's own is refused at creation", async () => {
+    state.role = "district_manager";
+    state.scope = { level: "salon", primaryAreaId: "loc-0311", alsoCoversAreaIds: ["loc-0312"] };
+    const { create } = await conversation([RECIPIENT_REPORT]);
+    await expect(create("loc-0310")).rejects.toThrow();
+    expect(store.form_instances).toHaveLength(0);
+  });
+
+  it("an employee account cannot create one at all", async () => {
+    state.role = "employee";
+    const response = await proposeFormForTurn({
+      history: [],
+      question: RECIPIENT_REPORT,
+      questionMessageId: "m-employee",
+      actor: { role: "employee" as never, scope: state.scope as AccessScope },
+      summaries: await listTemplateSummaries(),
+      today: "2026-10-21",
+      policyManual: async () => null,
+    });
+    expect(response?.formProposal).toBeUndefined();
   });
 });
