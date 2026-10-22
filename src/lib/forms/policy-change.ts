@@ -79,6 +79,8 @@ export function readPolicyChange(question: string, options: { readonly policyAsk
   if (REPLACE_STRONG.test(text)) return "replace";
   if (ADD.test(text)) return "add";
   if (REPLACE_WEAK.test(text)) return "replace";
+  // "The policy is standards of conduct", "it's attendance": a policy named as the answer.
+  if (readCaPolicy(text).stated !== null) return "replace";
   return null;
 }
 
@@ -145,6 +147,16 @@ export function policyPhrasesIn(text: string): string[] {
     }
   }
   for (const match of lower.matchAll(/\bpolic(?:y|ies)\s+(?:on|for|about|called|named|regarding)\s+((?:[a-z&/'-]+\s*){1,5})/g)) {
+    const words = match[1]!.trim().split(/\s+/);
+    for (let end = words.length; end > 0; end -= 1) {
+      const phrase = words.slice(0, end).join(" ");
+      if (!FILLER.has(phrase)) phrases.push(phrase);
+    }
+  }
+  // "switch the policy to standards of conduct", "change her policy to dress code" (QA, 22 Oct 2026, round 3).
+  for (const match of lower.matchAll(
+    /\b(?:switch|change|swap|set|update|move)\s+(?:the\s+|her\s+|his\s+|their\s+|this\s+)?polic(?:y|ies)\s+(?:over\s+)?to\s+(?:the\s+)?((?:[a-z&/'-]+\s*){1,5})/g,
+  )) {
     const words = match[1]!.trim().split(/\s+/);
     for (let end = words.length; end > 0; end -= 1) {
       const phrase = words.slice(0, end).join(" ");

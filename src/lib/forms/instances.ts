@@ -16,6 +16,7 @@ import {
 import { refuseUnverifiedPolicyValues } from "./policy-grounding";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
+  policyAcknowledgementWording,
   unverifiedPolicyFields,
 } from "./policy-verification";
 import {
@@ -925,8 +926,8 @@ export async function applyAssistantRevision(
 export class UnverifiedPolicyError extends Error {
   readonly fields: string[];
 
-  constructor(fields: string[]) {
-    super(POLICY_ACKNOWLEDGEMENT_MESSAGE);
+  constructor(fields: string[], message: string = POLICY_ACKNOWLEDGEMENT_MESSAGE) {
+    super(message);
     this.name = "UnverifiedPolicyError";
     this.fields = fields;
   }
@@ -964,14 +965,16 @@ export async function finalizeInstance(
   const before = await loadInstance(instanceId);
   if (!before) throw new Error("That form no longer exists.");
 
-  const unverified = unverifiedPolicyFields(
+  const unverifiedFields = unverifiedPolicyFields(
     parseFormDocument(before.version.document),
     before.instance.variantKey,
     before.values,
-  ).map((field) => field.key);
+  );
+  const unverified = unverifiedFields.map((field) => field.key);
 
   if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
-    throw new UnverifiedPolicyError(unverified);
+    throw new UnverifiedPolicyError(unverified, policyAcknowledgementWording(unverifiedFields, before.events, Boolean(before.instance.revisesInstanceId))
+        .message);
   }
 
   const supabase = getSupabaseAdmin();

@@ -277,6 +277,14 @@ async function openConversation(user: ReturnType<typeof userEvent.setup>, title:
 /* ================================================================ 1. rating */
 
 describe("rating is scoped to the conversation being rated", () => {
+  /*
+   * Two conversations opened and clicked through with real user events. Under a
+   * full parallel run this took over the default 5 s once (QA, 22 Oct 2026),
+   * and the next test then could not find the rating control in time. Neither
+   * is about what the tests assert; the limit and the wait are.
+   */
+  vi.setConfig({ testTimeout: 30_000 });
+
   it("does not carry an open rating form into another conversation", async () => {
     const user = userEvent.setup();
     await renderChat();
@@ -311,7 +319,7 @@ describe("rating is scoped to the conversation being rated", () => {
       screen.getByRole("textbox", { name: /anything sunny should do better/i }),
       "Alpha specific complaint",
     );
-    await user.click(screen.getByRole("radio", { name: /^2 —/ }));
+    await user.click(await screen.findByRole("radio", { name: /^2 —/ }));
 
     await openConversation(user, /^Beta thread/);
     await user.click(screen.getByRole("button", { name: /rate this conversation/i }));

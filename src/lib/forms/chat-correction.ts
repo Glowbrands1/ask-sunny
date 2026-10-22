@@ -28,6 +28,8 @@ import {
   payrollDeductUnclear,
 } from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
+import { describesIncident, statedWarningLevel, WARNING_TYPE_KEY } from "./corrective-action-intake";
+import { NO_PRIOR_ACTION, statedPriorActions } from "./prior-actions";
 import { detectTemplateIntent } from "./template-intent";
 import { applyAssistantDraft, saveInstanceValues } from "./instances";
 import { correctCaFromChat } from "./ca-chat-corrections";
@@ -109,7 +111,11 @@ export async function correctActiveForm(input: {
      * 10-2-26"); the CA's reader (`ca-chat-corrections.ts`) answers what they
      * leave, and is null for anything else.
      */
-    return correctCaFromChat({ ...input, lastAssistant });
+    /*
+     * Then the level, prior coaching, payroll and policy said after Create
+     * (QA, 22 Oct 2026, round 3) — only what the CA's reader leaves.
+     */
+    return (await correctCaFromChat({ ...input, lastAssistant })) ?? correctCorrectiveActionFacts(input);
   }
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
@@ -435,6 +441,136 @@ function samePerson(named: string, employee: string): boolean {
   const a = named.toLowerCase().replace(/['’]s$/, "").split(/\s+/);
   const b = employee.toLowerCase().split(/\s+/);
   return a.join(" ") === b.join(" ") || (a.length === 1 && a[0] === b[0]);
+}
+
+/*
+ * ============================================================================
+ * THE OPEN CORRECTIVE ACTION FORM, TOLD ONE MORE OF ITS FACTS
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026. With the form already created, "prior coaching JBA Policy
+ * Manual 7-29-26", "she also had a verbal ca on 9-1-26", "first time, no prior
+ * coaching", "it happened on 10/19/26" and "make it a written" changed nothing
+ * on the form. Each is a fact this form records, stated on its own, and it now
+ * goes onto the open draft:
+ *
+ *   an earlier step and its date   added to Prior Actions, as the drafting
+ *                                  route writes it — never a line already
+ *                                  there, and nothing on the list removed
+ *   "first time", "no prior …"     "None — first occurrence", only where
+ *                                  Prior Actions is empty
+ *   (the date is corrected by the form-date reader above, which also moves the
+ *    day in the paragraphs Sunny drafted, so the form never states two dates)
+ *   the level for this form        Type of Warning — never a level on file,
+ *                                  and a Termination or Demotion tick stays
+ *
+ * Read only from the manager's statement; a question is answered as before.
+ */
+const NO_HISTORY =
+  /\b(?:first\s+(?:time|offen[cs]e|occurrence|one)|no\s+(?:prior|previous|past|earlier)\b|no\s+(?:coaching|warnings?|write[- ]?ups?|corrective\s+actions?)\b|nothing\s+(?:on\s+file|prior|before))/i;
+
+const PRIOR_ACTIONS_KEY = "prior_actions";
+const WARNING_LEVEL_OPTIONS: ReadonlySet<string> = new Set(["verbal", "written"]);
+
+/** The step and the signed date a Prior Actions line names, for telling a repeat. */
+function priorLineKey(line: string): string {
+  const step = line.split(" — ")[0]!.trim().toLowerCase();
+  const date = /signed\s+(\d{2}\/\d{2}\/\d{4})/i.exec(line)?.[1] ?? "";
+  return `${step}|${date}`;
+}
+
+async function correctCorrectiveActionFacts(input: {
+  request: Request;
+  instanceId: string;
+  question: string;
+  today: string;
+}): Promise<AskResponse | null> {
+  const text = input.question.trim();
+  if (text.endsWith("?") || /^(?:what|why|how|when|where|which|who|is|are|does|do|did|should|can|could)\b/i.test(text)) return null;
+  const priorLines = statedPriorActions(text, input.today);
+  const firstTime = priorLines.length === 0 && NO_HISTORY.test(text);
+  const anotherIncident = describesIncident(text) && !/\b(?:change|switch|set|update|correct|actually|not|was\s+on)\b/i.test(text);
+  const level = anotherIncident ? null : statedWarningLevel(text);
+  if (priorLines.length === 0 && !firstTime && !level) return null;
+
+  let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
+  try {
+    authorized = await authorizeInstance(input.request, input.instanceId, "edit");
+  } catch {
+    return null;
+  }
+  const { actor, loaded } = authorized;
+  const document = parseFormDocument(loaded.version.document);
+  const variantKey = loaded.instance.variantKey;
+  const fields = fieldsForVariant(document, variantKey);
+  const keys = new Set(fields.map((field) => field.key));
+  const warningGroup = checkboxGroupsForVariant(document, variantKey).find((group) => group.key === WARNING_TYPE_KEY);
+  if (!keys.has(PRIOR_ACTIONS_KEY) || !warningGroup) return null;
+
+  // A request for a form, or a turn about somebody else, is left to the ordinary flow.
+  const intent = detectTemplateIntent(text);
+  if (intent.kind === "ambiguous" || (intent.kind === "corrective_action" && intent.requestedCreation)) return null;
+  if (intent.kind === "explicit" && (intent.templateKey !== loaded.instance.templateKey || /\b(?:create|start|pull up|new|another)\b|\bmake\s+(?:a|an)\b|\bneed\s+(?:a|an)\b/i.test(text))) {
+    return null;
+  }
+  const named = extractEmployeeNames(text);
+  if (named.length > 0 && !named.some((name) => samePerson(name, loaded.instance.employeeName))) return null;
+
+  if (loaded.instance.status !== "draft") {
+    return changeOnEditableDraft(input.request, input.instanceId, (draftId) =>
+      correctCorrectiveActionFacts({ ...input, instanceId: draftId }),
+    );
+  }
+
+  const values: Record<string, string> = {};
+  const checked: Record<string, string[]> = {};
+  const notes: string[] = [];
+  const existing = (loaded.values.find((row) => row.fieldKey === PRIOR_ACTIONS_KEY)?.value ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const kept = existing.filter((line) => line !== NO_PRIOR_ACTION);
+  const added = priorLines.filter((line) => !kept.some((have) => priorLineKey(have) === priorLineKey(line)));
+  if (added.length > 0) values[PRIOR_ACTIONS_KEY] = [...kept, ...added].join("\n");
+  if (firstTime) {
+    if (kept.length === 0 && existing[0] !== NO_PRIOR_ACTION) values[PRIOR_ACTIONS_KEY] = NO_PRIOR_ACTION;
+    else if (kept.length > 0) notes.push(`Prior Actions already lists ${kept.length === 1 ? "an earlier step" : "earlier steps"}, so I left it as it is — change it on the form if that list is wrong.`);
+  }
+  if (level && warningGroup.options.some((option) => option.key === level)) {
+    const ticked = loaded.values.find((row) => row.fieldKey === WARNING_TYPE_KEY)?.checked ?? [];
+    const next = [...ticked.filter((option) => !WARNING_LEVEL_OPTIONS.has(option)), level];
+    if (next.join(",") !== ticked.join(",")) checked[WARNING_TYPE_KEY] = next;
+  }
+
+  if (Object.keys(values).length === 0 && Object.keys(checked).length === 0) {
+    return notes.length > 0 ? reply(notes.join("\n\n")) : null;
+  }
+  const submitted = { values, checked };
+  const accepted = enforcePersonEdit(document, variantKey, submitted);
+  const refused = new Set(accepted.rejected.map((entry) => entry.key));
+  const saved = await saveInstanceValues(input.instanceId, { values: accepted.values, checked: accepted.checked }, actor.id);
+  const refusedOnSave = new Set(saved.rejected.map((entry) => entry.key));
+  const written = [...Object.keys(values), ...Object.keys(checked)].filter((key) => !refused.has(key) && !refusedOnSave.has(key));
+  if (written.length === 0) return null;
+
+  const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
+  const field = (key: string) => fields.find((entry) => entry.key === key);
+  const described = written.map((key) => {
+    if (key === PRIOR_ACTIONS_KEY) {
+      return added.length > 0
+        ? `${field(key)?.label ?? key} → added ${added.map((line) => `"${line}"`).join(", ")}`
+        : `${field(key)?.label ?? key} → ${NO_PRIOR_ACTION}`;
+    }
+    if (key === WARNING_TYPE_KEY) {
+      const label = warningGroup.options.find((option) => option.key === level)?.label ?? level;
+      return `Type of Warning → ${label}`;
+    }
+    return `${field(key)?.label ?? key} → ${field(key)?.input === "date" ? displayDate(values[key]!, document.style) : values[key]}`;
+  });
+  return {
+    ...reply([`Updated the ${who}: ${described.join("; ")}.`, ...notes.map((note) => `\n${note}`)].join("\n")),
+    formUpdate: { instanceId: input.instanceId, updated: written },
+  };
 }
 
 function reply(content: string): AskResponse {

@@ -1315,7 +1315,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? describedSection
         : null);
     const statedKeys = caPolicy
-      ? (statedOffenseKeys(caPolicy, notes) ?? (policySection ? [policySection.offenseKey] : null))
+      ? (statedOffenseKeys(caPolicy, notes) ??
+        (policySection ? [policySection.offenseKey] : null))
       : null;
     const statedOffense = statedKeys
       ? withStatedOffense({

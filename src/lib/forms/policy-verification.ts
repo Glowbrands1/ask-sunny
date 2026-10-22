@@ -96,3 +96,62 @@ export const POLICY_ACKNOWLEDGEMENT_TITLE = "Woven does not see this policy in t
 
 export const POLICY_ACKNOWLEDGEMENT_MESSAGE =
   "Woven does not see this policy in the knowledge base, so the policy on this form could not be verified. Review the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
+
+/**
+ * ============================================================================
+ * "YOU EDITED THE POLICY WORDING" ONLY WHEN THAT IS WHAT HAPPENED
+ * ============================================================================
+ *
+ * HR, 22 Oct 2026: Sunny quoted the Standards of Conduct from the manual, the
+ * manager rewrote the quote, and Finalize said Woven does not see the policy.
+ * It does — the wording on the form is simply no longer the manual's.
+ *
+ * Edited means the field now holds a person's text AND Sunny had written it.
+ * Sunny writes a policy value only with verified provenance (see above), so a
+ * policy field named in a `drafted` event was verified when written; a
+ * revision carries its original's verified values over. A field a person
+ * filled in where Sunny wrote nothing was never verified, so it is not called
+ * an edit, and a blank field still means Woven matched no policy.
+ */
+export const POLICY_EDITED_TITLE = "You edited the policy wording";
+
+export const POLICY_EDITED_MESSAGE =
+  "You edited the policy wording on this form, so Ask Sunny can't confirm it still matches the policy manual. Review it against the applicable company policy before issuing this Corrective Action Form. If you have verified the policy yourself, you may continue.";
+
+/** The form's events, as both the server and the browser hold them. */
+export interface PolicyEventRow {
+  readonly kind: string;
+  readonly detail?: Record<string, unknown> | null;
+}
+
+/** Whether Sunny wrote this field at some point — and so had verified it. */
+export function assistantWroteField(events: readonly PolicyEventRow[], key: string): boolean {
+  return events.some(
+    (event) => event.kind === "drafted" && Array.isArray(event.detail?.fields) && event.detail.fields.includes(key),
+  );
+}
+
+/** True when every unverified policy field holds a person's change to wording Sunny had written. */
+export function policyWordingEdited(
+  fields: readonly Pick<UnverifiedPolicyField, "key" | "filled">[],
+  events: readonly PolicyEventRow[],
+  isRevision = false,
+): boolean {
+  return (
+    fields.length > 0 &&
+    fields.every(
+      (field) => field.filled && (isRevision || assistantWroteField(events, field.key)),
+    )
+  );
+}
+
+/** The acknowledgement's title and message for these unverified fields. */
+export function policyAcknowledgementWording(
+  fields: readonly Pick<UnverifiedPolicyField, "key" | "filled">[],
+  events: readonly PolicyEventRow[],
+  isRevision = false,
+): { title: string; message: string } {
+  return policyWordingEdited(fields, events, isRevision)
+    ? { title: POLICY_EDITED_TITLE, message: POLICY_EDITED_MESSAGE }
+    : { title: POLICY_ACKNOWLEDGEMENT_TITLE, message: POLICY_ACKNOWLEDGEMENT_MESSAGE };
+}

@@ -98,12 +98,23 @@ function normalize(text: string): string {
   return (text ?? "").replace(/[‘’‛]/g, "'").replace(/[“”]/g, '"').toLowerCase();
 }
 
-/** Sentences, with every question dropped whole — a question names no policy. */
+/**
+ * Sentences, with every question dropped whole — a question names no policy.
+ *
+ * A REQUEST ASKED AS A QUESTION STILL SAYS WHAT HAPPENED. QA, 22 Oct 2026,
+ * round 3: "Can we put <employee> on a written for skipping the 10/20/26
+ * meeting?" — the account is in the request, and dropping it left the missed
+ * meeting uncited. Only a request ("can we / could you / will you … for …"),
+ * never a question about what the policy is.
+ */
+const REQUEST_QUESTION =
+  /^(?:hey,?\s+)?(?:can|could|would|will)\s+(?:we|you|i)\s+(?:please\s+)?(?:put|write|do|start|issue|give|create|make|draft|file|document|doc|log|get)\b/;
+
 function statements(turn: string): string[] {
   const out: string[] = [];
   for (const match of turn.matchAll(/[^.!?\n]+[.!?]*/g)) {
     const sentence = match[0].trim();
-    if (sentence === "" || /\?\s*$/.test(sentence)) continue;
+    if (sentence === "" || (/\?\s*$/.test(sentence) && !REQUEST_QUESTION.test(sentence))) continue;
     out.push(sentence);
   }
   return out;
@@ -124,7 +135,7 @@ const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
   {
     topic: "task",
     pattern: new RegExp(
-      String.raw`\b${FAILED}\s+(?:\S+\s+){0,2}?(?:complete|completed|finish|finished|do|done|turn in|turned in|submit|submitted)\b[^.;!?\n]{0,40}?\b${TASK_NOUN}|\b(?:incomplete|unfinished|uncompleted|left undone|left unfinished)\s+(?:\S+\s+){0,2}?${TASK_NOUN}|\b${TASK_NOUN}\s+(?:\S+\s+){0,3}?(?:incomplete|unfinished|not (?:completed|finished|done))\b`,
+      String.raw`\b${FAILED}\s+(?:\S+\s+){0,2}?(?:complete|completed|finish|finished|do|done|turn in|turned in|submit|submitted)\b[^.;!?\n]{0,40}?\b${TASK_NOUN}|\b(?:incomplete|unfinished|uncompleted|left undone|left unfinished)\s+(?:\S+\s+){0,2}?${TASK_NOUN}|\b(?:(?:blew|blown|blow(?:s|ing)?)\s+off|skip(?:ped|ping|s)?|ignor(?:ed|es|ing))\s+(?:\S+\s+){0,2}?${TASK_NOUN}\b(?!\s+(?:sessions?|class(?:es)?|meetings?))|\b${TASK_NOUN}\s+(?:\S+\s+){0,3}?(?:incomplete|unfinished|not (?:completed|finished|done))\b`,
     ),
   },
   {
@@ -142,6 +153,7 @@ const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
  */
 const ATTENDANCE =
   /\b(?:arrived|came in|showed up|clocked in|was|were|is|been|running)\s+(?:\S+\s+){0,2}?late\b|\b(?:tardy|tardiness|lateness|left early|leaving early|clocked out early|absent|absence|absences|absenteeism|no[- ]call|no[- ]show|called (?:out|off)|call[- ]?off|missed (?:her|his|their|a|the) shift)\b/;
+
 const TARGET =
   /\b(?:sales|quota|ppta|upgrades?|conversions?|close rate|closing rate|kpis?|metrics|scorecard|revenue|(?:her|his|their|the) numbers|(?:sales|membership|monthly|weekly) goals?|below (?:goal|target)|(?:hit|hitting|meet|meeting|missed|missing) (?:her|his|their|the) (?:goal|goals|target|targets))\b/;
 
@@ -181,7 +193,7 @@ const NOT_THE_EVENT = String.raw`(?!\s*(?:deadlines?|due|modules?|items?|videos?
  * bailed on, a no-show, absent from, wasn't at, or a negated attending verb
  * (didn't attend / show up / make it / come / join / log in / dial in …).
  */
-const ABSENT_BEFORE = String.raw`(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?(?:\s+out\s+on)?|blew\s+off|blown\s+off|bail(?:ed|s)?\s+(?:out\s+)?on|ditch(?:ed|es)?|no[- ]?call[,/ -]*(?:and\s+)?no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|absent\s+(?:from|for|at)|(?:was|were|is)\s+(?:not|n't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:wasn't|weren't|isn't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:${FAILED}|not|never|without|n't)\s+(?:\S+\s+)?(?:attend(?:ing|ed|s)?|show(?:ing|ed|s)?(?:\s+up)?|c[oa]me|coming|go|went|going|ma(?:k|d)e\s+it|make|join(?:ing|ed|s)?|turn(?:ed|ing)?\s+up|appear(?:ed|ing)?|log(?:ged)?\s+(?:in|on)|dial(?:ed|led)?\s+in|call(?:ed)?\s+in)(?:\s+(?:to|for|at|in|into|on))?)`;
+const ABSENT_BEFORE = String.raw`(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?(?:\s+out\s+on)?|blew\s+off|blown\s+off|bail(?:ed|s)?\s+(?:out\s+)?on|ditch(?:ed|es)?|no[- ]?call[,/ -]*(?:and\s+)?no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|no[- ]?call(?:ed)?\s+(?:to|for|at|on)|no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|absent\s+(?:from|for|at)|(?:was|were|is)\s+(?:not|n't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:wasn't|weren't|isn't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:${FAILED}|not|never|without|n't)\s+(?:\S+\s+)?(?:attend(?:ing|ed|s)?|show(?:ing|ed|s)?(?:\s+up)?|c[oa]me|coming|go|went|going|ma(?:k|d)e\s+it|make|join(?:ing|ed|s)?|turn(?:ed|ing)?\s+up|appear(?:ed|ing)?|log(?:ged)?\s+(?:in|on)|dial(?:ed|led)?\s+in|call(?:ed)?\s+in)(?:\s+(?:to|for|at|in|into|on))?)`;
 /* What says it after the event: "the monthly meeting, which she missed". */
 const ABSENT_AFTER = String.raw`(?:miss(?:ed|es)|skipped|blew\s+off|bailed\s+on|no[- ]?showed|(?:did ?n[o']?t|didn't|never)\s+(?:attend|show(?:\s+up)?|come|go|make\s+it)|(?:was|were)\s*(?:not|n't)\s+(?:at|there|present)|wasn't\s+(?:at|there|present)|was\s+absent)`;
 /* Words that put the event as the setting of something else: "rude DURING the meeting". */
@@ -221,6 +233,8 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean }[] =
 ];
 const POLICY_FRAME =
   /\b(?:polic(?:y|ies)|violat\w*|falls? under|under|use|it'?s|it is|should be|applies|apply|is the|was the)\b/;
+/* "wore jeans against dress code" — the policy broken, straight after "against" (QA, 22 Oct 2026, round 3). */
+const AGAINST_BEFORE = /\b(?:against|breaking|broke|breaks)\s+(?:the\s+|our\s+|company\s+)?$/;
 const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\s+){0,2}$/;
 
 function statedIn(turn: string): CaPolicyName | null {
@@ -231,7 +245,9 @@ function statedIn(turn: string): CaPolicyName | null {
       const match = pattern.exec(sentence);
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
-      if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence)) continue;
+      if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
+        continue;
+      }
       // The last policy named in the turn is its answer: "not attendance — standards of conduct".
       const at = turn.indexOf(sentence) + match.index;
       if (!found || at >= found.at) found = { name, at };

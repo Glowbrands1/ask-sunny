@@ -11,6 +11,16 @@
  */
 
 export const NOT_A_NAME = new Set([
+  /*
+   * The payroll answer, typed as its own turn — "no deduction", "deduct",
+   * "payroll n/a" — was read as the employee's name and replaced the person
+   * the form was for (QA, 22 Oct 2026, round 3).
+   */
+  "deduction", "deductions", "deduct", "deducted", "deducting", "payroll", "paycheck",
+  // "Final step isn't needed yet" read "isn't needed yet" as a person (QA, 22 Oct 2026, round 3).
+  "isn't", "aren't", "wasn't", "weren't", "don't", "doesn't", "didn't", "won't", "can't",
+  "couldn't", "shouldn't", "wouldn't", "hasn't", "haven't", "hadn't", "isnt", "arent", "wasnt",
+  "doesnt", "didnt", "wont", "cant", "shouldnt", "wouldnt", "hasnt", "havent", "hadnt",
   "a", "an", "the", "my", "our", "this", "that", "them", "him", "her", "it",
   "me", "us", "someone", "somebody", "everyone", "everybody", "today",
   "tomorrow", "yesterday", "monday", "tuesday", "wednesday", "thursday",

@@ -49,12 +49,17 @@ export function signedDate(iso: string): string {
  * verbal corrective action (HR, 21 Oct 2026).
  */
 const STEPS: readonly [RegExp, string][] = [
+  [/\b(?:verbally\s+(?:warned|coached|counsell?ed)|warned\s+verbally)\b/i, "Verbal warning"],
   [/final\s+written\s+(?:corrective actions?|cas?\b|c\/a)/i, "Final written corrective action"],
   [/written\s+(?:corrective actions?|cas?\b|c\/a)/i, "Written corrective action"],
   [/verbal\s+(?:corrective actions?|cas?\b|c\/a)/i, "Verbal corrective action"],
   [/final\s+written\s+warning/i, "Final written warning"],
   [/written\s+warning/i, "Written warning"],
   [/verbal\s+warning/i, "Verbal warning"],
+  // "she's had a verbal before", "got a written in august" — the noun left off (QA, 22 Oct 2026, round 3).
+  [/\bfinal\s+written\b/i, "Final written warning"],
+  [/\bwritten\b(?!\s+up)/i, "Written warning"],
+  [/\bverbal(?:ly)?\b/i, "Verbal warning"],
   [/write[- ]?ups?|written up/i, "Write-up"],
   [/corrective actions?/i, "Corrective action"],
   // "prior CA 9/1": the form's own shorthand.

@@ -129,6 +129,17 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  * message (or an intake line) that consists of nothing else.
  */
 /*
+ * "A WRITTEN CA FOR MISSING THE MEETING" NAMES NOBODY CALLED MISSING. QA, 22
+ * Oct 2026: the word after "<form> for" was read as a name, so "Tess Varga
+ * needs a written CA for missing the meeting" named two people, Missing and
+ * Tess Varga, and the create was refused as ambiguous. A lower-case word in
+ * -ing followed by what a verb takes ("the", "her", "to", "work", "late") is
+ * the start of the reason, never a first name.
+ */
+const GERUND = /^[a-z]{3,}ing$/;
+const GERUND_OBJECT = /^(?:the|a|an|her|his|their|my|our|its|this|that|these|those|to|work|shifts?|out|up|on|in|at|for|late|early|off|over|into|with|without|any|all|company|store|salon|policy|policies|cash|money|time|clients?|customers?|guests?)$/;
+
+/*
  * "BOTH", "EITHER" ARE NOBODY. QA, 22 Oct 2026 (F-06): asked "which of them is
  * this for — pat rivera or sam jones?", a manager answering "both" got a form
  * for an employee called "both". A word that counts people is never one.
@@ -138,7 +149,11 @@ const COUNTS_PEOPLE = new Set(["both", "either", "neither", "each", "all", "ever
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
   let endedOnPunctuation = false;
-  for (const raw of words) {
+  for (const [index, raw] of words.entries()) {
+    if (parts.length === 0 && GERUND.test(raw) && GERUND_OBJECT.test((words[index + 1] ?? "").replace(WRAPPER_AFTER, "").toLowerCase())) {
+      if (whole) return null;
+      break;
+    }
     // A third part only where a name position was read — see below.
     if (parts.length === (whole ? 2 : 3)) break;
     // An opening wrapper can only precede the name, so only the first word loses one.

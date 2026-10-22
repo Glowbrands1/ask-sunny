@@ -97,6 +97,52 @@ function normalize(text: string): string {
 }
 
 /** Optimal-string-alignment distance: insertions, deletions, substitutions, adjacent swaps. */
+/**
+ * ============================================================================
+ * THE PERSON THE MANAGER NAMED IN FULL, READ AGAINST THE ROSTER
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026. The name reader takes a lower-case name only where the
+ * sentence says one is being given ("CA for tess varga"), so "write up tess
+ * varga, written warning", "can you write up tess varga?" and "Tess Varga
+ * needs a written CA for missing the meeting" (read as two people, "missing"
+ * and Tess Varga) came back with nobody. Where the words alone settle no one,
+ * the roster this manager may file about can: a FULL name of somebody on it —
+ * first (or preferred first) and last name, as whole words, any case — is that
+ * person. Exactly one name, or nothing: two people named is a question, never a
+ * guess, and a first name alone is never enough. Returns the roster's spelling.
+ */
+export function rosterNameNamedIn(text: string, roster: readonly RosterEmployee[]): string | null {
+  // "remy calder's drawer came up short" names Remy Calder (QA, 22 Oct 2026, round 3).
+  const said = ` ${normalize(text.replace(/(\p{L})['’]s(?![\p{L}])/gu, "$1"))} `;
+  const names = new Set<string>();
+  for (const employee of roster) {
+    const last = normalize(employee.lastName);
+    if (last === "" || isServiceAccountName(employee.firstName, employee.lastName)) continue;
+    const firsts = [employee.firstName, employee.preferredFirstName ?? ""].map(normalize).filter(Boolean);
+    for (const first of firsts) {
+      const full = ` ${first} ${last} `;
+      let at = said.indexOf(full);
+      while (at !== -1) {
+        // Somebody else in the account: "her coworker remy calder", "remy calder told me".
+        const before = said.slice(Math.max(0, at - 40), at);
+        const after = said.slice(at + full.length, at + full.length + 30);
+        if (!OTHER_PARTY_BEFORE.test(before) && !OTHER_PARTY_AFTER.test(after)) {
+          names.add(displayName(employee));
+          break;
+        }
+        at = said.indexOf(full, at + 1);
+      }
+    }
+  }
+  return names.size === 1 ? [...names][0]! : null;
+}
+
+/** A name in these positions is a witness, visitor or coworker in the account, not the form's employee. */
+const OTHER_PARTY_BEFORE =
+  /\b(?:friends?|co-?workers?|coworkers?|colleagues?|customers?|clients?|guests?|visitors?|managers?|supervisors?|boyfriend|girlfriend|husband|wife|mom|mother|dad|father|sister|brother|according to|from|by)\s*$/;
+const OTHER_PARTY_AFTER = /^(?:said|says|told|tells|reported|reports|saw|sees|noticed|notices|mentioned|heard)\b/;
+
 export function editDistance(a: string, b: string): number {
   const rows = a.length + 1;
   const cols = b.length + 1;

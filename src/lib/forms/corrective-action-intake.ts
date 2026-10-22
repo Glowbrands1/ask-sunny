@@ -4,6 +4,7 @@ import {
   statedPayrollDeduct,
   type PayrollDeductAnswer,
 } from "./payroll-deduct";
+import { statedWarningLevel } from "./warning-level";
 
 /**
  * ============================================================================
@@ -203,161 +204,18 @@ const WARNING_LEVEL_GIVEN: readonly RegExp[] = [
 ];
 
 /*
- * ============================================================================
- * "CREATE VERBAL CA FOR …" — THE LEVEL THE MANAGER STATED FOR THIS FORM
- * ============================================================================
- *
- * District Manager feedback, 21 Oct 2026: "create verbal CA for <employee> for
- * violating …" and "… on 10-20-26. verbal. no payroll deduct. …" both named the
- * level, and Ask Sunny still answered "You'll set the verbal/written warning
- * level on the form — I won't guess at it." The level was in the request, in
- * the shorthand managers use for the form itself, and as a sentence of its
- * own — neither of which `WARNING_LEVEL_GIVEN` reads.
- *
- * UNLIKE THE TESTS ABOVE, THIS ONE PUTS A VALUE ON THE FORM, so it is narrow
- * where they are generous. The level the manager stated is ticked on Type of
- * Warning as their statement (see `WARNING_LEVEL_STATED_KEYS`), which makes
- * reading a history as this form's level the mistake that matters:
- *
- *   NAMED             "verbal CA", "written C/A", "verbal corrective action",
- *                     "written warning" — singular, so "verbal CAs before" is
- *                     a pattern of past ones, not this form.
- *   NOT HISTORY       a named level after "had", "gave", "got", "previous",
- *                     "prior" … in the same sentence, or before "before",
- *                     "previously", "last week" …, is a step already taken:
- *                     "she had a written CA in august" states no level here.
- *                     So is one listed under a history heading ("previous
- *                     coaching: jba policy manual 1-1-26, verbal ca 9-1-26").
- *   A BARE LEVEL      only as a sentence of its own — "… 10-20-26. verbal. no
- *                     payroll deduct." or "5. verbal" — never mid-sentence,
- *                     for the reason the intake gives above.
- *   LABELLED          "warning level: written", "type of warning - verbal".
- *
- * Only verbal and written. A final written warning is not an option the form
- * prints, and termination or demotion is never ticked from chat — those are
- * the leadership process's (see `escalation-guard.ts`). Two different levels
- * in one turn are a list, not a decision, and state nothing; a question
- * states nothing either.
+ * The level the manager stated for this form lives in `warning-level.ts`, which
+ * imports nothing — see there for why. Re-exported here for existing callers.
  */
-export type StatedWarningLevel = "verbal" | "written";
-
-/** The Type of Warning group on the Corrective Action Form. */
-export const WARNING_TYPE_KEY = "warning_type";
-
-/** The one key a stated warning level may write — see `applyStatedFacts`. */
-export const WARNING_LEVEL_STATED_KEYS: ReadonlySet<string> = new Set([WARNING_TYPE_KEY]);
-
-export function isStatedWarningLevel(value: unknown): value is StatedWarningLevel {
-  return value === "verbal" || value === "written";
-}
-
-/** A request put as a question, ending right at the level: "can you make a", "could you please write up a". */
-const ASKS_FOR_THE_FORM =
-  /\b(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+|pls\s+)?(?:make|do|create|write(?:\s+up)?|draft|start|prepare|put\s+together|get\s+me|give\s+me|fill\s+out|open)\s+(?:me\s+)?(?:a|an)\s+(?:verbal|written)\b/;
-
-const LEVEL_NAMED = /\b(verbal|written)\s+(?:warning|ca|c\/a|corrective\s+action)\b/g;
-
-/** A step already taken, said before the level: "she had a written CA", "prior verbal warning". */
-const LEVEL_HISTORY_BEFORE =
-  /\b(?:gave|given|issued|received|got|had|has|have|previous(?:ly)?|prior|past|last|earlier|already|final)\s+(?:(?:her|him|them|a|an|the|one|their|his)\s+)?$/;
-
-/** …or after it: "a written warning before", "verbal CA last month". */
-const LEVEL_HISTORY_AFTER =
-  /^\s*(?:(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b|(?:was|were)\s+(?:actually\s+)?(?:(?:given|signed|issued)\s+)?(?:on\s+)?\d)/;
-
-/**
- * …or anywhere after a history heading in the same sentence: "previous
- * coaching: …", "previous CA: …", "prior actions - …" open a list of what
- * already happened. HR, 21 Oct 2026: "create a written CA for … previous
- * coaching: jba policy manual 1-1-26, verbal ca 9-1-26" lists a verbal CA on
- * file; the form being written is the written one requested.
- */
-const LEVEL_HISTORY_HEADING =
-  /\b(?:prior|previous|past|earlier)\s+(?:actions?|warnings?|discipline|disciplinary(?:\s+actions?)?|corrective\s+actions?|coachings?|cas?|c\/a|steps|history|write[- ]?ups?)\s*[:\-–—]/;
-
-/** "actually written", "no, make it verbal" — a correction's lead-in. */
-const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rather|i\s+meant|i\s+mean|make\s+that)[\s,:-]*)*`;
-
-/*
- * "No, keep it verbal" / "keep it as a verbal" (QA X2, 22 Oct 2026): taking a
- * level back after "make it a written warning" kept Written, because "keep it"
- * was not a level statement. The same lead-ins as Ask Bubbles' warning-level.ts.
- */
-const LEVEL_BARE = new RegExp(
-  /*
-   * "make it a verbal instead", "change it to written", "switch to a verbal
-   * please", "no, written after all", "go back to verbal" (QA, 22 Oct 2026):
-   * the level as the whole reply, however it is asked. Only a WHOLE reply, so
-   * "again" here is a change back, never "another written warning".
-   */
-  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|make\s+this|(?:change|switch|set|put)\s+(?:it|this)\s+(?:back\s+)?to|switch\s+(?:back\s+)?to|go\s+(?:back\s+)?(?:to|with)|let'?s\s+(?:do|go\s+with)|keep\s+(?:it|this)(?:\s+(?:as|at))?|do|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+(?:warning|ca|corrective\s+action|one))?(?:[\s,]+(?:instead|then|please|now|after\s+all|again))*\s*$`,
-);
-
-const LEVEL_LABELLED =
-  /\b(?:type\s+of\s+warning|warning\s*(?:level|type))\s*(?:is|should\s+be|[:=-])\s*(?:a\s+)?(verbal|written)\b/g;
-
-/**
- * "verbal, payroll deduct no." — a bare level in a clause of its own, beside
- * clauses that only answer the payroll question. HR, 21 Oct 2026 (ported from
- * Ask Bubbles 9530112): the comma made the sentence more than a bare level, so
- * the level was asked for again. Every other clause must state a payroll
- * answer; anything else ("verbal, she was late") is not read.
- */
-function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
-  const clauses = body.split(",").map((clause) => clause.trim());
-  if (clauses.length < 2) return null;
-  const levels = clauses.map((clause) => LEVEL_BARE.exec(clause));
-  if (levels.filter(Boolean).length !== 1) return null;
-  const others = clauses.filter((_, index) => !levels[index]);
-  return others.every((clause) => statedPayrollDeduct(clause) !== null) ? levels.find(Boolean)! : null;
-}
-
-/** The level one manager turn states for this form, or null. */
-export function statedWarningLevel(text: string): StatedWarningLevel | null {
-  const levels = new Set<StatedWarningLevel>();
-  // A sentence at a time, so a cue in one sentence says nothing about the next.
-  for (const sentence of normalize(text).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
-    const body = sentence[0].replace(/[.;!?\n]$/, "");
-    // A question decides nothing, unless it asks Ask Sunny for the form: "can you make a written CA?"
-    if (sentence[0].endsWith("?") && !ASKS_FOR_THE_FORM.test(body)) continue;
-
-    // The level as the whole reply is a few words; a long sentence is never tested, so it stays linear.
-    const bare = (body.length <= 80 ? LEVEL_BARE.exec(body) : null) ?? levelBesidePayrollAnswer(body);
-    if (bare) levels.add(bare[1] as StatedWarningLevel);
-
-    for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
-
-    for (const match of body.matchAll(LEVEL_NAMED)) {
-      const before = body.slice(0, match.index);
-      const after = body.slice(match.index + match[0].length);
-      if (LEVEL_HISTORY_BEFORE.test(before) || LEVEL_HISTORY_AFTER.test(after) || LEVEL_HISTORY_HEADING.test(before)) {
-        continue;
-      }
-      levels.add(match[1] as StatedWarningLevel);
-    }
-  }
-  return levels.size === 1 ? [...levels][0]! : null;
-}
-
-/**
- * The level the manager's turns state, the latest that states one winning —
- * "verbal" and then "actually written" is written.
- */
-export function warningLevelFromTurns(turns: readonly string[]): StatedWarningLevel | null {
-  for (const turn of [...turns].reverse()) {
-    const level = statedWarningLevel(turn);
-    if (level) return level;
-  }
-  return null;
-}
-
-/** The value to store for a stated level: one ticked option where the form offers it, or nothing. */
-export function warningLevelChecked(
-  level: StatedWarningLevel | null | undefined,
-  offered: readonly string[],
-): Record<string, string[]> {
-  return isStatedWarningLevel(level) && offered.includes(level) ? { [WARNING_TYPE_KEY]: [level] } : {};
-}
+export {
+  WARNING_LEVEL_STATED_KEYS,
+  WARNING_TYPE_KEY,
+  isStatedWarningLevel,
+  statedWarningLevel,
+  warningLevelChecked,
+  warningLevelFromTurns,
+  type StatedWarningLevel,
+} from "./warning-level";
 
 /** "First time", "no prior write-ups" — a stated ABSENCE is a stated answer. */
 const PREVIOUS_NONE: readonly RegExp[] = [
@@ -368,6 +226,10 @@ const PREVIOUS_NONE: readonly RegExp[] = [
   /\bnever been (?:coached|warned|written up|disciplined)\b/,
   /\bno (?:coaching|warnings?|write[- ]?ups?|corrective action|discipline)\b/,
   /\bfirst offen[cs]e\b/,
+  // "nothing prior", "nothing on file", "clean record", "no history" (QA, 22 Oct 2026, round 3)
+  /\bnothing (?:prior|previous|before|on (?:file|record))\b/,
+  /\bno (?:disciplinary )?(?:history|record)\b/,
+  /\bclean (?:record|file|history)\b/,
 ];
 
 /**

@@ -1,4 +1,4 @@
-import { datesInText, explicitFormDate, heldCoachingDates, listIncidentDates } from "./form-date-answer";
+import { explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -69,7 +69,12 @@ export type DateChoice = { kind: "date"; iso: string } | { kind: "today" };
 export function readDateChoice(reply: string, dates: readonly string[], today: string): DateChoice | null {
   const text = (reply ?? "").toLowerCase();
   if (/\?\s*$/.test(text.trim())) return null;
-  const typed = datesInText(reply, today).filter((found) => found.iso <= today);
+  /*
+   * A DATE OF THE INCIDENT, not any date: "she was coached 1-1-26 on the jba
+   * manual", typed after the question, is history and answered nothing (QA, 22
+   * Oct 2026, round 3 — the form was dated 1/1).
+   */
+  const typed = listFormDates(reply, today).filter((found) => found.iso <= today);
   if (typed.length > 0) return { kind: "date", iso: typed[typed.length - 1]!.iso };
   if (/\b(?:most recent|latest|newest|last (?:one|date)|second)\b/.test(text)) {
     return { kind: "date", iso: dates[dates.length - 1]! };

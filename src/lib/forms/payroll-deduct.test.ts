@@ -14,6 +14,7 @@ import {
   payrollDeductSentence,
   quotedDeductionAmount,
   statedPayrollDeduct,
+  payrollDeductUnclear,
 } from "./payroll-deduct";
 import { enforcePersonEdit, enforceResponsibilities } from "./responsibility";
 
@@ -140,6 +141,10 @@ describe("a stated answer", () => {
     ["deduct the $40 shortage from her paycheck", "yes"],
     ["the shortage will be deducted", "yes"],
     ["payroll-deduct applies", "yes"],
+    // QA, 22 Oct 2026: the answer last in its clause.
+    ["she blew the 10/15/26 woven deadline. payroll deduct no", "no"],
+    ["payroll deduction applicable no.", "no"],
+    ["payroll deduct yes", "yes"],
     // HR, 21 Oct 2026 (ported from Ask Bubbles)
     ["payroll deduct no", "no"],
     ["Verbal warning, payroll deduct no.", "no"],
@@ -164,6 +169,7 @@ describe("a stated answer", () => {
     "no prior corrective action",
     "payroll deduct no longer applies to her team",
     "Sarah Test",
+    "payroll deduct no longer applies to uniforms?",
   ])("%s states nothing", (text) => {
     expect(statedPayrollDeduct(text)).toBeNull();
   });
@@ -490,10 +496,17 @@ describe("review: zero, a cancelled order, and \"no cancel\"", () => {
   ])('a waiver said of the deduction is still No: "%s"', (text) => {
     expect(statedPayrollDeduct(text)).toBe("no");
   });
+  /*
+   * Changed on purpose at the release merge (22 Oct 2026): the release reader
+   * (QA F-01) reads "no" right before "cancel" as possibly denying the
+   * cancellation, so it states nothing and the manager is asked — never a
+   * guessed Yes or No on a pay record.
+   */
   it.each([["no cancel the payroll deduction"], ["Payroll deduct of $25 is applicable. No cancel the payroll deduction"]])(
-    '"%s" never leaves a Yes',
+    '"%s" is asked about, not guessed',
     (text) => {
-      expect(statedPayrollDeduct(text)).not.toBe("yes");
+      expect(statedPayrollDeduct(text)).toBeNull();
+      expect(payrollDeductUnclear(text)).toBe(true);
     },
   );
 });
