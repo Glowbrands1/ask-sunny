@@ -190,6 +190,13 @@ export interface LibrarySeedResult {
    */
   failed: { key: string; reason: string }[];
   /**
+   * Templates where an EARLIER run was interrupted between its steps (a new
+   * version inserted but never made current, or a superseded version left
+   * published) and this run completed it. See `completeInterruptedPublish`.
+   * Present only when one was.
+   */
+  repaired?: string[];
+  /**
    * Set when this deployment may not write the library at all — a Vercel
    * Preview, which shares Production's database. Nothing was read or written;
    * the lists above are empty. See `template-sync-policy.ts`.
@@ -259,6 +266,7 @@ export async function ensureTemplateLibrary(
   const renamed: string[] = [];
   const heldBack: { key: string; reason: string }[] = [];
   const failed: { key: string; reason: string }[] = [];
+  const repaired: string[] = [];
 
   const { data: rows, error } = await supabase
     .from("form_templates")
@@ -275,6 +283,7 @@ export async function ensureTemplateLibrary(
         const templateId = String(row.id);
         if (await syncTemplateDisplay(templateId, row, seed)) renamed.push(seed.key);
         const outcome = await publishSeedRevision(templateId, seed, actor);
+        if (outcome.repaired) repaired.push(seed.key);
         if (outcome.published) revised.push(seed.key);
         else if (outcome.reason) heldBack.push({ key: seed.key, reason: outcome.reason });
         else existing.push(seed.key);
@@ -380,7 +389,15 @@ export async function ensureTemplateLibrary(
     }
   }
 
-  const result: LibrarySeedResult = { created, existing, revised, renamed, heldBack, failed };
+  const result: LibrarySeedResult = {
+    created,
+    existing,
+    revised,
+    renamed,
+    heldBack,
+    failed,
+    ...(repaired.length > 0 ? { repaired } : {}),
+  };
   logSyncOutcome(result);
   return result;
 }
@@ -421,7 +438,8 @@ function logSyncOutcome(result: LibrarySeedResult): void {
     result.revised.length +
     result.renamed.length +
     result.heldBack.length +
-    result.failed.length;
+    result.failed.length +
+    (result.repaired?.length ?? 0);
   if (noteworthy === 0) return;
   const line = JSON.stringify({
     event: "forms.template_sync.completed",
@@ -431,6 +449,7 @@ function logSyncOutcome(result: LibrarySeedResult): void {
     renamed: result.renamed,
     heldBack: result.heldBack.map((entry) => entry.key),
     failed: result.failed.map((entry) => entry.key),
+    repaired: result.repaired ?? [],
   });
   if (result.failed.length > 0) console.error(line);
   else console.info(line);
@@ -529,7 +548,7 @@ async function publishSeedRevision(
   templateId: string,
   seed: TemplateSeed,
   actor: string,
-): Promise<{ published: boolean; reason: string | null }> {
+): Promise<{ published: boolean; reason: string | null; repaired?: boolean }> {
   const supabase = getSupabaseAdmin();
   const versions = await listVersions(templateId);
 
@@ -537,7 +556,15 @@ async function publishSeedRevision(
     (highest, version) => Math.max(highest, version.seedRevision),
     0,
   );
-  if (highestSeeded >= seed.revision) return { published: false, reason: null };
+  if (highestSeeded >= seed.revision) {
+    /*
+     * THE DATABASE HAS THIS REVISION. Usually that is the end of it; but a run
+     * interrupted between inserting the version, pointing the template at it
+     * and archiving the old one leaves it half done, and "has the revision"
+     * must not be read as "finished". See `completeInterruptedPublish`.
+     */
+    return completeInterruptedPublish(templateId, seed, versions);
+  }
 
   const authored = versions.find((version) => version.seedRevision === 0);
   if (authored) {
@@ -625,22 +652,108 @@ async function publishSeedRevision(
       { onConflict: "template_id" },
     );
   if (currentError) {
-    throw new Error(`Could not activate ${seed.key} revision ${seed.revision}: ${currentError.message}`);
+    /*
+     * THE NEW VERSION EXISTS BUT IS NOT CURRENT. The previous version is still
+     * the one forms are filled from and nothing was archived, so nothing is
+     * lost. The message says exactly that, and the next run finds the new
+     * version already stored and makes it current (`completeInterruptedPublish`).
+     */
+    throw new Error(
+      `Version ${(versions[0]?.version ?? 0) + 1} of ${seed.key} was stored but could not be made current (${currentError.message}); the previous version is still current. The next run completes it.`,
+    );
   }
 
   /*
    * ARCHIVED, NEVER DELETED. Every form filled from the previous version still
    * points at it, and re-rendering one has to find the document it was signed
    * against.
+   *
+   * THE RESULT IS CHECKED. It was not, so a failed archive reported success
+   * while two versions stayed published. The new version IS current by now, so
+   * nothing is wrong for anyone filling a form; the failure is reported all the
+   * same and the next run archives the leftover.
    */
   if (previous) {
-    await supabase
+    const { error: archiveError } = await supabase
       .from("form_template_versions")
       .update({ status: "archived", archived_at: stamp })
       .eq("id", previous.id);
+    if (archiveError) {
+      throw new Error(
+        `Version ${(versions[0]?.version ?? 0) + 1} of ${seed.key} is published and current, but the previous version could not be archived (${archiveError.message}). The next run archives it.`,
+      );
+    }
   }
 
   return { published: true, reason: null };
+}
+
+/**
+ * Finishes a publish an earlier run began and did not complete.
+ *
+ * `publishSeedRevision` is three writes (insert the version, point
+ * `form_template_current` at it, archive the old one), not a transaction. The
+ * database refuses a second row for the same (template, version), so a retry
+ * can never duplicate; what has to be handled is a run that stopped between
+ * steps, which would otherwise be stuck for good because the new version
+ * already "has" the revision:
+ *
+ *   stored, never made current  -> the previous seeded version is still
+ *                                  current and the new one sits published
+ *                                  beside it. Point the template at it.
+ *   current, old one not archived -> archive the leftover.
+ *
+ * WHERE IT STANDS DOWN, the same places the publish does: any version a person
+ * authored (`seed_revision` 0) or an open draft means the code is not the
+ * authority on this template, and nothing is re-pointed or archived. It only
+ * ever moves `current` off a SEEDED version older than this revision (or onto
+ * nothing), and only archives SEEDED versions, so an administrator's
+ * publication cannot be undone by it. A healthy template changes nothing.
+ */
+async function completeInterruptedPublish(
+  templateId: string,
+  seed: TemplateSeed,
+  versions: TemplateVersionRow[],
+): Promise<{ published: boolean; reason: string | null; repaired?: boolean }> {
+  const nothing = { published: false, reason: null };
+  if (versions.some((version) => version.seedRevision === 0)) return nothing;
+  if (versions.some((version) => version.status === "draft")) return nothing;
+
+  const target = versions.find(
+    (version) => version.seedRevision >= seed.revision && version.status === "published",
+  );
+  if (!target) return nothing;
+
+  const supabase = getSupabaseAdmin();
+  const current = await getCurrentVersion(templateId);
+  const stamp = new Date().toISOString();
+
+  let repointed = false;
+  if (!current || (current.id !== target.id && current.seedRevision > 0 && current.seedRevision < seed.revision)) {
+    const { error } = await supabase
+      .from("form_template_current")
+      .upsert({ template_id: templateId, version_id: target.id, updated_at: stamp }, { onConflict: "template_id" });
+    if (error) {
+      throw new Error(`Version ${target.version} of ${seed.key} is stored but could not be made current: ${error.message}`);
+    }
+    repointed = true;
+  }
+
+  const currentId = repointed ? target.id : current?.id;
+  const leftovers = versions.filter(
+    (version) => version.status === "published" && version.id !== currentId && version.seedRevision > 0,
+  );
+  for (const leftover of leftovers) {
+    const { error } = await supabase
+      .from("form_template_versions")
+      .update({ status: "archived", archived_at: stamp })
+      .eq("id", leftover.id);
+    if (error) {
+      throw new Error(`Version ${leftover.version} of ${seed.key} could not be archived: ${error.message}`);
+    }
+  }
+
+  return { published: repointed, reason: null, repaired: repointed || leftovers.length > 0 };
 }
 
 export interface TemplateSummary extends TemplateRow {
