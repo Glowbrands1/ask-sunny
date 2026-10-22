@@ -30,6 +30,7 @@ existed in both.
 | 8e3e81e | Intake stays open on a salon / "I already told you"; "my employee <name>"; CA offered beside Coaching after a repeat |
 | 51e1d5e | Exact title match when a knowledge upload supersedes a document; `/api/health` no longer 500s in demo mode |
 | 54b3d42, 6e92b9d | Template sync lists every failure; an interrupted publish is finished, never reported as success |
+| bee01d6 (mechanism of Bubbles' store-number collision question) | A salon number that is also another salon's Google store code (306/307/314) is asked between the two for an account covering every salon, never dropped or guessed |
 
 New end-to-end regression suite: `src/app/api/forms/hr-feedback-oct21-e2e.test.ts`
 (11 of its 33 HR scenarios fail on `main`; all pass with these ports).
