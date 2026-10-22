@@ -167,7 +167,7 @@ export function groundPriorActions(input: {
    * `prior-forms.ts`. A record, so its dates stand as the manager's do, and a
    * step on file that the draft left out is listed.
    */
-  onFile?: readonly { formDate: string; line: string }[];
+  onFile?: readonly { formDate: string; line: string; templateKey?: string }[];
 }): { value: string; added: string[]; removed: string[] } {
   const onFile = input.onFile ?? [];
   const stated = new Set([
@@ -198,11 +198,30 @@ export function groundPriorActions(input: {
       priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic), stepDescription(step.named) || (step.about ?? "")),
     );
   }
-  // What the manager said of a step comes first; the record fills in the rest.
+  /*
+   * What the manager said of a step comes first; the record fills in the rest.
+   *
+   * A LINE STANDS FOR ONE STEP, NOT FOR A WHOLE DAY (QA F-11, 22 Oct 2026). A
+   * Coaching Form and a Verbal CA signed the same day are two steps; matching
+   * on the date alone listed only the first. A line already on the list covers
+   * a form on file only when it has the form's date AND names the same kind
+   * of step, and each line covers one form.
+   */
+  const covering = [...kept, ...added].map((line) => ({
+    line,
+    dates: new Set(datesInText(line, input.today).map((found) => found.iso)),
+    used: false,
+  }));
   for (const form of onFile) {
-    if (present.has(form.formDate)) continue;
-    present.add(form.formDate);
+    const cover = covering.find(
+      (entry) => !entry.used && entry.dates.has(form.formDate) && sameStepKind(entry.line, form),
+    );
+    if (cover) {
+      cover.used = true;
+      continue;
+    }
     added.push(form.line);
+    covering.push({ line: form.line, dates: new Set([form.formDate]), used: true });
   }
 
   const lines = [...kept, ...added];
@@ -214,6 +233,14 @@ export function groundPriorActions(input: {
     return { value: NO_PRIOR_ACTION, added: [NO_PRIOR_ACTION], removed };
   }
   return { value: final.join("\n"), added, removed };
+}
+
+/** Whether a line on the list names the same kind of step as a form on file. */
+function sameStepKind(line: string, form: { line: string; templateKey?: string }): boolean {
+  const coaching = (text: string) => /\bcoach/i.test(text);
+  const corrective = (text: string) => /\b(?:corrective|verbal|written|warning|termination|demotion|ca|c\/a|write[- ]?up)\b/i.test(text);
+  const formIsCoaching = form.templateKey ? form.templateKey === "coaching" : coaching(form.line) && !corrective(form.line);
+  return formIsCoaching ? coaching(line) : corrective(line);
 }
 
 /**
