@@ -1,5 +1,7 @@
 # Final QA verdict — Ask Sunny (JB & Associates / Sun Tan City) — 22 Oct 2026 (after the overnight validation)
 
+> **Superseded by the final safety check:** see `FINAL_RELEASE_RECOMMENDATION.md` (final code heads Sunny `880d19a`, Bubbles `225bf10`, payroll-only `56c45e1`; one more payroll defect fixed — corrections after the form exists).
+
 ## Recommendation: **PASS for release — subject to your approval and three decisions (below).**
 
 Every QA defect in scope is fixed and verified. The full suite is now **green (0 failures)** after the chat-UI test-timing fix, and typecheck, lint, build, local-stack integration (78/78), Playwright (9/9), payroll and regression probes all pass with no regression against `main`. What remains is Low and pre-existing, or a product decision that is yours.
@@ -59,7 +61,7 @@ Manager `salon_director` at **NE Lincoln 27th Street (`loc-0310`)**, also coveri
 | B3 | Low | After a ready card and "i already told you", a one-word "today" ends the intake (nothing saved wrongly) — pre-existing |
 | R1 | Low | Lower-case name in "…what should I do?" gets no suggestion — pre-existing |
 | P-1 | Low | After a form exists, an unclear payroll statement changes nothing and is not asked (code reading) — pre-existing |
-| LS-1 | Low (test, not in CI) | `month-to-date.local-stack.test.ts` fails only when run after the Woven access tests in a different order; passes in the standard order (78/78); identical on `main` |
+| LS-1 | Low (test, not in CI) | `month-to-date.local-stack.test.ts` fails intermittently on rows the Woven access tests leave behind (it failed in the final safety-check run, passed 78/78 in the two before); identical on `main` |
 | F-10 | Medium (data) | District managers cannot file until verified district → salon assignments exist (fail-closed by your instruction) |
 
 ## 8. Cross-company isolation

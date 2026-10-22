@@ -1,35 +1,42 @@
 
  RUN  v4.1.11 /home/user/ask-sunny
 
-ERROR:  permission denied for table employee_account_links
-ERROR:  permission denied for table employee_account_links
-ERROR:  permission denied for table employee_account_links
-ERROR:  permission denied for table employee_account_links
-ERROR:  employee_account_links: only managed_status, managed_location and managed_role can change (and, through the lifecycle functions, the invitation and termination record); a link's identity never does
-CONTEXT:  PL/pgSQL function public.employee_account_links_guard_update() line 10 at RAISE
-ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
-DETAIL:  Failing row contains (4dcb2ef3-043a-4d94-9c3d-8c0d72330ed8, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 15:41:19.331555+00, 2026-10-22 15:41:20.209689+00, null, null, null, null, 0, null).
-ERROR:  permission denied for function auth_clear_user_credentials
-NOTICE:  truncate cascades to table "google_review_period_anchors"
-NOTICE:  truncate cascades to table "google_review_apify_runs"
-NOTICE:  truncate cascades to table "google_review_reconciliation_items"
-NOTICE:  truncate cascades to table "google_review_period_anchors"
-NOTICE:  truncate cascades to table "google_review_apify_runs"
-NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+ERROR:  provision_auth_user_mismatch
+CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
+ERROR:  provision_auth_user_mismatch
+CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
+ERROR:  link_protected_account
+CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 28 at RAISE
+ERROR:  link_duplicate_email
+CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 54 at RAISE
+ERROR:  disable_not_terminated_in_latest_read
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
+ERROR:  disable_not_terminated_in_latest_read
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
+ERROR:  disable_status_not_managed
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 11 at RAISE
+ERROR:  disable_directory_not_current
+CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 23 at RAISE
+ERROR:  employee_access_actions is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
 ERROR:  duplicate key value violates unique constraint "employee_account_links_one_account_per_employee"
-DETAIL:  Key (source_system, external_employee_id)=(woven, LS-5030c7-LINKED) already exists.
+DETAIL:  Key (source_system, external_employee_id)=(woven, LS-b53688-LINKED) already exists.
 ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_linked_names_employee"
-DETAIL:  Failing row contains (daea1224-3cb4-4354-9bd2-05a112e10384, woven_linked, woven, null, admin_manual, f, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 15:41:39.888213+00, 2026-10-22 15:41:39.888213+00, null, null, null, null, 0, null).
+DETAIL:  Failing row contains (e0d235c6-6575-42f0-add3-1eb87b5b11c6, woven_linked, woven, null, admin_manual, f, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 18:13:05.015694+00, 2026-10-22 18:13:05.015694+00, null, null, null, null, 0, null).
 ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
-DETAIL:  Failing row contains (daea1224-3cb4-4354-9bd2-05a112e10384, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 15:41:39.940623+00, 2026-10-22 15:41:39.940623+00, null, null, null, null, 0, null).
+DETAIL:  Failing row contains (e0d235c6-6575-42f0-add3-1eb87b5b11c6, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 18:13:05.068065+00, 2026-10-22 18:13:05.068065+00, null, null, null, null, 0, null).
 ERROR:  update or delete on table "app_users" violates foreign key constraint "employee_account_links_app_user_id_fkey" on table "employee_account_links"
-DETAIL:  Key (id)=(c101186f-f90c-4a19-b04b-0db6f1cfff38) is still referenced from table "employee_account_links".
+DETAIL:  Key (id)=(331c224c-84f8-4ed2-a27e-7d558c6e8ab4) is still referenced from table "employee_account_links".
 ERROR:  employee_access_actions is append-only
 CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
 ERROR:  employee_access_runs is append-only
 CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
 ERROR:  new row for relation "employee_access_actions" violates check constraint "employee_access_actions_action_check"
-DETAIL:  Failing row contains (9b04ca2d-4596-447c-a36c-eb62f1eb4d80, c67d13bf-e8aa-47e7-a778-21394c2a8413, BAD-2, null, DELETE_EVERYONE, t, {}, null, null, null, shadow, 2026-10-22 15:41:42.126339+00, null).
+DETAIL:  Failing row contains (7368cb1d-b789-4dbc-b8c0-ef0b6b70067c, c2a732c1-c51a-47ad-9fd4-f7b9d2da1ea6, BAD-2, null, DELETE_EVERYONE, t, {}, null, null, null, shadow, 2026-10-22 18:13:06.913354+00, null).
 CONTEXT:  SQL statement "insert into public.employee_access_actions (
     access_run_id, external_employee_id, app_user_id, action, is_primary, reason_codes,
     before_values, after_values, woven_source_at, result
@@ -55,32 +62,55 @@ ERROR:  cannot insert into view "employee_access_accounts"
 DETAIL:  Views that do not select from a single table or view are not automatically updatable.
 HINT:  To enable inserting into the view, provide an INSTEAD OF INSERT trigger or an unconditional ON INSERT DO INSTEAD rule.
 ERROR:  new row for relation "employee_access_runs" violates check constraint "employee_access_runs_shadow_is_final"
-DETAIL:  Failing row contains (e711c839-ca7e-4411-a489-20d2b9fb8bb6, shadow, x, null, p, running, {}, {}, 2026-10-22 15:41:44.229698+00, null).
-ERROR:  provision_auth_user_mismatch
-CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
-ERROR:  provision_auth_user_mismatch
-CONTEXT:  PL/pgSQL function public.employee_access_provision_account(uuid,text,text,text,text,text,text) line 47 at RAISE
-ERROR:  link_protected_account
-CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 28 at RAISE
-ERROR:  link_duplicate_email
-CONTEXT:  PL/pgSQL function public.employee_access_link_existing(uuid,text,text) line 54 at RAISE
-ERROR:  disable_not_terminated_in_latest_read
-CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
-ERROR:  disable_not_terminated_in_latest_read
-CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 26 at RAISE
-ERROR:  disable_status_not_managed
-CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 11 at RAISE
-ERROR:  disable_directory_not_current
-CONTEXT:  PL/pgSQL function public.employee_access_disable_terminated(uuid,text,text) line 23 at RAISE
-ERROR:  employee_access_actions is append-only
-CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
-ERROR:  employee_access_runs is append-only
-CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
-ERROR:  employee_access_runs is append-only
-CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+DETAIL:  Failing row contains (85505d09-d8f5-49e3-8c59-48d77f8959eb, shadow, x, null, p, running, {}, {}, 2026-10-22 18:13:08.849695+00, null).
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+ERROR:  update or delete on table "salons" violates foreign key constraint "woven_location_map_salon_id_fkey" on table "woven_location_map"
+DETAIL:  Key (id)=(626d5a89-3a45-4b26-87a4-0ced32a54848) is still referenced from table "woven_location_map".
+ ❯ src/lib/reviews/month-to-date.local-stack.test.ts (8 tests | 8 skipped) 166ms
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  employee_account_links: only managed_status, managed_location and managed_role can change (and, through the lifecycle functions, the invitation and termination record); a link's identity never does
+CONTEXT:  PL/pgSQL function public.employee_account_links_guard_update() line 10 at RAISE
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
+DETAIL:  Failing row contains (07e2933f-ff9f-4e09-a066-815782396d38, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 18:13:10.529768+00, 2026-10-22 18:13:11.282254+00, null, null, null, null, 0, null).
+ERROR:  permission denied for function auth_clear_user_credentials
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
 
- Test Files  6 passed (6)
-      Tests  78 passed (78)
-   Start at  15:41:17
-   Duration  50.01s (transform 4.36s, setup 0ms, import 1.41s, tests 47.29s, environment 1ms)
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/reviews/month-to-date.local-stack.test.ts > month to date on the local stack
+Error: Command failed: psql postgres://supabase_admin@127.0.0.1:54329/postgres -At -v ON_ERROR_STOP=1 -c 
+      truncate public.google_reviews, public.google_review_periods,
+               public.google_review_sync_runs cascade;
+      delete from public.google_review_locations;
+      delete from public.salon_period_attributes where ingestion_id = '00000000-0000-0000-0000-00000000a11a';
+      delete from public.salons where salon_number in ('0462','0307','0309','0410','0495');
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+ERROR:  update or delete on table "salons" violates foreign key constraint "woven_location_map_salon_id_fkey" on table "woven_location_map"
+DETAIL:  Key (id)=(626d5a89-3a45-4b26-87a4-0ced32a54848) is still referenced from table "woven_location_map".
+
+ ❯ sql src/lib/reviews/month-to-date.local-stack.test.ts:47:3
+     45|
+     46| const sql = (query: string) =>
+     47|   execFileSync("psql", [PG, "-At", "-v", "ON_ERROR_STOP=1", "-c", quer…
+       |   ^
+     48|     encoding: "utf8",
+     49|   }).trim();
+ ❯ src/lib/reviews/month-to-date.local-stack.test.ts:108:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 5 passed (6)
+      Tests  70 passed | 8 skipped (78)
+   Start at  18:12:31
+   Duration  43.28s (transform 4.82s, setup 0ms, import 1.16s, tests 40.94s, environment 2ms)
 

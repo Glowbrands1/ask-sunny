@@ -201,3 +201,49 @@ for (const c of SAVED_CASES) {
     expect.soft(pass).toBe(true);
   });
 }
+
+// Runs after the setup test (file order, one worker): the library must be seeded first.
+const AFTER_CASES: { label: string; correction: string; payroll: "no" | "cleared"; asks: boolean }[] = [
+  { label: "change to No", correction: "change payroll deduct to no", payroll: "no", asks: false },
+  { label: "cancelled", correction: "we cancelled the $25 payroll deduction", payroll: "no", asks: false },
+  { label: "ambiguous", correction: "hold off on the $25 payroll deduction", payroll: "cleared", asks: true },
+];
+
+for (const c of AFTER_CASES) {
+  test(`payroll corrected after creation (${c.label}): saved value and chat agree, never a silent Yes`, async ({ page }) => {
+    await signIn(page, A.managerEmail);
+    await page.goto("/chat");
+    const t1 = await send(page, "create a verbal ca for pat rivera. she was late on 10/15. payroll deduct $25");
+    const select = page.getByLabel(LOCATION_QUESTION).last();
+    if ((await select.count()) > 0) await select.selectOption(A.ownLocations[0]!.id);
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => new URL(r.url()).pathname === "/api/forms/instances" && r.request().method() === "POST", { timeout: 60_000 }),
+      page.getByRole("button", { name: "Create draft" }).last().click(),
+    ]);
+    const id = ((await response.json().catch(() => null)) as { instance?: { id?: string } } | null)?.instance?.id ?? null;
+    const readPayroll = async () => {
+      const read = await page.request.get(`/api/forms/instances/${id}`);
+      const body = (await read.json().catch(() => null)) as { values?: { fieldKey: string; checked: string[] }[] } | null;
+      return body?.values?.find((v) => v.fieldKey === "payroll_deduct")?.checked ?? [];
+    };
+    await page.waitForTimeout(2_000);
+    const before = id ? await readPayroll() : null;
+    const t2 = await send(page, c.correction);
+    const after = id ? await readPayroll() : null;
+    const reply = String(t2.response.content ?? "");
+    const asked = /Yes or No\?/.test(reply);
+    const update = (t2.response.formUpdate ?? null) as { instanceId?: string; updated?: string[] } | null;
+    const payrollOk = c.payroll === "no" ? JSON.stringify(after) === JSON.stringify(["no"]) : Array.isArray(after) && after.length === 0;
+    const pass =
+      card(t1)?.templateKey === "dpoa" &&
+      JSON.stringify(before) === JSON.stringify(["yes"]) &&
+      payrollOk &&
+      asked === c.asks &&
+      update?.instanceId === id &&
+      (update?.updated ?? []).includes("payroll_deduct");
+    record({ test: `payroll corrected after creation (${c.label})`, pass, created: { id, payrollOnCard: (t1.response.formProposal as { payrollDeduct?: string } | undefined)?.payrollDeduct ?? null, savedBefore: before }, correction: c.correction, savedAfter: after, asked, formUpdate: update, reply: reply.slice(0, 400) });
+    await page.screenshot({ path: `${process.env.QA_SHOTS}/${A.app}-after-creation-${c.label.replace(/\W+/g, "-")}.png`, fullPage: true });
+    expect.soft(pass).toBe(true);
+  });
+}
+

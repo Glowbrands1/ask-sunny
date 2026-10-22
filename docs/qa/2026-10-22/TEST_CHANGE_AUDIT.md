@@ -129,3 +129,11 @@ New tests (additions only): `qa-f01b-payroll-fail-safe.test.ts` (31 + 7 amount c
 | Skipped | **131** (unchanged) | **59** (unchanged) |
 | Failures | **0** | **0** |
 | `.skip` / `.only` / `.todo` added | none | none |
+
+# Final safety check — payroll corrections after creation (22 Oct 2026)
+
+| App | File | Change | Why | Verdict |
+|---|---|---|---|---|
+| both | `src/lib/forms/qa-f01b-payroll-fail-safe.test.ts` | "cancel the $25 payroll deduction" moved from the *asked* list to the new *No* cases (commented) | A cancelled deduction is now read as a waived one (No). Both expectations exclude Yes; the new one is the stricter reading the business asked for | intended; commented in the file |
+
+New tests (additions only), both apps: `src/app/api/forms/qa-payroll-after-creation-e2e.test.ts` (8) and 6 reader cases in `qa-f01b-payroll-fail-safe.test.ts`. **9 of 51 fail on the previous code; 51/51 pass after** (`evidence/post-creation/*-fail-before.log`, `*-pass-after.log`). Full suites: Sunny 12,380 passed / 0 failed / 131 skipped; Bubbles 10,152 / 0 / 59; payroll-only 9,806 / 0 / 59 — skipped counts unchanged.

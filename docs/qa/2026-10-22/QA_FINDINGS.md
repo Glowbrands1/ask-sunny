@@ -64,6 +64,11 @@ Probe numbers are branch / `main`, same harness and fixtures (`REGRESSION_MATRIX
 
 Final heads: **Ask Sunny `771466e`** (full suite 12,367 / 0 failed), **Ask Bubbles `82b34e3`** (10,139 / 0 failed), payroll-only option `483e6b4` (9,793 / 0 failed, local).
 
+### Found and fixed in the final safety check (payroll after creation)
+| ID | Sev. | What | Root cause | Fix (Bubbles / Sunny / payroll-only) | Tests (fail before) |
+|---|---|---|---|---|---|
+| F-01e | **High** | After a Yes form existed, "we cancelled / cancel / hold off on / not sure about the … payroll deduction" left the saved **Yes** and the Action Plan's deduction sentence, and the chat began a new form (both apps; on a finalized form, nothing was opened) | `correctActiveForm` changed payroll only on a clear Yes/No; "cancelled" was unknown and hedges are deliberately unreadable | `225bf10` / `880d19a` / `56c45e1`: cancelled = No; an unclear statement clears the answer, rebuilds the plan without a deduction and asks Yes or No (on a new draft for a finalized form; the signed record untouched) | 14 (9) |
+
 ### Remaining defects (none introduced by the branches)
 | ID | App | Sev. | Description | Origin | Recommended action |
 |---|---|---|---|---|---|

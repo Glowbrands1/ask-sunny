@@ -1,0 +1,562 @@
+[
+ {
+  "id": "C0 control: No then Yes",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "no",
+    "id": "fake-69",
+    "status": "draft",
+    "payroll": [
+     "no"
+    ],
+    "planStatesDeduction": false,
+    "planDeductionSentence": null
+   },
+   {
+    "step": "turn",
+    "said": "change payroll deduct to yes",
+    "handledBy": "correctActiveForm",
+    "content": "Updated the **Corrective Action Form** for **Ellie Sendgraff**: Is payroll deduct applicable? → Yes.\n\nThe Action Plan now states the payroll deduction.",
+    "formUpdate": {
+     "instanceId": "fake-69",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-69",
+      "status": "draft",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " A payroll deduction applies."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C1 Yes then changed to No",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-154",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "change payroll deduct to no",
+    "handledBy": "correctActiveForm",
+    "content": "Updated the **Corrective Action Form** for **Ellie Sendgraff**: Is payroll deduct applicable? → No.\n\nThe Action Plan no longer states a payroll deduction.",
+    "formUpdate": {
+     "instanceId": "fake-154",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-154",
+      "status": "draft",
+      "payroll": [
+       "no"
+      ],
+      "planStatesDeduction": false,
+      "planDeductionSentence": null
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C1b Yes then 'no payroll deduct'",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-239",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "actually, no payroll deduct",
+    "handledBy": "correctActiveForm",
+    "content": "Updated the **Corrective Action Form** for **Ellie Sendgraff**: Is payroll deduct applicable? → No.\n\nThe Action Plan no longer states a payroll deduction.",
+    "formUpdate": {
+     "instanceId": "fake-239",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-239",
+      "status": "draft",
+      "payroll": [
+       "no"
+      ],
+      "planStatesDeduction": false,
+      "planDeductionSentence": null
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C2 Yes then waived",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-324",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "the $25 payroll deduction was waived",
+    "handledBy": "correctActiveForm",
+    "content": "Updated the **Corrective Action Form** for **Ellie Sendgraff**: Is payroll deduct applicable? → No.\n\nThe Action Plan no longer states a payroll deduction.",
+    "formUpdate": {
+     "instanceId": "fake-324",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-324",
+      "status": "draft",
+      "payroll": [
+       "no"
+      ],
+      "planStatesDeduction": false,
+      "planDeductionSentence": null
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C3 Yes then cancelled",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-409",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "we cancelled the $25 payroll deduction",
+    "handledBy": "proposeFormForTurn",
+    "content": "I'll draft a **Corrective Action Form** for **Ellie Sendgraff** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payr",
+    "formUpdate": null,
+    "card": {
+     "payrollDeduct": null
+    },
+    "asks": true,
+    "forms": [
+     {
+      "id": "fake-409",
+      "status": "draft",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C3b Yes then 'cancel the deduction'",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-492",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "cancel the $25 payroll deduction",
+    "handledBy": "proposeFormForTurn",
+    "content": "I'll draft a **Corrective Action Form** for **Ellie Sendgraff** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payr",
+    "formUpdate": null,
+    "card": {
+     "payrollDeduct": null
+    },
+    "asks": true,
+    "forms": [
+     {
+      "id": "fake-492",
+      "status": "draft",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C4 Yes then ambiguous (hold off)",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-575",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "hold off on the $25 payroll deduction",
+    "handledBy": "proposeFormForTurn",
+    "content": "I'll draft a **Corrective Action Form** for **Ellie Sendgraff** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payr",
+    "formUpdate": null,
+    "card": {
+     "payrollDeduct": null
+    },
+    "asks": true,
+    "forms": [
+     {
+      "id": "fake-575",
+      "status": "draft",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C5 Yes then ambiguous (not sure)",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-658",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "not sure about the payroll deduction anymore",
+    "handledBy": "proposeFormForTurn",
+    "content": "I'll draft a **Corrective Action Form** for **Ellie Sendgraff** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payr",
+    "formUpdate": null,
+    "card": {
+     "payrollDeduct": null
+    },
+    "asks": true,
+    "forms": [
+     {
+      "id": "fake-658",
+      "status": "draft",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "C6 Yes then ambiguous then No",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-741",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "hold off on the $25 payroll deduction",
+    "handledBy": "proposeFormForTurn",
+    "content": "I'll draft a **Corrective Action Form** for **Ellie Sendgraff** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payr",
+    "formUpdate": null,
+    "card": {
+     "payrollDeduct": null
+    },
+    "asks": true,
+    "forms": [
+     {
+      "id": "fake-741",
+      "status": "draft",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     }
+    ]
+   },
+   {
+    "step": "turn",
+    "said": "no",
+    "handledBy": "correctActiveForm",
+    "content": "Updated the **Corrective Action Form** for **Ellie Sendgraff**: Is payroll deduct applicable? → No.\n\nThe Action Plan no longer states a payroll deduction.",
+    "formUpdate": {
+     "instanceId": "fake-741",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-741",
+      "status": "draft",
+      "payroll": [
+       "no"
+      ],
+      "planStatesDeduction": false,
+      "planDeductionSentence": null
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "F1 finalized: change to No",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-826",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "finalize",
+    "httpStatus": 200,
+    "error": null,
+    "id": "fake-826",
+    "status": "finalized",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "change payroll deduct to no",
+    "handledBy": "correctActiveForm",
+    "content": "The **Corrective Action Form** for **Ellie Sendgraff** was finalized, so I opened a new draft of it with every answer and the follow-up carried over. The finalized form stays on file unchanged until you finalize this draft, which then replaces it — delete the draft instead and nothing changes. Signatures are on paper, so print and sign the new version once it's final.\n\nUpdated the **Corrective Act",
+    "formUpdate": {
+     "instanceId": "fake-842",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-826",
+      "status": "finalized",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     },
+     {
+      "id": "fake-842",
+      "status": "draft",
+      "payroll": [
+       "no"
+      ],
+      "planStatesDeduction": false,
+      "planDeductionSentence": null
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "F2 finalized: waived",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-924",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "finalize",
+    "httpStatus": 200,
+    "error": null,
+    "id": "fake-924",
+    "status": "finalized",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "the $25 payroll deduction was waived",
+    "handledBy": "correctActiveForm",
+    "content": "The **Corrective Action Form** for **Ellie Sendgraff** was finalized, so I opened a new draft of it with every answer and the follow-up carried over. The finalized form stays on file unchanged until you finalize this draft, which then replaces it — delete the draft instead and nothing changes. Signatures are on paper, so print and sign the new version once it's final.\n\nUpdated the **Corrective Act",
+    "formUpdate": {
+     "instanceId": "fake-940",
+     "updated": [
+      "payroll_deduct",
+      "action_plan"
+     ]
+    },
+    "card": null,
+    "asks": false,
+    "forms": [
+     {
+      "id": "fake-924",
+      "status": "finalized",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     },
+     {
+      "id": "fake-940",
+      "status": "draft",
+      "payroll": [
+       "no"
+      ],
+      "planStatesDeduction": false,
+      "planDeductionSentence": null
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "F3 finalized: ambiguous",
+  "steps": [
+   {
+    "step": "created",
+    "cardPayroll": "yes",
+    "id": "fake-1022",
+    "status": "draft",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "finalize",
+    "httpStatus": 200,
+    "error": null,
+    "id": "fake-1022",
+    "status": "finalized",
+    "payroll": [
+     "yes"
+    ],
+    "planStatesDeduction": true,
+    "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+   },
+   {
+    "step": "turn",
+    "said": "hold off on the $25 payroll deduction",
+    "handledBy": "proposeFormForTurn",
+    "content": "I'll draft a **Corrective Action Form** for **Ellie Sendgraff** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payr",
+    "formUpdate": null,
+    "card": {
+     "payrollDeduct": null
+    },
+    "asks": true,
+    "forms": [
+     {
+      "id": "fake-1022",
+      "status": "finalized",
+      "payroll": [
+       "yes"
+      ],
+      "planStatesDeduction": true,
+      "planDeductionSentence": " $25 will be deducted from Ellie's pay."
+     }
+    ]
+   }
+  ]
+ }
+]

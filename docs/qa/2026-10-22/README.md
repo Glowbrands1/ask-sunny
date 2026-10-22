@@ -19,6 +19,8 @@ Final QA of branch `claude/lucid-shannon-v79zju` at `4ee4c1b` (ON HOLD: no PR, n
 | `evidence/initial-probes/` | The first probe round (before any fix), incl. the bisect for finding A (Sunny) |
 | `pre-release/` | Pre-release pack: payroll root cause and fixes, release checklist, and (per app) the release options + read-only HR audit plan with its synthetic-data validation (Bubbles) or the roles / salon-number note and the UI timing fix (Sunny) |
 | `evidence/pre-release/` | Payroll probes (43 sentences; 19 chat scenarios), fail-before logs, UI timing runs (Sunny), role and salon-number probes (Sunny) |
+| `FINAL_RELEASE_RECOMMENDATION.md` | **The final GO/NO-GO** for Ask Sunny, the Bubbles payroll-only release and the Bubbles full release |
+| `evidence/post-creation/` | Payroll corrections after the form exists: probe results before and after the fix, fail-before / pass-after logs |
 | `evidence/isolation-check.txt` | Cross-company data and terminology scan of every line the branch adds |
 
 The cross-app documents mention the sibling app; its location names and ids are replaced with ‹markers› here so this repository holds no data from the other company. The unredacted versions of the shared documents differ only in those markers. All people, accounts and records in this evidence are synthetic; no production or historical HR record was read or changed.
