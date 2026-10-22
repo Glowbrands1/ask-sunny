@@ -27,6 +27,16 @@ readers) through to the saved form, plus negatives, and all pass — but new
 wording will still find gaps. Treat each one reported from the field as a test
 case first.
 
+## Previews of `claude/*` branches are switched off
+
+This project's preview deployments use the production database. `vercel.json`
+sets `git.deploymentEnabled` to `false` for `claude/*` and `claude/**`, so pushing
+such a branch builds no preview; `main` (production) and every other branch
+deploy as before. The rule is read from the pushed commit: a `claude/` branch
+cut from a `main` that does not yet carry it will still get previews until the
+rule reaches `main`. Previews of other branches still use the production
+database — a separate staging database is the real fix.
+
 ## Policy manual approval
 
 Ask Sunny cites "the official policy manual" chosen by its title in the knowledge
@@ -44,15 +54,18 @@ To close: an explicit, auditable designation of the approved manual per tenant
 (who approved it, when, which version), checked before a quote is marked
 verified. This is a product and HR decision, not only a code change.
 
-## Sunny: an open chat is lost on refresh
+## Sunny: an open chat was lost on refresh — FIXED on this branch
 
-Ask Sunny keeps the address at `/chat` while a conversation is open; a browser
-refresh lands on an empty "How can Sunny help today?" screen. Nothing is lost —
-the conversation, its card and any created form are in History — but a manager
-mid-way through a Corrective Action has to find the thread again. (Ask Bubbles
-keeps the conversation in the address, `/chat?c=conv_…`, and reopens it.)
+Ask Sunny kept the address at `/chat` while a conversation was open, so a
+refresh landed on an empty "How can Sunny help today?" screen and the manager had
+to find the thread again in History.
 
-To close: put the open conversation id in the URL and restore it on load.
+Fixed: the open conversation is written to the address (`/chat?c=<id>`, history
+entry replaced, not added), a refresh reopens it, a new chat (and deleting the
+open thread, and Clear History) drops it, and a dashboard question (`?q=`) is
+asked once and then leaves the address. See `src/features/chat/chat-address.ts`
+and its tests; the local production-build browser run also refreshes in the
+middle of a Corrective Action and after Create.
 
 ## Sunny: earlier finalized forms as prior actions, dated by form date
 
@@ -65,7 +78,8 @@ with HR which date the line should carry.
 
 A production build of the round-3 working tree answered 500 on `/api/chat` and the
 forms routes. The level reader now lives in `src/lib/forms/warning-level.ts`,
-which imports nothing; `round3-wording.test.ts` fails if it ever gains an import.
+which imports nothing; `round3-wording.test.ts` fails if it ever gains an import,
+and `src/lib/import-cycles.test.ts` fails on any runtime import cycle in `src/`.
 Production build and browser run verified after the fix.
 
 ## Sunny: optional migration not applied

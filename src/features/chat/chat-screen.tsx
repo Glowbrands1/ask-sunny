@@ -33,6 +33,7 @@ import {
 } from "@/lib/reporting/read/chat-report-context";
 import { toChatTurnError } from "./chat-error";
 import { Composer } from "./composer";
+import { writeChatAddress } from "./chat-address";
 import { ContextPanel } from "./context-panel";
 import { ConversationList } from "./conversation-list";
 import { HistoryImportButton, ImportLocalHistoryPrompt } from "./import-local-history";
@@ -53,6 +54,7 @@ export function ChatScreen() {
     accountConversationIds,
     conversationSyncFailed,
     retryConversationSync,
+    ready: storeReady,
   } = useAppStore();
   const signedIn = useMemo(
     () => authorFromSession(user, managerDisplayName),
@@ -414,7 +416,8 @@ export function ChatScreen() {
   );
 
   /**
-   * Accept ?c= — a conversation that was STARTED INLINE on the Overview.
+   * Accept ?c= — a conversation that was STARTED INLINE on the Overview, or
+   * the one that was open before a refresh (`chat-address.ts` writes it).
    *
    * The band writes its turn to the same store this screen reads, so "Continue
    * in Ask Sunny" does not replay the question: it adopts the existing thread,
@@ -445,6 +448,12 @@ export function ChatScreen() {
     const query = searchParams.get("q");
     if (!query) return;
     /*
+     * NOT BEFORE THE STORED HISTORY HAS LOADED. Once a sent question puts its
+     * thread in the address, hydration replacing the conversation list after
+     * it would drop that thread and the reload would find nothing.
+     */
+    if (!storeReady) return;
+    /*
      * When a conversation came with the question, wait for it to become the
      * active one. Sending first would append the follow-up to a NEW thread and
      * leave the original answer stranded in history — the exact split the
@@ -455,7 +464,21 @@ export function ChatScreen() {
     seededQuery.current = true;
     const timer = window.setTimeout(() => void send(query), 0);
     return () => window.clearTimeout(timer);
-  }, [searchParams, send, activeId]);
+  }, [searchParams, send, activeId, storeReady]);
+
+  /**
+   * The open conversation goes into the address, so a refresh reopens it — see
+   * `chat-address.ts`. Declared AFTER the ?q= effect on purpose: that effect
+   * has to read `?q=` and mark it seeded before this one drops it.
+   *
+   * `searchParams` IS A DEPENDENCY so the address is written again when the
+   * router puts its own back after a client-side arrival (a dashboard chip's
+   * `?q=`). Once the address matches, `chatAddressFor` returns null and nothing
+   * is written, so this cannot loop.
+   */
+  useEffect(() => {
+    if (activeId) writeChatAddress(activeId);
+  }, [activeId, searchParams]);
 
   /**
    * ==========================================================================
@@ -569,6 +592,7 @@ export function ChatScreen() {
    */
   const startNewChat = useCallback(() => {
     setActiveId(null);
+    writeChatAddress(null);
     setDraftMessages([]);
     setInput("");
     setHistoryOpen(false);
