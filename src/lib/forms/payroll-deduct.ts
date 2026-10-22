@@ -88,6 +88,10 @@ const NEGATIVE: readonly RegExp[] = [
    */
   new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven)\b`),
   new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
+  // "payroll deduct $25 does not apply", "$25 payroll deduction is not needed" (QA, 22 Oct 2026)
+  new RegExp(
+    String.raw`\b${SUBJECT}\s+\$\s?\d[\d,]*(?:\.\d{1,2})?\s+(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
+  ),
 ];
 
 /*
@@ -100,7 +104,10 @@ const UNDECIDED =
   /\b(?:maybe|perhaps|possibly|might|not sure|unsure|undecided|tbd|to be determined|thinking (?:about|of)|considering|depending|whether|if needed|may (?:need|have|be))\b/;
 const ABOUT_DEDUCTION = new RegExp(String.raw`\b${SUBJECT}\b|\bdeduct\w*`);
 
-const POSITIVE: readonly RegExp[] = [
+/*
+ * A YES THE MANAGER SAID IN SO MANY WORDS: "yes", "applies", "is applicable".
+ */
+const POSITIVE_STATED: readonly RegExp[] = [
   // "payroll deduct of $3.25 is applicable", "payroll deduction for the shortage applies"
   new RegExp(
     String.raw`\b${SUBJECT}${OF_WHAT}(?:is\s+|does\s+|will\s+|would\s+)?(?:be\s+)?(?:applicable|applies|apply|needed|required|necessary)\b`,
@@ -115,6 +122,25 @@ const POSITIVE: readonly RegExp[] = [
   new RegExp(String.raw`\b${SUBJECT}(?:\s+applicable)?\s*[:=-]\s*(?:yes|y)(?:$|[\s.,!;])`),
   // "payroll deduct yes", "payroll deduction applicable yes"
   new RegExp(String.raw`\b${SUBJECT}(?:\s+applicable)?\s+(?:yes|y)\s*(?:$|[.,!;])`),
+];
+
+/*
+ * ============================================================================
+ * A YES READ FROM AN AMOUNT OR A VERB IS ONLY A YES WHEN NOTHING DENIES IT
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026 (F-01, follow-up). "payroll deduct $25" and "$25 payroll
+ * deduction" are a Yes because they name a deduction to take — but so do
+ * "we're not doing the $25 payroll deduction", "skip the $25 payroll
+ * deduction", "no need for the $25 payroll deduction" and "payroll deduct $25
+ * does not apply", and a list of negative phrasings can never name every way
+ * a manager says no. So these readings are a Yes only when no word next to
+ * them — in the same stretch of the clause, up to a comma — denies, waives,
+ * cancels or replaces the deduction. Where one does, the clause is UNCLEAR:
+ * nothing is read, and the manager is asked. Never Yes, and never a No the
+ * manager did not say.
+ */
+const POSITIVE_IMPLIED: readonly RegExp[] = [
   // "deduct it from her paycheck", "deducting the shortage from payroll"
   /\bdeduct(?:ing|ed)?\b[^.\n]{0,40}\bfrom\s+(?:her|his|their|the|its)?\s*(?:pay|paycheck|payroll|check|wages)\b/,
   // "it will be deducted", "we'll deduct", "needs to be deducted", "$25 will be payroll deducted"
@@ -124,6 +150,75 @@ const POSITIVE: readonly RegExp[] = [
   // "$25 payroll deduction", "$25 payroll deduct"
   /\$\s?\d[\d,]*(?:\.\d{1,2})?\s+payroll\s+deduct/,
 ];
+
+const POSITIVE: readonly RegExp[] = [...POSITIVE_STATED, ...POSITIVE_IMPLIED];
+
+/** A word that denies, waives, cancels or replaces what it stands next to. */
+const DENIAL =
+  /(?:^|[^a-z'])(?:not|no|never|none|nor|without|skip|skips|skipped|skipping|waive|waived|waives|waiving|waiver|forgive|forgiven|forgave|cancel|cancels|cancelled|canceled|cancelling|canceling|instead|except|unless|dont|wont|didnt|doesnt|isnt|arent|wasnt|werent|cant|shouldnt|wouldnt|hold off|holding off)(?=$|[^a-z'])|n't(?=$|[^a-z])/;
+
+/*
+ * "WE DID NOT WAIVE THE PAYROLL DEDUCTION" (F-01, follow-up): a waiver that is
+ * itself denied is not a No — and reading it as a Yes would be a guess. The
+ * manager is asked.
+ */
+const DENIED_WAIVER = /(?:\b(?:not|never|no)\b|n't)\s+(?:[a-z']+\s+){0,2}waiv/;
+
+/** Whether the words beside an implied Yes, up to a comma either side, deny it. */
+function deniedNearby(clause: string, at: number, end: number): boolean {
+  const before = clause.slice(0, at).split(",").pop()!.trim().split(/\s+/).slice(-6).join(" ");
+  const after = clause.slice(end).split(",")[0]!.trim().split(/\s+/).slice(0, 4).join(" ");
+  return DENIAL.test(before) || DENIAL.test(after);
+}
+
+/** Yes, No, nothing about the deduction (null), or something about it that cannot safely be read. */
+type ClauseReading = PayrollDeductAnswer | "unclear" | null;
+
+function readClause(clause: string): ClauseReading {
+  if (UNDECIDED.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
+  if (DENIED_WAIVER.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
+  const negative = NEGATIVE.find((pattern) => pattern.test(clause));
+  if (negative) {
+    /*
+     * BOTH IN ONE CLAUSE IS NO ANSWER (F-01). With the negative's own words
+     * taken out, a Yes still standing ("payroll deduct yes, don't deduct")
+     * means the clause contradicts itself: nothing is read, and the manager
+     * is asked. Never Yes.
+     */
+    const rest = clause.replace(negative, " ");
+    return POSITIVE.some((pattern) => pattern.test(rest)) ? "unclear" : "no";
+  }
+  if (POSITIVE_STATED.some((pattern) => pattern.test(clause))) return "yes";
+  let implied = false;
+  for (const pattern of POSITIVE_IMPLIED) {
+    const match = new RegExp(pattern.source, "g");
+    for (const hit of clause.matchAll(match)) {
+      if (deniedNearby(clause, hit.index, hit.index + hit[0].length)) return "unclear";
+      implied = true;
+    }
+  }
+  return implied ? "yes" : null;
+}
+
+/**
+ * Every clause read in order, the latest one that says anything about the
+ * deduction winning — including "unclear", which overrides an earlier Yes.
+ */
+function readPayrollDeduct(text: string): ClauseReading {
+  // An answered question is a statement: "…applicable? no" -> "…applicable: no".
+  const source = normalize(text).replace(/\?\s*(yes|no|y|n)\b/g, ": $1");
+  let answer: ClauseReading = null;
+
+  // A point inside an amount ("$3.25") does not end a clause.
+  for (const clause of source.split(/(?<=[!?;\n]|\.(?!\d))/)) {
+    const trimmed = clause.trim();
+    if (trimmed === "" || trimmed.endsWith("?")) continue;
+    const reading = readClause(trimmed);
+    if (reading !== null) answer = reading;
+  }
+
+  return answer;
+}
 
 function normalize(text: string): string {
   return (text ?? "")
@@ -148,32 +243,8 @@ function normalize(text: string): string {
  * available mistake on a record about someone's pay.
  */
 export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
-  // An answered question is a statement: "…applicable? no" -> "…applicable: no".
-  const source = normalize(text).replace(/\?\s*(yes|no|y|n)\b/g, ": $1");
-  let answer: PayrollDeductAnswer | null = null;
-
-  // A point inside an amount ("$3.25") does not end a clause.
-  for (const clause of source.split(/(?<=[!?;\n]|\.(?!\d))/)) {
-    const trimmed = clause.trim();
-    if (trimmed === "" || trimmed.endsWith("?")) continue;
-    if (UNDECIDED.test(trimmed) && ABOUT_DEDUCTION.test(trimmed)) {
-      answer = null;
-      continue;
-    }
-    const negative = NEGATIVE.find((pattern) => pattern.test(trimmed));
-    if (negative) {
-      /*
-       * BOTH IN ONE CLAUSE IS NO ANSWER (F-01). With the negative's own words
-       * taken out, a Yes still standing ("payroll deduct yes, don't deduct")
-       * means the clause contradicts itself: nothing is read, and the manager
-       * is asked. Never Yes.
-       */
-      const rest = trimmed.replace(negative, " ");
-      answer = POSITIVE.some((pattern) => pattern.test(rest)) ? null : "no";
-    } else if (POSITIVE.some((pattern) => pattern.test(trimmed))) answer = "yes";
-  }
-
-  return answer;
+  const reading = readPayrollDeduct(text);
+  return reading === "unclear" ? null : reading;
 }
 
 /**
@@ -282,7 +353,17 @@ export function payrollDeductFromConversation(
     }
     if (turn.role !== "user") continue;
 
-    const stated = statedPayrollDeduct(turn.content);
+    const stated = readPayrollDeduct(turn.content);
+    if (stated === "unclear") {
+      /*
+       * A later turn about the deduction that cannot be read safely ("we're
+       * not doing the $25 payroll deduction") clears an earlier Yes, so the
+       * card asks again instead of keeping a Yes the manager may have
+       * withdrawn (QA, 22 Oct 2026).
+       */
+      answer = null;
+      continue;
+    }
     if (stated) {
       answer = stated;
       continue;
