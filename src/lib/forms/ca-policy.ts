@@ -152,9 +152,10 @@ const TARGET =
  *
  * District Manager feedback, 21 Oct 2026: "create a written CA for <employee>
  * for not attending the monthly meeting on 10-20-26 …" was drafted under the
- * Standards of Conduct. The manual's own Attendance section says otherwise:
- * "Seminars/Meetings/ Training sessions are considered scheduled shifts", and
- * its Seminar/Webinar Attendance section calls a missed one a no call no show.
+ * Standards of Conduct. The manual's own Attendance section says otherwise —
+ * it counts meetings, seminars and training sessions as scheduled shifts —
+ * and its Seminar/Webinar Attendance section calls a missed one a no call no
+ * show.
  *
  * So an account of a scheduled event not attended is read here, as an
  * attendance account, and the MANUAL decides what that means
@@ -409,7 +410,7 @@ export type NamedPolicyReading =
       heading: string;
       page: number;
       offenseKey: string;
-      /** The manual's own sentence the reading rests on, where one was needed: "Seminars/Meetings/ Training sessions are considered scheduled shifts." */
+      /** The manual's own sentence the reading rests on, where one was needed, such as the Attendance sentence that counts meetings as scheduled shifts. */
       anchor?: string;
       /** The section `anchor` is from, when it is not `heading`'s. */
       anchorHeading?: string;
@@ -614,8 +615,7 @@ export function groundConductPolicy(input: {
  *   first, where exactly one answers.
  *
  *   OTHERWISE THE ATTENDANCE SECTION, where one of its own sentences names
- *   the event: "Seminars/Meetings/ Training sessions are considered
- *   scheduled shifts."
+ *   the event, such as the one that counts meetings as scheduled shifts.
  *
  * Either is cited under Absenteeism, with the sentence it rests on. A manual
  * that says neither — a huddle it never mentions, a re-issued manual, none at
@@ -682,8 +682,8 @@ export function groundMissedEvent(input: {
   const head = eventHead(event);
 
   /*
-   * THE SENTENCE QUOTED BACK NEVER CLASSIFIES. "… it is considered a no call
-   * no show" is the manual's rule for not attending WITHOUT NOTIFYING the
+   * THE SENTENCE QUOTED BACK NEVER CLASSIFIES. Calling it a no call no show
+   * is the manual's rule for not attending WITHOUT NOTIFYING the
    * Supervisor, and whether she notified anyone is a fact the manager has not
    * given. It is quoted on the form as the manual's text, in full; it is not
    * said back as what this was.

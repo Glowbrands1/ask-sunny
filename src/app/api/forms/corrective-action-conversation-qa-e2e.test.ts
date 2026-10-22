@@ -429,7 +429,7 @@ async function saved(id: string): Promise<Record<string, string | string[]>> {
 /* The manual as the knowledge base holds it, with the two sentences the 21 Oct incident turns on. */
 const ATTENDANCE_WITH_MEETINGS_CHUNK = {
   ...ATTENDANCE_CHUNK,
-  content: `${ATTENDANCE_CHUNK.content}\no If an employee is going to be tardy or absent, it is mandatory that the employee call and speak to their direct manager on duty.\no Seminars/Meetings/ Training sessions are considered scheduled shifts. (See Seminar/Webinar\nAttendance section)`,
+  content: `${ATTENDANCE_CHUNK.content}\no Synthetic rule: an employee who will be tardy or absent phones the manager on duty.\no Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts. (See Seminar/Webinar\nAttendance section)`,
 };
 const SEMINAR_CHUNK = {
   chunkIndex: 123,
@@ -440,7 +440,7 @@ const SEMINAR_CHUNK = {
   sections: [{ heading: "Seminar/Webinar Attendance", page: 37 }],
   section: "Seminar/Webinar Attendance",
   content:
-    "Seminar/Webinar Attendance\nIf you are enrolled in a seminar/webinar and do not attend the seminar without notifying your\nSupervisor, it is considered a no call no show to a scheduled shift.",
+    "Seminar/Webinar Attendance\nSynthetic rule: a seminar/webinar missed without notifying your\nSupervisor is treated as a no call no show to a scheduled shift.",
 };
 const FULL_MANUAL = {
   chunks: [STANDARDS_OF_CONDUCT_CHUNK, ATTENDANCE_WITH_MEETINGS_CHUNK, LATE_OPENING_CHUNK, CELL_PHONE_CHUNK, VISITORS_CHUNK, SEMINAR_CHUNK],
@@ -501,7 +501,7 @@ describe("Q1 the original 21 Oct request, as typed", () => {
       offense_type: ["absenteeism"],
       policy_violated: "Absenteeism",
     });
-    expect(form.policy_language).toContain("Seminars/Meetings/ Training sessions are considered scheduled shifts.");
+    expect(form.policy_language).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
     expect(form.action_plan).toMatch(/^Management will review the Attendance policy with Tess\./);
     expect(Object.keys(form).some((key) => /signature/i.test(key))).toBe(false);
@@ -678,7 +678,7 @@ describe("Q5 which attendance section a missed event rests on", () => {
   it("a webinar cites its own section; the chat never calls it a no call/no show", async () => {
     const chat = new Chat();
     const reply = await chat.say("create a verbal CA for tess varga, she didn't log in to the required webinar on 10-20-26. no payroll deduct");
-    expect(reply).toMatch(/\*\*Policy:\*\* "missed the required webinar" reads as the policy manual's \*\*Seminar\/Webinar Attendance\*\* \(page 37\)\. The manual's Attendance section \(page 14\) says "Seminars\/Meetings\/ Training sessions are considered scheduled shifts\."/);
+    expect(reply).toMatch(/\*\*Policy:\*\* "missed the required webinar" reads as the policy manual's \*\*Seminar\/Webinar Attendance\*\* \(page 37\)\. The manual's Attendance section \(page 14\) says "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts\."/);
     expect(reply).not.toMatch(/no call|no show/i);
     state.draft = MODEL("Tess Varga did not log in to the required webinar on October 20, 2026.");
     const form = await saved(await chat.create());
@@ -1192,7 +1192,7 @@ describe("Q17 the manual's standing: kept, cited by section and page, and marked
     expect(reply).toMatch(/\*\*Policy source:\*\* "JBA Policy Manual" — requires owner confirmation as Ask Sunny's approved policy manual/);
     expect(notice).toContain('Policy source: "JBA Policy Manual" (JBA Policy Manual Edited 5.2025) requires owner confirmation');
     const form = await saved(id);
-    expect(form.policy_language).toContain("Seminars/Meetings/ Training sessions are considered scheduled shifts.");
+    expect(form.policy_language).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
     expect(form.observation).not.toMatch(/no[- ]call/i);
     const provenance = (await valueRow(id, "policy_language"))?.provenance as Record<string, unknown>;
@@ -1210,7 +1210,6 @@ describe("Q17 the manual's standing: kept, cited by section and page, and marked
 
 const { manualStandingNotice } = await import("@/lib/forms/standing-notices");
 const APP = "Ask Sunny";
-const ACTOR = "manager-1";
 /** Whether a citation stored before `ownerConfirmed` existed reads as unconfirmed in this app. */
 const LEGACY_CITATION_UNCONFIRMED = true;
 

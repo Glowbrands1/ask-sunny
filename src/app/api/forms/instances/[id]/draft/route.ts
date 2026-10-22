@@ -523,8 +523,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? describedManualSection({ text: notes, chunks: manual.chunks })
         : null;
     /*
-     * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — "Seminars/
-     * Meetings/ Training sessions are considered scheduled shifts" (District
+     * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
+     * Attendance section counts meetings as scheduled shifts (District
      * Manager feedback, 21 Oct 2026). Ticked Absenteeism and quoted, over
      * whatever box the model chose; a manual that says nothing leaves the
      * policy the question the proposal asked. See `groundMissedEvent`.

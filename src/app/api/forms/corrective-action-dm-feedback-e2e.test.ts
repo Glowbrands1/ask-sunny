@@ -1068,7 +1068,7 @@ describe("the payroll amount the quoted section states", () => {
  */
 const ATTENDANCE_WITH_MEETINGS_CHUNK = {
   ...ATTENDANCE_CHUNK,
-  content: `${ATTENDANCE_CHUNK.content}\no Seminars/Meetings/ Training sessions are considered scheduled shifts. (See Seminar/Webinar\nAttendance section)`,
+  content: `${ATTENDANCE_CHUNK.content}\no Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts. (See Seminar/Webinar\nAttendance section)`,
 };
 const SEMINAR_CHUNK = {
   chunkIndex: 123,
@@ -1077,7 +1077,7 @@ const SEMINAR_CHUNK = {
   sections: [{ heading: "Seminar/Webinar Attendance", page: 37 }],
   section: "Seminar/Webinar Attendance",
   content:
-    "Seminar/Webinar Attendance\nIf you are enrolled in a seminar/webinar and do not attend the seminar without notifying your\nSupervisor, it is considered a no call no show to a scheduled shift.",
+    "Seminar/Webinar Attendance\nSynthetic rule: a seminar/webinar missed without notifying your\nSupervisor is treated as a no call no show to a scheduled shift.",
 };
 
 describe("G: a meeting not attended is cited where the manual puts it", () => {
@@ -1088,7 +1088,7 @@ describe("G: a meeting not attended is cited where the manual puts it", () => {
     const { last, create } = await conversation([E1]);
 
     expect(last.content).toMatch(
-      /\*\*Policy:\*\* "missed the monthly meeting" reads as the policy manual's \*\*Attendance\*\* \(page 14\), which says "Seminars\/Meetings\/ Training sessions are considered scheduled shifts\." I'll quote it on the draft under \*\*Absenteeism\*\* — tell me if a different policy applies\./,
+      /\*\*Policy:\*\* "missed the monthly meeting" reads as the policy manual's \*\*Attendance\*\* \(page 14\), which says "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts\." I'll quote it on the draft under \*\*Absenteeism\*\* — tell me if a different policy applies\./,
     );
     expect(last.content).not.toMatch(/Which policy applies/);
 
@@ -1102,7 +1102,7 @@ describe("G: a meeting not attended is cited where the manual puts it", () => {
 
     expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
     expect(field(form, "policy_violated")!.value).toBe("Absenteeism");
-    expect(policy).toContain("Seminars/Meetings/ Training sessions are considered scheduled shifts.");
+    expect(policy).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
     expect(policy).toContain("Source: JBA Policy Manual — Attendance, p. 14");
     expect(policy).not.toMatch(/Standards of Conduct/);
     expect(field(form, "warning_type")!.checked).toEqual(["written"]);
@@ -1125,7 +1125,7 @@ describe("G: a meeting not attended is cited where the manual puts it", () => {
     const form = await review(reference.instanceId);
     expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
     expect(field(form, "policy_violated")!.value).toBe("Absenteeism — Seminar/Webinar Attendance");
-    expect(field(form, "policy_language")!.value).toContain("it is considered a no call no show to a scheduled shift");
+    expect(field(form, "policy_language")!.value).toContain("is treated as a no call no show to a scheduled shift");
   });
 
   it("where the manual does not say, it asks which policy — and the answer fills the form", async () => {

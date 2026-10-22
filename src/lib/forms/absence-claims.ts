@@ -4,8 +4,8 @@
  * ============================================================================
  *
  * QA, 22 Oct 2026. The policy manual's Seminar/Webinar Attendance section
- * says a seminar missed WITHOUT NOTIFYING the Supervisor "is considered a no
- * call no show to a scheduled shift" — so whether she called anyone is the
+ * counts a seminar missed WITHOUT NOTIFYING the Supervisor as a no call no
+ * show to a scheduled shift — so whether she called anyone is the
  * fact the classification turns on. A draft for "she skipped the monthly
  * meeting" came back saying "This was a no call/no show. She did not notify
  * her manager.", which nobody had said.

@@ -25,12 +25,14 @@ edition is still indexed; it is never cited because resolution is by identity, n
 
 ## Applicability to Sun Tan City (from the manual's own text)
 
-* Page 1: the manual "includes all brands operated by JB & Associates, Inc." and refers to them as "The Company".
+The manual's wording is not reproduced here (the repository is public); this is a paraphrase.
+
+* Page 1: the manual covers every brand JB & Associates, Inc. operates.
 * Table of contents (page 3) lists a **Sun Tan City** dress-code section beside the other brands.
-* **Attendance** (PDF page 15, printed page 14): applies to "each employee" with no brand exception, and
-  says "Seminars/Meetings/ Training sessions are considered scheduled shifts (See Seminar/Webinar Attendance section)".
-* **Seminar/Webinar Attendance** (PDF page 38): not attending an enrolled seminar *without notifying your
-  Supervisor* is considered a no call no show.
+* **Attendance** (PDF page 15, printed page 14): applies to every employee with no brand exception, and
+  counts meetings, seminars and training sessions as scheduled shifts, pointing to the Seminar/Webinar Attendance section.
+* **Seminar/Webinar Attendance** (PDF page 38): not attending an enrolled seminar *without notifying the
+  Supervisor* counts as a no call no show.
 
 So the text supports applying both sections to STC employees. Whether Sun Tan City is still operated
 under this manual, and whether this May 2025 copy is the current one, is a business fact the text

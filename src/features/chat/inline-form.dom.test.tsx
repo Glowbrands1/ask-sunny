@@ -1860,7 +1860,7 @@ describe("a reopened Corrective Action says where its policy came from (owner de
         { fieldKey: "warning_type", value: null, checked: level.checked, filledBy: level.filledBy },
         {
           fieldKey: "policy_language",
-          value: "Seminars/Meetings/ Training sessions are considered scheduled shifts.",
+          value: "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.",
           checked: [],
           filledBy: "ai" as const,
           provenance: {

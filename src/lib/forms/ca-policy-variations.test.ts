@@ -15,7 +15,7 @@ import { readCaPolicy } from "./ca-policy";
 
 describe("recognised however the manager says it", () => {
   it.each([
-    ["violet was a no-show at the all-staff on 10/20", "all-staff"],
+    ["delphine was a no-show at the all-staff on 10/20", "all-staff"],
     ["she didn't make it to Tuesday's team meeting", "team meeting"],
     ["she skipped out on the monthly mtg", "monthly mtg"],
     ["she wasn't at the store meeting last monday", "store meeting"],
@@ -32,7 +32,7 @@ describe("recognised however the manager says it", () => {
     ["monthly meeting 10-20-26 - did not attend", "monthly meeting"],
     ["she missed her 1:1 with me", "1:1"],
     ["never came to orientation", "orientation"],
-    ["violet did not come to the meeting even though it was on the schedule", "meeting"],
+    ["delphine did not come to the meeting even though it was on the schedule", "meeting"],
   ])("%s", (text, event) => {
     const reading = readCaPolicy(text);
     expect(reading.missedEvent).toBe(event);

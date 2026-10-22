@@ -250,7 +250,7 @@ describe("the box a named policy ticks", () => {
  */
 describe("a meeting, seminar or training session not attended", () => {
   it.each([
-    ["create a written CA for violet for not attending the monthly meeting on 10-20-26.", "monthly meeting"],
+    ["create a written CA for delphine for not attending the monthly meeting on 10-20-26.", "monthly meeting"],
     ["She did not attend the team meeting.", "team meeting"],
     ["she missed the mandatory store meeting on 10-20-26", "mandatory store meeting"],
     ["she skipped the webinar", "webinar"],
@@ -275,7 +275,7 @@ describe("a meeting, seminar or training session not attended", () => {
   });
 
   it("asks which policy, and the answer is the box: Attendance is Absenteeism", () => {
-    const account = "written CA for violet for not attending the monthly meeting on 10-20-26";
+    const account = "written CA for delphine for not attending the monthly meeting on 10-20-26";
     expect(caPolicyProposalLine(readCaPolicy(account))).toBe(
       "**Which policy applies?** Missing the monthly meeting could fall under **Attendance** (as an absence from a scheduled shift) or **Standards of Conduct**. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
     );
@@ -301,7 +301,7 @@ describe("a meeting, seminar or training session not attended", () => {
     section: "Attendance",
     sections: [{ heading: "Attendance", page: 14 }],
     content:
-      "Attendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.\no Texting a manager is not allowed when calling in. Employees must speak with their manager directly.\no Seminars/Meetings/ Training sessions are considered scheduled shifts. (See Seminar/Webinar\nAttendance section)",
+      "Attendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.\no Synthetic rule: call-ins are made by phone to the manager on duty.\no Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts. (See Seminar/Webinar\nAttendance section)",
   };
   const SEMINAR: ManualChunk = {
     chunkIndex: 123,
@@ -310,7 +310,7 @@ describe("a meeting, seminar or training session not attended", () => {
     section: "Seminar/Webinar Attendance",
     sections: [{ heading: "Seminar/Webinar Attendance", page: 37 }],
     content:
-      "Seminar/Webinar Attendance\nIf you are enrolled in a seminar/webinar and do not attend the seminar without notifying your\nSupervisor, it is considered a no call no show to a scheduled shift.",
+      "Seminar/Webinar Attendance\nSynthetic rule: a seminar/webinar missed without notifying your\nSupervisor is treated as a no call no show to a scheduled shift.",
   };
   const ORIENTATION: ManualChunk = {
     chunkIndex: 110,
@@ -318,7 +318,7 @@ describe("a meeting, seminar or training session not attended", () => {
     printedPage: 33,
     section: "Orientation",
     sections: [{ heading: "Orientation", page: 33 }],
-    content: "Orientation\nThe Supervisor will discuss job duties and responsibilities with the new Employee.",
+    content: "Orientation\nSynthetic rule: a new Employee's first shift covers job duties.",
   };
   const chunks = [ATTENDANCE, ORIENTATION, SEMINAR];
 
@@ -327,7 +327,7 @@ describe("a meeting, seminar or training session not attended", () => {
     expect(grounded).toMatchObject({
       ok: true,
       section: { heading: "Attendance", page: 14 },
-      anchor: "Seminars/Meetings/ Training sessions are considered scheduled shifts.",
+      anchor: "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.",
     });
   });
 
@@ -336,7 +336,7 @@ describe("a meeting, seminar or training session not attended", () => {
     expect(grounded).toMatchObject({
       ok: true,
       section: { heading: "Seminar/Webinar Attendance", page: 37 },
-      anchor: "Seminars/Meetings/ Training sessions are considered scheduled shifts.",
+      anchor: "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.",
       anchorSection: { heading: "Attendance", page: 14 },
     });
   });

@@ -114,8 +114,8 @@ Known pre-existing items (identical on the unchanged base branch, not changed he
 
 * **Ask Bubbles.** CA citations resolve to `81622d77…`, "2025 JBA Policy Manual – Edited 5-2025". It is the only indexed JBA document in `bcs-core`. It was synced from Woven entity `42486200…`, which the owner confirmed on 8 Oct 2026 (`src/config/company/woven.ts`). Its citation provenance keeps the document id, title, `matchedBy` and now `ownerConfirmed: true`. Any future manual found only by name from an upload is marked "requires owner confirmation".
 * **Ask Sunny.** CA citations resolve to `ce6b00f1…`, "JBA Policy Manual Edited 5.2025": `stc-core`, Woven sync, 166 chunks, found by filename prefix, untagged.
-  * The text applies to STC. Page 1 says it covers "all brands operated by JB & Associates, Inc.", and the contents list Sun Tan City.
-  * Attendance (PDF p.15 / printed p.14) says "Seminars/Meetings/ Training sessions are considered scheduled shifts".
+  * The text applies to STC. Page 1 says it covers every brand JB & Associates, Inc. operates, and the contents list Sun Tan City.
+  * Attendance (PDF p.15 / printed p.14) counts meetings, seminars and training sessions as scheduled shifts.
   * Seminar/Webinar Attendance (PDF p.38) counts as a no call no show only *without notifying your Supervisor*.
   * **Approval as Sunny's CA source is unverified.** Every citation says "requires owner confirmation" on the chat card, the draft and every reopening, and its provenance stores `ownerConfirmed: false`.
   * To confirm, an owner tags `ce6b00f1` `official-policy-manual` in the Knowledge Base. No tag or knowledge record was changed.
