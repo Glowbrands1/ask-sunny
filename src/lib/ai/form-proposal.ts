@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   buildProposal,
+  correctsTheEmployee,
   extractEmployeeNames,
   employeeState,
   managerContext,
@@ -1367,6 +1368,8 @@ function turnsAboutThisForm(
   let start = 0;
   /* The latest request for this form, for this employee, inside the turns kept so far. */
   let requestAt = -1;
+  /* Whether the turns kept so far start just after a turn about somebody else. */
+  let afterAnotherPerson = false;
   context.messages.forEach((message, index) => {
     const intent = detectTemplateIntent(message.content);
     /*
@@ -1382,8 +1385,25 @@ function turnsAboutThisForm(
       (intent.kind === "corrective_action" && !thisForm);
     const names = extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
-    if (otherForm || otherPerson) start = index + 1;
+    if (otherForm || otherPerson) {
+      start = index + 1;
+      afterAnotherPerson = otherPerson;
+    }
     if (requestAt < start) requestAt = -1;
+    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
+    /*
+     * THE ANSWERS GIVEN FOR SOMEBODY ELSE STAY THEIRS. Production, 21 Oct
+     * 2026 (ported from Ask Bubbles b1047ab): a Corrective Action for one
+     * employee, then "no payroll deduct", then "create a verbal corrective
+     * action form for <another employee> …" — the new form was read back with
+     * the first employee's payroll answer, because the short reply names nobody
+     * and so was kept. The first request for this employee after turns about
+     * another person starts this form's turns. A correction of the person
+     * ("actually it's for …") is not a new request, and keeps the account.
+     */
+    if (forThisEmployee && requestAt < 0 && afterAnotherPerson && start < index && !correctsTheEmployee(message.content)) {
+      start = index;
+    }
     /*
      * A NEW REQUEST IS A NEW FORM. District Manager feedback, 21 Oct 2026: a
      * second Corrective Action request for the same employee that says what
@@ -1392,7 +1412,6 @@ function turnsAboutThisForm(
      * and payroll answer are not this one's. One that only repeats the request
      * ("create ca form for <employee>") keeps the account already given.
      */
-    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
     if (
       options.correctiveActionForm === true &&
       forThisEmployee &&

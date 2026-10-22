@@ -959,6 +959,14 @@ function negatedNames(text: string): string[] {
 const CORRECTION_CUE =
   /(?:^|[.!?\n]\s*)(?:(?:sorry|oops|actually|correction)\b|no\s*[,.!]|no\s+not\b)|\b(?:i\s+meant|meant\s+to\s+say|wrong\s+(?:name|person|employee)|(?:name|employee|it|that)\s+should\s+(?:be|say|read)\s+\S|i\s+(?:already\s+)?said|like\s+i\s+said|as\s+i\s+said)\b|\binstead\s*[.!]?\s*$/i;
 
+/**
+ * Whether a turn corrects WHO the form is for: "actually it's for avery
+ * testperson", "no, not Jordan — Avery", "wrong person, it's Avery".
+ */
+export function correctsTheEmployee(text: string): boolean {
+  return CORRECTION_CUE.test(text) || negatedNames(text).length > 0;
+}
+
 /** In a correction, a sentence that is only a name is the answer: "No, not Jordan. Avery." */
 function sentenceAnswers(text: string): string[] {
   const names: string[] = [];
