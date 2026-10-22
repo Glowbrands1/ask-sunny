@@ -365,13 +365,27 @@ describe("the Corrective Action Form's payroll-deduct answer", () => {
     expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["no"] } }]);
   });
 
-  it.each(["no", "yes", "is payroll deduct applicable?", "change the name to Jane Smith", "change the date to 9/27"])(
-    "leaves %s alone — only the payroll answer is taken from chat",
+  it.each(["no", "yes", "is payroll deduct applicable?", "change the name to Jane Smith"])(
+    "leaves %s alone — the payroll answer and the date are what is taken from chat",
     async (question) => {
       expect(await correct(question)).toBeNull();
       expect(state.saved).toEqual([]);
     },
   );
+
+  /* The business's decision of 22 Oct 2026: the Corrective Action Form's date is corrected from chat. */
+  it("corrects the form's date when the manager names it", async () => {
+    const response = await correct("change the date to 9/27");
+    expect(state.saved).toHaveLength(1);
+    expect(state.saved[0]!.values).toMatchObject({ form_date: expect.stringMatching(/-09-27$/) });
+    expect(response!.formUpdate!.updated).toContain("form_date");
+  });
+
+  it("asks which date when none is settled, and changes nothing", async () => {
+    const response = await correct("the date should be 9/27 or 9/28");
+    expect(state.saved).toEqual([]);
+    expect(response!.content).toMatch(/Which date should .* I haven't changed it/);
+  });
 
   it("changes a finalized form's answer on a new draft of it", async () => {
     state.status = "finalized";
