@@ -34,9 +34,9 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *
  * ASK SUNNY'S OWN RULES, kept: a payroll Yes is read only when it is stated
  * ("applies", "yes"), never from an amount alone; the warning level is set on
- * the form, not asked in chat. Ask Bubbles' chat corrections of the form's
- * date and warning level, and its server-side guard against a second Create,
- * are not in Ask Sunny, so their scenarios are not here.
+ * the form, not asked in chat. Ask Bubbles' chat correction of the warning
+ * level and its server-side guard against a second Create are not in Ask
+ * Sunny, so those scenarios are not here.
  */
 
 const store: FakeStore = {
@@ -214,6 +214,8 @@ const chatRoute = await import("./route");
 const instancesRoute = await import("../forms/instances/route");
 const instanceRoute = await import("../forms/instances/[id]/route");
 const draftRoute = await import("../forms/instances/[id]/draft/route");
+const pdfRoute = await import("../forms/instances/[id]/pdf/route");
+const { listInstances } = await import("@/lib/forms/instances");
 
 const TODAY = "2026-10-21";
 
@@ -391,8 +393,18 @@ const DIRECTORY = [
   { id: "e-2", firstName: "Sela", lastName: "Brandt", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] },
 ];
 
+/** Rows read through the overview VIEW carry their template's columns at once, as Postgres does. */
+class JoiningRows extends Array<Record<string, unknown>> {
+  override push(...rows: Record<string, unknown>[]) {
+    const count = super.push(...rows);
+    joinOverview();
+    return count;
+  }
+}
+
 beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
+  store.form_instances = new JoiningRows() as never;
   state.draft = { values: {}, checked: {} };
   state.revision = { values: {} };
   state.draftCalls = 0;
@@ -686,24 +698,63 @@ describe("Issue 3: personal phone use cites the Cell Phone/Smart Watch Policy, p
   });
 
   /*
-   * KNOWN LIMIT, by design (`describedManualSection`: two headings answer →
-   * nothing): "social media on her phone" answers both the Cell Phone/Smart
-   * Watch Policy and the Social Media Policy, so no section is read from the
-   * account and the draft's own box stands. It must never be cited as a
-   * section the manager did not describe; naming the policy settles it.
+   * TWO POLICIES DESCRIBED (QA follow-up, 22 Oct 2026): "social media on her
+   * phone" answers both the Cell Phone/Smart Watch Policy (p.19) and the
+   * Social Media Policy (p.22). Neither is chosen for the manager, and the
+   * draft's own guess is not kept: they are asked, and their answer is cited.
    */
-  it("an account two Policy sections answer cites neither by guess; naming one cites it", async () => {
-    const thread = new Thread();
-    await thread.say("create verbal ca for marlo quist, on 10-20-26 she was scrolling social media on her phone on the sales floor. no payroll deduct");
-    state.draft = { values: { observation: ISSUE_3_MODEL.values.observation }, checked: {} };
-    const { id } = await thread.create();
-    expect((await form(id)).text("policy_language") ?? "").not.toMatch(/Texting as General|Using Social Media at Work/);
+  const SOCIAL =
+    "create verbal ca for marlo quist, on 10-20-26 she was scrolling social media on her phone on the sales floor. no payroll deduct";
 
-    const named = new Thread();
-    await named.say("create verbal ca for marlo quist for violating the cell phone policy, on 10-20-26 she was scrolling social media on her phone. no payroll deduct");
+  it("the card asks which policy, offering both with their pages", async () => {
+    const thread = new Thread();
+    const card = await thread.say(SOCIAL);
+    expect(card.content).toMatch(/\*\*Which policy applies\?\*\*/);
+    expect(card.content).toMatch(/Cell Phone\/Smart Watch Policy\*\* \(page 19\)/);
+    expect(card.content).toMatch(/Social Media Policy\*\* \(page 22\)/);
+  });
+
+  it("created without an answer: no guessed policy is cited, and the draft says the policy is left for the manager", async () => {
+    const thread = new Thread();
+    await thread.say(SOCIAL);
     state.draft = ISSUE_3_MODEL;
-    const second = await named.create();
-    expect((await form(second.id)).text("policy_language")).toMatch(/Cell Phone\/Smart Watch Policy/);
+    const { id, draftNotice } = await thread.create();
+    const f = await form(id);
+    expect(f.ticks("offense_type")).not.toContain("standards_of_conduct");
+    expect(f.text("policy_language") ?? "").toBe("");
+    expect(f.text("policy_violated") ?? "").not.toMatch(/Standards of Conduct/);
+    expect(draftNotice).toMatch(/more than one policy in the manual — Cell Phone\/Smart Watch Policy \(page 19\) or Social Media Policy \(page 22\)/);
+    expect(f.text("action_plan")).toMatch(/^Management will review the applicable company policy with Marlo\./);
+
+    /* Then named in chat, it is cited from the manual. */
+    await thread.say("add the Cell Phone/Smart Watch Policy");
+    expect((await form(id)).text("policy_language")).toMatch(/Cell Phone\/Smart Watch Policy/);
+  });
+
+  it.each([
+    ["the cell phone policy", /Cell Phone\/Smart Watch Policy/, /Social Media Policy/],
+    ["social media policy", /Social Media Policy/, /Cell Phone\/Smart Watch/],
+  ])('answered "%s": that section is cited, and only it', async (answer, cited, notCited) => {
+    const thread = new Thread();
+    await thread.say(SOCIAL);
+    const card = await thread.say(answer);
+    expect(card.formProposal?.templateKey).toBe("dpoa");
+    expect(card.content).not.toMatch(/Which policy applies/);
+    state.draft = ISSUE_3_MODEL;
+    const { id } = await thread.create();
+    const f = await form(id);
+    expect(f.text("policy_language")).toMatch(cited);
+    expect(f.text("policy_language")).not.toMatch(notCited);
+    expect(f.text("policy_language")).not.toMatch(/Standards of Conduct/);
+  });
+
+  it("a specific box the account settles is kept: a late arrival on her phone is Attendance, not a question", async () => {
+    const thread = new Thread();
+    const card = await thread.say("create verbal ca for marlo quist, she was 20 minutes late on 10-20-26 because she was on social media on her phone. no payroll deduct");
+    expect(card.content).not.toMatch(/Which policy applies/);
+    state.draft = { values: { observation: "Observed:\nOn October 20, 2026, Marlo arrived 20 minutes late." }, checked: { offense_type: ["tardiness"] } };
+    const { id } = await thread.create();
+    expect((await form(id)).ticks("offense_type")).toContain("tardiness");
   });
 
   it("a phone call that is NOT personal use (calling in late) is not cited as the Cell Phone policy", async () => {
@@ -900,6 +951,21 @@ describe("Issue 5: the incident date is stated once, as given", () => {
       expect(datesIn(observed), observed).toEqual(["October 20, 2026"]);
     },
   );
+
+  it("a date corrected after the form exists moves the form's Date and the Observed paragraph together", async () => {
+    const thread = new Thread();
+    await thread.say("create verbal ca for marlo quist, she was 30 minutes late on 10-20-26. no payroll deduct");
+    state.draft = {
+      values: { observation: "Observed:\nOn October 20, 2026, Marlo arrived 30 minutes late for the scheduled shift." },
+      checked: { offense_type: ["tardiness"] },
+    };
+    const { id } = await thread.create();
+    const moved = await thread.say("the date was wrong, it happened on 10-19-26");
+    const f = await form(id);
+    expect(f.text("form_date"), moved.content).toBe("2026-10-19");
+    expect(f.text("observation")).not.toContain("October 20, 2026");
+    expect(f.text("observation")).toContain("October 19, 2026");
+  });
 });
 
 /* ========================================================================= */
@@ -1031,6 +1097,62 @@ describe("workflow: corrections change only what was asked; finalized forms are 
     expect(f.text("form_date")).toBe(before.text("form_date"));
   });
 
+  it("a date correction moves the Date and the drafted Observed only — payroll, level, policy and plan stay", async () => {
+    const { thread, id, before } = await created();
+    const reply = await thread.say("change the date to 10-2-26");
+    expect(reply.content).toMatch(/Updated the \*\*Corrective Action Form\*\*/);
+    const f = await form(id);
+    expect(f.text("form_date")).toBe("2026-10-02");
+    expect(f.text("observation")).toContain("October 2, 2026");
+    expect(f.text("observation")).not.toContain("October 1, 2026");
+    for (const key of ["policy_violated", "policy_language", "prior_actions", "action_plan"]) {
+      expect(f.text(key), key).toBe(before.text(key));
+    }
+    expect(f.ticks("warning_type")).toEqual(["verbal"]);
+    expect(f.ticks("payroll_deduct")).toEqual(["yes"]);
+    /* The same date again changes nothing. */
+    await thread.say("change the date to 10-2-26");
+    expect((await form(id)).text("observation")).toBe(f.text("observation"));
+    /* And a second correction still moves Ask Bubbles' paragraph: it stayed Ask Bubbles'. */
+    const again = await thread.say("sorry, change the date to 10-3-26");
+    const g = await form(id);
+    expect(g.text("form_date")).toBe("2026-10-03");
+    expect(g.text("observation")).toContain("October 3, 2026");
+    expect(g.text("observation")).not.toContain("October 2, 2026");
+    expect(again.content).not.toMatch(/you wrote that/);
+  });
+
+  it("a date correction never rewrites an Observed the manager wrote: it says so instead", async () => {
+    const { thread, id } = await created();
+    const typed = "Observed:\nOn October 1, 2026 Marlo opened 25 minutes late. I opened for her.";
+    await save(id, { observation: typed });
+    const reply = await thread.say("the date was wrong, it happened on 10-2-26");
+    const f = await form(id);
+    expect(f.text("form_date")).toBe("2026-10-02");
+    expect(f.text("observation")).toBe(typed);
+    expect(reply.content).toMatch(/still names the old date/);
+  });
+
+  it("a date correction aimed at a finalized form is made on a new draft; the finalized record is untouched", async () => {
+    const { thread, id, before } = await created();
+    expect((await act(id, { action: "finalize", followUpDate: null })).status).toBe(200);
+    const valuesBefore = JSON.stringify(store.form_instance_values.filter((row) => row.instance_id === id));
+    await thread.say("change the date to 10-2-26");
+    expect(JSON.stringify(store.form_instance_values.filter((row) => row.instance_id === id))).toBe(valuesBefore);
+    const draft = (store.form_instances ?? []).find((row) => row.revises_instance_id === id);
+    expect(draft, "no new draft was opened").toBeTruthy();
+    const copy = await form(toUuid(draft!.id as string));
+    expect(copy.text("form_date")).toBe("2026-10-02");
+    expect(copy.text("policy_language")).toBe(before.text("policy_language"));
+    expect(copy.ticks("payroll_deduct")).toEqual(["yes"]);
+  });
+
+  it("an earlier step's date is never taken for the form's", async () => {
+    const { thread, id, before } = await created();
+    await thread.say("the previous coaching date should be 1-2-26");
+    expect((await form(id)).text("form_date")).toBe(before.text("form_date"));
+  });
+
   it("Written then Verbal before the form exists: the card and the form say Verbal", async () => {
     const thread = new Thread();
     await thread.say("create a written ca for marlo quist for opening the store late on 10-1-26. payroll deduct $25");
@@ -1060,5 +1182,179 @@ describe("workflow: corrections change only what was asked; finalized forms are 
     const f = await form(id);
     expect(f.text("policy_language")).toMatch(/Cell Phone\/Smart Watch Policy/);
     expect(f.text("policy_violated")).not.toMatch(/Standards of Conduct/);
+  });
+});
+
+/* ========================================================================= */
+/* ONE DATE EVERYWHERE — THE SAVED RECORD, THE REGISTER, THE REOPENED FORM   */
+/* ========================================================================= */
+
+/*
+ * QA follow-up, 22 Oct 2026: `form_instances.form_date` — what the Forms
+ * Register lists, the PDF prints and names, the drafting route treats as the
+ * form's date, and person memory reads — was set once at creation. A Date
+ * changed on the card or in chat changed only the form's Date line, and
+ * "Edit as new draft" dated the new draft the day it was opened.
+ */
+describe("a form's date is one date on every surface", () => {
+  /** Every place a form's date is shown, read for one form. */
+  async function everywhere(id: string) {
+    const f = await form(id);
+    const listed = (await listInstances("all")).find((row) => row.id === id);
+    const pdf = await pdfRoute.GET(new Request(`https://app.test/api/forms/instances/${id}/pdf`), {
+      params: Promise.resolve({ id }),
+    });
+    const filename = /filename="([^"]+)"/.exec(pdf.headers.get("content-disposition") ?? "")?.[1] ?? "";
+    return {
+      value: f.text("form_date"),
+      reopened: String(f.instance.formDate),
+      register: listed?.formDate ?? null,
+      pdfNamesIt: filename,
+    };
+  }
+  const expectAll = async (id: string, iso: string) => {
+    const seen = await everywhere(id);
+    expect(seen.value, "Date line").toBe(iso);
+    expect(seen.reopened, "reopened form").toBe(iso);
+    expect(seen.register, "Forms Register").toBe(iso);
+    expect(seen.pdfNamesIt, "PDF").toContain(iso);
+  };
+
+  async function created() {
+    const thread = new Thread();
+    await thread.say(ISSUE_1);
+    state.draft = ISSUE_1_MODEL;
+    const { id } = await thread.create();
+    return { thread, id };
+  }
+
+  it("a Date changed on the card", async () => {
+    const { id } = await created();
+    await expectAll(id, "2026-10-01");
+    await save(id, { form_date: "2026-10-03" });
+    await expectAll(id, "2026-10-03");
+  });
+
+  it("a Date changed in chat, then again, then back", async () => {
+    const { thread, id } = await created();
+    await thread.say("change the date to 10-2-26");
+    await expectAll(id, "2026-10-02");
+    await thread.say("sorry, the date should be 10/3/26");
+    await expectAll(id, "2026-10-03");
+    await thread.say("it was 10-1-26, not 10-3-26");
+    await expectAll(id, "2026-10-01");
+    expect((await form(id)).text("observation")).toContain("October 1, 2026");
+  });
+
+  it("Edit as new draft keeps the form's date, not the day it is reopened; the finalized original keeps its own", async () => {
+    const { id } = await created();
+    await save(id, { form_date: "2026-10-03" });
+    expect((await act(id, { action: "finalize", followUpDate: null })).status).toBe(200);
+    const reopened = await act(id, { action: "revise" });
+    const draftId = toUuid(reopened.payload.instance!.id);
+    await expectAll(draftId, "2026-10-03");
+    await expectAll(id, "2026-10-03");
+    /* The new draft's date is changed; the finalized record's is not. */
+    await save(draftId, { form_date: "2026-10-04" });
+    await expectAll(draftId, "2026-10-04");
+    await expectAll(id, "2026-10-03");
+  });
+
+  it("a later draft is written against the form's current date, not the one it was created with", async () => {
+    const { id } = await created();
+    await save(id, { form_date: "2026-10-03" });
+    state.draft = {
+      values: { observation: "Observed:\nOn October 21, 2026, Marlo did not open the store at the proper time." },
+      checked: { offense_type: ["tardiness"] },
+    };
+    await call(`/api/forms/instances/${id}/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ notes: "marlo opened the store late. payroll deduct $25" }),
+    });
+    expect((await form(id)).text("observation")).toContain("October 3, 2026");
+  });
+});
+
+/* ========================================================================= */
+/* DATE CORRECTIONS: AMBIGUOUS, COMBINED, AND WHAT THEY MUST NOT TOUCH       */
+/* ========================================================================= */
+
+describe("date corrections that are ambiguous, combined, or near other dates", () => {
+  async function created(model = ISSUE_1_MODEL) {
+    const thread = new Thread();
+    await thread.say(ISSUE_1);
+    state.draft = model;
+    const { id } = await thread.create();
+    return { thread, id, before: await form(id) };
+  }
+  const unchanged = async (id: string, before: Awaited<ReturnType<typeof form>>) => {
+    const f = await form(id);
+    for (const key of ["form_date", "observation", "prior_actions", "action_plan", "policy_language"]) {
+      expect(f.text(key), key).toBe(before.text(key));
+    }
+  };
+
+  it.each([
+    ["the date should be 10-2-26 or 10-3-26", /Which date .* October 2, 2026 or October 3, 2026\? I haven't changed it/],
+    ["change the date", /What date should .* I haven't changed it/],
+    ["the date is wrong", /What date should .* I haven't changed it/],
+  ])('"%s" changes nothing and asks', async (text, asked) => {
+    const { thread, id, before } = await created();
+    const answer = await thread.say(text);
+    expect(answer.content).toMatch(asked);
+    expect(answer.formUpdate ?? null).toBeNull();
+    await unchanged(id, before);
+    /* The answer to the question is then taken. */
+    await thread.say("change the date to 10-3-26");
+    expect((await form(id)).text("form_date")).toBe("2026-10-03");
+  });
+
+  it("asks on a finalized form without opening a draft of it", async () => {
+    const { thread, id } = await created();
+    expect((await act(id, { action: "finalize", followUpDate: null })).status).toBe(200);
+    const answer = await thread.say("change the date");
+    expect(answer.content).toMatch(/What date should/);
+    expect((store.form_instances ?? []).some((row) => row.revises_instance_id === id)).toBe(false);
+  });
+
+  it("a Prior Actions line signed the same day as the incident is never moved", async () => {
+    const { thread, id } = await created({
+      ...ISSUE_1_MODEL,
+      values: { ...ISSUE_1_MODEL.values, prior_actions: "Verbal warning — signed 10/01/2026" },
+    });
+    const prior = (await form(id)).text("prior_actions");
+    await thread.say("change the date to 10-2-26");
+    const f = await form(id);
+    expect(f.text("form_date")).toBe("2026-10-02");
+    expect(f.text("observation")).toContain("October 2, 2026");
+    expect(f.text("prior_actions")).toBe(prior);
+  });
+
+  it("a payroll answer and a date in one message are both made", async () => {
+    const { thread, id } = await created();
+    await thread.say("no payroll deduct and change the date to 10-2-26");
+    const f = await form(id);
+    expect(f.ticks("payroll_deduct")).toEqual(["no"]);
+    expect(f.text("form_date")).toBe("2026-10-02");
+    expect(f.text("action_plan")).not.toMatch(/deduct|\$/i);
+  });
+
+  it("the employee's name is still never changed from chat on this form", async () => {
+    const { thread, id } = await created();
+    await thread.say("change the name to Jane Smith");
+    expect((await form(id)).text("employee_name")).toBe("Marlo Quist");
+  });
+
+  it("an observation the manager partly rewrote is theirs: a date correction leaves every word of it", async () => {
+    const { thread, id } = await created();
+    const drafted = (await form(id)).text("observation")!;
+    const edited = drafted.replace("Going Forward:", "Going Forward (manager):");
+    await save(id, { observation: edited });
+    await thread.say("change the date to 10-2-26");
+    await thread.say("change the date to 10-3-26");
+    const f = await form(id);
+    expect(f.text("form_date")).toBe("2026-10-03");
+    expect(f.text("observation")).toBe(edited);
   });
 });
