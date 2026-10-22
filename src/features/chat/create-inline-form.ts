@@ -139,6 +139,8 @@ export async function createInlineForm({
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
+      /* The card's own id: a second press of it returns the draft it already made. */
+      proposalId: proposal.proposalId,
       /*
        * THE CONVERSATION AS IT STANDS NOW, not as it stood when the card was
        * drawn. The server re-reads who and which form it now names and

@@ -10,7 +10,8 @@ import type { ChatMessage } from "@/types";
 
 import { policyPhrase } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
-import { fieldsForVariant, parseFormDocument } from "./document";
+import { CA_POLICY_QUESTION, readCaPolicy, statedOffenseKeys } from "./ca-policy";
+import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { employeeFirstName } from "./employee-reference";
 import { changeOnEditableDraft } from "./editable-draft";
 import { authorizeInstance } from "./instance-scope";
@@ -19,8 +20,11 @@ import {
   COMPANY_POLICIES_OFFENSE,
   boxSectionNames,
   findManualSection,
+  headingKey,
   manualDisplayTitle,
   officialManualProvenance,
+  offenseKeyForManualHeading,
+  sectionHeadingsFor,
   type ManualSection,
 } from "./official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "./policy-citation";
@@ -40,6 +44,9 @@ const POLICY_KEY = "policy_language";
 
 /** The Corrective Action Form's Policy Violated line: the ticked box, and the section cited beside it. */
 const VIOLATED_KEY = "policy_violated";
+
+/** The Type of Offense boxes. */
+const OFFENSE_KEY = "offense_type";
 
 /** "Create a CA for …", "I need a new corrective action" — a new form, not this one. */
 const NEW_FORM = /\b(?:create|start|pull up|new|another|need an?|draft an?)\b/i;
@@ -77,7 +84,10 @@ export async function changeActiveFormPolicy(input: {
   question: string;
   history: Pick<ChatMessage, "role" | "content" | "error">[];
 }): Promise<AskResponse | null> {
-  const mode = readPolicyChange(input.question);
+  const lastAssistant = [...input.history].reverse().find((turn) => turn.role === "assistant" && !turn.error);
+  const mode = readPolicyChange(input.question, {
+    policyAsked: typeof lastAssistant?.content === "string" && lastAssistant.content.includes(CA_POLICY_QUESTION),
+  });
   if (!mode) return null;
   if (asksForAnotherForm(input.question) || NEW_FORM.test(input.question)) return null;
 
@@ -200,8 +210,12 @@ export async function changeActiveFormPolicy(input: {
   if (!(POLICY_KEY in saved.accepted.values)) {
     return reply(`I couldn't save ${field.label} on the ${who}, so it is as it was. Type the policy into that line on the form instead.`);
   }
+  const moved =
+    mode === "replace"
+      ? await followReplacedBox(input.instanceId, actor.id, loaded, document, next, input.question, input.history)
+      : null;
   /* Policy Violated names the section now cited beside its box, as a first draft does. */
-  const violated = await followOffense(input.instanceId, actor.id, loaded, document, next);
+  const violated = await followOffense(input.instanceId, actor.id, loaded, document, next, moved);
   /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
   const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
 
@@ -228,6 +242,9 @@ export async function changeActiveFormPolicy(input: {
   } else if (mode === "replace" && current.length > 0 && current.some((section) => !next.some((kept) => kept.heading === section.heading))) {
     lines.push("", `It no longer cites ${names(current.filter((section) => !next.some((kept) => kept.heading === section.heading)))}.`);
   }
+  if (moved) {
+    lines.push("", `Type of Offense now reads **${moved.labels.join(", ")}**, so it matches the policy cited.`);
+  }
   if (plan.length > 0) {
     lines.push(
       "",
@@ -240,7 +257,7 @@ export async function changeActiveFormPolicy(input: {
   );
   return {
     ...reply(lines.join("\n")),
-    formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...violated, ...plan] },
+    formUpdate: { instanceId: input.instanceId, updated: [POLICY_KEY, ...(moved ? [OFFENSE_KEY] : []), ...violated, ...plan] },
   };
 }
 
@@ -268,10 +285,12 @@ async function followOffense(
   loaded: Awaited<ReturnType<typeof authorizeInstance>>["loaded"],
   document: ReturnType<typeof parseFormDocument>,
   cited: readonly ManualSection[],
+  /** The boxes `followReplacedBox` just ticked, when it moved them. */
+  moved: { keys: string[] } | null = null,
 ): Promise<string[]> {
   const variantKey = loaded.instance.variantKey;
   if (!fieldsForVariant(document, variantKey).some((entry) => entry.key === VIOLATED_KEY)) return [];
-  const ticked = loaded.values.find((value) => value.fieldKey === "offense_type")?.checked ?? [];
+  const ticked = moved?.keys ?? loaded.values.find((value) => value.fieldKey === OFFENSE_KEY)?.checked ?? [];
   const violated = loaded.values.find((value) => value.fieldKey === VIOLATED_KEY);
   const sectionNames = boxSectionNames(cited.map((section) => section.heading));
   /*
@@ -280,6 +299,7 @@ async function followOffense(
    * Tardiness), or a line that named one before.
    */
   const names =
+    moved !== null ||
     ticked.includes(COMPANY_POLICIES_OFFENSE) ||
     ticked.some((key) => key in sectionNames) ||
     / — /.test(violated?.value ?? "");
@@ -321,6 +341,60 @@ function currentSections(
     if (section && !found.some((seen) => seen.heading === section.heading)) found.push(section);
   }
   return found;
+}
+
+/**
+ * ============================================================================
+ * A POLICY REPLACED MOVES ITS BOX
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026: "use the standards of conduct policy instead" on a form
+ * ticked Absenteeism re-quoted Direct policy and the Action Plan, and left
+ * Type of Offense and Policy Violated saying Absenteeism — one record naming
+ * two policies. A policy the manager names INSTEAD is the box that is ticked,
+ * as on a first draft (`statedOffenseKeys`): Attendance is Absenteeism for an
+ * absence, a missed meeting included, and Tardiness otherwise; any other
+ * section is the box that cites it.
+ *
+ * NEVER OVER THE MANAGER'S OWN TICK, and never where a box already ticked
+ * cites the section named. Returns the boxes and their labels, or null.
+ */
+async function followReplacedBox(
+  instanceId: string,
+  actorId: string,
+  loaded: Awaited<ReturnType<typeof authorizeInstance>>["loaded"],
+  document: ReturnType<typeof parseFormDocument>,
+  cited: readonly ManualSection[],
+  question: string,
+  history: readonly Pick<ChatMessage, "role" | "content" | "error">[],
+): Promise<{ keys: string[]; labels: string[] } | null> {
+  const group = checkboxGroupsForVariant(document, loaded.instance.variantKey).find((entry) => entry.key === OFFENSE_KEY);
+  if (!group || cited.length === 0) return null;
+  const row = loaded.values.find((value) => value.fieldKey === OFFENSE_KEY);
+  const current = row?.checked ?? [];
+  if (row?.filledBy === "manager" && current.length > 0) return null;
+
+  const citedUnder = (key: string) =>
+    sectionHeadingsFor({ offenseKeys: [key], jobTitle: loaded.instance.employeeRole }).flat().map(headingKey);
+  if (cited.every((section) => current.some((key) => citedUnder(key).includes(headingKey(section.heading))))) return null;
+
+  const account = [
+    ...history.filter((turn) => turn.role === "user" && !turn.error).map((turn) => String(turn.content ?? "")),
+    question,
+  ].join("\n\n");
+  const stated = statedOffenseKeys(readCaPolicy(question), account);
+  const offered = group.options.map((option) => option.key);
+  const keys = [...new Set(stated ?? cited.map((section) => offenseKeyForManualHeading(section.heading)))].filter((key) =>
+    offered.includes(key),
+  );
+  if (keys.length === 0 || (keys.length === current.length && keys.every((key) => current.includes(key)))) return null;
+
+  const saved = await applyAssistantDraft(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId);
+  if (!(OFFENSE_KEY in saved.accepted.checked)) return null;
+  return {
+    keys,
+    labels: keys.map((key) => group.options.find((option) => option.key === key)?.label ?? key),
+  };
 }
 
 /** The pinned manual, or a reason — a knowledge-base outage never fails the turn. */

@@ -84,7 +84,7 @@ import {
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { correctedDates, correctedFormDate, extractFormDate } from "@/lib/forms/form-date-answer";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import {
@@ -705,7 +705,11 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
 
   if (correctiveAction) {
     proposal.sourceMessageIds = scoped.ids;
-    proposal.formDate = extractFormDate(scoped.text, input.today ?? businessToday());
+    proposal.formDate =
+      correctedFormDate(
+        scoped.messages.map((message) => message.content),
+        input.today ?? businessToday(),
+      ) ?? extractFormDate(scoped.text, input.today ?? businessToday());
   }
 
   /*
@@ -1120,6 +1124,23 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     return continued === spoken.templateKey ? { kind: "explicit", templateKey: continued } : spoken;
   }
 
+  /*
+   * A CORRECTION TO THE OPEN CORRECTIVE ACTION is part of its intake, even
+   * where it names a step ("sorry, the verbal ca was on 9-2-26 not 9-1-26"
+   * read as a request for another CA, and the correction never reached the
+   * card — QA, 22 Oct 2026). It names nobody new and is not a question.
+   */
+  if (
+    continued &&
+    spoken.kind !== "none" &&
+    !isQuestion(input.question) &&
+    extractEmployeeNames(input.question).length === 0 &&
+    correctsTheIntake(input.question, input.today ?? businessToday())
+  ) {
+    const open = input.summaries.find((summary) => summary.key === continued);
+    if (open && isCorrectiveActionForm(open)) return { kind: "explicit", templateKey: continued };
+  }
+
   if (spoken.kind !== "none") return spoken;
 
   /* "The form", in reply to "coaching guidance, or a Coaching Form?". */
@@ -1212,6 +1233,14 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   if (!continuesIntake(continued, input)) return { kind: "none" };
 
   return { kind: "explicit", templateKey: continued };
+}
+
+/** "Sorry, … not 9-1-26", "actually it was 10-19": the turn corrects what the intake already holds. */
+function correctsTheIntake(question: string, today: string): boolean {
+  return (
+    /^\s*(?:sorry|oops|actually|correction|wait|my\s+(?:mistake|bad)|typo)\b/i.test(question) ||
+    correctedDates(question, today).size > 0
+  );
 }
 
 /**
@@ -1369,9 +1398,17 @@ function turnsAboutThisForm(
     const thisForm =
       (intent.kind === "explicit" && intent.templateKey === templateKey) ||
       (options.correctiveActionForm === true && intent.kind === "corrective_action" && intent.requestedCreation);
+    /*
+     * A CORRECTIVE ACTION MENTIONED, NOT ASKED FOR, inside this one's intake
+     * is about this one: "sorry, the verbal ca was on 9-2-26 not 9-1-26"
+     * corrects its history (QA, 22 Oct 2026 — counted as another form, it
+     * dropped the account, the policy and the prior actions given before it).
+     */
+    const aboutThisForm =
+      options.correctiveActionForm === true && intent.kind === "corrective_action" && !intent.requestedCreation;
     const otherForm =
       (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
-      (intent.kind === "corrective_action" && !thisForm);
+      (intent.kind === "corrective_action" && !thisForm && !aboutThisForm);
     const names = extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
     if (otherForm || otherPerson) start = index + 1;
@@ -1660,7 +1697,10 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
             heading: grounded.section.heading,
             page: grounded.section.page,
             offenseKey: MISSED_EVENT_OFFENSE,
-            anchor: grounded.anchor,
+            ...(grounded.anchor ? { anchor: grounded.anchor } : {}),
+            ...(grounded.anchorSection
+              ? { anchorHeading: grounded.anchorSection.heading, anchorPage: grounded.anchorSection.page }
+              : {}),
           }
         : null;
     }

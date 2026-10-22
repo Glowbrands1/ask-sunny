@@ -159,6 +159,11 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.filters.push((row) => String(row[column] ?? "").startsWith(prefix));
     return this;
   }
+  gte(column: string, value: string | number) {
+    this.filters.push((row) => row[column] !== undefined && row[column] !== null && String(row[column]) >= String(value));
+    return this;
+  }
+
   in(column: string, values: unknown[]) {
     this.filters.push((row) => values.includes(row[column]));
     return this;

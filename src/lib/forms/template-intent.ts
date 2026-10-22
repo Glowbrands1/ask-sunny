@@ -627,6 +627,9 @@ const CREATION_VERBS = [
   "issue",
   "do a",
   "need a",
+  /* "tess varga needs a written CA" asks for one as surely as "needs a written warning" (QA, 22 Oct 2026). */
+  "needs a",
+  "needs an",
   "need to do",
   /*
    * How the request is phrased when it is not an imperative: "pull up a CA

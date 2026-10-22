@@ -1728,10 +1728,13 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   it("chooses nothing when the account also reads as attendance, and says so", async () => {
     state.toolInput = { values: { observation: "Observed: x." }, checked: { offense_type: ["tardiness"] } };
     const payload = await post("Colene came in late and didn't finish her opening tasks.");
-    expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
+    /* The model's pick is a guess the manager was asked about: it is not ticked (QA, 22 Oct 2026). */
+    expect(state.persisted[0]!.checked.offense_type ?? []).toEqual([]);
+    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(payload.caPolicy).toMatchObject({
       applied: false,
       ambiguous: ["standards_of_conduct", "attendance"],
+      leftForManager: true,
     });
     expect(String(payload.notice)).toMatch(
       /This could fall under Standards of Conduct or Attendance, and you didn't say which/,

@@ -76,7 +76,7 @@ describe("an account that reads two ways is a question", () => {
       "**Which policy applies?** This could fall under **Standards of Conduct** (assigned work that wasn't completed) or **Attendance**, if it comes down to being late or absent. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
     );
     expect(caPolicyAmbiguousNotice(readCaPolicy("She came in late and didn't finish her opening tasks."))).toBe(
-      "This could fall under Standards of Conduct or Attendance, and you didn't say which — check Type of Offense, Policy Violated and Direct policy before you finalize.",
+      "This could fall under Standards of Conduct or Attendance, and you didn't say which, so Type of Offense, Policy Violated and Direct policy are left for you. Tell me which policy applies, or tick it on the form.",
     );
   });
 });
@@ -331,13 +331,13 @@ describe("a meeting, seminar or training session not attended", () => {
     });
   });
 
-  it("a seminar rests on its own section", () => {
+  it("a seminar rests on its own section, and the sentence said back never calls it a no call no show", () => {
     const grounded = groundMissedEvent({ reading: readCaPolicy("she skipped the seminar on 10-1-26"), chunks });
     expect(grounded).toMatchObject({
       ok: true,
       section: { heading: "Seminar/Webinar Attendance", page: 37 },
-      anchor:
-        "If you are enrolled in a seminar/webinar and do not attend the seminar without notifying your Supervisor, it is considered a no call no show to a scheduled shift.",
+      anchor: "Seminars/Meetings/ Training sessions are considered scheduled shifts.",
+      anchorSection: { heading: "Attendance", page: 14 },
     });
   });
 

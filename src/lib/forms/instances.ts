@@ -2,6 +2,8 @@ import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
+import { isProposalId } from "./proposal-id";
+
 import {
   checkboxGroupsForVariant,
   fieldsForVariant,
@@ -365,6 +367,91 @@ export interface NewInstance {
   createdByRole?: string | null;
   source: InstanceSource;
   formDate?: string;
+  /** The chat card this form was created from; recorded so a repeated press finds it. */
+  proposalId?: string;
+}
+
+/**
+ * ============================================================================
+ * THE SAME CHAT CARD, PRESSED TWICE, IS ONE DRAFT
+ * ============================================================================
+ *
+ * The browser stops a second click while a create is in flight, and marks the
+ * card created the instant the row exists. What it cannot stop is a create
+ * whose RESPONSE was lost — a dropped connection, a timeout, a reload — or the
+ * same card pressed in a second tab: the row exists, the browser does not
+ * know, and the next press files a second disciplinary record.
+ *
+ * KEYED ON THE CARD, NOT ON THE PERSON. Every proposal card carries a
+ * `proposalId`, recorded on the form's `created` event. A press of the SAME
+ * card returns the draft it already made. A NEW request — a second incident
+ * for the same employee, minutes later — is a new card with a new id and
+ * always files a new draft. (A first version matched form, person and
+ * location inside ten minutes, which handed a manager documenting two
+ * separate incidents the first draft back. Release review caught it.)
+ *
+ * NARROW ON PURPOSE. Only the caller's own drafts (never another manager's,
+ * so nothing is revealed that they could not already open), only drafts (a
+ * finalized form is never handed back for editing), only assistant-created
+ * ones, only the same person and location, and only inside
+ * `DUPLICATE_DRAFT_WINDOW_HOURS`, which bounds the lookup rather than defining
+ * the duplicate. A create without a card id is never matched.
+ */
+export const DUPLICATE_DRAFT_WINDOW_HOURS = 24;
+
+export async function findRecentAssistantDraft(input: {
+  templateKey: string;
+  employeeName: string;
+  createdBy: string;
+  locationId: string | null;
+  proposalId: string;
+  now?: Date;
+}): Promise<InstanceRow | null> {
+  if (!isProposalId(input.proposalId)) return null;
+  const supabase = getSupabaseAdmin();
+  const { data: template, error: templateError } = await supabase
+    .from("form_templates")
+    .select("id")
+    .eq("key", input.templateKey)
+    .maybeSingle();
+  if (templateError || !template) return null;
+
+  const since = new Date((input.now ?? new Date()).getTime() - DUPLICATE_DRAFT_WINDOW_HOURS * 3_600_000);
+  const { data, error } = await supabase
+    .from("form_instances")
+    .select("id, employee_name, location_id, created_at")
+    .eq("template_id", template.id)
+    .eq("created_by", input.createdBy)
+    .eq("source", "ask_sunny")
+    .eq("status", "draft")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(25);
+  // A guard that cannot read is no guard: the create goes ahead as before.
+  if (error || !Array.isArray(data)) return null;
+
+  const wanted = input.employeeName.trim().replace(/\s+/g, " ").toLowerCase();
+  const candidates = (data as { id: unknown; employee_name: unknown; location_id: unknown }[])
+    .filter(
+      (row) =>
+        String(row.employee_name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === wanted &&
+        (row.location_id ?? null) === (input.locationId ?? null),
+    )
+    .map((row) => String(row.id));
+  if (candidates.length === 0) return null;
+
+  const { data: events, error: eventsError } = await supabase
+    .from("form_instance_events")
+    .select("instance_id, detail")
+    .in("instance_id", candidates)
+    .eq("kind", "created");
+  if (eventsError || !Array.isArray(events)) return null;
+  const same = (events as { instance_id: unknown; detail: unknown }[]).find(
+    (event) => (event.detail as { proposalId?: unknown } | null)?.proposalId === input.proposalId,
+  );
+  if (!same) return null;
+  const loaded = await loadInstance(String(same.instance_id));
+  return loaded?.instance ?? null;
 }
 
 /**
@@ -450,6 +537,7 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
     variantKey: input.variantKey,
     source: input.source,
     seededFromRecord: Object.keys(seeded),
+    ...(isProposalId(input.proposalId) ? { proposalId: input.proposalId } : {}),
   });
 
   const loaded = await loadInstance(String(data.id));

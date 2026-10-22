@@ -301,8 +301,14 @@ describe("a policy named in the conversation goes onto the open form", () => {
     expect(value).toContain("Dress Code for The Company");
     expect(value).not.toContain("Late Opening");
     expect(swapped?.content).toMatch(/no longer cites/i);
-    /* Late Opening is no longer cited, so Policy Violated no longer names it beside the box. */
-    expect((await row(id, "policy_violated"))?.value).toBe("Tardiness/Leaving Early");
+    /*
+     * A policy named INSTEAD is the box that is ticked (QA, 22 Oct 2026): the
+     * draft's Tardiness moves to Dress Code, and Policy Violated follows, so
+     * the form never names two policies.
+     */
+    expect((await row(id, "offense_type"))?.checked).toEqual(["dress_code"]);
+    expect((await row(id, "policy_violated"))?.value).toBe("Dress Code Violation");
+    expect(swapped?.content).toMatch(/Type of Offense now reads \*\*Dress Code Violation\*\*/);
   });
 
   it("removes a section the manager takes off, and blanks the line when it was the only one", async () => {

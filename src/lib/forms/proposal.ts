@@ -684,10 +684,11 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * was read in that position. The sentence must OPEN with the name alone,
    * like the change reading above, so "she needs a form" and "the team needs
    * coaching" name nobody — and what is needed must be a form or the coaching
-   * itself, so "Punctuality needs work" names nobody either.
+   * itself, so "Punctuality needs work" names nobody either. A warning level
+   * is what is needed too: "tess varga needs a written CA" (QA, 22 Oct 2026).
    */
   const PERSON_THEN_NEEDS =
-    /^(\S+?)(?:['’]s)?(?:\s+(\S+?))?\s+(?:needs|need|requires|should\s+get|could\s+use|has\s+to\s+(?:get|have|do))\s+(?:(?:a|an|the|some|more|another|new)\s+)?(?:coaching|coached|forms?|documents?|documentation|write[- ]?ups?|ca|corrective|epp|plan|review|policy|exit|demotion|transfer|follow[- ]?up|to\s+be\s+(?:coached|written|documented))\b/i;
+    /^(\S+?)(?:['’]s)?(?:\s+(\S+?))?\s+(?:needs|need|requires|should\s+get|could\s+use|has\s+to\s+(?:get|have|do))\s+(?:(?:a|an|the|some|more|another|new)\s+)?(?:coaching|coached|forms?|documents?|documentation|write[- ]?ups?|ca|corrective|epp|plan|review|policy|exit|demotion|transfer|follow[- ]?up|(?:final\s+)?(?:written|verbal)(?:\s+warning)?|(?:final\s+)?warning|to\s+be\s+(?:coached|written|documented))\b/i;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const match = PERSON_THEN_NEEDS.exec(sentence.trim());
     if (!match) continue;

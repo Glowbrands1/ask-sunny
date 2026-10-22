@@ -11,7 +11,9 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "./coaching-framing";
-import { interpolate, parseFormDocument } from "./document";
+import { checkboxGroupsForVariant, interpolate, parseFormDocument } from "./document";
+import { guardAbsenceClaims } from "./absence-claims";
+import { WARNING_TYPE_KEY, statedWarningLevel } from "./corrective-action-intake";
 import { stripPlaceholdersFromDraft } from "./drafted-text";
 import { refuseSensitiveSelections } from "./escalation-guard";
 import {
@@ -469,16 +471,36 @@ export async function reviseActiveForm(input: {
     instance.templateKey === "coaching"
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, grounding)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
-  const sensitive = refuseSensitiveSelections({ document, variantKey, checked: framing.checked });
+  /*
+   * THE WARNING LEVEL THE MANAGER STATES IS THE ONE TICKED, not left to the
+   * model (QA, 22 Oct 2026: "change it to a verbal warning" on an open Written
+   * CA changed nothing when the model's revision did not touch the box). A
+   * level said as history ("she had a verbal warning in August") states none.
+   */
+  const level = corrective ? statedWarningLevel(input.question) : null;
+  const offeredLevels =
+    checkboxGroupsForVariant(document, variantKey)
+      .find((group) => group.key === WARNING_TYPE_KEY)
+      ?.options.map((option) => option.key) ?? [];
+  const restated: Record<string, string[]> =
+    level && offeredLevels.includes(level) && (current.get(WARNING_TYPE_KEY)?.checked ?? []).join(",") !== level
+      ? { [WARNING_TYPE_KEY]: [level] }
+      : {};
+  /* No call/no show, or "she did not notify anyone", only where the manager said so. See `absence-claims.ts`. */
+  const stated = {
+    values: corrective ? guardAbsenceClaims(framing.values, notes).values : framing.values,
+    checked: { ...framing.checked, ...restated },
+  };
+  const sensitive = refuseSensitiveSelections({ document, variantKey, checked: stated.checked });
 
   /*
    * THE EMPLOYEE BY FIRST NAME, the same backstop the first draft runs, on
    * the fields this revision writes and nothing else.
    */
   const byName = team
-    ? { values: framing.values, adjusted: [] as string[] }
+    ? { values: stated.values, adjusted: [] as string[] }
     : applyEmployeeName({
-        values: framing.values,
+        values: stated.values,
         fields,
         employeeName: instance.employeeName,
         knownWords: [ACTIVE_BRAND.brandName, ...(instance.locationName ? [instance.locationName] : [])],

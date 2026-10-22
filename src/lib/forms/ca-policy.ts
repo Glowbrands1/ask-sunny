@@ -167,16 +167,40 @@ const TARGET =
  * Standards of Conduct reading above, and "missed the training deadline" a
  * deadline. Only attending one is read here.
  */
-const EVENT_NOUN = String.raw`(?:meetings?|seminars?|webinars?|huddles?|trainings?(?:\s+(?:sessions?|classes?|meetings?))?|(?:training\s+)?(?:sessions?|classes?))`;
-const NOT_THE_EVENT = String.raw`(?!\s+(?:deadlines?|due|modules?|items?|videos?|courses?|assignments?|requirements?|quiz\w*|workbooks?|notes?|minutes|agenda))`;
-const MISSED_EVENT = new RegExp(
-  String.raw`\b(?:(?:${FAILED}|not|never|without)\s+(?:\S+\s+)?(?:attend(?:ing|ed)?|show(?:ing|ed)? up (?:to|for|at)|c[oa]me to|coming to|go to|went to|going to|ma(?:k|d)e it to|join(?:ing|ed)?)|missed|missing|skipped|skipping|no[- ]show(?:ed)? (?:to|for|at)|absent from)\s+((?:\S+\s+){0,3}?${EVENT_NOUN})\b${NOT_THE_EVENT}`,
+/*
+ * THE EVENT, in the words managers use for one: "meeting", "mtg", "all-staff",
+ * "1:1", "seminar", "webinar", "huddle", "orientation", a training session or
+ * class. "Training" alone is an event only when it is attended or missed —
+ * "the training deadline" and "training modules" are work (`NOT_THE_EVENT`).
+ */
+const EVENT_NOUN = String.raw`(?:meetings?|mtgs?|mtng|all[- ]staff|all[- ]hands|one[- ]on[- ]ones?|1[:-]on[:-]1|1:1s?|seminars?|webinars?|huddles?|orientation|trainings?(?:\s+(?:sessions?|classes?|meetings?|days?))?|(?:training\s+)?(?:sessions?|classes?))`;
+const NOT_THE_EVENT = String.raw`(?!\s*(?:deadlines?|due|modules?|items?|videos?|courses?|assignments?|requirements?|quiz\w*|workbooks?|notes?|minutes|agenda|materials?|tasks?|checklists?|binders?|links?|emails?|invites?|requests?)\b)`;
+/*
+ * WHAT SAYS SHE WAS NOT THERE, before the event: missed, skipped, blew off,
+ * bailed on, a no-show, absent from, wasn't at, or a negated attending verb
+ * (didn't attend / show up / make it / come / join / log in / dial in …).
+ */
+const ABSENT_BEFORE = String.raw`(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?(?:\s+out\s+on)?|blew\s+off|blown\s+off|bail(?:ed|s)?\s+(?:out\s+)?on|ditch(?:ed|es)?|no[- ]?call[,/ -]*(?:and\s+)?no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|absent\s+(?:from|for|at)|(?:was|were|is)\s+(?:not|n't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:wasn't|weren't|isn't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:${FAILED}|not|never|without|n't)\s+(?:\S+\s+)?(?:attend(?:ing|ed|s)?|show(?:ing|ed|s)?(?:\s+up)?|c[oa]me|coming|go|went|going|ma(?:k|d)e\s+it|make|join(?:ing|ed|s)?|turn(?:ed|ing)?\s+up|appear(?:ed|ing)?|log(?:ged)?\s+(?:in|on)|dial(?:ed|led)?\s+in|call(?:ed)?\s+in)(?:\s+(?:to|for|at|in|into|on))?)`;
+/* What says it after the event: "the monthly meeting, which she missed". */
+const ABSENT_AFTER = String.raw`(?:miss(?:ed|es)|skipped|blew\s+off|bailed\s+on|no[- ]?showed|(?:did ?n[o']?t|didn't|never)\s+(?:attend|show(?:\s+up)?|come|go|make\s+it)|(?:was|were)\s*(?:not|n't)\s+(?:at|there|present)|wasn't\s+(?:at|there|present)|was\s+absent)`;
+/* Words that put the event as the setting of something else: "rude DURING the meeting". */
+const GAP_WORD = String.raw`(?!(?:during|in|while|after|before|throughout|since|until|because|but|and|so|then|where|when|who|which|that)\b)\S+\s+`;
+const MISSED_EVENT_BEFORE = new RegExp(
+  String.raw`\b${ABSENT_BEFORE}\s+((?:${GAP_WORD}){0,4}?${EVENT_NOUN})\b${NOT_THE_EVENT}`,
 );
+const MISSED_EVENT_AFTER = new RegExp(
+  String.raw`\b((?:${GAP_WORD}){0,3}?${EVENT_NOUN})\b${NOT_THE_EVENT}(?:\s+(?:on|at|from)\s+\S+|\s+[\d/.-]+)?[\s,–—-]+(?:(?:which|that)\s+)?(?:(?:she|he|they|[a-z]+)\s+)?${ABSENT_AFTER}\b`,
+);
+
+/** Leading words that place the event rather than name it: "the", "her", "last", "tuesday's". */
+const EVENT_LEAD = /^(?:(?:the|a|an|her|his|their|our|this|that|last|next|yesterday['’]?s|today['’]?s|[a-z]+day['’]?s|[a-z]+day|todays|yesterdays)\s+)+/;
 
 function missedEventIn(sentences: readonly string[]): string | null {
   for (const sentence of sentences) {
-    const match = MISSED_EVENT.exec(sentence);
-    if (match) return match[1]!.replace(/^(?:the|a|an|her|his|their|our)\s+/, "").trim();
+    for (const clause of sentence.split(/;|:\s|\s+(?:but|however)\s+/)) {
+      const match = MISSED_EVENT_BEFORE.exec(clause) ?? MISSED_EVENT_AFTER.exec(clause);
+      if (match) return match[1]!.replace(EVENT_LEAD, "").trim();
+    }
   }
   return null;
 }
@@ -323,7 +347,7 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
     case "attendance": {
       const text = normalize(rawText);
       // A meeting not attended is an absence from a scheduled shift, not a late arrival.
-      const absent = ABSENCE.test(text) || reading.missedEvent !== null;
+      const absent = ABSENCE.test(text) || reading.missedEvent !== null || missedEventIn(statements(text)) !== null;
       const late = LATENESS.test(text);
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
@@ -387,6 +411,9 @@ export type NamedPolicyReading =
       offenseKey: string;
       /** The manual's own sentence the reading rests on, where one was needed: "Seminars/Meetings/ Training sessions are considered scheduled shifts." */
       anchor?: string;
+      /** The section `anchor` is from, when it is not `heading`'s. */
+      anchorHeading?: string;
+      anchorPage?: number;
     }
   | { phrase: string; lookup: "missing" | "unknown" };
 
@@ -407,7 +434,12 @@ function namedPolicyLine(named: NamedPolicyReading): string {
   if (named.lookup === "described") {
     const box = OFFENSE_BOX_LABEL[named.offenseKey];
     // The manual's sentence closes this one: `… which says "… scheduled shifts." I'll quote it`.
-    const says = named.anchor ? `, which says "${named.anchor}"${/[.!?]$/.test(named.anchor) ? "" : "."}` : ".";
+    const end = named.anchor && /[.!?]$/.test(named.anchor) ? "" : ".";
+    const says = !named.anchor
+      ? "."
+      : named.anchorHeading
+        ? `. The manual's ${named.anchorHeading} section (page ${named.anchorPage}) says "${named.anchor}"${end}`
+        : `, which says "${named.anchor}"${end}`;
     return `**Policy:** "${named.phrase}" reads as the policy manual's **${named.heading}** (page ${named.page})${says} I'll quote it on the draft${box ? ` under **${box}**` : ""} — tell me if a different policy applies.`;
   }
   if (named.lookup === "found") {
@@ -574,7 +606,14 @@ export function groundConductPolicy(input: {
  * all — grounds nothing, and the manager is asked which policy applies.
  */
 export type MissedEventGrounding =
-  | { ok: true; section: ManualSection; anchor: string }
+  | {
+      ok: true;
+      section: ManualSection;
+      /** The manual's sentence the reading rests on; null where the section is named for the event and says nothing else. */
+      anchor: string | null;
+      /** Where `anchor` is from, when that is not `section` (the Attendance sentence beside a seminar's own section). */
+      anchorSection?: ManualSection;
+    }
   | { ok: false; reason: "no_event" | "no_manual" | "not_supported" };
 
 /** The box a meeting not attended is cited under. */
@@ -586,11 +625,20 @@ function eventStem(word: string): string {
   return w.length > 4 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
 }
 
-/** "monthly meeting" → "meeting"; "training session" → "session". */
+/** The words that name a meeting without saying "meeting". */
+const MEETING_ALIASES = /^(?:mtgs?|mtng|all[- ]staff|all[- ]hands|one[- ]on[- ]ones?|1[:-]on[:-]1|1:1s?)$/;
+
+/** "monthly meeting" → "meeting"; "training session" → "session"; "all-staff" → "meeting". */
 function eventHead(event: string): string {
+  if (MEETING_ALIASES.test(event.split(/\s+/).slice(-2).join(" ")) || MEETING_ALIASES.test(event.split(/\s+/).pop() ?? "")) {
+    return "meeting";
+  }
   const words = event.split(/\s+/).filter(Boolean);
   return eventStem(words[words.length - 1] ?? "");
 }
+
+/** The events a manual's attendance sentence may name. */
+const EVENT_HEADS = ["meeting", "seminar", "webinar", "training", "session", "huddle", "class"];
 
 function sentencesOf(text: string): string[] {
   return text
@@ -617,26 +665,48 @@ export function groundMissedEvent(input: {
   if (!input.chunks || input.chunks.length === 0) return { ok: false, reason: "no_manual" };
   const head = eventHead(event);
 
-  const own = manualSectionHeadings(input.chunks).filter(
-    (heading) => /\battend/i.test(heading) && mentions(heading.replace(/\battendance\b/gi, ""), head),
-  );
-  if (own.length === 1) {
-    const section = findManualSection(input.chunks, own);
-    const anchor = section
-      ? sentencesOf(sectionText(input.chunks, section).slice(section.heading.length)).find((s) => mentions(s, head))
-      : undefined;
-    if (section && anchor) return { ok: true, section, anchor };
-  }
-
+  /*
+   * THE SENTENCE QUOTED BACK NEVER CLASSIFIES. "… it is considered a no call
+   * no show" is the manual's rule for not attending WITHOUT NOTIFYING the
+   * Supervisor, and whether she notified anyone is a fact the manager has not
+   * given. It is quoted on the form as the manual's text, in full; it is not
+   * said back as what this was.
+   */
+  const plain = (sentence: string) => !/\bno[- ]?call\b|\bno[- ]?show\b|\bncns\b/i.test(sentence);
   const attendance = manualSectionsFor({
     chunks: input.chunks,
     offenseKeys: [MISSED_EVENT_OFFENSE],
     jobTitle: input.jobTitle,
   })[0];
-  if (attendance) {
-    const anchor = sentencesOf(sectionText(input.chunks, attendance)).find((s) => mentions(s, head));
-    if (anchor) return { ok: true, section: attendance, anchor };
+  /*
+   * A cross-reference ("(See Seminar/Webinar Attendance section)") is not a
+   * rule: the sentence quoted is the one that says the event is a scheduled
+   * shift — the event's own word first, else any event the sentence names.
+   */
+  const ruleSentences = attendance
+    ? sentencesOf(sectionText(input.chunks, attendance)).filter((s) => plain(s) && !/^\(/.test(s))
+    : [];
+  const attendanceAnchor = ruleSentences.find((s) => mentions(s, head)) ?? null;
+  const anyEventAnchor = ruleSentences.find((s) => EVENT_HEADS.some((event) => mentions(s, event))) ?? null;
+
+  const own = manualSectionHeadings(input.chunks).filter(
+    (heading) => /\battend/i.test(heading) && mentions(heading.replace(/\battendance\b/gi, ""), head),
+  );
+  if (own.length === 1) {
+    const section = findManualSection(input.chunks, own);
+    if (section) {
+      const anchor = sentencesOf(sectionText(input.chunks, section).slice(section.heading.length)).find(
+        (s) => mentions(s, head) && plain(s),
+      );
+      if (anchor) return { ok: true, section, anchor };
+      // Beside the event's own section, the attendance sentence about scheduled events says what it is.
+      const beside = attendanceAnchor ?? anyEventAnchor;
+      return attendance && beside
+        ? { ok: true, section, anchor: beside, anchorSection: attendance }
+        : { ok: true, section, anchor: null };
+    }
   }
+  if (attendance && attendanceAnchor) return { ok: true, section: attendance, anchor: attendanceAnchor };
   return { ok: false, reason: "not_supported" };
 }
 
@@ -671,5 +741,5 @@ export function caPolicyAmbiguousNotice(reading: CaPolicyReading): string | null
   if (!reading.ambiguous) return null;
   const names = reading.ambiguous.map((name) => CA_POLICY_LABEL[name]);
   const list = `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
-  return `This could fall under ${list}, and you didn't say which — check Type of Offense, Policy Violated and Direct policy before you finalize.`;
+  return `This could fall under ${list}, and you didn't say which, so Type of Offense, Policy Violated and Direct policy are left for you. Tell me which policy applies, or tick it on the form.`;
 }

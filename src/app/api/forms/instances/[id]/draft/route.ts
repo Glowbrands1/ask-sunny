@@ -101,6 +101,8 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { ABSENCE_CLAIM_REMOVED_NOTICE, guardAbsenceClaims } from "@/lib/forms/absence-claims";
+import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import {
   STANDARDS_OF_CONDUCT,
   caPolicyAmbiguousNotice,
@@ -1042,6 +1044,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       grounding.unverified || wantsEppPolicy
         ? stripUnsupportedPolicyClaims(framing.values, groundedKeys)
         : { values: framing.values, adjusted: [] as string[], emptied: [] as string[] };
+    /*
+     * A NO CALL / NO SHOW, OR "SHE DID NOT NOTIFY ANYONE", ONLY WHERE THE
+     * MANAGER SAID SO — the fact a manual's attendance rule turns on (QA, 22
+     * Oct 2026). See `absence-claims.ts`.
+     */
+    const absence = guardAbsenceClaims(claims.values, notes);
 
     /*
      * ========================================================================
@@ -1080,7 +1088,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const requirements =
       needsPolicy || wantsEppPolicy
         ? stripUnsupportedPolicyRequirements(
-            claims.values,
+            absence.values,
             groundedKeys,
             (wantsEppPolicy
               ? eppPassages.map((passage) => passage.text)
@@ -1092,7 +1100,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               topic: null,
             }),
           )
-        : { values: claims.values, adjusted: [] as string[], replaced: [] as string[] };
+        : { values: absence.values, adjusted: [] as string[], replaced: [] as string[] };
 
     /*
      * ========================================================================
@@ -1304,9 +1312,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? withConductOffense({ checked: enforced.checked, values: enforced.values })
       : null;
     const offenseChange = statedOffense ?? conductOffense;
-    const offenseApplied = offenseChange
+    const offenseChosen = offenseChange
       ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
       : enforced;
+    /*
+     * A POLICY NOBODY SETTLED IS LEFT FOR THE MANAGER (QA, 22 Oct 2026). Where
+     * the manager was asked which policy applies and has not said, or has not
+     * said what happened at all, the model's own Type of Offense is a guess on
+     * a disciplinary record. It is not ticked, so Policy Violated, Direct
+     * policy and the Action Plan's policy stay blank until the manager says —
+     * in chat or on the form. A box they ticked themselves still stands below.
+     */
+    const unsettledPolicy =
+      caPolicy !== null &&
+      !offenseChange &&
+      !policySection &&
+      (caPolicy.ambiguous !== null ||
+        (!describesIncident(notes) &&
+          !describesMoreThanTheRequest(notes, {
+            ignore: [loaded.instance.employeeName, loaded.instance.locationName ?? ""],
+          })));
+    const offenseApplied =
+      unsettledPolicy && (offenseChosen.checked.offense_type ?? []).length > 0
+        ? {
+            ...offenseChosen,
+            checked: { ...offenseChosen.checked, offense_type: [] },
+            values: Object.fromEntries(Object.entries(offenseChosen.values).filter(([key]) => key !== "other_offense")),
+          }
+        : offenseChosen;
 
     /*
      * A REDRAFT KEEPS WHAT THE MANAGER TYPED. Their lines and ticks are left
@@ -1764,6 +1797,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         claims.adjusted.length + claims.emptied.length > 0
           ? POLICY_CLAIM_REMOVED_NOTICE
           : null,
+        absence.removed.length > 0 ? ABSENCE_CLAIM_REMOVED_NOTICE : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
         attributions.adjusted.length + attributions.emptied.length > 0
           ? POLICY_ATTRIBUTION_REMOVED_NOTICE
@@ -1810,6 +1844,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                   applied: false,
                   reason: conduct && !conduct.ok ? conduct.reason : "no_suggestion",
                   ambiguous: caPolicy.ambiguous,
+                  ...(unsettledPolicy ? { leftForManager: true } : {}),
                 },
           }
         : {}),
