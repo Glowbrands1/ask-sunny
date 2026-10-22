@@ -8,9 +8,14 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+# A newer push to the same pull request replaces its older run; runs on main
+# always finish.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:

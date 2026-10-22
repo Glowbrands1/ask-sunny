@@ -5,10 +5,12 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
-## 22 Oct 2026: both apps brought level
+## 22 Oct 2026: both apps brought level (pending QA review)
 
 Every chat/forms fix merged to either `main` from 12–21 Oct was compared. The
-gaps below were closed. Everything else already existed in both.
+gaps below are closed on branch `claude/lucid-shannon-v79zju` in each repo,
+**not yet merged to `main`** (QA hold, 22 Oct). Everything else already
+existed in both.
 
 ### Ported into Ask Sunny from Ask Bubbles
 
@@ -30,7 +32,7 @@ gaps below were closed. Everything else already existed in both.
 | 54b3d42, 6e92b9d | Template sync lists every failure; an interrupted publish is finished, never reported as success |
 
 New end-to-end regression suite: `src/app/api/forms/hr-feedback-oct21-e2e.test.ts`
-(9 of its first 30 HR scenarios failed on `main` before these ports).
+(11 of its 33 HR scenarios fail on `main`; all pass with these ports).
 
 ### Ported into Ask Bubbles from Ask Sunny
 
@@ -56,7 +58,7 @@ New end-to-end regression suite: `src/app/api/forms/hr-feedback-oct21-e2e.test.t
 ### Open decisions (not ported yet)
 
 1. Admins who aren't company-wide limited to granting their own areas (Bubbles 2123821).
-2. Asking "which date goes on the form?" when two incident dates are given (Bubbles).
+2. Asking "which date goes on the form?" when two incident dates are given (Bubbles 9c02dcb).
 3. Every form, not only CAs, built only from the turns about that form and person (Bubbles a73ef6c).
 4. Two forms from one message, and "which one?" for a correction (Bubbles 01fa914, 8b79a46).
 5. Bubbles' store resolver / Woven title verification / chat-side people lookup (ffea279, efde160).
