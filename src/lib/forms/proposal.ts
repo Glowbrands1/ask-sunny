@@ -632,7 +632,8 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * to four words are read, so a middle name survives; `readTypedName` decides
    * where the name ends. See `formSubjectNames`.
    */
-  strong.push(...formSubjectNames(text));
+  const subjects = formSubjectNames(text);
+  strong.push(...subjects);
 
   /*
    * THE NAME RIGHT AFTER A FORM'S NAME, WITH NO "FOR": "Exit John Doe",
@@ -751,7 +752,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
   }
 
-  return settle(strong, found, text);
+  return settle(strong, found, text, subjects);
 }
 
 /*
@@ -948,11 +949,55 @@ function sentenceAnswers(text: string): string[] {
   return names;
 }
 
-function settle(strong: string[], weak: string[], text: string): EmployeeMentions {
+/**
+ * ============================================================================
+ * "CREATE CA FOR REMY CALDER … REMY FAILED TO HAVE TESS VARGA …" IS REMY'S
+ * ============================================================================
+ *
+ * Reported by a District Manager, 21 Oct 2026 (replayed with synthetic names
+ * in `corrective-action-dm-feedback-e2e.test.ts`). The request named the
+ * employee as the form's subject and then described the incident, which
+ * involved a second person. Sunny asked which of the two the form was for —
+ * having just been told — and the manager left without a form.
+ *
+ * THE FORM'S SUBJECT IS THE RECIPIENT. "<form> for <name>" is the manager
+ * saying whose form it is; a capitalised name in the narrative is somebody the
+ * incident involved. So where exactly one person is the form's subject, the
+ * narrative's other names are not candidates — wherever in the message the
+ * subject sits.
+ *
+ * IT NEVER CHOOSES BETWEEN PEOPLE NAMED ON PURPOSE. The subject does not win
+ * when it is joined to another name ("for Sarah Test and Dana Reyes", "for
+ * Sarah Test, Dana Reyes"), when another reading names a different person on
+ * purpose ("… Dana Reyes needs a CA too"), or when two spellings of the
+ * subject's first name are in play — each is still a question.
+ */
+function formRecipient(subjects: readonly string[], strong: readonly string[], weak: readonly string[], text: string): string | null {
+  const named = distinctNames([...subjects]);
+  if (named.length !== 1) return null;
+  const recipient = named[0]!;
+  if (strong.some((name) => !samePerson(name, recipient))) return null;
+  const others = weak.filter((name) => !samePerson(name, recipient));
+  // Every spelling: "for Remy Calder/Tess Varga" reads the subject as "Remy".
+  const spellings = [recipient, ...weak.filter((name) => samePerson(name, recipient))];
+  const escape = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  // "for (paulyne) and Marco Diaz": the wrapping is not the join.
+  const JOIN = "[)\\]\"'”’*_]*\\s*(?:,\\s*(?:and\\s+|or\\s+)?|\\s(?:and|or|plus)\\s+|\\s*[&/]\\s*)[(\\[\"'“‘*_]*";
+  const joined = others.some((name) =>
+    spellings.some((spelling) =>
+      new RegExp(`\\b${escape(spelling)}(?:['’]s)?${JOIN}${escape(name)}\\b|\\b${escape(name)}${JOIN}${escape(spelling)}\\b`, "i").test(text),
+    ),
+  );
+  return joined ? null : recipient;
+}
+
+function settle(strong: string[], weak: string[], text: string, subjects: readonly string[] = []): EmployeeMentions {
   const negated = negatedNames(text);
   const correction = negated.length > 0 || CORRECTION_CUE.test(text);
   const given = correction ? [...strong, ...sentenceAnswers(text)] : strong;
-  const names = distinctNames([...given, ...weak]).filter(
+  const recipient = formRecipient(subjects, given, weak, text);
+  const narrative = recipient ? weak.filter((name) => samePerson(name, recipient)) : weak;
+  const names = distinctNames([...given, ...narrative]).filter(
     (name) => !negated.some((not) => samePerson(not, name)),
   );
   const explicit =
