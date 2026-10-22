@@ -276,6 +276,7 @@ describe("a policy named in the conversation goes onto the open form", () => {
       `Management will review the Attendance and Late Opening policies with Wren. ${CLOSING}`,
     );
     const policy = await row(id, "policy_language");
+    /* The fixture's wording is synthetic (no policy text in this repository); the section is what is checked. */
     expect(policy?.value).toContain("Synthetic policy wording");
     expect(policy?.value).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
     expect(policy?.filledBy).toBe("ai");

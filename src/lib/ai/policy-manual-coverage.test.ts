@@ -72,6 +72,7 @@ describe("0. what the manual actually contains", () => {
 
   it("prints its Smoking/Vaping rule on page 12", () => {
     expect(chunk(27).locator).toBe("Page 12 — Smoking/Vaping");
+    /* The fixture's wording is synthetic (no policy text in this repository); the section is what is checked. */
     expect(chunk(27).content).toContain("Synthetic policy wording");
   });
 
