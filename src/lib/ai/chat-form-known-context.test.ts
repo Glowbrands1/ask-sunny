@@ -249,7 +249,8 @@ describe("3. a salon named in the chat is used when it is the manager's", () => 
     "at Kansas City Wornall",
     "at MO Kansas City Wornall",
     "at the wornall store",
-    "at salon 306",
+    // Zero-padded: a bare "306" is also KS Manhattan's Google store code, so it names neither.
+    "at salon 0306",
     "at store #0306",
   ])("reads %s through the roster's own normalization", async (where) => {
     const response = await ask(

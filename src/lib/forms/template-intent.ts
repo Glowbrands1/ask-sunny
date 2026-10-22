@@ -603,7 +603,19 @@ function leadsWithTheForm(q: string, original: string): boolean {
    * how most managers write, and it means the same thing.
    */
   const named = /^\s*(?:please\s+)?(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?\s+for\s+(\S+)/i.exec(original);
-  return named !== null && couldBeName(named[1]);
+  if (named !== null && couldBeName(named[1])) return true;
+  /*
+   * "PAULYNE CAMACHO'S CA FOR NO CALL NO SHOW 10/18", "Ellie's CA - she was
+   * late" (production, 21 October 2026): whose CA it is, then the details. The
+   * possessive is the person, exactly as "CA for <name>" is. Only where the
+   * details visibly start after it — the end, a separator, or "for"/"about" —
+   * so "Ellie's CA was filed last week" is still a remark about one.
+   */
+  const owned =
+    /^\s*(?:please\s+)?(\S+?)(?:\s+(\S+?))?['’]s\s+(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?(?=\s*$|\s*[,:;]|\s+[-–—]\s|\s+(?:for|about|regarding|re|because)\b)/i.exec(
+      original,
+    );
+  return owned !== null && couldBeName(owned[1]) && (owned[2] === undefined || couldBeName(owned[2]));
 }
 
 /**
@@ -621,6 +633,17 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
+  /*
+   * "write a CA for Paisley" was read as a question about the progression and
+   * the manager was told to rephrase (October 2026; ported from Ask Bubbles
+   * 4cbb84c, which took it from an Ask Sunny branch that never merged). "How
+   * do I write a CA?" is still a question: it is ruled informational first.
+   */
+  "write a",
+  "write an",
+  "write her up",
+  "write him up",
+  "write them up",
   "fill out",
   "generate",
   "prepare",
@@ -923,6 +946,15 @@ export function leadingFormRequest(text: string): LeadingFormRequest | null {
   while (run.length < 2 && couldBeName(words[run.length])) run.push(words[run.length]!);
   const next = words[run.length]?.toLowerCase();
   if (run.length > 0 && next !== undefined && NAME_RUN_ENDS.has(next)) return found(run);
+  /*
+   * "COACHING FORM PAULYNE CAMACHO LATE 3 TIMES" (production, 21 October
+   * 2026). In capitals or in lower case, no capital says where the name ends,
+   * and "late" is not a word that introduces the rest of a sentence — but it
+   * is a word that is never part of a name. A FULL name (two words) followed
+   * by one of those, or by a number, is the name; one word is not enough
+   * ("coaching avery late" stays unread rather than risk "coaching floor late").
+   */
+  if (run.length === 2 && next !== undefined && (NOT_A_TYPED_NAME.has(next) || /^\d/.test(next))) return found(run);
   return null;
 }
 

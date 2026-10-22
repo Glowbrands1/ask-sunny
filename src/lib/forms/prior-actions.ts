@@ -88,8 +88,25 @@ function namedStep(named: string): { start: number; end: number; label: string }
   return best;
 }
 
-export function priorActionLine(step: string, iso: string, topic = ""): string {
-  return `${topic ? `${step} — ${topic}` : step} — signed ${signedDate(iso)}`;
+/**
+ * What a step was for, as the manager said it beside the step: "coaching for
+ * attendance on 9/1" → "for attendance". Nothing when the words after the step
+ * are anything else.
+ */
+function stepDescription(named: string): string {
+  const step = namedStep(named);
+  if (!step) return "";
+  const rest = named
+    .slice(step.end)
+    .replace(/\s+(?:on|dated|signed|at|back|in|from)\s*$/i, "")
+    .replace(/[\s,]+$/, "")
+    .trim();
+  return /^(?:for|about|regarding|over)\s+\S/i.test(rest) ? rest : "";
+}
+
+export function priorActionLine(step: string, iso: string, topic = "", description = ""): string {
+  const what = description ? `${step} ${description}` : step;
+  return `${topic ? `${what} — ${topic}` : what} — signed ${signedDate(iso)}`;
 }
 
 /**
@@ -125,7 +142,7 @@ function stepTopic(topic: string | undefined): string {
  */
 export function statedPriorActions(notes: string, today: string): string[] {
   return priorSteps(notes, today).map((step) =>
-    priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic)),
+    priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic), stepDescription(step.named) || (step.about ?? "")),
   );
 }
 
@@ -177,7 +194,9 @@ export function groundPriorActions(input: {
   for (const step of priorSteps(input.notes, input.today)) {
     if (present.has(step.iso)) continue;
     present.add(step.iso);
-    added.push(priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic)));
+    added.push(
+      priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic), stepDescription(step.named) || (step.about ?? "")),
+    );
   }
   // What the manager said of a step comes first; the record fills in the rest.
   for (const form of onFile) {

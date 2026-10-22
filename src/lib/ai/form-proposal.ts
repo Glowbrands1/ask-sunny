@@ -4,10 +4,12 @@ import { randomUUID } from "node:crypto";
 
 import {
   buildProposal,
+  correctsTheEmployee,
   extractEmployeeNames,
   employeeState,
   managerContext,
   resolveEmployee,
+  tidyTypedName,
   type ManagerContext,
 } from "@/lib/forms/proposal";
 import {
@@ -84,6 +86,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
+import { readSalonMentions } from "@/lib/forms/salon-mention";
 import {
   answersNameConfirmation,
   matchEmployeeName,
@@ -622,7 +625,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    */
   const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, context) : null;
   const directory = await checkTypedEmployee(input, match, context, carried);
-  const employee = directory.resolution ?? carried;
+  const employee = directory.resolution ?? (await spelledForTheForm(input, match, carried ?? resolveEmployee(context)));
 
   const proposal = buildProposal({
     ...(employee ? { employee } : {}),
@@ -844,6 +847,32 @@ const NAME_CHECKED_TEMPLATES: ReadonlySet<string> = new Set([
   "tsd-epp",
 ]);
 
+/*
+ * ============================================================================
+ * THE NAME AS IT IS PRINTED, ON EVERY FORM
+ * ============================================================================
+ *
+ * A name the directory did not settle — no roster, nobody by that name, a name
+ * the manager chose to keep, or a form outside `NAME_CHECKED_TEMPLATES` — used
+ * to go on the card exactly as typed, so "paulyne camacho" was printed on a
+ * Demotion Form in lower case. Now: on the forms that keep their own name
+ * handling, an EXACT directory match still lends its spelling (nothing else —
+ * not the salon, and never a close match); otherwise the typed name is
+ * capitalised by `tidyTypedName`, which leaves "McDonald" alone.
+ */
+async function spelledForTheForm(
+  input: ProposalTurn,
+  match: TemplateSummary,
+  typed: EmployeeResolution,
+): Promise<EmployeeResolution> {
+  if (typed.kind !== "resolved") return typed;
+  if (!NAME_CHECKED_TEMPLATES.has(match.key)) {
+    const found = matchEmployeeName(typed.employeeName, await loadScopedRoster(input.actor.scope));
+    if (found.kind === "exact") return { kind: "resolved", employeeName: found.name };
+  }
+  return { kind: "resolved", employeeName: tidyTypedName(typed.employeeName) };
+}
+
 interface DirectoryCheck {
   /** Replaces the conversation's own reading of the employee. */
   resolution?: EmployeeResolution;
@@ -882,7 +911,7 @@ async function checkTypedEmployee(
 
   if (result.kind === "none") {
     return {
-      note: `I didn't find **${typed.employeeName}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
+      note: `I didn't find **${tidyTypedName(typed.employeeName)}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
     };
   }
 
@@ -990,6 +1019,17 @@ export function suggestFormsForTurn(input: ProposalTurn): SuggestedForms | null 
      * same role to the same template.
      */
     rolePlanKey: eppTemplateForRole(context.text),
+    /*
+     * Read turn by turn through the same detector the explicit path uses, so
+     * "not a CA, coaching" and "what is corrective action?" do not count.
+     */
+    correctiveActionRequested: context.messages.some((message) => {
+      const intent = detectTemplateIntent(message.content);
+      return (
+        (intent.kind === "explicit" && intent.templateKey === "dpoa") ||
+        (intent.kind === "corrective_action" && intent.requestedCreation)
+      );
+    }),
   });
 
   /*
@@ -1249,6 +1289,9 @@ const TOPIC_STATEMENT =
 const CARRIES_ON =
   /\b(?:keep\s+(?:this|it)\s+as|still\s+(?:a\s+)?coaching|same\s+form|this\s+form|continue|go\s+ahead|that'?s\s+(?:it|all|everything|right)|yes|yep|yeah|correct)\b/i;
 
+const ALREADY_SAID =
+  /\b(?:i|we)\s+(?:already|just)\s+(?:told|said|gave|mentioned|provided|wrote|typed|sent)\b|\balready\s+(?:told|gave)\s+(?:you|sunny)\b/i;
+
 const ABOUT_THE_EMPLOYEE = /^(?:and\s+|also\s+|then\s+)?(?:she|he|they)(?:['’](?:s|d|ve|re|ll))?\b/i;
 
 function continuesIntake(continued: string, input: ProposalTurn): boolean {
@@ -1256,6 +1299,17 @@ function continuesIntake(continued: string, input: ProposalTurn): boolean {
   if (endsIntake(question) || ASKS_FOR_ADVICE.test(question)) return false;
   if (extractEmployeeNames(question).length > 0) return true;
   if (answersEmploymentChange(continued, input)) return true;
+  /*
+   * A SALON, OR "I ALREADY TOLD YOU", IS AN ANSWER TO THE INTAKE TOO. Ask
+   * Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): with a
+   * Corrective Action intake open, "I already told you the employee name. She
+   * is at Dodge" named nobody, so the turn left the intake for free-form chat,
+   * which told the manager to retype their request — and the form was never
+   * built. Naming where she works, or objecting to being asked again, carries
+   * the open form forward; a question still does not.
+   */
+  if (!isQuestion(question) && readSalonMentions(question).length > 0) return true;
+  if (ALREADY_SAID.test(question)) return true;
   if (isQuestion(question)) return false;
   return (
     describesIncident(question) ||
@@ -1356,6 +1410,8 @@ function turnsAboutThisForm(
   let start = 0;
   /* The latest request for this form, for this employee, inside the turns kept so far. */
   let requestAt = -1;
+  /* Whether the turns kept so far start just after a turn about somebody else. */
+  let afterAnotherPerson = false;
   context.messages.forEach((message, index) => {
     const intent = detectTemplateIntent(message.content);
     /*
@@ -1371,8 +1427,25 @@ function turnsAboutThisForm(
       (intent.kind === "corrective_action" && !thisForm);
     const names = extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
-    if (otherForm || otherPerson) start = index + 1;
+    if (otherForm || otherPerson) {
+      start = index + 1;
+      afterAnotherPerson = otherPerson;
+    }
     if (requestAt < start) requestAt = -1;
+    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
+    /*
+     * THE ANSWERS GIVEN FOR SOMEBODY ELSE STAY THEIRS. Production, 21 Oct
+     * 2026 (ported from Ask Bubbles b1047ab): a Corrective Action for one
+     * employee, then "no payroll deduct", then "create a verbal corrective
+     * action form for <another employee> …" — the new form was read back with
+     * the first employee's payroll answer, because the short reply names nobody
+     * and so was kept. The first request for this employee after turns about
+     * another person starts this form's turns. A correction of the person
+     * ("actually it's for …") is not a new request, and keeps the account.
+     */
+    if (forThisEmployee && requestAt < 0 && afterAnotherPerson && start < index && !correctsTheEmployee(message.content)) {
+      start = index;
+    }
     /*
      * A NEW REQUEST IS A NEW FORM. District Manager feedback, 21 Oct 2026: a
      * second Corrective Action request for the same employee that says what
@@ -1381,7 +1454,6 @@ function turnsAboutThisForm(
      * and payroll answer are not this one's. One that only repeats the request
      * ("create ca form for <employee>") keeps the account already given.
      */
-    const forThisEmployee = thisForm && employeeName !== null && names.length > 0 && !otherPerson;
     if (
       options.correctiveActionForm === true &&
       forThisEmployee &&

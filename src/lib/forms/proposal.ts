@@ -15,6 +15,7 @@ import {
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
+import { isMultiWordSalonName } from "./salon-mention";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -135,15 +136,20 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
     if (parts.length === (whole ? 2 : 3)) break;
     // An opening wrapper can only precede the name, so only the first word loses one.
     const opened = parts.length === 0 ? raw.replace(WRAPPER_BEFORE, "") : raw;
-    const ends = WRAPPER_AFTER.test(opened);
-    const word = opened.replace(WRAPPER_AFTER, "");
+    const unwrapped = opened.replace(WRAPPER_AFTER, "");
+    // "ellie sendgraff's coaching form": the possessive is the name's last word.
+    const stem = possessiveStem(unwrapped);
+    const ends = WRAPPER_AFTER.test(opened) || stem !== null;
+    const word = stem ?? unwrapped;
     const lower = word.toLowerCase();
     const usable =
       TYPED_NAME_WORD.test(word) &&
       // The first part is a real word; a trailing initial ("C") may follow it.
       (parts.length > 0 || word.length > 1) &&
+      // "brandi algya asd": a role abbreviation ends a name, in any case.
+      !ROLE_ABBREVIATION.test(word.toUpperCase()) &&
+      (!NOT_A_TYPED_NAME.has(lower) || willAsFirstName(lower, parts.length, words, whole)) &&
       !NOT_A_NAME.has(lower) &&
-      !NOT_A_TYPED_NAME.has(lower) &&
       !isFormVocabulary(lower);
     if (!usable) {
       if (whole) return null;
@@ -174,6 +180,43 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
   if (parts.length === 0) return null;
   if (whole && parts.length !== words.length) return null;
   return parts.join(" ");
+}
+
+/*
+ * ============================================================================
+ * "COACHING FORM FOR WILL TURNER" NAMES WILL TURNER
+ * ============================================================================
+ *
+ * "will" is a stop word because it is a verb far more often than a name — "the
+ * form will be…", "for will need…". Followed by a surname in a name position it
+ * is the name: the word after it must itself be able to end a name, and must
+ * not be a verb "will" so often carries. "Will" on its own stays excluded.
+ */
+const AFTER_THE_MODAL = new Set([
+  "need", "get", "go", "come", "make", "take", "start", "be", "have", "see", "send", "sign",
+  "look", "help", "work", "try", "call", "meet", "review", "show", "bring", "give", "keep",
+  "let", "say", "tell", "talk", "do", "know", "want", "fill", "print", "file", "finish",
+  "check", "confirm", "update", "ask", "follow", "email", "text", "handle", "fix", "add",
+  "change", "cover", "cancel", "find", "think", "wait", "post", "write", "upload", "schedule",
+  "train", "coach", "probably", "definitely", "likely", "def", "prob",
+]);
+
+/**
+ * Only after a word that says a person follows ("for will turner"), never as a
+ * whole reply: "will check" answering "who is this for?" is not a person.
+ */
+function willAsFirstName(lower: string, position: number, words: readonly string[], whole: boolean): boolean {
+  if (whole || lower !== "will" || position !== 0) return false;
+  const next = words[1]?.replace(WRAPPER_AFTER, "");
+  if (!next || next.length < 2 || !TYPED_NAME_WORD.test(next)) return false;
+  const surname = (possessiveStem(next) ?? next).toLowerCase();
+  return (
+    !AFTER_THE_MODAL.has(surname) &&
+    !NOT_A_NAME.has(surname) &&
+    !NOT_A_TYPED_NAME.has(surname) &&
+    !isFormVocabulary(surname) &&
+    !ROLE_ABBREVIATION.test(surname.toUpperCase())
+  );
 }
 
 /** The first item of a one-line answer with at least three comma-separated items. */
@@ -217,7 +260,8 @@ const ROSTER_NAME_KEYS: ReadonlySet<string> = new Set(
 );
 
 function isRosterSalonName(candidate: string): boolean {
-  return ROSTER_NAME_KEYS.has(storeNameKey(candidate));
+  // "Lincoln O St", "O St Lincoln": the salon reader's names, St = Street.
+  return ROSTER_NAME_KEYS.has(storeNameKey(candidate)) || isMultiWordSalonName(candidate);
 }
 
 function opensWithRosterState(candidate: string): boolean {
@@ -425,10 +469,32 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     `^\\s*${NAME}(?:\\s+${PART})*\\s*,\\s*(${NAME}(?:\\s+${PART})+)\\s*,\\s*${DATEISH}\\b`,
   ).exec(text)?.[1];
 
+  /*
+   * ==========================================================================
+   * "HER FRIEND SAM JONES", "HER COWORKER AVERY SMITH": SOMEBODY ELSE IN THE
+   * ACCOUNT
+   * ==========================================================================
+   *
+   * HR feedback, 21 Oct 2026 (ported from Ask Bubbles): "create verbal ca for
+   * <employee> for violating visitors in the workplace policy … she let her
+   * friend Sam Jones behind the counter" asked whether the form was for the
+   * employee or for Sam Jones — and a visitor is exactly who a visitors-policy
+   * account names. A name right after "her friend", "a client", "the
+   * visitor", "her coworker" is the other person in what happened. "MY
+   * coworker X" is the manager's employee and is read as one; a name also
+   * given as the form's subject ("ca for Sam Jones") still survives, exactly
+   * as a place does.
+   */
+  const OTHER_PARTY = new RegExp(
+    `\\b(?:her|his|their|a|an|the|this|that)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|co-?workers?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?|manager|supervisor),?\\s+(${NAME}(?:\\s+${PART})+)`,
+    "g",
+  );
+
   const places = new Set(
     [
       ...[...text.matchAll(AT_A_PLACE)].map((match) => match[1]!.trim()),
       ...(intakeSalon ? [intakeSalon.trim()] : []),
+      ...[...text.matchAll(OTHER_PARTY)].map((match) => match[1]!.trim()),
     ]
       // Named as a person somewhere too, so the position is not the whole story.
       .filter((candidate) => !AS_A_PERSON(candidate)),
@@ -491,6 +557,23 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
       if (candidate) marked.push(candidate);
     }
   }
+  /*
+   * "my employee tiffany lempka has been late": the same marker as the manager
+   * says it, with the name typed in lower case. Ask Bubbles admin feedback, 16
+   * Oct 2026 (ported from 8e3e81e) — a Corrective Action asked for with exactly
+   * that sentence was answered "give me their name", and the manager had to
+   * say it again. Only after "my / our" plus a person noun, and
+   * `readTypedName` still refuses topic words, form words and verbs, so "my
+   * employee handbook" and "my employee was late" name nobody.
+   */
+  if (marked.length === 0) {
+    for (const match of text.matchAll(
+      /\b(?:my|our)\s+(?:employee|team member|staff member|associate|coworker)\s+(\S+(?:\s+\S+)?)/gi,
+    )) {
+      const candidate = readTypedName(match[1]!.split(/\s+/), false);
+      if (candidate && typedNameAllowed(candidate)) marked.push(candidate);
+    }
+  }
   if (marked.length > 0) {
     const overlaps = (a: string, b: string) => {
       const [x, y] = [a.toLowerCase(), b.toLowerCase()];
@@ -527,8 +610,15 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
 
   const FULL = new RegExp(`\\b(${NAME}(?:\\s+${PART})+)`, "g");
   for (const match of text.matchAll(FULL)) {
-    const run = nameBeforeRole(match[1]!.trim());
+    const run = nameBeforeRole(beforePossessive(match[1]!.trim()));
+    if (!run.includes(" ")) continue;
     if (places.has(run)) continue;
+    /*
+     * "at O St Lincoln": `NAME` cannot start on the lone "O", so the run is
+     * "St Lincoln". With the initial put back it is a salon, not a person.
+     */
+    const initial = /(?:^|\s)([A-Z])\s+$/.exec(text.slice(0, match.index))?.[1];
+    if (initial && isRosterSalonName(`${initial} ${run}`)) continue;
     /*
      * "It's Avery Testperson", "Sorry Avery Testperson": the capitalised run
      * starts with the reply, not the name. The reply is dropped; a run that
@@ -696,6 +786,36 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   }
 
   /*
+   * "BRANDI ALGYA ASD LINCOLN O ST", TYPED IN LOWER CASE. `nameBeforeRole`
+   * reads the capitalised line; without capitals the line, or the sentence,
+   * must OPEN with exactly two name words and then the role abbreviation —
+   * the same two-word minimum, so "sarah sd lincoln o st" still names nobody.
+   */
+  const PERSON_THEN_ROLE = /^(\S+)\s+(\S+?),?\s+(?:sd|asd|tsd|sdit|dmit|fttc|pttc|tc|dm|rm|gm|mgr)\b/i;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const match = PERSON_THEN_ROLE.exec(sentence.trim());
+    if (!match) continue;
+    const candidate = readTypedName([match[1]!, match[2]!], true);
+    if (candidate && typedNameAllowed(candidate) && !opensWithRosterState(candidate)) strong.push(candidate);
+  }
+
+  /*
+   * "<NAME>'S COACHING FORM", "start ellie sendgraff's CA", "Ellie's CA":
+   * whose form it is, said with the possessive. The words before the 's are
+   * read as a whole name — one or two of them, after whatever asks for the
+   * form ("start", "can you do") — so "start ellie's CA" is Ellie, never
+   * "start ellie". See `possessiveStem`.
+   */
+  const POSSESSIVE_FORM = new RegExp(
+    `(?:^|[.!?\\n]\\s*)${POSSESSIVE_LEAD}(\\S+?)(?:\\s+(\\S+?))?['’]s\\s+(?:(?:new|next|first|second|final|last)\\s+)?(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\b`,
+    "gi",
+  );
+  for (const match of text.matchAll(POSSESSIVE_FORM)) {
+    const candidate = readTypedName([match[1]!, ...(match[2] ? [match[2]] : [])], true);
+    if (candidate && typedNameAllowed(candidate) && !opensWithRosterState(candidate)) strong.push(candidate);
+  }
+
+  /*
    * THE PERSON A CONVERSATION WAS WITH, in any case: "i coached avery
    * testperson on client tours", "coach Avery", "talked to jordan". Narrative,
    * so it never outranks a name given on purpose — but it is somebody, and a
@@ -778,6 +898,44 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
  * never has. A run with no role in it is returned unchanged.
  */
 const ROLE_ABBREVIATION = /^(?:SD|ASD|TSD|SDIT|DMIT|FTTC|PTTC|TC|DM|RM|GM|FT|PT|MGR)$/;
+
+/*
+ * ============================================================================
+ * "ELLIE SENDGRAFF'S COACHING FORM": THE 'S IS NOT PART OF THE NAME
+ * ============================================================================
+ *
+ * Production, 21 October 2026. "Ellie Sendgraff's coaching form" put
+ * "Ellie Sendgraff's" to the directory, which found nobody by that name and
+ * asked "Did you mean Ellie Sendgraff?"; in lower case, and as "Ellie's", the
+ * name was not read at all. A possessive ENDS a name — what follows it is the
+ * thing that is theirs — so the 's (straight or curly) is dropped and the name
+ * stops there.
+ *
+ * NOT A CONTRACTION. "It's Avery Testperson", "that's her", "name's Avery":
+ * the 's there is "is", and the word before it is never a name, which is what
+ * `possessiveStem` checks.
+ */
+const POSSESSIVE = /^(.+?)['’]s$/i;
+const CONTRACTED = new Set(["let", "here", "there", "who", "how", "where", "what", "that", "it", "she", "he", "name"]);
+
+/** The name a possessive word belongs to ("Sendgraff's" → "Sendgraff"), or null. */
+function possessiveStem(word: string): string | null {
+  const stem = POSSESSIVE.exec(word)?.[1];
+  if (!stem) return null;
+  const lower = stem.toLowerCase();
+  if (CONTRACTED.has(lower) || CONVERSATIONAL_LEAD.has(lower) || NOT_A_NAME.has(lower) || NOT_A_TYPED_NAME.has(lower)) {
+    return null;
+  }
+  return stem;
+}
+
+/** A capitalised run up to and including the first possessive, without its 's. */
+function beforePossessive(run: string): string {
+  const words = run.split(/\s+/);
+  const at = words.findIndex((word) => possessiveStem(word) !== null);
+  if (at < 0) return run;
+  return [...words.slice(0, at), possessiveStem(words[at]!)!].join(" ");
+}
 
 function nameBeforeRole(run: string): string {
   const words = run.split(/\s+/);
@@ -937,6 +1095,14 @@ function negatedNames(text: string): string[] {
 const CORRECTION_CUE =
   /(?:^|[.!?\n]\s*)(?:(?:sorry|oops|actually|correction)\b|no\s*[,.!]|no\s+not\b)|\b(?:i\s+meant|meant\s+to\s+say|wrong\s+(?:name|person|employee)|(?:name|employee|it|that)\s+should\s+(?:be|say|read)\s+\S|i\s+(?:already\s+)?said|like\s+i\s+said|as\s+i\s+said)\b|\binstead\s*[.!]?\s*$/i;
 
+/**
+ * Whether a turn corrects WHO the form is for: "actually it's for avery
+ * testperson", "no, not Jordan — Avery", "wrong person, it's Avery".
+ */
+export function correctsTheEmployee(text: string): boolean {
+  return CORRECTION_CUE.test(text) || negatedNames(text).length > 0;
+}
+
 /** In a correction, a sentence that is only a name is the answer: "No, not Jordan. Avery." */
 function sentenceAnswers(text: string): string[] {
   const names: string[] = [];
@@ -993,6 +1159,11 @@ const DOCUMENT_WORDS = new Set([
   "reviews", "form", "forms", "badge", "account", "login", "lounge", "parking", "break", "room",
   "month", "week", "year", "day",
 ]);
+
+/** What asks for a form before "<name>'s <form>": "start", "can you do", "i need to write". */
+const POSSESSIVE_VERB =
+  "create|make|start|draft|open|do|write\\s+up|write|fill\\s+out|fill\\s+in|generate|prepare|pull\\s+up|begin|finish|need|(?:i|we)\\s+need(?:\\s+to\\s+(?:do|start|write|create|make))?|let['’]?s\\s+(?:do|start)";
+const POSSESSIVE_LEAD = `(?:please\\s+)?(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?(?:(?:${POSSESSIVE_VERB})\\s+)?`;
 
 /** The nouns that name a form or an action, before "for <person>". */
 const FORM_NOUNS =
@@ -1080,7 +1251,11 @@ function distinctNames(found: readonly string[]): string[] {
    * Dropping the stop off a trailing initial makes them the same string.
    */
   const spellings = found.map((name) =>
-    name.replace(/\s+/g, " ").replace(/\s([A-Za-z])\.$/, " $1"),
+    name
+      .replace(/\s+/g, " ")
+      .replace(/\s([A-Za-z])\.$/, " $1")
+      // "for Jordan's attendance": the person is Jordan. See `possessiveStem`.
+      .replace(/\S+$/, (last) => possessiveStem(last) ?? last),
   );
 
   /*
@@ -1284,6 +1459,32 @@ function completePartialName(
   if (full.length === 1) return { kind: "resolved", employeeName: full[0]! };
   if (full.length > 1) return { kind: "ambiguous", candidates: full };
   return { kind: "resolved", employeeName: name };
+}
+
+/*
+ * ============================================================================
+ * "paulyne camacho" IS PRINTED "Paulyne Camacho"
+ * ============================================================================
+ *
+ * Production, 21 October 2026: Demotion, Position Transfer and Policy Review
+ * cards carried the employee exactly as typed — "paulyne camacho" — onto a
+ * document that is signed and filed. The directory's spelling is used where
+ * the directory knows the person (see `form-proposal.ts`); otherwise a name
+ * typed WITHOUT capitals, or entirely IN capitals, is capitalised word by word,
+ * after each hyphen and apostrophe too ("mary-kate o'neil" → "Mary-Kate
+ * O'Neil"). A word the manager capitalised themselves is theirs and is left
+ * alone: "McDonald", "DeShawn", "JD".
+ */
+export function tidyTypedName(name: string): string {
+  const shouted = !/[a-z]/.test(name);
+  return name
+    .split(/\s+/)
+    .map((word) => {
+      const lower = word === word.toLowerCase();
+      if (!lower && !(shouted && word.length > 1)) return word;
+      return word.toLowerCase().replace(/(^|[-'’])([a-z])/g, (_, before: string, letter: string) => `${before}${letter.toUpperCase()}`);
+    })
+    .join(" ");
 }
 
 /* ------------------------------------------------------------- proposal -- */

@@ -210,19 +210,41 @@ export function priorStepDate(text: string, today: string): string | null {
  * and "got verbal warning on". The same reading as `priorStepDate`, which is
  * the latest of these; a list is what a form that records several needs.
  */
-export function priorSteps(text: string, today: string): { iso: string; named: string; topic?: string }[] {
+export function priorSteps(
+  text: string,
+  today: string,
+): { iso: string; named: string; topic?: string; about?: string }[] {
   const dates = datesInText(text, today);
   const steps = labelledSteps(text, dates);
   return dates.flatMap((found) => {
     const before = text.slice(0, found.index);
+    const about = reasonAfter(text.slice(found.end));
+    const withAbout = about ? { about } : {};
     // "previous coaching was jba policy manual 1-1-26": what it was about, as the manager wrote it.
     const labelled = steps.get(found.index);
     if (labelled) {
-      return [{ iso: found.iso, named: labelled.named, ...(labelled.topic ? { topic: labelled.topic } : {}) }];
+      return [{ iso: found.iso, named: labelled.named, ...(labelled.topic ? { topic: labelled.topic } : withAbout) }];
     }
     const match = PRIOR_STEP_BEFORE.exec(before);
-    return match ? [{ iso: found.iso, named: match[0] }] : [];
+    return match ? [{ iso: found.iso, named: match[0], ...withAbout }] : [];
   });
+}
+
+/**
+ * WHAT AN EARLIER STEP WAS FOR, SAID AFTER ITS DATE: "previous coaching was
+ * 9/15 for cell phone use" → "for cell phone use" (HR feedback, 21 Oct 2026,
+ * ported from Ask Bubbles: the line read "Coaching — signed 09/15/2026" and
+ * lost what it was for). The manager's own words, opening with for / about /
+ * regarding / over, to the end of the clause — and not past "and she …",
+ * which is the account again. Nothing when the words after the date are
+ * anything else.
+ */
+function reasonAfter(after: string): string | null {
+  const match =
+    /^\s*,?\s*((?:for|about|regarding|over)\s+[^.;,!?\n]{2,60}?)(?=\s*(?:$|[.;,!?\n]|\s+(?:and|but|then|so)\s+(?:she|he|they|now|today|again|this|it)\b|\s+(?:and|but)\s+(?:was|is|has)\b))/i.exec(
+      after,
+    );
+  return match ? match[1]!.trim() : null;
 }
 
 /** A real `YYYY-MM-DD` on the calendar — no February 30th. */
