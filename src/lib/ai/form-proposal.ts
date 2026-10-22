@@ -40,6 +40,7 @@ import {
 import {
   CA_POLICY_QUESTION,
   caPolicyProposalLine,
+  unconfirmedManualLine,
   namesCaPolicy,
   groundMissedEvent,
   MISSED_EVENT_OFFENSE,
@@ -84,7 +85,7 @@ import {
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { correctedDates, correctedFormDate, extractFormDate } from "@/lib/forms/form-date-answer";
+import { correctedDates, correctedFormDate, extractFormDate, priorSteps } from "@/lib/forms/form-date-answer";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import {
@@ -347,6 +348,13 @@ export interface ProposalTurn {
    * in the manager's own words and the draft looks it up.
    */
   policyManual?: () => Promise<readonly ManualChunk[] | null>;
+  /**
+   * Which manual `policyManual` read, and whether an owner has confirmed it as
+   * the approved one (the `official-policy-manual` tag) rather than it being
+   * found by its name. Null when unknown; a section cited from an unconfirmed
+   * manual is said to require owner confirmation.
+   */
+  policyManualIdentity?: () => Promise<{ readonly title: string; readonly confirmed: boolean } | null>;
   /**
    * The employee's signed Coaching and Corrective Action forms in Form
    * Monitoring, under this manager's visibility — read only for a Corrective
@@ -777,7 +785,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     changeKind && facts
       ? employmentChangeContent(changeKind, facts, proposal, context)
       : proposalContent(proposal, correctiveAction ? scoped : context, match, input.today ?? businessToday(), {
-          namedPolicy: correctiveAction ? await namedPolicyFor(scoped.text, input) : null,
+          namedPolicy: correctiveAction ? await withManualIdentity(await namedPolicyFor(scoped.text, input), input) : null,
           priorOnFile:
             correctiveAction && proposal.employeeName && proposal.status !== "needs_employee"
               ? ((await input.priorFormsOnFile?.(proposal.employeeName)) ?? [])
@@ -1235,11 +1243,30 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   return { kind: "explicit", templateKey: continued };
 }
 
+/** Said on the card when the manager has not stated the level. */
+export const WARNING_LEVEL_SUGGESTION_LINE =
+  "**Type of Warning:** Verbal or Written? Tell me here — or I'll suggest one on the draft from the performance framework, marked as a suggestion. It isn't your decision until you confirm it or choose another, and the form can't be filed until you do.";
+
 /** "Sorry, … not 9-1-26", "actually it was 10-19": the turn corrects what the intake already holds. */
 function correctsTheIntake(question: string, today: string): boolean {
   return (
     /^\s*(?:sorry|oops|actually|correction|wait|my\s+(?:mistake|bad)|typo)\b/i.test(question) ||
-    correctedDates(question, today).size > 0
+    correctedDates(question, today).size > 0 ||
+    statesHistoryOnly(question, today)
+  );
+}
+
+/*
+ * "PRIOR COACHING: JBA POLICY MANUAL 1-1-26" — the employee's history, typed
+ * as its own turn while the Corrective Action is open (QA, 22 Oct 2026). It
+ * names coaching, so it read as a request for a Coaching Form and the card
+ * never heard it. A turn that dates an earlier step and asks for nothing is
+ * this form's history.
+ */
+function statesHistoryOnly(question: string, today: string): boolean {
+  return (
+    priorSteps(question, today).length > 0 &&
+    !/\b(?:create|make\s+(?:a|an|it)|start|draft|new|another|need\s+(?:a|an)|open|pull\s+up|write\s+up)\b/i.test(question)
   );
 }
 
@@ -1405,9 +1432,11 @@ function turnsAboutThisForm(
      * dropped the account, the policy and the prior actions given before it).
      */
     const aboutThisForm =
-      options.correctiveActionForm === true && intent.kind === "corrective_action" && !intent.requestedCreation;
+      options.correctiveActionForm === true &&
+      ((intent.kind === "corrective_action" && !intent.requestedCreation) ||
+        statesHistoryOnly(message.content, businessToday()));
     const otherForm =
-      (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
+      (intent.kind === "explicit" && intent.templateKey !== templateKey && !aboutThisForm) ||
       (intent.kind === "corrective_action" && !thisForm && !aboutThisForm);
     const names = extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
@@ -1723,6 +1752,18 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
   return found
     ? { phrase: found.phrase, lookup: "found", heading: found.section.heading, page: found.section.page, offenseKey: found.offenseKey }
     : { phrase, lookup: "missing" };
+}
+
+/** The cited section, marked where its manual is not confirmed as the approved one. */
+async function withManualIdentity(named: NamedPolicyReading | null, input: ProposalTurn): Promise<NamedPolicyReading | null> {
+  if (!named || (named.lookup !== "found" && named.lookup !== "described")) return named;
+  let identity: { readonly title: string; readonly confirmed: boolean } | null = null;
+  try {
+    identity = (await input.policyManualIdentity?.()) ?? null;
+  } catch {
+    identity = null;
+  }
+  return identity && !identity.confirmed ? { ...named, unconfirmedManual: identity.title } : named;
 }
 
 function proposalContent(
@@ -2080,9 +2121,15 @@ function correctiveActionReady(
         (item.key === "warning_level" && !proposal.warningLevel) ||
         (item.key === "previous_action" && priorActions.length === 0 && onFile.length === 0),
     )
-    .map((item) =>
-      item.key === "warning_level" ? "the verbal/written warning level" : "any prior coaching or corrective action",
-    );
+    .map((item) => item.key);
+  /*
+   * THE LEVEL IS SUGGESTED, THEN CONFIRMED (owner decision, 22 Oct 2026). The
+   * draft may carry the level the performance framework suggests; it is only
+   * a suggestion until the manager confirms it or chooses another, and the
+   * form cannot be filed before they do (`UnconfirmedWarningLevelError`).
+   */
+  const levelOpen = outstanding.includes("warning_level");
+  const historyOpen = outstanding.includes("previous_action");
 
   const lines = proposal.awaitingIncident
     ? [`I can create a **${proposal.templateName}** for **${proposal.employeeName}**.`, "", NO_INCIDENT_NOTE]
@@ -2100,6 +2147,8 @@ function correctiveActionReady(
    */
   const policyLine = caPolicyProposalLine(policy, namedPolicy);
   if (policyLine) lines.push("", policyLine);
+  const sourceLine = policyLine ? unconfirmedManualLine(namedPolicy) : null;
+  if (sourceLine) lines.push("", sourceLine);
 
   /*
    * THE LEVEL THE MANAGER STATED, READ BACK. It is ticked on the form as their
@@ -2141,11 +2190,11 @@ function correctiveActionReady(
     );
   }
 
-  if (outstanding.length > 0) {
-    lines.push(
-      "",
-      `You'll set ${outstanding.join(" and ")} on the form — I won't guess at ${outstanding.length === 1 ? "it" : "them"}.`,
-    );
+  if (levelOpen) {
+    lines.push("", WARNING_LEVEL_SUGGESTION_LINE);
+  }
+  if (historyOpen) {
+    lines.push("", "You'll set any prior coaching or corrective action on the form — I won't guess at it.");
   }
 
   /*

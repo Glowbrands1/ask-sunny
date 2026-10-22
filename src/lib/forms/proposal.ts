@@ -697,6 +697,27 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   }
 
   /*
+   * THE PERSON AN ACCOUNT OPENS WITH, in any case: "tess varga wasn't at our
+   * monthly mtg on 10-20-26. she needs a written CA." (QA, 22 Oct 2026 — Ask
+   * Sunny asked who the form was for). Ported from Ask Bubbles, verbs only: a
+   * first AND last name, then what they did. Narrative strength, so a name
+   * given on purpose outranks it; "the store was" and "my lead was" name nobody.
+   */
+  const PERSON_THEN_ACCOUNT =
+    /^(\S+)\s+(\S+)\s+(?:was|wasn['’]?t|is|isn['’]?t|has|hasn['’]?t|had|hadn['’]?t|did|didn['’]?t|does|doesn['’]?t|came|left|called|showed|clocked|missed|forgot|refused|failed|took|keeps|kept|walked|arrived|ncns['’]?d|no[- ]?showed|got|gave|used|broke|lost|mishandled|miscounted|skipped)\b/i;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const trimmed = sentence.trim();
+    if (/\?\s*$/.test(trimmed)) continue;
+    const match = PERSON_THEN_ACCOUNT.exec(trimmed);
+    if (!match) continue;
+    if (/^(?:i|i['’]m|i['’]ll|i['’]ve|we|we['’]ll|we['’]re|we['’]ve|she|he|they|they['’]re|you|it|it['’]s|this|that|there|her|his|their|our|my|the|a|an|what|how|why|when|where|who|which|is|are|can|could|should|do|does)$/i.test(match[1]!)) continue;
+    // Only in a message about a form or a warning, so a chatty opening names nobody.
+    if (!/\b(?:ca|c\/a|coaching|corrective|written|verbal|warning|write[- ]?up|form|epp|policy\s+review|document)\b/i.test(text)) continue;
+    const candidate = readTypedName([match[1]!, match[2]!], true);
+    if (candidate && candidate.split(/\s+/).length === 2 && !opensWithRosterState(candidate)) found.push(candidate);
+  }
+
+  /*
    * THE PERSON A CONVERSATION WAS WITH, in any case: "i coached avery
    * testperson on client tours", "coach Avery", "talked to jordan". Narrative,
    * so it never outranks a name given on purpose — but it is somebody, and a

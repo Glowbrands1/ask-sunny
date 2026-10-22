@@ -230,6 +230,17 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
         updated_at: new Date().toISOString(),
         ...payload,
       });
+      /*
+       * THE PRIMARY KEY IS UNIQUE, as in Postgres: an insert that names an id
+       * already present is refused with unique_violation and writes nothing.
+       */
+      const ids = (this.insertRows ?? [this.payload]).map((row) => row.id).filter((id) => id !== undefined);
+      if (ids.some((id) => rows.some((row) => row.id === id))) {
+        return {
+          data: null,
+          error: { code: "23505", message: `duplicate key value violates unique constraint "${this.table}_pkey"` },
+        } as unknown as { data: unknown; error: null };
+      }
       if (this.insertRows) {
         const inserted = this.insertRows.map(stamped);
         rows.push(...inserted);

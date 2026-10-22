@@ -414,6 +414,12 @@ export type NamedPolicyReading =
       /** The section `anchor` is from, when it is not `heading`'s. */
       anchorHeading?: string;
       anchorPage?: number;
+      /**
+       * The manual this section is from, where no owner has confirmed it as
+       * Ask Sunny's approved manual (found by its name, not by the
+       * `official-policy-manual` tag). Absent when confirmed or not known.
+       */
+      unconfirmedManual?: string;
     }
   | { phrase: string; lookup: "missing" | "unknown" };
 
@@ -469,6 +475,16 @@ export const CA_POLICY_QUESTION = "Which policy applies?";
  * What the proposal says about the policy, or null when there is nothing to
  * say beyond the usual "I'll check the applicable company policy".
  */
+/**
+ * SAID WHEREVER A SECTION IS CITED FROM A MANUAL NO OWNER HAS CONFIRMED (owner
+ * decision, 22 Oct 2026): the JBA manual is kept, but its identity as the
+ * approved manual is not assumed because a copy is in the Knowledge Base.
+ */
+export function unconfirmedManualLine(named: NamedPolicyReading | null): string | null {
+  if (!named || (named.lookup !== "found" && named.lookup !== "described") || !named.unconfirmedManual) return null;
+  return `**Policy source:** "${named.unconfirmedManual}" — requires owner confirmation as Ask Sunny's approved policy manual. I'll cite it with its section and page; check the wording against your current manual before you finalize.`;
+}
+
 export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolicyReading | null = null): string | null {
   /*
    * A POLICY THE MANAGER NAMED, which the manual answers, is the policy — the

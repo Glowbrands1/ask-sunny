@@ -37,6 +37,8 @@ const state = vi.hoisted(() => ({
   /** What the drafting model was given, per call: its system prompt and messages. */
   modelNotes: [] as string[],
   manual: null as null | { chunks: unknown[] },
+  /** How the manual was found: "tag" is an owner's confirmation; "fallback" is by its name, as in production today. */
+  manualMatchedBy: "fallback" as "tag" | "fallback",
   directory: [] as unknown[],
 }));
 
@@ -127,9 +129,9 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return {
         ok: true,
         documentId: "doc-manual",
-        documentTitle: "JBA Policy Manual",
+        documentTitle: "JBA Policy Manual Edited 5.2025",
         documentCategory: "policies_compliance",
-        matchedBy: "fallback",
+        matchedBy: state.manualMatchedBy,
         chunks: state.manual.chunks,
       };
     }
@@ -325,6 +327,7 @@ beforeEach(async () => {
   state.draft = { values: {}, checked: {} };
   state.modelNotes = [];
   state.manual = MANUAL;
+  state.manualMatchedBy = "fallback";
   state.directory = DIRECTORY;
   sequence = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -371,6 +374,8 @@ class Chat {
         summaries: await listTemplateSummaries(),
         today: TODAY,
         policyManual: async () => (state.manual?.chunks as never) ?? null,
+        policyManualIdentity: async () =>
+          state.manual ? { title: "JBA Policy Manual", confirmed: state.manualMatchedBy === "tag" } : null,
         ...(continued ? { continueTemplateKey: continued } : {}),
       });
     }
@@ -481,7 +486,7 @@ describe("Q1 the original 21 Oct request, as typed", () => {
     const reply = await chat.say(OCT21);
     expect(reply).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
     expect(reply).toMatch(/\*\*Policy:\*\* \"missed the monthly meeting\" reads as the policy manual's \*\*Attendance\*\*/);
-    expect(reply).not.toMatch(/Which policy applies|warning level on the form|more than one date/);
+    expect(reply).not.toMatch(/Which policy applies|Verbal or Written\?|more than one date/);
     expect(reply).not.toMatch(/no call|no show/i);
 
     state.draft = MODEL("Tess Varga did not attend the scheduled monthly meeting on October 20, 2026.");
@@ -507,7 +512,7 @@ describe("Q1 the original 21 Oct request, as typed", () => {
 describe("Q2 the production failure's shape: the level asked, then one-word answers", () => {
   it('"written", then "no", keep the account, the history and the date', async () => {
     const chat = new Chat();
-    expect(await chat.say(OCT21_WITHOUT_LEVEL)).toMatch(/verbal\/written warning level on the form/);
+    expect(await chat.say(OCT21_WITHOUT_LEVEL)).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\?/);
     expect(await chat.say("written")).toMatch(/\*\*Type of Warning:\*\* Written Warning, as you said/);
     const last = await chat.say("no");
     expect(last).toMatch(/\*\*Prior actions:\*\* Coaching — JBA Policy Manual — signed 01\/01\/2026; Verbal corrective action — signed 09\/01\/2026/);
@@ -620,7 +625,7 @@ describe("Q4 nothing the manager did not say is put on the form", () => {
   it("an account with no history, level or payroll answer: those stay open, and nothing says no call/no show", async () => {
     const chat = new Chat();
     const reply = await chat.say("create a CA for tess varga, she skipped the monthly meeting on 10-20-26");
-    expect(reply).toMatch(/verbal\/written warning level/);
+    expect(reply).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\?/);
     expect(reply).toMatch(/Is payroll deduct applicable\?\*\* Yes or No/);
     state.draft = {
       values: {
@@ -842,5 +847,611 @@ describe("Q9 the same situation in other words reaches the same saved form", () 
     const reply = await chat.say("create a verbal CA for tess varga, she was on her phone during the monthly meeting on 10-20-26. no payroll deduct");
     expect(reply).not.toMatch(/Attendance/);
     expect(reply).toMatch(/Cell Phone\/Smart Watch Policy/);
+  });
+});
+
+/* ========================================================================= */
+/* QA ROUND 2 — 22 OCT 2026: wording, follow-ups, dates, the level, duplicates */
+/* ========================================================================= */
+
+/*
+ * The overview view's join, as rows are written: a draft opened in the middle
+ * of a chat turn (a correction to a finalized form) is read back in that same
+ * turn, as the view returns it in production.
+ */
+beforeEach(() => {
+  const rows: Record<string, unknown>[] = [];
+  const push = rows.push.bind(rows);
+  rows.push = (...added: Record<string, unknown>[]) => {
+    const length = push(...added);
+    joinOverview();
+    return length;
+  };
+  store.form_instances = rows as never;
+});
+
+/** Pressing Finalize on the form card. */
+async function finalize(id: string, extra: Record<string, unknown> = {}) {
+  joinOverview();
+  const response = await instanceRoute.POST(
+    new Request(`https://app.test/api/forms/instances/${id}`, {
+      method: "POST",
+      body: JSON.stringify({ action: "finalize", followUpDate: null, ...extra }),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+  return { status: response.status, body: (await response.json()) as { error?: string; code?: string; instance?: { id: string } } };
+}
+
+/** The record's own audit trail. */
+const eventsOf = (id: string) =>
+  (store.form_instance_events ?? []).filter((event) => event.instance_id === id) as {
+    kind: string;
+    actor: string;
+    detail: Record<string, unknown>;
+    created_at?: string;
+  }[];
+
+const rowOf = (id: string) => (store.form_instances ?? []).find((row) => row.id === id) as Record<string, unknown>;
+
+const valueRow = async (id: string, key: string) => (await review(id)).values.find((entry) => entry.fieldKey === key);
+
+const OCT21_NO_HISTORY =
+  "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. payroll deduct not applicable";
+const DATED_ACCOUNT = "Observed:\nTess Varga did not attend the monthly meeting on October 20, 2026.";
+
+describe("Q10 request wording nobody wrote a rule for reaches the same saved form", () => {
+  it.each([
+    "Write up Tess Varga for missing the monthly meeting on 10-20-26. Written. No payroll deduct.",
+    "Written CA for Tess Varga: missed the monthly meeting 10-20-26. no payroll deduct",
+    "Tess Varga skipped the monthly meeting on 10-20-26 and nobody heard from her. Can you make a written CA? No payroll deduct.",
+    "Tess Varga no-showed the 10/20 all-staff. Need a written CA, no payroll deduct.",
+    "could you do a written CA on tess varga — she ditched the 10/20 team meeting. payroll deduct n/a",
+    "tess varga wasn't at our monthly mtg on 10-20-26. she needs a written CA. no payroll deduct",
+  ])("%s", async (request) => {
+    const chat = new Chat();
+    const reply = await chat.say(request);
+    expect(reply).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*Tess Varga\*\*/);
+    expect(reply).not.toMatch(/Which form|haven't told me what happened/);
+    state.draft = MODEL("Tess Varga did not attend the meeting on October 20, 2026.");
+    const form = await saved(await chat.create());
+    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], offense_type: ["absenteeism"], form_date: "2026-10-20" });
+    expect(form.observation).toContain("did not attend");
+  });
+
+  it("the account before the request: \"Tess Varga missed the deadline. Create a verbal CA for her.\"", async () => {
+    const chat = new Chat();
+    const reply = await chat.say("Tess Varga missed the deadline. Create a verbal CA for her.");
+    expect(reply).not.toMatch(/haven't told me what happened/);
+    expect(chat.card?.awaitingIncident ?? false).toBe(false);
+    expect(chat.card?.warningLevel).toBe("verbal");
+  });
+});
+
+describe("Q11 prior coaching given as a follow-up", () => {
+  it("before the draft: read back, and on the saved form", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21_NO_HISTORY);
+    expect(await chat.say("prior coaching: jba policy manual 1-1-26, verbal ca 9-1-26")).toMatch(
+      /\*\*Prior actions:\*\* Coaching — JBA Policy Manual — signed 01\/01\/2026; Verbal corrective action — signed 09\/01\/2026/,
+    );
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting.");
+    const form = await saved(await chat.create());
+    expect(form.prior_actions).toBe(BOTH_PRIOR_ACTIONS);
+    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], form_date: "2026-10-20" });
+  });
+
+  it("after the draft: added to the open form, in date order, never twice, and recorded", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21_NO_HISTORY);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting.");
+    const id = await chat.create();
+    const before = await saved(id);
+    expect(before.prior_actions).toBeUndefined();
+
+    expect(await chat.say("prior coaching: jba policy manual 1-1-26, verbal ca 9-1-26")).toMatch(/added "Coaching — JBA Policy Manual — signed 01\/01\/2026"/);
+    chat.reload();
+    await chat.say("she was also coached on 9/15 about attendance");
+    await chat.say("prior coaching: jba policy manual 1-1-26, verbal ca 9-1-26");
+    const form = await saved(id);
+    expect(form.prior_actions).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026\nCoaching — signed 09/15/2026",
+    );
+    for (const key of ["warning_type", "payroll_deduct", "observation", "form_date", "offense_type"]) expect(form[key], key).toEqual(before[key]);
+    const recorded = eventsOf(id).filter((event) => event.detail.via === "chat_correction");
+    expect(recorded).toHaveLength(2);
+    expect(recorded[0]!.actor).toBe("manager-1");
+    expect(store.form_instances).toHaveLength(1);
+  });
+});
+
+describe("Q12 dates corrected after the draft exists", () => {
+  async function opened(observation = DATED_ACCOUNT) {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = { values: { observation }, checked: { offense_type: ["standards_of_conduct"] } };
+    const id = await chat.create();
+    return { chat, id };
+  }
+
+  it("the incident's date: the Date line and the drafted account move together, the row follows, and it is recorded", async () => {
+    const { chat, id } = await opened();
+    const before = await saved(id);
+    const reply = await chat.say("the meeting was actually on 10-19-26");
+    expect(reply).toMatch(/Updated the \*\*Corrective Action Form\*\* for \*\*Tess Varga\*\*: Date → 10\/19\/2026/);
+    const form = await saved(id);
+    expect(form.form_date).toBe("2026-10-19");
+    expect(form.observation).toBe("Observed:\nTess Varga did not attend the monthly meeting on October 19, 2026.");
+    expect(rowOf(id).form_date).toBe("2026-10-19");
+    for (const key of ["warning_type", "payroll_deduct", "prior_actions", "offense_type", "policy_language", "action_plan"]) {
+      expect(form[key], key).toEqual(before[key]);
+    }
+    const recorded = eventsOf(id).find((event) => event.detail.via === "chat_correction")!;
+    expect(recorded.actor).toBe("manager-1");
+    expect(recorded.created_at).toBeTruthy();
+    expect(recorded.detail.changes).toEqual([
+      { field: "form_date", from: "2026-10-20", to: "2026-10-19" },
+      { field: "observation", from: DATED_ACCOUNT, to: "Observed:\nTess Varga did not attend the monthly meeting on October 19, 2026." },
+    ]);
+  });
+
+  it("the form's Date line only, when that is what is named", async () => {
+    const { chat, id } = await opened();
+    await chat.say("change the form date to 10-21-26");
+    const form = await saved(id);
+    expect(form.form_date).toBe("2026-10-21");
+    expect(form.observation).toBe(DATED_ACCOUNT);
+  });
+
+  it("asks which date when it cannot tell, writes nothing, then applies the answer", async () => {
+    const { chat, id } = await opened();
+    const before = await saved(id);
+    expect(await chat.say("change the date to 10-19-26")).toMatch(/Which date is \*\*10\/19\/2026\*\*/);
+    expect(await saved(id)).toEqual(before);
+    chat.reload();
+    await chat.say("the incident");
+    const form = await saved(id);
+    expect(form.form_date).toBe("2026-10-19");
+    expect(form.observation).toContain("October 19, 2026");
+  });
+
+  it("a prior action's date, and only that line", async () => {
+    const { chat, id } = await opened();
+    const level = await valueRow(id, "warning_type");
+    await chat.say("the verbal ca was 9-2-26, not 9-1-26");
+    const form = await saved(id);
+    // A prior action's date is history: the form's own level is neither changed nor confirmed by it.
+    expect(await valueRow(id, "warning_type")).toEqual(level);
+    expect(eventsOf(id).some((event) => event.detail.via === "chat_confirmation")).toBe(false);
+    expect(form.prior_actions).toBe("Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/02/2026");
+    expect(form.form_date).toBe("2026-10-20");
+  });
+
+  it("the same correction twice changes nothing the second time and records nothing more", async () => {
+    const { chat, id } = await opened();
+    await chat.say("the meeting was actually on 10-19-26");
+    const recorded = eventsOf(id).length;
+    expect(await chat.say("the meeting was actually on 10-19-26")).toMatch(/already has 10\/19\/2026|Nothing needed changing/);
+    expect(eventsOf(id)).toHaveLength(recorded);
+  });
+
+  it("the manager's own wording is never rewritten; the reply says what still names the old date", async () => {
+    const { chat, id } = await opened();
+    await managerSaves(id, { values: { observation: "Tess was not at the meeting on 10/20/2026. I typed this." } });
+    const reply = await chat.say("the meeting was actually on 10-19-26");
+    expect(reply).toMatch(/The account you wrote still says 10\/20\/2026/);
+    const form = await saved(id);
+    expect(form.form_date).toBe("2026-10-19");
+    expect(form.observation).toBe("Tess was not at the meeting on 10/20/2026. I typed this.");
+  });
+
+  it("a later redraft keeps the corrected dates", async () => {
+    const { chat, id } = await opened();
+    await chat.say("the meeting was actually on 10-19-26");
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    await call(`/api/forms/instances/${id}/draft`, { method: "POST", body: JSON.stringify({ notes: OCT21, keepManagerValues: true }) });
+    const form = await saved(id);
+    expect(form.form_date).toBe("2026-10-19");
+    expect(form.observation).toContain("October 19, 2026");
+  });
+
+  it("a finalized form is never changed in place: the correction lands on a new draft of it", async () => {
+    const { chat, id } = await opened();
+    expect((await finalize(id)).status).toBe(200);
+    const reply = await chat.say("the meeting was actually on 10-19-26");
+    expect(reply).toMatch(/was finalized, so I opened a new draft of it/);
+    expect(rowOf(id).status).toBe("finalized");
+    expect((await saved(id)).form_date).toBe("2026-10-20");
+    const draft = (store.form_instances ?? []).find((row) => row.id !== id && row.status === "draft")!;
+    expect((await saved(String(draft.id))).form_date).toBe("2026-10-19");
+  });
+});
+
+describe("Q14 the warning level: a suggestion is never the manager's decision", () => {
+  it("a CA with no level, or only the assistant's, is not filed; the manager's confirmation or choice files it", async () => {
+    const chat = new Chat();
+    await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26. no payroll deduct");
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    const refused = await finalize(id);
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe("warning_level_confirmation_required");
+
+    // The assistant's own tick (a suggestion) is still not the manager's.
+    const { applyAssistantDraft } = await import("@/lib/forms/instances");
+    await applyAssistantDraft(id, { values: {}, checked: { warning_type: ["written"] } }, "assistant");
+    expect((await valueRow(id, "warning_type"))?.filledBy).toBe("ai");
+    expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
+
+    expect(await chat.say("confirm the written warning")).toMatch(/Confirmed \*\*Written Warning\*\* as your decision/);
+    const level = await valueRow(id, "warning_type");
+    expect(level).toMatchObject({ checked: ["written"], filledBy: "manager" });
+    expect(level?.provenance).toMatchObject({ source: "manager_confirmation", suggested: ["written"] });
+    expect(eventsOf(id).some((event) => event.detail.via === "chat_confirmation")).toBe(true);
+
+    const events = eventsOf(id).length;
+    expect(await chat.say("confirm the written warning")).toMatch(/already confirmed/);
+    expect(eventsOf(id)).toHaveLength(events);
+
+    expect(await chat.say("make it a verbal instead")).toMatch(/Verbal Warning/);
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["verbal"], filledBy: "manager" });
+    expect((await saved(id)).payroll_deduct).toEqual(["no"]);
+    expect((await finalize(id)).status).toBe(200);
+  });
+
+  it("a level stated in the request is the manager's, and files", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    expect((await finalize(id)).status).toBe(200);
+  });
+});
+
+describe("Q15 duplicate Create presses make one record", () => {
+  it("two presses at once: one form, both told its id, drafted once", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const [first, second] = await Promise.all([chat.create(), chat.create()]);
+    expect(first).toBe(second);
+    expect(store.form_instances).toHaveLength(1);
+    expect(eventsOf(first).filter((event) => event.kind === "created")).toHaveLength(1);
+  });
+
+  it("a press after a reload returns the same draft and leaves the manager's edits alone", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    await managerSaves(id, { values: { observation: "Edited by me." } });
+    chat.reload();
+    state.draft = MODEL("Something the model wrote instead.");
+    expect(await chat.create()).toBe(id);
+    expect((await saved(id)).observation).toBe("Edited by me.");
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it("a new card for the same person is a new form", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    const first = await chat.create();
+    await chat.say("create a verbal CA for tess varga, she was 20 minutes late on 10-21-26. no payroll deduct");
+    const second = await chat.create();
+    expect(second).not.toBe(first);
+    expect(store.form_instances).toHaveLength(2);
+  });
+});
+describe("Q16 repeated, different date corrections and forms other than the CA", () => {
+  it("a second, different date: the account the chat fixed is still the assistant's and moves again", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = { values: { observation: DATED_ACCOUNT }, checked: { offense_type: ["standards_of_conduct"] } };
+    const id = await chat.create();
+    await chat.say("the meeting was actually on 10-19-26");
+    chat.reload();
+    await chat.say("sorry, the meeting was actually on 10-18-26");
+    const form = await saved(id);
+    expect(form.form_date).toBe("2026-10-18");
+    expect(form.observation).toBe("Observed:\nTess Varga did not attend the monthly meeting on October 18, 2026.");
+    const changes = eventsOf(id)
+      .filter((event) => event.detail.via === "chat_correction")
+      .map((event) => (event.detail.changes as { field: string; to: string }[]).map((change) => `${change.field}:${change.field === "form_date" ? change.to : ""}`));
+    expect(changes).toEqual([["form_date:2026-10-19", "observation:"], ["form_date:2026-10-18", "observation:"]]);
+  });
+
+  it("the manager edits the account after the chat fixed it: their wording is not rewritten again", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = { values: { observation: DATED_ACCOUNT }, checked: { offense_type: ["standards_of_conduct"] } };
+    const id = await chat.create();
+    await chat.say("the meeting was actually on 10-19-26");
+    await managerSaves(id, { values: { observation: "My own words: Tess missed the meeting on 10/19/2026." } });
+    await chat.say("sorry, the meeting was actually on 10-18-26");
+    expect((await saved(id)).observation).toBe("My own words: Tess missed the meeting on 10/19/2026.");
+    expect((await saved(id)).form_date).toBe("2026-10-18");
+  });
+
+  it("a form other than the CA is not touched by the CA's date or level readers", async () => {
+    const { correctCaFromChat } = await import("@/lib/forms/ca-chat-corrections");
+    const created = await call<{ instance: { id: string } }>("/api/forms/instances", {
+      method: "POST",
+      body: JSON.stringify({ templateKey: "coaching", employeeName: "Tess Varga", source: "manual", formDate: "2026-10-20" }),
+    });
+    const before = await saved(created.instance.id);
+    const request = new Request("https://app.test/api/chat", { method: "POST", headers: { cookie: "session=abc" } });
+    for (const question of ["the meeting was actually on 10-19-26", "confirm the written warning", "prior coaching: verbal ca 9-1-26"]) {
+      expect(await correctCaFromChat({ request, instanceId: created.instance.id, question, today: TODAY }), question).toBeNull();
+    }
+    expect(await saved(created.instance.id)).toEqual(before);
+  });
+});
+
+describe("Q17 the manual's standing: kept, cited by section and page, and marked until an owner confirms it", () => {
+  async function drafted() {
+    state.manual = FULL_MANUAL;
+    const chat = new Chat();
+    const reply = await chat.say(OCT21);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    const redraft = await call<{ notice?: string | null }>(`/api/forms/instances/${id}/draft`, {
+      method: "POST",
+      body: JSON.stringify({ notes: OCT21, keepManagerValues: true }),
+    });
+    return { reply, id, notice: redraft.notice ?? "" };
+  }
+
+  it("found by its name only: the card and the draft say it requires owner confirmation; the citation is the manual's own", async () => {
+    const { reply, id, notice } = await drafted();
+    expect(reply).toMatch(/\*\*Policy source:\*\* "JBA Policy Manual" — requires owner confirmation as Ask Sunny's approved policy manual/);
+    expect(notice).toContain('Policy source: "JBA Policy Manual" (JBA Policy Manual Edited 5.2025) requires owner confirmation');
+    const form = await saved(id);
+    expect(form.policy_language).toContain("Seminars/Meetings/ Training sessions are considered scheduled shifts.");
+    expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(form.observation).not.toMatch(/no[- ]call/i);
+    const provenance = (await valueRow(id, "policy_language"))?.provenance as Record<string, unknown>;
+    expect(provenance).toMatchObject({ matchedBy: "fallback" });
+  });
+
+  it("confirmed by an owner (the official-policy-manual tag): cited without the mark", async () => {
+    state.manualMatchedBy = "tag";
+    const { reply, id, notice } = await drafted();
+    expect(reply).not.toMatch(/requires owner confirmation/);
+    expect(notice).not.toMatch(/requires owner confirmation/);
+    expect((await saved(id)).policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+  });
+});
+
+const { manualStandingNotice, warningLevelStandingNotice } = await import("@/lib/forms/standing-notices");
+const APP = "Ask Sunny";
+const ACTOR = "manager-1";
+/** Whether a citation stored before `ownerConfirmed` existed reads as unconfirmed in this app. */
+const LEGACY_CITATION_UNCONFIRMED = true;
+
+/* ========================================================================= */
+/* QA ROUND 3 — 22 OCT 2026 (overnight): drafts already open when this ships */
+/* ========================================================================= */
+
+/** The form as the card reads it on reopening: its values, its template and its standing notices. */
+async function reopened(id: string) {
+  const form = (await review(id)) as Awaited<ReturnType<typeof review>> & { version: { document: unknown } };
+  const status = String(form.instance.status);
+  return {
+    form,
+    level: warningLevelStandingNotice({
+      status,
+      document: form.version.document as never,
+      variantKey: (form.instance.variantKey as string | null) ?? null,
+      rows: form.values,
+    }),
+    manual: manualStandingNotice(form.values),
+  };
+}
+
+/** Pressing the notice's Confirm button (or another level's). */
+async function confirmOnForm(id: string, level: unknown) {
+  const response = await instanceRoute.POST(
+    new Request(`https://app.test/api/forms/instances/${id}`, {
+      method: "POST",
+      body: JSON.stringify({ action: "confirm_warning_level", level }),
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+  return { status: response.status, body: (await response.json()) as { error?: string } };
+}
+
+/** A draft as it sits in production today: the Type of Warning ticked by the assistant, not the manager. */
+function makeLegacyLevel(id: string, level: string | null) {
+  const rows = (store.form_instance_values ?? []) as Record<string, unknown>[];
+  const at = rows.findIndex((row) => row.instance_id === id && row.field_key === "warning_type");
+  if (level === null) {
+    if (at >= 0) rows.splice(at, 1);
+    return;
+  }
+  const row = { instance_id: id, field_key: "warning_type", value: null, checked: [level], filled_by: "ai", provenance: {} };
+  if (at >= 0) rows[at] = { ...rows[at], ...row };
+  else rows.push({ id: `legacy-${id}`, ...row });
+}
+
+/** A citation stored before `ownerConfirmed` was written. */
+function makeLegacyCitation(id: string) {
+  for (const row of (store.form_instance_values ?? []) as Record<string, unknown>[]) {
+    if (row.instance_id !== id) continue;
+    const provenance = row.provenance as Record<string, unknown> | undefined;
+    if (provenance?.source === "official_policy_manual") delete provenance.ownerConfirmed;
+  }
+}
+
+async function legacyDraft(level: string | null) {
+  state.manual = FULL_MANUAL;
+  const chat = new Chat();
+  await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26. no payroll deduct");
+  state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+  const id = await chat.create();
+  makeLegacyLevel(id, level);
+  makeLegacyCitation(id);
+  return { chat, id };
+}
+
+describe("Q18 drafts already open at rollout: reviewed, decided and filed without recreating them", () => {
+  it("an assistant-ticked level stays a suggestion on every reopening until the manager confirms it on the form", async () => {
+    const { id } = await legacyDraft("written");
+    const before = await saved(id);
+    for (let opened = 0; opened < 3; opened += 1) {
+      const view = await reopened(id);
+      expect(view.level).toMatch(new RegExp(`Type of Warning: Written Warning is ${APP}'s suggestion, not your decision`));
+      expect((await valueRow(id, "warning_type"))?.filledBy).toBe("ai");
+    }
+    expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
+    expect(rowOf(id).status).toBe("draft");
+
+    expect((await confirmOnForm(id, "written")).status).toBe(200);
+    expect(await valueRow(id, "warning_type")).toMatchObject({
+      checked: ["written"],
+      filledBy: "manager",
+      provenance: { source: "manager_confirmation", suggested: ["written"] },
+    });
+    const recorded = eventsOf(id).filter((event) => event.detail.via === "form_confirmation");
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.actor).toBe(ACTOR);
+    expect((await reopened(id)).level).toBeNull();
+    const after = await saved(id);
+    for (const key of Object.keys(before)) if (key !== "warning_type") expect(after[key], key).toEqual(before[key]);
+    expect((await finalize(id)).status).toBe(200);
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it("the manager chooses the other level instead: ticked on the form, it is theirs and files", async () => {
+    const { id } = await legacyDraft("written");
+    await managerSaves(id, { checked: { warning_type: ["verbal"] } });
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["verbal"], filledBy: "manager" });
+    expect((await reopened(id)).level).toBeNull();
+    expect((await finalize(id)).status).toBe(200);
+  });
+
+  it("the manager confirms in the chat instead, after a refresh", async () => {
+    const { chat, id } = await legacyDraft("written");
+    chat.reload();
+    expect(await chat.say("yes, confirm the written warning")).toMatch(/Confirmed \*\*Written Warning\*\* as your decision/);
+    expect((await finalize(id)).status).toBe(200);
+  });
+
+  it("a blank level asks for a decision; a level the form does not offer is refused and nothing is written", async () => {
+    const { id } = await legacyDraft(null);
+    expect((await reopened(id)).level).toMatch(/Choose the Type of Warning before you finalize/);
+    const before = await saved(id);
+    expect((await confirmOnForm(id, "termination")).status).toBe(400);
+    expect((await confirmOnForm(id, 7)).status).toBe(400);
+    expect(await saved(id)).toEqual(before);
+    expect((await confirmOnForm(id, "verbal")).status).toBe(200);
+    expect((await finalize(id)).status).toBe(200);
+  });
+
+  it("confirming the level keeps anything else ticked on Type of Warning, and never confirms Termination or Demotion", async () => {
+    const { id } = await legacyDraft("written");
+    const row = ((store.form_instance_values ?? []) as Record<string, unknown>[]).find(
+      (entry) => entry.instance_id === id && entry.field_key === "warning_type",
+    )!;
+    row.checked = ["written", "demotion"];
+    expect((await confirmOnForm(id, "demotion")).status).toBe(400);
+    expect((await confirmOnForm(id, "written")).status).toBe(200);
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["demotion", "written"], filledBy: "manager" });
+  });
+
+  it("a form already finalized stays as it was: no notice, no confirmation, values unchanged; its new draft asks", async () => {
+    const { id } = await legacyDraft("written");
+    const row = rowOf(id);
+    row.status = "finalized";
+    row.finalized_at = "2026-10-21T15:00:00Z";
+    const before = await saved(id);
+    expect((await reopened(id)).level).toBeNull();
+    expect((await confirmOnForm(id, "written")).status).toBe(409);
+    expect(await saved(id)).toEqual(before);
+    expect(await valueRow(id, "warning_type")).toMatchObject({ filledBy: "ai" });
+
+    joinOverview();
+    const revised = await instanceRoute.POST(
+      new Request(`https://app.test/api/forms/instances/${id}`, { method: "POST", body: JSON.stringify({ action: "revise" }) }),
+      { params: Promise.resolve({ id }) },
+    );
+    expect(revised.status).toBe(200);
+    const draftId = String(((await revised.json()) as { instance: { id: string } }).instance.id);
+    joinOverview();
+    expect((await reopened(draftId)).level).toMatch(/suggestion, not your decision/);
+    expect(rowOf(id).status).toBe("finalized");
+  });
+
+  it("the manual's standing is said again on every reopening, from what was stored", async () => {
+    const { id } = await legacyDraft("written");
+    const view = await reopened(id);
+    if (LEGACY_CITATION_UNCONFIRMED) {
+      expect(view.manual).toMatch(new RegExp(`requires owner confirmation as ${APP}'s approved policy manual`));
+    } else {
+      expect(view.manual).toBeNull();
+    }
+    // Written today, the citation says whether an owner confirmed the manual.
+    state.manual = FULL_MANUAL;
+    await call(`/api/forms/instances/${id}/draft`, { method: "POST", body: JSON.stringify({ notes: OCT21, keepManagerValues: true }) });
+    const stored = (await valueRow(id, "policy_language"))?.provenance as Record<string, unknown>;
+    expect(typeof stored.ownerConfirmed).toBe("boolean");
+    expect(Boolean((await reopened(id)).manual)).toBe(stored.ownerConfirmed === false);
+  });
+});
+
+describe("Q19 changes of mind, interruptions and what was never said", () => {
+  it("Written → Verbal → Written before the draft: the card and the saved form carry the last decision", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    expect(chat.card?.warningLevel).toBe("written");
+    await chat.say("actually make it a verbal");
+    expect(chat.card?.warningLevel).toBe("verbal");
+    await chat.say("no, written after all");
+    expect(chat.card?.warningLevel).toBe("written");
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["written"] });
+    expect((await finalize(id)).status).toBe(200);
+  });
+
+  it("Written → Verbal → Written after the draft: the level is the manager's each time and nothing else moves", async () => {
+    const chat = new Chat();
+    await chat.say(OCT21);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    const before = await saved(id);
+    await chat.say("make it a verbal instead");
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["verbal"], filledBy: "manager" });
+    chat.reload();
+    await chat.say("change it back to written");
+    expect(await valueRow(id, "warning_type")).toMatchObject({ checked: ["written"], filledBy: "manager" });
+    const after = await saved(id);
+    for (const key of Object.keys(before)) if (key !== "warning_type") expect(after[key], key).toEqual(before[key]);
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it("the account given in a later turn, then a refresh: the same request continues for the same person", async () => {
+    const chat = new Chat();
+    await chat.say("create a written CA for tess varga");
+    await chat.say("she did not attend the monthly meeting on 10-20-26. no payroll deduct");
+    // Each turn re-issues the card (a superseded one is refused at Create); it is the same form for the same person.
+    expect(chat.card).toMatchObject({ templateKey: "dpoa", employeeName: "Tess Varga" });
+    chat.reload();
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    expect(await saved(id)).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], form_date: "2026-10-20" });
+  });
+
+  it("what the manager never said stays blank: no payroll answer, no prior actions, no level, no no-call/no-show", async () => {
+    const chat = new Chat();
+    const reply = await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26");
+    expect(reply).toMatch(/payroll deduct/i);
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const id = await chat.create();
+    const form = await saved(id);
+    expect(form.payroll_deduct).toBeUndefined();
+    expect(form.prior_actions).toBeUndefined();
+    expect(form.warning_type).toBeUndefined();
+    expect(String(form.observation ?? "")).not.toMatch(/no[- ]call|ncns|did not notify|without notifying/i);
+    expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
   });
 });

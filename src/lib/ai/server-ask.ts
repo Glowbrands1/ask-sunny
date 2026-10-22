@@ -1,6 +1,7 @@
 import "server-only";
 
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
+import { manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
@@ -361,6 +362,8 @@ export async function answerQuestion(
     });
     if (inventoryAnswer) return inventoryAnswer;
 
+    let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
+    const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
     const proposal = await proposeFormForTurn({
       history: request.history,
       question: request.question,
@@ -407,8 +410,16 @@ export async function answerQuestion(
        * is the proposal's (`namedPolicyFor`), not this file's.
        */
       policyManual: async () => {
-        const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+        const manual = await readManual();
         return manual.ok ? manual.chunks : null;
+      },
+      /*
+       * WHETHER AN OWNER CONFIRMED IT: tagged `official-policy-manual`, not
+       * found by its name. One read serves both.
+       */
+      policyManualIdentity: async () => {
+        const manual = await readManual();
+        return manual.ok ? { title: manualDisplayTitle(manual.documentTitle), confirmed: manual.matchedBy === "tag" } : null;
       },
       /*
        * THE EMPLOYEE'S FORMS ALREADY ON FILE, read only for a Corrective

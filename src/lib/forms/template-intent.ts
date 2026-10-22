@@ -596,13 +596,14 @@ function namesOnlyTheForm(q: string): boolean {
  */
 function leadsWithTheForm(q: string, original: string): boolean {
   if (q.endsWith("?")) return false;
-  if (/^(?:please\s+)?(?:a\s+|new\s+)?corrective actions?(?:\s+form)?\s*(?:[,:;]|\s[-–—]\s)\s*\S/.test(q)) return true;
+  if (/^(?:please\s+)?(?:a\s+|new\s+)?(?:(?:verbal|written|final)\s+(?:written\s+)?)?corrective actions?(?:\s+form)?\s*(?:[,:;]|\s[-–—]\s)\s*\S/.test(q)) return true;
   /*
    * "CA for Dana Moss" / "ca for dana moss": a word that can be a name after
    * "for". Judged by `couldBeName`, never by capitals — lower-case typing is
    * how most managers write, and it means the same thing.
    */
-  const named = /^\s*(?:please\s+)?(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?\s+for\s+(\S+)/i.exec(original);
+  // A level may lead: "Written CA for Tess Varga: missed the meeting" (QA, 22 Oct 2026).
+  const named = /^\s*(?:please\s+)?(?:(?:verbal|written|final)\s+(?:written\s+)?)?(?:c\.?a\.?|corrective[\s-]+actions?)(?:\s+form)?\s+(?:for|on)\s+(\S+)/i.exec(original);
   return named !== null && couldBeName(named[1]);
 }
 
@@ -1218,7 +1219,7 @@ const COMPARISON_CUE = /\b(?:differences?\s+between|difference|differ(?:s|ent|en
 const EXPLANATION_CUE = /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:explain|describe|define|clarify|tell\s+me\s+(?:about|more\s+about|what|when|why|how|which)|help\s+me\s+understand|what(?:'s|s|\s+is|\s+are)|meaning\s+of|purpose\s+of|overview\s+of)\b/;
 const USAGE_CUE = /\b(?:when\s+(?:do|should|would|can|could|to|is|are)\b|which\s+(?:form|forms|one|document)\b|used?\s+for\b|use\s+(?:it|one|them)\b)/;
 const WH_ANYWHERE = /\b(?:what|what's|whats|how|when|why|which)\b/;
-const OPENS_WITH_MAKING = /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:create|make|start|draft|open|begin|prepare|generate|fill\s+out|fill\s+in|write\s+(?:up|her\s+up|him\s+up|them\s+up)|do\s+(?:a|an)|i\s+need\s+(?:a|an|to\s+(?:do|write|create|make|start))|we\s+need\s+(?:a|an|to))\b/;
+const OPENS_WITH_MAKING = /^(?:please\s+|pls\s+)?(?:(?:can|could|would|will)\s+(?:you|we|i)\s+(?:please\s+)?(?:get\s+)?)?(?:create|make|start|draft|open|begin|prepare|generate|fill\s+out|fill\s+in|write\s+(?:up|her\s+up|him\s+up|them\s+up)|do\s+(?:a|an)|(?:i\s+|we\s+)?need\s+(?:a|an|to\s+(?:do|write|create|make|start))|we\s+need\s+to)\b/;
 
 /** How many different forms a sentence names: comparing needs two. */
 function formsNamed(q: string): number {
@@ -1232,7 +1233,13 @@ function formsNamed(q: string): number {
 
 /** Somebody the form is for, or a message that opens with making one. */
 function requestsCreation(q: string, original: string): boolean {
-  if (OPENS_WITH_MAKING.test(q)) return true;
+  /*
+   * ANY SENTENCE MAY BE THE REQUEST. Managers often give the incident first
+   * and ask last: "Tess skipped the meeting on 10/20 and nobody heard from
+   * her. Can you make a written CA?" (QA, 22 Oct 2026). The closing question
+   * mark there is politeness, as it is at the start of a message.
+   */
+  if (q.split(/(?<=[.!?])\s+|\n+/).some((sentence) => OPENS_WITH_MAKING.test(sentence.trim()))) return true;
   /*
    * "General training for staff about bed sanitizing — can you write up a
    * coaching form?" has the team as its subject and asks for the form; the
@@ -1396,6 +1403,15 @@ export function detectTemplateIntent(question: string): TemplateIntent {
   if (EPP_FAMILY_REQUEST.some((phrase) => mentions(q, phrase))) {
     return { kind: "ambiguous", family: "epp" };
   }
+
+  /*
+   * "WRITE UP <PERSON>" IS A CORRECTIVE ACTION, as "write up an employee" and
+   * "write her up" already are (QA, 22 Oct 2026: "Write up Tess Varga for
+   * missing the meeting" was asked which form). Only where a word that can be
+   * a name is what is written up; "write up a form" stays the generic request.
+   */
+  const writeUp = /\bwrite\s+up\s+(\S+)|\bwrite\s+(\S+)(?:\s+(\S+))?\s+up\b/.exec(q);
+  if (writeUp && couldBeName(writeUp[1] ?? writeUp[2])) return { kind: "explicit", templateKey: "dpoa" };
 
   if (AMBIGUOUS_FORM_REQUEST.some((phrase) => mentions(q, phrase))) {
     return { kind: "ambiguous" };

@@ -1779,3 +1779,80 @@ describe("the Corrective Action Form's payroll-deduct Yes / No", () => {
     expect((patch.body.checked as Record<string, string[]>).payroll_deduct).toEqual(["no"]);
   });
 });
+
+describe("a reopened Corrective Action says what is still the manager's to decide (owner decisions, 22 Oct 2026)", () => {
+  const corrective = TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")!;
+
+  function correctiveDraft(level: { checked: string[]; filledBy: "ai" | "manager" }, ownerConfirmed: boolean) {
+    const loaded = loadedInstance({ templateName: "Corrective Action Form" });
+    return {
+      ...loaded,
+      version: { document: parseFormDocument(corrective.document), variants: [] },
+      values: [
+        { fieldKey: "employee_name", value: "Dana Moss", checked: [], filledBy: "system" as const },
+        { fieldKey: "warning_type", value: null, checked: level.checked, filledBy: level.filledBy },
+        {
+          fieldKey: "policy_language",
+          value: "Seminars/Meetings/ Training sessions are considered scheduled shifts.",
+          checked: [],
+          filledBy: "ai" as const,
+          provenance: {
+            source: "official_policy_manual",
+            verified: true,
+            matchedBy: "fallback",
+            ownerConfirmed,
+            documentTitle: "JBA Policy Manual Edited 5.2025",
+          },
+        },
+      ],
+    };
+  }
+
+  function open() {
+    bubble(
+      assistantTurn({
+        formProposal: proposal({ templateKey: "dpoa", templateName: "Corrective Action Form" }),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Corrective Action Form" },
+      }),
+    );
+  }
+
+  it("names a suggested level as Ask Sunny's suggestion, and Confirm records it as the manager's", async () => {
+    let confirmed = false;
+    fakeFetch((url, init) => {
+      if (init.method === "POST" && url === "/api/forms/instances/inst-42") {
+        confirmed = true;
+        return { payload: { instance: { id: "inst-42" } } };
+      }
+      return { payload: correctiveDraft({ checked: ["written"], filledBy: confirmed ? "manager" : "ai" }, false) };
+    });
+    open();
+
+    expect(await screen.findByText(/Written Warning is Ask Sunny's suggestion, not your decision/)).toBeTruthy();
+    expect(screen.getByText(/requires owner confirmation as Ask Sunny's approved policy manual/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Written Warning" }));
+    await waitFor(() =>
+      expect(recorded.find((made) => made.method === "POST")?.body).toEqual({ action: "confirm_warning_level", level: "written" }),
+    );
+    await waitFor(() => expect(screen.queryByText(/is Ask Sunny's suggestion, not your decision/)).toBeNull());
+    // The manual's standing is the owner's to settle, not the manager's: it stays.
+    expect(screen.getByText(/requires owner confirmation/)).toBeTruthy();
+  });
+
+  it("says nothing once the manager decided the level and the manual is confirmed", async () => {
+    fakeFetch(() => ({ payload: correctiveDraft({ checked: ["verbal"], filledBy: "manager" }, true) }));
+    open();
+    await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
+    expect(screen.queryByText(/suggestion, not your decision/)).toBeNull();
+    expect(screen.queryByText(/Choose the Type of Warning/)).toBeNull();
+    expect(screen.queryByText(/requires owner confirmation/)).toBeNull();
+  });
+
+  it("asks for a level when none is ticked, with no Confirm button to press", async () => {
+    fakeFetch(() => ({ payload: correctiveDraft({ checked: [], filledBy: "ai" }, true) }));
+    open();
+    expect(await screen.findByText(/Choose the Type of Warning before you finalize/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
+  });
+});

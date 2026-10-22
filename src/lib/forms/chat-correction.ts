@@ -22,6 +22,8 @@ import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection, payr
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
+import { correctCaFromChat } from "./ca-chat-corrections";
+import { statedWarningLevel } from "./corrective-action-intake";
 import { enforcePersonEdit } from "./responsibility";
 
 /**
@@ -59,11 +61,18 @@ export async function correctActiveForm(input: {
    */
   history?: readonly { role: string; content: string; error?: unknown }[];
 }): Promise<AskResponse | null> {
+  const lastAssistant =
+    [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
+  /*
+   * A DATE OR THE WARNING LEVEL ON AN OPEN CORRECTIVE ACTION (owner decisions,
+   * 22 Oct 2026) — read first, so "confirm the written warning" is recorded as
+   * a confirmation rather than as a level that did not change.
+   */
+  const caCorrection = await correctCaFromChat({ ...input, lastAssistant, statedLevel: statedWarningLevel(input.question) });
+  if (caCorrection) return caCorrection;
   // A cheap first reading, before anything is loaded: most turns are not corrections.
   const employmentCorrection = correctionValues(input.question, input.today);
   const exitCorrection = exitCorrectionValues(input.question, input.today);
-  const lastAssistant =
-    [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
   const payroll = payrollDeductCorrection(input.question) ?? payrollDeductReply(input.question, lastAssistant);
   if (!employmentCorrection && !exitCorrection && !payroll) return null;
 

@@ -83,6 +83,7 @@ import {
   boxSectionNames,
   manualSectionsFor,
   officialManualProvenance,
+  unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
 import {
@@ -1546,6 +1547,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                 documentId: manual.documentId,
                 documentTitle: manual.documentTitle,
                 matchedBy: manual.matchedBy,
+                ownerConfirmed: manual.matchedBy === "tag",
                 sections: manualSections,
               }),
               /* The structured citation the value was rendered from. */
@@ -1568,6 +1570,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               documentId: manual.documentId,
               documentTitle: manual.documentTitle,
               matchedBy: manual.matchedBy,
+              ownerConfirmed: manual.matchedBy === "tag",
               sections: eppPassages.map((passage) => passage.section),
             }),
           }
@@ -1700,6 +1703,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         row.checked.length > 0 &&
         row.provenance?.source === "manager_statement",
     );
+    /*
+     * A LEVEL THE MODEL TICKED IS A SUGGESTION (owner decision, 22 Oct 2026):
+     * written as Ask Sunny's, named as a suggestion in the notice, and not
+     * fileable until the manager confirms it (`warningLevelConfirmed`).
+     */
+    // None where the manager stated the level, or where their own tick on the box is kept.
+    const suggestedLevel =
+      statedWarning || keeps(WARNING_TYPE_KEY)
+        ? []
+        : (validated.checked[WARNING_TYPE_KEY] ?? []).map(
+            (key) =>
+              groups.find((group) => group.key === WARNING_TYPE_KEY)?.options.find((option) => option.key === key)?.label ?? key,
+          );
     const guarded = await applyAssistantDraft(
       id,
       {
@@ -1798,6 +1814,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ? POLICY_CLAIM_REMOVED_NOTICE
           : null,
         absence.removed.length > 0 ? ABSENCE_CLAIM_REMOVED_NOTICE : null,
+        /*
+         * THE MANUAL'S STANDING, SAID (owner decision, 22 Oct 2026): quoted
+         * from a manual found by its name, which no owner has confirmed as the
+         * approved one (the `official-policy-manual` tag).
+         */
+        manual.ok && manual.matchedBy === "fallback" && (manualSections.length > 0 || eppPassages.length > 0)
+          ? unconfirmedManualNotice(manual.documentTitle)
+          : null,
+        suggestedLevel.length > 0
+          ? `Type of Warning: ${suggestedLevel.join(", ")} is Ask Sunny's suggestion, not your decision yet. Confirm it or choose another — tick it on the form, or tell me in the chat — before you finalize.`
+          : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
         attributions.adjusted.length + attributions.emptied.length > 0
           ? POLICY_ATTRIBUTION_REMOVED_NOTICE

@@ -59,6 +59,7 @@ vi.mock("./instance-scope", () => ({
 
 vi.mock("./instances", () => ({
   findOpenRevision: async () => null,
+  recordChatCorrection: async () => {},
   reviseInstance: async (id: string) => {
     state.revised.push(id);
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
@@ -365,13 +366,23 @@ describe("the Corrective Action Form's payroll-deduct answer", () => {
     expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["no"] } }]);
   });
 
-  it.each(["no", "yes", "is payroll deduct applicable?", "change the name to Jane Smith", "change the date to 9/27"])(
-    "leaves %s alone — only the payroll answer is taken from chat",
+  it.each(["no", "yes", "is payroll deduct applicable?", "change the name to Jane Smith"])(
+    "leaves %s alone — the name is not taken from chat",
     async (question) => {
       expect(await correct(question)).toBeNull();
       expect(state.saved).toEqual([]);
     },
   );
+
+  /*
+   * Owner decision, 22 Oct 2026: dates on an editable Corrective Action draft
+   * may be corrected from chat. With no account dated to tie it to, "the
+   * date" is the form's Date line. See `ca-chat-dates.ts`.
+   */
+  it("changes the form's Date line when the manager corrects the date", async () => {
+    await correct("change the date to 9/27");
+    expect(state.saved).toEqual([{ values: { form_date: "2026-09-27" }, checked: {} }]);
+  });
 
   it("changes a finalized form's answer on a new draft of it", async () => {
     state.status = "finalized";

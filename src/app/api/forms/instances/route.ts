@@ -253,6 +253,8 @@ export async function POST(request: Request) {
       formDate: isIsoCalendarDate(body.formDate) ? body.formDate : undefined,
       proposalId,
     });
+    /* A concurrent press of the same card: its row, as it already is. See `cardInstanceId`. */
+    if (instance.reused) return NextResponse.json({ instance, reused: true });
 
     /*
      * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
