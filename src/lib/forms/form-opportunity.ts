@@ -105,6 +105,25 @@ const FORMAL: readonly RegExp[] = [
   /\bdocument(?:ed|ing)? (?:this|it|her|him|them)\b/,
 ];
 
+/**
+ * THE MANAGER HAS ALREADY TRIED THE FIRST RUNG. "I verbally coached her … and
+ * she still is out of dress code" is a prior conversation plus a repeat, which
+ * the framework answers with the next rung, not another coaching form. Both
+ * halves are required, so a coaching conversation that worked ("I coached her
+ * and she improved") and a first offence raise nothing.
+ *
+ * Ask Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): that exact
+ * account was offered a Coaching Form alone, and the form that carries the
+ * policy to acknowledge was never on the card.
+ */
+const PRIOR_ACTION: readonly RegExp[] = [
+  /\b(?:verbal(?:ly)?|already)\s+(?:coach\w*|warn\w*|talk\w*|address\w*|spoke|spoken|discuss\w*|counsel\w*)\b/,
+  /\b(?:coached|counseled|counselled|warned|talked to|spoke (?:to|with)|addressed|discussed (?:it |this )?with)\s+(?:her|him|them)\b/,
+];
+const RECURRENCE: readonly RegExp[] = [
+  /\b(?:still|again|continu\w+|keeps?|repeated\w*|no change|did ?n[o']?t (?:change|improve|listen)|didn't (?:change|improve|listen))\b/,
+];
+
 /** The manager is already asking for management help, not for information. */
 const MANAGEMENT_FRAME: readonly RegExp[] = [
   /\b(?:coach|coaching|address|addressing|sit down with|talk to (?:her|him|them)|coach (?:her|him|them))\b/,
@@ -146,6 +165,7 @@ export function detectFormOpportunity(input: {
   const concern = any(text, CONCERN);
   const strength = any(text, STRENGTH);
   const formal = any(text, FORMAL);
+  const escalated = any(text, PRIOR_ACTION) && any(text, RECURRENCE);
   const framed = any(text, MANAGEMENT_FRAME);
 
   /*
@@ -153,7 +173,7 @@ export function detectFormOpportunity(input: {
    * thing to say about somebody and the start of no document. A development
    * conversation needs the other half.
    */
-  if (!concern && !formal) return null;
+  if (!concern && !formal && !escalated) return null;
 
   /*
    * A CONCERN ON ITS OWN NEEDS A FRAME. One word off the concern list is not a
@@ -168,7 +188,7 @@ export function detectFormOpportunity(input: {
    * productivity" are both a manager setting one against the other, which
    * nobody does in passing.
    */
-  if (!formal && !framed && !(strength && concern)) return null;
+  if (!formal && !escalated && !framed && !(strength && concern)) return null;
 
   /*
    * AND A ROTA NOTE IS A ROTA NOTE, whatever words it happens to contain.
@@ -186,11 +206,12 @@ export function detectFormOpportunity(input: {
     concern ? "concern" : null,
     strength ? "strength" : null,
     formal ? "formal step named" : null,
+    escalated ? "prior coaching and recurrence" : null,
     framed ? "management frame" : null,
   ].filter((signal): signal is string => signal !== null);
 
   return {
-    kind: formal ? "formal" : strength ? "development" : "concern",
+    kind: formal || escalated ? "formal" : strength ? "development" : "concern",
     role: extractJobTitle(input.context.text),
     signals,
   };

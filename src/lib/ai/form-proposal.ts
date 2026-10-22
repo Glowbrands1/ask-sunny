@@ -86,6 +86,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
+import { readSalonMentions } from "@/lib/forms/salon-mention";
 import {
   answersNameConfirmation,
   matchEmployeeName,
@@ -1288,6 +1289,9 @@ const TOPIC_STATEMENT =
 const CARRIES_ON =
   /\b(?:keep\s+(?:this|it)\s+as|still\s+(?:a\s+)?coaching|same\s+form|this\s+form|continue|go\s+ahead|that'?s\s+(?:it|all|everything|right)|yes|yep|yeah|correct)\b/i;
 
+const ALREADY_SAID =
+  /\b(?:i|we)\s+(?:already|just)\s+(?:told|said|gave|mentioned|provided|wrote|typed|sent)\b|\balready\s+(?:told|gave)\s+(?:you|sunny)\b/i;
+
 const ABOUT_THE_EMPLOYEE = /^(?:and\s+|also\s+|then\s+)?(?:she|he|they)(?:['’](?:s|d|ve|re|ll))?\b/i;
 
 function continuesIntake(continued: string, input: ProposalTurn): boolean {
@@ -1295,6 +1299,17 @@ function continuesIntake(continued: string, input: ProposalTurn): boolean {
   if (endsIntake(question) || ASKS_FOR_ADVICE.test(question)) return false;
   if (extractEmployeeNames(question).length > 0) return true;
   if (answersEmploymentChange(continued, input)) return true;
+  /*
+   * A SALON, OR "I ALREADY TOLD YOU", IS AN ANSWER TO THE INTAKE TOO. Ask
+   * Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): with a
+   * Corrective Action intake open, "I already told you the employee name. She
+   * is at Dodge" named nobody, so the turn left the intake for free-form chat,
+   * which told the manager to retype their request — and the form was never
+   * built. Naming where she works, or objecting to being asked again, carries
+   * the open form forward; a question still does not.
+   */
+  if (!isQuestion(question) && readSalonMentions(question).length > 0) return true;
+  if (ALREADY_SAID.test(question)) return true;
   if (isQuestion(question)) return false;
   return (
     describesIncident(question) ||

@@ -1000,3 +1000,24 @@ describe("somebody else in the account is not a second employee", () => {
     expect(resolution.kind === "resolved" ? resolution.employeeName : resolution).not.toBe("Pat Rivera");
   });
 });
+
+/*
+ * Ask Bubbles admin feedback, 16 Oct 2026 (ported from 8e3e81e): "my employee
+ * tiffany lempka was late …" was answered "give me their name".
+ */
+describe('"my employee <name>" typed in lower case', () => {
+  it.each([
+    ["my employee tiffany lempka was late on 10/5 and 10/15. please create a CA form.", "Tiffany Lempka"],
+    ["my employee pat rivera was late again today, i need a coaching form", "Pat Rivera"],
+    ["our team member pat rivera missed her shift", "Pat Rivera"],
+  ])("%s → %s", (text, name) => {
+    const resolution = resolveEmployee(managerContext([], { id: "msg-current", content: text }));
+    expect(resolution.kind).toBe("resolved");
+    // Read as typed; the card capitalises it.
+    expect(resolution.kind === "resolved" && resolution.employeeName.toLowerCase()).toBe(name.toLowerCase());
+  });
+
+  it.each(["my employee handbook says to clock in", "my employee was late again today"])("%s names nobody", (text) => {
+    expect(resolveEmployee(managerContext([], { id: "msg-current", content: text })).kind).toBe("missing");
+  });
+});

@@ -583,3 +583,36 @@ describe("what an earlier coaching was for stays on the history line", () => {
     expect(field(form, "prior_actions")!.value).toBe("Coaching for cell phone use — signed 09/15/2026");
   });
 });
+
+/* ========================================================================= */
+/* ASK BUBBLES ADMIN FEEDBACK, 16 OCT 2026 — THE INTAKE STAYS OPEN            */
+/* ========================================================================= */
+
+describe("the intake stays open on a salon or \"I already told you\" (Ask Bubbles 8e3e81e)", () => {
+  it('"my employee pat rivera …" reads the name typed in lower case', async () => {
+    const { proposal } = await conversation(["my employee pat rivera was late again today, i need a coaching form"]);
+    expect(proposal).toMatchObject({ templateKey: "coaching", employeeName: "Pat Rivera", status: "ready" });
+  });
+
+  it('"I already told you the employee name. She is at …" keeps the open form', async () => {
+    state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0309"] };
+    const { responses, proposal } = await conversation([
+      "Please create a CA form for lateness on 10/5 and 10/15, I coached her verbally on the first.",
+      "I already told you the employee name. She is at NE Kearney",
+    ]);
+    expect(responses[0]!.formProposal!.status).toBe("needs_employee");
+    expect(proposal.templateKey).toBe("dpoa");
+    expect(proposal.locationId).toBe("loc-0309");
+  });
+
+  it("a salon-only reply carries the name given earlier, without asking again", async () => {
+    state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: ["loc-0309"] };
+    const { responses, proposal } = await conversation([
+      "My employee pat rivera was late on 10/5 and 10/15. Please create a CA form.",
+      "She is at NE Kearney",
+    ]);
+    expect(proposal.employeeName).toBe("Pat Rivera");
+    expect(proposal.locationId).toBe("loc-0309");
+    expect(responses[1]!.content).not.toMatch(/who is this/i);
+  });
+});

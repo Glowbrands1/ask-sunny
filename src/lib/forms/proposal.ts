@@ -557,6 +557,23 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
       if (candidate) marked.push(candidate);
     }
   }
+  /*
+   * "my employee tiffany lempka has been late": the same marker as the manager
+   * says it, with the name typed in lower case. Ask Bubbles admin feedback, 16
+   * Oct 2026 (ported from 8e3e81e) — a Corrective Action asked for with exactly
+   * that sentence was answered "give me their name", and the manager had to
+   * say it again. Only after "my / our" plus a person noun, and
+   * `readTypedName` still refuses topic words, form words and verbs, so "my
+   * employee handbook" and "my employee was late" name nobody.
+   */
+  if (marked.length === 0) {
+    for (const match of text.matchAll(
+      /\b(?:my|our)\s+(?:employee|team member|staff member|associate|coworker)\s+(\S+(?:\s+\S+)?)/gi,
+    )) {
+      const candidate = readTypedName(match[1]!.split(/\s+/), false);
+      if (candidate && typedNameAllowed(candidate)) marked.push(candidate);
+    }
+  }
   if (marked.length > 0) {
     const overlaps = (a: string, b: string) => {
       const [x, y] = [a.toLowerCase(), b.toLowerCase()];
