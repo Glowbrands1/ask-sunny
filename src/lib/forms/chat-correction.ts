@@ -190,7 +190,11 @@ export async function correctActiveForm(input: {
       ? exitValues
       : {
           values: correctsDate ? { [FORM_DATE_KEY]: newFormDate! } : {},
-          checked: asksPayroll ? (payrollUnclear ? { [PAYROLL_DEDUCT_KEY]: [] } : payrollDeductChecked(payroll)) : {},
+          checked: asksPayroll
+            ? payrollUnclear
+              ? { [PAYROLL_DEDUCT_KEY]: [] }
+              : payrollDeductChecked(payroll)
+            : {},
         };
   if (!correction) return null;
 
@@ -391,7 +395,6 @@ export async function correctActiveForm(input: {
       payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction.",
     );
   }
-  if (whichDate) lines.push("", whichDate);
   /*
    * AN UNCLEAR PAYROLL STATEMENT ABOUT THIS FORM CLEARS THE ANSWER AND ASKS.
    * QA, 22 Oct 2026: after a form with "Yes" was created, "hold off on the $25
@@ -407,6 +410,7 @@ export async function correctActiveForm(input: {
       `"${input.question.trim()}" isn't a clear Yes or No, so I cleared the answer rather than keep a Yes on the form. **Is payroll deduct applicable?** Yes or No?`,
     );
   }
+  if (whichDate) lines.push("", whichDate);
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };
 }

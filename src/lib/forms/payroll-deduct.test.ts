@@ -479,11 +479,22 @@ describe("review: zero, a cancelled order, and \"no cancel\"", () => {
       expect(payrollDeductAmount(text)).toBeNull();
     },
   );
+  /*
+   * A cancelled ORDER or REFUND beside the deduction does not cancel the
+   * deduction: the waiver must be said of the deduction itself.
+   */
   it.each([
     ["Payroll deduction of $25 for the cancelled order is applicable."],
     ["Payroll deduct of $25 is applicable, the refund she cancelled was never rung."],
-  ])('a cancelled thing that is not the deduction leaves the Yes: "%s"', (text) => {
+  ])('a cancelled thing beside the deduction is never read as No: "%s"', (text) => {
     expect(statedPayrollDeduct(text)).toBe("yes");
+  });
+  it.each([
+    ["the payroll deduction for the cancelled order was waived"],
+    ["we cancelled the $25 payroll deduction"],
+    ["$25 payroll deduction was waived"],
+  ])('a waiver said of the deduction is still No: "%s"', (text) => {
+    expect(statedPayrollDeduct(text)).toBe("no");
   });
   /*
    * Changed on purpose at the release merge (22 Oct 2026): the release reader

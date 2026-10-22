@@ -1,4 +1,9 @@
-import { normalizePayrollWording as normalize, readPayrollDeduct, statedPayrollDeduct as statedAnswer } from "./payroll-deduct-answer";
+import {
+  DENIAL,
+  normalizePayrollWording as normalize,
+  readPayrollDeduct,
+  statedPayrollDeduct as statedAnswer,
+} from "./payroll-deduct-answer";
 import { detectTemplateIntent } from "./template-intent";
 
 /**
@@ -32,15 +37,22 @@ export const PAYROLL_DEDUCT_LABEL = "Is payroll deduct applicable?";
 import type { PayrollDeductAnswer } from "./payroll-deduct-answer";
 export type { PayrollDeductAnswer } from "./payroll-deduct-answer";
 
-export const PAYROLL_DEDUCT_OPTIONS: readonly { key: PayrollDeductAnswer; label: string }[] = [
+export const PAYROLL_DEDUCT_OPTIONS: readonly {
+  key: PayrollDeductAnswer;
+  label: string;
+}[] = [
   { key: "yes", label: "Yes" },
   { key: "no", label: "No" },
 ];
 
 /** The one key a payroll-deduct statement may write — see `applyStatedFacts`. */
-export const PAYROLL_DEDUCT_STATED_KEYS: ReadonlySet<string> = new Set([PAYROLL_DEDUCT_KEY]);
+export const PAYROLL_DEDUCT_STATED_KEYS: ReadonlySet<string> = new Set([
+  PAYROLL_DEDUCT_KEY,
+]);
 
-export function isPayrollDeductAnswer(value: unknown): value is PayrollDeductAnswer {
+export function isPayrollDeductAnswer(
+  value: unknown,
+): value is PayrollDeductAnswer {
   return value === "yes" || value === "no";
 }
 
@@ -71,12 +83,23 @@ export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
  * (see `payrollDeductFromConversation`). On its own a "no" answers nothing.
  */
 function bareAnswer(text: string): PayrollDeductAnswer | null {
-  const t = normalize(text).trim().replace(/[.!]+$/, "").trim();
+  const t = normalize(text)
+    .trim()
+    .replace(/[.!]+$/, "")
+    .trim();
   if (t === "" || t.split(/\s+/).length > 6) return null;
-  if (/^(?:no|n|nope|nah|not applicable|n\/a|none|it isn't|it's not|it is not|it doesn't|it does not|doesn't|does not)\b/.test(t)) {
+  if (
+    /^(?:no|n|nope|nah|not applicable|n\/a|none|it isn't|it's not|it is not|it doesn't|it does not|doesn't|does not)\b/.test(
+      t,
+    )
+  ) {
     return "no";
   }
-  if (/^(?:yes|y|yep|yeah|yup|yes please|correct|it is|it does|applicable)\b/.test(t)) {
+  if (
+    /^(?:yes|y|yep|yeah|yup|yes please|correct|it is|it does|applicable)\b/.test(
+      t,
+    )
+  ) {
     return "yes";
   }
   return null;
@@ -89,16 +112,23 @@ const PAYROLL_IN_QUESTION = /payroll\s+deduct/i;
  * numbered list — "7. Is payroll deduct applicable? (Yes or No)" is 7.
  * `unnumbered` is true when the turn asks it on its own, outside any list.
  */
-function payrollQuestionIn(assistant: string): { number: number | null; alone: boolean } | null {
+function payrollQuestionIn(
+  assistant: string,
+): { number: number | null; alone: boolean } | null {
   if (!PAYROLL_IN_QUESTION.test(assistant)) return null;
   const numbered = [...assistant.matchAll(/^\s*(\d+)[.)]\s+(.*)$/gm)];
-  const hit = numbered.find((match) => PAYROLL_IN_QUESTION.test(match[2] ?? ""));
+  const hit = numbered.find((match) =>
+    PAYROLL_IN_QUESTION.test(match[2] ?? ""),
+  );
   if (!hit) return { number: null, alone: true };
   return { number: Number(hit[1]), alone: numbered.length === 1 };
 }
 
 /** The answer a manager's numbered line gives to item `number`, if it is there. */
-function numberedAnswer(reply: string, number: number): PayrollDeductAnswer | null {
+function numberedAnswer(
+  reply: string,
+  number: number,
+): PayrollDeductAnswer | null {
   for (const line of reply.split("\n")) {
     const match = /^\s*(\d+)\s*[.):-]\s*(.+)$/.exec(line);
     if (match && Number(match[1]) === number) {
@@ -151,14 +181,24 @@ export function payrollDeductFromConversation(
   options: { readonly fromThisForm?: boolean } = {},
 ): PayrollDeductAnswer | null {
   const usable = turns.filter(
-    (turn) => !turn.error && typeof turn.content === "string" && turn.content.trim() !== "",
+    (turn) =>
+      !turn.error &&
+      typeof turn.content === "string" &&
+      turn.content.trim() !== "",
   );
 
   const requests = usable
     .map((turn, index) => ({ turn, index }))
-    .filter(({ turn }) => turn.role === "user" && detectTemplateIntent(turn.content).kind !== "none")
+    .filter(
+      ({ turn }) =>
+        turn.role === "user" &&
+        detectTemplateIntent(turn.content).kind !== "none",
+    )
     .map(({ index }) => index);
-  const start = !options.fromThisForm && requests.length >= 2 ? requests[requests.length - 2]! + 1 : 0;
+  const start =
+    !options.fromThisForm && requests.length >= 2
+      ? requests[requests.length - 2]! + 1
+      : 0;
 
   let lastAssistant = "";
   let answer: PayrollDeductAnswer | null = null;
@@ -189,8 +229,9 @@ export function payrollDeductFromConversation(
     const asked = payrollQuestionIn(lastAssistant);
     if (!asked) continue;
     const replied =
-      (asked.number !== null ? numberedAnswer(turn.content, asked.number) : null) ??
-      (asked.alone ? bareAnswer(turn.content) : null);
+      (asked.number !== null
+        ? numberedAnswer(turn.content, asked.number)
+        : null) ?? (asked.alone ? bareAnswer(turn.content) : null);
     if (replied) answer = replied;
   }
 
@@ -203,10 +244,16 @@ export function payrollDeductFromConversation(
  * same way the proposal reads it, so the answer the manager gives after the
  * form is created lands on the form instead of being asked for again.
  */
-export function payrollDeductReply(text: string, lastAssistant: string): PayrollDeductAnswer | null {
+export function payrollDeductReply(
+  text: string,
+  lastAssistant: string,
+): PayrollDeductAnswer | null {
   const asked = payrollQuestionIn(lastAssistant);
   if (!asked) return null;
-  return (asked.number !== null ? numberedAnswer(text, asked.number) : null) ?? (asked.alone ? bareAnswer(text) : null);
+  return (
+    (asked.number !== null ? numberedAnswer(text, asked.number) : null) ??
+    (asked.alone ? bareAnswer(text) : null)
+  );
 }
 
 /**
@@ -216,7 +263,9 @@ export function payrollDeductReply(text: string, lastAssistant: string): Payroll
 export function payrollDeductChecked(
   answer: PayrollDeductAnswer | null | undefined,
 ): Record<string, string[]> {
-  return isPayrollDeductAnswer(answer) ? { [PAYROLL_DEDUCT_KEY]: [answer] } : {};
+  return isPayrollDeductAnswer(answer)
+    ? { [PAYROLL_DEDUCT_KEY]: [answer] }
+    : {};
 }
 
 /**
@@ -228,7 +277,9 @@ export function payrollDeductChecked(
  * this on every turn once a Corrective Action Form exists, and "no" on its own
  * — or any question — must never reach the form.
  */
-export function payrollDeductCorrection(text: string): PayrollDeductAnswer | null {
+export function payrollDeductCorrection(
+  text: string,
+): PayrollDeductAnswer | null {
   if (text.trim().endsWith("?")) return null;
   /*
    * A point inside an amount ("the $5.00 payroll deduction") does not end the
@@ -236,13 +287,18 @@ export function payrollDeductCorrection(text: string): PayrollDeductAnswer | nul
    * no" read as nothing, and the form kept its Yes.
    */
   const change =
-    /\b(?:change|update|set|switch|correct|fix|make|mark|tick|check)\b(?:[^.\n]|\.(?=\d)){0,40}\b(?:payroll|deduct)/i.exec(text);
+    /\b(?:change|update|set|switch|correct|fix|make|mark|tick|check)\b(?:[^.\n]|\.(?=\d)){0,40}\b(?:payroll|deduct)/i.exec(
+      text,
+    );
   if (change) {
     const after = normalize(text.slice(change.index));
     const to = /\b(?:to|as|=|:)\s*(yes|no)\b/.exec(after);
     if (to) return to[1] as PayrollDeductAnswer;
-    /* "change the payroll deduction to $5.00": a new amount to take is a Yes, said in so many words. */
-    if (new RegExp(String.raw`\bto\s+${ANY_MONEY}`).test(after) && !NOT_TAKEN.test(after)) {
+    /* "change the payroll deduction to $5.00": a new amount to take is a Yes — "to $0" is a No. */
+    if (
+      new RegExp(String.raw`\bto\s+${ANY_MONEY}`).test(after) &&
+      !DENIAL.test(after)
+    ) {
       return deductsNothing(text) ? "no" : "yes";
     }
   }
@@ -277,8 +333,6 @@ const MONEY = String.raw`\$\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?![\d,]\d
  */
 const UNSIGNED_MONEY = String.raw`(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?\s*(?:dollars?|bucks)\b|\d+\.\d{2}\b(?![\d,]\d)`;
 const ANY_MONEY = String.raw`(?:${MONEY}|${UNSIGNED_MONEY})`;
-/** A deduction denied, waived or cancelled in the words after a change verb. */
-const NOT_TAKEN = /\b(?:no|not|never|none|don't|dont|won't|wont|waived?|cancell?ed|cancel|skip)\b/;
 /** "$ 25" → "$25"; "25 dollars" → "$25"; "3.25" → "$3.25". */
 function asDollars(written: string): string {
   const compact = written.replace(/\s+/g, "");
@@ -286,7 +340,10 @@ function asDollars(written: string): string {
   return `$${/^[\d,]+(?:\.\d{2})?/.exec(compact)![0]}`;
 }
 const AMOUNT_PATTERNS: readonly RegExp[] = [
-  new RegExp(String.raw`\b(?:payroll\s+)?deduct(?:ion|ions|ed|ing)?\s+(?:of\s+|for\s+|is\s+|to\s+|will\s+be\s+|amount\s+(?:of\s+|is\s+|to\s+)?)?(${ANY_MONEY})`, "gi"),
+  new RegExp(
+    String.raw`\b(?:payroll\s+)?deduct(?:ion|ions|ed|ing)?\s+(?:of\s+|for\s+|is\s+|to\s+|will\s+be\s+|amount\s+(?:of\s+|is\s+|to\s+)?)?(${ANY_MONEY})`,
+    "gi",
+  ),
   /*
    * "$25 will be payroll deducted", "$25 payroll-deducted", "a $25 payroll
    * deduction" (District Manager feedback, 21 Oct 2026: "state $25 will be
@@ -311,7 +368,8 @@ function latestAmount(text: string): string | null {
   for (const pattern of AMOUNT_PATTERNS) {
     for (const match of (text ?? "").matchAll(pattern)) {
       const amount = asDollars(match[1]!);
-      if (!found || match.index >= found.at) found = { at: match.index, amount };
+      if (!found || match.index >= found.at)
+        found = { at: match.index, amount };
     }
   }
   return found?.amount ?? null;
@@ -340,7 +398,9 @@ function deductsNothing(text: string): boolean {
  * stated: two different amounts, or none, and the plan says "A payroll
  * deduction applies." as before.
  */
-export function quotedDeductionAmount(policyText: string | null | undefined): string | null {
+export function quotedDeductionAmount(
+  policyText: string | null | undefined,
+): string | null {
   const text = (policyText ?? "")
     .split("\n")
     .filter((line) => !/^\s*Source:/i.test(line))
@@ -358,7 +418,8 @@ export function quotedDeductionAmount(policyText: string | null | undefined): st
     for (const match of sentence.matchAll(new RegExp(MONEY, "g"))) {
       const written = match[0].replace(/\s+/g, "");
       const value = Number(written.replace(/[$,]/g, ""));
-      if (Number.isFinite(value) && !amounts.has(value)) amounts.set(value, written);
+      if (Number.isFinite(value) && !amounts.has(value))
+        amounts.set(value, written);
     }
   }
   return amounts.size === 1 ? [...amounts.values()][0]! : null;

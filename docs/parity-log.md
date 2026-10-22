@@ -79,3 +79,14 @@ policy-manual fixture has invented wording, and
 Corrective Action recipient fix (6b5f897). Bubbles' own company's people were
 checked against its own directory and replaced too; it has no copy of the
 policy-manual fixture.
+
+## 22 Oct 2026: Corrective Action QA audit (from Ask-bubbles#68)
+
+Ported in this PR (Glowbrands1/ask-sunny#128), one `Port from Ask Bubbles
+(<sha>)` commit per fix: the invented-date guard in drafted text, the draft
+notice on the chat card, payroll amounts without `$` and "$0" as No, a
+cancelled order beside the deduction not read as a waiver, the register
+`form_date` kept in step with the Date line, the two-policy question,
+autofill off on typed form fields, and the audit's manual fixture with
+invented wording. Sunny-only: its payroll Yes is read only when stated, and
+the warning level stays on the form.

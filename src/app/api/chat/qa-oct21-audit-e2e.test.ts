@@ -26,15 +26,15 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * — with the employee's name replaced. What is under test is whether the code
  * now around the model turns that into the form the manager asked for.
  *
- * The manual is the real JBA Policy Manual's sections, verbatim, with the
- * neighbouring sections a lookup must not land on
+ * The manual is the JBA Policy Manual's layout (headings, pages, sections)
+ * with invented wording, and the neighbouring sections a lookup must not land on
  * (`test/fixtures/jba-manual-ca-sections.ts`). Faked: identity, the database
  * (in-memory), the employee directory read, the general-answer model, and
  * analytics. Every person is synthetic.
  *
- * ASK SUNNY'S OWN RULES, kept: a payroll Yes is read only when it is stated
- * ("applies", "yes"), never from an amount alone; the warning level is set on
- * the form, not asked in chat. Ask Bubbles' chat correction of the warning
+ * ASK SUNNY'S OWN RULE, kept: the warning level is set on the form, not asked
+ * in chat. Payroll is read with Ask Bubbles' reader since PR #129; the
+ * wordings below state the Yes outright, which both read the same. Ask Bubbles' chat correction of the warning
  * level and its server-side guard against a second Create are not in Ask
  * Sunny, so those scenarios are not here.
  */
@@ -152,13 +152,13 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
         grounding: {
           role: { id: role.id },
           documentId: "doc-progression",
-          documentTitle: "ASK BUBBLES PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+          documentTitle: "PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
           matchedBy: "tag",
           rows: [
             {
               chunk_id: "pmf-0",
               document_id: "doc-progression",
-              document_title: "ASK BUBBLES PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+              document_title: "PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
               category: "leadership_coaching",
               locator: "SECTION 2",
               page: null,
@@ -387,7 +387,7 @@ function expectHrPlan(plan: string | null, review: RegExp, deduction: RegExp | n
   }
 }
 
-/* Synthetic people only, at one salon. */
+/* Synthetic people only, at one Sun Tan City salon. */
 const DIRECTORY = [
   { id: "e-1", firstName: "Marlo", lastName: "Quist", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] },
   { id: "e-2", firstName: "Sela", lastName: "Brandt", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] },
@@ -427,15 +427,15 @@ const PAYROLL_QUESTION = /Is payroll deduct applicable\?\*\* Yes or No\?/;
 
 /** Production, 18:18 UTC, name replaced. */
 const ISSUE_1 =
-  "create verbal ca for marlo quist for opening store late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted";
+  "create verbal ca for marlo quist for opening salon late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted";
 
 /** What the model wrote on the production form (365d853e), name replaced. */
 const ISSUE_1_MODEL = {
   values: {
     observation:
-      "Observed:\nMarlo was scheduled to open the store and did not open the location at the proper time on October 21, 2026, resulting in a late opening.\n\nExpectation:\nAn employee assigned to open the store is expected to arrive with enough time to complete all opening duties and have the location ready to open at the scheduled time.\n\nGoing Forward:\nMarlo should plan arrival time to allow for all opening duties.",
+      "Observed:\nMarlo was scheduled to open the salon and did not open the location at the proper time on October 21, 2026, resulting in a late opening.\n\nExpectation:\nAn employee assigned to open the salon is expected to arrive with enough time to complete all opening duties and have the location ready to open at the scheduled time.\n\nGoing Forward:\nMarlo should plan arrival time to allow for all opening duties.",
     action_plan:
-      "Marlo is expected to adhere to the company attendance policy by opening the store on time and ready for business at the start of the scheduled shift. Moving forward, Marlo should arrive with enough time to complete all opening duties before the store's scheduled opening and notify management as soon as possible if running late. Management will monitor compliance and provide coaching as needed.",
+      "Marlo is expected to adhere to the Sun Tan City attendance policy by opening the salon on time and ready for clients at the start of the scheduled shift. Moving forward, Marlo should arrive with enough time to complete all opening duties before the salon's scheduled opening and notify management as soon as possible if running late. Management will monitor compliance and provide coaching as needed.",
     policy_violated: "Tardiness/Leaving Early",
     prior_actions: "JBA Policy Manual coaching — signed 01/01/2026",
   },
@@ -466,8 +466,7 @@ describe("Issue 1: a late opening on 10-1-26 with a $25 payroll deduction", () =
     expect(f.ticks("payroll_deduct")).toEqual(["yes"]);
     expect(f.text("policy_violated")).toMatch(/Late Opening/);
     expect(f.text("policy_language")).toMatch(/Late Opening/);
-    // The fixture's wording is synthetic (security cleanup, 22 Oct 2026): its Late Opening sheet carries the $25.00 amount in an invented sentence.
-    expect(f.text("policy_language")).toMatch(/\$25\.00 payroll deduction/);
+    expect(f.text("policy_language")).toMatch(/\$25\.00 via payroll deduction/);
     expect(f.text("policy_language")).toMatch(/p(?:age|\.)\s*15\b/i);
     expect(f.text("policy_language")).not.toMatch(/Cell Phone|Standards of Conduct|Texting/);
     expect(f.text("prior_actions")).toMatch(/01\/01\/2026|1-1-26/);
@@ -482,7 +481,7 @@ describe("Issue 1: a late opening on 10-1-26 with a $25 payroll deduction", () =
     ["October 1st"],
   ])("the incident date written %s still dates the form 1 Oct 2026, never the day it is created", async (spelled) => {
     const thread = new Thread();
-    await thread.say(`create verbal ca for marlo quist for opening the store late on ${spelled}. payroll deduct $25`);
+    await thread.say(`create verbal ca for marlo quist for opening the salon late on ${spelled}. payroll deduct $25`);
     state.draft = ISSUE_1_MODEL;
     const { id } = await thread.create();
     const f = await form(id);
@@ -499,7 +498,7 @@ describe("Issue 1: a late opening on 10-1-26 with a $25 payroll deduction", () =
     ["payroll deduct applies", "$25.00"],
   ])('"%s" is a Yes, and the plan states %s', async (payroll, amount) => {
     const thread = new Thread();
-    const card = await thread.say(`create verbal ca for marlo quist for opening store late on 10-1-26. ${payroll}`);
+    const card = await thread.say(`create verbal ca for marlo quist for opening salon late on 10-1-26. ${payroll}`);
     expect(card.formProposal?.payrollDeduct).toBe("yes");
     expect(card.content).not.toMatch(PAYROLL_QUESTION);
     state.draft = ISSUE_1_MODEL;
@@ -511,7 +510,7 @@ describe("Issue 1: a late opening on 10-1-26 with a $25 payroll deduction", () =
 
   it("an opening missed by a manager on duty, said in other words, still cites Late Opening, not Attendance alone", async () => {
     const thread = new Thread();
-    await thread.say("create verbal ca for marlo quist. she was scheduled to open on 10-1-26 and the store didn't open until 10:25. payroll deduct $25");
+    await thread.say("create verbal ca for marlo quist. she was scheduled to open on 10-1-26 and the salon didn't open until 10:25. payroll deduct $25");
     state.draft = ISSUE_1_MODEL;
     const { id } = await thread.create();
     const f = await form(id);
@@ -636,7 +635,7 @@ const ISSUE_3_MODEL = {
       "Observed:\nOn October 21, 2026, Marlo was observed talking on a cell phone for over 30 minutes while on shift.\n\nExpectation:\nEmployees are expected to remain focused on work duties during their scheduled shift.\n\nGoing Forward:\nMarlo should keep personal phone use to designated breaks.",
     policy_violated: "Standards of Conduct",
     action_plan:
-      "Marlo is expected to adhere to the company standards of conduct policy by remaining focused on assigned work duties throughout the scheduled shift. Management will monitor compliance and provide coaching as needed.",
+      "Marlo is expected to adhere to the Sun Tan City standards of conduct policy by remaining focused on assigned work duties throughout the scheduled shift. Management will monitor compliance and provide coaching as needed.",
   },
   checked: { offense_type: ["standards_of_conduct"] },
 };
@@ -789,7 +788,7 @@ const ISSUE_4_MODEL = {
     observation:
       "Observed:\nOn October 20, 2026, Sela's register was found to be short by $3.25.\n\nExpectation:\nEmployees are expected to accurately count and reconcile their register drawer.\n\nGoing Forward:\nSela should carefully count the drawer at the start and end of each shift.",
     action_plan:
-      "Sela is expected to adhere to the company cash handling and register accuracy policy by counting, verifying, and reconciling the register drawer accurately during each shift. Management will monitor compliance and provide coaching as needed.",
+      "Sela is expected to adhere to the Sun Tan City cash handling and register accuracy policy by counting, verifying, and reconciling the register drawer accurately during each shift. Management will monitor compliance and provide coaching as needed.",
     policy_violated: "Standards of Conduct",
   },
   checked: { offense_type: ["standards_of_conduct"] },
@@ -985,7 +984,7 @@ const ISSUE_6_MODEL = {
     observation:
       "Observed:\nSela did not acknowledge the required policies in Woven by the October 21, 2026 deadline.\n\nExpectation:\nEmployees are expected to complete required Woven acknowledgements and training items by the assigned deadline.\n\nGoing Forward:\nSela should log into Woven promptly when a task is assigned.",
     action_plan:
-      "Sela is expected to adhere to the company standards of conduct policy by completing required policy acknowledgements and assigned tasks within the designated deadlines. Moving forward, Sela should check Woven regularly during scheduled shifts and complete any outstanding acknowledgements or training as soon as they are assigned. Management will monitor compliance and provide coaching as needed.",
+      "Sela is expected to adhere to the Sun Tan City standards of conduct policy by completing required policy acknowledgements and assigned tasks within the designated deadlines. Moving forward, Sela should check Woven regularly during scheduled shifts and complete any outstanding acknowledgements or training as soon as they are assigned. Management will monitor compliance and provide coaching as needed.",
     other_offense: "Failure to complete required task — Woven deadline of September 30, 2026 not met",
     policy_violated: "Standards of Conduct",
   },
@@ -1156,7 +1155,7 @@ describe("workflow: corrections change only what was asked; finalized forms are 
 
   it("Written then Verbal before the form exists: the card and the form say Verbal", async () => {
     const thread = new Thread();
-    await thread.say("create a written ca for marlo quist for opening the store late on 10-1-26. payroll deduct $25");
+    await thread.say("create a written ca for marlo quist for opening the salon late on 10-1-26. payroll deduct $25");
     const changed = await thread.say("actually make it a verbal warning");
     expect(changed.formProposal?.warningLevel).toBe("verbal");
     state.draft = ISSUE_1_MODEL;
@@ -1265,13 +1264,13 @@ describe("a form's date is one date on every surface", () => {
     const { id } = await created();
     await save(id, { form_date: "2026-10-03" });
     state.draft = {
-      values: { observation: "Observed:\nOn October 21, 2026, Marlo did not open the store at the proper time." },
+      values: { observation: "Observed:\nOn October 21, 2026, Marlo did not open the salon at the proper time." },
       checked: { offense_type: ["tardiness"] },
     };
     await call(`/api/forms/instances/${id}/draft`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ notes: "marlo opened the store late. payroll deduct $25" }),
+      body: JSON.stringify({ notes: "marlo opened the salon late. payroll deduct $25" }),
     });
     expect((await form(id)).text("observation")).toContain("October 3, 2026");
   });
