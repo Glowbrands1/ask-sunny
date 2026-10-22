@@ -56,8 +56,8 @@ describe("P1 — team descriptors are never an employee's name", () => {
     expect(extractEmployeeNames("Create a coaching form for Kaitlyn about how the whole team should sanitize beds.")).toEqual([
       "Kaitlyn",
     ]);
-    expect(extractEmployeeNames("Create a coaching form for Kaitlyn Mazzei about group training on beds.")).toEqual([
-      "Kaitlyn Mazzei",
+    expect(extractEmployeeNames("Create a coaching form for Kaitlyn Lindqvist about group training on beds.")).toEqual([
+      "Kaitlyn Lindqvist",
     ]);
   });
 });
@@ -305,7 +305,7 @@ describe("P5 — 'again', 'still' and 'missing' are not a shortfall on their own
     "We’re still preparing everyone for the new process.",
     "Going over the expectations again as a refresher.",
     "The new checklist is still being rolled out.",
-    "Create a coaching form for Kaitlyn Mazzei to make sure she's not missing any steps on the new bed sanitizing checklist before we roll it out.",
+    "Create a coaching form for Kaitlyn Lindqvist to make sure she's not missing any steps on the new bed sanitizing checklist before we roll it out.",
     "Create a coaching form for Kaitlyn to align on our new bed sanitizing expectations before we roll them out.",
     "No concerns — this is a refresher on the new spray.",
     "She hasn't missed a shift; this is development coaching for a shift lead role.",
@@ -332,20 +332,20 @@ describe("P7 — shared and service accounts are never a name suggestion", () =>
   ])("%s %s", (first, last) => expect(isServiceAccountName(first, last)).toBe(true));
 
   it.each([
-    ["Kaitlyn", "Mazzei"],
-    ["Kim", "Keller"],
+    ["Kaitlyn", "Lindqvist"],
+    ["Kim", "Ferrante"],
     ["Hope", "Office"],
-    ["Paige", "Horne"],
-    ["Tia", "Aldred"],
+    ["Paige", "Whitlock"],
+    ["Tia", "Okafor"],
   ])("%s %s is a person", (first, last) => expect(isServiceAccountName(first, last)).toBe(false));
 
   it("leaves them out of the scoped roster without touching anybody else", () => {
     const rows = [
       { id: "1", firstName: "Risk", lastName: "Management", preferredFirstName: "Risk", employmentStatus: "active", salonIds: ["loc-0306"] },
       { id: "2", firstName: "No", lastName: "Manager", preferredFirstName: "No", employmentStatus: "active", salonIds: ["loc-0306"] },
-      { id: "3", firstName: "Hayley", lastName: "Cooper", preferredFirstName: "Hayley", employmentStatus: "active", salonIds: ["loc-0306"] },
+      { id: "3", firstName: "Hayley", lastName: "Strand", preferredFirstName: "Hayley", employmentStatus: "active", salonIds: ["loc-0306"] },
     ];
     const roster = scopeRoster(rows, { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
-    expect(roster.map((row) => `${row.firstName} ${row.lastName}`)).toEqual(["Hayley Cooper"]);
+    expect(roster.map((row) => `${row.firstName} ${row.lastName}`)).toEqual(["Hayley Strand"]);
   });
 });

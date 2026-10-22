@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *   by" is worth nothing.
  *
  *   Closing stamps a hand and a time; REOPENING CLEARS THEM. A stale "resolved
- *   by Paulyne, 3 September" sitting on an open item is a lie about who is
+ *   by Rosalyn, 3 September" sitting on an open item is a lie about who is
  *   holding it.
  *
  *   Hiding is a soft delete and there is no hard one. There is no DELETE verb

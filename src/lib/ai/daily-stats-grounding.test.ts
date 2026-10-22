@@ -146,7 +146,7 @@ const RETRIEVED_NO_DAILY: MatchedChunkRow[] = Array.from({ length: 14 }, (_, ind
 }));
 
 const CONTEXT = {
-  userName: "Paulyne",
+  userName: "Rosalyn",
   locationName: "KS Lawrence",
   todayIso: "2026-09-09",
 };

@@ -35,7 +35,7 @@ import {
  * SALON GOAL PROGRESS — THE OVERVIEW'S PER-SALON TABLE
  * ============================================================================
  *
- * WHAT IT CARRIES, at Madeline Patterson's request (October 2026): qualifying
+ * WHAT IT CARRIES, at Gwen Harlan's request (October 2026): qualifying
  * reviews this week, qualifying reviews this month to date, the monthly
  * target, and progress toward it. WHAT IT NO LONGER CARRIES: Unanswered, the
  * "Replies waiting" status, All this week and Last week. The response queue

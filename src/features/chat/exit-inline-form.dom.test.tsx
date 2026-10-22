@@ -22,7 +22,7 @@ import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
 vi.mock("@/lib/session/session-context", () => ({
   useSession: () => ({
-    user: { avatarInitials: "PC", name: "Paulyne" },
+    user: { avatarInitials: "PC", name: "Rosalyn" },
     role: "salon_director",
     isAdmin: false,
   }),

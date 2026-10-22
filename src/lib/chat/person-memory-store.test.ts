@@ -135,7 +135,7 @@ function conversation(input: {
 
 async function recall(question: string, extra: Record<string, unknown> = {}) {
   const { recallPeople } = await import("./person-memory-store");
-  return recallPeople({ userId: ME, question, history: [], userName: "Paulyne", ...extra });
+  return recallPeople({ userId: ME, question, history: [], userName: "Rosalyn", ...extra });
 }
 
 beforeEach(() => {

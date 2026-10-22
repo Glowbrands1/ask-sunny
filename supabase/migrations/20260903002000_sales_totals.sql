@@ -1,7 +1,7 @@
 -- ---------------------------------------------------------------------------
 -- SALES TOTALS — the daily report, stored as daily SNAPSHOTS.
 --
--- Curt receives one of these each morning and each carries two windows: the
+-- Owen receives one of these each morning and each carries two windows: the
 -- previous day, and month to date through that day. So a delivery is not a
 -- correction of yesterday's — it is a new historical record, and both stay
 -- true of the day they were run.

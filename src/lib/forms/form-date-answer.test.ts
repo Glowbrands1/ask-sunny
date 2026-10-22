@@ -123,7 +123,7 @@ describe("a date that belongs to an earlier step is not the form's date", () => 
 
   it("skips the date of a prior warning (the production sentence)", () => {
     expect(
-      extractFormDate("create ca for paulyne co she was late today, got verbal warning on september 21", TODAY),
+      extractFormDate("create ca for rosalyn co she was late today, got verbal warning on september 21", TODAY),
     ).toBeNull();
   });
 
@@ -150,7 +150,7 @@ describe("a date that belongs to an earlier step is not the form's date", () => 
 describe("the date of the earlier step", () => {
   const TODAY = "2026-09-29";
   it.each([
-    ["create ca for Paulyne Test she was late today, got verbal warning on september 21", "2026-09-21"],
+    ["create ca for Rosalyn Test she was late today, got verbal warning on september 21", "2026-09-21"],
     ["she was coached on 9/2 and received a written warning on 9/15", "2026-09-15"],
     ["she was late on 9/20", null],
     ["give her a written warning on 10/2", null],

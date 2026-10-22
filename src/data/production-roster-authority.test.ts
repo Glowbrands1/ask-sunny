@@ -110,7 +110,7 @@ describe("the production roster", () => {
     }
   });
 
-  it("puts KS Manhattan with Rachael Dugan, not Madeline Patterson", () => {
+  it("puts KS Manhattan with Tamsin Pryor, not Gwen Harlan", () => {
     const manhattan = PRODUCTION_SALONS.find((s) => s.salonNumber === "0462");
     expect(manhattan?.districtName).toBe("Dugan, Rachael");
     expect(manhattan?.districtId).toBe("dist-dugan-rachael");

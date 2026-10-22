@@ -112,9 +112,9 @@ describe("how they resigned", () => {
     ["She walked out mid-shift.", "Walked out"],
     ["She left a voicemail saying she quit.", "Voicemail"],
     ["She texted me and then called.", "Text message and phone call"],
-    // HR feedback 30 Sep 2026: the Colene exit form.
+    // HR feedback 30 Sep 2026: the Delphine exit form.
     ["On 9-15-26, she provided her resignation to management, sending the message via Woven.", "Woven message"],
-    ["colene messaged management her resignation via woven.", "Woven message"],
+    ["delphine messaged management her resignation via woven.", "Woven message"],
     ["She sent the resignation via Woven.", "Woven message"],
     ["She messaged me on Woven that she was resigning.", "Woven message"],
     ["She sent a Woven message saying she quit.", "Woven message"],
@@ -153,7 +153,7 @@ describe("why they resigned", () => {
    */
   it("ends the reason at the end of its line", () => {
     const text = [
-      "Kayla Koehn",
+      "Mira Castellan",
       "Tanning Consultant ",
       "NE Kearney",
       "Gave notice - fulfilled notice",

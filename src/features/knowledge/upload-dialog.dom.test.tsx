@@ -35,7 +35,7 @@ const addDocument = vi.fn(async () => {});
 const updateDocument = vi.fn();
 
 vi.mock("@/lib/session/session-context", () => ({
-  useSession: () => ({ user: { name: "Paulyne Camacho" } }),
+  useSession: () => ({ user: { name: "Rosalyn Calloway" } }),
 }));
 
 vi.mock("@/lib/store/app-store", () => ({

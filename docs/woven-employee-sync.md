@@ -357,7 +357,7 @@ The other nine stay unmapped for a person to decide: Regional Director, Owner, O
 **Protected accounts** (`employee_role_overrides`)
 - One row per protected account, keyed on the account id (never an email), with the linked Woven employee id, the locked role and scope, a reason and who set it.
 - Resolution everywhere is **protected override → confirmed position → none**: `employee_access_preview.effective_role` / `role_source` and `resolveEmployeeRole`.
-- Four accounts are protected as `admin` / global: Curt, Madeline, Marissa and Paulyne. Each is identified by sign-in email and matched to the Woven employee with the same email.
+- Four accounts are protected as `admin` / global: Owen, Madeline, Marissa and Rosalyn. Each is identified by sign-in email and matched to the Woven employee with the same email.
 - Two of those accounts have `app_users.email` set to their own id, so only the override links them to Woven.
 - Nobody else gains a role from sharing their Woven position. Operations maps to nothing.
 - No code writes a role in phase one. Any later role step must pass `roleWriteAllowed`.

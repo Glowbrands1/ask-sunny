@@ -57,7 +57,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           templateName: seed.name,
           layoutFamily: seed.layoutFamily,
           variantKey: seed.variants[0]!.key,
-          employeeName: "Paulyne Co (test)",
+          employeeName: "Rosalyn Co (test)",
           employeeRole: state.employeeRole,
           locationName: "MO Kansas City Wornall",
           formDate: "2026-09-21",
@@ -240,7 +240,7 @@ const systemPrompt = () => String(state.modelInput?.system ?? "");
 const written = () => state.persisted.at(-1)!;
 
 const PUNCTUALITY =
-  "Paulyne is doing well with customers but needs to improve punctuality. She has been late several times this month.";
+  "Rosalyn is doing well with customers but needs to improve punctuality. She has been late several times this month.";
 
 beforeEach(() => {
   vi.resetModules();
@@ -269,7 +269,7 @@ describe("the JB & Associates manual is what the plan is reasoned against", () =
   });
 
   it("retrieves only what the manager reported, never the whole manual", async () => {
-    await post("Paulyne needs to improve punctuality. She has been late several times this month.");
+    await post("Rosalyn needs to improve punctuality. She has been late several times this month.");
 
     // Attendance was raised and is sent. The manual's conduct and culture
     // sections were not, so they are not — an EPP is not a review of
@@ -289,7 +289,7 @@ describe("the JB & Associates manual is what the plan is reasoned against", () =
 
   it("sends the schedule sections when the manager raised scheduling", async () => {
     await post(
-      "Paulyne keeps changing her availability at the last minute and does not arrange shift cover.",
+      "Rosalyn keeps changing her availability at the last minute and does not arrange shift cover.",
     );
 
     expect(prompt()).toContain("Schedule Requests/General availability Changes — Page 37");
@@ -297,7 +297,7 @@ describe("the JB & Associates manual is what the plan is reasoned against", () =
   });
 
   it("sends Standards of Conduct for a general performance concern", async () => {
-    await post("Paulyne's closing duties are not being completed and her follow-through is weak.");
+    await post("Rosalyn's closing duties are not being completed and her follow-through is weak.");
 
     expect(prompt()).toContain("Standards of Conduct — Page 12");
   });
@@ -316,7 +316,7 @@ describe("the JB & Associates manual is what the plan is reasoned against", () =
   });
 
   it("drafts as ordinary coaching when the observation raises no policy at all", async () => {
-    await post("Paulyne is a strong presence on the floor but I want more initiative from her.");
+    await post("Rosalyn is a strong presence on the floor but I want more initiative from her.");
 
     expect(state.modelCalls).toBe(1);
     expect(prompt()).not.toContain("APPLICABLE COMPANY POLICY");
@@ -365,7 +365,7 @@ describe("the appendix reference is derived, never written by the model", () => 
 
   it("leaves the line blank, and says so, when nothing resolved", async () => {
     state.toolInput = { values: { policy_references: "JBA Policy Manual — Initiative" } };
-    const body = await post("I want more initiative from Paulyne.");
+    const body = await post("I want more initiative from Rosalyn.");
 
     expect(written().values.policy_references).toBeUndefined();
     expect(body.withheld).toContain("policy_references");
@@ -395,7 +395,7 @@ describe("an opinion never becomes a company policy", () => {
     state.toolInput = {
       values: {
         plan_of_action:
-          "Paulyne will take more initiative on the floor during the review period. JBA policy requires employees to demonstrate initiative.",
+          "Rosalyn will take more initiative on the floor during the review period. JBA policy requires employees to demonstrate initiative.",
       },
     };
     const body = await post("She doesn't have enough initiative.");
@@ -414,7 +414,7 @@ describe("an opinion never becomes a company policy", () => {
     state.toolInput = {
       values: {
         plan_of_action:
-          "Paulyne will review her start times with her manager each week. Company policy states that employees are expected to know their schedule and always be on time.",
+          "Rosalyn will review her start times with her manager each week. Company policy states that employees are expected to know their schedule and always be on time.",
       },
     };
     const body = await post(PUNCTUALITY);
@@ -432,7 +432,7 @@ describe("an opinion never becomes a company policy", () => {
     state.toolInput = {
       values: {
         needs_improvement:
-          "Paulyne arrived late on three shifts, which is not in compliance with the attendance policy.",
+          "Rosalyn arrived late on three shifts, which is not in compliance with the attendance policy.",
       },
     };
     await post(PUNCTUALITY);
@@ -524,7 +524,7 @@ describe("what the form itself refuses to accept from a draft", () => {
 
   it("writes nothing into a signature, because a signature has no key", async () => {
     state.toolInput = {
-      values: { employee_signature: "Paulyne Co", supervisor_signature: "A Manager" },
+      values: { employee_signature: "Rosalyn Co", supervisor_signature: "A Manager" },
     };
     await post(PUNCTUALITY);
 

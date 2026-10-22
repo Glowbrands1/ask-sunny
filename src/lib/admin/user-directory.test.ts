@@ -100,8 +100,8 @@ describe("email normalization", () => {
   it("lowercases, because the database's unique index is on lower(email)", () => {
     // Sending mixed case would let two rows that collide in the database be
     // accepted here and rejected there.
-    expect(normalizeEmail("  Curt.Bowen@SunTanCity.com  ")).toBe(
-      "curt.bowen@suntancity.com",
+    expect(normalizeEmail("  Owen.Tremaine@SunTanCity.com  ")).toBe(
+      "owen.tremaine@suntancity.com",
     );
   });
 

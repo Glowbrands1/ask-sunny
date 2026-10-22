@@ -35,7 +35,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
  *
  * RESEND INBOUND EMAIL — the report arrives as a forwarded message.
  *
- *   Samuel emails Curt the Comp Report
+ *   Elliot emails Owen the Comp Report
  *     -> an Outlook rule forwards a copy to the Resend inbound address
  *     -> Resend emits `email.received`
  *     -> this route verifies the signature, gates the sender and subject,

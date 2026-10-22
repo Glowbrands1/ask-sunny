@@ -103,10 +103,10 @@ describe("what the line cites after the change", () => {
 });
 
 describe("a policy title in capitals is not a person", () => {
-  it("reads Ellie Sendgraff, and not Late Opening, as the employee", () => {
+  it("reads Wren Halvorsen, and not Late Opening, as the employee", () => {
     expect(
-      extractEmployeeNames("create corrective action for for Ellie Sendgraff for Late Opening from the policy manual. It is a verbal warning"),
-    ).toEqual(["Ellie Sendgraff"]);
+      extractEmployeeNames("create corrective action for for Wren Halvorsen for Late Opening from the policy manual. It is a verbal warning"),
+    ).toEqual(["Wren Halvorsen"]);
     expect(extractEmployeeNames("CA for Dana Moss about Dress Code")).toEqual(["Dana Moss"]);
   });
 

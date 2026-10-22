@@ -42,7 +42,7 @@ function document(overrides: Partial<KnowledgeDocument> = {}): KnowledgeDocument
     source: "upload",
     version: 2,
     previousVersions: [],
-    uploadedBy: "Paulyne",
+    uploadedBy: "Rosalyn",
     uploadedAt: "2026-09-07T12:00:00Z",
     updatedAt: "2026-09-07T12:00:00Z",
     indexed: true,

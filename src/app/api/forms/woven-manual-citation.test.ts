@@ -66,7 +66,7 @@ vi.mock("@/lib/forms/instance-scope", () => ({
           templateName: seed.name,
           layoutFamily: seed.layoutFamily,
           variantKey: seed.variants[0]?.key ?? null,
-          employeeName: "Paulyne Co",
+          employeeName: "Rosalyn Co",
           employeeRole: null,
           locationName: "MO Kansas City Wornall",
           formDate: "2026-09-29",
@@ -319,7 +319,7 @@ describe("a redraft keeps what the manager typed", () => {
     );
     /* The Action Plan is built from the section the redraft cited (District Manager feedback, 21 Oct 2026). */
     expect(persisted.values.action_plan).toBe(
-      `Management will review the Dress Code for The Company policy with Paulyne. ${CA_ACTION_PLAN_CLOSING}`,
+      `Management will review the Dress Code for The Company policy with Rosalyn. ${CA_ACTION_PLAN_CLOSING}`,
     );
     expect(persisted.provenance.action_plan).toMatchObject({
       source: ACTION_PLAN_SOURCE,
@@ -329,7 +329,7 @@ describe("a redraft keeps what the manager typed", () => {
   });
 
   it("keeps an Action Plan the manager typed, as it does every line of theirs", async () => {
-    state.values = [typed("action_plan", "Paulyne and I agreed she will wear the uniform skirt.")];
+    state.values = [typed("action_plan", "Rosalyn and I agreed she will wear the uniform skirt.")];
 
     await draft("She wore a mini skirt at the front desk today.", { keepManagerValues: true });
 
@@ -353,7 +353,7 @@ describe("a redraft keeps what the manager typed", () => {
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     /* No section cited: the built Action Plan names what Policy Violated names. */
     expect(state.persisted[0]!.values.action_plan).toBe(
-      `Management will review the Dress Code policy with Paulyne. ${CA_ACTION_PLAN_CLOSING}`,
+      `Management will review the Dress Code policy with Rosalyn. ${CA_ACTION_PLAN_CLOSING}`,
     );
   });
 });

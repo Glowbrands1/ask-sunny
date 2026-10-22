@@ -1,4 +1,4 @@
-> **Provenance.** Supplied by Paulyne Camacho on 2026-09-14 as authoritative
+> **Provenance.** Supplied by Rosalyn Calloway on 2026-09-14 as authoritative
 > business documentation for Bed Usage, Spa Wellness, Spa Conversion and
 > capital-performance analysis, and committed here verbatim so the code can
 > cite a file rather than an email. Where this document and an older note

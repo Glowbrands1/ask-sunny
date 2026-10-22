@@ -766,7 +766,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   /*
    * NAMED, BUT NOT DESCRIBED. A Corrective Action Form is drafted from the
    * account, and the policy citation is resolved from the offense that account
-   * supports — so a form created from "create ca for Ellie Sendgraff" alone
+   * supports — so a form created from "create ca for Wren Halvorsen" alone
    * comes back without one. It can still be created; the card says so, and
    * says that telling Sunny what happened redrafts it with the citation (see
    * `chat-redraft.ts`).
@@ -843,7 +843,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
  * ============================================================================
  *
  * Production feedback, 20 Oct 2026: a conversation that opened with a
- * Corrective Action Form for Ellie Sendgraff ran on about the Late Opening
+ * Corrective Action Form for Wren Halvorsen ran on about the Late Opening
  * policy, and "Create a Coaching Form from this conversation" then asked who
  * the form was for. Her name was in the conversation — just further back than
  * the six-turn window the facts are read from.
@@ -903,7 +903,7 @@ const NAME_CHECKED_TEMPLATES: ReadonlySet<string> = new Set([
  *
  * A name the directory did not settle — no roster, nobody by that name, a name
  * the manager chose to keep, or a form outside `NAME_CHECKED_TEMPLATES` — used
- * to go on the card exactly as typed, so "paulyne camacho" was printed on a
+ * to go on the card exactly as typed, so "rosalyn calloway" was printed on a
  * Demotion Form in lower case. Now: on the forms that keep their own name
  * handling, an EXACT directory match still lends its spelling (nothing else —
  * not the salon, and never a close match); otherwise the typed name is
@@ -1324,7 +1324,7 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
     }
 
     /*
-     * AND BY ITS ACCOUNT OF WHAT HAPPENED, in whatever words: "Ellie got to the
+     * AND BY ITS ACCOUNT OF WHAT HAPPENED, in whatever words: "Wren got to the
      * salon at 11:23 for a 9:30 shift" names nobody and no topic, and sending
      * it to retrieval would end the intake that just asked for it.
      */

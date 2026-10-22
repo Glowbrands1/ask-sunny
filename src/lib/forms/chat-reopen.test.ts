@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * "Change exit for ashley rogers" with no form in the conversation: the form
+ * "Change exit for lacey morrow" with no form in the conversation: the form
  * on file is found among the ones this actor may see and put in the thread —
  * a finalized one as a new draft of it — and nothing new is ever created.
  */
@@ -29,7 +29,7 @@ const row = (overrides: Partial<Row>): Row => ({
   id: "exit-1",
   templateKey: "stc-exit",
   templateName: "Resignation/Exit Form",
-  employeeName: "Ashley Rogers",
+  employeeName: "Lacey Morrow",
   status: "finalized",
   createdAt: "2026-10-01T12:00:00Z",
   revisesInstanceId: null,
@@ -103,7 +103,7 @@ beforeEach(() => {
 
 describe("bringing a form on file back into the conversation", () => {
   it("opens a finalized exit form as a new draft, in the thread", async () => {
-    const response = await ask("change exit for ashley rogers");
+    const response = await ask("change exit for lacey morrow");
     expect(state.revised).toEqual(["exit-1"]);
     expect(response!.formOpened).toEqual({
       instanceId: "exit-1-rev",
@@ -111,17 +111,17 @@ describe("bringing a form on file back into the conversation", () => {
       revisesInstanceId: "exit-1",
     });
     expect(response!.content).toContain(
-      "The **Resignation/Exit Form** for **Ashley Rogers** was finalized, so I opened a new draft of it",
+      "The **Resignation/Exit Form** for **Lacey Morrow** was finalized, so I opened a new draft of it",
     );
     expect(response!.content).toContain("Edit anything that needs changing below");
   });
 
   it("makes the change the same sentence asked for, on the new draft", async () => {
     state.correction = {
-      content: "Updated the **Resignation/Exit Form** for **Ashley Rogers**: Date that notice was given → September 27, 2026.",
+      content: "Updated the **Resignation/Exit Form** for **Lacey Morrow**: Date that notice was given → September 27, 2026.",
       formUpdate: { instanceId: "exit-1-rev", updated: ["notice_given_date"] },
     };
-    const response = await ask("duplicate exit for ashley rogers and change date notice given to 9-27-26");
+    const response = await ask("duplicate exit for lacey morrow and change date notice given to 9-27-26");
     expect(state.corrected).toEqual(["exit-1-rev"]);
     expect(response!.content).toContain("Date that notice was given → September 27, 2026");
     expect(response!.formUpdate).toEqual({ instanceId: "exit-1-rev", updated: ["notice_given_date"] });
@@ -130,7 +130,7 @@ describe("bringing a form on file back into the conversation", () => {
 
   it("opens a draft as it is, without revising anything", async () => {
     state.rows = [row({ status: "draft" })];
-    const response = await ask("edit the exit form for Ashley Rogers");
+    const response = await ask("edit the exit form for Lacey Morrow");
     expect(state.revised).toEqual([]);
     expect(response!.formOpened).toEqual({
       instanceId: "exit-1",
@@ -141,8 +141,8 @@ describe("bringing a form on file back into the conversation", () => {
   });
 
   it("asking twice lands on the draft the first request opened", async () => {
-    await ask("change exit for ashley rogers");
-    const second = await ask("change exit for ashley rogers");
+    await ask("change exit for lacey morrow");
+    const second = await ask("change exit for lacey morrow");
     expect(state.revised).toEqual(["exit-1"]);
     expect(second!.formOpened!.instanceId).toBe("exit-1-rev");
     // The finalized original is untouched until that draft is finalized.
@@ -150,7 +150,7 @@ describe("bringing a form on file back into the conversation", () => {
   });
 
   it("asking from the original's own card lands on its open draft too", async () => {
-    await ask("change exit for ashley rogers");
+    await ask("change exit for lacey morrow");
     const again = await ask("edit the exit form", "exit-1");
     expect(state.revised).toEqual(["exit-1"]);
     expect(again!.formOpened!.instanceId).toBe("exit-1-rev");
@@ -174,7 +174,7 @@ describe("bringing a form on file back into the conversation", () => {
       row({ id: "exit-other", employeeName: "Jane Doe", createdAt: "2026-10-10T12:00:00Z" }),
       row({ id: "coaching-1", templateKey: "coaching", templateName: "Coaching Form", createdAt: "2026-10-15T12:00:00Z" }),
     ];
-    const response = await ask("change exit for ashley rogers");
+    const response = await ask("change exit for lacey morrow");
     expect(state.revised).toEqual(["exit-new"]);
     expect(response!.formOpened!.revisesInstanceId).toBe("exit-new");
   });
@@ -200,7 +200,7 @@ describe("bringing a form on file back into the conversation", () => {
   it("leaves a proposal still waiting to be created to the proposal flow", async () => {
     const response = await reopenRequestedForm({
       request: new Request("http://localhost/api/chat"),
-      question: "change the exit form for Ashley Rogers",
+      question: "change the exit form for Lacey Morrow",
       history: [],
       today: "2026-10-20",
       continuingTemplateKey: "stc-exit",
@@ -209,7 +209,7 @@ describe("bringing a form on file back into the conversation", () => {
     expect(state.revised).toEqual([]);
   });
 
-  it.each(["create exit for Ashley Rogers", "how do I change an exit form?", "what is the dress code?"])(
+  it.each(["create exit for Lacey Morrow", "how do I change an exit form?", "what is the dress code?"])(
     "leaves %s to the ordinary flow",
     async (question) => {
       expect(await ask(question)).toBeNull();

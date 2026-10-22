@@ -82,7 +82,7 @@ const FILL_RULE = /_{3,}/;
 /** A sentence, or the tail of one. A colon is deliberately NOT in this set. */
 const SENTENCE_END = /[.,;!?]$/;
 /**
- * A contact row from a reference list — "Curt Bowen Owner curt@example.com" —
+ * A contact row from a reference list — "Owen Tremaine Owner owen@example.com" —
  * which is short, capitalised, and not a heading.
  */
 const CONTACT = /\S+@\S+|https?:\/\//i;

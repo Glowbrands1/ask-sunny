@@ -38,7 +38,7 @@ const SHARED: BulkUploadShared = {
   description: "",
   category: "policies_compliance",
   tags: ["attendance"],
-  uploadedBy: "Paulyne Camacho",
+  uploadedBy: "Rosalyn Calloway",
 };
 
 function file(name: string): BulkUploadFile {

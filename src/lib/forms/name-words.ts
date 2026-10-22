@@ -60,15 +60,15 @@ export const NOT_A_NAME = new Set([
  * ============================================================================
  *
  * The capital letter used to be the ONLY evidence that a word was a name, so
- * "Corrective Action form for paulyne", "paulyne co" typed as the answer to
+ * "Corrective Action form for rosalyn", "rosalyn co" typed as the answer to
  * "who is this for?", and "test test" all produced no employee — and the form
  * could not be created. Managers type names in lower case (and in capitals) all
  * the time; the casing is not what makes something a name.
  *
  * Without capitals the POSITION is the evidence — see `readTypedName` — and
  * this list is what stops that position from swallowing the rest of the
- * sentence: "form for paulyne because she was late" is the name "paulyne",
- * not "paulyne because". It is also what keeps an ordinary reply ("thanks",
+ * sentence: "form for rosalyn because she was late" is the name "rosalyn",
+ * not "rosalyn because". It is also what keeps an ordinary reply ("thanks",
  * "ok") or an incident topic ("a form about attendance") from being read as a
  * person. It is never consulted for a capitalised name the existing patterns
  * found, so none of those change.

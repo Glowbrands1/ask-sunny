@@ -29,11 +29,11 @@ import type { ManualChunk } from "./official-policy-manual";
 
 describe("the four conduct cases", () => {
   it.each([
-    ["Create a corrective action for Colene for missing the Woven deadline.", "deadline"],
+    ["Create a corrective action for Delphine for missing the Woven deadline.", "deadline"],
     ["for not meeting the woven 9-30-26 deadline. this is a verbal warning.", "deadline"],
     ["Her Woven training is overdue.", "deadline"],
     ["She didn't complete her closing duties.", "task"],
-    ["Colene hasn't completed her required Woven items.", "task"],
+    ["Delphine hasn't completed her required Woven items.", "task"],
     ["She did not finish the training module by the deadline she was given.", "task"],
     ["She was told to restock the lotion wall and refused.", "direction"],
     ["She refused to follow my instructions.", "direction"],
@@ -50,7 +50,7 @@ describe("the four conduct cases", () => {
     "She wore slippers on shift today.",
     "She was twenty minutes late.",
     "Her upgrade rate is below goal again.",
-    "Create a corrective action for Colene.",
+    "Create a corrective action for Delphine.",
     "Did she miss the Woven deadline?",
   ])("suggests nothing for %s", (text) => {
     expect(readCaPolicy(text).suggestion).toBeNull();
@@ -84,7 +84,7 @@ describe("an account that reads two ways is a question", () => {
 describe("a policy the manager named wins", () => {
   it("named outright, in the words HR used", () => {
     const reading = readCaPolicy(
-      ["write a corrective action for colene for not meeting the woven deadline", "the policy violated is the standards of conduct"].join(JOIN),
+      ["write a corrective action for delphine for not meeting the woven deadline", "the policy violated is the standards of conduct"].join(JOIN),
     );
     expect(reading).toMatchObject({ stated: "standards_of_conduct", suggestion: "standards_of_conduct", source: "stated" });
   });
@@ -148,7 +148,7 @@ const MANUAL: ManualChunk[] = [
 describe("grounded in the manual as it reads now", () => {
   it("rests a missed deadline on the manual's own line", () => {
     const grounding = groundConductPolicy({
-      reading: readCaPolicy("Create a corrective action for Colene for missing the Woven deadline."),
+      reading: readCaPolicy("Create a corrective action for Delphine for missing the Woven deadline."),
       chunks: MANUAL,
     });
     expect(grounding).toMatchObject({

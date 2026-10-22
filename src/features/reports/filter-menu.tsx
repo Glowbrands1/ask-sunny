@@ -300,7 +300,7 @@ export interface MenuOption {
  * otherwise happen.
  *
  * `Select all` and the reset action operate on what the search box currently
- * shows, so searching "Bowen" and pressing Select all selects those and nothing
+ * shows, so searching "Tremaine" and pressing Select all selects those and nothing
  * else — the alternative silently selects rows the user cannot see.
  */
 function MultiSelectBody({

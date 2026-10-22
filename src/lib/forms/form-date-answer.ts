@@ -76,7 +76,7 @@ const FOLLOW_UP_BEFORE =
 /**
  * A date that names an EARLIER STEP, not this form — "got a verbal warning on
  * september 21", "was coached on 9/2", "previous corrective action 8/15".
- * Production: "create ca for paulyne co she was late today, got verbal warning
+ * Production: "create ca for rosalyn co she was late today, got verbal warning
  * on september 21" dated the new Corrective Action Form September 21, the day
  * of the PRIOR warning. Read within the date's own clause, and only with a
  * past-tense or "previous/prior/already" marker, so "give her a written

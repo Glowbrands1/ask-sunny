@@ -32,7 +32,7 @@ import { GET, POST } from "./route";
  */
 
 const SECRET = "whsec_aW52ZW50ZWQtcmVzZW5kLXdlYmhvb2stc2lnbmluZy1rZXk=";
-const SAMUEL = "Samuel.Brockie@glowbrands.com";
+const SAMUEL = "Elliot.Fairbanks@glowbrands.com";
 const EMAIL_ID = "invented-resend-email-id-9f2c";
 /** The real Sales Totals sender, now known from the forwarding rule. */
 const STC_SENDER = "reports@suntancity.com";
@@ -42,9 +42,9 @@ const PAYLOAD = {
   created_at: "2026-09-01T08:59:00.000Z",
   data: {
     email_id: EMAIL_ID,
-    from: `Brockie, Samuel <${SAMUEL}>`,
+    from: `Fairbanks, Elliot <${SAMUEL}>`,
     to: ["ask-sunny-reports@intiozorie.resend.app"],
-    subject: "Comp Report 2026 08 30 - Bowen, Curt",
+    subject: "Comp Report 2026 08 30 - Tremaine, Owen",
     message_id: "<invented.upstream@glowbrands.com>",
     attachments: [
       {
@@ -372,7 +372,7 @@ describe("a Sales Totals delivery", () => {
       email_id: "invented-sales-totals-email-4b71",
       from: `STC Reports <${STC_SENDER}>`,
       to: ["ask-sunny-reports@intiozorie.resend.app"],
-      subject: "Sales Totals for Bowen",
+      subject: "Sales Totals for Tremaine",
       message_id: "<invented.upstream@suntancity.test>",
       attachments: [
         {
@@ -433,7 +433,7 @@ describe("a Sales Totals delivery", () => {
       request({
         body: {
           ...SALES_TOTALS_PAYLOAD,
-          data: { ...SALES_TOTALS_PAYLOAD.data, subject: "Comp Report 2026 08 30 - Bowen, Curt" },
+          data: { ...SALES_TOTALS_PAYLOAD.data, subject: "Comp Report 2026 08 30 - Tremaine, Owen" },
         },
       }),
     );
@@ -470,17 +470,17 @@ describe("a Spa Engagement delivery", () => {
    * Report's, whose fragment is the constant `"comp report"` — refused it.
    *
    * THE SENDER IS DELIBERATELY NOT ON `REPORTING_APPROVED_SENDERS`, which is
-   * set to Samuel alone in `beforeEach`. A Spa Engagement sender must not have
+   * set to Elliot alone in `beforeEach`. A Spa Engagement sender must not have
    * to be approved for the Comp Report as well.
    */
-  const SPA_SENDER = "Paulyne.Camacho@glowbrands.com";
+  const SPA_SENDER = "Rosalyn.Calloway@glowbrands.com";
 
   const SPA_PAYLOAD = {
     type: "email.received",
     created_at: "2026-09-17T13:43:00.000Z",
     data: {
       email_id: "invented-spa-engagement-email-7c3a",
-      from: `Camacho, Paulyne <${SPA_SENDER}>`,
+      from: `Calloway, Rosalyn <${SPA_SENDER}>`,
       to: ["ask-sunny-reports@intiozorie.resend.app"],
       subject: "Spa Sessions",
       message_id: "<invented.upstream.spa@glowbrands.com>",
@@ -577,7 +577,7 @@ describe("a Spa Engagement delivery", () => {
           ...SPA_PAYLOAD,
           data: {
             ...SPA_PAYLOAD.data,
-            subject: "Comp Report 2026 09 17 - Bowen, Curt",
+            subject: "Comp Report 2026 09 17 - Tremaine, Owen",
           },
         },
       }),
@@ -603,7 +603,7 @@ describe("a Spa Engagement delivery", () => {
       request({
         body: {
           ...PAYLOAD,
-          data: { ...PAYLOAD.data, from: `Camacho, Paulyne <${SPA_SENDER}>` },
+          data: { ...PAYLOAD.data, from: `Calloway, Rosalyn <${SPA_SENDER}>` },
         },
       }),
     );

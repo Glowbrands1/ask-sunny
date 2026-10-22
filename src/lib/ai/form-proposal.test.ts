@@ -1518,11 +1518,11 @@ describe("suggested forms lead with the one the manager asked for", () => {
   };
 
   // A second rung: coached once, and it happened again.
-  const ACCOUNT = "Paisley Peklo was late again. I verbally coached her last week and she was late again today.";
+  const ACCOUNT = "Juniper Brandvold was late again. I verbally coached her last week and she was late again today.";
 
   it('puts the Corrective Action Form first after "write a CA for …"', async () => {
     expect(
-      await suggested([managerTurn("m1", "write a CA for Paisley Peklo"), managerTurn("m2", ACCOUNT)]),
+      await suggested([managerTurn("m1", "write a CA for Juniper Brandvold"), managerTurn("m2", ACCOUNT)]),
     ).toEqual(["Corrective Action Form", "Coaching Form"]);
   });
 

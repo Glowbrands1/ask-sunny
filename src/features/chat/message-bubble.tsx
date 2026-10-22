@@ -193,7 +193,7 @@ export function MessageBubble({
           ) : message.formInstanceRef ? (
             /*
               A FORM ALREADY ON FILE, OPENED BY THIS TURN — "edit the exit
-              form for Ashley Rogers", or the new draft of a finalized one. No
+              form for Lacey Morrow", or the new draft of a finalized one. No
               proposal: the form existed before this answer. The card is the
               same live editor a created form gets.
             */

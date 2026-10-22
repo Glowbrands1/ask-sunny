@@ -4,7 +4,7 @@ import type { AccessScope } from "@/types";
 import type { InstanceListFilter, InstanceRow } from "./instances";
 
 /**
- * "Does employee Ellie Sendgraff have previous coachings?" — production
+ * "Does employee Wren Halvorsen have previous coachings?" — production
  * feedback: Sunny said it could not look that up and sent the manager to Form
  * Monitoring. These prove the gate fires on that class of question, that the
  * read uses the forms visibility rule (and nothing wider), and that the block
@@ -58,7 +58,7 @@ function row(overrides: Partial<InstanceRow>): InstanceRow {
     templateVersionId: "v",
     templateVersion: 1,
     variantKey: null,
-    employeeName: "Ellie Sendgraff",
+    employeeName: "Wren Halvorsen",
     employeeRole: "Tanning Consultant",
     locationId: "loc-101",
     locationName: "Salon 101",
@@ -97,7 +97,7 @@ beforeEach(() => {
 
 describe("isFormRecordsQuestion", () => {
   it.each([
-    "does employee ellie sendgraff have previous coachings",
+    "does employee wren halvorsen have previous coachings",
     "Has Dana been written up before?",
     "Was she ever coached?",
     "what is Dana Moss's coaching history",
@@ -105,10 +105,10 @@ describe("isFormRecordsQuestion", () => {
     "Is there anything on file for Marcus?",
     "how many coaching forms have I filed this month",
     "show me the write-ups for Jordan",
-    "Any prior corrective action for Ellie?",
-    "past coaching file for ellie sendgraff",
-    "does ellie have a past coaching file",
-    "past ca for ellie sendgraff",
+    "Any prior corrective action for Wren?",
+    "past coaching file for wren halvorsen",
+    "does wren have a past coaching file",
+    "past ca for wren halvorsen",
     "any past CAs for Dana?",
     "does dana have a previous CA form",
     "past corrective action form for Marcus",
@@ -117,7 +117,7 @@ describe("isFormRecordsQuestion", () => {
   });
 
   it.each([
-    "create a coaching form for Ellie Sendgraff",
+    "create a coaching form for Wren Halvorsen",
     "do we have a coaching form?",
     "what is our corrective action process?",
     "what should I focus on today?",
@@ -129,18 +129,18 @@ describe("isFormRecordsQuestion", () => {
 
 describe("candidateNameWords", () => {
   it("keeps the name and drops the question's vocabulary", () => {
-    expect(candidateNameWords("does employee ellie sendgraff have previous coachings")).toEqual([
-      "ellie",
-      "sendgraff",
+    expect(candidateNameWords("does employee wren halvorsen have previous coachings")).toEqual([
+      "wren",
+      "halvorsen",
     ]);
     expect(candidateNameWords("What is Dana Moss's coaching history?")).toEqual(["dana", "moss"]);
-    expect(candidateNameWords("past ca for ellie sendgraff")).toEqual(["ellie", "sendgraff"]);
-    expect(candidateNameWords("past coaching file for Ellie Sendgraff")).toEqual(["ellie", "sendgraff"]);
+    expect(candidateNameWords("past ca for wren halvorsen")).toEqual(["wren", "halvorsen"]);
+    expect(candidateNameWords("past coaching file for Wren Halvorsen")).toEqual(["wren", "halvorsen"]);
   });
 });
 
 describe("loadFormRecords", () => {
-  const question = "does employee ellie sendgraff have previous coachings";
+  const question = "does employee wren halvorsen have previous coachings";
 
   it("reads Form Monitoring under the forms visibility and lists that person's forms", async () => {
     state.rows = [
@@ -148,7 +148,7 @@ describe("loadFormRecords", () => {
       row({ formDate: "2026-10-02", status: "draft" }),
       // Another salon's coaching record for the same name: never visible.
       row({ formDate: "2026-08-01", locationId: "loc-999", locationName: "Salon 999" }),
-      row({ employeeName: "Ellie Park", formDate: "2026-07-01" }),
+      row({ employeeName: "Wren Park", formDate: "2026-07-01" }),
     ];
 
     const result = await loadFormRecords({ actor: SALON_DIRECTOR, question, today: "2026-10-20" });
@@ -159,7 +159,7 @@ describe("loadFormRecords", () => {
       ownNullLocationCreatedBy: "user-1",
       // Their own forms at other salons, re-checked by `visibleInstances`.
       ownCreatedBy: "user-1",
-      employeeNameWords: ["ellie", "sendgraff"],
+      employeeNameWords: ["wren", "halvorsen"],
     });
 
     const block = result!.block;
@@ -171,7 +171,7 @@ describe("loadFormRecords", () => {
     expect(block).toContain("draft — not finalized");
     expect(block).not.toContain("Salon 999");
     // A first-name-only match is offered as a question, not as theirs.
-    expect(block).toMatch(/Possible matches[\s\S]*Ellie Park/);
+    expect(block).toMatch(/Possible matches[\s\S]*Wren Park/);
     expect(block).toContain("only the salons this user may see");
   });
 
@@ -190,11 +190,11 @@ describe("loadFormRecords", () => {
     const result = await loadFormRecords({
       actor: SALON_DIRECTOR,
       question: "has she been written up before?",
-      previousQuestion: "tell me about ellie sendgraff",
+      previousQuestion: "tell me about wren halvorsen",
       today: "2026-10-20",
     });
 
-    expect(state.listCalls[0]?.filter?.employeeNameWords).toEqual(["ellie", "sendgraff"]);
+    expect(state.listCalls[0]?.filter?.employeeNameWords).toEqual(["wren", "halvorsen"]);
     expect(result!.block).toContain("Forms naming the person in the question (1)");
   });
 
@@ -208,7 +208,7 @@ describe("loadFormRecords", () => {
       today: "2026-10-20",
     });
 
-    expect(state.listCalls[0]?.filter).toEqual({ employeeNameWords: ["ellie", "sendgraff"] });
+    expect(state.listCalls[0]?.filter).toEqual({ employeeNameWords: ["wren", "halvorsen"] });
     expect(result!.block).toContain("Salon 999");
     expect(result!.block).toContain("every salon");
   });

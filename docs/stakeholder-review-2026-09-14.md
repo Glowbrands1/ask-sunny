@@ -306,7 +306,7 @@ is a compliment and is recorded as such.
 | 1 | Test data live on the Overview | **COMPLETE** — roster guard on name *and* salon id; the rest is a production action, see `test-data-cleanup.md` |
 | 2 | Spa Wellness statuses identical per equipment type | **COMPLETE** — `equipmentRowPerformance`, each row classified against its own peer average |
 | 3 | Spa Engagement rank `#-11` | **COMPLETE** — axis bound to `[1, population]`, invalid stored ranks dropped |
-| 4 | PPTA has three definitions | **COMPLETE** — one authority module; two stale knowledge documents named for the model; the documents are Paulyne's to re-upload |
+| 4 | PPTA has three definitions | **COMPLETE** — one authority module; two stale knowledge documents named for the model; the documents are Rosalyn's to re-upload |
 | 5 | `$0.00` and `$0.19` look like parsing | **COMPLETE** — traced to source and both supported; see `ppta-trace-2026-09-14.md` |
 | 6 | Overview totals 15 / 16 / 20 | **COMPLETE** — three disjoint buckets that sum, with the arithmetic on the card |
 | 7 | Spa Wellness 61 vs 57 | **COMPLETE** — units vs salon-and-equipment rows; the earlier "four idle units" answer was wrong and is corrected |
@@ -630,7 +630,7 @@ again under v2 — the version bump is what makes that possible, and it needs th
 ingestion credentials.
 
 **Action for an administrator:** re-ingest, newest first,
-`Comp Report 2026 09 13 - Bowen, Curt.xlsx`. Each re-ingestion supersedes its
+`Comp Report 2026 09 13 - Tremaine, Owen.xlsx`. Each re-ingestion supersedes its
 own period's facts and writes the block without the phantom; the warning
 `mirrored_basis_year` in the ingestion record is the confirmation that the guard
 fired.
@@ -669,4 +669,4 @@ reading of the migrations could otherwise know it exists.
   email, and it is revoked from `public` and `anon`. An invited user must be
   able to activate themselves.
 - **Leaked-password protection is disabled.** A Supabase Auth dashboard setting,
-  not a code change. One toggle, and it is Paulyne's to make.
+  not a code change. One toggle, and it is Rosalyn's to make.

@@ -303,7 +303,7 @@ describe("stripMarkers", () => {
 describe("an answer given while a form is open in the conversation", () => {
   const openForm = {
     templateName: "Corrective Action Form",
-    employeeName: "Ellie Sendgraff",
+    employeeName: "Wren Halvorsen",
     status: "draft" as const,
     lines: [{ label: "Type of Warning", value: "Verbal Warning" }],
     unverifiedPolicy: ["Direct policy from official manual"],
@@ -319,7 +319,7 @@ describe("an answer given while a form is open in the conversation", () => {
       hasContext: true,
       openForm,
     });
-    expect(prompt).toContain("A FORM IS OPEN IN THIS CONVERSATION: the Corrective Action Form for Ellie Sendgraff");
+    expect(prompt).toContain("A FORM IS OPEN IN THIS CONVERSATION: the Corrective Action Form for Wren Halvorsen");
     expect(prompt).toContain('Type of Warning: "Verbal Warning"');
     expect(prompt).toMatch(/NEVER say no form has been created/);
     expect(prompt).toMatch(/add the Late Opening policy/);

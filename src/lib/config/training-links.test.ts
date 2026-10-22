@@ -18,7 +18,7 @@ import {
  *
  * The URLs are facts about the customer's tenancy that this repository does not
  * know, so the unconfigured state is the state this ships in and will stay in
- * until Paulyne supplies them. It is therefore the state most worth testing —
+ * until Rosalyn supplies them. It is therefore the state most worth testing —
  * the configured one will be seen by somebody the day it is set up, and the
  * empty one is the one that has to be right unattended.
  *

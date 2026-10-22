@@ -263,9 +263,9 @@ describe("the invitation form", () => {
 describe("Woven suggestions", () => {
   const FOUND = {
     status: "found",
-    employee: { name: "Carley Rowe", positionName: "Salon Director", primaryLocationName: "KC Wornall", employmentStatus: "active" },
+    employee: { name: "Harper Lyle", positionName: "Salon Director", primaryLocationName: "KC Wornall", employmentStatus: "active" },
     suggestion: {
-      displayName: "Carley Rowe",
+      displayName: "Harper Lyle",
       role: "salon_director",
       scopeLevel: "salon",
       primaryAreaId: "loc-0306",
@@ -282,7 +282,7 @@ describe("Woven suggestions", () => {
   it("shows a match but fills nothing until the administrator applies it", async () => {
     wovenAnswer = FOUND;
     const { ui, dialog } = await openInvite();
-    await typeEmail(dialog, ui, "carley.rowe@suntancity.com");
+    await typeEmail(dialog, ui, "harper.lyle@suntancity.com");
     await within(dialog).findByText("Found in Woven");
 
     expect((within(dialog).getByLabelText("Full name") as HTMLInputElement).value).toBe("");
@@ -294,10 +294,10 @@ describe("Woven suggestions", () => {
   it("applies the suggestion on request, and every field stays editable", async () => {
     wovenAnswer = FOUND;
     const { ui, dialog } = await openInvite();
-    await typeEmail(dialog, ui, "carley.rowe@suntancity.com");
+    await typeEmail(dialog, ui, "harper.lyle@suntancity.com");
     await ui.click(await within(dialog).findByRole("button", { name: "Apply suggestions" }));
 
-    expect((within(dialog).getByLabelText("Full name") as HTMLInputElement).value).toBe("Carley Rowe");
+    expect((within(dialog).getByLabelText("Full name") as HTMLInputElement).value).toBe("Harper Lyle");
     expect((within(dialog).getByLabelText("Role") as HTMLSelectElement).value).toBe("salon_director");
     expect((within(dialog).getByLabelText("Primary area") as HTMLSelectElement).value).toBe("loc-0306");
     expect(chips(dialog).getByText("MO Kansas City Liberty")).toBeTruthy();
