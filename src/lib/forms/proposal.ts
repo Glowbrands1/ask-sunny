@@ -264,6 +264,47 @@ function isRosterSalonName(candidate: string): boolean {
   return ROSTER_NAME_KEYS.has(storeNameKey(candidate)) || isMultiWordSalonName(candidate);
 }
 
+/*
+ * ============================================================================
+ * "KEARNEY", TYPED ON ITS OWN, IS WHERE — NEVER WHO
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026 (F-02). After "create a coaching form for pat rivera …", a
+ * manager answering the salon question with "kearney" — or "sorry, it's grand
+ * island" — had the reply read as the ANSWER to "who is this for?", and the
+ * card's employee became "Kearney". A single-word salon is deliberately not a
+ * place in prose (`ROSTER_NAME_KEYS`: Kearney is also a surname), but a reply
+ * that is nothing except a salon's name is not somebody's name.
+ *
+ * THE ROSTER IS THE EVIDENCE, read three ways: every salon's name with and
+ * without its state ("kearney", "lawrence", "grand island"); the city several
+ * salons share ("lincoln", "omaha", "kansas city"); and what tells those apart
+ * when it is one word ("wornall", "liberty", "pacific"). Only replies and
+ * correction clauses use this — a name after "<form> for", or marked as the
+ * employee, is still read as given — so "the employee is Pat Kearney" and
+ * "coaching form for lawrence smith" are unchanged. A person whose name is
+ * exactly a salon's ("Lawrence") is asked for again rather than guessed.
+ */
+const PLACE_REPLY_KEYS: ReadonlySet<string> = (() => {
+  const shorts = PRODUCTION_SALONS.map((salon) => storeNameKey(salon.name).replace(/^[a-z]{2} /, ""));
+  const keys = new Set<string>([...PRODUCTION_SALONS.map((salon) => storeNameKey(salon.name)), ...shorts]);
+  for (const short of shorts) {
+    const words = short.split(" ");
+    for (let length = 1; length < words.length; length += 1) {
+      const city = words.slice(0, length).join(" ");
+      if (shorts.filter((other) => other === city || other.startsWith(`${city} `)).length < 2) continue;
+      keys.add(city);
+      const rest = words.slice(length).join(" ");
+      if (!rest.includes(" ")) keys.add(rest);
+    }
+  }
+  return keys;
+})();
+
+function isPlaceReply(candidate: string): boolean {
+  return PLACE_REPLY_KEYS.has(storeNameKey(candidate)) || isRosterSalonName(candidate);
+}
+
 function opensWithRosterState(candidate: string): boolean {
   const [head, next] = candidate.split(/\s+/);
   return (
@@ -837,7 +878,8 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
       .split(/\s+/)
       .filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+    // "kearney", "sorry, it's grand island": a reply that is only a salon. See `isPlaceReply`.
+    if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
   /*
@@ -868,7 +910,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   if (listed) {
     const words = listed.trim().split(/\s+/).filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+    if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
   return settle(strong, found, text);
@@ -1103,13 +1145,20 @@ export function correctsTheEmployee(text: string): boolean {
   return CORRECTION_CUE.test(text) || negatedNames(text).length > 0;
 }
 
-/** In a correction, a sentence that is only a name is the answer: "No, not Jordan. Avery." */
+/**
+ * In a correction, a sentence that is only a name is the answer: "No, not
+ * Jordan. Avery." So is a CLAUSE — "not pat rivera, it's dana moss", "wrong
+ * person - its jordan testperson" — because a correction typed on a phone runs
+ * its parts together with commas, dashes and "and", not full stops (QA, 22 Oct
+ * 2026: the comma form left no employee at all; Ask Bubbles already read it).
+ * A clause that is only a salon is where, not who (`isPlaceReply`).
+ */
 function sentenceAnswers(text: string): string[] {
   const names: string[] = [];
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+|\s*[,;]\s*|\s+[-–—]\s+|\s+(?:and|but|then)\s+/)) {
     const words = withoutAnswerLead(sentence.trim().replace(/[.?!]+$/, "")).split(/\s+/).filter(Boolean);
     const candidate = words.length > 0 && words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) names.push(candidate);
+    if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) names.push(candidate);
   }
   return names;
 }

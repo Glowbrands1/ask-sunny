@@ -359,6 +359,67 @@ const MULTI: AccessScope = { level: "salon", primaryAreaId: "loc-0310", alsoCove
 const DISTRICT: AccessScope = { level: "district", primaryAreaId: "dist-dugan-rachael", alsoCoversAreaIds: [] };
 const OPEN = "create a coaching form for pat rivera, late 3 times this week";
 
+describe("F-02: a salon reply never replaces the employee — on the card or on the saved form", () => {
+  it.each(["at kearney", "sorry, it's at kearney", "she works at kearney", "grand island"])(
+    "salon director, a salon outside their own: %s",
+    async (reply) => {
+      state.scope = SINGLE;
+      const { proposal } = await conversation([OPEN, reply]);
+      expect(proposal.templateKey).toBe("coaching");
+      expect(proposal.employeeName).toBe("Pat Rivera");
+      // Not theirs: never filed against it.
+      expect(proposal.locationId).not.toBe("loc-0309");
+      expect(proposal.locationId).not.toBe("loc-0307");
+    },
+  );
+
+  it.each(["kearney", "Kearney", "KEARNEY", "lawrence", "omaha", "sorry, it's grand island"])(
+    "a reply that is only a one-word salon never becomes the employee: %s",
+    async (reply) => {
+      state.scope = SINGLE;
+      const responses = await everyTurn([OPEN, reply]);
+      expect(responses[0]!.formProposal!.employeeName).toBe("Pat Rivera");
+      expect(responses[1]?.formProposal?.employeeName ?? "Pat Rivera").toBe("Pat Rivera");
+    },
+  );
+
+  it("two salons: naming the second one keeps the employee, and the saved form carries both", async () => {
+    state.scope = MULTI;
+    const { proposal, form } = await filed([OPEN, "sorry, it's at lincoln o street"], "Pat Rivera was late three times this week.");
+    expect(proposal).toMatchObject({ employeeName: "Pat Rivera", locationId: "loc-0311", status: "ready" });
+    expect(form.instance.employeeName).toBe("Pat Rivera");
+    expect(form.instance.locationId).toBe("loc-0311");
+  });
+
+  it("a district manager: the employee stays, and the salon stays fail-closed", async () => {
+    state.role = "district_manager";
+    state.scope = DISTRICT;
+    const { proposal } = await conversation([OPEN, "at kearney"]);
+    // A district scope reads no directory (fail-closed), so the manager's spelling stands.
+    expect(proposal.employeeName).toBe("pat rivera");
+    expect(proposal.locationId).toBeNull();
+    expect(proposal.locationResolution).toBe("unavailable");
+  });
+
+  it("with nobody named yet, a salon reply is not the employee", async () => {
+    for (const reply of ["kearney", "at kearney", "grand island"]) {
+      const responses = await everyTurn(["i need a coaching form", reply]);
+      expect(responses[1]?.formProposal?.employeeName ?? null).toBeNull();
+    }
+  });
+
+  it("an explicit change of person still changes it, and is what gets saved", async () => {
+    const { proposal, form } = await filed([OPEN, "at kearney", "actually it's for sam jones"], "Sam Jones was late.");
+    expect(proposal.employeeName).toBe("Sam Jones");
+    expect(form.instance.employeeName).toBe("Sam Jones");
+  });
+
+  it("'not pat rivera, it's dana moss' names Dana Moss", async () => {
+    const { proposal } = await conversation([OPEN, "not pat rivera, it's dana moss"]);
+    expect(proposal.employeeName).toBe("dana moss");
+  });
+});
+
 describe("spelling: the manager's own, unless the directory matches exactly", () => {
   it("off the directory: as typed, on the card and on the saved form", async () => {
     const { proposal, form } = await filed(["coaching form for jane doe, late twice"], "Jane was late.");
