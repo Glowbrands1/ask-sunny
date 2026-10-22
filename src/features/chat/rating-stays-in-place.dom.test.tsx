@@ -6,6 +6,18 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { ChatConversation } from "@/types";
 
+/*
+ * THE FIRST TEST IN THIS FILE PAYS FOR IMPORTING THE WHOLE CHAT SCREEN.
+ * `renderChat` imports `@/app/providers` and `./chat-screen` inside the test,
+ * so the first one takes 4.6–6.2 s against the 5 s default while every later
+ * test takes 1–3 s. QA, 22 Oct 2026: 10 alternating runs of this file and its
+ * sibling — 17 of 220 executions failed without this line (every one a timeout,
+ * or the next test finding the button a timed-out test left rendered), 0 of
+ * 220 with it. More time, not fewer checks — the same headroom
+ * `import-every-role.dom.test.tsx` has (7b3edea).
+ */
+vi.setConfig({ testTimeout: 20_000 });
+
 /**
  * =============================================================================
  * RATING A CONVERSATION, INSIDE THE REAL CHAT SCREEN

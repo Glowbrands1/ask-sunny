@@ -18,7 +18,13 @@ import { EXIT_CORRECTABLE_KEYS, exitCorrectionValues } from "./exit-details";
 import { isExitDocumentKeys } from "./exit-draft";
 import { authorizeInstance } from "./instance-scope";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
-import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection, payrollDeductReply } from "./payroll-deduct";
+import {
+  PAYROLL_DEDUCT_KEY,
+  payrollDeductChecked,
+  payrollDeductCorrection,
+  payrollDeductReply,
+  payrollDeductUnclear,
+} from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { saveInstanceValues } from "./instances";
@@ -65,7 +71,13 @@ export async function correctActiveForm(input: {
   const lastAssistant =
     [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
   const payroll = payrollDeductCorrection(input.question) ?? payrollDeductReply(input.question, lastAssistant);
-  if (!employmentCorrection && !exitCorrection && !payroll) return null;
+  /*
+   * Something about the deduction that is not a clear Yes or No — "hold off on
+   * the $25 payroll deduction". On a form that asks the question it clears the
+   * answer and asks again (see below), never leaving a Yes in place.
+   */
+  const payrollUnclear = !payroll && payrollDeductUnclear(input.question);
+  if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -90,7 +102,7 @@ export async function correctActiveForm(input: {
   );
   // The Exit Form, read off the pinned version's keys as the drafting route does.
   const isExit = !kind && isExitDocumentKeys(responsibilityMap(document, variantKey).keys());
-  if (!kind && !isExit && !(asksPayroll && payroll)) return null;
+  if (!kind && !isExit && !(asksPayroll && (payroll || payrollUnclear))) return null;
   /*
    * ==========================================================================
    * A NEW REQUEST IS NEVER A CORRECTION TO THE LAST FORM
@@ -139,7 +151,7 @@ export async function correctActiveForm(input: {
     ? employmentCorrection
     : isExit
       ? exitValues
-      : { values: {}, checked: payrollDeductChecked(payroll) };
+      : { values: {}, checked: payrollUnclear ? { [PAYROLL_DEDUCT_KEY]: [] } : payrollDeductChecked(payroll) };
   if (!correction) return null;
 
   const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
@@ -291,6 +303,21 @@ export async function correctActiveForm(input: {
     lines.push(
       "",
       payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction.",
+    );
+  }
+  /*
+   * AN UNCLEAR PAYROLL STATEMENT ABOUT THIS FORM CLEARS THE ANSWER AND ASKS.
+   * QA, 22 Oct 2026: after a form with "Yes" was created, "hold off on the $25
+   * payroll deduction" or "not sure about the payroll deduction anymore" left
+   * the saved Yes — and the Action Plan's deduction sentence — in place while
+   * the chat moved on. A Yes the manager may have withdrawn is never kept: the
+   * box is cleared, the plan no longer states a deduction, and the manager is
+   * asked. Their next "yes" or "no" answers it (`payrollDeductReply`).
+   */
+  if (payrollUnclear && written.includes(PAYROLL_DEDUCT_KEY)) {
+    lines.push(
+      "",
+      `"${input.question.trim()}" isn't a clear Yes or No, so I cleared the answer rather than keep a Yes on the form. **Is payroll deduct applicable?** Yes or No?`,
     );
   }
 

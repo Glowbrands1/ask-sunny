@@ -233,6 +233,7 @@ describe("the chat form picker and permissions", () => {
 
 /* ============================================================ the reply == */
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("what Ask Sunny says beside the proposal", () => {
   it("asks only who it is for when only the form was named — no numbered intake", async () => {
     const proposals = await load([exitForm()]);
@@ -480,6 +481,7 @@ describe("HR feedback 30 Sep — the Delphine exit form", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("QA 1 — natural-language retrieval", () => {
   it.each([
     ["pull up the exit form", null],

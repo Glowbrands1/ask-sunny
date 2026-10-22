@@ -293,7 +293,7 @@ export function ReviewsLeaderboard({
                       storeCode: location.storeCode,
                       week: WEEK_CURRENT,
                     })}
-                    className="block text-[12.5px] font-black text-foreground hover:underline"
+                    className="flex min-h-6 items-center text-[12.5px] font-black text-foreground hover:underline"
                   >
                     {location.locationName}
                   </Link>
@@ -326,7 +326,7 @@ export function ReviewsLeaderboard({
                         qualifying: "yes",
                       })}
                       className={cn(
-                        "text-[15px] font-black tabular-nums hover:underline",
+                        "inline-flex min-h-6 min-w-6 items-center text-[15px] font-black tabular-nums hover:underline lg:justify-end",
                         location.qualifyingThisWeek > 0 ? "text-foreground" : "text-muted-foreground",
                       )}
                     >

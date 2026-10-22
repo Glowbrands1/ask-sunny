@@ -94,6 +94,33 @@ describe("2b. corrective action is the progression, and never resolves to a temp
     });
   });
 
+  /* October 2026 (ported from Ask Bubbles 4cbb84c): "write a CA for …" was answered as a question. */
+  it.each([
+    "write a CA for Juniper Brandvold",
+    "write a corrective action for Paisley",
+    "please write an ca for dana moss",
+    "can you write a CA for Dana",
+  ])("%s asks for a document", (question) => {
+    expect(detectTemplateIntent(question)).toEqual({
+      kind: "corrective_action",
+      requestedCreation: true,
+    });
+  });
+
+  it.each(["how do I write a corrective action", "how do I write a CA?", "how do I write her up?"])(
+    "%s is still a question",
+    (question) => {
+      expect(detectTemplateIntent(question)).toMatchObject({ requestedCreation: false });
+    },
+  );
+
+  it.each(["write her up", "I need to write him up for being late", "write them up for the cash shortage"])(
+    "%s asks for the Corrective Action Form",
+    (question) => {
+      expect(detectTemplateIntent(question)).toEqual({ kind: "explicit", templateKey: "dpoa" });
+    },
+  );
+
   it("I need to do a corrective action for Sarah asks for a document and must be classified first", () => {
     expect(detectTemplateIntent("I need to do a corrective action for Sarah")).toEqual({
       kind: "corrective_action",

@@ -49,7 +49,7 @@ export function CategoryOverview({
             type="button"
             onClick={() => onSelect("all")}
             className={cn(
-              "text-xs transition-colors",
+              "inline-flex min-h-6 items-center text-xs transition-colors",
               active === "all"
                 ? "font-semibold text-foreground"
                 : "text-muted-foreground hover:text-foreground",

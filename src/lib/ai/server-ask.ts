@@ -23,7 +23,7 @@ import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
-import { priorFormsForChat } from "@/lib/forms/prior-forms";
+import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -415,7 +415,7 @@ export async function answerQuestion(
        * Action so its history is read back before the form is created. See
        * `prior-forms.ts`.
        */
-      priorFormsOnFile: (employeeName) => priorFormsForChat(actor, employeeName),
+      priorFormsOnFile: (employeeName, locationId) => priorFormsReadingForChat(actor, employeeName, locationId),
     });
     if (proposal) return proposal;
   }

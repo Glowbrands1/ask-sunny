@@ -1,0 +1,11 @@
+ask-sunny conversation exit 0 ::       Tests  50 passed (50)
+ask-sunny identifiers exit 0 ::       Tests  20 passed (20)
+ask-sunny locprior exit 0 ::       Tests  38 passed (38)
+ask-sunny reviewer exit 0 ::       Tests  4 passed (4)
+ask-sunny salonnum exit 0 ::       Tests  1 passed (1)
+ask-sunny payroll-edge2 exit 0 ::       Tests  1 passed (1)
+ask-sunny payroll-conversation exit 0 ::       Tests  19 passed (19)
+ask-sunny postcreate exit 0 ::       Tests  12 passed (12)
+ask-sunny roles exit 0 ::       Tests  7 passed (7)
+ask-sunny numbers exit 0 ::       Tests  1 passed (1)
+== done 2026-10-22T20:55:09Z

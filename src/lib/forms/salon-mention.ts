@@ -3,6 +3,8 @@ import "server-only";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
+import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
+
 /**
  * ============================================================================
  * WHICH SALON THE MANAGER NAMED, READ FROM THEIR OWN WORDS
@@ -78,6 +80,14 @@ const SHORT_NAMES: Readonly<Record<string, string>> = {
   "shawnee mission": "0463",
   // Local shorthand for St. Joseph, MO — the only St Joseph in the roster.
   "st joe": "0495",
+  /*
+   * PRODUCTION, 21 OCTOBER 2026. Lincoln managers drop "Street" ("at lincoln
+   * 27th") and put the street first ("O St Lincoln"). Each still names one
+   * salon, and each still needs a place cue like every other short name —
+   * "the 27th" on its own is a date, so it is never one.
+   */
+  "lincoln 27th": "0310",
+  "o st lincoln": "0311",
 };
 
 interface Alias {
@@ -85,14 +95,19 @@ interface Alias {
   readonly salonIds: readonly string[];
   /** One-word names need a place cue; see the module note. */
   readonly needsCue: boolean;
+  /**
+   * The salon's name without its city — "o st", "27th st", "pine lake" — which
+   * is also a road. Never read from punctuation alone (`SET_OFF_BEFORE`).
+   */
+  readonly road?: boolean;
 }
 
 const ALIASES: readonly Alias[] = (() => {
   const aliases: Alias[] = [];
-  const add = (phrase: string, salonIds: string[]) => {
+  const add = (phrase: string, salonIds: string[], road = false) => {
     const trimmed = phrase.trim();
     if (!trimmed) return;
-    aliases.push({ phrase: trimmed, salonIds, needsCue: true });
+    aliases.push({ phrase: trimmed, salonIds, needsCue: true, ...(road ? { road } : {}) });
   };
 
   for (const salon of PRODUCTION_SALONS) {
@@ -102,7 +117,7 @@ const ALIASES: readonly Alias[] = (() => {
     aliases.push({ phrase: full, salonIds: [salon.id], needsCue: false });
     add(local, [salon.id]);
     const city = SHARED_CITIES.find((head) => local.startsWith(`${head} `));
-    if (city) add(local.slice(city.length), [salon.id]);
+    if (city) add(local.slice(city.length), [salon.id], true);
   }
 
   for (const [phrase, salonNumber] of Object.entries(SHORT_NAMES)) {
@@ -121,7 +136,13 @@ const ALIASES: readonly Alias[] = (() => {
  * separates "at Liberty" from "at liberty to" and "at Kearney High".
  */
 const CARRIES_ON =
-  "salon|store|location|studio|and|but|or|on|today|yesterday|tonight|this|last|at|she|he|they|i|we|for|with|where|when|while|because|so|again|during|after|before|around|since|until|was|is|has|had";
+  "salon|store|location|studio|and|but|or|on|today|yesterday|tonight|this|last|at|she|he|they|i|we|for|with|where|when|while|because|so|again|during|after|before|around|since|until|was|is|has|had|" +
+  /*
+   * "…at kearney about bed cleaning" (production, 21 October 2026): what the
+   * form is about, who it concerns, what is needed. None of these continues a
+   * place's name the way "High", "South" or "time" does.
+   */
+  "about|regarding|concerning|re|who|that|then|every|her|his|their|need|needs";
 
 // Not "for": "a coaching form for Lawrence" is a person. Not "from": where
 // somebody came from is not where the form is filed.
@@ -129,7 +150,30 @@ const ROSTER_STATES = [...new Set(PRODUCTION_SALONS.map((salon) => salon.state.t
 const STATE_BEFORE = new RegExp(`\\b(?:${ROSTER_STATES.join("|")})\\s+$`);
 const AT_BEFORE = /\b(?:at|in)\s+(?:the\s+)?$/;
 const PLACE_AFTER = /^\s*(?:salon|store|location|studio)\b/;
-const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+(?:${CARRIES_ON})\\b`);
+const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+;|^\\s+(?:${CARRIES_ON})\\b`);
+
+/*
+ * ============================================================================
+ * PUNCTUATION ENDS A PLACE'S NAME
+ * ============================================================================
+ *
+ * The roster key drops commas, so "works at kearney, need a coaching form"
+ * read as "at kearney need" and the salon was lost to the word after it. Before
+ * keying, each comma, semicolon, colon, bracket, "!" and "?" becomes a
+ * standalone ";" — a token no salon name contains — so the cues below can see
+ * where the manager's own punctuation closed the phrase.
+ */
+const SEPARATORS = /[,;:()[\]!?]+/g;
+const SEPARATOR = " ; ";
+
+/*
+ * A SALON NAME SET OFF BY PUNCTUATION ON ITS OWN — "Avery Testperson, lincoln
+ * 27th st", "Avery Testperson (Overland Park)" — is a place. Several words
+ * only: "Wren, Lawrence, today" could still be a person called Lawrence, but
+ * nobody is called "Grand Island" or "Lincoln 27th St".
+ */
+const SET_OFF_BEFORE = /(?:^|;)\s*$/;
+const SET_OFF_AFTER = /^\s*(?:$|;)/;
 
 /*
  * "CORINNE VALDEZ ASD LINCOLN O ST": NAME, ROLE, SALON. Managers sign a person
@@ -137,12 +181,13 @@ const CARRIES_ON_AFTER = new RegExp(`^\\s*$|^\\s+(?:${CARRIES_ON})\\b`);
  * Only for a name of two or more words — "SD Lawrence" can be the salon
  * director called Lawrence, but nobody is called "Lincoln O St".
  */
-const ROLE_BEFORE = /\b(?:sd|asd|tsd|sdit|dmit|fttc|pttc|tc|dm|rm|gm|mgr)\s+$/;
+const ROLE_BEFORE = /\b(?:sd|asd|tsd|sdit|dmit|fttc|pttc|tc|dm|rm|gm|mgr)\s+(?:;\s+)?$/;
 
 /** Whether a short name, at this position, is being used as the salon. */
-function cued(before: string, after: string, phrase: string): boolean {
+function cued(before: string, after: string, phrase: string, road = false): boolean {
   if (STATE_BEFORE.test(before) || PLACE_AFTER.test(after)) return true;
   if (phrase.includes(" ") && ROLE_BEFORE.test(before)) return true;
+  if (!road && phrase.includes(" ") && SET_OFF_BEFORE.test(before) && SET_OFF_AFTER.test(after)) return true;
   return AT_BEFORE.test(before) && CARRIES_ON_AFTER.test(after);
 }
 
@@ -169,8 +214,29 @@ const CITY_PATTERNS: readonly { pattern: RegExp; salonIds: readonly string[] }[]
     };
   });
 
-/** `salon 306`, `store #0306`, `#0306`. The number reporting joins on. */
-const SALON_NUMBER = /(?:\b(?:salon|store|location)\s*#?\s*|#\s*)0?(\d{3,4})\b/gi;
+/**
+ * `store 373`, `salon #0306`, `#0306`, and a bare `at 0306`. Read through
+ * `salonForTypedNumber`: a zero-padded number is a salon number, a
+ * three-digit one is a salon number OR a Google store code and counts only
+ * when the two readings do not disagree ("306" names two salons, so none).
+ *
+ * A NUMBER IS A SALON ONLY WHEN SOMETHING SAYS SO (QA F-05, 22 Oct 2026). A
+ * bare "at <number>" used to be read as a salon unless a clock word came
+ * first, so "she got here at 410 today", "she sold a package at 140" (Google
+ * code 140 → Wornall), "rang up a sale at 231 dollars" and "we met at 409 for
+ * lunch" each filed a salon nobody named. A time, a price, a quantity or a
+ * date is far more often what follows "at" than a salon. Now a number counts
+ * only with a location word ("salon 410", "store #373", "location 0306", "#0410")
+ * or, after "at", only in the zero-padded form salons print ("at 0306").
+ */
+const SALON_NUMBER = /(?:\b(?:salon|store|location)\s*#?\s*|#\s*)(\d{3,4})\b/gi;
+const AT_NUMBER = /\bat\s+(0\d{3})\b(?!\s*(?::|\.\d|am\b|pm\b|a\.m|p\.m|o['’]?clock))/gi;
+/*
+ * "SHE WAS LATE AT 310" IS A TIME. A bare number after "at" is a salon only
+ * where the words before it are not about a clock: arriving, leaving, a shift.
+ */
+const TIME_BEFORE =
+  /\b(?:late|early|arrived?|came\s+in|come\s+in|clock(?:ed)?\s+(?:in|out)|left|leave|showed\s+up|show\s+up|start(?:s|ed)?|open(?:s|ed)?|close[sd]?|shift|until|till|by|around|about|before|after|scheduled|due|back|lunch|break)\s+$/i;
 
 /**
  * Every roster salon the manager's text names, one entry per mention.
@@ -182,19 +248,23 @@ export function readSalonMentions(text: string): SalonMention[] {
   const mentions: SalonMention[] = [];
 
   for (const match of text.matchAll(SALON_NUMBER)) {
-    const number = match[1]!.padStart(4, "0");
-    const salon = PRODUCTION_SALONS.find((entry) => entry.salonNumber === number);
+    const salon = salonForTypedNumber(match[1]!);
+    if (salon) mentions.push({ salonIds: [salon.id] });
+  }
+  for (const match of text.matchAll(AT_NUMBER)) {
+    if (TIME_BEFORE.test(text.slice(0, match.index))) continue;
+    const salon = salonForTypedNumber(match[1]!);
     if (salon) mentions.push({ salonIds: [salon.id] });
   }
 
-  let haystack = key(text);
+  let haystack = key(text.replace(SEPARATORS, SEPARATOR));
   for (const alias of ALIASES) {
     const pattern = new RegExp(`(?<= )${alias.phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= )`, "g");
     let found = false;
     haystack = haystack.replace(pattern, (phrase, offset: number) => {
       const before = haystack.slice(0, offset);
       const after = haystack.slice(offset + phrase.length);
-      if (alias.needsCue && !cued(before, after, phrase)) {
+      if (alias.needsCue && !cued(before, after, phrase, alias.road)) {
         return phrase;
       }
       found = true;
@@ -210,6 +280,35 @@ export function readSalonMentions(text: string): SalonMention[] {
   }
 
   return mentions;
+}
+
+/**
+ * The salons each AMBIGUOUS number the manager typed with a location word can
+ * mean — "salon 306", "store 307", "#314" — one list per number. These name
+ * no salon in `readSalonMentions` (each is one salon's number and another's
+ * Google store code), and are listed here so the manager can be ASKED between
+ * them rather than have the number dropped (owner decision, 22 Oct 2026:
+ * "ask the manager to clarify. Never guess").
+ */
+export function ambiguousSalonNumbers(text: string): string[][] {
+  const found: string[][] = [];
+  for (const match of text.matchAll(SALON_NUMBER)) {
+    const salons = salonsForTypedNumber(match[1]!);
+    if (salons.length > 1) found.push(salons.map((salon) => salon.id));
+  }
+  return found;
+}
+
+/**
+ * Whether a run of words IS one of the salon names above, of two words or
+ * more — "Lincoln O St", "O St Lincoln", "Grand Island" — read with the same
+ * abbreviations (St = Street). For the employee reader, which must never offer
+ * a salon as a second person. One-word names ("Lawrence", "Liberty") are also
+ * first names and are deliberately not answered here.
+ */
+export function isMultiWordSalonName(candidate: string): boolean {
+  const phrase = key(candidate).trim();
+  return phrase.includes(" ") && ALIASES.some((alias) => alias.phrase === phrase);
 }
 
 /** The roster name for a salon id, for telling a manager what they named. */

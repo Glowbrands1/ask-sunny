@@ -273,12 +273,33 @@ const LEVEL_HISTORY_HEADING =
 /** "actually written", "no, make it verbal" — a correction's lead-in. */
 const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rather|i\s+meant|i\s+mean|make\s+that)[\s,:-]*)*`;
 
+/*
+ * "No, keep it verbal" / "keep it as a verbal" (QA X2, 22 Oct 2026): taking a
+ * level back after "make it a written warning" kept Written, because "keep it"
+ * was not a level statement. The same lead-ins as Ask Bubbles' warning-level.ts.
+ */
 const LEVEL_BARE = new RegExp(
-  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
+  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|keep\s+(?:it|this)(?:\s+(?:as|at))?|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
 );
 
 const LEVEL_LABELLED =
   /\b(?:type\s+of\s+warning|warning\s*(?:level|type))\s*(?:is|should\s+be|[:=-])\s*(?:a\s+)?(verbal|written)\b/g;
+
+/**
+ * "verbal, payroll deduct no." — a bare level in a clause of its own, beside
+ * clauses that only answer the payroll question. HR, 21 Oct 2026 (ported from
+ * Ask Bubbles 9530112): the comma made the sentence more than a bare level, so
+ * the level was asked for again. Every other clause must state a payroll
+ * answer; anything else ("verbal, she was late") is not read.
+ */
+function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
+  const clauses = body.split(",").map((clause) => clause.trim());
+  if (clauses.length < 2) return null;
+  const levels = clauses.map((clause) => LEVEL_BARE.exec(clause));
+  if (levels.filter(Boolean).length !== 1) return null;
+  const others = clauses.filter((_, index) => !levels[index]);
+  return others.every((clause) => statedPayrollDeduct(clause) !== null) ? levels.find(Boolean)! : null;
+}
 
 /** The level one manager turn states for this form, or null. */
 export function statedWarningLevel(text: string): StatedWarningLevel | null {
@@ -288,7 +309,7 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
     if (sentence[0].endsWith("?")) continue;
 
-    const bare = LEVEL_BARE.exec(body);
+    const bare = LEVEL_BARE.exec(body) ?? levelBesidePayrollAnswer(body);
     if (bare) levels.add(bare[1] as StatedWarningLevel);
 
     for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
@@ -372,6 +393,20 @@ const PREVIOUS_SOME: readonly RegExp[] = [
   /\b(?:second|third|fourth|2nd|3rd|4th|repeat|repeated|recurring|ongoing)\s+(?:time|occurrence|occasion|offence|offense|incident|warning)\b/,
   /\b(?:she|he|they) (?:has|have|had) been (?:coached|warned|written up|disciplined)\b/,
   /\bthis (?:has )?happened (?:again|before)\b/,
+  /*
+   * THE EARLIER CONVERSATION, TOLD AS ONE. QA, 22 Oct 2026: "we had a talk
+   * with her about tardiness on 10/1", "we discussed attendance with her on
+   * 10/1", "I talked to pat about being late last month" and "this is after
+   * her coaching on 10/1" were each answered "You'll set any prior coaching
+   * … I won't guess at it". A conversation counts only with a time that puts
+   * it BEFORE — "last month", "on 10/1", "two weeks ago", "before",
+   * "already" — because "I talked to her today" is this form's own account,
+   * not its history. What this form follows ("after her coaching") is history
+   * by its words.
+   */
+  /\b(?:had|has had|have had|held)\s+(?:a\s+|an\s+)?(?:(?:verbal|formal|quick|serious)\s+)?(?:talk|conversation|chat|sit[- ]?down|discussion|one[- ]on[- ]one)\s+with\b[^.\n]{0,60}\b(?:last\s+(?:week|month|year|time)|previously|before|already|\d+\s+(?:days?|weeks?|months?)\s+ago|on\s+\d{1,2}\/\d{1,2}|on\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})/,
+  /\b(?:discussed|went over|talked (?:to|with)|spoke (?:to|with)|sat down with)\b[^.\n]{0,50}\b(?:last\s+(?:week|month|year|time)|previously|before|already|\d+\s+(?:days?|weeks?|months?)\s+ago|on\s+\d{1,2}\/\d{1,2}|on\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})/,
+  /\b(?:after|since|following|despite)\s+(?:her|his|their|the)\s+(?:(?:last|previous|prior|recent|verbal|written)\s+)?(?:coaching|warning|write[- ]?up|talk|conversation|corrective action)\b/,
 ];
 
 /**
