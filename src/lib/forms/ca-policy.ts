@@ -422,7 +422,9 @@ export type NamedPolicyReading =
        */
       unconfirmedManual?: string;
     }
-  | { phrase: string; lookup: "missing" | "unknown" };
+  | { phrase: string; lookup: "missing" | "unknown" }
+  /** The account describes more than one section the manual titles a Policy: the manager chooses. */
+  | { phrase: string; lookup: "choose"; choices: readonly { heading: string; page: number }[] };
 
 /** The offense box a named section is cited under, as the form labels it. */
 const OFFENSE_BOX_LABEL: Record<string, string> = {
@@ -434,6 +436,15 @@ const OFFENSE_BOX_LABEL: Record<string, string> = {
 };
 
 function namedPolicyLine(named: NamedPolicyReading): string {
+  /*
+   * DESCRIBED, BUT AS MORE THAN ONE POLICY — "scrolling social media on her
+   * phone" is the Cell Phone/Smart Watch Policy or the Social Media Policy.
+   * Asked, never chosen (QA follow-up, 22 Oct 2026).
+   */
+  if (named.lookup === "choose") {
+    const listed = named.choices.map((choice) => `**${choice.heading}** (page ${choice.page})`);
+    return `**${CA_POLICY_QUESTION}** What you described reads as more than one section of the policy manual: ${listed.slice(0, -1).join(", ")} or ${listed.at(-1)}. Tell me which — for example "the ${named.choices[0]!.heading.replace(/\s+policy$/i, "").toLowerCase()} policy" — or tick Type of Offense on the form. I won't pick one for you.`;
+  }
   /*
    * NOT NAMED, DESCRIBED: "on her cell phone" is the manual's Cell Phone/Smart
    * Watch Policy. Said as a reading the manager can change, not as theirs.
@@ -758,4 +769,14 @@ export function caPolicyAmbiguousNotice(reading: CaPolicyReading): string | null
   const names = reading.ambiguous.map((name) => CA_POLICY_LABEL[name]);
   const list = `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
   return `This could fall under ${list}, and you didn't say which, so Type of Offense, Policy Violated and Direct policy are left for you. Tell me which policy applies, or tick it on the form.`;
+}
+
+/**
+ * Said with a draft whose account describes more than one section the manual
+ * titles a Policy, where the manager chose none: the draft's own guess is not
+ * kept, and the policy is left for them (QA follow-up, 22 Oct 2026).
+ */
+export function describedPolicyChoiceNotice(choices: readonly { heading: string; page: number }[]): string {
+  const listed = choices.map((choice) => `${choice.heading} (page ${choice.page})`);
+  return `What you described reads as more than one policy in the manual — ${listed.slice(0, -1).join(", ")} or ${listed.at(-1)} — so the policy is left for you. Tell me which (for example "add the ${choices[0]!.heading}"), or tick Type of Offense and complete Direct policy on the form.`;
 }

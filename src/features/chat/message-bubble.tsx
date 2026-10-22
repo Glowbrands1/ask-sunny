@@ -526,7 +526,7 @@ function FormProposalCard({
       setPrefill(
         result.draftWarning
           ? { kind: "failed", message: result.draftWarning }
-          : { kind: "complete" },
+          : { kind: "complete", ...(result.draftNotice ? { notice: result.draftNotice } : {}) },
       );
     } catch (error) {
       const message = (error as Error).message;

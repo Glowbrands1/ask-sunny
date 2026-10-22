@@ -292,3 +292,126 @@ describe("a date the manager gave is never replaced by the form's", () => {
     expect(formDateBrief(formDate)).toMatch(/This is the date of the incident and of this form/);
   });
 });
+
+/*
+ * QA audit, 22 Oct 2026, replaying what the drafting model wrote on the
+ * production forms of 21 Oct (names replaced).
+ */
+describe("the form's date is only the manager's when they gave it", () => {
+  const keys = new Set(["observation"]);
+  const DEADLINE_NOTES =
+    "create corrective action for sela brandt for violating standards of conduct policy on 10-20-26. sela failed to acknowledge policies in woven by the 10-15-26 deadline.";
+
+  it("a form dated the day it is created does not make that day the deadline: it is the 10-15 the manager gave", () => {
+    const corrected = correctDraftedDates(
+      { observation: "Observed:\nSela did not acknowledge the required policies in Woven by the October 21, 2026 deadline." },
+      keys,
+      DEADLINE_NOTES,
+      resolveFormDate("2026-10-21"),
+    );
+    expect(corrected.values.observation).toBe(
+      "Observed:\nSela did not acknowledge the required policies in Woven by the October 15, 2026 deadline.",
+    );
+    expect(corrected.corrected).toEqual(["observation"]);
+  });
+
+  it("and a date the model put on the incident is the incident's, by the words around it", () => {
+    const corrected = correctDraftedDates(
+      { observation: "Observed:\nOn October 21, 2026, Sela violated the standards of conduct policy." },
+      keys,
+      DEADLINE_NOTES,
+      resolveFormDate("2026-10-21"),
+    );
+    expect(corrected.values.observation).toBe(
+      "Observed:\nOn October 20, 2026, Sela violated the standards of conduct policy.",
+    );
+  });
+
+  it('"today" makes the day the form is created the manager\'s date', () => {
+    const drafted = { observation: "Observed:\nOn October 21, 2026, Sela arrived 20 minutes late." };
+    const corrected = correctDraftedDates(drafted, keys, "sela was 20 minutes late today", resolveFormDate("2026-10-21"));
+    expect(corrected.values.observation).toBe(drafted.observation);
+    expect(corrected.corrected).toEqual([]);
+  });
+
+  it("with no date given at all, the form's date stands, as before", () => {
+    const drafted = { observation: "Observed:\nOn October 21, 2026, Sela arrived 20 minutes late." };
+    const corrected = correctDraftedDates(drafted, keys, "sela was 20 minutes late", resolveFormDate("2026-10-21"));
+    expect(corrected.values.observation).toBe(drafted.observation);
+  });
+});
+
+describe("one invented date, written twice, is one slip, and the date is stated once", () => {
+  const keys = new Set(["observation"]);
+  const NOTES_5 =
+    "create ca form for marlo quist for violating attendance policy on 10-20-26. verbal. no payroll deduct. jba manual 1-1-26 for previous coaching";
+
+  it("the production observation keeps its sentence, dated 20 Oct, with the date once", () => {
+    const corrected = correctDraftedDates(
+      {
+        observation:
+          "Observed:\nOn October 21, 2026, Marlo was reported as having violated the attendance policy on October 21, 2026.\n\nExpectation:\nMarlo is expected to arrive on time.",
+      },
+      keys,
+      NOTES_5,
+      resolveFormDate("2026-10-20"),
+    );
+    expect(corrected.values.observation).toBe(
+      "Observed:\nOn October 20, 2026, Marlo was reported as having violated the attendance policy.\n\nExpectation:\nMarlo is expected to arrive on time.",
+    );
+  });
+
+  it("the manager's own date, written twice in a sentence, is written once", () => {
+    const corrected = correctDraftedDates(
+      { observation: "Observed:\nOn October 20, 2026, Marlo did not follow the attendance policy on October 20, 2026." },
+      keys,
+      NOTES_5,
+      resolveFormDate("2026-10-20"),
+    );
+    expect(corrected.values.observation).toBe("Observed:\nOn October 20, 2026, Marlo did not follow the attendance policy.");
+  });
+
+  it("two DIFFERENT invented dates are still left for the narrative guard", () => {
+    const drafted = { observation: "Observed: Marlo was late on September 2, 2026 and again on September 4, 2026." };
+    const corrected = correctDraftedDates(drafted, keys, "marlo keeps being late", resolveFormDate("2026-10-20"));
+    expect(corrected.values.observation).toBe(drafted.observation);
+  });
+
+  it("two different dates the manager gave are both kept", () => {
+    const drafted = { observation: "Observed:\nOn October 20, 2026, Sela had not acknowledged the policies due October 15, 2026." };
+    const corrected = correctDraftedDates(
+      drafted,
+      keys,
+      "on 10-20-26 sela had not acknowledged the policies due 10-15-26",
+      resolveFormDate("2026-10-21"),
+    );
+    expect(corrected.values.observation).toBe(drafted.observation);
+  });
+});
+
+/* Review, 22 Oct 2026: a day stated twice is trimmed only where nothing is left hanging. */
+describe("a day stated twice is trimmed only as a trailing \"on <day>\"", () => {
+  const keys = new Set(["observation"]);
+  it.each([
+    "Observed:\nOn October 20, 2026, she was told to finish the training by October 20, 2026.",
+    "Observed:\nThe schedule from October 20, 2026 to October 20, 2026 was posted.",
+  ])("leaves %j as written", (observation) => {
+    const corrected = correctDraftedDates({ observation }, keys, "on 10-20-26 she missed the training", resolveFormDate("2026-10-20"));
+    expect(corrected.values.observation).toBe(observation);
+  });
+});
+
+/* Review, 22 Oct 2026: an earlier step's date is never put on the incident. */
+describe("an earlier step's date never stands in for the incident's", () => {
+  const keys = new Set(["observation"]);
+  it("a prior verbal warning dated 10-01-26 leaves the form's date on what happened", () => {
+    const drafted = { observation: "Observed:\nOn October 22, 2026, Maria arrived late." };
+    const corrected = correctDraftedDates(
+      drafted,
+      keys,
+      "Maria arrived late again. She got a verbal warning on 10-01-26 for arriving late.",
+      resolveFormDate("2026-10-22"),
+    );
+    expect(corrected.values.observation).toBe(drafted.observation);
+  });
+});

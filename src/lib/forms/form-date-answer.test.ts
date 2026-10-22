@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { readCorrectiveActionIntake } from "./corrective-action-intake";
 import { readEppIntake } from "./epp-intake";
-import { extractFormDate, isIsoCalendarDate, listFormDates, priorStepDate, priorSteps } from "./form-date-answer";
+import { extractFormDate, formDateChange, formDateChangeUnclear, isIsoCalendarDate, listFormDates, priorStepDate, priorSteps } from "./form-date-answer";
 
 /**
  * A manager types a date however they type it. Numeric dates are U.S.
@@ -240,5 +240,79 @@ describe("every item of a labelled history list is history", () => {
   ])("ends at the list: %s", (text, incident) => {
     expect(extractFormDate(text, DAY)).toBe(incident);
     expect(priorSteps(text, DAY).map((step) => step.iso)).not.toContain(incident);
+  });
+});
+
+/*
+ * QA audit, 22 Oct 2026: a Corrective Action Form's date could not be
+ * corrected from the conversation in any wording. These are the corrections
+ * it reads — always with the date named as the thing being corrected — and
+ * the incident statements it must not mistake for one.
+ */
+describe("a correction to the form's date", () => {
+  const TODAY = "2026-10-21";
+  it.each([
+    ["change the date to 10-19-26", "2026-10-19"],
+    ["change the date of the incident to 10/19/26", "2026-10-19"],
+    ["the date was wrong, it happened on 10-19-26", "2026-10-19"],
+    ["the date should be October 19", "2026-10-19"],
+    ["fix the date on the form, it should be 10/19/26", "2026-10-19"],
+    ["it was 10-19-26, not 10-20-26", "2026-10-19"],
+    ["update the form date to 2026-10-19", "2026-10-19"],
+  ])('"%s" moves it to %s', (text, iso) => {
+    expect(formDateChange(text, TODAY)).toBe(iso);
+  });
+
+  it.each([
+    ["she was late again on 10-19-26"],
+    ["what date is on the form?"],
+    ["can you change the date to 10-19-26?"],
+    ["the deadline was 10-15-26"],
+    ["previous coaching was 9-1-26"],
+    ["change the payroll deduction to $5.00"],
+    ["set the follow-up date to 10/15"],
+    ["change the due date to 10-30-26"],
+    ["the previous coaching date should be 1-2-26"],
+    ["change the date of the previous coaching to 1-2-26"],
+    ["change the date of her verbal warning to 9-2-26"],
+    ["the date of the prior warning was wrong, it was 9-2-26"],
+  ])('"%s" is not a correction to the date', (text) => {
+    expect(formDateChange(text, TODAY)).toBeNull();
+  });
+});
+
+/* A date correction that does not say which date is asked about, never guessed. */
+describe("a date correction that does not settle the date", () => {
+  const TODAY = "2026-10-21";
+  it.each([
+    ["the date should be 10-2-26 or 10-3-26", ["2026-10-02", "2026-10-03"]],
+    ["change the date to 10/2 or maybe 10/3", ["2026-10-02", "2026-10-03"]],
+    ["change the date", []],
+    ["the date is wrong", []],
+    ["fix the date on the form", []],
+  ])('"%s" changes nothing and is asked about', (text, offered) => {
+    expect(formDateChange(text, TODAY)).toBeNull();
+    expect(formDateChangeUnclear(text, TODAY)).toEqual({ offered });
+  });
+
+  it.each([["change the date to 10-2-26"], ["she was late again on 10-19-26"], ["change the due date"], ["what is the date on the form?"]])(
+    '"%s" is not an unsettled date correction',
+    (text) => {
+      expect(formDateChangeUnclear(text, TODAY)).toBeNull();
+    },
+  );
+});
+
+/* Review, 22 Oct 2026: another date, named with "the date", is not the form's. */
+describe("a date that is not the form's, named with \"the date\"", () => {
+  const TODAY = "2026-10-21";
+  it.each([
+    ["change the date on the action plan to 11-1-26"],
+    ["move the date of the meeting to 10-25-26"],
+    ["change the date she was hired to 1-5-24"],
+    ["update the date she was told to fix it to 10-15-26"],
+  ])('"%s" is not a correction to the form\'s date, and is not asked about', (text) => {
+    expect(formDateChange(text, TODAY)).toBeNull();
+    expect(formDateChangeUnclear(text, TODAY)).toBeNull();
   });
 });

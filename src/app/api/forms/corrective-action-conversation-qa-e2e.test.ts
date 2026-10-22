@@ -750,20 +750,24 @@ describe("Q7 corrections after the draft exists, on the same form", () => {
   });
 
   /*
-   * NOT CHANGED FROM CHAT, BY DECISION. Once the form exists, its Date line is
-   * edited on the form: the reference platform's rule for the Corrective
-   * Action Form is that chat corrects only the payroll answer
-   * (`config/company/forms/index.ts`). Pinned here so a change to that rule is
-   * a decision, not an accident — and so nothing else on the form moves.
+   * CHANGED FROM CHAT, BY DECISION (owner, 22 Oct 2026; the expectation was
+   * "nothing moves" before it). The form's readers own the CA's Date line,
+   * and its Date is the incident's day (`FORM_DATE_IS_INCIDENT_DATE`), so the
+   * drafted account moves with it — and nothing else on the form does.
    */
-  it("a date change typed after the draft exists leaves the form exactly as it was", async () => {
+  it("a date change typed after the draft exists moves the Date and the drafted account only", async () => {
     const chat = new Chat();
     await chat.say(OCT21);
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const id = await chat.create();
     const before = await saved(id);
-    await chat.say("change the date to 10-19-26").catch(() => null);
-    expect(await saved(id)).toEqual(before);
+    await chat.say("change the date to 10-19-26");
+    const after = await saved(id);
+    expect(after.form_date).toBe("2026-10-19");
+    expect(after.observation).toContain("October 19, 2026");
+    for (const key of Object.keys(before).filter((key) => key !== "form_date" && key !== "observation")) {
+      expect(after[key], key).toEqual(before[key]);
+    }
   });
 
   it("an offense the manager ticked by hand is theirs: a policy swap does not move it", async () => {
@@ -995,21 +999,24 @@ describe("Q12 dates corrected after the draft exists", () => {
     ]);
   });
 
-  it("the form's Date line only, when that is what is named", async () => {
+  /*
+   * THE DATE LINE IS THE INCIDENT'S DAY on this form (`FORM_DATE_IS_INCIDENT_DATE`,
+   * from main's #128): "the form date" and "the date" both move the Date and
+   * the account the assistant drafted, in one turn, with no question. These
+   * two used to expect the Date line alone, and a "which date?" question; the
+   * form's readers now own the Date line, so that is what they pin.
+   */
+  it("the form's Date line, named, moves the drafted account with it", async () => {
     const { chat, id } = await opened();
     await chat.say("change the form date to 10-21-26");
     const form = await saved(id);
     expect(form.form_date).toBe("2026-10-21");
-    expect(form.observation).toBe(DATED_ACCOUNT);
+    expect(form.observation).toContain("October 21, 2026");
   });
 
-  it("asks which date when it cannot tell, writes nothing, then applies the answer", async () => {
+  it("\"change the date\" with a day is applied at once to the Date and the drafted account", async () => {
     const { chat, id } = await opened();
-    const before = await saved(id);
-    expect(await chat.say("change the date to 10-19-26")).toMatch(/Which date is \*\*10\/19\/2026\*\*/);
-    expect(await saved(id)).toEqual(before);
-    chat.reload();
-    await chat.say("the incident");
+    expect(await chat.say("change the date to 10-19-26")).toMatch(/Updated the \*\*Corrective Action Form\*\*/);
     const form = await saved(id);
     expect(form.form_date).toBe("2026-10-19");
     expect(form.observation).toContain("October 19, 2026");

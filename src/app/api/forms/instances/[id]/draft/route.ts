@@ -107,6 +107,7 @@ import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corr
 import {
   STANDARDS_OF_CONDUCT,
   caPolicyAmbiguousNotice,
+  describedPolicyChoiceNotice,
   groundConductPolicy,
   groundMissedEvent,
   MISSED_EVENT_OFFENSE,
@@ -117,7 +118,12 @@ import {
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
 import { listFormDates, priorStepDate } from "@/lib/forms/form-date-answer";
-import { SPECIFIC_SECTION_BOXES, describedManualSection, namedManualSection } from "@/lib/forms/named-policy-section";
+import {
+  SPECIFIC_SECTION_BOXES,
+  describedManualChoices,
+  describedManualSection,
+  namedManualSection,
+} from "@/lib/forms/named-policy-section";
 import {
   PAYROLL_DEDUCT_KEY,
   isPayrollDeductAnswer,
@@ -536,6 +542,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const eventSection =
       missedEvent?.ok && caPolicy?.missedEvent
         ? { phrase: missedEventPhrase(caPolicy.missedEvent), section: missedEvent.section, offenseKey: MISSED_EVENT_OFFENSE }
+        : null;
+    /*
+     * DESCRIBED AS MORE THAN ONE POLICY — "scrolling social media on her
+     * phone" is the Cell Phone/Smart Watch Policy or the Social Media Policy.
+     * Neither is chosen, and the draft's own catch-all guess is not kept
+     * either (applied below): the policy is left for the manager, and they
+     * are told which sections their account matched (QA follow-up, 22 Oct 2026).
+     */
+    const describedChoices =
+      caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
+        ? describedManualChoices({ text: notes, chunks: manual.chunks })
         : null;
 
     /*
@@ -1341,7 +1358,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           !describesMoreThanTheRequest(notes, {
             ignore: [loaded.instance.employeeName, loaded.instance.locationName ?? ""],
           })));
-    const offenseApplied =
+    const offenseSettled =
       unsettledPolicy && (offenseChosen.checked.offense_type ?? []).length > 0
         ? {
             ...offenseChosen,
@@ -1349,6 +1366,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             values: Object.fromEntries(Object.entries(offenseChosen.values).filter(([key]) => key !== "other_offense")),
           }
         : offenseChosen;
+    const offenseStated = offenseSettled;
+    /*
+     * THE MODEL'S GUESS IS NOT KEPT where the account described more than one
+     * policy: a catch-all box it ticked (Standards of Conduct, Violation of
+     * Company Policies, Other) and its write-in go, so no policy is cited from
+     * a guess. A box with its own specific section stays.
+     */
+    const guessed = describedChoices
+      ? (offenseStated.checked.offense_type ?? []).filter((key) => !SPECIFIC_SECTION_BOXES.has(key))
+      : [];
+    const offenseApplied =
+      describedChoices && !(offenseStated.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
+        ? {
+            ...offenseStated,
+            values: Object.fromEntries(Object.entries(offenseStated.values).filter(([key]) => key !== "other_offense")),
+            checked: {
+              ...offenseStated.checked,
+              offense_type: (offenseStated.checked.offense_type ?? []).filter((key) => !guessed.includes(key)),
+            },
+          }
+        : offenseStated;
+    const policyLeftForManager =
+      describedChoices !== null && !(offenseApplied.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key));
 
     /*
      * A REDRAFT KEEPS WHAT THE MANAGER TYPED. Their lines and ticks are left
@@ -1824,6 +1864,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
         exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
         caPolicy && !eventSection ? caPolicyAmbiguousNotice(caPolicy) : null,
+        policyLeftForManager && !managerOffense
+          ? describedPolicyChoiceNotice(describedChoices!.map((choice) => choice.section))
+          : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,

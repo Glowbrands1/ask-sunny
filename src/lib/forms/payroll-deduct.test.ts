@@ -375,3 +375,125 @@ describe("quotedDeductionAmount — the one amount the quoted section states for
     ).toBe("$25.00");
   });
 });
+
+/*
+ * QA audit, 22 Oct 2026 (ported from Ask Bubbles): amounts a manager writes
+ * without a dollar sign, a new amount for a form already filed, and the comma
+ * that ends a clause. Ask Sunny reads a Yes only when it is stated; an amount
+ * is what the Action Plan states once it is.
+ */
+describe("an amount written without a dollar sign", () => {
+  it.each([
+    ["payroll deduct 25 dollars", "$25"],
+    ["she will be payroll deducted 3.25", "$3.25"],
+    ["deduct 3.25 from her check", "$3.25"],
+    ["payroll deduction of 25.00 dollars applies", "$25.00"],
+    ["25 bucks will be payroll deducted", "$25"],
+  ])('"%s" states %s', (text, amount) => {
+    expect(payrollDeductAmount(text)).toBe(amount);
+  });
+
+  it("a stated Yes with an unsigned amount is a Yes", () => {
+    expect(statedPayrollDeduct("payroll deduction of 25.00 dollars applies")).toBe("yes");
+  });
+
+  it.each([
+    ["she was 25 minutes late, payroll deduct applies"],
+    ["store 25 was opened late, payroll deduct applies"],
+    ["deduct 25 from her check"],
+  ])('a bare number is not an amount: "%s"', (text) => {
+    expect(payrollDeductAmount(text)).toBeNull();
+  });
+
+  it.each([["do not payroll deduct 25 dollars"], ["the 3.25 payroll deduction is waived"]])(
+    'denied or waived without a dollar sign is never Yes: "%s"',
+    (text) => {
+      expect(statedPayrollDeduct(text)).not.toBe("yes");
+      expect(payrollDeductCorrection(text)).not.toBe("yes");
+    },
+  );
+
+  it('the comma ending a clause is not part of the amount: "payroll deduct $25, she was late"', () => {
+    expect(payrollDeductAmount("payroll deduct $25, she was late")).toBe("$25");
+    expect(payrollDeductAmount("deduct $1,250 from her check")).toBe("$1,250");
+  });
+});
+
+describe("an amount changed after the form exists", () => {
+  it.each([
+    ["change the payroll deduction to $5.00", "$5.00"],
+    ["update the deduction amount to $5", "$5"],
+    ["change payroll deduct to 5 dollars", "$5"],
+    ["set the payroll deduction to $12.50", "$12.50"],
+  ])('"%s" is Yes, %s', (text, amount) => {
+    expect(payrollDeductCorrection(text)).toBe("yes");
+    expect(payrollDeductAmount(text)).toBe(amount);
+  });
+
+  it("a change to No is still No, whatever amount was named", () => {
+    expect(payrollDeductCorrection("change the $5.00 payroll deduction to no")).toBe("no");
+  });
+});
+
+/*
+ * QA audit, 22 Oct 2026: on a created form with Yes, "actually cancel the
+ * payroll deduction" read as nothing, and the form kept Yes and the plan's
+ * deduction sentence (fixed in Ask Bubbles' PR #67, never ported). A
+ * withdrawn, waived or cancelled deduction is No; a waiver that is itself
+ * denied is not.
+ */
+describe("a deduction cancelled, waived or denied", () => {
+  it.each([
+    ["actually cancel the payroll deduction"],
+    ["we cancelled the $25 payroll deduction"],
+    ["the $25 payroll deduction was waived"],
+    ["waive the payroll deduction"],
+    ["we will not payroll deduct $25"],
+    ["don't payroll deduct the $3.25"],
+    ["payroll deduct $25 does not apply"],
+  ])('"%s" is No', (text) => {
+    expect(statedPayrollDeduct(text)).toBe("no");
+    expect(payrollDeductCorrection(text)).toBe("no");
+  });
+
+  it.each([["we did not waive the payroll deduction"], ["the payroll deduction was not cancelled"]])(
+    'a denied waiver is never No: "%s"',
+    (text) => {
+      expect(statedPayrollDeduct(text)).not.toBe("no");
+    },
+  );
+});
+
+/* Review, 22 Oct 2026. */
+describe("review: zero, a cancelled order, and \"no cancel\"", () => {
+  it.each([["change the payroll deduction to $0"], ["change the payroll deduction to $0.00"], ["change payroll deduct to 0 dollars"]])(
+    '"%s" is No, and states no amount',
+    (text) => {
+      expect(payrollDeductCorrection(text)).toBe("no");
+      expect(payrollDeductAmount(text)).toBeNull();
+    },
+  );
+  /*
+   * A cancelled ORDER or REFUND beside the deduction does not cancel the
+   * deduction: the waiver must be said of the deduction itself.
+   */
+  it.each([
+    ["Payroll deduction of $25 for the cancelled order is applicable."],
+    ["Payroll deduct of $25 is applicable, the refund she cancelled was never rung."],
+  ])('a cancelled thing beside the deduction is never read as No: "%s"', (text) => {
+    expect(statedPayrollDeduct(text)).toBe("yes");
+  });
+  it.each([
+    ["the payroll deduction for the cancelled order was waived"],
+    ["we cancelled the $25 payroll deduction"],
+    ["$25 payroll deduction was waived"],
+  ])('a waiver said of the deduction is still No: "%s"', (text) => {
+    expect(statedPayrollDeduct(text)).toBe("no");
+  });
+  it.each([["no cancel the payroll deduction"], ["Payroll deduct of $25 is applicable. No cancel the payroll deduction"]])(
+    '"%s" never leaves a Yes',
+    (text) => {
+      expect(statedPayrollDeduct(text)).not.toBe("yes");
+    },
+  );
+});

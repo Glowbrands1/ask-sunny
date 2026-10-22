@@ -374,14 +374,18 @@ describe("the Corrective Action Form's payroll-deduct answer", () => {
     },
   );
 
-  /*
-   * Owner decision, 22 Oct 2026: dates on an editable Corrective Action draft
-   * may be corrected from chat. With no account dated to tie it to, "the
-   * date" is the form's Date line. See `ca-chat-dates.ts`.
-   */
-  it("changes the form's Date line when the manager corrects the date", async () => {
-    await correct("change the date to 9/27");
-    expect(state.saved).toEqual([{ values: { form_date: "2026-09-27" }, checked: {} }]);
+  /* The business's decision of 22 Oct 2026: the Corrective Action Form's date is corrected from chat. */
+  it("corrects the form's date when the manager names it", async () => {
+    const response = await correct("change the date to 9/27");
+    expect(state.saved).toHaveLength(1);
+    expect(state.saved[0]!.values).toMatchObject({ form_date: expect.stringMatching(/-09-27$/) });
+    expect(response!.formUpdate!.updated).toContain("form_date");
+  });
+
+  it("asks which date when none is settled, and changes nothing", async () => {
+    const response = await correct("the date should be 9/27 or 9/28");
+    expect(state.saved).toEqual([]);
+    expect(response!.content).toMatch(/Which date should .* I haven't changed it/);
   });
 
   it("changes a finalized form's answer on a new draft of it", async () => {

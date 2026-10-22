@@ -86,9 +86,18 @@ const NEGATIVE: readonly RegExp[] = [
    * The waiver may come after the subject or before it ("we waived the
    * payroll deduction"), within the clause.
    */
-  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven|cancell?ed|cancell?ing|called\s+off)\b`),
+  /*
+   * The waiver has to be said OF the deduction ("... was waived"): "payroll
+   * deduction of $25 for the cancelled order is applicable" cancels the order,
+   * not the deduction (QA, 22 Oct 2026).
+   */
+  new RegExp(
+    String.raw`\b${SUBJECT}\b[^.!?;,\n]{0,25}?\b(?:is|was|has\s+been|have\s+been|been|be|got|are|were)\s+(?:waived|forgiven|cancell?ed|called\s+off)\b`,
+  ),
   // "we cancelled the $25 payroll deduction" (QA, 22 Oct 2026): cancelled is waived.
-  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
+  new RegExp(
+    String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven|cancel|cancell?ed|cancell?ing|call\s+off|called\s+off)\s+(?:the\s+|a\s+|her\s+|his\s+|their\s+|this\s+|that\s+)?(?:\$\s?\d[\d,]*(?:\.\d{1,2})?\s+|\d[\d,]*(?:\.\d{2})?\s+)?${SUBJECT}\b`,
+  ),
   // "payroll deduct $25 does not apply", "$25 payroll deduction is not needed" (QA, 22 Oct 2026)
   new RegExp(
     String.raw`\b${SUBJECT}\s+\$\s?\d[\d,]*(?:\.\d{1,2})?\s+(?:is\s+|does\s+|would\s+|will\s+)?(?:not|n't|isn't|doesn't|won't|wont|isnt|doesnt)\s+(?:be\s+)?(?:applicable|apply|applies|needed|required|necessary)\b`,
@@ -146,10 +155,10 @@ const POSITIVE_IMPLIED: readonly RegExp[] = [
   /\bdeduct(?:ing|ed)?\b[^.\n]{0,40}\bfrom\s+(?:her|his|their|the|its)?\s*(?:pay|paycheck|payroll|check|wages)\b/,
   // "it will be deducted", "we'll deduct", "needs to be deducted", "$25 will be payroll deducted"
   /\b(?:will|we'll|we will|going to|should|needs? to|has to|have to)\s+(?:be\s+)?(?:payroll\s+)?deduct(?:ed)?\b/,
-  // "payroll deduct $25", "deduct $3.25", "deduction of $25" — an amount to take is a yes
-  /\b(?:payroll\s+)?deduct(?:ion|ed|ing)?\s+(?:of\s+|for\s+)?\$\s?\d/,
-  // "$25 payroll deduction", "$25 payroll deduct"
-  /\$\s?\d[\d,]*(?:\.\d{1,2})?\s+payroll\s+deduct/,
+  // "payroll deduct $25", "deduct $3.25", "deduction of $25", "deduct 25 dollars" — an amount to take is a yes
+  /\b(?:payroll\s+)?deduct(?:ion|ed|ing)?\s+(?:of\s+|for\s+)?(?:\$\s?\d|\d[\d,]*(?:\.\d{2})?\s*(?:dollars?|bucks)\b|\d+\.\d{2}\b)/,
+  // "$25 payroll deduction", "$25 payroll deduct", "25 dollar payroll deduction"
+  /(?:\$\s?\d[\d,]*(?:\.\d{1,2})?|\d[\d,]*(?:\.\d{2})?\s*(?:dollars?|bucks))\s+payroll\s+deduct/,
 ];
 
 const POSITIVE: readonly RegExp[] = [...POSITIVE_STATED, ...POSITIVE_IMPLIED];
@@ -255,7 +264,9 @@ export function payrollDeductUnclear(text: string): boolean {
 
 export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
   const reading = readPayrollDeduct(text);
-  return reading === "unclear" ? null : reading;
+  if (reading === "unclear") return null;
+  // A deduction of nothing is no deduction (review, 22 Oct 2026: "$0" read as Yes).
+  return reading === "yes" && deductsNothing(text) ? "no" : reading;
 }
 
 /**
@@ -424,12 +435,21 @@ export function payrollDeductChecked(
  */
 export function payrollDeductCorrection(text: string): PayrollDeductAnswer | null {
   if (text.trim().endsWith("?")) return null;
+  /*
+   * A point inside an amount ("the $5.00 payroll deduction") does not end the
+   * sentence — QA audit, 22 Oct 2026: "change the $5.00 payroll deduction to
+   * no" read as nothing, and the form kept its Yes.
+   */
   const change =
-    /\b(?:change|update|set|switch|correct|fix|make|mark|tick|check)\b[^.\n]{0,40}\b(?:payroll|deduct)/i.exec(text);
+    /\b(?:change|update|set|switch|correct|fix|make|mark|tick|check)\b(?:[^.\n]|\.(?=\d)){0,40}\b(?:payroll|deduct)/i.exec(text);
   if (change) {
     const after = normalize(text.slice(change.index));
     const to = /\b(?:to|as|=|:)\s*(yes|no)\b/.exec(after);
     if (to) return to[1] as PayrollDeductAnswer;
+    /* "change the payroll deduction to $5.00": a new amount to take is a Yes — "to $0" is a No. */
+    if (new RegExp(String.raw`\bto\s+${ANY_MONEY}`).test(after) && !DENIAL.test(after)) {
+      return deductsNothing(text) ? "no" : "yes";
+    }
   }
   return statedPayrollDeduct(text);
 }
@@ -453,8 +473,23 @@ export function payrollDeductCorrection(text: string): PayrollDeductAnswer | nul
  * the comma ending the clause was read as part of the amount (QA, 22 Oct 2026).
  */
 const MONEY = String.raw`\$\s?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?(?![\d,]\d)`;
+/*
+ * "25 DOLLARS", "DEDUCTED 3.25" — QA audit, 22 Oct 2026: an amount the manager
+ * wrote without the sign was not read, and the plan said only "A payroll
+ * deduction applies." Money by its word ("dollars", "bucks") or by its cents.
+ * A bare whole number ("deduct 25") is not money — it could be minutes or a
+ * store — and is never read as one.
+ */
+const UNSIGNED_MONEY = String.raw`(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?\s*(?:dollars?|bucks)\b|\d+\.\d{2}\b(?![\d,]\d)`;
+const ANY_MONEY = String.raw`(?:${MONEY}|${UNSIGNED_MONEY})`;
+/** "$ 25" → "$25"; "25 dollars" → "$25"; "3.25" → "$3.25". */
+function asDollars(written: string): string {
+  const compact = written.replace(/\s+/g, "");
+  if (compact.startsWith("$")) return compact;
+  return `$${/^[\d,]+(?:\.\d{2})?/.exec(compact)![0]}`;
+}
 const AMOUNT_PATTERNS: readonly RegExp[] = [
-  new RegExp(String.raw`\b(?:payroll\s+)?deduct(?:ion|ions|ed|ing)?\s+(?:of\s+|for\s+|is\s+|will\s+be\s+|amount\s+(?:of\s+|is\s+)?)?(${MONEY})`, "gi"),
+  new RegExp(String.raw`\b(?:payroll\s+)?deduct(?:ion|ions|ed|ing)?\s+(?:of\s+|for\s+|is\s+|to\s+|will\s+be\s+|amount\s+(?:of\s+|is\s+|to\s+)?)?(${ANY_MONEY})`, "gi"),
   /*
    * "$25 will be payroll deducted", "$25 payroll-deducted", "a $25 payroll
    * deduction" (District Manager feedback, 21 Oct 2026: "state $25 will be
@@ -462,21 +497,35 @@ const AMOUNT_PATTERNS: readonly RegExp[] = [
    * applies).
    */
   new RegExp(
-    String.raw`(${MONEY})\s+(?:will\s+be\s+|is\s+(?:being\s+)?|to\s+be\s+|should\s+be\s+|gets?\s+|being\s+)?(?:payroll[- ]?\s*)?(?:deducted\b|deductions?\b)`,
+    String.raw`(${ANY_MONEY})\s+(?:will\s+be\s+|is\s+(?:being\s+)?|to\s+be\s+|should\s+be\s+|gets?\s+|being\s+)?(?:payroll[- ]?\s*)?(?:deducted\b|deductions?\b)`,
     "gi",
   ),
 ];
 
 /** The amount the manager said would be deducted — "$3.25" — or null. The latest one stated wins. */
 export function payrollDeductAmount(text: string): string | null {
+  const amount = latestAmount(text);
+  return amount === null || isZero(amount) ? null : amount;
+}
+
+/** The latest amount stated for the deduction, zero included. */
+function latestAmount(text: string): string | null {
   let found: { at: number; amount: string } | null = null;
   for (const pattern of AMOUNT_PATTERNS) {
     for (const match of (text ?? "").matchAll(pattern)) {
-      const amount = match[1]!.replace(/\s+/g, "");
+      const amount = asDollars(match[1]!);
       if (!found || match.index >= found.at) found = { at: match.index, amount };
     }
   }
   return found?.amount ?? null;
+}
+
+const isZero = (amount: string) => Number(amount.replace(/[$,]/g, "")) === 0;
+
+/** Whether the latest amount stated for the deduction is zero — "$0", "0 dollars". */
+function deductsNothing(text: string): boolean {
+  const amount = latestAmount(text);
+  return amount !== null && isZero(amount);
 }
 
 /**
