@@ -240,3 +240,29 @@ describe("the box a named policy ticks", () => {
     );
   });
 });
+
+/* Owner decision, 22 Oct 2026: a missed meeting is Attendance (Absenteeism), not Standards of Conduct. */
+describe("a missed meeting reads as Attendance", () => {
+  it.each([
+    ["create a written CA for sela brandt for not attending the monthly meeting on 10-20-26"],
+    ["she missed the monthly meeting on 10-20-26"],
+    ["Sela didn't attend the salon meeting"],
+    ["he did not show up to the mandatory training on Monday"],
+    ["skipped the team meeting yesterday"],
+    ["failed to attend the required webinar"],
+    ["was a no show for the monthly mtg"],
+  ])('"%s"', (text) => {
+    const reading = readCaPolicy(text);
+    expect(reading.stated).toBe("attendance");
+    expect(statedOffenseKeys(reading, text)).toEqual(["absenteeism"]);
+  });
+  it("a policy the manager names still wins", () => {
+    expect(readCaPolicy("she missed the monthly meeting. use standards of conduct").stated).toBe("standards_of_conduct");
+  });
+  it.each([["she was late to the meeting"], ["she talked over the manager in the meeting"], ["we went over it in a meeting"]])(
+    'a meeting that was attended is not an absence: "%s"',
+    (text) => {
+      expect(readCaPolicy(text).stated).not.toBe("attendance");
+    },
+  );
+});
