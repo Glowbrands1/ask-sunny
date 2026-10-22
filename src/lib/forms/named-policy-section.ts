@@ -125,10 +125,19 @@ function headingAlternatives(heading: string): string[][] {
 }
 
 /** Every policy the manager named, in the order they named them. Questions name none. */
+/*
+ * "THE CELL PHONE POLICY." — a line that is only a policy's name: the answer to
+ * "Which policy applies?" (ported from Ask Bubbles, QA follow-up 22 Oct 2026).
+ */
+const POLICY_LINE = /^\s*(?:the\s+|our\s+)?((?:[a-z][a-z'&/-]*\s+){1,5}?)polic(?:y|ies)\s*[.!]?\s*$/i;
+
 export function namedPolicies(text: string): NamedPolicy[] {
   const found: NamedPolicy[] = [];
   for (const sentence of (text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0])) continue;
+    // A line that is only the name — not "violation of company policy", which names none.
+    const line = /\b(?:violat|breach|broke|against|follow)/i.test(sentence[0]) ? null : POLICY_LINE.exec(sentence[0]);
+    if (line && words(line[1]!).length > 0) found.push({ phrase: line[1]!.trim(), index: sentence.index });
     for (const match of sentence[0].matchAll(NAMED_POLICY)) {
       const phrase = match[1]!.trim();
       if (words(phrase).length === 0) continue;
@@ -386,6 +395,18 @@ export function describedManualSection(input: {
   readonly text: string;
   readonly chunks: readonly ManualChunk[] | null;
 }): NamedManualSection | null {
+  const found = describedHeadings(input);
+  /* One heading of the whole manual, and one the manual calls a policy. */
+  if (!found || found.size !== 1) return null;
+  const [heading, phrase] = [...found.entries()][0]!;
+  return citable(input.chunks!, heading, phrase);
+}
+
+/** Every heading the account describes, by its distinctive words — or null where something else decides the policy. */
+function describedHeadings(input: {
+  readonly text: string;
+  readonly chunks: readonly ManualChunk[] | null;
+}): Map<string, string> | null {
   if (!input.chunks || input.chunks.length === 0) return null;
   const text = input.text ?? "";
   if (!mayDescribeSection(text)) return null;
@@ -401,13 +422,41 @@ export function describedManualSection(input: {
       if (phrase) found.set(candidate.heading, phrase);
     }
   }
-  /* One heading of the whole manual, and one the manual calls a policy. */
-  if (found.size !== 1) return null;
-  const [heading, phrase] = [...found.entries()][0]!;
+  return found;
+}
+
+/** A heading the account describes, as the section it cites, when the manual titles it a Policy. */
+function citable(chunks: readonly ManualChunk[], heading: string, phrase: string): NamedManualSection | null {
   if (!TITLED_POLICY.test(heading)) return null;
-  const section = findManualSection(input.chunks, [heading]);
-  if (!section) return null;
-  return { phrase, section, offenseKey: offenseKeyForManualHeading(section.heading) };
+  const section = findManualSection(chunks, [heading]);
+  return section ? { phrase, section, offenseKey: offenseKeyForManualHeading(section.heading) } : null;
+}
+
+/**
+ * ============================================================================
+ * TWO POLICIES DESCRIBED: OFFERED, NEVER CHOSEN
+ * ============================================================================
+ *
+ * QA follow-up, 22 Oct 2026 (ported from Ask Bubbles): "scrolling social
+ * media on her phone" answers both the Cell Phone/Smart Watch Policy and the
+ * Social Media Policy, so `describedManualSection` (rightly) chooses neither
+ * — and the draft's own guess, often the catch-all Standards of Conduct,
+ * stood with nothing said. Where two or more headings the manual titles a
+ * Policy answer the account, these are they, in the manual's order, for the
+ * manager to choose between. One Policy heading beside a heading that is not
+ * one offers nothing, as before.
+ */
+export function describedManualChoices(input: {
+  readonly text: string;
+  readonly chunks: readonly ManualChunk[] | null;
+}): NamedManualSection[] | null {
+  const found = describedHeadings(input);
+  if (!found || found.size < 2) return null;
+  const sections = [...found.entries()]
+    .map(([heading, phrase]) => citable(input.chunks!, heading, phrase))
+    .filter((entry): entry is NamedManualSection => entry !== null);
+  if (sections.length < 2) return null;
+  return sections.sort((a, b) => a.section.page - b.section.page);
 }
 
 /**

@@ -5,6 +5,7 @@ import { JBA_MANUAL_CHUNKS } from "@/lib/ai/__fixtures__/jba-policy-manual";
 import type { ManualChunk } from "./official-policy-manual";
 import {
   SPECIFIC_SECTION_BOXES,
+  describedManualChoices,
   describedManualSection,
   namedManualSection,
   namedPolicies,
@@ -193,5 +194,59 @@ describe("describedManualSection — a policy the account describes", () => {
 
   it("leaves the boxes with their own specific section to the draft", () => {
     expect([...SPECIFIC_SECTION_BOXES].sort()).toEqual(["absenteeism", "dress_code", "tardiness"]);
+  });
+});
+
+/*
+ * QA follow-up, 22 Oct 2026: "scrolling social media on her phone" answers both
+ * the Cell Phone/Smart Watch Policy and the Social Media Policy. No section is
+ * chosen — and the manager is asked which, offered both with their pages.
+ */
+describe("describedManualChoices — an account two Policy sections answer", () => {
+  const MANUAL: ManualChunk[] = [
+    sheet(30, "Standards of Conduct", 12),
+    sheet(36, "Belts", 15),
+    sheet(37, "Texting as General Work communications", 15),
+    sheet(43, "Cell Phone/Smart Watch Policy", 19),
+    sheet(46, "Social Media Policy", 22),
+    sheet(47, "Using Social Media at Work", 23),
+  ];
+  const choices = (text: string) =>
+    describedManualChoices({ text, chunks: MANUAL })?.map((found) => [found.section.heading, found.section.page]) ?? null;
+
+  it("offers both Policy sections, in the manual's order, with their pages", () => {
+    expect(choices("on 10-20-26 she was scrolling social media on her phone on the sales floor")).toEqual([
+      ["Cell Phone/Smart Watch Policy", 19],
+      ["Social Media Policy", 22],
+    ]);
+    expect(describedManualSection({ text: "she was scrolling social media on her phone", chunks: MANUAL })).toBeNull();
+  });
+
+  it.each([
+    /* One section answers: it is described, not offered. */
+    "she was on her cell phone for an hour",
+    /* One Policy section and a heading that is not one: the existing rule, nothing. */
+    "she wore a belt that holds her cell phone",
+    /* A policy named settles it. */
+    "violated the cell phone policy, she was scrolling social media on her phone",
+    /* Nothing described. */
+    "she was rude to a guest",
+    /* A question describes nothing. */
+    "was she on social media on her phone?",
+  ])("%s → no choice to offer", (text) => {
+    expect(choices(text)).toBeNull();
+  });
+});
+
+/* The answer to "Which policy applies?" is often only the policy's name. */
+describe("a line that is only a policy's name", () => {
+  it.each([
+    ["the cell phone policy", "cell phone"],
+    ["social media policy.", "social media"],
+  ])('"%s" names "%s"', (text, phrase) => {
+    expect(namedPolicies(text).map((found) => found.phrase)).toContain(phrase);
+  });
+  it.each([["company policy"], ["violation of company policy"], ["what is the cell phone policy?"]])('"%s" names none', (text) => {
+    expect(namedPolicies(text)).toEqual([]);
   });
 });
