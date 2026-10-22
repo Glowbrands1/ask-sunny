@@ -39,8 +39,8 @@ const state = vi.hoisted(() => ({
   scope: null as unknown,
   /*
    * How the manual was found. "tag": the administrator-approved manual, as these
-   * tests assume. "fallback": found only by its title — finalize then asks for
-   * acknowledgement (release requirement, 22 Oct 2026; see policy-approval.test.ts).
+   * tests assume. "fallback": found only by its title — the form shows a notice
+   * and Finalize works as before (owner decision, 22 Oct 2026: warning only).
    */
   manualMatchedBy: "tag" as "tag" | "fallback",
   /** What the drafting model returns. */
@@ -1840,23 +1840,26 @@ describe("salon access is unchanged by the recipient reading", () => {
   });
 });
 
-describe("release requirement, 22 Oct 2026: a manual found only by its title is not official verification", () => {
-  it("drafts and saves as before, then asks for acknowledgement at Finalize, and files once acknowledged", async () => {
+/*
+ * Owner decision, 22 Oct 2026: "Warning only, no block". A manual found only by
+ * its title is not claimed as the approved source — the citation is stored
+ * `matchedBy: "fallback"` and the form card shows a notice (see
+ * policySourceNoticeFor in inline-form.tsx) — but saving and Finalize work
+ * exactly as before, with no extra acknowledgement step.
+ */
+describe("owner decision, 22 Oct 2026: a manual found only by its title warns but does not block", () => {
+  it("drafts, saves and finalizes without an acknowledgement, keeping the fallback provenance", async () => {
     state.manualMatchedBy = "fallback";
     const { create } = await chatTurns(WOVEN_DEADLINE_TURNS);
     state.draft = WOVEN_OBSERVATION;
     const { reference } = await create();
     const form = await review(reference.instanceId);
     expect(form.instance.status).toBe("draft");
-    expect(field(form, "policy_language")!.value).toContain("JBA Policy Manual");
+    const policy = field(form, "policy_language")!;
+    expect(policy.value).toContain("JBA Policy Manual");
+    expect(policy.provenance?.matchedBy).toBe("fallback");
 
-    const refused = await finalize(reference.instanceId);
-    expect(refused.status).toBe(409);
-    expect(refused.body.code).toBe("policy_verification_required");
-    expect(refused.body.error).toMatch(/not been confirmed as the company's approved policy source/);
-    expect((await review(reference.instanceId)).instance.status).toBe("draft");
-
-    expect((await finalize(reference.instanceId, true)).status).toBe(200);
+    expect((await finalize(reference.instanceId)).status).toBe(200);
     expect((await review(reference.instanceId)).instance.status).toBe("finalized");
   });
 });

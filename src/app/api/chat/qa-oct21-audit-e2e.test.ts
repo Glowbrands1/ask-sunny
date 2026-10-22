@@ -387,7 +387,7 @@ function expectHrPlan(plan: string | null, review: RegExp, deduction: RegExp | n
   }
 }
 
-/* Synthetic people only, at one Buff City Soap store. */
+/* Synthetic people only, at one salon. */
 const DIRECTORY = [
   { id: "e-1", firstName: "Marlo", lastName: "Quist", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] },
   { id: "e-2", firstName: "Sela", lastName: "Brandt", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] },
@@ -435,7 +435,7 @@ const ISSUE_1_MODEL = {
     observation:
       "Observed:\nMarlo was scheduled to open the store and did not open the location at the proper time on October 21, 2026, resulting in a late opening.\n\nExpectation:\nAn employee assigned to open the store is expected to arrive with enough time to complete all opening duties and have the location ready to open at the scheduled time.\n\nGoing Forward:\nMarlo should plan arrival time to allow for all opening duties.",
     action_plan:
-      "Marlo is expected to adhere to the Buff City Soap attendance policy by opening the store on time and ready for business at the start of the scheduled shift. Moving forward, Marlo should arrive with enough time to complete all opening duties before the store's scheduled opening and notify management as soon as possible if running late. Management will monitor compliance and provide coaching as needed.",
+      "Marlo is expected to adhere to the company attendance policy by opening the store on time and ready for business at the start of the scheduled shift. Moving forward, Marlo should arrive with enough time to complete all opening duties before the store's scheduled opening and notify management as soon as possible if running late. Management will monitor compliance and provide coaching as needed.",
     policy_violated: "Tardiness/Leaving Early",
     prior_actions: "JBA Policy Manual coaching — signed 01/01/2026",
   },
@@ -466,7 +466,8 @@ describe("Issue 1: a late opening on 10-1-26 with a $25 payroll deduction", () =
     expect(f.ticks("payroll_deduct")).toEqual(["yes"]);
     expect(f.text("policy_violated")).toMatch(/Late Opening/);
     expect(f.text("policy_language")).toMatch(/Late Opening/);
-    expect(f.text("policy_language")).toMatch(/\$25\.00 via payroll deduction/);
+    // The fixture's wording is synthetic (security cleanup, 22 Oct 2026): its Late Opening sheet carries the $25.00 amount in an invented sentence.
+    expect(f.text("policy_language")).toMatch(/\$25\.00 payroll deduction/);
     expect(f.text("policy_language")).toMatch(/p(?:age|\.)\s*15\b/i);
     expect(f.text("policy_language")).not.toMatch(/Cell Phone|Standards of Conduct|Texting/);
     expect(f.text("prior_actions")).toMatch(/01\/01\/2026|1-1-26/);
@@ -635,7 +636,7 @@ const ISSUE_3_MODEL = {
       "Observed:\nOn October 21, 2026, Marlo was observed talking on a cell phone for over 30 minutes while on shift.\n\nExpectation:\nEmployees are expected to remain focused on work duties during their scheduled shift.\n\nGoing Forward:\nMarlo should keep personal phone use to designated breaks.",
     policy_violated: "Standards of Conduct",
     action_plan:
-      "Marlo is expected to adhere to the Buff City Soap standards of conduct policy by remaining focused on assigned work duties throughout the scheduled shift. Management will monitor compliance and provide coaching as needed.",
+      "Marlo is expected to adhere to the company standards of conduct policy by remaining focused on assigned work duties throughout the scheduled shift. Management will monitor compliance and provide coaching as needed.",
   },
   checked: { offense_type: ["standards_of_conduct"] },
 };
@@ -788,7 +789,7 @@ const ISSUE_4_MODEL = {
     observation:
       "Observed:\nOn October 20, 2026, Sela's register was found to be short by $3.25.\n\nExpectation:\nEmployees are expected to accurately count and reconcile their register drawer.\n\nGoing Forward:\nSela should carefully count the drawer at the start and end of each shift.",
     action_plan:
-      "Sela is expected to adhere to the Buff City Soap cash handling and register accuracy policy by counting, verifying, and reconciling the register drawer accurately during each shift. Management will monitor compliance and provide coaching as needed.",
+      "Sela is expected to adhere to the company cash handling and register accuracy policy by counting, verifying, and reconciling the register drawer accurately during each shift. Management will monitor compliance and provide coaching as needed.",
     policy_violated: "Standards of Conduct",
   },
   checked: { offense_type: ["standards_of_conduct"] },
@@ -984,7 +985,7 @@ const ISSUE_6_MODEL = {
     observation:
       "Observed:\nSela did not acknowledge the required policies in Woven by the October 21, 2026 deadline.\n\nExpectation:\nEmployees are expected to complete required Woven acknowledgements and training items by the assigned deadline.\n\nGoing Forward:\nSela should log into Woven promptly when a task is assigned.",
     action_plan:
-      "Sela is expected to adhere to the Buff City Soap standards of conduct policy by completing required policy acknowledgements and assigned tasks within the designated deadlines. Moving forward, Sela should check Woven regularly during scheduled shifts and complete any outstanding acknowledgements or training as soon as they are assigned. Management will monitor compliance and provide coaching as needed.",
+      "Sela is expected to adhere to the company standards of conduct policy by completing required policy acknowledgements and assigned tasks within the designated deadlines. Moving forward, Sela should check Woven regularly during scheduled shifts and complete any outstanding acknowledgements or training as soon as they are assigned. Management will monitor compliance and provide coaching as needed.",
     other_offense: "Failure to complete required task — Woven deadline of September 30, 2026 not met",
     policy_violated: "Standards of Conduct",
   },
