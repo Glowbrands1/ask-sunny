@@ -1345,7 +1345,7 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
 
 /** Said on the card when the manager has not stated the level. */
 export const WARNING_LEVEL_SUGGESTION_LINE =
-  "**Type of Warning:** Verbal or Written? Tell me here — or I'll suggest one on the draft from the performance framework, marked as a suggestion. It isn't your decision until you confirm it or choose another, and the form can't be filed until you do.";
+  "**Type of Warning:** Verbal or Written? Tell me here — or I'll suggest one on the draft from the performance framework, marked as a suggestion. Confirm it or choose another whenever you like.";
 
 /** "Sorry, … not 9-1-26", "actually it was 10-19": the turn corrects what the intake already holds. */
 function correctsTheIntake(question: string, today: string): boolean {
@@ -2314,7 +2314,7 @@ function correctiveActionReady(
    * THE LEVEL IS SUGGESTED, THEN CONFIRMED (owner decision, 22 Oct 2026). The
    * draft may carry the level the performance framework suggests; it is only
    * a suggestion until the manager confirms it or chooses another, and the
-   * form cannot be filed before they do (`UnconfirmedWarningLevelError`).
+   * suggestion is labelled as one on the form, with a Confirm button.
    */
   const levelOpen = outstanding.includes("warning_level");
   const historyOpen = outstanding.includes("previous_action");

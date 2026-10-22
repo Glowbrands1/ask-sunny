@@ -1068,20 +1068,32 @@ describe("Q12 dates corrected after the draft exists", () => {
 });
 
 describe("Q14 the warning level: a suggestion is never the manager's decision", () => {
-  it("a CA with no level, or only the assistant's, is not filed; the manager's confirmation or choice files it", async () => {
+  it("Finalize is never blocked by the level, and a suggestion stays the assistant's when it is filed (owner, 22 Oct 2026)", async () => {
+    const chat = new Chat();
+    await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26. no payroll deduct");
+    state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
+    const blank = await chat.create();
+    expect((await finalize(blank)).status).toBe(200);
+    expect((await saved(blank)).warning_type).toBeUndefined();
+
+    const other = new Chat();
+    await other.say("create a CA for tess varga for being late on 10-21-26. no payroll deduct");
+    const suggested = await other.create();
+    const { applyAssistantDraft } = await import("@/lib/forms/instances");
+    await applyAssistantDraft(suggested, { values: {}, checked: { warning_type: ["written"] } }, "assistant");
+    expect((await finalize(suggested)).status).toBe(200);
+    expect(await valueRow(suggested, "warning_type")).toMatchObject({ checked: ["written"], filledBy: "ai" });
+  });
+
+  it("the manager's confirmation or change is recorded as theirs, and not asked again", async () => {
     const chat = new Chat();
     await chat.say("create a CA for tess varga for not attending the monthly meeting on 10-20-26. no payroll deduct");
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const id = await chat.create();
-    const refused = await finalize(id);
-    expect(refused.status).toBe(409);
-    expect(refused.body.code).toBe("warning_level_confirmation_required");
-
     // The assistant's own tick (a suggestion) is still not the manager's.
     const { applyAssistantDraft } = await import("@/lib/forms/instances");
     await applyAssistantDraft(id, { values: {}, checked: { warning_type: ["written"] } }, "assistant");
     expect((await valueRow(id, "warning_type"))?.filledBy).toBe("ai");
-    expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
 
     expect(await chat.say("confirm the written warning")).toMatch(/Confirmed \*\*Written Warning\*\* as your decision/);
     const level = await valueRow(id, "warning_type");
@@ -1299,10 +1311,9 @@ describe("Q18 drafts already open at rollout: reviewed, decided and filed withou
     const before = await saved(id);
     for (let opened = 0; opened < 3; opened += 1) {
       const view = await reopened(id);
-      expect(view.level).toMatch(new RegExp(`Type of Warning: Written Warning is ${APP}'s suggestion, not your decision`));
+      expect(view.level).toMatch(new RegExp(`Type of Warning: Written Warning is ${APP}'s suggestion\\. Confirm it or choose another`));
       expect((await valueRow(id, "warning_type"))?.filledBy).toBe("ai");
     }
-    expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
     expect(rowOf(id).status).toBe("draft");
 
     expect((await confirmOnForm(id, "written")).status).toBe(200);
@@ -1338,7 +1349,8 @@ describe("Q18 drafts already open at rollout: reviewed, decided and filed withou
 
   it("a blank level asks for a decision; a level the form does not offer is refused and nothing is written", async () => {
     const { id } = await legacyDraft(null);
-    expect((await reopened(id)).level).toMatch(/Choose the Type of Warning before you finalize/);
+    // A blank level is the manager's to fill in, as before: no notice, and nothing blocks Finalize.
+    expect((await reopened(id)).level).toBeNull();
     const before = await saved(id);
     expect((await confirmOnForm(id, "termination")).status).toBe(400);
     expect((await confirmOnForm(id, 7)).status).toBe(400);
@@ -1377,7 +1389,7 @@ describe("Q18 drafts already open at rollout: reviewed, decided and filed withou
     expect(revised.status).toBe(200);
     const draftId = String(((await revised.json()) as { instance: { id: string } }).instance.id);
     joinOverview();
-    expect((await reopened(draftId)).level).toMatch(/suggestion, not your decision/);
+    expect((await reopened(draftId)).level).toMatch(/suggestion\. Confirm it or choose another/);
     expect(rowOf(id).status).toBe("finalized");
   });
 
@@ -1452,7 +1464,9 @@ describe("Q19 changes of mind, interruptions and what was never said", () => {
     expect(form.prior_actions).toBeUndefined();
     expect(form.warning_type).toBeUndefined();
     expect(String(form.observation ?? "")).not.toMatch(/no[- ]call|ncns|did not notify|without notifying/i);
-    expect((await finalize(id)).body.code).toBe("warning_level_confirmation_required");
+    // Nothing invented on the way through Finalize either.
+    expect((await finalize(id)).status).toBe(200);
+    expect((await saved(id)).warning_type).toBeUndefined();
   });
 });
 

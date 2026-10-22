@@ -734,7 +734,8 @@ describe("\"Create a corrective action for Sarah.\"", () => {
      * Oct 2026); the history is the manager's to set on the form.
      */
     expect(answer.content).toMatch(/\*\*Type of Warning:\*\* Verbal or Written\? Tell me here — or I'll suggest one on the draft/);
-    expect(answer.content).toMatch(/It isn't your decision until you confirm it or choose another/);
+    expect(answer.content).toMatch(/marked as a suggestion\. Confirm it or choose another whenever you like\./);
+    expect(answer.content).not.toMatch(/can't be filed/);
     expect(answer.content).toMatch(/won't guess/i);
   });
 

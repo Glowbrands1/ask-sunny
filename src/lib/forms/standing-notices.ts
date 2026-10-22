@@ -9,9 +9,9 @@
  *
  *   * the policy quoted is from a manual no owner has confirmed as Ask Sunny's
  *     approved one ("requires owner confirmation"); and
- *   * the Type of Warning on a Corrective Action is Ask Sunny's suggestion, or
- *     blank, and the manager has not decided it yet — the server refuses to
- *     finalize until they do (`UnconfirmedWarningLevelError`).
+ *   * the Type of Warning on a Corrective Action is Ask Sunny's suggestion, not
+ *     a level the manager chose — said, with a Confirm button, so the two are
+ *     never confused. It never blocks Finalize (owner, 22 Oct 2026).
  *
  * Pure, so the form card and its tests share it.
  */
@@ -57,7 +57,7 @@ export function manualStandingNotice(rows: readonly StandingValueRow[]): string 
   return `The policy quoted on this form is from "${title}", which requires owner confirmation as Ask Sunny's approved policy manual. The section and page are cited; check the quoted wording against your current manual before you finalize.`;
 }
 
-/** What the form says about its Type of Warning while it is a draft, or null once the manager has decided it. */
+/** What the form says about a Type of Warning the assistant suggested, while it is a draft; null otherwise. */
 export function warningLevelStandingNotice(input: {
   readonly status: string;
   readonly document: FormDocument;
@@ -71,7 +71,7 @@ export function warningLevelStandingNotice(input: {
   if (warningLevelConfirmed(row)) return null;
   const labels = (row?.checked ?? []).map((key) => group.options.find((option) => option.key === key)?.label ?? key);
   if (row && row.filledBy === "ai" && labels.length > 0) {
-    return `Type of Warning: ${labels.join(", ")} is Ask Sunny's suggestion, not your decision. Confirm it or choose another — tick it on the form, or tell Ask Sunny in the chat — before you finalize.`;
+    return `Type of Warning: ${labels.join(", ")} is Ask Sunny's suggestion. Confirm it or choose another — tick it on the form, or tell Ask Sunny in the chat.`;
   }
-  return "Choose the Type of Warning before you finalize — this Corrective Action can't be filed until you decide the level.";
+  return null;
 }

@@ -1831,7 +1831,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           ? unconfirmedManualNotice(manual.documentTitle)
           : null,
         suggestedLevel.length > 0
-          ? `Type of Warning: ${suggestedLevel.join(", ")} is Ask Sunny's suggestion, not your decision yet. Confirm it or choose another — tick it on the form, or tell me in the chat — before you finalize.`
+          ? `Type of Warning: ${suggestedLevel.join(", ")} is Ask Sunny's suggestion. Confirm it or choose another — tick it on the form, or tell me in the chat.`
           : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
         attributions.adjusted.length + attributions.emptied.length > 0

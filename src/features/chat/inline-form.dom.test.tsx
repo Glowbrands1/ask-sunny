@@ -1895,14 +1895,14 @@ describe("a reopened Corrective Action says what is still the manager's to decid
     });
     open();
 
-    expect(await screen.findByText(/Written Warning is Ask Sunny's suggestion, not your decision/)).toBeTruthy();
+    expect(await screen.findByText(/Written Warning is Ask Sunny's suggestion\. Confirm it/)).toBeTruthy();
     expect(screen.getByText(/requires owner confirmation as Ask Sunny's approved policy manual/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm Written Warning" }));
     await waitFor(() =>
       expect(recorded.find((made) => made.method === "POST")?.body).toEqual({ action: "confirm_warning_level", level: "written" }),
     );
-    await waitFor(() => expect(screen.queryByText(/is Ask Sunny's suggestion, not your decision/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/is Ask Sunny's suggestion\. Confirm it/)).toBeNull());
     // The manual's standing is the owner's to settle, not the manager's: it stays.
     expect(screen.getByText(/requires owner confirmation/)).toBeTruthy();
   });
@@ -1911,15 +1911,16 @@ describe("a reopened Corrective Action says what is still the manager's to decid
     fakeFetch(() => ({ payload: correctiveDraft({ checked: ["verbal"], filledBy: "manager" }, true) }));
     open();
     await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
-    expect(screen.queryByText(/suggestion, not your decision/)).toBeNull();
+    expect(screen.queryByText(/suggestion\. Confirm it/)).toBeNull();
     expect(screen.queryByText(/Choose the Type of Warning/)).toBeNull();
     expect(screen.queryByText(/requires owner confirmation/)).toBeNull();
   });
 
-  it("asks for a level when none is ticked, with no Confirm button to press", async () => {
+  it("says nothing about a blank level and offers no Confirm button (Finalize is never blocked)", async () => {
     fakeFetch(() => ({ payload: correctiveDraft({ checked: [], filledBy: "ai" }, true) }));
     open();
-    expect(await screen.findByText(/Choose the Type of Warning before you finalize/)).toBeTruthy();
+    await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
+    expect(screen.queryByText(/Type of Warning:/)).toBeNull();
     expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
   });
 });
