@@ -242,6 +242,16 @@ function normalize(text: string): string {
  * "payroll deduction ... apply", and reading that as yes would be the worst
  * available mistake on a record about someone's pay.
  */
+/**
+ * Whether a turn says something about the deduction that cannot safely be read
+ * as Yes or No ("actually we're not doing the $25 payroll deduction"). Such a
+ * turn still belongs to the open Corrective Action Form: it withdraws an
+ * earlier answer, and the card asks again (QA, 22 Oct 2026).
+ */
+export function payrollDeductUnclear(text: string): boolean {
+  return readPayrollDeduct(text) === "unclear";
+}
+
 export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
   const reading = readPayrollDeduct(text);
   return reading === "unclear" ? null : reading;

@@ -87,3 +87,29 @@ describe("QA F-01: the Corrective Action card never carries a Yes the manager di
     expect(proposals.every((proposal) => proposal?.templateKey === "dpoa")).toBe(true);
   });
 });
+
+describe("QA F-01 follow-up: a withdrawn Yes is asked again, on the same card", () => {
+  it.each([
+    "actually we're not doing the $25 payroll deduction",
+    "no need for the $25 payroll deduction after all",
+    "hold off on the $25 payroll deduction",
+  ])("Yes, then '%s' -> the open card asks", async (withdrawal) => {
+    const proposals = await conversation([
+      "create verbal ca for pat rivera, she was late today. payroll deduct $25",
+      withdrawal,
+    ]);
+    expect(proposals[0]?.payrollDeduct).toBe("yes");
+    // The second turn stays on the open Corrective Action card, and the Yes is gone.
+    expect(proposals[1]?.templateKey).toBe("dpoa");
+    expect(proposals[1]?.payrollDeduct ?? null).toBeNull();
+  });
+
+  it("asked again, then a plain No -> No", async () => {
+    const proposals = await conversation([
+      "create verbal ca for pat rivera, she was late today. payroll deduct $25",
+      "actually we're not doing the $25 payroll deduction",
+      "no",
+    ]);
+    expect(proposals.map((proposal) => proposal?.payrollDeduct ?? null)).toEqual(["yes", null, "no"]);
+  });
+});
