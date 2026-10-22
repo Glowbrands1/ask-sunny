@@ -616,3 +616,106 @@ describe("the intake stays open on a salon or \"I already told you\" (Ask Bubble
     expect(responses[1]!.content).not.toMatch(/who is this/i);
   });
 });
+
+/* ========================================================================= */
+/* HR, 21 OCT 2026 — "SUNNY WOULD NOT CREATE THE FORM" (THE SAVE, THEN FINALIZE) */
+/* ========================================================================= */
+
+/*
+ * "Today I asked Sunny to create a Verbal CA for <employee> for missing the
+ * 10-15-26 woven deadline and Sunny would not create the form." Sunny drafted
+ * the form and cited Standards of Conduct from the manual; the manager pressed
+ * Save without touching the policy, and Finalize then said "Official policy
+ * verification is incomplete". The card's Save sends every value, and the
+ * server had re-written them all as the manager's, so Sunny's own citation
+ * lost its verification (fixed in cf1480b). Played here from her words through
+ * the chat, the Create button, the card's Save and Finalize.
+ */
+describe("a Verbal CA for a missed Woven deadline, saved and then finalized", () => {
+  const ASKED = "create a Verbal CA for pat rivera for missing the 10-15-26 woven deadline";
+
+  /* The manual's Standards of Conduct with the line a missed required task rests on. */
+  const WITH_SOC = {
+    chunks: [
+      chunk(
+        30,
+        "Standards of Conduct",
+        12,
+        "The following are examples (non-inclusive list) of infractions that may result in disciplinary\naction:\no Failing to follow the policies and procedures of The Company\no Insubordination -the refusal to follow the directions of the manager.",
+      ),
+      ...MANUAL.chunks.slice(1),
+    ],
+  };
+
+  async function patch(id: string, body: unknown) {
+    return instanceRoute.PATCH(
+      new Request(`https://app.test/api/forms/instances/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+  }
+
+  async function finalize(id: string) {
+    joinOverview();
+    return instanceRoute.POST(
+      new Request(`https://app.test/api/forms/instances/${id}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "finalize" }),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+  }
+
+  /** The card's Save: every value and tick it holds, plus the manager's edits. */
+  async function cardSave(id: string, edits: Record<string, string> = {}) {
+    const opened = await review(id);
+    const values = Object.fromEntries(
+      opened.values.filter((entry) => entry.value !== null).map((entry) => [entry.fieldKey, entry.value!]),
+    );
+    const checked = Object.fromEntries(
+      opened.values.filter((entry) => entry.checked.length > 0).map((entry) => [entry.fieldKey, entry.checked]),
+    );
+    const saved = await patch(id, { values: { ...values, ...edits }, checked });
+    expect(saved.status).toBe(200);
+  }
+
+  async function drafted() {
+    state.manual = WITH_SOC;
+    const { proposal, form } = await filed([ASKED, "no payroll deduct"], "Pat Rivera did not meet the Woven deadline of 10/15/2026.", {
+      offense_type: ["under_performance"],
+      warning_type: ["verbal"],
+    });
+    expect(proposal).toMatchObject({ templateKey: "dpoa", warningLevel: "verbal", employeeName: "Pat Rivera" });
+    expect(field(form, "policy_violated")!.value).toBe("Standards of Conduct");
+    expect(field(form, "policy_language")!.provenance).toMatchObject({ verified: true });
+    return String(form.instance.id);
+  }
+
+  it("keeps Sunny's cited policy verified through a Save, and finalizes without the warning", async () => {
+    const id = await drafted();
+
+    await cardSave(id, { prior_actions: "Coaching — JBA Policy Manual — signed 07/29/2026" });
+
+    const saved = await review(id);
+    expect(field(saved, "policy_language")!.filledBy).toBe("ai");
+    expect(field(saved, "policy_language")!.provenance).toMatchObject({ verified: true });
+    expect(field(saved, "prior_actions")!.filledBy).toBe("manager");
+
+    const finalized = await finalize(id);
+    expect(finalized.status, JSON.stringify(await finalized.clone().json())).toBe(200);
+  });
+
+  it("still asks when the manager rewrites the policy herself", async () => {
+    const id = await drafted();
+    const policy = field(await review(id), "policy_language")!.value!;
+    await cardSave(id, { policy_language: ` ${policy.split("\n\nSource:")[0]}\nViolation of personnel policies` });
+
+    const refused = await finalize(id);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ code: "policy_verification_required" });
+  });
+});
