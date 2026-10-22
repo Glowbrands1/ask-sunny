@@ -973,3 +973,30 @@ describe("a month named beside the employee is a date, not a second person", () 
     expect(extractEmployeeNames("CA for April Jones")).toEqual(["April Jones"]);
   });
 });
+
+/*
+ * HR feedback, 21 Oct 2026 (ported from Ask Bubbles): a visitors-policy
+ * account names the visitor, and the form was asked "for Pat Rivera or for Sam
+ * Jones?". A name right after "her friend", "her coworker", "a client" is the
+ * other person in what happened.
+ */
+describe("somebody else in the account is not a second employee", () => {
+  it.each([
+    "CA for Pat Rivera. She let her friend Sam Jones behind the counter for an hour",
+    "CA for Pat Rivera. She yelled at her coworker Avery Smith in front of clients",
+    "CA for Pat Rivera. She argued with a client, Dana Moss, at the front desk",
+  ])("%s → Pat Rivera", (text) => {
+    expect(resolveEmployee(managerContext([], { id: "msg-current", content: text }))).toEqual({
+      kind: "resolved",
+      employeeName: "Pat Rivera",
+    });
+  });
+
+  it("a name also given as the form's subject still counts", () => {
+    const resolution = resolveEmployee(
+      managerContext([], { id: "msg-current", content: "CA for Sam Jones. Pat Rivera let her friend Sam Jones in" }),
+    );
+    expect(resolution.kind).not.toBe("none");
+    expect(resolution.kind === "resolved" ? resolution.employeeName : resolution).not.toBe("Pat Rivera");
+  });
+});

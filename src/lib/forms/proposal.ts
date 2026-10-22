@@ -425,10 +425,32 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     `^\\s*${NAME}(?:\\s+${PART})*\\s*,\\s*(${NAME}(?:\\s+${PART})+)\\s*,\\s*${DATEISH}\\b`,
   ).exec(text)?.[1];
 
+  /*
+   * ==========================================================================
+   * "HER FRIEND SAM JONES", "HER COWORKER AVERY SMITH": SOMEBODY ELSE IN THE
+   * ACCOUNT
+   * ==========================================================================
+   *
+   * HR feedback, 21 Oct 2026 (ported from Ask Bubbles): "create verbal ca for
+   * <employee> for violating visitors in the workplace policy … she let her
+   * friend Sam Jones behind the counter" asked whether the form was for the
+   * employee or for Sam Jones — and a visitor is exactly who a visitors-policy
+   * account names. A name right after "her friend", "a client", "the
+   * visitor", "her coworker" is the other person in what happened. "MY
+   * coworker X" is the manager's employee and is read as one; a name also
+   * given as the form's subject ("ca for Sam Jones") still survives, exactly
+   * as a place does.
+   */
+  const OTHER_PARTY = new RegExp(
+    `\\b(?:her|his|their|a|an|the|this|that)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|co-?workers?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?|manager|supervisor),?\\s+(${NAME}(?:\\s+${PART})+)`,
+    "g",
+  );
+
   const places = new Set(
     [
       ...[...text.matchAll(AT_A_PLACE)].map((match) => match[1]!.trim()),
       ...(intakeSalon ? [intakeSalon.trim()] : []),
+      ...[...text.matchAll(OTHER_PARTY)].map((match) => match[1]!.trim()),
     ]
       // Named as a person somewhere too, so the position is not the whole story.
       .filter((candidate) => !AS_A_PERSON(candidate)),
