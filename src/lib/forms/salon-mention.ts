@@ -169,14 +169,14 @@ const SEPARATOR = " ; ";
 /*
  * A SALON NAME SET OFF BY PUNCTUATION ON ITS OWN — "Avery Testperson, lincoln
  * 27th st", "Avery Testperson (Overland Park)" — is a place. Several words
- * only: "Ellie, Lawrence, today" could still be a person called Lawrence, but
+ * only: "Wren, Lawrence, today" could still be a person called Lawrence, but
  * nobody is called "Grand Island" or "Lincoln 27th St".
  */
 const SET_OFF_BEFORE = /(?:^|;)\s*$/;
 const SET_OFF_AFTER = /^\s*(?:$|;)/;
 
 /*
- * "BRANDI ALGYA ASD LINCOLN O ST": NAME, ROLE, SALON. Managers sign a person
+ * "CORINNE VALDEZ ASD LINCOLN O ST": NAME, ROLE, SALON. Managers sign a person
  * off the way the paperwork does, and the role is what says a place follows.
  * Only for a name of two or more words — "SD Lawrence" can be the salon
  * director called Lawrence, but nobody is called "Lincoln O St".

@@ -19,11 +19,11 @@ const rewrite = (text: string, name = "Jessica Moss") => nameInsteadOfPronouns(t
 describe("the employee's first name", () => {
   it("is the first word of the record's subject", () => {
     expect(employeeFirstName("Jessica Moss")).toBe("Jessica");
-    expect(employeeFirstName("Paulyne Test")).toBe("Paulyne");
+    expect(employeeFirstName("Rosalyn Test")).toBe("Rosalyn");
   });
 
   it("is written as a name even when the record was typed in one case", () => {
-    expect(employeeFirstName("colene schildt")).toBe("Colene");
+    expect(employeeFirstName("delphine ashworth")).toBe("Delphine");
     expect(employeeFirstName("DANA MOSS")).toBe("Dana");
     expect(employeeFirstName("McKenna Ray")).toBe("McKenna");
   });
@@ -103,8 +103,8 @@ describe("natural sentences, not mechanical substitution", () => {
       .some((sentence) => new RegExp(`\\b${first}\\b.*\\b${first}'s\\b`).test(sentence));
 
   it.each([
-    ["Colene provided her resignation to management.", "Colene provided a resignation to management.", "Colene Schildt"],
-    ["Colene submitted her resignation.", "Colene submitted a resignation.", "Colene Schildt"],
+    ["Delphine provided her resignation to management.", "Delphine provided a resignation to management.", "Delphine Ashworth"],
+    ["Delphine submitted her resignation.", "Delphine submitted a resignation.", "Delphine Ashworth"],
     ["Jessica gave her two week notice on 9/1.", "Jessica gave the two week notice on 9/1.", "Jessica Moss"],
     ["Jessica worked out her notice.", "Jessica worked out the notice.", "Jessica Moss"],
     ["Jessica returned her keys and uniform.", "Jessica returned the keys and uniform.", "Jessica Moss"],
@@ -128,7 +128,7 @@ describe("natural sentences, not mechanical substitution", () => {
 
   it("names the employee once per sentence, never as subject and possessive together", () => {
     const corpus: [string, string][] = [
-      ["Colene Schildt", "Colene provided her resignation to management. She gave and worked a two week notice, and her last day worked was 9-28-26."],
+      ["Delphine Ashworth", "Delphine provided her resignation to management. She gave and worked a two week notice, and her last day worked was 9-28-26."],
       ["Sarah Jones", "Sarah quit on the spot on 9/20. She returned her keys and uniform."],
       ["Jane Smith", "Jane Smith gave two weeks notice on 9/14 and worked out her notice. Her last day was Sept 26."],
       ["Jessica Moss", "Observed:\nShe arrived 30 minutes late for her scheduled shift.\n\nGoing Forward:\nShe should plan her commute and leave early."],
@@ -142,8 +142,8 @@ describe("natural sentences, not mechanical substitution", () => {
   });
 
   it("leaves text that is already natural exactly as it is", () => {
-    const natural = "On 9-15-26, Colene submitted a resignation to management via Woven. Colene gave and worked a two week notice; the last day worked was 9-28-26.";
-    expect(nameInsteadOfPronouns(natural, "Colene Schildt")).toEqual({ text: natural, replaced: 0 });
+    const natural = "On 9-15-26, Delphine submitted a resignation to management via Woven. Delphine gave and worked a two week notice; the last day worked was 9-28-26.";
+    expect(nameInsteadOfPronouns(natural, "Delphine Ashworth")).toEqual({ text: natural, replaced: 0 });
   });
 });
 

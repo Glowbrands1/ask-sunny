@@ -194,7 +194,7 @@ const AFTER_CUES: { role: ExitDateRole; pattern: RegExp }[] = [
   },
   /*
    * THE DATE FIRST, THEN WHO HANDED IT IN — "On 9-15-26, she provided her
-   * resignation to management", "on 9/15 colene gave her two weeks". The
+   * resignation to management", "on 9/15 delphine gave her two weeks". The
    * subject is a pronoun or the employee's name (one or two words, whatever
    * its case), never the employer: "on 9/1 we gave her notice" is somebody
    * else's act and assigns nothing.

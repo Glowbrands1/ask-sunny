@@ -93,7 +93,7 @@ function harness(
 const received = (attachments: ResendAttachment[]) => ({
   emailId: "email_st_1",
   from: "STC Reports <reports@suntancity.com>",
-  subject: "Sales Totals for Bowen",
+  subject: "Sales Totals for Tremaine",
   messageId: "<upstream@suntancity.test>",
   receivedAt: "2026-09-04T11:02:00.000Z",
   attachments,

@@ -68,3 +68,14 @@ New end-to-end regression suite: `src/app/api/forms/hr-feedback-oct21-e2e.test.t
 4. Two forms from one message, and "which one?" for a correction (Bubbles 01fa914, 8b79a46).
 5. Bubbles' store resolver / Woven title verification / chat-side people lookup (ffea279, efde160).
 6. A same-origin guard on Sunny's Apify review-sync admin routes.
+
+## 22 Oct 2026: real people and the manual's wording removed (Sunny PR #130)
+
+Ask Sunny's tests, comments and docs now use synthetic people only, the
+policy-manual fixture has invented wording, and
+`src/lib/security/no-real-people.test.ts` guards company addresses.
+
+**Ported to Ask Bubbles** in Glowbrands1/Ask-bubbles#71, together with the
+Corrective Action recipient fix (6b5f897). Bubbles' own company's people were
+checked against its own directory and replaced too; it has no copy of the
+policy-manual fixture.

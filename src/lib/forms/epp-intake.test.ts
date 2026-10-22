@@ -121,7 +121,7 @@ describe("nothing optional holds up a plan that can be drafted", () => {
 
   it("is complete without a single productivity figure", () => {
     const reading = read(
-      "Today. Paulyne is great with clients, needs to work on punctuality, and we'll re-evaluate the week of October 5.",
+      "Today. Rosalyn is great with clients, needs to work on punctuality, and we'll re-evaluate the week of October 5.",
     );
     expect(reading.missing.map((item) => item.key)).toContain("employee_productivity");
     expect(reading.complete).toBe(true);

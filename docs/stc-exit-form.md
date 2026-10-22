@@ -51,7 +51,7 @@ reproduced.
 
 ## Revision 2 — HR's Details section (28 Sep 2026)
 
-HR (Colene Schildt) asked for the Details section to state the resignation date,
+HR (Delphine Ashworth) asked for the Details section to state the resignation date,
 how and why the employee left, whether store items and the salon key were
 returned (a key that wasn't is a $25 payroll deduction), whether payroll
 deduction applies, whether they are dropped to minimum wage and forfeit their

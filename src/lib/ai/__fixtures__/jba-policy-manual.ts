@@ -2,20 +2,21 @@ import type { ManualChunk } from "@/lib/forms/official-policy-manual";
 
 /**
  * ============================================================================
- * THE JBA POLICY MANUAL EDITED 5.2025, AS THE KNOWLEDGE BASE HOLDS IT
+ * A SYNTHETIC STAND-IN FOR THE POLICY MANUAL, AS THE KNOWLEDGE BASE HOLDS IT
  * ============================================================================
  *
- * All 110 chunks of the indexed manual (document version 2), exported from the
- * knowledge tables: the real chunk index, PDF sheet, printed page, locator and
- * the section headings ingestion recorded in `metadata.sections`.
+ * The shape of the indexed manual — 110 chunks with their chunk index, PDF
+ * sheet, printed page, locator and the section headings ingestion records in
+ * `metadata.sections`, and the table of contents — so the section lookup is
+ * tested against a realistic layout.
  *
- * CONTENT IS TRUNCATED, NEVER REWORDED. The table-of-contents chunks keep
- * enough of their text to be recognised as contents pages; the Smoking/Vaping,
- * Attendance and Seminar/Webinar Attendance chunks are kept whole because the
- * regression tests are about them; every other chunk keeps its opening only.
+ * THE WORDING IS INVENTED. This repository is not the place for the company's
+ * policy text, so every sentence under a heading is a synthetic placeholder;
+ * only headings, page numbers and contents lines keep their real form, because
+ * those are what the lookup reads. Production quotes the manual from the
+ * knowledge base at run time, never from this file.
  *
- * `chunkId` is a stand-in — the real ids are database uuids and nothing here
- * depends on their value.
+ * `chunkId` is a stand-in — nothing here depends on its value.
  */
 export const JBA_MANUAL_DOCUMENT = {
   id: "f527da34-a25b-413c-93a4-31e3f1c946d3",
@@ -32,7 +33,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 1",
     section: null,
     sections: [],
-    content: "2025\nJB & Associates\nEmployment Policy\nManual\nREVISED MAY 2025\nINCLUDES ALL BRANDS OPERATED BY JB & ASSOCIATES, INC, HERIN\nREFFERRED TO AS “THE COMPANY\"",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.\nSynthetic policy wording, line 6.\nSynthetic policy wording, line 7.",
   },
   {
     chunkIndex: 1,
@@ -42,7 +43,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 1",
     section: null,
     sections: [],
-    content: "1 | P a g e\nThe Company Employment Policy Manual\nThis manual is designed to acquaint and provide employees with information about working conditions,\nEmployee b",
+    content: "1 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 2,
@@ -64,7 +65,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 2",
     section: null,
     sections: [],
-    content: "8\nDisability Accommodation-Americans with Disability Act ........................................................................\n\n9\nSexual and Other Forms of Harassment ................................................................................................... 9\nDrug, Alcohol and Smoking Policy........................................................................................................... 11\nStand",
+    content: "Synthetic policy wording, line 1.\nDisability Accommodation-Americans with Disability Act ........................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSexual and Other Forms of Harassment ................................................................................................... 9\nDrug, Alcohol and Smoking Policy........................................................................................................... 11\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 4,
@@ -74,7 +75,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 2",
     section: null,
     sections: [],
-    content: "15\nCrunch Fitness Specific Dress Code: ...................................................................................................\n\n16\nBuff City Soap: ..................................................................................................................................... 16\nSun Tan City: ..............................................................................................................",
+    content: "Synthetic policy wording, line 1.\nCrunch Fitness Specific Dress Code: ...................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nBuff City Soap: ..................................................................................................................................... 16\nSun Tan City: ..............................................................................................................",
   },
   {
     chunkIndex: 5,
@@ -84,7 +85,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 2",
     section: null,
     sections: [],
-    content: "19\nCoupon Collection ...................................................................................................................................\n\n19\nCell Phone/Smart Watch Policy .............................................................................................................. 19\nCompany Email Account .................................................................................................",
+    content: "Synthetic policy wording, line 1.\nCoupon Collection ...................................................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nCell Phone/Smart Watch Policy .............................................................................................................. 19\nCompany Email Account .................................................................................................",
   },
   {
     chunkIndex: 6,
@@ -104,7 +105,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 3",
     section: null,
     sections: [],
-    content: "21\nBackground Checks .................................................................................................................................\n\n21\nBusiness Ethics ........................................................................................................................................ 21\nCommunication and Confidentiality Policies ..................................................................",
+    content: "Synthetic policy wording, line 1.\nBackground Checks .................................................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nBusiness Ethics ........................................................................................................................................ 21\nCommunication and Confidentiality Policies ..................................................................",
   },
   {
     chunkIndex: 8,
@@ -114,7 +115,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 3",
     section: null,
     sections: [],
-    content: "23\nCommunications Systems Policy.............................................................................................................\n\n24\nInformation Technology Support ............................................................................................................ 24\nSafety in the Workplace ...........................................................................................................",
+    content: "Synthetic policy wording, line 1.\nCommunications Systems Policy.............................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nInformation Technology Support ............................................................................................................ 24\nSafety in the Workplace ...........................................................................................................",
   },
   {
     chunkIndex: 9,
@@ -124,7 +125,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 3",
     section: null,
     sections: [],
-    content: "28\nVisitors in the Workplace ........................................................................................................................\n\n29\nAnimals in the Workplace ....................................................................................................................... 30\nRobberies ............................................................................................................",
+    content: "Synthetic policy wording, line 1.\nVisitors in the Workplace ........................................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nAnimals in the Workplace ....................................................................................................................... 30\nRobberies ............................................................................................................",
   },
   {
     chunkIndex: 10,
@@ -144,7 +145,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 4",
     section: null,
     sections: [],
-    content: "33\nOrientation ..............................................................................................................................................\n\n33\nIntroductory Period (Probationary Period) ............................................................................................. 33\nEvaluations and Raises ................................................................................................",
+    content: "Synthetic policy wording, line 1.\nOrientation ..............................................................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nIntroductory Period (Probationary Period) ............................................................................................. 33\nEvaluations and Raises ................................................................................................",
   },
   {
     chunkIndex: 12,
@@ -154,7 +155,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 4",
     section: null,
     sections: [],
-    content: "36\nAccessing W-2’s.......................................................................................................................................\n\n36\nTimekeeping & Payroll ..................................................................................................................... 36\nTime Records...........................................................................................................",
+    content: "Synthetic policy wording, line 1.\nAccessing W-2’s.......................................................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nTimekeeping & Payroll ..................................................................................................................... 36\nTime Records...........................................................................................................",
   },
   {
     chunkIndex: 13,
@@ -164,7 +165,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 4",
     section: null,
     sections: [],
-    content: "38\nPayroll Deductions ..................................................................................................................................\n\n39\nGarnishment of Employee Wages .......................................................................................................... 39\nTravel time/cost reimbursements (for travel NOT requiring overnight stays) ....................................... 39\nOvern",
+    content: "Synthetic policy wording, line 1.\nPayroll Deductions ..................................................................................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nGarnishment of Employee Wages .......................................................................................................... 39\nTravel time/cost reimbursements (for travel NOT requiring overnight stays) ....................................... 39\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 14,
@@ -184,7 +185,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 5",
     section: null,
     sections: [],
-    content: "45\nGroup Health Plan Continuation Coverage Under COBRA .....................................................................\n\n45\n401K Benefit ............................................................................................................................................ 45\nLeave Requests .......................................................................................................................",
+    content: "Synthetic policy wording, line 1.\nGroup Health Plan Continuation Coverage Under COBRA .....................................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\n401K Benefit ............................................................................................................................................ 45\nLeave Requests .......................................................................................................................",
   },
   {
     chunkIndex: 16,
@@ -194,7 +195,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 5",
     section: null,
     sections: [],
-    content: "48\nClient Tanning Policies and Regulations (STC & Crunch ONLY) ...........................................................\n\n48\nProtecting the Client from Overexposing ............................................................................................... 48\nConsent Forms (New Client Release Forms) ........................................................................................... 49\nEye Protection ...",
+    content: "Synthetic policy wording, line 1.\nClient Tanning Policies and Regulations (STC & Crunch ONLY) ...........................................................\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nProtecting the Client from Overexposing ............................................................................................... 48\nConsent Forms (New Client Release Forms) ........................................................................................... 49\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 17,
@@ -209,7 +210,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Support Center", page: 6 },
       { heading: "Maintenance Team", page: 6 },
     ],
-    content: "6 | P a g e\nReference List\nLincoln Support Center Telephone: 402-488-8261\nLeadership Team\nCurt Bowen Owner Curt.Bowen@Glowbrands.com\nMarissa Lempka Executive VP",
+    content: "6 | P a g e\nReference List\nSynthetic policy wording, line 1.\nLeadership Team\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 18,
@@ -224,7 +225,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Work Policies & Regulations", page: 7 },
       { heading: "At-Will Employment", page: 7 },
     ],
-    content: "7 | P a g e\nCore Values\nNothing’s Impossible\n• The answers are out there, it’s up to us to find it.\nWork Hard, Have Fun\n• If you make work fun, it wont feel lik",
+    content: "7 | P a g e\nCore Values\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 19,
@@ -236,7 +237,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Equal Employment Opportunity", page: 8 },
     ],
-    content: "8 | P a g e\nat will at any time, with or without notice or cause, so long as there is no violation of applicable\nfederal or state law. Policies set forth in thi",
+    content: "8 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 20,
@@ -249,7 +250,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Open Door Policy", page: 8 },
       { heading: "Immigration Law Compliance", page: 8 },
     ],
-    content: "Anyone who believes this policy has been violated may report this violation to the Human\nResources Department.\n\nOpen Door Policy\nEvery Employee is encouraged to",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nOpen Door Policy\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 21,
@@ -261,7 +262,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Disability Accommodation-Americans with Disability Act", page: 9 },
     ],
-    content: "9 | P a g e\nEmployees with questions or seeking more information on immigration law issues are\nencouraged to contact Human Resources. Employees may raise questi",
+    content: "9 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 22,
@@ -273,7 +274,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Sexual and Other Forms of Harassment", page: 9 },
     ],
-    content: "However, the employee may still be deemed disabled under ADA.\n\nAdditionally, impairments\nmay now be of short duration, intermittent, or episodic and still quali",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 23,
@@ -283,7 +284,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 10",
     section: null,
     sections: [],
-    content: "10 | P a g e\no VERBAL HARASSMENT: including sexual innuendoes, suggestive comments, jokes of a sexual\nnature, sexual propositions, and threats. o NON-VERBAL HAR",
+    content: "10 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 24,
@@ -293,7 +294,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 10",
     section: null,
     sections: [],
-    content: "Employees may reserve the\nright to notify local authorities if they feel threatened and if they are of the belief that laws have been\nviolated.\n\nEx: Terroristic",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 25,
@@ -305,7 +306,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Drug, Alcohol and Smoking Policy", page: 11 },
     ],
-    content: "11 | P a g e\nDrug, Alcohol and Smoking Policy\nIn compliance with the Drug-Free Workplace Act of 1988, The Company has a longstanding\ncommitment to provide a saf",
+    content: "11 | P a g e\nDrug, Alcohol and Smoking Policy\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 26,
@@ -317,7 +318,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Prescribed Medications", page: 11 },
     ],
-    content: "o The presence of any detectable number of prohibited substances in the Employee's system\nwhile at work or while on Company premises.\n\n\"Prohibited substances\" i",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 27,
@@ -329,7 +330,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Smoking/Vaping", page: 12 },
     ],
-    content: "12 | P a g e\no Any medications that inhibit an Employee’s ability to perform their job duties safely and\neffectively must be reported to the Human Resource Department prior to their next working\nday for further review and possible job duty modifications (if applicable). Smoking/Vaping\no Our business is focused on health, and we have several policies affecting the possession and\nuse of all tobacco products and nicotine products, including but not limited to cigarettes,\nvapor cigarettes, and chewing tobacco while working, or while on the premises. o The Company adheres to all federal, state, local rules regarding smoking in the workplace. Smoking or use of “vapor” products are not permitted in any of the locations. All locations,\nincluding but not limited to all facilities and parking areas and company owned or leased\nvehicles are smoke and vapor free. Employees who smoke or use “vapor” products shall do\nso off the premises, including the parking lots. The Company reserves the right to undertake monitored drug and/or alcohol testing as follows:\no RANDOM TESTING: Employees may be selected at random for drug and/or alcohol testing at\nany interval determined by The Company. This test may be monitored/observed when\nadministered.",
+    content: "12 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3. Smoking/Vaping\no Synthetic policy wording, line 4.\nSynthetic policy wording, line 5.\nSynthetic policy wording, line 6.\nSynthetic policy wording, line 7.\nSynthetic policy wording, line 8.\nSynthetic policy wording, line 9.\no Synthetic policy wording, line 10.\nSynthetic policy wording, line 11.\nSynthetic policy wording, line 12.",
   },
   {
     chunkIndex: 28,
@@ -341,7 +342,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Standards of Conduct", page: 12 },
     ],
-    content: "This test may be monitored/observed when\nadministered.\n\no FOR-CAUSE TESTING: The Company may ask an Employee to submit to a drug and/or alcohol\ntest at any time",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\no Synthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 29,
@@ -353,7 +354,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Standards of Conduct", page: 12 },
     ],
-    content: "Standards of Conduct\nThe Company expects Employees to follow rules of conduct that will protect the interests and\nsafety of all customers, Employees, and The Co",
+    content: "Standards of Conduct\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 30,
@@ -363,7 +364,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 13",
     section: null,
     sections: [],
-    content: "13 | P a g e\no Lack of sales performance\no Indecent or immoral behavior\no Conduct that requires investigation due to its negative impact on The Company’s public",
+    content: "13 | P a g e\no Synthetic policy wording, line 1.\no Synthetic policy wording, line 2.\no Synthetic policy wording, line 3.",
   },
   {
     chunkIndex: 31,
@@ -373,7 +374,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 13",
     section: null,
     sections: [],
-    content: "o Fighting or threatening violence in the workplace\no Boisterous or disruptive activity in the workplace\no Threatened or actual injury of another Employee or cu",
+    content: "o Synthetic policy wording, line 1.\no Synthetic policy wording, line 2.\no Synthetic policy wording, line 3.",
   },
   {
     chunkIndex: 32,
@@ -385,7 +386,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Disciplinary Action", page: 14 },
     ],
-    content: "14 | P a g e\no Undisclosed and/or unauthorized photography, video recording, or sound recording of oral,\nor telephone communication, in which a customer, Employ",
+    content: "14 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 33,
@@ -397,7 +398,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Attendance", page: 14 },
     ],
-    content: "Employment with The Company is based on mutual\nconsent and both the employee, and The Company have the right to terminate employment as\nwill, with or without cause or advance notice.\n\nThe Company may use progressive discipline at its\ndiscretion. Attendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime. Lack of punctuality or absenteeism has a negative impact on everyone’s schedule and\ncreates a lack of service for the client. It is the employee’s responsibility to find a co-worker as a\nreplacement for a scheduled shift if the employee is not able to work that shift (See Shift\nReplacement). If an employee is absent from work for more than two days, a doctor’s note is\nrequired upon return to work. Excessive absenteeism will result in termination. No call or no\nshow for a scheduled shift may result in immediate termination. o If an employee is going to be tardy or absent, it is mandatory that the employee call and\nspeak to their direct manager on duty and notify them of the occurrence at least 2 hours\nbefore their scheduled shift unless it is an instance that it is not possible for them to do so. (Accident, etc.), Employees must contact their Supervisor via direct phone call immediately. If an employee is unable to reach their Supervisor, the employee should keep calling up the\nchain of command until someone answers. o Texting a manager is not allowed when calling in. Employees must speak with their\nmanager directly. o Seminars/Meetings/ Training sessions are considered scheduled shifts. (See\nSeminar/Webinar Attendance section)",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.\nSynthetic policy wording, line 6. Attendance\nSynthetic policy wording, line 7.\nSynthetic policy wording, line 8.\nSynthetic policy wording, line 9.\nSynthetic policy wording, line 10.\nSynthetic policy wording, line 11.\nSynthetic policy wording, line 12.\nSynthetic policy wording, line 13.\nSynthetic policy wording, line 14.\nSynthetic policy wording, line 15.\nSynthetic policy wording, line 16.\nSynthetic policy wording, line 17.\nSynthetic policy wording, line 18.",
   },
   {
     chunkIndex: 34,
@@ -411,7 +412,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Texting as General Work communications", page: 15 },
       { heading: "Dress Code for The Company", page: 15 },
     ],
-    content: "15 | P a g e\nLate Opening\nWhen an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager a",
+    content: "15 | P a g e\nLate Opening\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 35,
@@ -425,7 +426,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Belts", page: 15 },
       { heading: "Hair", page: 15 },
     ],
-    content: "Anyone\nviolating their Brand’s Dress code policy will be sent home to change into proper work attire and\nmay be subject to disciplinary action, up to and potent",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 36,
@@ -440,7 +441,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Jewelry/Accessories", page: 16 },
       { heading: "Tattoos", page: 16 },
     ],
-    content: "16 | P a g e\nFacial Hair\no Facial hair is acceptable as long as it is clean, well-groomed, and trimmed. Make-up\no Due to the nature of working in the Beauty Ind",
+    content: "16 | P a g e\nFacial Hair\no Synthetic policy wording, line 1. Make-up\no Synthetic policy wording, line 2.",
   },
   {
     chunkIndex: 37,
@@ -450,7 +451,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 16",
     section: null,
     sections: [],
-    content: "o Front Desk and Management’s pants must be solid khaki or black in color. o Pants must be full length and free of holes or frayed edges.\n\nBuff City Soap:\nShirt",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 38,
@@ -462,7 +463,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Tanning", page: 17 },
     ],
-    content: "17 | P a g e\no No patches, rips, or holes are to be noticeable on the shirt. Pants\no Full length black or blue jean-colored pants are acceptable. o Yoga pants, ",
+    content: "17 | P a g e\no Synthetic policy wording, line 1.\no Synthetic policy wording, line 2.",
   },
   {
     chunkIndex: 39,
@@ -472,7 +473,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 17",
     section: null,
     sections: [],
-    content: "Pants\no Full length khaki or black pants are acceptable. o Full length black or blue jean-colored pants are acceptable as long as they are free of tears\nor exce",
+    content: "Synthetic policy wording, line 1.\no Synthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 40,
@@ -485,7 +486,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Employee Parking", page: 18 },
       { heading: "Lost and Found", page: 18 },
     ],
-    content: "18 | P a g e\nPersonal Items:\nPersonal items (books, laptops, other electronics, etc.) do not belong inside The Company,\nunless necessary. Employees are expected",
+    content: "18 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 41,
@@ -498,7 +499,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Facility Repair/Service Vendors", page: 18 },
       { heading: "Purchasing Authorizations", page: 18 },
     ],
-    content: "o If an item is found by an Employee, it is their legal responsibility to return it to the rightful\nowner. Deviations from this policy will not be tolerated.\n\nI",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 42,
@@ -511,7 +512,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Discounting", page: 19 },
       { heading: "Coupon Collection", page: 19 },
     ],
-    content: "19 | P a g e\nCompany, unless given prior approval in writing by Upper Management, official company\ndirective, or the legal department. Employees are prohibited ",
+    content: "19 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 43,
@@ -524,7 +525,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Cell Phone/Smart Watch Policy", page: 19 },
       { heading: "Company Email Account", page: 19 },
     ],
-    content: "Write the promotional offer the\ncustomer has shown using their phone on a receipt.\n\nThe receipt in turn becomes\ntheir coupon. o Write employee name, the custome",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 44,
@@ -539,7 +540,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Outside Employment", page: 20 },
       { heading: "Fraternization Policy", page: 20 },
     ],
-    content: "20 | P a g e\nPoint of Sale and Alarm Passwords\nEmployees must always use their own personal passwords and alarm codes. Do NOT share\nalarm codes or passwords. Us",
+    content: "20 | P a g e\nPoint of Sale and Alarm Passwords\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 45,
@@ -552,7 +553,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Employment and Supervision of Relatives", page: 20 },
       { heading: "Solicitation", page: 20 },
     ],
-    content: "Anyone in a Supervisory\nposition is prohibited from dating a subordinate, without Management Team approval.\n\nPersonal\nrelationships between Employees should not",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 46,
@@ -570,7 +571,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Communication and Confidentiality Policies", page: 21 },
       { heading: "Confidential Information Policy", page: 21 },
     ],
-    content: "21 | P a g e\nworkplace, they must submit it to Management for approval. The Manager will post all\napproved messages. Care and Cleaning of Equipment and Faciliti",
+    content: "21 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 47,
@@ -583,7 +584,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Communication and Confidentiality Policies", page: 21 },
       { heading: "Confidential Information Policy", page: 21 },
     ],
-    content: "Communication and Confidentiality Policies\nConfidential Information Policy\nAll Company data and information is the property of The Company and is intended for c",
+    content: "Communication and Confidentiality Policies\nConfidential Information Policy\nSynthetic policy wording, line 1.",
   },
   {
     chunkIndex: 48,
@@ -596,7 +597,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Nondisclosure Agreement Policy", page: 22 },
       { heading: "Talking to the Media/Press", page: 22 },
     ],
-    content: "22 | P a g e\n▪ Do not use a word or phrase of special importance to you, i.e., birthday, place, or\nvehicle. ▪ Do not use default passwords, i.e., password123. ▪",
+    content: "22 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 49,
@@ -608,7 +609,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Social Media Policy", page: 22 },
     ],
-    content: "Please direct any and all media inquiries to the\nCorporate Office.\n\nSocial Media Policy\nThe Company understands that social media can be a fun and rewarding way",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSocial Media Policy\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 50,
@@ -621,7 +622,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Using Social Media at Work", page: 23 },
       { heading: "Retaliation is Prohibited", page: 23 },
     ],
-    content: "23 | P a g e\nEmployees should be honest and accurate when posting information or news, if an employee\nmake a mistake, correct it quickly. Maintain the confident",
+    content: "23 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 51,
@@ -633,7 +634,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Information Security and IT Overview Policy", page: 23 },
     ],
-    content: "If\nemployees have a question or need further guidance, please contact Human Resources.\n\nInformation Security and IT Overview Policy\nCompany assets include anyth",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nInformation Security and IT Overview Policy\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 52,
@@ -643,7 +644,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 23",
     section: null,
     sections: [],
-    content: "In addition, having an email address on the internet may\nlead to the receipt of unsolicited emails containing offensive content. Users accessing the\ninternet do",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 53,
@@ -655,7 +656,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Communications Systems Policy", page: 24 },
     ],
-    content: "24 | P a g e\nor servers. The computer systems and servers belong to The Company and may only be\nused for business purposes. o Monitoring of Computer Usage: The ",
+    content: "24 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 54,
@@ -668,7 +669,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Communications Systems Policy", page: 24 },
       { heading: "Information Technology Support", page: 24 },
     ],
-    content: "Communications Systems Policy\nTelephones, mail systems, computers, internet access, email, and etc. provided by The Company\nare company property and may be acce",
+    content: "Communications Systems Policy\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 55,
@@ -682,7 +683,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Security Policy", page: 25 },
       { heading: "Statement of Safety in the Workplace Policy", page: 25 },
     ],
-    content: "25 | P a g e\no All other: HelpDesk@buffcitysoap.com\nCrunch Fitness:\no Phone: 1-888-622-6290\no Email: myabcid@abcfinancial.com\no Woven Support Email: support@wov",
+    content: "25 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\no Synthetic policy wording, line 3.\no Synthetic policy wording, line 4.\no Synthetic policy wording, line 5.",
   },
   {
     chunkIndex: 56,
@@ -692,7 +693,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 25",
     section: null,
     sections: [],
-    content: "The success of The Company will depend not only on production and sales, but also how safely\neach job is performed.\n\nThere is neither a job so important nor any",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 57,
@@ -704,7 +705,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Emergency Situation Notification Requirement", page: 26 },
     ],
-    content: "26 | P a g e\nto company records of work-related injuries and illnesses, subject to certain limitations imposed\nby 29 CFR 1904.35(b)(2). To report a work-related",
+    content: "26 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 58,
@@ -716,7 +717,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Incident Reporting", page: 26 },
     ],
-    content: "When operations are officially closed due to emergency conditions, per\nFLSA requirements, time off from scheduled work will be paid for all salary exempt Employ",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 59,
@@ -728,7 +729,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Employee Non-Work-Related Injury/Illness Accommodations", page: 27 },
     ],
-    content: "27 | P a g e\nFollowing any work-related injury or illness, regardless of severity, it is the Employee’s\nresponsibility to report the injury/illness immediately ",
+    content: "27 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 60,
@@ -741,7 +742,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Employee Non-Work-Related Injury/Illness Accommodations", page: 27 },
       { heading: "Problem Resolution", page: 27 },
     ],
-    content: "Employee Non-Work-Related Injury/Illness Accommodations\nWhen a potential new hire or current Employee is stating they have work restrictions or when\nThe Company",
+    content: "Employee Non-Work-Related Injury/Illness Accommodations\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 61,
@@ -751,7 +752,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 27",
     section: null,
     sections: [],
-    content: "The Employee may discontinue the procedure at any step.\n\no An Employee presents a problem to their immediate Supervisor within 7 calendar days, or\nas soon as re",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\no Synthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 62,
@@ -763,7 +764,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Workplace Violence Prevention", page: 28 },
     ],
-    content: "28 | P a g e\no The Supervisor responds to the problem during a discussion or within 7 calendar days, or as\nsoon as reasonably possible after consulting with app",
+    content: "28 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 63,
@@ -773,7 +774,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 28",
     section: null,
     sections: [],
-    content: "Employees are expected to refrain from fighting, “horseplay”, or other\nconduct that may be dangerous to others.\n\nFirearms, weapons, and other dangerous or\nhazar",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 64,
@@ -785,7 +786,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Visitors in the Workplace", page: 29 },
     ],
-    content: "29 | P a g e\nAnyone determined to be responsible for threats of (or actual) violence or other conduct that is\nin violation of these guidelines will be subject t",
+    content: "29 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 65,
@@ -795,7 +796,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 29",
     section: null,
     sections: [],
-    content: "If the Employee is uncomfortable with allowing the visitor into the\nworkplace, the Supervisor or manager on duty must refuse to allow the visitor into the\nworkp",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 66,
@@ -805,7 +806,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 29",
     section: null,
     sections: [],
-    content: "Do not try to intercede. The Company will promptly and thoroughly\ninvestigate all reports of threats of (or actual) violence and of suspicious individuals or ac",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 67,
@@ -818,7 +819,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Animals in the Workplace", page: 30 },
       { heading: "Robberies", page: 30 },
     ],
-    content: "30 | P a g e\nAnimals in the Workplace\nThe Company is responsible for assuring the health and safety of all Employees in the\nworkplace. While we understand that ",
+    content: "30 | P a g e\nAnimals in the Workplace\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 68,
@@ -830,7 +831,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Handling Theft", page: 30 },
     ],
-    content: "Do not in anyway attempt to foil the\nrobbery, negotiate, or battle wits with a potential robber(s).\n\nThe safety of our Employees, outside vendors, guests, and r",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 69,
@@ -844,7 +845,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Wet Floor Sign", page: 31 },
       { heading: "Portable Fire Extinguisher & Fire Prevention Plan", page: 31 },
     ],
-    content: "31 | P a g e\nProper Use of General Operating Equipment\nEmployees will be required to use items such as ladders, carts, stools, etc. to perform daily tasks\nsuch ",
+    content: "31 | P a g e\nProper Use of General Operating Equipment\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 70,
@@ -856,7 +857,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Vehicle Fleet Usage Policy and Guidelines", page: 31 },
     ],
-    content: "o Training will also be repeated annually. Employees who are not trained to use fire extinguishers are advised that their only duties in a\nfire are responsible ",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 71,
@@ -868,7 +869,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Driver Safety Rules", page: 32 },
     ],
-    content: "32 | P a g e\nduring the operation of a company vehicle, or while driving a personal vehicle on company\nbusiness, within 72 hours to Human Resources. A driving r",
+    content: "32 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 72,
@@ -880,7 +881,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Accident Procedures", page: 32 },
     ],
-    content: "Cell phone use while driving should be kept to a minimum and\nwhen done shall only be done in a manner that does not distract the driver.\n\nDrivers are responsibl",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 73,
@@ -893,7 +894,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Employment Status & Records", page: 33 },
       { heading: "Employee Classifications", page: 33 },
     ],
-    content: "33 | P a g e\nformal accident review conducted on each accident to determine cause and how the accident\ncould have been prevented. Employment Status & Records\nEm",
+    content: "33 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2. Employment Status & Records\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 74,
@@ -906,7 +907,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Orientation", page: 33 },
       { heading: "Introductory Period (Probationary Period)", page: 33 },
     ],
-    content: "o Exempt – All exempt Employees are paid on a bi-weekly salary basis. Hours worked by\nsalaried Employees can be irregular.\n\nSalaried Employees are exempt from t",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 75,
@@ -918,7 +919,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Evaluations and Raises", page: 34 },
     ],
-    content: "34 | P a g e\ncapabilities, work habits, and overall performance. Either the Employee or The Company may\nend the employment relationship at will, at any time, du",
+    content: "34 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 76,
@@ -932,7 +933,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "What to Expect When Terminated", page: 34 },
       { heading: "Employment Termination", page: 34 },
     ],
-    content: "The Company cannot\npromise or guarantee that raises will occur as raises are based upon several factors including but\nnot limited to: Employee performance, loca",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 77,
@@ -945,7 +946,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Return of Property", page: 35 },
       { heading: "Pay on Separation of Employment", page: 35 },
     ],
-    content: "35 | P a g e\nReturn of Property\nEmployees must return all company property immediately upon request and no later than 5 pm\nthe following business day upon termi",
+    content: "35 | P a g e\nReturn of Property\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 78,
@@ -957,7 +958,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Employee Records", page: 35 },
     ],
-    content: "A two (2) week notice is required for all full time and part-time Employees, and a thirty (30) day\nnotice is required for all Management positions.\n\nIf employee",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 79,
@@ -970,7 +971,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Liquidating 401K", page: 36 },
       { heading: "Accessing W-2’s", page: 36 },
     ],
-    content: "36 | P a g e\nChanges must be communicated/updated within 30 days of the information change taking\neffect. Former Employees do not have access to their files oth",
+    content: "36 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 80,
@@ -983,7 +984,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Timekeeping & Payroll", page: 36 },
       { heading: "Time Records", page: 36 },
     ],
-    content: "o Print your W-2’s directly from the Paycor system. o If you Change your address you need to notify your payroll department.\n\nTimekeeping & Payroll\nTime Records",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nTimekeeping & Payroll\nTime Records",
   },
   {
     chunkIndex: 81,
@@ -996,7 +997,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Schedule Requests/General availability Changes", page: 37 },
       { heading: "Shift Replacement", page: 37 },
     ],
-    content: "37 | P a g e\nworked as reported to Payroll by their direct Supervisor and sign off to confirm their accuracy. Any discrepancies should be reported to your direc",
+    content: "37 | P a g e\nSynthetic policy wording, line 1.",
   },
   {
     chunkIndex: 82,
@@ -1009,7 +1010,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Shift Replacement", page: 37 },
       { heading: "Seminar/Webinar Attendance", page: 37 },
     ],
-    content: "Shift Replacement\nShift trading between employees disrupts company operations and is generally discouraged.\n\nHowever, in emergency situations, employees may trade shifts with prior approval from\nmanagement. It is the responsibility of the employee to find a replacement for their shift. If an\nemployee is unable to work due to illness, emergency, or unforeseen circumstances, they must\nimmediately call and speak directly with their supervisor to notify them of the situation. Employees should provide at least two hours’ notice when calling in as a courtesy to colleagues. In the event of an emergency where two hours’ notice is not possible the employee must\ncontact their supervisor directly by phone immediately. Texting is NOT an acceptable method of\ncommunication a phone call is required. Seminar/Webinar Attendance\nIf you are enrolled in a seminar/webinar and do not attend the seminar without notifying your\nSupervisor, it is considered a no call no show to a scheduled shift. If you cannot attend a\nseminar/webinar you are scheduled for, you must notify your Supervisor via a personal phone\ncall. Notice of a call-in should not occur “last minute” and should be completed at least two (2)\nhours in advance out of courtesy to fellow Employees. In cases of emergency where two (2)\nhours advance notice is not possible (accident, etc.), you must contact your Supervisor via direct\nphone call immediately.",
+    content: "Shift Replacement\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.\nSynthetic policy wording, line 6.\nSynthetic policy wording, line 7.\nSynthetic policy wording, line 8. Seminar/Webinar Attendance\nSynthetic policy wording, line 9.\nSynthetic policy wording, line 10.\nSynthetic policy wording, line 11.\nSynthetic policy wording, line 12.\nSynthetic policy wording, line 13.\nSynthetic policy wording, line 14.\nSynthetic policy wording, line 15.",
   },
   {
     chunkIndex: 83,
@@ -1022,7 +1023,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Meal and Rest Policy", page: 38 },
       { heading: "Overtime", page: 38 },
     ],
-    content: "38 | P a g e\nMeal and Rest Policy\nDuring your employment with The Company, you will be expected to take meal and rest period\nbreaks in accordance with this poli",
+    content: "38 | P a g e\nMeal and Rest Policy\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 84,
@@ -1035,7 +1036,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Pay Periods", page: 38 },
       { heading: "Bonus Policy", page: 38 },
     ],
-    content: "This is in accordance with federal and state wage\nand hour restrictions. Overtime pay is based on actual hours worked.\n\nTime off on vacation leave,\nholidays, or",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 85,
@@ -1049,7 +1050,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Garnishment of Employee Wages", page: 39 },
       { heading: "Overnight Travel Reimbursement", page: 39 },
     ],
-    content: "39 | P a g e\none day’s notice. Please see your Supervisor regarding brand’s bonus policies and incentive pay\nprograms to find those that apply to your specific ",
+    content: "39 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 86,
@@ -1061,7 +1062,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Overnight Travel Reimbursement", page: 39 },
     ],
-    content: "Overnight Travel Reimbursement\nTravel time/expense reimbursements for work requiring overnight stays away from your home\ncommunity include:\no Reimbursements for",
+    content: "Overnight Travel Reimbursement\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\no Synthetic policy wording, line 3.",
   },
   {
     chunkIndex: 87,
@@ -1074,7 +1075,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Error in Pay", page: 40 },
       { heading: "Fair Labor Standard Act (FSLA) – Safe Harbor Policy", page: 40 },
     ],
-    content: "40 | P a g e\nspouse or companion(s) is considered personal and no portion of the expense is\nreimbursable, including the Employee’s portion. Error in Pay\nAll Emp",
+    content: "40 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2. Error in Pay\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 88,
@@ -1084,7 +1085,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 40",
     section: null,
     sections: [],
-    content: "o Exempt (salaried) Employees do not need to be paid for any work week in which they\nperform no work and will not be paid unless appropriate accrued paid leave ",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 89,
@@ -1096,7 +1097,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Salary Administration", page: 41 },
     ],
-    content: "41 | P a g e\npartial-day or full-day absences due to illness, injury, or personal reasons when accrued paid\nleave is not used by an Employee because:\no The Empl",
+    content: "41 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\no Synthetic policy wording, line 3.",
   },
   {
     chunkIndex: 90,
@@ -1110,7 +1111,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Employee Benefits", page: 41 },
       { heading: "Paid time Off (PTO)", page: 41 },
     ],
-    content: "Salary Administration\nThe salary administration program at The Company was created to achieve consistent pay\npractices, comply with federal and state laws, mirr",
+    content: "Salary Administration\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 91,
@@ -1122,7 +1123,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Holiday Benefits", page: 42 },
     ],
-    content: "42 | P a g e\no 5-9 years of service in a full-time position – 3 weeks (120 hours), with a maximum accrual\ncap of 160 hours. o 10+ years of service in a full-tim",
+    content: "42 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 92,
@@ -1134,7 +1135,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Holiday Benefits", page: 42 },
     ],
-    content: "Holiday Benefits\nEach FT salaried manager and FT corporate staff member will receive 8 hours of pay for each\nholiday.\n\nCorporate Office:\nThe Corporate Office is",
+    content: "Holiday Benefits\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 93,
@@ -1146,7 +1147,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Employee Discounts for Company Products and Services", page: 43 },
     ],
-    content: "43 | P a g e\no New Years Day\no Independence Day\no Thanksgiving Day\no Christmas Day\no Easter\nThe salons will be open on Memorial Day. Crunch Fitness:\nCrunch Fitn",
+    content: "43 | P a g e\no Synthetic policy wording, line 1.\no Synthetic policy wording, line 2.\no Synthetic policy wording, line 3.\no Synthetic policy wording, line 4.\no Synthetic policy wording, line 5.\nSynthetic policy wording, line 6.\nSynthetic policy wording, line 7.",
   },
   {
     chunkIndex: 94,
@@ -1156,7 +1157,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 43",
     section: null,
     sections: [],
-    content: "o Buff City Soap: 50% off products, 25% off bath bomb parties. o Crunch Fitness: 50% off an all access gym membership, 50% off products.\n\nPlease keep in mind th",
+    content: "o Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 95,
@@ -1168,7 +1169,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Buddy Passes (Sun Tan City Employees ONLY)", page: 44 },
     ],
-    content: "44 | P a g e\no No tanning while on the clock. o Another employee is required to process each employee tanning session; employees will not\nbe able to tan without",
+    content: "44 | P a g e\no Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 96,
@@ -1180,7 +1181,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Employee Insurance Benefits", page: 44 },
     ],
-    content: "Any employee who is involuntarily terminated or who does\nnot leave in good standing, will be required to relinquish all unused Buddy Passes to their Salon\nDirec",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 97,
@@ -1193,7 +1194,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "HIPAA", page: 45 },
       { heading: "Group Health Plan Continuation Coverage Under COBRA", page: 45 },
     ],
-    content: "45 | P a g e\n▪ Employer Paid Life – The Company provides full-time Employees with\n$20,000 of group life insurance. o Plan Details:\no Eligible Employees may find",
+    content: "45 | P a g e\nSynthetic policy wording, line 1.\nSynthetic wording with an amount of $20,000.\no Synthetic policy wording, line 3.",
   },
   {
     chunkIndex: 98,
@@ -1203,7 +1204,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 45",
     section: null,
     sections: [],
-    content: "COBRA continuation coverage only lasts for a limited period of time.\n\nThe Company provides each covered Employee and spouse (if any) with written notice\nexplain",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.",
   },
   {
     chunkIndex: 99,
@@ -1216,7 +1217,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Leave Requests", page: 46 },
       { heading: "Family Medical Leave", page: 46 },
     ],
-    content: "46 | P a g e\nLeave Requests\nFamily Medical Leave\nThe Company provides family leaves of absence without pay to eligible Employees who wish to\ntake time off from ",
+    content: "46 | P a g e\nLeave Requests\nFamily Medical Leave\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 100,
@@ -1228,7 +1229,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Bereavement Leave", page: 46 },
     ],
-    content: "If this initial period of absence proves insufficient, consideration will be given to a written\nrequest for a single extension of no more than 30 calendar days.",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 101,
@@ -1238,7 +1239,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 46",
     section: null,
     sections: [],
-    content: "These should be submitted at the time of\nrequest or upon return from leave.\n\nAs an alternative to this documentation, you may provide\nthe name of the deceased, ",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
   {
     chunkIndex: 102,
@@ -1251,7 +1252,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Military Leave", page: 47 },
       { heading: "Time Off to Vote or Serve as an Election Officer", page: 47 },
     ],
-    content: "47 | P a g e\nAfter receiving the approved request, the Human Resources Department will submit the\nBereavement days in your personnel profile under the PTO secti",
+    content: "47 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 103,
@@ -1264,7 +1265,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Jury Duty", page: 47 },
       { heading: "Witness Duty", page: 47 },
     ],
-    content: "Advance notice is required so that the necessary time off\ncan be scheduled at the beginning or end of the work shift, whichever provides the least\ndisruption to",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 104,
@@ -1276,7 +1277,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [
       { heading: "Maternity Leave", page: 48 },
     ],
-    content: "48 | P a g e\nEmployees must show the witness duty summons to their Supervisor as soon as possible so the\nSupervisor may make arrangements to schedules to accomm",
+    content: "48 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 105,
@@ -1289,7 +1290,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Client Tanning Policies and Regulations (STC & Crunch ONLY)", page: 48 },
       { heading: "Protecting the Client from Overexposing", page: 48 },
     ],
-    content: "The Department of Labor website\nis: http://www.dol.gov/esa/regs/statutes/whd/fmla.htm#content\nIf an employee wishes to take any leave, a Leave Request Form must",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.",
   },
   {
     chunkIndex: 106,
@@ -1303,7 +1304,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Eye Protection", page: 49 },
       { heading: "VersaSpa® Recommendations", page: 49 },
     ],
-    content: "49 | P a g e\nin one day. Likewise, if a client tells you that he/she has tanned elsewhere the same day or been\nin the sun all day; you may not tan them. Consent",
+    content: "49 | P a g e\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 107,
@@ -1318,7 +1319,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "Minors", page: 49 },
       { heading: "Children Left Unattended", page: 49 },
     ],
-    content: "It is not required that clients use the FDA recommended protection during their sunless\nsessions; however, we want to educate the client’s on the items they hav",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 108,
@@ -1331,7 +1332,7 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
       { heading: "One Tanner per Room", page: 50 },
       { heading: "Employee Acknowledgement", page: 50 },
     ],
-    content: "50 | P a g e\nOne Tanner per Room\nThere is only one client allowed per tanning room. Equipment should not be activated if there is\nmore than one person in the ta",
+    content: "50 | P a g e\nOne Tanner per Room\nSynthetic policy wording, line 1.\nSynthetic policy wording, line 2.",
   },
   {
     chunkIndex: 109,
@@ -1341,6 +1342,6 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     locator: "Page 50",
     section: null,
     sections: [],
-    content: "I understand\nthat if I request a copy of this employee manual, it will be provided to me. Otherwise, a copy is available\nfor my review at my work location.\n\nFur",
+    content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
 ];

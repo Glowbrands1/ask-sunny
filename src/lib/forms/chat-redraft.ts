@@ -18,7 +18,7 @@ import { detectTemplateIntent } from "./template-intent";
  * ============================================================================
  *
  * A manager may create a Corrective Action Form from nothing more than "create
- * ca for Ellie Sendgraff". Sunny says up front that it cannot cite the policy
+ * ca for Wren Halvorsen". Sunny says up front that it cannot cite the policy
  * manual without an account of what happened, and the draft comes back blank.
  *
  * When the manager then says what happened, the form ON SCREEN is redrafted
@@ -70,7 +70,7 @@ export async function redraftActiveForm(input: {
   /* About this form and this person, and an account rather than a request. */
   const intent = detectTemplateIntent(question);
   if (intent.kind === "explicit" && intent.templateKey !== instance.templateKey) return null;
-  /* "On October 16th Ellie…" reads "On October" as a name; a date is not a person. */
+  /* "On October 16th Wren…" reads "On October" as a name; a date is not a person. */
   const named = extractEmployeeNames(question).filter((name) => !NOT_A_PERSON.test(name));
   if (named.length > 0 && !named.some((name) => samePerson(name, instance.employeeName))) return null;
   const described =

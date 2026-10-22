@@ -10,7 +10,7 @@ Status: **implemented, automated gate green, Preview QA outstanding.**
 
 ## Root cause of the pseudo-form response
 
-Paulyne's Preview answered a coaching-form request with prose — *"here's a draft
+Rosalyn's Preview answered a coaching-form request with prose — *"here's a draft
 body you can paste into whichever official form Create a Form gives you"*, a
 markdown "Coaching Record — Draft", and *"the knowledge base … contains no
 coaching or corrective-action template"*.

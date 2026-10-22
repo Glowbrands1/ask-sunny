@@ -42,7 +42,7 @@ describe("the list holds several entries, each with its date", () => {
   it("lists the manager's dated steps when the draft wrote nothing", () => {
     const result = groundPriorActions({
       drafted: "",
-      notes: "create ca for Paulyne Test she was late today, got verbal warning on september 21",
+      notes: "create ca for Rosalyn Test she was late today, got verbal warning on september 21",
       today: TODAY,
     });
     expect(result.value).toBe("Verbal warning — signed 09/21/2026");
@@ -207,7 +207,7 @@ describe("the forms already on file are listed too", () => {
   it("lists each finalized form on file when the manager named none", () => {
     const result = groundPriorActions({
       drafted: "",
-      notes: "Paisley missed the Woven deadline.",
+      notes: "Juniper missed the Woven deadline.",
       today: TODAY,
       onFile,
     });
@@ -231,7 +231,7 @@ describe("the forms already on file are listed too", () => {
   it("keeps a drafted line dated from the record, not just from the notes", () => {
     const result = groundPriorActions({
       drafted: "Verbal corrective action — signed 09/21/2026",
-      notes: "Paisley missed the Woven deadline.",
+      notes: "Juniper missed the Woven deadline.",
       today: TODAY,
       onFile,
     });

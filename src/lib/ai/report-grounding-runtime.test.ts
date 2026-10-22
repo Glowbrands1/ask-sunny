@@ -189,7 +189,7 @@ async function ask(overrides: Record<string, unknown> = {}) {
       mode: "standard" as const,
       history: [],
       scopeId: "stc-core",
-      context: { userName: "Paulyne", locationName: "Salon 0495", todayIso: "2026-09-09" },
+      context: { userName: "Rosalyn", locationName: "Salon 0495", todayIso: "2026-09-09" },
       ...overrides,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any,
@@ -800,7 +800,7 @@ describe("a salon-scoped caller cannot be briefed on another salon", () => {
         mode: "standard",
         history: [],
         scopeId: "stc-core",
-        context: { userName: "Paulyne", locationName: null, todayIso: "2026-09-09" },
+        context: { userName: "Rosalyn", locationName: null, todayIso: "2026-09-09" },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
       {
@@ -828,7 +828,7 @@ describe("a salon-scoped caller cannot be briefed on another salon", () => {
         mode: "standard",
         history: [],
         scopeId: "stc-core",
-        context: { userName: "Paulyne", locationName: null, todayIso: "2026-09-09" },
+        context: { userName: "Rosalyn", locationName: null, todayIso: "2026-09-09" },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
       {

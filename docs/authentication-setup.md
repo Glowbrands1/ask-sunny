@@ -234,13 +234,13 @@ from a terminal that has the secret key:
 NEXT_PUBLIC_SUPABASE_URL="https://<project-ref>.supabase.co" \
 SUPABASE_SECRET_KEY="sb_secret_…" \
 ASK_SUNNY_SITE_URL="https://<your-preview-host>" \
-npm run bootstrap:admin -- "Curt Bowen" "Curt.Bowen@suntancity.com"
+npm run bootstrap:admin -- "Owen Tremaine" "Owen.Tremaine@suntancity.com"
 ```
 
 What it does, and what it deliberately does not:
 
 - Supabase generates the invitation link and emails it. **No password is
-  created, printed or stored** — Curt sets his own. There is no password
+  created, printed or stored** — Owen sets his own. There is no password
   anywhere in this script, so there is nothing to leak into a shell history or
   a CI log.
 - The profile is created with `role = admin` and `status = invited`. **The
@@ -260,7 +260,7 @@ What it does, and what it deliberately does not:
   status or scope. It exists for the one situation the app cannot fix itself —
   the first administrator has not accepted yet, so there is no active
   administrator to press the button in User Management.
-- The name and email are **arguments**. Nothing about Curt is hard-coded
+- The name and email are **arguments**. Nothing about Owen is hard-coded
   anywhere in Ask Sunny; once this row exists it is an ordinary profile, and he
   can be edited, demoted or disabled through User Management like anybody else.
 

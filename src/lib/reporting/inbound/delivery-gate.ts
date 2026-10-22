@@ -41,7 +41,7 @@ export const REQUIRED_SUBJECT_FRAGMENT = "comp report";
  * Extracts the bare address from a `From` header.
  *
  * Resend hands over the header as written, which may be
- * `Samuel Brockie <samuel.brockie@glowbrands.com>` or the bare address. Angle
+ * `Elliot Fairbanks <elliot.fairbanks@glowbrands.com>` or the bare address. Angle
  * brackets win when present, because a display NAME can contain anything —
  * including a second address put there to be mistaken for the real one.
  */
@@ -100,7 +100,7 @@ export function isApprovedSender(
  * Whether a subject names the Comp Report.
  *
  * Substring, case-insensitive, whitespace-collapsed. Accepts
- * `Comp Report 2026 08 30 - Bowen, Curt`, next month's, and `Comp Report TEST`;
+ * `Comp Report 2026 08 30 - Tremaine, Owen`, next month's, and `Comp Report TEST`;
  * rejects an unrelated thread. Collapsing whitespace is what makes a subject
  * that a mail client wrapped as `Comp  Report` still match.
  */

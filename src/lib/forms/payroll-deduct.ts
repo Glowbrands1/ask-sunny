@@ -5,7 +5,7 @@ import { detectTemplateIntent } from "./template-intent";
  * "IS PAYROLL DEDUCT APPLICABLE?" — THE CORRECTIVE ACTION FORM'S YES / NO
  * ============================================================================
  *
- * Requested by Operations (Madeline Patterson, 29 September 2026): the
+ * Requested by Operations (Gwen Harlan, 29 September 2026): the
  * Corrective Action Form gains one question, worded exactly as she wrote it,
  * answered Yes or No. The wording is hers and is not corrected to "deduction".
  *

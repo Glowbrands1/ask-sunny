@@ -24,7 +24,7 @@ import type { ChatFormProposal, ChatMessage } from "@/types";
  */
 
 vi.mock("@/lib/session/session-context", () => ({
-  useSession: () => ({ user: { avatarInitials: "PC", name: "Paulyne" }, role: "salon_director", isAdmin: false }),
+  useSession: () => ({ user: { avatarInitials: "PC", name: "Rosalyn" }, role: "salon_director", isAdmin: false }),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 

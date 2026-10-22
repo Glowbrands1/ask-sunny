@@ -54,7 +54,7 @@ just Claude's report."* Write reports that survive that.
 - **Chat-native forms (Marissa feedback):**
   **`feature/chat-native-forms-marissa-feedback`**, branched from
   `feature/ask-sunny-forms-template-engine` @ `22e63da`. Its eventual merge
-  target is that branch — **never `main`** — and only after Paulyne approves
+  target is that branch — **never `main`** — and only after Rosalyn approves
   final QA.
 - Mirror pushes to **`claude/ask-sunny-reporting-checkpoint-3-ylk91d`** (a stop
   hook checks for unpushed commits on `claude/*`).
@@ -307,7 +307,7 @@ report that describes any of it as working has overclaimed.
 
 ### Verified by real use
 
-**Video upload, end to end.** Paulyne uploaded the real video *Adamant: In a
+**Video upload, end to end.** Rosalyn uploaded the real video *Adamant: In a
 hurry* through the browser and it appeared in the live Training Videos library.
 Because the library returns **ready rows only**, that single observation
 establishes all of:
@@ -378,7 +378,7 @@ test only. Do not treat the milestone as finished.
    - the **real card preview** frame;
    - **playback**;
    - **refresh persistence**;
-   - **delete of a disposable video** — never a live one Paulyne relies on;
+   - **delete of a disposable video** — never a live one Rosalyn relies on;
    - **Employee-role behaviour** (no manage controls, no pending or failed rows);
    - **an Employee requesting `GET /api/videos/:id` for a known pending or
      failed UUID** — must be a 404 that reads exactly like a missing row;

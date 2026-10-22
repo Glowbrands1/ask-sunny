@@ -288,7 +288,7 @@ function request(overrides: Record<string, unknown> = {}) {
     mode: "standard" as const,
     history: [] as { role: string; content: string }[],
     scopeId: "stc-core",
-    context: { userName: "Paulyne", locationName: "Salon 0495", todayIso: "2026-09-09" },
+    context: { userName: "Rosalyn", locationName: "Salon 0495", todayIso: "2026-09-09" },
     ...overrides,
   };
 }

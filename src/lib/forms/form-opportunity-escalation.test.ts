@@ -13,7 +13,7 @@ const keys = (text: string) => {
  */
 describe("a coaching conversation that did not work is offered the next rung — beside Coaching, never first", () => {
   it.each([
-    "I have an employee Colene at our Grand Island location who has been out of dress code three shifts. I verbally coached her on the second offense and she still is out of dress code",
+    "I have an employee Delphine at our Grand Island location who has been out of dress code three shifts. I verbally coached her on the second offense and she still is out of dress code",
     "I talked to her about being late and she was late again this week",
     "I already coached him on the dress code and he keeps coming in out of uniform",
     "I spoke with her about her attitude and it's continuing",

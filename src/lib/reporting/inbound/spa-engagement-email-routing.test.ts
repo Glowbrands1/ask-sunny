@@ -70,8 +70,8 @@ const { intakeReceivedEmail } = await import("./email-intake");
  * address happens to be on both lists, which is what masked the sender half of
  * the fault and left only the subject half visible.
  */
-const SPA_SENDER = "Paulyne.Camacho@glowbrands.com";
-const COMP_SENDER = "Samuel.Brockie@glowbrands.com";
+const SPA_SENDER = "Rosalyn.Calloway@glowbrands.com";
+const COMP_SENDER = "Elliot.Fairbanks@glowbrands.com";
 const EMAIL_ID = "invented-resend-email-id-7c3a";
 
 beforeEach(() => {
@@ -118,7 +118,7 @@ const SPA_ATTACHMENTS: ResendAttachment[] = [
 function spaEmail(overrides: Record<string, unknown> = {}) {
   return {
     emailId: EMAIL_ID,
-    from: `Camacho, Paulyne <${SPA_SENDER}>`,
+    from: `Calloway, Rosalyn <${SPA_SENDER}>`,
     subject: "Spa Sessions",
     messageId: "<invented.upstream.spa@glowbrands.com>",
     receivedAt: "2026-09-17T13:43:00.000Z",
@@ -147,7 +147,7 @@ function serving(bytes: Uint8Array) {
 
 describe("a Spa Engagement delivery through the shared inbound endpoint", () => {
   it("routes as spa_engagement on the family's own sender and subject", () => {
-    const routing = routeDelivery({ from: `Camacho, Paulyne <${SPA_SENDER}>`, subject: "Spa Sessions" });
+    const routing = routeDelivery({ from: `Calloway, Rosalyn <${SPA_SENDER}>`, subject: "Spa Sessions" });
 
     expect(routing.routed).toBe(true);
     expect(routing.routed && routing.family.key).toBe("spa_engagement");
@@ -245,12 +245,12 @@ describe("every delivery that is not a routed Spa Engagement one", () => {
     process.env[APPROVED_SENDERS_ENV] = COMP_SENDER;
     const routing = routeDelivery({
       from: COMP_SENDER,
-      subject: "Comp Report 2026 09 17 - Bowen, Curt",
+      subject: "Comp Report 2026 09 17 - Tremaine, Owen",
     });
     expect(routing.routed && routing.family.key).toBe("comp_report");
 
     await intakeReceivedEmail(
-      spaEmail({ from: COMP_SENDER, subject: "Comp Report 2026 09 17 - Bowen, Curt" }),
+      spaEmail({ from: COMP_SENDER, subject: "Comp Report 2026 09 17 - Tremaine, Owen" }),
       {
         routing,
         knownPeriodIds: async () => new Set<string>(),
@@ -345,7 +345,7 @@ describe("the report's rename to Wellness Sessions per Unique Tanner", () => {
   const OLD_SUBJECT = "Spa Sessions per Unique Tanner per Spa Bed";
 
   const routedKey = (subject: string) => {
-    const routing = routeDelivery({ from: `Camacho, Paulyne <${SPA_SENDER}>`, subject });
+    const routing = routeDelivery({ from: `Calloway, Rosalyn <${SPA_SENDER}>`, subject });
     return routing.routed ? routing.family.key : routing.code;
   };
 
@@ -377,7 +377,7 @@ describe("the report's rename to Wellness Sessions per Unique Tanner", () => {
         "Out of office",
         "Wellness Sessions",
         "Unique Tanner",
-        "Comp Report 2026 09 17 - Bowen, Curt",
+        "Comp Report 2026 09 17 - Tremaine, Owen",
         "Bed Usage Report 2026 09",
         "STC SPA Wellness Tracking",
       ]) {

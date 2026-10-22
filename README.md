@@ -646,6 +646,7 @@ separately, and the admin screen shows the runtime it is judging by.
 | Log safety | `src/lib/api/redact.ts` — strips credential shapes, truncates, drops stacks and cause chains |
 | Rate limiting | `src/lib/api/rate-limit.ts` — interface plus in-memory implementation |
 | Path/scope validation | `src/lib/ingestion/paths.ts`, re-checked on every read and delete |
+| No real people in the repository | Every name, address and policy excerpt in tests, comments and docs is synthetic; `src/lib/security/no-real-people.test.ts` fails on a real person's company address |
 
 **Logging policy.** No question, answer, grounding prompt, document text or
 credential reaches a log line. The realistic leak path is a Postgres constraint

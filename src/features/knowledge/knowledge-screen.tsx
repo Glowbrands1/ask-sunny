@@ -641,7 +641,7 @@ function DocumentRow({
               View details
             </DropdownMenuItem>
             {/*
-              THE TWO ACTIONS PAULYNE COULD NOT FIND. They were reachable from
+              THE TWO ACTIONS ROSALYN COULD NOT FIND. They were reachable from
               nowhere: the detail panel's download was wired to a field only
               prototype uploads carry, and the row menu offered details and
               delete. Both are on the row now, one click from the library.

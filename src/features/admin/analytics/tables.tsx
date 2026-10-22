@@ -225,7 +225,7 @@ export function LeadersTable({
             <tr key={row.userId}>
               <th scope="row" className="pr-3 text-left font-normal">
                 {/*
-                  ONE IDENTITY GROUP: "Curt Bowen · No activity · Invited" reads
+                  ONE IDENTITY GROUP: "Owen Tremaine · No activity · Invited" reads
                   as one person and two facts about them, not as three items
                   spread across the row. `inline-flex` with a small gap keeps
                   the badges against the name they qualify, and lets the whole
