@@ -619,6 +619,27 @@ function leadsWithTheForm(q: string, original: string): boolean {
 }
 
 /**
+ * ============================================================================
+ * "WRITE A …" IS A REQUEST ONLY WHEN WHAT IS WRITTEN IS THE FORM
+ * ============================================================================
+ *
+ * "write a CA for Paisley" was read as a question about the progression and
+ * the manager was told to rephrase (October 2026), so "write a" / "write an"
+ * were made creation verbs. QA, 22 Oct 2026 (F-04): as bare verbs they also
+ * turned "can you write a summary of the corrective action policy", "write a
+ * note explaining the corrective action steps" and "write an email to Paisley
+ * about her CA" into requests to create a Corrective Action Form. Writing is a
+ * request for the form only when its object IS the form or the warning;
+ * "how do I write a CA?" is still ruled a question before this is consulted.
+ */
+const WRITES_THE_FORM =
+  /\bwrite\s+(?:up\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:(?:new|formal|first|second|third|final|verbal|written|official)\s+){0,2}(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
+
+function writesTheForm(q: string): boolean {
+  return WRITES_THE_FORM.test(q);
+}
+
+/**
  * Verbs that mean "make me one", as opposed to "tell me about it".
  *
  * "corrective action" on its own is a manager asking how the process works.
@@ -633,14 +654,7 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
-  /*
-   * "write a CA for Paisley" was read as a question about the progression and
-   * the manager was told to rephrase (October 2026; ported from Ask Bubbles
-   * 4cbb84c, which took it from an Ask Sunny branch that never merged). "How
-   * do I write a CA?" is still a question: it is ruled informational first.
-   */
-  "write a",
-  "write an",
+  /* "write a CA for Paisley" is read by `writesTheForm`, not by a bare "write a". */
   "write her up",
   "write him up",
   "write them up",
@@ -1380,6 +1394,7 @@ export function detectTemplateIntent(question: string): TemplateIntent {
       requestedCreation:
         !informational &&
         (CREATION_VERBS.some((verb) => mentions(q, verb)) ||
+          writesTheForm(q) ||
           leadsWithTheForm(q, question) ||
           /*
            * "corrective action for employee test for attendance": a subject, then

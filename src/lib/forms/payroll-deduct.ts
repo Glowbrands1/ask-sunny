@@ -74,7 +74,31 @@ const NEGATIVE: readonly RegExp[] = [
   // "we won't deduct", "don't deduct it from her pay", "not deducting"
   /\b(?:don't|dont|do not|won't|wont|will not|not|no need to|shouldn't|should not)\s+(?:be\s+)?deduct(?:ing|ed)?\b/,
   /\bwithout\s+(?:a\s+|any\s+)?(?:payroll\s+)?deduction\b/,
+  /*
+   * "WE WILL NOT PAYROLL DEDUCT $25" — QA, 22 Oct 2026 (F-01). The negation
+   * above only allowed "be" before "deduct", so "will not payroll deduct $25"
+   * and "don't payroll deduct $25" fell through to the amount reading below
+   * and came back Yes. Any negation of the deduction, "payroll" or not.
+   */
+  /\b(?:don't|dont|do not|won't|wont|will not|would not|wouldn't|not going to|(?:is|are|am)n't going to|(?:is|are|am) not going to|no longer|never|not|no need to|shouldn't|should not|can't|cannot|can not|(?:decided|chose|choose) not to)\s+(?:be\s+)?(?:payroll[\s-]+)?deduct(?:ing|ed|ion|ions)?\b/,
+  /*
+   * "$25 PAYROLL DEDUCTION WAS WAIVED" (F-01): a waived deduction is not one.
+   * The waiver may come after the subject or before it ("we waived the
+   * payroll deduction"), within the clause.
+   */
+  new RegExp(String.raw`\b${SUBJECT}\b[^.!?;\n]{0,40}\b(?:waived?|waiving|forgiven)\b`),
+  new RegExp(String.raw`\b(?:waive|waived|waiving|waiver\s+of|forgive|forgave|forgiven)\b[^.!?;\n]{0,30}\b${SUBJECT}\b`),
 ];
+
+/*
+ * NOT DECIDED IS NOT AN ANSWER (F-01). "maybe deduct $25", "not sure about
+ * payroll deduct", "thinking about a $25 deduction": a clause about the
+ * deduction that says the manager has not decided states nothing, so Ask
+ * Sunny asks instead of reading the amount as a Yes.
+ */
+const UNDECIDED =
+  /\b(?:maybe|perhaps|possibly|might|not sure|unsure|undecided|tbd|to be determined|thinking (?:about|of)|considering|depending|whether|if needed|may (?:need|have|be))\b/;
+const ABOUT_DEDUCTION = new RegExp(String.raw`\b${SUBJECT}\b|\bdeduct\w*`);
 
 const POSITIVE: readonly RegExp[] = [
   // "payroll deduct of $3.25 is applicable", "payroll deduction for the shortage applies"
@@ -132,8 +156,21 @@ export function statedPayrollDeduct(text: string): PayrollDeductAnswer | null {
   for (const clause of source.split(/(?<=[!?;\n]|\.(?!\d))/)) {
     const trimmed = clause.trim();
     if (trimmed === "" || trimmed.endsWith("?")) continue;
-    if (NEGATIVE.some((pattern) => pattern.test(trimmed))) answer = "no";
-    else if (POSITIVE.some((pattern) => pattern.test(trimmed))) answer = "yes";
+    if (UNDECIDED.test(trimmed) && ABOUT_DEDUCTION.test(trimmed)) {
+      answer = null;
+      continue;
+    }
+    const negative = NEGATIVE.find((pattern) => pattern.test(trimmed));
+    if (negative) {
+      /*
+       * BOTH IN ONE CLAUSE IS NO ANSWER (F-01). With the negative's own words
+       * taken out, a Yes still standing ("payroll deduct yes, don't deduct")
+       * means the clause contradicts itself: nothing is read, and the manager
+       * is asked. Never Yes.
+       */
+      const rest = trimmed.replace(negative, " ");
+      answer = POSITIVE.some((pattern) => pattern.test(rest)) ? null : "no";
+    } else if (POSITIVE.some((pattern) => pattern.test(trimmed))) answer = "yes";
   }
 
   return answer;
