@@ -57,8 +57,11 @@ import { displayLocator } from "@/lib/knowledge/locator";
 export type PrefillState =
   /** The drafting request is in flight. Read-only, and says so. */
   | { kind: "running" }
-  /** It finished. Reload the canonical instance, then allow editing. */
-  | { kind: "complete" }
+  /**
+   * It finished. Reload the canonical instance, then allow editing. `notice`
+   * is what the drafting route said it left out, shown with the form.
+   */
+  | { kind: "complete"; notice?: string }
   /** It failed. The form is real and editable; the warning explains. */
   | { kind: "failed"; message: string }
   /**
@@ -1199,7 +1202,7 @@ function prefillNoticeFor(
     return { tone: "attention", text: prefill.message };
   }
 
-  if (prefill.kind === "complete") return null;
+  if (prefill.kind === "complete") return prefill.notice ? { tone: "attention", text: prefill.notice } : null;
 
   /* unknown — reopened from storage. Read the form's own history. */
   if (loaded.instance.source !== "ask_sunny") return null;
