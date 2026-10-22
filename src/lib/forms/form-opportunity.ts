@@ -119,9 +119,36 @@ const FORMAL: readonly RegExp[] = [
 const PRIOR_ACTION: readonly RegExp[] = [
   /\b(?:verbal(?:ly)?|already)\s+(?:coach\w*|warn\w*|talk\w*|address\w*|spoke|spoken|discuss\w*|counsel\w*)\b/,
   /\b(?:coached|counseled|counselled|warned|talked to|spoke (?:to|with)|addressed|discussed (?:it |this )?with)\s+(?:her|him|them)\b/,
+  /*
+   * THE SAME FIRST RUNG, IN THE OTHER WAYS MANAGERS SAY IT. QA, 22 Oct 2026:
+   * "I talked to Pat Rivera about being late and she was late again", "she
+   * was coached last week", "she's been coached before", "she had a coaching
+   * on 10/1", "previous coaching 10/1", "this is after her coaching", "we had
+   * a talk with her", "we discussed attendance with her" each offered the
+   * Coaching Form alone. A name for the pronoun, a passive, a conversation
+   * held with her, an earlier step named as one, or what this follows.
+   */
+  /\b(?:coached|counseled|counselled|warned|talked (?:to|with)|spoke (?:to|with)|sat down with)\s+(?!(?:her|him|them)\b)[a-z][\w'’-]*(?:\s+[a-z][\w'’-]*)?\s+(?:about|regarding|over|on|for)\b/,
+  /\b(?:was|were|(?:has|have|had)\s+been|['’]s\s+been)\s+(?:verbally\s+|formally\s+)?(?:coached|counseled|counselled|warned|written up|talked to|spoken to)\b/,
+  /\b(?:had|has had|have had|got|received|was given)\s+(?:a\s+|an\s+)?(?:(?:verbal|written|formal)\s+)?(?:coaching|talk|conversation|sit[- ]?down|warning|write[- ]?up)\b/,
+  /\b(?:previous|prior|earlier|last)\s+(?:(?:verbal|written)\s+)?(?:coaching|warning|write[- ]?up|talk|conversation|corrective action)s?\b/,
+  /\b(?:after|since|following|despite)\s+(?:her|his|their|the|our|my)\s+(?:(?:last|previous|prior|recent|verbal|written)\s+)?(?:coaching|warning|write[- ]?up|talk|conversation|corrective action)\b/,
+  /\b(?:discussed|went over|reviewed)\s+(?:[\w'’-]+\s+){1,4}?with\s+(?:her|him|them)\b/,
 ];
 const RECURRENCE: readonly RegExp[] = [
   /\b(?:still|again|continu\w+|keeps?|repeated\w*|no change|did ?n[o']?t (?:change|improve|listen)|didn't (?:change|improve|listen))\b/,
+];
+
+/** What she keeps doing is ASKING for something, or the repeat is somebody else's (see `escalated`). */
+const NOT_HER_CONDUCT: readonly RegExp[] = [
+  /\b(?:still|keeps?|again|continues to)\s+(?:\w+\s+){0,2}?(?:wants?|wanting|asks?|asking|requests?|requesting|hopes?|hoping)\b/,
+  /\b(?:wants?|asking for|asks for|requested|requesting)\s+(?:more\s+hours|fewer\s+hours|time off|(?:a\s+)?days?\s+off|(?:saturdays?|sundays?|weekends?)\s+off|a\s+raise|a\s+schedule\s+change)\b/,
+  /\bwith\s+(?:the|our|a)\s+(?:vendor|landlord|contractor|supplier|maintenance|repair\w*|technician|corporate|customer|client|guest|delivery)\b/,
+];
+
+/** The manager says the coaching worked: no next rung. */
+const COACHING_WORKED: readonly RegExp[] = [
+  /\b(?:she|he|they|it)\s+(?:has\s+|have\s+)?(?:improved|got better|has gotten better|stopped|fixed it|turned it around)\b/,
 ];
 
 /** The manager is already asking for management help, not for information. */
@@ -165,7 +192,22 @@ export function detectFormOpportunity(input: {
   const concern = any(text, CONCERN);
   const strength = any(text, STRENGTH);
   const formal = any(text, FORMAL);
-  const escalated = any(text, PRIOR_ACTION) && any(text, RECURRENCE);
+  /*
+   * A REPEAT THAT IS NOT HER CONDUCT, OR A COACHING THAT WORKED, IS NOT THE
+   * NEXT RUNG. QA, 22 Oct 2026: "I already talked to her about the schedule
+   * and she still wants more hours" and "I already addressed the broken bed
+   * with the vendor again" read as a coaching that did not work, and put the
+   * Corrective Action Form on the card. A request she keeps making, or
+   * something taken up with a vendor or a customer, is not a behaviour that
+   * repeated after coaching — unless a behaviour worth documenting is named
+   * too. And "I coached her about dress code and she improved" is the
+   * framework's success case, whatever else follows it.
+   */
+  const escalated =
+    any(text, PRIOR_ACTION) &&
+    any(text, RECURRENCE) &&
+    !any(text, COACHING_WORKED) &&
+    (concern || !any(text, NOT_HER_CONDUCT));
   const framed = any(text, MANAGEMENT_FRAME);
 
   /*
