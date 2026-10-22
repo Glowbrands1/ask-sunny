@@ -1367,25 +1367,22 @@ describe("nothing stored by the old name breaks", () => {
  * typed as the answer to "who is this for?" produced no employee, so no form
  * could be created — while "Paulyne Co" worked. Neither the casing nor a
  * missing surname decides whether the draft can be created.
- *
- * PRINTED CAPITALISED (21 October 2026): a name typed without capitals, or
- * all in capitals, goes on the form capitalised; one the manager capitalised
- * themselves ("pAuLyNe Co") is kept as typed. See `tidyTypedName`.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a Corrective Action Form for a name typed in any case", () => {
-  const NAMES: [string, string][] = [
-    ["Paulyne Co", "Paulyne Co"],
-    ["paulyne co", "Paulyne Co"],
-    ["PAULYNE CO", "Paulyne Co"],
-    ["pAuLyNe Co", "pAuLyNe Co"],
-    ["test test", "Test Test"],
-    ["Test Test", "Test Test"],
-    ["paulyne", "Paulyne"],
-    ["PAULYNE", "Paulyne"],
+  const NAMES = [
+    "Paulyne Co",
+    "paulyne co",
+    "PAULYNE CO",
+    "pAuLyNe Co",
+    "test test",
+    "Test Test",
+    "paulyne",
+    "PAULYNE",
   ];
 
-  it.each(NAMES)("is created from the request: %s", async (typed, name) => {
-    const answer = await ask(`Create a Corrective Action form for ${typed}. She wore slippers today.`);
+  it.each(NAMES)("is created from the request: %s", async (name) => {
+    const answer = await ask(`Create a Corrective Action form for ${name}. She wore slippers today.`);
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.templateKey).toBe("dpoa");
@@ -1395,8 +1392,8 @@ describe("a Corrective Action Form for a name typed in any case", () => {
     expect(answer.content).toMatch(/create the draft here/i);
   });
 
-  it.each(NAMES)("is created from the answer to \"who is this for?\": %s", async (typed, name) => {
-    const answer = await ask(typed, {
+  it.each(NAMES)("is created from the answer to \"who is this for?\": %s", async (name) => {
+    const answer = await ask(name, {
       continueTemplateKey: "dpoa",
       history: [
         { id: "h1", role: "user", content: "Create a corrective action form. She wore slippers today." },
@@ -1435,16 +1432,17 @@ describe("a Corrective Action Form for a name typed in any case", () => {
  * form exactly as the bare name does, and a name whose own spelling carries an
  * apostrophe or hyphen keeps it.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a Corrective Action Form for a name wrapped in punctuation", () => {
   const CASES: [string, string][] = [
-    ["(paulyne)", "Paulyne"],
-    ['"paulyne"', "Paulyne"],
-    ["'paulyne'", "Paulyne"],
-    ["paulyne,", "Paulyne"],
-    ["paulyne.", "Paulyne"],
-    ["(paulyne co)", "Paulyne Co"],
-    ['"PAULYNE CO"', "Paulyne Co"],
-    ["(test test)", "Test Test"],
+    ["(paulyne)", "paulyne"],
+    ['"paulyne"', "paulyne"],
+    ["'paulyne'", "paulyne"],
+    ["paulyne,", "paulyne"],
+    ["paulyne.", "paulyne"],
+    ["(paulyne co)", "paulyne co"],
+    ['"PAULYNE CO"', "PAULYNE CO"],
+    ["(test test)", "test test"],
     ["O'Connor", "O'Connor"],
     ["Anne-Marie", "Anne-Marie"],
     ["Mary-Jane Smith", "Mary-Jane Smith"],
@@ -1555,6 +1553,7 @@ describe("the form date, from the request or from a follow-up answer", () => {
  *
  * The names here are invented; the SHAPE is the manager's.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("the coaching intake answered on one line", () => {
   const INTAKE_HISTORY = [
     { id: "h1", role: "user", content: "one of my managers isnt showing the ownership i need from her running her store" },
@@ -1573,7 +1572,7 @@ describe("the coaching intake answered on one line", () => {
   const ANSWERS: [string, string, string | null][] = [
     [
       "dana moss, KS shawnee, she is the salon director. we can use todays date. the concern is that she does not verify her salon opener arrives on time, leaving me (rdo) to check in each morning",
-      "Dana Moss",
+      "dana moss",
       "Salon Director",
     ],
     [
@@ -1581,7 +1580,7 @@ describe("the coaching intake answered on one line", () => {
       "Dana Moss",
       "Salon Director",
     ],
-    ["dana moss, NE Kearney, today, she was late three times", "Dana Moss", null],
+    ["dana moss, NE Kearney, today, she was late three times", "dana moss", null],
   ];
 
   it.each(ANSWERS)("continues the open proposal: %s", async (reply, name, title) => {
@@ -1613,7 +1612,7 @@ describe("the coaching intake answered on one line", () => {
       { role: "admin" as never, scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } },
     );
 
-    expect(answer.formProposal?.employeeName).toBe("Dana Moss");
+    expect(answer.formProposal?.employeeName).toBe("dana moss");
     expect(answer.formProposal?.status).toBe("ready");
     expect(answer.formProposal?.supportsInlineDraft).toBe(true);
   });
@@ -1794,15 +1793,16 @@ describe("the payroll-deduct question on a form that does not ask it yet", () =>
  * AND the employee, with no "which form?" and no "who is this for?". One rule
  * for the whole library — see `leadingFormRequest` in `template-intent.ts`.
  */
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a form's name leading the message, across the library", () => {
   it.each([
-    ["CA for paulyne co", "dpoa", "Paulyne Co"],
+    ["CA for paulyne co", "dpoa", "paulyne co"],
     ["ca for Dana Moss", "dpoa", "Dana Moss"],
     ["Corrective Action for John Smith", "dpoa", "John Smith"],
-    ["Coaching for paulyne co", "coaching", "Paulyne Co"],
+    ["Coaching for paulyne co", "coaching", "paulyne co"],
     ["coaching Dana Moss", "coaching", "Dana Moss"],
     ["Demotion for Jane Smith", "demotion", "Jane Smith"],
-    ["Demotion jane smith", "demotion", "Jane Smith"],
+    ["Demotion jane smith", "demotion", "jane smith"],
     ["Position Transfer for Mary Cruz", "position-transfer", "Mary Cruz"],
     ["Transfer for Mary Cruz", "position-transfer", "Mary Cruz"],
     ["Exit for John Doe", "stc-exit", "John Doe"],
@@ -1822,10 +1822,10 @@ describe("a form's name leading the message, across the library", () => {
 
   it("keeps a middle name, and the details that follow it", async () => {
     const transfer = await ask("Transfer for mary anne cruz to salon 24");
-    expect(transfer.formProposal?.employeeName).toBe("Mary Anne Cruz");
+    expect(transfer.formProposal?.employeeName).toBe("mary anne cruz");
 
     const exit = await ask("Exit for john michael doe effective october 2");
-    expect(exit.formProposal?.employeeName).toBe("John Michael Doe");
+    expect(exit.formProposal?.employeeName).toBe("john michael doe");
   });
 
   /*
@@ -1839,12 +1839,12 @@ describe("a form's name leading the message, across the library", () => {
     const answer = await ask(question);
 
     expect(answer.formProposal?.templateKey).toBe("dpoa");
-    expect(answer.formProposal?.employeeName).toBe("Paulyne Co");
+    expect(answer.formProposal?.employeeName).toBe("paulyne co");
     expect(answer.formProposal?.status).toBe("ready");
     expect(answer.formProposal?.formDate ?? null).toBeNull();
     expect(answer.formSelection).toBeUndefined();
     expect(answer.content).not.toMatch(/who is this/i);
-    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*Paulyne Co\*\*/);
+    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*paulyne co\*\*/);
     // What happened, the warning and the prior warning were all given: none is asked again.
     expect(answer.content).not.toMatch(/^\d\. /m);
     expect(answer.content).not.toMatch(/warning level/i);

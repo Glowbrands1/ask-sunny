@@ -128,6 +128,13 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  * `whole` requires every word to be part of the name: it is the test for a
  * message (or an intake line) that consists of nothing else.
  */
+/*
+ * "BOTH", "EITHER" ARE NOBODY. QA, 22 Oct 2026 (F-06): asked "which of them is
+ * this for — pat rivera or sam jones?", a manager answering "both" got a form
+ * for an employee called "both". A word that counts people is never one.
+ */
+const COUNTS_PEOPLE = new Set(["both", "either", "neither", "each", "all", "everyone", "everybody", "anyone", "anybody", "nobody", "none", "whoever"]);
+
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
   let endedOnPunctuation = false;
@@ -150,6 +157,7 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       !ROLE_ABBREVIATION.test(word.toUpperCase()) &&
       (!NOT_A_TYPED_NAME.has(lower) || willAsFirstName(lower, parts.length, words, whole)) &&
       !NOT_A_NAME.has(lower) &&
+      !COUNTS_PEOPLE.has(lower) &&
       !isFormVocabulary(lower);
     if (!usable) {
       if (whole) return null;
@@ -262,6 +270,47 @@ const ROSTER_NAME_KEYS: ReadonlySet<string> = new Set(
 function isRosterSalonName(candidate: string): boolean {
   // "Lincoln O St", "O St Lincoln": the salon reader's names, St = Street.
   return ROSTER_NAME_KEYS.has(storeNameKey(candidate)) || isMultiWordSalonName(candidate);
+}
+
+/*
+ * ============================================================================
+ * "KEARNEY", TYPED ON ITS OWN, IS WHERE — NEVER WHO
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026 (F-02). After "create a coaching form for pat rivera …", a
+ * manager answering the salon question with "kearney" — or "sorry, it's grand
+ * island" — had the reply read as the ANSWER to "who is this for?", and the
+ * card's employee became "Kearney". A single-word salon is deliberately not a
+ * place in prose (`ROSTER_NAME_KEYS`: Kearney is also a surname), but a reply
+ * that is nothing except a salon's name is not somebody's name.
+ *
+ * THE ROSTER IS THE EVIDENCE, read three ways: every salon's name with and
+ * without its state ("kearney", "lawrence", "grand island"); the city several
+ * salons share ("lincoln", "omaha", "kansas city"); and what tells those apart
+ * when it is one word ("wornall", "liberty", "pacific"). Only replies and
+ * correction clauses use this — a name after "<form> for", or marked as the
+ * employee, is still read as given — so "the employee is Pat Kearney" and
+ * "coaching form for lawrence smith" are unchanged. A person whose name is
+ * exactly a salon's ("Lawrence") is asked for again rather than guessed.
+ */
+const PLACE_REPLY_KEYS: ReadonlySet<string> = (() => {
+  const shorts = PRODUCTION_SALONS.map((salon) => storeNameKey(salon.name).replace(/^[a-z]{2} /, ""));
+  const keys = new Set<string>([...PRODUCTION_SALONS.map((salon) => storeNameKey(salon.name)), ...shorts]);
+  for (const short of shorts) {
+    const words = short.split(" ");
+    for (let length = 1; length < words.length; length += 1) {
+      const city = words.slice(0, length).join(" ");
+      if (shorts.filter((other) => other === city || other.startsWith(`${city} `)).length < 2) continue;
+      keys.add(city);
+      const rest = words.slice(length).join(" ");
+      if (!rest.includes(" ")) keys.add(rest);
+    }
+  }
+  return keys;
+})();
+
+function isPlaceReply(candidate: string): boolean {
+  return PLACE_REPLY_KEYS.has(storeNameKey(candidate)) || isRosterSalonName(candidate);
 }
 
 function opensWithRosterState(candidate: string): boolean {
@@ -434,7 +483,9 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   const AT_A_PLACE = new RegExp(`\\b(?:at|in)\\s+(${NAME}(?:\\s+${PART})+)`, "g");
   const AS_A_PERSON = (candidate: string) =>
     new RegExp(
-      `\\b(?:for|about|with|regarding)\\s+${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      // "for the manager Jane Doe": a role between "for" and the name still names the subject (`SUBJECT_LEAD`).
+      `\\b(?:for|about|with|regarding)\\s+(?:${SUBJECT_LEAD}\\s+)?${candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i",
     ).test(text);
   /*
    * ==========================================================================
@@ -486,7 +537,13 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * as a place does.
    */
   const OTHER_PARTY = new RegExp(
-    `\\b(?:her|his|their|a|an|the|this|that)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|co-?workers?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?|manager|supervisor),?\\s+(${NAME}(?:\\s+${PART})+)`,
+    /*
+     * "Her coworker Amy Lee covered her shift", "A client Amy Lee complained": a
+     * sentence that OPENS with the relation is still about someone else (QA
+     * F-09). Capitalised "A/The/This" only before somebody who is never staff —
+     * "The manager Jane Doe was late" is still about the manager.
+     */
+    `(?:\\b(?:[Hh]er|[Hh]is|[Tt]heir|a|an|the|this|that)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|co-?workers?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?|manager|supervisor)|\\b(?:A|An|The|This|That)\\s+(?:(?:best|close|old|new)\\s+)?(?:friends?|boyfriend|girlfriend|husband|wife|partner|fiance|fianc\u00e9e?|mom|mother|dad|father|sister|brother|son|daughter|cousin|aunt|uncle|roommate|neighbou?r|visitors?|guests?|customers?|clients?|vendors?)),?\\s+(${NAME}(?:\\s+${PART})+)`,
     "g",
   );
 
@@ -837,7 +894,8 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
       .split(/\s+/)
       .filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+    // "kearney", "sorry, it's grand island": a reply that is only a salon. See `isPlaceReply`.
+    if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
   /*
@@ -868,7 +926,7 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
   if (listed) {
     const words = listed.trim().split(/\s+/).filter(Boolean);
     const candidate = words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+    if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
   return settle(strong, found, text);
@@ -1103,13 +1161,20 @@ export function correctsTheEmployee(text: string): boolean {
   return CORRECTION_CUE.test(text) || negatedNames(text).length > 0;
 }
 
-/** In a correction, a sentence that is only a name is the answer: "No, not Jordan. Avery." */
+/**
+ * In a correction, a sentence that is only a name is the answer: "No, not
+ * Jordan. Avery." So is a CLAUSE — "not pat rivera, it's dana moss", "wrong
+ * person - its jordan testperson" — because a correction typed on a phone runs
+ * its parts together with commas, dashes and "and", not full stops (QA, 22 Oct
+ * 2026: the comma form left no employee at all; Ask Bubbles already read it).
+ * A clause that is only a salon is where, not who (`isPlaceReply`).
+ */
 function sentenceAnswers(text: string): string[] {
   const names: string[] = [];
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+|\s*[,;]\s*|\s+[-–—]\s+|\s+(?:and|but|then)\s+/)) {
     const words = withoutAnswerLead(sentence.trim().replace(/[.?!]+$/, "")).split(/\s+/).filter(Boolean);
     const candidate = words.length > 0 && words.length <= 2 ? readTypedName(words, true) : null;
-    if (candidate && !opensWithRosterState(candidate)) names.push(candidate);
+    if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) names.push(candidate);
   }
   return names;
 }
@@ -1181,21 +1246,48 @@ const FORM_NOUNS =
  * ("form for synthetic test employee Transfer Beta Test") is not a subject:
  * "synthetic test" is followed by "employee", so the name comes after it.
  */
+/*
+ * ============================================================================
+ * "FOR THE MANAGER JANE DOE", "FOR HER COWORKER AMY LEE": WHO, THEN THE NAME
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026 (F-09). A role or relationship between "for" and the name
+ * hid the person: "Create a CA for the manager Jane Doe" and "coaching for her
+ * coworker Amy Lee" named nobody — the lower-case reader stopped at "the" and
+ * "her", and the someone-else-in-the-account filter (`OTHER_PARTY`) took the
+ * capitalised name out. After "for", a role is a description of the subject,
+ * so it is skipped and the name after it is the person. Elsewhere ("she let
+ * her friend Sam Jones behind the counter") it still marks somebody else.
+ */
+const SUBJECT_LEAD =
+  "(?:(?:the|my|our|her|his|their|a|an|this|that)\\s+)?(?:(?:new|current)\\s+)?(?:(?:assistant|store|salon|shift|general|district|team|staff)\\s+){0,2}(?:managers?|supervisors?|co-?workers?|employees?|associates?|members?|directors?|leads?|trainees?|sd|asd|tsd|sdit|dmit|tc|fttc|pttc|mgr|gm|dm)";
+const SUBJECT_LEAD_AT_START = new RegExp(`^${SUBJECT_LEAD}\\s+`, "i");
+
+/** `words` with a leading role or relationship ("the manager", "my assistant manager") taken off, when a name follows it. */
+function withoutSubjectLead(words: readonly string[]): string[] {
+  const lead = SUBJECT_LEAD_AT_START.exec(`${words.join(" ")} `)?.[0];
+  if (!lead) return [...words];
+  const rest = words.slice(lead.trim().split(/\s+/).length);
+  return rest.length > 0 ? rest : [...words];
+}
+
 function formSubjectNames(text: string): string[] {
   const subjects: string[] = [];
   const FORM_THEN_PERSON = new RegExp(
-    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(for|about|regarding|on)\\s+(\\S+(?:\\s+\\S+){0,3})`,
+    `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(for|about|regarding|on)\\s+(?=\\S)`,
     "gi",
   );
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
+    // Everything after the preposition; "for the manager jane doe" — the role describes the subject (`withoutSubjectLead`).
+    const after = withoutSubjectLead(text.slice((match.index ?? 0) + match[0].length).trim().split(/\s+/));
     /*
      * "COACHING ABOUT OPENING THE SALON LATE" IS A TOPIC. Found in production
      * QA: "about" + a word ending "-ing" put "opening" on the form in place of
      * the confirmed employee. A form is ABOUT an activity far more often than
      * about a person; "for" is how a person is introduced, and it is unchanged.
      */
-    if (!/^for$/i.test(match[1]!) && /ing$/i.test(match[2]!.split(/\s+/)[0]!)) continue;
-    const candidate = readTypedName(match[2]!.split(/\s+/), false);
+    if (!/^for$/i.test(match[1]!) && /ing$/i.test(after[0]!)) continue;
+    const candidate = readTypedName(after.slice(0, 4), false);
     if (!candidate) continue;
     /*
      * "A coaching ON avery testperson" (production QA). "On" introduces a topic
@@ -1203,12 +1295,20 @@ function formSubjectNames(text: string): string[] {
      * first name AND a surname are read as somebody.
      */
     if (/^on$/i.test(match[1]!) && candidate.split(/\s+/).length < 2) continue;
-    const following = `${match[2]!} ${text.slice((match.index ?? 0) + match[0].length)}`
-      .trim()
-      .split(/\s+/)
-      .slice(candidate.split(/\s+/).length);
+    const following = after.slice(candidate.split(/\s+/).length);
     if (/^(?:employee|team|staff|named)$/i.test(following[0] ?? "")) continue;
     subjects.push(candidate);
+    /*
+     * "COACHING FORM FOR PAT RIVERA AND SAM JONES", typed in lower case, named
+     * only Pat (QA, 22 Oct 2026, F-06; ported from Ask Bubbles): the reader
+     * stops at "and", so the second person was dropped and the form went to the
+     * first without a word. A second name joined by "and" / "&" is a second
+     * candidate, so the manager is asked which of them — never handed one.
+     */
+    if (/^(?:and|&)$/i.test(following[0] ?? "")) {
+      const second = readTypedName(withoutSubjectLead(following.slice(1)).slice(0, 4), false);
+      if (second && typedNameAllowed(second) && !opensWithRosterState(second)) subjects.push(second);
+    }
   }
   return subjects;
 }
@@ -1463,28 +1563,19 @@ function completePartialName(
 
 /*
  * ============================================================================
- * "paulyne camacho" IS PRINTED "Paulyne Camacho"
+ * THE NAME IS PRINTED AS THE MANAGER TYPED IT
  * ============================================================================
  *
- * Production, 21 October 2026: Demotion, Position Transfer and Policy Review
- * cards carried the employee exactly as typed — "paulyne camacho" — onto a
- * document that is signed and filed. The directory's spelling is used where
- * the directory knows the person (see `form-proposal.ts`); otherwise a name
- * typed WITHOUT capitals, or entirely IN capitals, is capitalised word by word,
- * after each hyphen and apostrophe too ("mary-kate o'neil" → "Mary-Kate
- * O'Neil"). A word the manager capitalised themselves is theirs and is left
- * alone: "McDonald", "DeShawn", "JD".
+ * Production, 21 October 2026 capitalised a name typed in lower case or in
+ * capitals ("paulyne camacho" -> "Paulyne Camacho"). QA, 22 Oct 2026, reversed
+ * that by decision: the manager's own spelling is kept — capitalising guesses
+ * at "JD SMITH", "John Smith III", "mcdonald" and "de la cruz", and a record
+ * should say what the manager wrote — unless the employee directory has an
+ * EXACT match, whose spelling `form-proposal.ts` uses instead. Only spacing is
+ * tidied; the field stays editable on the form.
  */
 export function tidyTypedName(name: string): string {
-  const shouted = !/[a-z]/.test(name);
-  return name
-    .split(/\s+/)
-    .map((word) => {
-      const lower = word === word.toLowerCase();
-      if (!lower && !(shouted && word.length > 1)) return word;
-      return word.toLowerCase().replace(/(^|[-'’])([a-z])/g, (_, before: string, letter: string) => `${before}${letter.toUpperCase()}`);
-    })
-    .join(" ");
+  return name.trim().replace(/\s+/g, " ");
 }
 
 /* ------------------------------------------------------------- proposal -- */

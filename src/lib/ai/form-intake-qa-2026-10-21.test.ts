@@ -133,9 +133,10 @@ describe("1. an all-caps message reads the name like any other", () => {
     expect(last.formProposal!.status).toBe("ready");
   });
 
-  it.each(["COACHING FORM JANE DOE LATE 3 TIMES", "coaching form jane doe late 3 times"])("%s", async (question) => {
-    // Off the directory: capitalised, never left in capitals.
-    expectCard(await converse(question), "coaching", "Jane Doe");
+  // QA 22 Oct 2026 decision: off the directory the manager's spelling is kept as typed.
+  it.each([["COACHING FORM JANE DOE LATE 3 TIMES", "JANE DOE"], ["coaching form jane doe late 3 times", "jane doe"]])("%s", async (question, employee) => {
+    // Off the directory: as typed.
+    expectCard(await converse(question), "coaching", employee);
   });
 
   it("one word before the topic is still not read as a name", async () => {
@@ -269,12 +270,13 @@ describe("5. the employee's name is printed capitalised, on every form", () => {
     expectCard(await converse(question), templateKey, employee);
   });
 
+  // QA 22 Oct 2026 decision: off the directory the manager's spelling is kept as typed.
   it.each([
-    ["create a demotion form for jane doe from SD to TC", "demotion", "Jane Doe"],
-    ["position transfer form for mary-kate o'neil to lincoln pine lake", "position-transfer", "Mary-Kate O'Neil"],
-    ["create a policy review for jane doe", "policy-review", "Jane Doe"],
-    ["exit form for jane doe", "stc-exit", "Jane Doe"],
-    ["coaching form for jane doe", "coaching", "Jane Doe"],
+    ["create a demotion form for jane doe from SD to TC", "demotion", "jane doe"],
+    ["position transfer form for mary-kate o'neil to lincoln pine lake", "position-transfer", "mary-kate o'neil"],
+    ["create a policy review for jane doe", "policy-review", "jane doe"],
+    ["exit form for jane doe", "stc-exit", "jane doe"],
+    ["coaching form for jane doe", "coaching", "jane doe"],
     // Capitalised by the manager: theirs, as typed.
     ["create a policy review for Jane McDonald", "policy-review", "Jane McDonald"],
     ["create a policy review for DeShawn Smith", "policy-review", "DeShawn Smith"],
@@ -284,14 +286,16 @@ describe("5. the employee's name is printed capitalised, on every form", () => {
 
   it("the note about a name the directory lacks uses the printed spelling", async () => {
     const last = await converse("create a policy review for jane doe");
-    expect(last.content).toContain("I didn't find **Jane Doe** in the employee list");
+    // QA 22 Oct 2026 decision: off the directory the manager's spelling is kept as typed.
+    expect(last.content).toContain("I didn't find **jane doe** in the employee list");
   });
 });
 
 describe("6. name, role and salon typed in lower case", () => {
   it("brandi algya asd lincoln o st coaching form", async () => {
     const last = await converse("brandi algya asd lincoln o st coaching form");
-    expectCard(last, "coaching", "Brandi Algya");
+    // QA 22 Oct 2026 decision: off the directory the manager's spelling is kept as typed.
+    expectCard(last, "coaching", "brandi algya");
     expect(last.formProposal!.employeeRole).toBe("ASD");
     expect(last.formProposal!.locationId).toBe("loc-0311");
   });
@@ -302,7 +306,8 @@ describe("6. name, role and salon typed in lower case", () => {
       "Oct 9",
       "brandi algya asd lincoln o st",
     );
-    expectCard(last, "coaching", "Brandi Algya");
+    // QA 22 Oct 2026 decision: off the directory the manager's spelling is kept as typed.
+    expectCard(last, "coaching", "brandi algya");
     expect(last.formProposal!.employeeRole).toBe("ASD");
     expect(last.formProposal!.locationId).toBe("loc-0311");
     expect(last.formProposal!.formDate).toBe("2026-10-09");
@@ -316,7 +321,8 @@ describe("6. name, role and salon typed in lower case", () => {
 
 describe("7. 'will' followed by a surname is a name", () => {
   it("coaching form for will turner", async () => {
-    expectCard(await converse("coaching form for will turner"), "coaching", "Will Turner");
+    // QA 22 Oct 2026 decision: off the directory the manager's spelling is kept as typed.
+    expectCard(await converse("coaching form for will turner"), "coaching", "will turner");
   });
 
   it.each(["coaching form for will", "the coaching form for will be done tomorrow"])(
