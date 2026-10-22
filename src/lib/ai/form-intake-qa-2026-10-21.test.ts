@@ -208,6 +208,17 @@ describe("3. salon nicknames", () => {
     expect(last.formProposal!.locationId).toBe("loc-0309");
   });
 
+  /* Ported from Ask Bubbles (c25e05c): a whole salon name set off in brackets reads like one set off by commas. */
+  it.each([
+    ["coaching form for Jane Doe, NE Kearney", "loc-0309"],
+    ["coaching form for Jane Doe (NE Kearney)", "loc-0309"],
+    ["coaching form for Jane Doe at kearney, she was late", "loc-0309"],
+  ])("%s", async (question, salon) => {
+    const last = await converse(question);
+    expectCard(last, "coaching", "Jane Doe");
+    expect(last.formProposal!.locationId).toBe(salon);
+  });
+
   it("the salon's road on its own is still a road", async () => {
     const last = await converse("coaching form for Jane Doe, she parked on 27th street again");
     expect(last.formProposal!.locationId).toBeNull();
