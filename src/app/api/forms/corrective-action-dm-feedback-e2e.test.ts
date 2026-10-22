@@ -1057,6 +1057,107 @@ describe("the payroll amount the quoted section states", () => {
 });
 
 /* ========================================================================= */
+/* G — A MEETING NOT ATTENDED IS ATTENDANCE, WHERE THE MANUAL SAYS SO         */
+/* ========================================================================= */
+
+/*
+ * District Manager feedback, 21 Oct 2026: E1 ("for not attending the monthly
+ * meeting") was drafted under the Standards of Conduct. The manual's
+ * Attendance section counts meetings as scheduled shifts; where it does not
+ * say so, the manager is asked, and their answer fills the form.
+ */
+const ATTENDANCE_WITH_MEETINGS_CHUNK = {
+  ...ATTENDANCE_CHUNK,
+  content: `${ATTENDANCE_CHUNK.content}\no Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts. (See Seminar/Webinar\nAttendance section)`,
+};
+const SEMINAR_CHUNK = {
+  chunkIndex: 123,
+  page: 38,
+  printedPage: 37,
+  sections: [{ heading: "Seminar/Webinar Attendance", page: 37 }],
+  section: "Seminar/Webinar Attendance",
+  content:
+    "Seminar/Webinar Attendance\nSynthetic rule: a seminar/webinar missed without notifying your\nSupervisor is treated as a no call no show to a scheduled shift.",
+};
+
+describe("G: a meeting not attended is cited where the manual puts it", () => {
+  it("reads Attendance from the manual, says why, and the draft ticks Absenteeism over the model's Standards of Conduct", async () => {
+    state.manual = {
+      chunks: [STANDARDS_OF_CONDUCT_CHUNK, ATTENDANCE_WITH_MEETINGS_CHUNK, SEMINAR_CHUNK, CELL_PHONE_CHUNK],
+    };
+    const { last, create } = await conversation([E1]);
+
+    expect(last.content).toMatch(
+      /\*\*Policy:\*\* "missed the monthly meeting" reads as the policy manual's \*\*Attendance\*\* \(page 14\), which says "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts\." I'll quote it on the draft under \*\*Absenteeism\*\* — tell me if a different policy applies\./,
+    );
+    expect(last.content).not.toMatch(/Which policy applies/);
+
+    state.draft = {
+      values: { observation: "Observed:\nTess Varga did not attend the scheduled monthly meeting on October 20, 2026." },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
+    expect(field(form, "policy_violated")!.value).toBe("Absenteeism");
+    expect(policy).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
+    expect(policy).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(policy).not.toMatch(/Standards of Conduct/);
+    expect(field(form, "warning_type")!.checked).toEqual(["written"]);
+    expect(field(form, "prior_actions")!.value).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026",
+    );
+  });
+
+  it("a seminar not attended cites the Seminar/Webinar Attendance section under Absenteeism", async () => {
+    state.manual = {
+      chunks: [STANDARDS_OF_CONDUCT_CHUNK, ATTENDANCE_WITH_MEETINGS_CHUNK, SEMINAR_CHUNK],
+    };
+    const { last, create } = await conversation([
+      "create a verbal CA for tess varga for skipping the webinar on 10-20-26. no payroll deduct",
+    ]);
+    expect(last.content).toMatch(/\*\*Policy:\*\* "missed the webinar" reads as the policy manual's \*\*Seminar\/Webinar Attendance\*\* \(page 37\)/);
+
+    state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
+    expect(field(form, "policy_violated")!.value).toBe("Absenteeism — Seminar/Webinar Attendance");
+    expect(field(form, "policy_language")!.value).toContain("is treated as a no call no show to a scheduled shift");
+  });
+
+  /* Owner decision, 22 Oct 2026: a missed meeting is Attendance, so this no longer asks "which policy?" first. */
+  it("where the manual does not say, it is still Attendance — and the form says so", async () => {
+    // The manual as the other tests hold it: its Attendance section says nothing about meetings.
+    const { responses, create } = await conversation([E1]);
+
+    expect(responses[0]!.content).not.toMatch(/Which policy applies/);
+    expect(responses[0]!.content).toMatch(/\*\*Policy:\*\* Attendance — missing the monthly meeting is an absence from a scheduled shift\./);
+
+    state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(field(form, "warning_type")!.checked).toEqual(["written"]);
+    expect(field(form, "prior_actions")!.value).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026",
+    );
+  });
+
+  it('answered "standards of conduct", the form is the Standards of Conduct', async () => {
+    const { create } = await conversation([E1, "standards of conduct"]);
+    state.draft = { values: {}, checked: { offense_type: ["absenteeism"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value).toContain("Standards of Conduct");
+  });
+});
+
+/* ========================================================================= */
 /* "CREATE CA FOR <NAME>" IS THE RECIPIENT; THE INCIDENT'S OTHER NAMES ARE NOT */
 /* ========================================================================= */
 

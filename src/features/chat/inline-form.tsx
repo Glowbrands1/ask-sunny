@@ -18,6 +18,7 @@ import {
 import { useSession } from "@/lib/session/session-context";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
+import { manualStandingNotice } from "@/lib/forms/standing-notices";
 import {
   POLICY_ACKNOWLEDGEMENT_MESSAGE,
   POLICY_ACKNOWLEDGEMENT_REQUIRED,
@@ -364,6 +365,12 @@ export function InlineForm({
   const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
   /*
+   * WHERE THE QUOTED POLICY CAME FROM (owner decision, 22 Oct 2026), read off
+   * the stored provenance so a refresh or a reopened draft says it too: a
+   * manual no owner has confirmed. See `standing-notices.ts`.
+   */
+  const manualNotice = prefilling ? null : manualStandingNotice(loaded.values);
+  /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
    * form started by hand in the old Create a Form screen (since removed; its
    * instances are still opened here) has unsourced policy fields too, and
@@ -682,6 +689,13 @@ export function InlineForm({
           {policyNotice}
         </Notice>
       ) : null}
+
+      {manualNotice ? (
+        <Notice tone="attention" className="mt-3">
+          {manualNotice}
+        </Notice>
+      ) : null}
+
 
       {/*
         WHERE THE POLICY CAME FROM, WITH ITS PAGE.

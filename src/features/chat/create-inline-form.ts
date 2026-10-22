@@ -51,6 +51,8 @@ export interface CreateInlineFormResult {
   reference: ChatFormInstanceRef;
   /** Set when the instance was created but Sunny could not prefill it. */
   draftWarning: string | null;
+  /** The server returned the draft this card already made; nothing was drafted again. */
+  reused?: boolean;
   /**
    * What the drafting route says it left off or could not decide — an
    * observation that lost a policy finding, a refused box, a policy it could
@@ -104,7 +106,7 @@ export async function createInlineForm({
    * docs/chat-phase-3.md. A validated id with no name is honest; a validated id
    * with a demo name beside it is not.
    */
-  const created = await call<{ instance: { id: string } }>("/api/forms/instances", {
+  const created = await call<{ instance: { id: string }; reused?: boolean }>("/api/forms/instances", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -145,6 +147,8 @@ export async function createInlineForm({
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
+      /* The card's own id: a second press of it returns the draft it already made. */
+      proposalId: proposal.proposalId,
       /*
        * THE CONVERSATION AS IT STANDS NOW, not as it stood when the card was
        * drawn. The server re-reads who and which form it now names and
@@ -168,6 +172,13 @@ export async function createInlineForm({
    * real form exists.
    */
   onCreated(reference);
+
+  /*
+   * THE CARD'S DRAFT ALREADY EXISTS: a second press, a retry after a lost
+   * response, or another tab. It is opened as it is — drafting it again would
+   * overwrite what Sunny and the manager have written on it since.
+   */
+  if (created.reused) return { reference, draftWarning: null, reused: true };
 
   /*
    * THE DRAFT. Manager turns only, resolved from the ids the server retained —

@@ -1,5 +1,11 @@
 import { JOIN } from "./bounded-context";
-import { manualSectionsFor, type ManualChunk, type ManualSection } from "./official-policy-manual";
+import {
+  findManualSection,
+  manualSectionHeadings,
+  manualSectionsFor,
+  type ManualChunk,
+  type ManualSection,
+} from "./official-policy-manual";
 
 /**
  * ============================================================================
@@ -82,6 +88,8 @@ export interface CaPolicyReading {
   source: "stated" | "incident" | null;
   /** Policies to ask between, when the account reads more than one way and none was named. */
   ambiguous: CaPolicyName[] | null;
+  /** A scheduled meeting, seminar or training session the account says was not attended: "the monthly meeting". */
+  missedEvent: string | null;
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -138,15 +146,65 @@ const TARGET =
   /\b(?:sales|quota|ppta|upgrades?|conversions?|close rate|closing rate|kpis?|metrics|scorecard|revenue|(?:her|his|their|the) numbers|(?:sales|membership|monthly|weekly) goals?|below (?:goal|target)|(?:hit|hitting|meet|meeting|missed|missing) (?:her|his|their|the) (?:goal|goals|target|targets))\b/;
 
 /**
- * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
- * District Manager's 21 Oct report ("not attending the monthly meeting" was
- * written up under Standards of Conduct). The manual's Attendance section
- * counts "Seminars/Meetings/ Training sessions" as scheduled shifts, so an
- * account of missing one reads as Attendance, as if the manager had named it,
- * and ticks Absenteeism. A policy the manager does name still wins.
+ * ============================================================================
+ * A MEETING, SEMINAR OR TRAINING SESSION NOT ATTENDED
+ * ============================================================================
+ *
+ * District Manager feedback, 21 Oct 2026: "create a written CA for <employee>
+ * for not attending the monthly meeting on 10-20-26 …" was drafted under the
+ * Standards of Conduct. The manual's own Attendance section says otherwise —
+ * it counts meetings, seminars and training sessions as scheduled shifts —
+ * and its Seminar/Webinar Attendance section calls a missed one a no call no
+ * show.
+ *
+ * So an account of a scheduled event not attended is read here, as an
+ * attendance account, and the MANUAL decides what that means
+ * (`groundMissedEvent`): where its attendance sections name the event, it is
+ * Absenteeism and the section is quoted, said as a reading the manager can
+ * change. Where the manual does not — or cannot be read — the manager is
+ * asked which policy applies, and their answer fills the form.
+ *
+ * Not a task left undone: "did not complete the woven training" is the
+ * Standards of Conduct reading above, and "missed the training deadline" a
+ * deadline. Only attending one is read here.
  */
-const MISSED_MEETING =
-  /\b(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?|did\s*n[o']?t\s+(?:attend|go\s+to|show\s+up\s+(?:to|for|at)|come\s+to|make\s+it\s+to)|not\s+attend(?:ing)?|never\s+(?:attended|showed\s+up\s+(?:to|for|at)|came\s+to)|fail(?:ed|ure)?\s+to\s+attend|no[- ]show(?:ed)?\s+(?:to|for|at)|absent\s+from|was\s*n[o']?t\s+at)\s+(?:\S+\s+){0,3}?(?:meetings?|mtgs?|seminars?|webinars?|trainings?|training\s+sessions?|huddles?)\b/;
+/*
+ * THE EVENT, in the words managers use for one: "meeting", "mtg", "all-staff",
+ * "1:1", "seminar", "webinar", "huddle", "orientation", a training session or
+ * class. "Training" alone is an event only when it is attended or missed —
+ * "the training deadline" and "training modules" are work (`NOT_THE_EVENT`).
+ */
+const EVENT_NOUN = String.raw`(?:meetings?|mtgs?|mtng|all[- ]staff|all[- ]hands|one[- ]on[- ]ones?|1[:-]on[:-]1|1:1s?|seminars?|webinars?|huddles?|orientation|trainings?(?:\s+(?:sessions?|classes?|meetings?|days?))?|(?:training\s+)?(?:sessions?|classes?))`;
+const NOT_THE_EVENT = String.raw`(?!\s*(?:deadlines?|due|modules?|items?|videos?|courses?|assignments?|requirements?|quiz\w*|workbooks?|notes?|minutes|agenda|materials?|tasks?|checklists?|binders?|links?|emails?|invites?|requests?)\b)`;
+/*
+ * WHAT SAYS SHE WAS NOT THERE, before the event: missed, skipped, blew off,
+ * bailed on, a no-show, absent from, wasn't at, or a negated attending verb
+ * (didn't attend / show up / make it / come / join / log in / dial in …).
+ */
+const ABSENT_BEFORE = String.raw`(?:miss(?:ed|es|ing)?|skip(?:ped|s|ping)?(?:\s+out\s+on)?|blew\s+off|blown\s+off|bail(?:ed|s)?\s+(?:out\s+)?on|ditch(?:ed|es)?|no[- ]?call[,/ -]*(?:and\s+)?no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|no[- ]?show(?:ed)?(?:\s+(?:to|for|at|on))?|absent\s+(?:from|for|at)|(?:was|were|is)\s+(?:not|n't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:wasn't|weren't|isn't)\s+(?:at|present\s+(?:at|for)|in\s+attendance\s+(?:at|for))|(?:${FAILED}|not|never|without|n't)\s+(?:\S+\s+)?(?:attend(?:ing|ed|s)?|show(?:ing|ed|s)?(?:\s+up)?|c[oa]me|coming|go|went|going|ma(?:k|d)e\s+it|make|join(?:ing|ed|s)?|turn(?:ed|ing)?\s+up|appear(?:ed|ing)?|log(?:ged)?\s+(?:in|on)|dial(?:ed|led)?\s+in|call(?:ed)?\s+in)(?:\s+(?:to|for|at|in|into|on))?)`;
+/* What says it after the event: "the monthly meeting, which she missed". */
+const ABSENT_AFTER = String.raw`(?:miss(?:ed|es)|skipped|blew\s+off|bailed\s+on|no[- ]?showed|(?:did ?n[o']?t|didn't|never)\s+(?:attend|show(?:\s+up)?|come|go|make\s+it)|(?:was|were)\s*(?:not|n't)\s+(?:at|there|present)|wasn't\s+(?:at|there|present)|was\s+absent)`;
+/* Words that put the event as the setting of something else: "rude DURING the meeting". */
+const GAP_WORD = String.raw`(?!(?:during|in|while|after|before|throughout|since|until|because|but|and|so|then|where|when|who|which|that)\b)\S+\s+`;
+const MISSED_EVENT_BEFORE = new RegExp(
+  String.raw`\b${ABSENT_BEFORE}\s+((?:${GAP_WORD}){0,4}?${EVENT_NOUN})\b${NOT_THE_EVENT}`,
+);
+const MISSED_EVENT_AFTER = new RegExp(
+  String.raw`\b((?:${GAP_WORD}){0,3}?${EVENT_NOUN})\b${NOT_THE_EVENT}(?:\s+(?:on|at|from)\s+\S+|\s+[\d/.-]+)?[\s,–—-]+(?:(?:which|that)\s+)?(?:(?:she|he|they|[a-z]+)\s+)?${ABSENT_AFTER}\b`,
+);
+
+/** Leading words that place the event rather than name it: "the", "her", "last", "tuesday's". */
+const EVENT_LEAD = /^(?:(?:the|a|an|her|his|their|our|this|that|last|next|yesterday['’]?s|today['’]?s|[a-z]+day['’]?s|[a-z]+day|todays|yesterdays)\s+)+/;
+
+function missedEventIn(sentences: readonly string[]): string | null {
+  for (const sentence of sentences) {
+    for (const clause of sentence.split(/;|:\s|\s+(?:but|however)\s+/)) {
+      const match = MISSED_EVENT_BEFORE.exec(clause) ?? MISSED_EVENT_AFTER.exec(clause);
+      if (match) return match[1]!.replace(EVENT_LEAD, "").trim();
+    }
+  }
+  return null;
+}
 
 /**
  * A POLICY NAMED. The Standards of Conduct is a policy's name wherever it
@@ -194,18 +252,28 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
   const text = normalize(rawText);
   const turns = text.split(JOIN).map((turn) => turn.trim()).filter(Boolean);
 
+  const sentences = statements(text);
+  const missedEvent = missedEventIn(sentences);
+
   let stated: CaPolicyName | null = null;
   for (const turn of turns) stated = statedIn(turn) ?? stated;
-  if (stated === null && statements(text).some((sentence) => MISSED_MEETING.test(sentence))) stated = "attendance";
+  /*
+   * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
+   * District Manager's 21 Oct report ("not attending the monthly meeting" was
+   * written up under Standards of Conduct). An account of missing a meeting,
+   * seminar or training reads as Attendance, as if the manager had named it,
+   * and ticks Absenteeism; `groundMissedEvent` still finds where the manual
+   * says so. A policy the manager does name still wins.
+   */
+  if (stated === null && missedEvent !== null) stated = "attendance";
 
-  const sentences = statements(text);
   const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
     ({ topic }) => topic,
   );
 
   const alternatives: CaPolicyReading["alternatives"] = [];
   if (topics.length > 0) {
-    if (sentences.some((s) => ATTENDANCE.test(s))) alternatives.push("attendance");
+    if (missedEvent || sentences.some((s) => ATTENDANCE.test(s))) alternatives.push("attendance");
     if (sentences.some((s) => TARGET.test(s))) alternatives.push("under_performance");
   }
 
@@ -217,10 +285,11 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
       suggestion: stated === STANDARDS_OF_CONDUCT ? STANDARDS_OF_CONDUCT : null,
       source: stated === STANDARDS_OF_CONDUCT ? "stated" : null,
       ambiguous: null,
+      missedEvent,
     };
   }
   if (topics.length === 0) {
-    return { stated, topics, alternatives, suggestion: null, source: null, ambiguous: null };
+    return { stated, topics, alternatives, suggestion: null, source: null, ambiguous: null, missedEvent };
   }
   if (alternatives.length > 0) {
     return {
@@ -230,9 +299,18 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
       suggestion: null,
       source: null,
       ambiguous: [STANDARDS_OF_CONDUCT, ...alternatives],
+      missedEvent,
     };
   }
-  return { stated, topics, alternatives, suggestion: STANDARDS_OF_CONDUCT, source: "incident", ambiguous: null };
+  return {
+    stated,
+    topics,
+    alternatives,
+    suggestion: STANDARDS_OF_CONDUCT,
+    source: "incident",
+    ambiguous: null,
+    missedEvent,
+  };
 }
 
 /** Whether a reply names a policy — the answer to "which policy applies?". */
@@ -262,7 +340,7 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       return null;
     case "attendance": {
       const text = normalize(rawText);
-      const absent = ABSENCE.test(text) || MISSED_MEETING.test(text);
+      const absent = ABSENCE.test(text) || missedEventIn(statements(text)) !== null;
       const late = LATENESS.test(text);
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
@@ -318,7 +396,24 @@ const ALTERNATIVE_WORDS: Record<CaPolicyReading["alternatives"][number], string>
  * on her cell phone"). See `named-policy-section.ts`.
  */
 export type NamedPolicyReading =
-  | { phrase: string; lookup: "found" | "described"; heading: string; page: number; offenseKey: string }
+  | {
+      phrase: string;
+      lookup: "found" | "described";
+      heading: string;
+      page: number;
+      offenseKey: string;
+      /** The manual's own sentence the reading rests on, where one was needed, such as the Attendance sentence that counts meetings as scheduled shifts. */
+      anchor?: string;
+      /** The section `anchor` is from, when it is not `heading`'s. */
+      anchorHeading?: string;
+      anchorPage?: number;
+      /**
+       * The manual this section is from, where no owner has confirmed it as
+       * Ask Sunny's approved manual (found by its name, not by the
+       * `official-policy-manual` tag). Absent when confirmed or not known.
+       */
+      unconfirmedManual?: string;
+    }
   | { phrase: string; lookup: "missing" | "unknown" }
   /** The account describes more than one section the manual titles a Policy: the manager chooses. */
   | { phrase: string; lookup: "choose"; choices: readonly { heading: string; page: number }[] };
@@ -348,7 +443,14 @@ function namedPolicyLine(named: NamedPolicyReading): string {
    */
   if (named.lookup === "described") {
     const box = OFFENSE_BOX_LABEL[named.offenseKey];
-    return `**Policy:** "${named.phrase}" reads as the policy manual's **${named.heading}** (page ${named.page}). I'll quote it on the draft${box ? ` under **${box}**` : ""} — tell me if a different policy applies.`;
+    // The manual's sentence closes this one: `… which says "… scheduled shifts." I'll quote it`.
+    const end = named.anchor && /[.!?]$/.test(named.anchor) ? "" : ".";
+    const says = !named.anchor
+      ? "."
+      : named.anchorHeading
+        ? `. The manual's ${named.anchorHeading} section (page ${named.anchorPage}) says "${named.anchor}"${end}`
+        : `, which says "${named.anchor}"${end}`;
+    return `**Policy:** "${named.phrase}" reads as the policy manual's **${named.heading}** (page ${named.page})${says} I'll quote it on the draft${box ? ` under **${box}**` : ""} — tell me if a different policy applies.`;
   }
   if (named.lookup === "found") {
     const box = OFFENSE_BOX_LABEL[named.offenseKey];
@@ -360,6 +462,16 @@ function namedPolicyLine(named: NamedPolicyReading): string {
   return `**Policy:** "${named.phrase}", as you said. I'll look for that section in the current policy manual and quote it on the draft; if the manual has no section by that name, Direct policy is left for you to complete.`;
 }
 
+/** How a missed event is read back: "missed the monthly meeting". */
+export function missedEventPhrase(event: string): string {
+  return `missed ${withArticle(event)}`;
+}
+
+/** "monthly meeting" → "the monthly meeting"; "meetings" stays as said. */
+function withArticle(event: string): string {
+  return /s$/.test(event) && !/(?:ss|class)$/.test(event) ? event : `the ${event}`;
+}
+
 /** The marker the continuation reads to know a policy question is open. */
 export const CA_POLICY_QUESTION = "Which policy applies?";
 
@@ -367,6 +479,16 @@ export const CA_POLICY_QUESTION = "Which policy applies?";
  * What the proposal says about the policy, or null when there is nothing to
  * say beyond the usual "I'll check the applicable company policy".
  */
+/**
+ * SAID WHEREVER A SECTION IS CITED FROM A MANUAL NO OWNER HAS CONFIRMED (owner
+ * decision, 22 Oct 2026): the JBA manual is kept, but its identity as the
+ * approved manual is not assumed because a copy is in the Knowledge Base.
+ */
+export function unconfirmedManualLine(named: NamedPolicyReading | null): string | null {
+  if (!named || (named.lookup !== "found" && named.lookup !== "described") || !named.unconfirmedManual) return null;
+  return `**Policy source:** "${named.unconfirmedManual}" — requires owner confirmation as Ask Sunny's approved policy manual. I'll cite it with its section and page; check the wording against your current manual before you finalize.`;
+}
+
 export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolicyReading | null = null): string | null {
   /*
    * A POLICY THE MANAGER NAMED, which the manual answers, is the policy — the
@@ -375,8 +497,13 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
    * One the manual does not answer is said so, unless the account still reads
    * as a policy below.
    */
-  if (!reading.stated && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
+  // A missed meeting reads as Attendance without being named; the manual's section for it is said the same way.
+  const readAsAttendance = reading.stated === "attendance" && reading.missedEvent !== null;
+  if ((!reading.stated || readAsAttendance) && named && (named.lookup !== "missing" || (!reading.ambiguous && !reading.suggestion))) {
     return namedPolicyLine(named);
+  }
+  if (readAsAttendance) {
+    return `**Policy:** Attendance — missing ${withArticle(reading.missedEvent!)} is an absence from a scheduled shift. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
   }
   if (reading.ambiguous) {
     const others = reading.alternatives.map((name) => ALTERNATIVE_WORDS[name]);
@@ -482,6 +609,131 @@ export function groundConductPolicy(input: {
 }
 
 /**
+ * ============================================================================
+ * WHERE THE MANUAL PUTS A MEETING NOT ATTENDED
+ * ============================================================================
+ *
+ * Read from the pinned manual as it is today, never from a list kept here:
+ *
+ *   A SECTION OF ITS OWN — a heading that names the event and attendance,
+ *   such as "Seminar/Webinar Attendance" for a missed seminar — is cited
+ *   first, where exactly one answers.
+ *
+ *   OTHERWISE THE ATTENDANCE SECTION, where one of its own sentences names
+ *   the event, such as the one that counts meetings as scheduled shifts.
+ *
+ * Either is cited under Absenteeism, with the sentence it rests on. A manual
+ * that says neither — a huddle it never mentions, a re-issued manual, none at
+ * all — grounds nothing, and the manager is asked which policy applies.
+ */
+export type MissedEventGrounding =
+  | {
+      ok: true;
+      section: ManualSection;
+      /** The manual's sentence the reading rests on; null where the section is named for the event and says nothing else. */
+      anchor: string | null;
+      /** Where `anchor` is from, when that is not `section` (the Attendance sentence beside a seminar's own section). */
+      anchorSection?: ManualSection;
+    }
+  | { ok: false; reason: "no_event" | "no_manual" | "not_supported" };
+
+/** The box a meeting not attended is cited under. */
+export const MISSED_EVENT_OFFENSE = "absenteeism";
+
+function eventStem(word: string): string {
+  const w = word.toLowerCase();
+  if (w.endsWith("sses")) return w.slice(0, -2);
+  return w.length > 4 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
+}
+
+/** The words that name a meeting without saying "meeting". */
+const MEETING_ALIASES = /^(?:mtgs?|mtng|all[- ]staff|all[- ]hands|one[- ]on[- ]ones?|1[:-]on[:-]1|1:1s?)$/;
+
+/** "monthly meeting" → "meeting"; "training session" → "session"; "all-staff" → "meeting". */
+function eventHead(event: string): string {
+  if (MEETING_ALIASES.test(event.split(/\s+/).slice(-2).join(" ")) || MEETING_ALIASES.test(event.split(/\s+/).pop() ?? "")) {
+    return "meeting";
+  }
+  const words = event.split(/\s+/).filter(Boolean);
+  return eventStem(words[words.length - 1] ?? "");
+}
+
+/** The events a manual's attendance sentence may name. */
+const EVENT_HEADS = ["meeting", "seminar", "webinar", "training", "session", "huddle", "class"];
+
+function sentencesOf(text: string): string[] {
+  return text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.replace(/^(?:o|•|-|\*)\s+/, "").trim())
+    .filter(Boolean);
+}
+
+function mentions(sentence: string, head: string): boolean {
+  return sentence
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .some((word) => word !== "" && eventStem(word) === head);
+}
+
+export function groundMissedEvent(input: {
+  reading: CaPolicyReading;
+  chunks: readonly ManualChunk[] | null;
+  jobTitle?: string | null;
+}): MissedEventGrounding {
+  const event = input.reading.missedEvent;
+  // Attendance is what a missed event reads as (owner decision, 22 Oct 2026); any other policy named is the manager's.
+  const otherPolicy = input.reading.stated !== null && input.reading.stated !== "attendance";
+  if (!event || otherPolicy || input.reading.topics.length > 0) return { ok: false, reason: "no_event" };
+  if (!input.chunks || input.chunks.length === 0) return { ok: false, reason: "no_manual" };
+  const head = eventHead(event);
+
+  /*
+   * THE SENTENCE QUOTED BACK NEVER CLASSIFIES. Calling it a no call no show
+   * is the manual's rule for not attending WITHOUT NOTIFYING the
+   * Supervisor, and whether she notified anyone is a fact the manager has not
+   * given. It is quoted on the form as the manual's text, in full; it is not
+   * said back as what this was.
+   */
+  const plain = (sentence: string) => !/\bno[- ]?call\b|\bno[- ]?show\b|\bncns\b/i.test(sentence);
+  const attendance = manualSectionsFor({
+    chunks: input.chunks,
+    offenseKeys: [MISSED_EVENT_OFFENSE],
+    jobTitle: input.jobTitle,
+  })[0];
+  /*
+   * A cross-reference ("(See Seminar/Webinar Attendance section)") is not a
+   * rule: the sentence quoted is the one that says the event is a scheduled
+   * shift — the event's own word first, else any event the sentence names.
+   */
+  const ruleSentences = attendance
+    ? sentencesOf(sectionText(input.chunks, attendance)).filter((s) => plain(s) && !/^\(/.test(s))
+    : [];
+  const attendanceAnchor = ruleSentences.find((s) => mentions(s, head)) ?? null;
+  const anyEventAnchor = ruleSentences.find((s) => EVENT_HEADS.some((event) => mentions(s, event))) ?? null;
+
+  const own = manualSectionHeadings(input.chunks).filter(
+    (heading) => /\battend/i.test(heading) && mentions(heading.replace(/\battendance\b/gi, ""), head),
+  );
+  if (own.length === 1) {
+    const section = findManualSection(input.chunks, own);
+    if (section) {
+      const anchor = sentencesOf(sectionText(input.chunks, section).slice(section.heading.length)).find(
+        (s) => mentions(s, head) && plain(s),
+      );
+      if (anchor) return { ok: true, section, anchor };
+      // Beside the event's own section, the attendance sentence about scheduled events says what it is.
+      const beside = attendanceAnchor ?? anyEventAnchor;
+      return attendance && beside
+        ? { ok: true, section, anchor: beside, anchorSection: attendance }
+        : { ok: true, section, anchor: null };
+    }
+  }
+  if (attendance && attendanceAnchor) return { ok: true, section: attendance, anchor: attendanceAnchor };
+  return { ok: false, reason: "not_supported" };
+}
+
+/**
  * The Type of Offense once Standards of Conduct is grounded: the box is ticked,
  * and the readings it replaces are removed — Under Performance, and the
  * "Other" write-in (with its tick, on a version that has one), which is the
@@ -512,7 +764,7 @@ export function caPolicyAmbiguousNotice(reading: CaPolicyReading): string | null
   if (!reading.ambiguous) return null;
   const names = reading.ambiguous.map((name) => CA_POLICY_LABEL[name]);
   const list = `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
-  return `This could fall under ${list}, and you didn't say which — check Type of Offense, Policy Violated and Direct policy before you finalize.`;
+  return `This could fall under ${list}, and you didn't say which, so Type of Offense, Policy Violated and Direct policy are left for you. Tell me which policy applies, or tick it on the form.`;
 }
 
 /**

@@ -1,3 +1,4 @@
+import { readCaPolicy } from "./ca-policy";
 import {
   PAYROLL_DEDUCT_LABEL,
   statedPayrollDeduct,
@@ -250,6 +251,10 @@ export function isStatedWarningLevel(value: unknown): value is StatedWarningLeve
   return value === "verbal" || value === "written";
 }
 
+/** A request put as a question, ending right at the level: "can you make a", "could you please write up a". */
+const ASKS_FOR_THE_FORM =
+  /\b(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+|pls\s+)?(?:make|do|create|write(?:\s+up)?|draft|start|prepare|put\s+together|get\s+me|give\s+me|fill\s+out|open)\s+(?:me\s+)?(?:a|an)\s+(?:verbal|written)\b/;
+
 const LEVEL_NAMED = /\b(verbal|written)\s+(?:warning|ca|c\/a|corrective\s+action)\b/g;
 
 /** A step already taken, said before the level: "she had a written CA", "prior verbal warning". */
@@ -258,7 +263,7 @@ const LEVEL_HISTORY_BEFORE =
 
 /** …or after it: "a written warning before", "verbal CA last month". */
 const LEVEL_HISTORY_AFTER =
-  /^\s*(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/;
+  /^\s*(?:(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b|(?:was|were)\s+(?:actually\s+)?(?:(?:given|signed|issued)\s+)?(?:on\s+)?\d)/;
 
 /**
  * …or anywhere after a history heading in the same sentence: "previous
@@ -279,7 +284,13 @@ const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rathe
  * was not a level statement. The same lead-ins as Ask Bubbles' warning-level.ts.
  */
 const LEVEL_BARE = new RegExp(
-  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|keep\s+(?:it|this)(?:\s+(?:as|at))?|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
+  /*
+   * "make it a verbal instead", "change it to written", "switch to a verbal
+   * please", "no, written after all", "go back to verbal" (QA, 22 Oct 2026):
+   * the level as the whole reply, however it is asked. Only a WHOLE reply, so
+   * "again" here is a change back, never "another written warning".
+   */
+  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|make\s+this|(?:change|switch|set|put)\s+(?:it|this)\s+(?:back\s+)?to|switch\s+(?:back\s+)?to|go\s+(?:back\s+)?(?:to|with)|let'?s\s+(?:do|go\s+with)|keep\s+(?:it|this)(?:\s+(?:as|at))?|do|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+(?:warning|ca|corrective\s+action|one))?(?:[\s,]+(?:instead|then|please|now|after\s+all|again))*\s*$`,
 );
 
 const LEVEL_LABELLED =
@@ -307,9 +318,11 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
   // A sentence at a time, so a cue in one sentence says nothing about the next.
   for (const sentence of normalize(text).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
-    if (sentence[0].endsWith("?")) continue;
+    // A question decides nothing, unless it asks Ask Sunny for the form: "can you make a written CA?"
+    if (sentence[0].endsWith("?") && !ASKS_FOR_THE_FORM.test(body)) continue;
 
-    const bare = LEVEL_BARE.exec(body) ?? levelBesidePayrollAnswer(body);
+    // The level as the whole reply is a few words; a long sentence is never tested, so it stays linear.
+    const bare = (body.length <= 80 ? LEVEL_BARE.exec(body) : null) ?? levelBesidePayrollAnswer(body);
     if (bare) levels.add(bare[1] as StatedWarningLevel);
 
     for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
@@ -486,6 +499,14 @@ const OBSERVATIONAL_CLAUSE: readonly RegExp[] = [
   /\b(?:arrived|showed up|came in|clocked in|got in)\s+(?:at|around|after|late|\d)/,
   /\b(?:didn't|did not|hasn't|has not|wouldn't|would not)\s+\w+/,
   /\bi (?:saw|observed|watched|found|noticed|had to)\b/,
+  /*
+   * WHAT THE PERSON DID, named or not: "Tess Varga missed the deadline",
+   * "she no-showed the all-staff", "jordan blew off the meeting" (QA, 22 Oct
+   * 2026 — each was answered "you haven't told me what happened yet").
+   */
+  /\b(?:she|he|they|[a-z]+)\s+(?:missed|skipped|no[- ]?showed|blew\s+off|bailed\s+on|ditched|forgot|failed|refused|ignored|left|wore|took|lost|broke|mishandled|miscounted|yelled|cursed|argued|stole|clocked|called\s+(?:out|off)|walked\s+out|showed\s+up|came\s+in|never\s+(?:showed|came|called|attended|finished|completed))\b/,
+  /* The reason a request gives: "for missing the meeting", "for not attending", "for being late". */
+  /\bfor\s+(?:not\s+)?(?:missing|skipping|being|failing|leaving|arriving|using|taking|violating|ignoring|refusing|talking|wearing|coming|showing|attending|calling|no[- ]?showing|opening|closing|forgetting|losing|breaking|mishandling|clocking)\b/,
 ];
 
 /**
@@ -602,7 +623,14 @@ export function readCorrectiveActionIntake(input: {
  */
 export function describesIncident(text: string): boolean {
   const normalized = normalize(text);
-  return any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE);
+  if (any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE)) return true;
+  /*
+   * WHATEVER THE POLICY READING RECOGNISES IS AN ACCOUNT TOO — a missed
+   * deadline, unfinished work, a missed meeting, cash handling — so the two
+   * readings can never disagree about whether something happened.
+   */
+  const policy = readCaPolicy(text);
+  return policy.topics.length > 0 || policy.missedEvent !== null;
 }
 
 /**

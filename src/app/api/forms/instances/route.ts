@@ -11,9 +11,11 @@ import {
   WARNING_TYPE_KEY,
 } from "@/lib/forms/corrective-action-intake";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
+import { isProposalId } from "@/lib/forms/proposal-id";
 import {
   applyStatedFacts,
   createInstance,
+  findRecentAssistantDraft,
   deleteDemoInstances,
   findDemoInstances,
   InstanceProtectedError,
@@ -127,6 +129,7 @@ export async function POST(request: Request) {
       warningLevel?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
+      proposalId?: unknown;
     } | null;
 
     if (!body?.templateKey || !body.employeeName?.trim()) {
@@ -216,6 +219,26 @@ export async function POST(request: Request) {
     /* See `resolveLocationName`. */
     const locationName = resolveLocationName(locationId, body.locationName ?? null);
 
+    /*
+     * ONE DRAFT PER CARD. A press of a card whose create already succeeded —
+     * the response was lost, the card was pressed twice, or in another tab —
+     * returns that draft instead of filing a second record (QA, 22 Oct 2026:
+     * a second press filed a second Corrective Action). A new card always
+     * creates. See `findRecentAssistantDraft`.
+     */
+    const proposalId = body.source === "ask_sunny" && isProposalId(body.proposalId) ? body.proposalId : undefined;
+    if (proposalId) {
+      // A guard that cannot read is no guard: the create goes ahead as before.
+      const existing = await findRecentAssistantDraft({
+        templateKey: body.templateKey,
+        employeeName: body.employeeName.trim().slice(0, 120),
+        createdBy: actor.id,
+        locationId,
+        proposalId,
+      }).catch(() => null);
+      if (existing) return NextResponse.json({ instance: existing, reused: true });
+    }
+
     const instance = await createInstance({
       templateKey: body.templateKey,
       variantKey: body.variantKey ?? null,
@@ -228,7 +251,10 @@ export async function POST(request: Request) {
       source: body.source === "ask_sunny" ? "ask_sunny" : "manual",
       // A real calendar day or nothing, in which case the form is dated today.
       formDate: isIsoCalendarDate(body.formDate) ? body.formDate : undefined,
+      proposalId,
     });
+    /* A concurrent press of the same card: its row, as it already is. See `cardInstanceId`. */
+    if (instance.reused) return NextResponse.json({ instance, reused: true });
 
     /*
      * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.

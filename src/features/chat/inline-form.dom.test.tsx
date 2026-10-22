@@ -1876,3 +1876,65 @@ describe("the Corrective Action Form's payroll-deduct Yes / No", () => {
     expect((patch.body.checked as Record<string, string[]>).payroll_deduct).toEqual(["no"]);
   });
 });
+
+describe("a reopened Corrective Action says where its policy came from (owner decision, 22 Oct 2026)", () => {
+  const corrective = TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")!;
+
+  function correctiveDraft(level: { checked: string[]; filledBy: "ai" | "manager" }, ownerConfirmed: boolean) {
+    const loaded = loadedInstance({ templateName: "Corrective Action Form" });
+    return {
+      ...loaded,
+      version: { document: parseFormDocument(corrective.document), variants: [] },
+      values: [
+        { fieldKey: "employee_name", value: "Dana Moss", checked: [], filledBy: "system" as const },
+        { fieldKey: "warning_type", value: null, checked: level.checked, filledBy: level.filledBy },
+        {
+          fieldKey: "policy_language",
+          value: "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.",
+          checked: [],
+          filledBy: "ai" as const,
+          provenance: {
+            source: "official_policy_manual",
+            verified: true,
+            matchedBy: "fallback",
+            ownerConfirmed,
+            documentTitle: "JBA Policy Manual Edited 5.2025",
+          },
+        },
+      ],
+    };
+  }
+
+  function open() {
+    bubble(
+      assistantTurn({
+        formProposal: proposal({ templateKey: "dpoa", templateName: "Corrective Action Form" }),
+        formInstanceRef: { instanceId: "inst-42", proposalId: "prop-1", templateName: "Corrective Action Form" },
+      }),
+    );
+  }
+
+  it("says the manual requires owner confirmation on reopening, and offers no level notice or Confirm button", async () => {
+    fakeFetch(() => ({ payload: correctiveDraft({ checked: ["written"], filledBy: "ai" }, false) }));
+    open();
+    expect(await screen.findByText(/requires owner confirmation as Ask Sunny's approved policy manual/)).toBeTruthy();
+    expect(screen.queryByText(/Type of Warning:/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
+  });
+
+  it("says nothing once the manual is confirmed", async () => {
+    fakeFetch(() => ({ payload: correctiveDraft({ checked: ["verbal"], filledBy: "manager" }, true) }));
+    open();
+    await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
+    expect(screen.queryByText(/Choose the Type of Warning/)).toBeNull();
+    expect(screen.queryByText(/requires owner confirmation/)).toBeNull();
+  });
+
+  it("says nothing about a blank level and offers no Confirm button (Finalize is never blocked)", async () => {
+    fakeFetch(() => ({ payload: correctiveDraft({ checked: [], filledBy: "ai" }, true) }));
+    open();
+    await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
+    expect(screen.queryByText(/Type of Warning:/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
+  });
+});

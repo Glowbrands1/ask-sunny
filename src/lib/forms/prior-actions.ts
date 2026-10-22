@@ -1,5 +1,5 @@
 import { statesFirstOccurrence } from "./corrective-action-intake";
-import { datesInText, priorSteps } from "./form-date-answer";
+import { correctedDates, datesInText, priorSteps } from "./form-date-answer";
 import { OFFICIAL_POLICY_MANUAL } from "./official-policy-manual";
 
 /**
@@ -176,6 +176,8 @@ export function groundPriorActions(input: {
   ]);
   const removed: string[] = [];
 
+  // A date the manager corrected ("9-2-26 not 9-1-26") is no longer one they gave.
+  for (const retracted of correctedDates(input.notes, input.today).keys()) stated.delete(retracted);
   const kept = (input.drafted ?? "")
     .split("\n")
     .map((line) => line.trim())

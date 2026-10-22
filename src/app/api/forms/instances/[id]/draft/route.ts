@@ -83,6 +83,7 @@ import {
   boxSectionNames,
   manualSectionsFor,
   officialManualProvenance,
+  unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
 import {
@@ -101,11 +102,16 @@ import {
   withoutDerivedKeys,
 } from "@/lib/forms/exit-draft";
 import { EXIT_DERIVED_KEYS } from "@/lib/forms/exit-facts";
+import { ABSENCE_CLAIM_REMOVED_NOTICE, guardAbsenceClaims } from "@/lib/forms/absence-claims";
+import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import {
   STANDARDS_OF_CONDUCT,
   caPolicyAmbiguousNotice,
   describedPolicyChoiceNotice,
   groundConductPolicy,
+  groundMissedEvent,
+  MISSED_EVENT_OFFENSE,
+  missedEventPhrase,
   readCaPolicy,
   statedOffenseKeys,
   withConductOffense,
@@ -523,6 +529,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? describedManualSection({ text: notes, chunks: manual.chunks })
         : null;
     /*
+     * A MEETING NOT ATTENDED, WHERE THE MANUAL SAYS WHAT THAT IS — its
+     * Attendance section counts meetings as scheduled shifts (District
+     * Manager feedback, 21 Oct 2026). Ticked Absenteeism and quoted, over
+     * whatever box the model chose; a manual that says nothing leaves the
+     * policy the question the proposal asked. See `groundMissedEvent`.
+     */
+    const missedEvent =
+      caPolicy && (caPolicy.stated === null || caPolicy.stated === "attendance") && !namedSection && manual.ok
+        ? groundMissedEvent({ reading: caPolicy, chunks: manual.chunks, jobTitle: loaded.instance.employeeRole })
+        : null;
+    const eventSection =
+      missedEvent?.ok && caPolicy?.missedEvent
+        ? { phrase: missedEventPhrase(caPolicy.missedEvent), section: missedEvent.section, offenseKey: MISSED_EVENT_OFFENSE }
+        : null;
+    /*
      * DESCRIBED AS MORE THAN ONE POLICY — "scrolling social media on her
      * phone" is the Cell Phone/Smart Watch Policy or the Social Media Policy.
      * Neither is chosen, and the draft's own catch-all guess is not kept
@@ -530,7 +551,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * are told which sections their account matched (QA follow-up, 22 Oct 2026).
      */
     const describedChoices =
-      caPolicy && caPolicy.stated === null && !namedSection && !describedSection && manual.ok
+      caPolicy && caPolicy.stated === null && !namedSection && !describedSection && !eventSection && manual.ok
         ? describedManualChoices({ text: notes, chunks: manual.chunks })
         : null;
 
@@ -1041,6 +1062,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       grounding.unverified || wantsEppPolicy
         ? stripUnsupportedPolicyClaims(framing.values, groundedKeys)
         : { values: framing.values, adjusted: [] as string[], emptied: [] as string[] };
+    /*
+     * A NO CALL / NO SHOW, OR "SHE DID NOT NOTIFY ANYONE", ONLY WHERE THE
+     * MANAGER SAID SO — the fact a manual's attendance rule turns on (QA, 22
+     * Oct 2026). See `absence-claims.ts`.
+     */
+    const absence = guardAbsenceClaims(claims.values, notes);
 
     /*
      * ========================================================================
@@ -1079,7 +1106,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const requirements =
       needsPolicy || wantsEppPolicy
         ? stripUnsupportedPolicyRequirements(
-            claims.values,
+            absence.values,
             groundedKeys,
             (wantsEppPolicy
               ? eppPassages.map((passage) => passage.text)
@@ -1091,7 +1118,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               topic: null,
             }),
           )
-        : { values: claims.values, adjusted: [] as string[], replaced: [] as string[] };
+        : { values: absence.values, adjusted: [] as string[], replaced: [] as string[] };
 
     /*
      * ========================================================================
@@ -1283,6 +1310,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     const policySection =
       namedSection ??
+      eventSection ??
       (describedSection && !(enforced.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key))
         ? describedSection
         : null);
@@ -1310,9 +1338,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? withConductOffense({ checked: enforced.checked, values: enforced.values })
       : null;
     const offenseChange = statedOffense ?? conductOffense;
-    const offenseStated = offenseChange
+    const offenseChosen = offenseChange
       ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
       : enforced;
+    /*
+     * A POLICY NOBODY SETTLED IS LEFT FOR THE MANAGER (QA, 22 Oct 2026). Where
+     * the manager was asked which policy applies and has not said, or has not
+     * said what happened at all, the model's own Type of Offense is a guess on
+     * a disciplinary record. It is not ticked, so Policy Violated, Direct
+     * policy and the Action Plan's policy stay blank until the manager says —
+     * in chat or on the form. A box they ticked themselves still stands below.
+     */
+    const unsettledPolicy =
+      caPolicy !== null &&
+      !offenseChange &&
+      !policySection &&
+      (caPolicy.ambiguous !== null ||
+        (!describesIncident(notes) &&
+          !describesMoreThanTheRequest(notes, {
+            ignore: [loaded.instance.employeeName, loaded.instance.locationName ?? ""],
+          })));
+    const offenseSettled =
+      unsettledPolicy && (offenseChosen.checked.offense_type ?? []).length > 0
+        ? {
+            ...offenseChosen,
+            checked: { ...offenseChosen.checked, offense_type: [] },
+            values: Object.fromEntries(Object.entries(offenseChosen.values).filter(([key]) => key !== "other_offense")),
+          }
+        : offenseChosen;
+    const offenseStated = offenseSettled;
     /*
      * THE MODEL'S GUESS IS NOT KEPT where the account described more than one
      * policy: a catch-all box it ticked (Standards of Conduct, Violation of
@@ -1541,6 +1595,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                 documentId: manual.documentId,
                 documentTitle: manual.documentTitle,
                 matchedBy: manual.matchedBy,
+                ownerConfirmed: manual.matchedBy === "tag",
                 sections: manualSections,
               }),
               /* The structured citation the value was rendered from. */
@@ -1563,6 +1618,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               documentId: manual.documentId,
               documentTitle: manual.documentTitle,
               matchedBy: manual.matchedBy,
+              ownerConfirmed: manual.matchedBy === "tag",
               sections: eppPassages.map((passage) => passage.section),
             }),
           }
@@ -1792,13 +1848,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         claims.adjusted.length + claims.emptied.length > 0
           ? POLICY_CLAIM_REMOVED_NOTICE
           : null,
+        absence.removed.length > 0 ? ABSENCE_CLAIM_REMOVED_NOTICE : null,
+        /*
+         * THE MANUAL'S STANDING, SAID (owner decision, 22 Oct 2026): quoted
+         * from a manual found by its name, which no owner has confirmed as the
+         * approved one (the `official-policy-manual` tag).
+         */
+        manual.ok && manual.matchedBy === "fallback" && (manualSections.length > 0 || eppPassages.length > 0)
+          ? unconfirmedManualNotice(manual.documentTitle)
+          : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,
         attributions.adjusted.length + attributions.emptied.length > 0
           ? POLICY_ATTRIBUTION_REMOVED_NOTICE
           : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
         exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
-        caPolicy ? caPolicyAmbiguousNotice(caPolicy) : null,
+        caPolicy && !eventSection ? caPolicyAmbiguousNotice(caPolicy) : null,
         policyLeftForManager && !managerOffense
           ? describedPolicyChoiceNotice(describedChoices!.map((choice) => choice.section))
           : null,
@@ -1841,6 +1906,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                   applied: false,
                   reason: conduct && !conduct.ok ? conduct.reason : "no_suggestion",
                   ambiguous: caPolicy.ambiguous,
+                  ...(unsettledPolicy ? { leftForManager: true } : {}),
                 },
           }
         : {}),

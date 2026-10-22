@@ -30,6 +30,7 @@ import {
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { applyAssistantDraft, saveInstanceValues } from "./instances";
+import { correctCaFromChat } from "./ca-chat-corrections";
 import { enforcePersonEdit } from "./responsibility";
 
 /** The form's own Date line. */
@@ -80,11 +81,11 @@ export async function correctActiveForm(input: {
    */
   history?: readonly { role: string; content: string; error?: unknown }[];
 }): Promise<AskResponse | null> {
+  const lastAssistant =
+    [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
   // A cheap first reading, before anything is loaded: most turns are not corrections.
   const employmentCorrection = correctionValues(input.question, input.today);
   const exitCorrection = exitCorrectionValues(input.question, input.today);
-  const lastAssistant =
-    [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
   const payroll = payrollDeductCorrection(input.question) ?? payrollDeductReply(input.question, lastAssistant);
   /*
    * Something about the deduction that is not a clear Yes or No — "hold off on
@@ -100,7 +101,16 @@ export async function correctActiveForm(input: {
   const newFormDate =
     formDateChange(input.question, input.today) ?? formDateReply(input.question, lastAssistant, input.today);
   const dateUnclear = newFormDate === null ? formDateChangeUnclear(input.question, input.today) : null;
-  if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear && !newFormDate && !dateUnclear) return null;
+  if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear && !newFormDate && !dateUnclear) {
+    /*
+     * A DATE ON AN OPEN CORRECTIVE ACTION THE READERS ABOVE DO NOT TAKE (owner
+     * decision, 22 Oct 2026): "the meeting was actually on 10-19-26", a prior
+     * action's date. The readers above own the Date line ("change the date to
+     * 10-2-26"); the CA's reader (`ca-chat-corrections.ts`) answers what they
+     * leave, and is null for anything else.
+     */
+    return correctCaFromChat({ ...input, lastAssistant });
+  }
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
