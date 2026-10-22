@@ -84,6 +84,7 @@ import {
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -605,6 +606,20 @@ export async function proposeFormForTurn(input: ProposalTurn): Promise<AskRespon
   return proposeTemplate(input, match);
 }
 
+/** The manager's turns without the ones that only answer the date question — for the name readers. */
+function withoutDateAnswers(context: ManagerContext, input: ProposalTurn): ManagerContext {
+  const answered = dateAnswerTurns([...input.history, { role: "user", content: input.question }]);
+  if (answered.size === 0) return context;
+  const messages = context.messages.filter((message) => !answered.has(message.content.trim()));
+  if (messages.length === 0) return context;
+  return {
+    ...context,
+    messages,
+    ids: messages.map((message) => message.id).filter((id): id is string => typeof id === "string" && id.length > 0),
+    text: messages.map((message) => message.content).join("\n\n"),
+  };
+}
+
 /**
  * Builds the proposal for a template that has already passed both checks.
  *
@@ -623,9 +638,11 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * See `checkTypedEmployee`: an exact match takes the directory's spelling and
    * salon, a close one is asked about, and nothing is ever autocorrected.
    */
-  const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, context) : null;
-  const directory = await checkTypedEmployee(input, match, context, carried);
-  const employee = directory.resolution ?? (await spelledForTheForm(input, match, carried ?? resolveEmployee(context)));
+  // "most recent", answering "Which date goes on the form?", is not a name (see `dateAnswerTurns`).
+  const named = withoutDateAnswers(context, input);
+  const carried = NAME_CHECKED_TEMPLATES.has(match.key) ? employeeFromEarlierTurns(input, named) : null;
+  const directory = await checkTypedEmployee(input, match, named, carried);
+  const employee = directory.resolution ?? (await spelledForTheForm(input, match, carried ?? resolveEmployee(named)));
 
   const proposal = buildProposal({
     ...(employee ? { employee } : {}),
@@ -700,7 +717,10 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
   const correctiveAction = isCorrectiveActionForm(match);
   const scoped =
     changeKind || correctiveAction
-      ? turnsAboutThisForm(context, match.key, proposal.employeeName, { correctiveActionForm: correctiveAction })
+      ? turnsAboutThisForm(context, match.key, proposal.employeeName, {
+          correctiveActionForm: correctiveAction,
+          answers: dateAnswerTurns([...input.history, { role: "user", content: input.question }]),
+        })
       : context;
 
   if (correctiveAction) {
@@ -767,6 +787,26 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     proposal.sourceMessageIds = scoped.ids;
   }
 
+  /*
+   * THE FORM'S DATE, BY WHAT EACH DATE MEANS (QA, 22 Oct 2026): a date given
+   * to the form, the coaching a Coaching Form documents, or — with several
+   * incident dates — the manager's answer to "which date?", asked once; until
+   * then the form is dated the day it is created, never whichever incident was
+   * typed first. As Ask Bubbles does; see `decideFormDate`.
+   */
+  let dateQuestion: string | undefined;
+  if (!changeKind && proposal.employeeName !== null) {
+    const decided = decideFormDate({
+      text: (correctiveAction ? scoped : context).text,
+      templateKey: match.key,
+      history: input.history,
+      conversation: [...input.history, { role: "user", content: input.question }],
+      today: input.today ?? businessToday(),
+    });
+    if (decided.formDate !== undefined) proposal.formDate = decided.formDate;
+    dateQuestion = decided.question;
+  }
+
   if (directory.question) return turn(directory.question, proposal);
 
   const content =
@@ -784,6 +824,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     carried?.kind === "resolved" && proposal.employeeName
       ? `I took **${proposal.employeeName}** from earlier in this conversation — if this form is for somebody else, tell me who.`
       : undefined,
+    dateQuestion,
   ].filter((note): note is string => Boolean(note));
   return turn([content, ...notes].join("\n\n"), proposal);
 }
@@ -1309,6 +1350,9 @@ function continuesIntake(continued: string, input: ProposalTurn): boolean {
    * the open form forward; a question still does not.
    */
   if (!isQuestion(question) && readSalonMentions(question).length > 0) return true;
+  // "most recent", "the 15th", "today": the answer to "Which date goes on the form?" (see `incident-dates.ts`).
+  const today = input.today ?? businessToday();
+  if (answersDateQuestion(input.history, question, incidentDates(managerContext(input.history, { content: question }).text, today), today)) return true;
   if (ALREADY_SAID.test(question)) return true;
   if (isQuestion(question)) return false;
   return (
@@ -1389,7 +1433,11 @@ function turnsAboutThisForm(
   context: ManagerContext,
   templateKey: string,
   employeeName: string | null,
-  options: { readonly correctiveActionForm?: boolean } = {},
+  options: {
+    readonly correctiveActionForm?: boolean;
+    /** Turns that only answer the date question ("most recent"): they name nobody. See `dateAnswerTurns`. */
+    readonly answers?: ReadonlySet<string>;
+  } = {},
 ): ManagerContext {
   const same = (name: string) => {
     if (!employeeName) return true;
@@ -1425,7 +1473,7 @@ function turnsAboutThisForm(
     const otherForm =
       (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
       (intent.kind === "corrective_action" && !thisForm);
-    const names = extractEmployeeNames(message.content);
+    const names = options.answers?.has(message.content.trim()) ? [] : extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
     if (otherForm || otherPerson) {
       start = index + 1;
