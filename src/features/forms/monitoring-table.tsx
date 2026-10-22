@@ -645,7 +645,7 @@ export function MonitoringTable({
                             <button
                               type="button"
                               onClick={() => setStarting(form.id)}
-                              className="inline-flex items-center gap-1.5 rounded-[var(--radius-xs)] border border-dashed border-border-strong px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-hover-surface hover:text-foreground"
+                              className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-xs)] border border-dashed border-border-strong px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-hover-surface hover:text-foreground"
                             >
                               <CalendarPlus className="size-3.5" />
                               Start tracking
@@ -665,7 +665,7 @@ export function MonitoringTable({
                                 type="button"
                                 onClick={() => markFollowedUp(form)}
                                 disabled={working}
-                                className="inline-flex items-center gap-1 text-[12px] whitespace-nowrap text-muted-foreground underline-offset-4 transition-colors hover:text-status-ready hover:underline disabled:opacity-60"
+                                className="inline-flex min-h-8 items-center gap-1 px-1 text-[12px] whitespace-nowrap text-muted-foreground underline-offset-4 transition-colors hover:text-status-ready hover:underline disabled:opacity-60"
                               >
                                 {working ? (
                                   <Loader2 className="size-3.5 animate-spin" />
@@ -684,7 +684,7 @@ export function MonitoringTable({
                               type="button"
                               onClick={() => download(form.id)}
                               disabled={downloading === form.id}
-                              className="inline-flex items-center gap-1 text-[12px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
+                              className="inline-flex min-h-8 min-w-8 items-center justify-center gap-1 px-1 text-[12px] text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
                             >
                               <Download className="size-3.5" />
                               {downloading === form.id ? "Preparing…" : "PDF"}
@@ -694,7 +694,7 @@ export function MonitoringTable({
                               <DropdownMenu>
                                 <DropdownMenuTrigger
                                   aria-label={`More actions for ${form.employeeName}`}
-                                  className="inline-flex size-7 items-center justify-center rounded-[var(--radius-xs)] text-muted-foreground transition-colors hover:bg-hover-surface hover:text-foreground"
+                                  className="inline-flex size-8 items-center justify-center rounded-[var(--radius-xs)] text-muted-foreground transition-colors hover:bg-hover-surface hover:text-foreground"
                                 >
                                   <MoreHorizontal className="size-4" />
                                 </DropdownMenuTrigger>
