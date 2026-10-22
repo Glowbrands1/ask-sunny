@@ -144,3 +144,26 @@ describe("the live Production chunk (Woven copy of the JBA manual, chunk 44)", (
     );
   });
 });
+
+describe("the 2024 edition is never cited in place of the current manual (release check, 22 Oct 2026)", () => {
+  /** The indexed JBA documents in stc-core on 22 Oct 2026 (identity columns only; the superseded upload is not indexed). */
+  const NOW = [
+    doc({ id: "woven-handbook-2025", title: "JBA Policy Manual Edited 5.2025", original_filename: "JBA-Policy-Manual-Edited-5.2025.pdf", source: "woven", tags: ["woven", "woven-handbook"] }),
+    doc({ id: "woven-policy-text", title: "JBA Policy Manual 2025", original_filename: "policy-3d90671a-82bd-4ad1-bb70-2765b4d6f04d.txt", source: "woven", tags: ["woven", "woven-policy"] }),
+    doc({ id: "woven-2024", title: "JBA Policy Manual 2025 — 2024 JBA Policy Manual Master - Edited 10-2024", original_filename: "2024-JBA-Policy-Manual-Master-Edited-10-2024.pdf", source: "woven", tags: ["woven", "woven-policy"] }),
+    doc({ id: "woven-2025-ack", title: "JBA Policy Manual 2025 — 2025 JBA Policy Manual Master - Edited 5-2025 with acknowledgement", original_filename: "2025-JBA-Policy-Manual-Master-Edited-5-2025-with-acknowledgement.pdf", source: "woven", tags: ["woven", "woven-policy"] }),
+  ];
+
+  it("resolves to the May 2025 handbook by its file name, found by name (so not owner-confirmed)", () => {
+    expect(resolvePolicyManual(NOW)).toEqual({ ok: true, document: NOW[0], matchedBy: "fallback" });
+  });
+
+  it("without that handbook, the title matches are ambiguous and nothing is cited — never the 2024 edition", () => {
+    expect(resolvePolicyManual(NOW.slice(1))).toEqual({ ok: false, problem: "ambiguous" });
+  });
+
+  it("only an owner's tag makes any edition the manual", () => {
+    const tagged = NOW.map((entry) => (entry.id === "woven-2024" ? { ...entry, tags: [...(entry.tags ?? []), "official-policy-manual"] } : entry));
+    expect(resolvePolicyManual(tagged)).toMatchObject({ ok: true, document: { id: "woven-2024" }, matchedBy: "tag" });
+  });
+});

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readCaPolicy } from "./ca-policy";
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { rosterNameNamedIn, type RosterEmployee } from "./employee-match";
-import { correctedIncidentDate } from "./form-date-answer";
+import { correctedFormDate } from "./form-date-answer";
 import { statedPayrollDeduct } from "./payroll-deduct";
 import { policyPhrasesIn, readPolicyChange } from "./policy-change";
 import { extractEmployeeNames } from "./proposal";
@@ -139,7 +139,7 @@ describe("a corrected incident date replaces the first one", () => {
     [["need a CA for tess varga for missing the 10/20/26 meeting", "wait, the meeting was 10/19/26"], "2026-10-19"],
     [["ca for remy calder for being late 10/15/26", "correction: it was 10/16/26 not 10/15"], "2026-10-16"],
   ] as const)("%j → %s", (turns, iso) => {
-    expect(correctedIncidentDate(turns, TODAY)).toBe(iso);
+    expect(correctedFormDate(turns, TODAY)).toBe(iso);
   });
 
   it.each([
@@ -148,7 +148,7 @@ describe("a corrected incident date replaces the first one", () => {
     [["ca for tess varga for missing the 10/20/26 meeting"]],
     [["ca for tess varga for missing the 10/20/26 meeting", "wait, was it 10/19/26?"]],
   ] as const)("no correction: %j", (turns) => {
-    expect(correctedIncidentDate(turns, TODAY)).toBeNull();
+    expect(correctedFormDate(turns, TODAY)).toBeNull();
   });
 });
 

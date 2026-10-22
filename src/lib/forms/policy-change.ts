@@ -49,19 +49,32 @@ const REPLACE_STRONG = /\b(?:instead|replace|replacing|switch|swap|change|rather
 const ADD = /\b(?:add|adding|include|including|insert|append|also|too|as well|both|plus|attach|cite|quote|put|pull in)\b/i;
 const REPLACE_WEAK = /\b(?:use|apply|set|make|should be|update|go with)\b/i;
 
+/*
+ * A POLICY NAMED THE WAY MANAGERS ANSWER — "actually it should be attendance",
+ * "make it standards of conduct", or a bare "attendance" to Ask Bubbles' own
+ * "Which policy applies?" (QA, 22 Oct 2026: each left the open form as it
+ * was). The whole turn is the answer, so "make sure her attendance improves"
+ * is not one.
+ */
+const POLICY_NAME = String.raw`(?:standards? of conduct|code of conduct|attendance|tardiness|absenteeism|dress code|under[- ]?performance|violation of company polic(?:y|ies))`;
+const POLICY_ANSWER = new RegExp(
+  String.raw`^(?:(?:actually|sorry|no|nope|oops|ok|okay|oh|wait)[,.!\s]+)*(?:(?:(?:it|this|that)(?:['’]s|\s+is|\s+should\s+be|\s+falls?\s+under|\s+goes\s+under)|should\s+be|use|make\s+it|change\s+it\s+to|switch\s+(?:it\s+)?to|go\s+with|put\s+it\s+under|under)\s+)?(?:the\s+)?(${POLICY_NAME})(?:\s+polic(?:y|ies))?(?:\s+instead)?\s*[.!]?$`,
+  "i",
+);
+const ANSWER_CUE = /\b(?:actually|should|use|make|change|switch|go with|instead|under|it['’]?s|it is|this is|that['’]?s)\b/i;
+
 /**
  * Whether this turn asks to change which manual policy the open form cites,
  * and how. Null for anything else — the turn is answered as it would have been.
+ * `policyAsked`: Ask Bubbles' last turn asked which policy applies, so a bare
+ * policy name is the answer.
  */
-export function readPolicyChange(question: string): PolicyChangeMode | null {
+export function readPolicyChange(question: string, options: { readonly policyAsked?: boolean } = {}): PolicyChangeMode | null {
   const text = (question ?? "").trim();
   if (text === "" || ASKS_ABOUT.test(text)) return null;
-  /*
-   * Or a policy the Corrective Action Form knows by name, said as the answer —
-   * "use standards of conduct instead", "it's attendance" (QA, 22 Oct 2026:
-   * with no word "policy" these were answered as nothing).
-   */
-  if (!NAMES_A_POLICY.test(text) && readCaPolicy(text).stated === null) return null;
+  if (!NAMES_A_POLICY.test(text)) {
+    return POLICY_ANSWER.test(text) && (options.policyAsked || ANSWER_CUE.test(text)) ? "replace" : null;
+  }
   if (REMOVE.test(text)) return "remove";
   if (REPLACE_STRONG.test(text)) return "replace";
   if (ADD.test(text)) return "add";

@@ -847,15 +847,37 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
    * was read in that position. The sentence must OPEN with the name alone,
    * like the change reading above, so "she needs a form" and "the team needs
    * coaching" name nobody — and what is needed must be a form or the coaching
-   * itself, so "Punctuality needs work" names nobody either.
+   * itself, so "Punctuality needs work" names nobody either. A warning level
+   * is what is needed too: "tess varga needs a written CA" (QA, 22 Oct 2026).
    */
   const PERSON_THEN_NEEDS =
-    /^(\S+?)(?:['’]s)?(?:\s+(\S+?))?\s+(?:needs|need|requires|should\s+get|could\s+use|has\s+to\s+(?:get|have|do))\s+(?:(?:a|an|the|some|more|another|new)\s+)?(?:coaching|coached|forms?|documents?|documentation|write[- ]?ups?|ca|corrective|epp|plan|review|policy|exit|demotion|transfer|follow[- ]?up|to\s+be\s+(?:coached|written|documented))\b/i;
+    /^(\S+?)(?:['’]s)?(?:\s+(\S+?))?\s+(?:needs|need|requires|should\s+get|could\s+use|has\s+to\s+(?:get|have|do))\s+(?:(?:a|an|the|some|more|another|new)\s+)?(?:coaching|coached|forms?|documents?|documentation|write[- ]?ups?|ca|corrective|epp|plan|review|policy|exit|demotion|transfer|follow[- ]?up|(?:final\s+)?(?:written|verbal)(?:\s+warning)?|(?:final\s+)?warning|to\s+be\s+(?:coached|written|documented))\b/i;
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     const match = PERSON_THEN_NEEDS.exec(sentence.trim());
     if (!match) continue;
     const candidate = readTypedName([match[1]!, ...(match[2] ? [match[2]] : [])], true);
     if (candidate && !opensWithRosterState(candidate)) strong.push(candidate);
+  }
+
+  /*
+   * THE PERSON AN ACCOUNT OPENS WITH, in any case: "tess varga wasn't at our
+   * monthly mtg on 10-20-26. she needs a written CA." (QA, 22 Oct 2026 — Ask
+   * Sunny asked who the form was for). Ported from Ask Bubbles, verbs only: a
+   * first AND last name, then what they did. Narrative strength, so a name
+   * given on purpose outranks it; "the store was" and "my lead was" name nobody.
+   */
+  const PERSON_THEN_ACCOUNT =
+    /^(\S+)\s+(\S+)\s+(?:was|wasn['’]?t|is|isn['’]?t|has|hasn['’]?t|had|hadn['’]?t|did|didn['’]?t|does|doesn['’]?t|came|left|called|showed|clocked|missed|forgot|refused|failed|took|keeps|kept|walked|arrived|ncns['’]?d|no[- ]?showed|got|gave|used|broke|lost|mishandled|miscounted|skipped)\b/i;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const trimmed = sentence.trim();
+    if (/\?\s*$/.test(trimmed)) continue;
+    const match = PERSON_THEN_ACCOUNT.exec(trimmed);
+    if (!match) continue;
+    if (/^(?:i|i['’]m|i['’]ll|i['’]ve|we|we['’]ll|we['’]re|we['’]ve|she|he|they|they['’]re|you|it|it['’]s|this|that|there|her|his|their|our|my|the|a|an|what|how|why|when|where|who|which|is|are|can|could|should|do|does)$/i.test(match[1]!)) continue;
+    // Only in a message about a form or a warning, so a chatty opening names nobody.
+    if (!/\b(?:ca|c\/a|coaching|corrective|written|verbal|warning|write[- ]?up|form|epp|policy\s+review|document)\b/i.test(text)) continue;
+    const candidate = readTypedName([match[1]!, match[2]!], true);
+    if (candidate && candidate.split(/\s+/).length === 2 && !opensWithRosterState(candidate)) found.push(candidate);
   }
 
   /*

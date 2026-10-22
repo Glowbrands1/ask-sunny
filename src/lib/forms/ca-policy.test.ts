@@ -7,6 +7,7 @@ import {
   caPolicyAmbiguousNotice,
   caPolicyProposalLine,
   groundConductPolicy,
+  groundMissedEvent,
   namesCaPolicy,
   readCaPolicy,
   sectionText,
@@ -75,7 +76,7 @@ describe("an account that reads two ways is a question", () => {
       "**Which policy applies?** This could fall under **Standards of Conduct** (assigned work that wasn't completed) or **Attendance**, if it comes down to being late or absent. Tell me which, or tick Type of Offense on the form — I won't pick one for you.",
     );
     expect(caPolicyAmbiguousNotice(readCaPolicy("She came in late and didn't finish her opening tasks."))).toBe(
-      "This could fall under Standards of Conduct or Attendance, and you didn't say which — check Type of Offense, Policy Violated and Direct policy before you finalize.",
+      "This could fall under Standards of Conduct or Attendance, and you didn't say which, so Type of Offense, Policy Violated and Direct policy are left for you. Tell me which policy applies, or tick it on the form.",
     );
   });
 });
@@ -242,40 +243,118 @@ describe("the box a named policy ticks", () => {
 });
 
 /*
- * HR, 21 Oct 2026: "not attending the monthly meeting" was cited under
- * Standards of Conduct. Changed on purpose at the release merge (22 Oct 2026):
- * the owner's decision on `main` reads a missed meeting as if Attendance were
- * named (see the next block), so these read as stated Attendance with
- * Absenteeism, rather than as a described policy checked against the manual.
+ * District Manager feedback, 21 Oct 2026: "create a written CA for <employee>
+ * for not attending the monthly meeting on 10-20-26 …" was drafted under the
+ * Standards of Conduct. The manual's Attendance section counts meetings as
+ * scheduled shifts, and the owner decided (22 Oct 2026) that a missed meeting
+ * is Attendance — so these no longer ask "which policy?" (they did before).
  */
-describe("a missed meeting is Attendance", () => {
+describe("a meeting, seminar or training session not attended", () => {
   it.each([
-    "create a written CA for tess for not attending the monthly meeting on 10-20-26",
-    "She missed the monthly meeting.",
-    "she didn't show up to the team meeting on 10/20",
-    "Harper skipped the mandatory training session.",
-    "she was a no-show for the district seminar",
-    "never came to the webinar",
-    "she bailed on the in-service",
-  ])("%s", (text) => {
+    ["create a written CA for delphine for not attending the monthly meeting on 10-20-26.", "monthly meeting"],
+    ["She did not attend the team meeting.", "team meeting"],
+    ["she missed the mandatory store meeting on 10-20-26", "mandatory store meeting"],
+    ["she skipped the webinar", "webinar"],
+    ["She didn't show up to the training session.", "training session"],
+    ["no show for the seminar on 10-1-26", "seminar"],
+    ["she never came to training", "training"],
+  ])("%s -> %s", (text, event) => {
     const reading = readCaPolicy(text);
+    expect(reading.missedEvent).toBe(event);
     expect(reading.stated).toBe("attendance");
+    expect(reading.ambiguous).toBeNull();
     expect(reading.suggestion).toBeNull();
-    expect(statedOffenseKeys(reading, text)).toEqual(["absenteeism"]);
-    expect(caPolicyProposalLine(reading)).toMatch(/^\*\*Policy:\*\* this reads as \*\*Attendance\*\* — a required meeting/);
   });
 
   it.each([
-    "She didn't complete her Woven training.",
-    "She was rude to a guest at the meeting.",
-    "Her meeting notes were incomplete.",
-  ])("%s is not a missed meeting", (text) => {
-    expect(readCaPolicy(text).stated).not.toBe("attendance");
+    "She did not complete her Woven training.",
+    "She missed the training deadline.",
+    "She missed her shift on 10-20-26.",
+    "She attended the monthly meeting but left early.",
+    "She was rude during the meeting.",
+  ])("not a meeting missed: %s", (text) => {
+    expect(readCaPolicy(text).missedEvent).toBeNull();
   });
 
-  it("a named policy wins", () => {
-    const reading = readCaPolicy("She missed the monthly meeting. The policy violated is the standards of conduct.");
-    expect(reading.stated).toBe("standards_of_conduct");
+  it("reads as Attendance, says so without claiming the manager named it, and ticks Absenteeism", () => {
+    const account = "written CA for delphine for not attending the monthly meeting on 10-20-26";
+    expect(caPolicyProposalLine(readCaPolicy(account))).toBe(
+      "**Policy:** Attendance — missing the monthly meeting is an absence from a scheduled shift. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.",
+    );
+    expect(statedOffenseKeys(readCaPolicy(account), account)).toEqual(["absenteeism"]);
+    expect(namesCaPolicy("attendance")).toBe(true);
+
+    const answered = readCaPolicy([account, "attendance"].join(JOIN));
+    expect(answered.stated).toBe("attendance");
+    expect(statedOffenseKeys(answered, [account, "attendance"].join(JOIN))).toEqual(["absenteeism"]);
+
+    const conduct = readCaPolicy([account, "standards of conduct"].join(JOIN));
+    expect(statedOffenseKeys(conduct, [account, "standards of conduct"].join(JOIN))).toEqual(["standards_of_conduct"]);
+  });
+
+  it("a meeting missed beside a conduct incident is still Attendance (owner decision); a policy named still wins", () => {
+    expect(readCaPolicy("She missed the monthly meeting and did not complete her closing duties.").stated).toBe("attendance");
+  });
+
+  const ATTENDANCE: ManualChunk = {
+    chunkIndex: 41,
+    page: 15,
+    printedPage: 14,
+    section: "Attendance",
+    sections: [{ heading: "Attendance", page: 14 }],
+    content:
+      "Attendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.\no Synthetic rule: call-ins are made by phone to the manager on duty.\no Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts. (See Seminar/Webinar\nAttendance section)",
+  };
+  const SEMINAR: ManualChunk = {
+    chunkIndex: 123,
+    page: 38,
+    printedPage: 37,
+    section: "Seminar/Webinar Attendance",
+    sections: [{ heading: "Seminar/Webinar Attendance", page: 37 }],
+    content:
+      "Seminar/Webinar Attendance\nSynthetic rule: a seminar/webinar missed without notifying your\nSupervisor is treated as a no call no show to a scheduled shift.",
+  };
+  const ORIENTATION: ManualChunk = {
+    chunkIndex: 110,
+    page: 34,
+    printedPage: 33,
+    section: "Orientation",
+    sections: [{ heading: "Orientation", page: 33 }],
+    content: "Orientation\nSynthetic rule: a new Employee's first shift covers job duties.",
+  };
+  const chunks = [ATTENDANCE, ORIENTATION, SEMINAR];
+
+  it("a meeting rests on the Attendance section's own sentence", () => {
+    const grounded = groundMissedEvent({ reading: readCaPolicy("for not attending the monthly meeting"), chunks });
+    expect(grounded).toMatchObject({
+      ok: true,
+      section: { heading: "Attendance", page: 14 },
+      anchor: "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.",
+    });
+  });
+
+  it("a seminar rests on its own section, and the sentence said back never calls it a no call no show", () => {
+    const grounded = groundMissedEvent({ reading: readCaPolicy("she skipped the seminar on 10-1-26"), chunks });
+    expect(grounded).toMatchObject({
+      ok: true,
+      section: { heading: "Seminar/Webinar Attendance", page: 37 },
+      anchor: "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.",
+      anchorSection: { heading: "Attendance", page: 14 },
+    });
+  });
+
+  it("fails closed: an event the manual never names, no manual, or a policy already named", () => {
+    expect(groundMissedEvent({ reading: readCaPolicy("she missed the morning huddle"), chunks })).toEqual({
+      ok: false,
+      reason: "not_supported",
+    });
+    expect(groundMissedEvent({ reading: readCaPolicy("she missed the monthly meeting"), chunks: null })).toEqual({
+      ok: false,
+      reason: "no_manual",
+    });
+    expect(
+      groundMissedEvent({ reading: readCaPolicy("she missed the monthly meeting. standards of conduct"), chunks }),
+    ).toEqual({ ok: false, reason: "no_event" });
   });
 });
 

@@ -1,4 +1,4 @@
-import { correctedIncidentDate, explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
+import { explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -140,6 +140,13 @@ export function decideFormDate(input: {
   readonly history: readonly Turn[];
   readonly conversation: readonly Turn[];
   readonly today: string;
+  /**
+   * The incident date the manager corrected the conversation to ("the meeting
+   * was actually on 10-19-26"), where they did. Among several dates it is the
+   * answer: the date it replaced is not a second incident, and no question is
+   * asked about it.
+   */
+  readonly correctedTo?: string | null;
 }): FormDateDecision {
   if (!DATED_TEMPLATES.has(input.templateKey)) return {};
   const explicit = explicitFormDate(input.text, input.today);
@@ -153,13 +160,7 @@ export function decideFormDate(input: {
     if (held.length > 1) dates = held;
   }
   if (dates.length <= 1) return {};
-
-  /* "wait, the meeting was 10/19/26" replaces the earlier date — see `correctedIncidentDate`. */
-  const corrected = correctedIncidentDate(
-    input.conversation.filter((turn) => turn.role === "user").map((turn) => turn.content),
-    input.today,
-  );
-  if (corrected && dates.includes(corrected)) return { formDate: corrected };
+  if (input.correctedTo && dates.includes(input.correctedTo)) return { formDate: input.correctedTo };
 
   const choice = dateAnsweredIn(input.conversation, dates, input.today);
   if (choice) return { formDate: choice.kind === "date" ? choice.iso : null };

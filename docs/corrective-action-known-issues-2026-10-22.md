@@ -82,12 +82,12 @@ which imports nothing; `round3-wording.test.ts` fails if it ever gains an import
 and `src/lib/import-cycles.test.ts` fails on any runtime import cycle in `src/`.
 Production build and browser run verified after the fix.
 
-## Sunny: optional migration not applied
+## Duplicate Create: one mechanism
 
-`supabase/migrations/20261022001000_form_create_claims.sql` adds a claims table
-for duplicate-Create protection. The protection on this branch does not need it
-(the card-derived form id and the table's primary key already make a repeated
-Create file one form). Apply only if wanted, through the normal migration path.
+The release keeps `main`'s card-keyed row id (`cardInstanceId` in
+`src/lib/forms/instances.ts`). This branch's earlier `create-once.ts` and its
+optional `form_create_claims` migration were removed at the release merge, so
+no migration is part of this release.
 
 ## Behaviour unchanged from origin/main (noted, not changed)
 

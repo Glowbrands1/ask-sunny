@@ -685,3 +685,46 @@ describe("a level said beside the request", () => {
     expect(statedWarningLevel(text)).toBeNull();
   });
 });
+
+describe("statedWarningLevel — requests put as questions, and dated history (QA, 22 Oct 2026)", () => {
+  it.each([
+    ["Can you make a written CA?", "written"],
+    ["could you please write up a verbal warning for her?", "verbal"],
+    ["Tess Varga skipped the monthly meeting on 10-20-26. Can you make a written CA? No payroll deduct.", "written"],
+  ] as const)("asks for the level: %s", (text, level) => {
+    expect(statedWarningLevel(text)).toBe(level);
+  });
+
+  it.each([
+    "should this be a written CA?",
+    "is a verbal warning enough here?",
+    "the verbal ca was 9-2-26, not 9-1-26",
+    "her written warning was given on 9/14",
+  ])("decides nothing: %s", (text) => {
+    expect(statedWarningLevel(text)).toBeNull();
+  });
+});
+
+describe("statedWarningLevel — a change of mind as the whole turn (QA, 22 Oct 2026)", () => {
+  it.each([
+    ["no, written after all", "written"],
+    ["make it written again", "written"],
+    ["go back to verbal", "verbal"],
+    ["let's do verbal instead", "verbal"],
+    ["change it back to written", "written"],
+  ] as const)("%s", (text, level) => {
+    expect(statedWarningLevel(text)).toBe(level);
+  });
+
+  it("an account mentioning another written warning is not one", () => {
+    expect(statedWarningLevel("she got a written warning again on 9/1")).toBeNull();
+  });
+});
+
+it("statedWarningLevel reads a long adversarial turn in linear time", () => {
+  for (const text of [`change${" ".repeat(80_000)}x`, `verbal${" ".repeat(80_000)}x`, `no, ${" ,".repeat(40_000)}written x`]) {
+    const started = performance.now();
+    statedWarningLevel(text);
+    expect(performance.now() - started).toBeLessThan(250);
+  }
+});

@@ -1,3 +1,4 @@
+import { readCaPolicy } from "./ca-policy";
 import {
   PAYROLL_DEDUCT_LABEL,
   statedPayrollDeduct,
@@ -360,6 +361,14 @@ const OBSERVATIONAL_CLAUSE: readonly RegExp[] = [
   /\b(?:arrived|showed up|came in|clocked in|got in)\s+(?:at|around|after|late|\d)/,
   /\b(?:didn't|did not|hasn't|has not|wouldn't|would not)\s+\w+/,
   /\bi (?:saw|observed|watched|found|noticed|had to)\b/,
+  /*
+   * WHAT THE PERSON DID, named or not: "Tess Varga missed the deadline",
+   * "she no-showed the all-staff", "jordan blew off the meeting" (QA, 22 Oct
+   * 2026 — each was answered "you haven't told me what happened yet").
+   */
+  /\b(?:she|he|they|[a-z]+)\s+(?:missed|skipped|no[- ]?showed|blew\s+off|bailed\s+on|ditched|forgot|failed|refused|ignored|left|wore|took|lost|broke|mishandled|miscounted|yelled|cursed|argued|stole|clocked|called\s+(?:out|off)|walked\s+out|showed\s+up|came\s+in|never\s+(?:showed|came|called|attended|finished|completed))\b/,
+  /* The reason a request gives: "for missing the meeting", "for not attending", "for being late". */
+  /\bfor\s+(?:not\s+)?(?:missing|skipping|being|failing|leaving|arriving|using|taking|violating|ignoring|refusing|talking|wearing|coming|showing|attending|calling|no[- ]?showing|opening|closing|forgetting|losing|breaking|mishandling|clocking)\b/,
 ];
 
 /**
@@ -476,7 +485,14 @@ export function readCorrectiveActionIntake(input: {
  */
 export function describesIncident(text: string): boolean {
   const normalized = normalize(text);
-  return any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE);
+  if (any(normalized, INCIDENT_TOPIC) || any(normalized, OBSERVATIONAL_CLAUSE)) return true;
+  /*
+   * WHATEVER THE POLICY READING RECOGNISES IS AN ACCOUNT TOO — a missed
+   * deadline, unfinished work, a missed meeting, cash handling — so the two
+   * readings can never disagree about whether something happened.
+   */
+  const policy = readCaPolicy(text);
+  return policy.topics.length > 0 || policy.missedEvent !== null;
 }
 
 /**

@@ -117,7 +117,9 @@ describe("13. the proposal selects an intent and supplies nothing else", () => {
      * a browser can assert. The variant is revalidated against the version the
      * route pins; the job title is free text on the record, exactly as the
      * employee's name has always been, and it is null unless the MANAGER said
-     * it — see `extractJobTitle`.
+     * it — see `extractJobTitle`. `proposalId` is the card's own opaque id,
+     * which the route only ever compares with one it recorded, so a second
+     * press of the same card returns the draft it made (QA, 22 Oct 2026).
      */
     /*
      * `proposalId` names the card, so a repeated press returns the form it

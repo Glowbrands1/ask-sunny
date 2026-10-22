@@ -75,7 +75,7 @@ const LEVEL_HISTORY_BEFORE =
 
 /** …or after it: "a written warning before", "verbal CA last month". */
 const LEVEL_HISTORY_AFTER =
-  /^\s*(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b/;
+  /^\s*(?:(?:(?:for\s+(?:this|that|it)|on\s+\S+)\s+)?(?:before|previously|already|ago|last\s+(?:week|month|year|time)|in\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))\b|(?:was|were)\s+(?:actually\s+)?(?:(?:given|signed|issued)\s+)?(?:on\s+)?\d)/;
 
 /**
  * …or anywhere after a history heading in the same sentence: "previous
@@ -120,6 +120,10 @@ const LEVEL_AS_DOCUMENT =
   "g",
 );
 
+/** A request put as a question, ending right at the level: "can you make a", "could you please write up a". */
+const ASKS_FOR_THE_FORM =
+  /\b(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+|pls\s+)?(?:make|do|create|write(?:\s+up)?|draft|start|prepare|put\s+together|get\s+me|give\s+me|fill\s+out|open)\s+(?:me\s+)?(?:a|an)\s+(?:verbal|written)\b/;
+
 /** A request asked as a question — "can we put … on a written …?" — still states the level. */
 const POLITE_LEVEL_REQUEST =
   /^\s*(?:hey,?\s+|hi,?\s+|ok,?\s+)?(?:can|could|would|will)\s+(?:you|we|i|u)\s+(?:please\s+|pls\s+)?(?:help\s+(?:me|us)\s+(?:to\s+)?)?(?:put|write|start|create|make|do|issue|give|document|doc|file|draft|open|get)\b/;
@@ -137,7 +141,7 @@ const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rathe
 const LEVEL_SUBJECT = String.raw`(?:it'?s|make\s+it|just|only|it'?ll\s+be|this'?ll\s+be|(?:it|this)(?:\s+one)?\s+(?:is|will\s+be|should\s+be|needs\s+to\s+be)|(?:it\s+|this\s+)?should(?:'ve|\s+have)\s+been|(?:let'?s\s+)?go\s+with|(?:bump(?:ed)?|move[ds]?|upgrade[ds]?|downgrade[ds]?|drop(?:ped)?|bring|take)\s+(?:it\s+|this\s+|that\s+|her\s+|him\s+|them\s+)?(?:up\s+|down\s+|back\s+)?to)`;
 
 const LEVEL_BARE = new RegExp(
-  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:${LEVEL_SUBJECT}|keep\s+(?:it|this)(?:\s+(?:as|at))?)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
+  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:${LEVEL_SUBJECT}|make\s+this|(?:change|switch|set|put)\s+(?:it|this)\s+(?:back\s+)?to|switch\s+(?:back\s+)?to|go\s+(?:back\s+)?(?:to|with)|let'?s\s+(?:do|go\s+with)|keep\s+(?:it|this)(?:\s+(?:as|at))?|do)\s+)?(?:a\s+)?(verbal|written)(?:\s+(?:warning|ca|corrective\s+action|one))?(?:[\s,]+(?:instead|then|please|now|after\s+all|again))*\s*$`,
 );
 
 const LEVEL_LABELLED =
@@ -193,9 +197,10 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
   // A sentence at a time, so a cue in one sentence says nothing about the next.
   for (const sentence of normalize(text).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
-    if (sentence[0].endsWith("?") && !POLITE_LEVEL_REQUEST.test(body)) continue;
+    if (sentence[0].endsWith("?") && !POLITE_LEVEL_REQUEST.test(body) && !ASKS_FOR_THE_FORM.test(body)) continue;
 
-    const bare = LEVEL_BARE.exec(body) ?? levelBesidePayrollAnswer(body);
+    // The level as the whole reply is a few words; a long sentence is never tested, so it stays linear.
+    const bare = (body.length <= 80 ? LEVEL_BARE.exec(body) : null) ?? levelBesidePayrollAnswer(body);
     if (bare) levels.add(bare[1] as StatedWarningLevel);
     const clause = clauseLevelAfterRequest(body);
     if (clause) levels.add(clause);

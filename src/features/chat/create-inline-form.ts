@@ -51,11 +51,7 @@ export interface CreateInlineFormResult {
   reference: ChatFormInstanceRef;
   /** Set when the instance was created but Sunny could not prefill it. */
   draftWarning: string | null;
-  /**
-   * The server returned the form this card already made (a lost response, a
-   * second tab, a reopened conversation) instead of creating another. It is
-   * shown as stored; nothing is drafted again.
-   */
+  /** The server returned the draft this card already made; nothing was drafted again. */
   reused?: boolean;
   /**
    * What the drafting route says it left off or could not decide — an
@@ -151,12 +147,7 @@ export async function createInlineForm({
       ...(proposal.warningLevel ? { warningLevel: proposal.warningLevel } : {}),
       locationId: proposal.locationId,
       source: "ask_sunny",
-      /*
-       * WHICH CARD THIS IS. A second press of the same card — after a lost
-       * response, from another tab, or after the conversation was reopened —
-       * gets back the form it already made. A different card always files a
-       * new form. See `create-once.ts` (server side).
-       */
+      /* The card's own id: a second press of it returns the draft it already made. */
       proposalId: proposal.proposalId,
       /*
        * THE CONVERSATION AS IT STANDS NOW, not as it stood when the card was
@@ -183,17 +174,17 @@ export async function createInlineForm({
   onCreated(reference);
 
   /*
+   * THE CARD'S DRAFT ALREADY EXISTS: a second press, a retry after a lost
+   * response, or another tab. It is opened as it is — drafting it again would
+   * overwrite what Sunny and the manager have written on it since.
+   */
+  if (created.reused) return { reference, draftWarning: null, reused: true };
+
+  /*
    * THE DRAFT. Manager turns only, resolved from the ids the server retained —
    * see `draftNotesFromConversation`. An assistant turn cannot reach this, and
    * neither can a turn the bounded window dropped.
    */
-  /*
-   * A FORM THAT ALREADY EXISTED IS NOT DRAFTED AGAIN. Its prefill already ran,
-   * and the manager may already have edited it; prefilling again would spend a
-   * model call to overwrite their work.
-   */
-  if (created.reused) return { reference, draftWarning: null, reused: true };
-
   const notes = draftNotesFromConversation(messages, proposal.sourceMessageIds);
   if (!draftNotesAreUsable(notes)) {
     return { reference, draftWarning: NO_NOTES_WARNING };

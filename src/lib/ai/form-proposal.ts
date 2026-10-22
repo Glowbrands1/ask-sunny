@@ -42,7 +42,11 @@ import {
 import {
   CA_POLICY_QUESTION,
   caPolicyProposalLine,
+  unconfirmedManualLine,
   namesCaPolicy,
+  groundMissedEvent,
+  MISSED_EVENT_OFFENSE,
+  missedEventPhrase,
   readCaPolicy,
   type CaPolicyReading,
   type NamedPolicyReading,
@@ -86,7 +90,7 @@ import {
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
-import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { correctedDates, correctedFormDate, extractFormDate, priorSteps } from "@/lib/forms/form-date-answer";
 import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
@@ -353,6 +357,13 @@ export interface ProposalTurn {
    * in the manager's own words and the draft looks it up.
    */
   policyManual?: () => Promise<readonly ManualChunk[] | null>;
+  /**
+   * Which manual `policyManual` read, and whether an owner has confirmed it as
+   * the approved one (the `official-policy-manual` tag) rather than it being
+   * found by its name. Null when unknown; a section cited from an unconfirmed
+   * manual is said to require owner confirmation.
+   */
+  policyManualIdentity?: () => Promise<{ readonly title: string; readonly confirmed: boolean } | null>;
   /**
    * The employee's signed Coaching and Corrective Action forms in Form
    * Monitoring, under this manager's visibility — read only for a Corrective
@@ -733,7 +744,11 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
 
   if (correctiveAction) {
     proposal.sourceMessageIds = scoped.ids;
-    proposal.formDate = extractFormDate(scoped.text, input.today ?? businessToday());
+    proposal.formDate =
+      correctedFormDate(
+        scoped.messages.map((message) => message.content),
+        input.today ?? businessToday(),
+      ) ?? extractFormDate(scoped.text, input.today ?? businessToday());
   }
 
   /*
@@ -810,6 +825,12 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
       history: input.history,
       conversation: [...input.history, { role: "user", content: input.question }],
       today: input.today ?? businessToday(),
+      correctedTo: correctiveAction
+        ? correctedFormDate(
+            scoped.messages.map((message) => message.content),
+            input.today ?? businessToday(),
+          )
+        : null,
     });
     if (decided.formDate !== undefined) proposal.formDate = decided.formDate;
     dateQuestion = decided.question;
@@ -821,7 +842,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     changeKind && facts
       ? employmentChangeContent(changeKind, facts, proposal, context)
       : proposalContent(proposal, correctiveAction ? scoped : context, match, input.today ?? businessToday(), {
-          namedPolicy: correctiveAction ? await namedPolicyFor(scoped.text, input) : null,
+          namedPolicy: correctiveAction ? await withManualIdentity(await namedPolicyFor(scoped.text, input), input) : null,
           priorOnFile:
             correctiveAction && proposal.employeeName && proposal.status !== "needs_employee"
               ? ((await input.priorFormsOnFile?.(proposal.employeeName, proposal.locationId)) ?? NO_PRIOR_FORMS)
@@ -1223,6 +1244,23 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   }
 
   /*
+   * A CORRECTION TO THE OPEN CORRECTIVE ACTION is part of its intake, even
+   * where it names a step ("sorry, the verbal ca was on 9-2-26 not 9-1-26"
+   * read as a request for another CA, and the correction never reached the
+   * card — QA, 22 Oct 2026). It names nobody new and is not a question.
+   */
+  if (
+    continued &&
+    spoken.kind !== "none" &&
+    !isQuestion(input.question) &&
+    extractEmployeeNames(input.question).length === 0 &&
+    correctsTheIntake(input.question, input.today ?? businessToday())
+  ) {
+    const open = input.summaries.find((summary) => summary.key === continued);
+    if (open && isCorrectiveActionForm(open)) return { kind: "explicit", templateKey: continued };
+  }
+
+  /*
    * ==========================================================================
    * AN OPEN CORRECTIVE ACTION FORM IS ANSWERED BY ANY OF ITS OWN FACTS
    * ==========================================================================
@@ -1346,6 +1384,30 @@ function intentForTurn(input: ProposalTurn): TemplateIntent {
   if (!continuesIntake(continued, input)) return { kind: "none" };
 
   return { kind: "explicit", templateKey: continued };
+}
+
+
+/** "Sorry, … not 9-1-26", "actually it was 10-19": the turn corrects what the intake already holds. */
+function correctsTheIntake(question: string, today: string): boolean {
+  return (
+    /^\s*(?:sorry|oops|actually|correction|wait|my\s+(?:mistake|bad)|typo)\b/i.test(question) ||
+    correctedDates(question, today).size > 0 ||
+    statesHistoryOnly(question, today)
+  );
+}
+
+/*
+ * "PRIOR COACHING: JBA POLICY MANUAL 1-1-26" — the employee's history, typed
+ * as its own turn while the Corrective Action is open (QA, 22 Oct 2026). It
+ * names coaching, so it read as a request for a Coaching Form and the card
+ * never heard it. A turn that dates an earlier step and asks for nothing is
+ * this form's history.
+ */
+function statesHistoryOnly(question: string, today: string): boolean {
+  return (
+    priorSteps(question, today).length > 0 &&
+    !/\b(?:create|make\s+(?:a|an|it)|start|draft|new|another|need\s+(?:a|an)|open|pull\s+up|write\s+up)\b/i.test(question)
+  );
 }
 
 /**
@@ -1562,18 +1624,18 @@ function turnsAboutThisForm(
       (intent.kind === "explicit" && intent.templateKey === templateKey) ||
       (options.correctiveActionForm === true && intent.kind === "corrective_action" && intent.requestedCreation);
     /*
-     * A CORRECTIVE ACTION MENTIONED IN THE HISTORY IS NOT ANOTHER FORM. QA, 22
-     * Oct 2026: "create a CA for <employee> for missing the 10-15-26 woven
-     * deadline", "verbal", then "prior coaching JBA Policy Manual 1-1-26,
-     * verbal ca 9-1-26" — the history answer reads as "corrective action",
-     * which cut every turn before it, and the card that followed was built from
-     * "no payroll deduct" alone: no issue, no date, no level. On a Corrective
-     * Action Form, the progression's name is about this form's subject, never
-     * a different form.
+     * A CORRECTIVE ACTION MENTIONED, NOT ASKED FOR, inside this one's intake
+     * is about this one: "sorry, the verbal ca was on 9-2-26 not 9-1-26"
+     * corrects its history (QA, 22 Oct 2026 — counted as another form, it
+     * dropped the account, the policy and the prior actions given before it).
      */
+    const aboutThisForm =
+      options.correctiveActionForm === true &&
+      ((intent.kind === "corrective_action" && !intent.requestedCreation) ||
+        statesHistoryOnly(message.content, businessToday()));
     const otherForm =
-      (intent.kind === "explicit" && intent.templateKey !== templateKey) ||
-      (intent.kind === "corrective_action" && !thisForm && options.correctiveActionForm !== true);
+      (intent.kind === "explicit" && intent.templateKey !== templateKey && !aboutThisForm) ||
+      (intent.kind === "corrective_action" && !thisForm && !aboutThisForm);
     const names = options.answers?.has(message.content.trim()) ? [] : extractEmployeeNames(message.content);
     const otherPerson = names.length > 0 && !names.some(same);
     if (otherForm || otherPerson) {
@@ -1846,7 +1908,9 @@ function choice(summary: TemplateSummary): ChatFormChoice {
  * the draft, as before.
  */
 async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedPolicyReading | null> {
-  if (readCaPolicy(text).stated !== null) return null;
+  const policyReading = readCaPolicy(text);
+  // A missed meeting reads as Attendance; the manual still says where (see `groundMissedEvent` below).
+  if (policyReading.stated !== null && !(policyReading.stated === "attendance" && policyReading.missedEvent)) return null;
   const named = namedPolicies(text);
   const chunksOf = async (): Promise<readonly ManualChunk[] | null> => {
     try {
@@ -1863,6 +1927,28 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
    * otherwise nothing, as before.
    */
   if (named.length === 0) {
+    /*
+     * A MEETING NOT ATTENDED: the section the manual puts it under, with the
+     * sentence that says so (District Manager feedback, 21 Oct 2026). Where
+     * the manual says nothing it is still Attendance, as the reading says.
+     */
+    const reading = policyReading;
+    if (reading.missedEvent) {
+      const grounded = groundMissedEvent({ reading, chunks: await chunksOf() });
+      return grounded.ok
+        ? {
+            phrase: missedEventPhrase(reading.missedEvent),
+            lookup: "described",
+            heading: grounded.section.heading,
+            page: grounded.section.page,
+            offenseKey: MISSED_EVENT_OFFENSE,
+            ...(grounded.anchor ? { anchor: grounded.anchor } : {}),
+            ...(grounded.anchorSection
+              ? { anchorHeading: grounded.anchorSection.heading, anchorPage: grounded.anchorSection.page }
+              : {}),
+          }
+        : null;
+    }
     if (!mayDescribeSection(text)) return null;
     const chunks = await chunksOf();
     const described = describedManualSection({ text, chunks });
@@ -1892,6 +1978,18 @@ async function namedPolicyFor(text: string, input: ProposalTurn): Promise<NamedP
   return found
     ? { phrase: found.phrase, lookup: "found", heading: found.section.heading, page: found.section.page, offenseKey: found.offenseKey }
     : { phrase, lookup: "missing" };
+}
+
+/** The cited section, marked where its manual is not confirmed as the approved one. */
+async function withManualIdentity(named: NamedPolicyReading | null, input: ProposalTurn): Promise<NamedPolicyReading | null> {
+  if (!named || (named.lookup !== "found" && named.lookup !== "described")) return named;
+  let identity: { readonly title: string; readonly confirmed: boolean } | null = null;
+  try {
+    identity = (await input.policyManualIdentity?.()) ?? null;
+  } catch {
+    identity = null;
+  }
+  return identity && !identity.confirmed ? { ...named, unconfirmedManual: identity.title } : named;
 }
 
 function proposalContent(
@@ -2304,6 +2402,8 @@ function correctiveActionReady(
    */
   const policyLine = caPolicyProposalLine(policy, namedPolicy);
   if (policyLine) lines.push("", policyLine);
+  const sourceLine = policyLine ? unconfirmedManualLine(namedPolicy) : null;
+  if (sourceLine) lines.push("", sourceLine);
 
   /*
    * THE LEVEL THE MANAGER STATED, READ BACK. It is ticked on the form as their

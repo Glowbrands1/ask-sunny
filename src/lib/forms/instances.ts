@@ -1,6 +1,10 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+
+import { isProposalId } from "./proposal-id";
 
 import {
   checkboxGroupsForVariant,
@@ -380,25 +384,91 @@ export interface NewInstance {
   createdByRole?: string | null;
   source: InstanceSource;
   formDate?: string;
-  /** The chat card this form was created from; recorded so a repeated press finds it. See `create-once.ts`. */
+  /** The chat card this form was created from; recorded so a repeated press finds it. */
   proposalId?: string;
-  /**
-   * The row's id, when the caller derives it (`create-once.ts`: one id per
-   * manager and card, so the primary key itself admits one form). Absent, the
-   * database chooses.
-   */
-  id?: string;
 }
 
-/** The id the caller chose is already a form: the same card, pressed again. */
-export class DuplicateInstanceIdError extends Error {
-  readonly instanceId: string;
+/**
+ * ============================================================================
+ * THE SAME CHAT CARD, PRESSED TWICE, IS ONE DRAFT
+ * ============================================================================
+ *
+ * The browser stops a second click while a create is in flight, and marks the
+ * card created the instant the row exists. What it cannot stop is a create
+ * whose RESPONSE was lost — a dropped connection, a timeout, a reload — or the
+ * same card pressed in a second tab: the row exists, the browser does not
+ * know, and the next press files a second disciplinary record.
+ *
+ * KEYED ON THE CARD, NOT ON THE PERSON. Every proposal card carries a
+ * `proposalId`, recorded on the form's `created` event. A press of the SAME
+ * card returns the draft it already made. A NEW request — a second incident
+ * for the same employee, minutes later — is a new card with a new id and
+ * always files a new draft. (A first version matched form, person and
+ * location inside ten minutes, which handed a manager documenting two
+ * separate incidents the first draft back. Release review caught it.)
+ *
+ * NARROW ON PURPOSE. Only the caller's own drafts (never another manager's,
+ * so nothing is revealed that they could not already open), only drafts (a
+ * finalized form is never handed back for editing), only assistant-created
+ * ones, only the same person and location, and only inside
+ * `DUPLICATE_DRAFT_WINDOW_HOURS`, which bounds the lookup rather than defining
+ * the duplicate. A create without a card id is never matched.
+ */
+export const DUPLICATE_DRAFT_WINDOW_HOURS = 24;
 
-  constructor(instanceId: string) {
-    super("That form already exists.");
-    this.name = "DuplicateInstanceIdError";
-    this.instanceId = instanceId;
-  }
+export async function findRecentAssistantDraft(input: {
+  templateKey: string;
+  employeeName: string;
+  createdBy: string;
+  locationId: string | null;
+  proposalId: string;
+  now?: Date;
+}): Promise<InstanceRow | null> {
+  if (!isProposalId(input.proposalId)) return null;
+  const supabase = getSupabaseAdmin();
+  const { data: template, error: templateError } = await supabase
+    .from("form_templates")
+    .select("id")
+    .eq("key", input.templateKey)
+    .maybeSingle();
+  if (templateError || !template) return null;
+
+  const since = new Date((input.now ?? new Date()).getTime() - DUPLICATE_DRAFT_WINDOW_HOURS * 3_600_000);
+  const { data, error } = await supabase
+    .from("form_instances")
+    .select("id, employee_name, location_id, created_at")
+    .eq("template_id", template.id)
+    .eq("created_by", input.createdBy)
+    .eq("source", "ask_sunny")
+    .eq("status", "draft")
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(25);
+  // A guard that cannot read is no guard: the create goes ahead as before.
+  if (error || !Array.isArray(data)) return null;
+
+  const wanted = input.employeeName.trim().replace(/\s+/g, " ").toLowerCase();
+  const candidates = (data as { id: unknown; employee_name: unknown; location_id: unknown }[])
+    .filter(
+      (row) =>
+        String(row.employee_name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === wanted &&
+        (row.location_id ?? null) === (input.locationId ?? null),
+    )
+    .map((row) => String(row.id));
+  if (candidates.length === 0) return null;
+
+  const { data: events, error: eventsError } = await supabase
+    .from("form_instance_events")
+    .select("instance_id, detail")
+    .in("instance_id", candidates)
+    .eq("kind", "created");
+  if (eventsError || !Array.isArray(events)) return null;
+  const same = (events as { instance_id: unknown; detail: unknown }[]).find(
+    (event) => (event.detail as { proposalId?: unknown } | null)?.proposalId === input.proposalId,
+  );
+  if (!same) return null;
+  const loaded = await loadInstance(String(same.instance_id));
+  return loaded?.instance ?? null;
 }
 
 /**
@@ -408,7 +478,37 @@ export class DuplicateInstanceIdError extends Error {
  * Publishing a new template version tomorrow leaves this form pointing at what
  * it was started from, which is the whole point of versioning.
  */
-export async function createInstance(input: NewInstance): Promise<InstanceRow> {
+/**
+ * ============================================================================
+ * ONE CARD, ONE ROW — EVEN WHEN TWO PRESSES ARRIVE AT ONCE
+ * ============================================================================
+ *
+ * `findRecentAssistantDraft` returns the draft a card already made, but it is
+ * a read before a write: two presses that arrive together (a double click, a
+ * retry racing the first request) both read "none" and both insert. QA, 22 Oct
+ * 2026. So a form created from a chat card is created under an id DERIVED from
+ * the card — the same person, form and card always give the same id — and the
+ * table's own primary key refuses the second insert. That refusal returns the
+ * row the first one made. No other create is affected: without a card id the
+ * database chooses the id, as before.
+ */
+export function cardInstanceId(createdBy: string, templateKey: string, proposalId: string): string {
+  const bytes = Buffer.from(createHash("sha256").update(`form-card\u0000${createdBy}\u0000${templateKey}\u0000${proposalId}`).digest().subarray(0, 16));
+  // An RFC 4122 shape (version 5, variant 10xx), so the column accepts it as a uuid.
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Postgres' unique_violation: here, the card's row already exists. */
+const UNIQUE_VIOLATION = "23505";
+
+/**
+ * Starts a form, or — for a second create of the same chat card — returns the
+ * row the first one made, marked `reused`. See `cardInstanceId`.
+ */
+export async function createInstance(input: NewInstance): Promise<InstanceRow & { reused?: true }> {
   const supabase = getSupabaseAdmin();
 
   const { data: template, error: templateError } = await supabase
@@ -423,9 +523,13 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
   const version = await getCurrentVersion(String(template.id));
   if (!version) throw new Error("That template has no published version yet.");
 
+  const cardId = isProposalId(input.proposalId)
+    ? cardInstanceId(input.createdBy, input.templateKey, input.proposalId)
+    : null;
   const { data, error } = await supabase
     .from("form_instances")
     .insert({
+      ...(cardId ? { id: cardId } : {}),
       template_id: template.id,
       template_version_id: version.id,
       variant_key: input.variantKey,
@@ -438,11 +542,13 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
       source: input.source,
       status: "draft",
       ...(input.formDate ? { form_date: input.formDate } : {}),
-      ...(input.id ? { id: input.id } : {}),
     })
     .select("id")
     .single();
-  if (input.id && (error as { code?: string } | null)?.code === "23505") throw new DuplicateInstanceIdError(input.id);
+  if (cardId && (error as { code?: string } | null)?.code === UNIQUE_VIOLATION) {
+    const existing = await loadInstance(cardId);
+    if (existing) return { ...existing.instance, reused: true };
+  }
   if (error || !data) throw new Error(`Could not start the form: ${error?.message}`);
 
   /*
@@ -486,7 +592,7 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow> {
     variantKey: input.variantKey,
     source: input.source,
     seededFromRecord: Object.keys(seeded),
-    ...(input.proposalId ? { proposalId: input.proposalId } : {}),
+    ...(isProposalId(input.proposalId) ? { proposalId: input.proposalId } : {}),
   });
 
   const loaded = await loadInstance(String(data.id));
@@ -637,6 +743,7 @@ export async function saveInstanceValues(
     ),
   );
 
+  // `writeValues` moves `form_instances.form_date` with the Date line.
   await writeValues(instanceId, { values: changedValues, checked: changedChecked }, "manager");
   await recordEvent(instanceId, "edited", actor, {
     fields: Object.keys(changedValues).length,
@@ -825,6 +932,7 @@ export class UnverifiedPolicyError extends Error {
     this.fields = fields;
   }
 }
+
 
 export interface FinalizeOptions {
   /**
@@ -1526,4 +1634,19 @@ export async function listOutstandingFollowUps(
     .filter((row) => needsFollowUp(row))
     .sort((a, b) => (a.followUpDate ?? "").localeCompare(b.followUpDate ?? ""))
     .slice(0, limit);
+}
+
+/**
+ * A CHANGE MADE FROM THE CHAT, ON THE RECORD: each field, what it said, what
+ * it says now, who asked and (the event's own timestamp) when. The save itself
+ * records only that the manager edited the form; this records what changed.
+ */
+export async function recordChatCorrection(
+  instanceId: string,
+  actor: string,
+  changes: readonly { field: string; from: string | null; to: string }[],
+): Promise<void> {
+  if (changes.length === 0) return;
+  // An "edited" event — the kinds are a database enum — carrying the changes themselves.
+  await recordEvent(instanceId, "edited", actor, { via: "chat_correction", changes });
 }

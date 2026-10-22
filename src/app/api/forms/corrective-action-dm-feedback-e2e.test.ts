@@ -38,11 +38,11 @@ const state = vi.hoisted(() => ({
   role: "salon_director",
   scope: null as unknown,
   /*
-   * How the manual was found. "tag": the administrator-approved manual, as these
-   * tests assume. "fallback": found only by its title — the form shows a notice
-   * and Finalize works as before (owner decision, 22 Oct 2026: warning only).
+   * How the manual was found: "fallback" (by its title, as in production) or
+   * "tag" (an administrator-approved manual). Either way Finalize works the
+   * same (owner decision, 22 Oct 2026: warning only).
    */
-  manualMatchedBy: "tag" as "tag" | "fallback",
+  manualMatchedBy: "fallback" as "tag" | "fallback",
   /** What the drafting model returns. */
   draft: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown> },
   /** What the drafting model was given, per call: its system prompt and messages. */
@@ -316,7 +316,7 @@ const ATTENDANCE_CHUNK = {
   sections: [{ heading: "Attendance", page: 14 }],
   section: "Attendance",
   content:
-    "14 | P a g e\nAttendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.\no Seminars/Meetings/ Training sessions are considered scheduled shifts. (See\nSeminar/Webinar Attendance section)",
+    "14 | P a g e\nAttendance\nIt is the responsibility of each employee to know his or her work schedule and to always be on\ntime.",
 };
 
 const VISITORS_CHUNK = {
@@ -385,7 +385,7 @@ beforeEach(async () => {
   state.role = "salon_director";
   state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
   state.draft = { values: {}, checked: {} };
-  state.manualMatchedBy = "tag";
+  state.manualMatchedBy = "fallback";
   state.modelNotes = [];
   state.manual = MANUAL;
   state.directory = DIRECTORY;
@@ -1064,60 +1064,103 @@ describe("the payroll amount the quoted section states", () => {
 });
 
 /* ========================================================================= */
-/* I — A MISSED MEETING IS ATTENDANCE                                         */
+/* G — A MEETING NOT ATTENDED IS ATTENDANCE, WHERE THE MANUAL SAYS SO         */
 /* ========================================================================= */
 
 /*
- * HR, 21 Oct 2026: E1 came back ticked Standards of Conduct, the model's
- * choice. The manual's Attendance section counts meetings as scheduled
- * shifts, so a missed meeting is Absenteeism, quoted from Attendance.
+ * District Manager feedback, 21 Oct 2026: E1 ("for not attending the monthly
+ * meeting") was drafted under the Standards of Conduct. The manual's
+ * Attendance section counts meetings as scheduled shifts; where it does not
+ * say so, the manager is asked, and their answer fills the form.
  */
-describe("a missed meeting is Attendance", () => {
-  it("is proposed as Attendance and drafted under Absenteeism, whatever box the model ticked", async () => {
+const ATTENDANCE_WITH_MEETINGS_CHUNK = {
+  ...ATTENDANCE_CHUNK,
+  content: `${ATTENDANCE_CHUNK.content}\no Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts. (See Seminar/Webinar\nAttendance section)`,
+};
+const SEMINAR_CHUNK = {
+  chunkIndex: 123,
+  page: 38,
+  printedPage: 37,
+  sections: [{ heading: "Seminar/Webinar Attendance", page: 37 }],
+  section: "Seminar/Webinar Attendance",
+  content:
+    "Seminar/Webinar Attendance\nSynthetic rule: a seminar/webinar missed without notifying your\nSupervisor is treated as a no call no show to a scheduled shift.",
+};
+
+describe("G: a meeting not attended is cited where the manual puts it", () => {
+  it("reads Attendance from the manual, says why, and the draft ticks Absenteeism over the model's Standards of Conduct", async () => {
+    state.manual = {
+      chunks: [STANDARDS_OF_CONDUCT_CHUNK, ATTENDANCE_WITH_MEETINGS_CHUNK, SEMINAR_CHUNK, CELL_PHONE_CHUNK],
+    };
     const { last, create } = await conversation([E1]);
-    expect(last.content).toMatch(/\*\*Policy:\*\* this reads as \*\*Attendance\*\* — a required meeting that was missed/);
+
+    expect(last.content).toMatch(
+      /\*\*Policy:\*\* "missed the monthly meeting" reads as the policy manual's \*\*Attendance\*\* \(page 14\), which says "Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts\." I'll quote it on the draft under \*\*Absenteeism\*\* — tell me if a different policy applies\./,
+    );
+    expect(last.content).not.toMatch(/Which policy applies/);
 
     state.draft = {
-      values: { observation: "Observed:\nTess Varga did not attend the monthly meeting on October 20, 2026." },
+      values: { observation: "Observed:\nTess Varga did not attend the scheduled monthly meeting on October 20, 2026." },
       checked: { offense_type: ["standards_of_conduct"] },
     };
     const { reference } = await create();
     const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
     expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
     expect(field(form, "policy_violated")!.value).toBe("Absenteeism");
-    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Attendance, p. 14");
-    expect(field(form, "policy_language")!.value).not.toMatch(/Standards of Conduct/);
-    expect(field(form, "action_plan")!.value).toBe(`Management will review the Attendance policy with Tess. ${CLOSING}`);
+    expect(policy).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
+    expect(policy).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(policy).not.toMatch(/Standards of Conduct/);
+    expect(field(form, "warning_type")!.checked).toEqual(["written"]);
+    expect(field(form, "prior_actions")!.value).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026",
+    );
   });
 
-  /*
-   * Changed on purpose at the release merge (22 Oct 2026): the owner's decision
-   * on `main` reads a missed meeting as Attendance whatever the manual's
-   * wording, so Absenteeism is ticked even where the meetings line is gone.
-   */
-  it("is Absenteeism by the owner's decision, even without the manual's meetings line", async () => {
+  it("a seminar not attended cites the Seminar/Webinar Attendance section under Absenteeism", async () => {
     state.manual = {
-      chunks: (state.manual!.chunks as { section?: string; content: string }[]).map((chunk) =>
-        chunk.section === "Attendance"
-          ? { ...chunk, content: chunk.content.replace(/\no Seminars\/Meetings[\s\S]*$/, "") }
-          : chunk,
-      ),
+      chunks: [STANDARDS_OF_CONDUCT_CHUNK, ATTENDANCE_WITH_MEETINGS_CHUNK, SEMINAR_CHUNK],
     };
-    const { create } = await conversation([E1]);
+    const { last, create } = await conversation([
+      "create a verbal CA for tess varga for skipping the webinar on 10-20-26. no payroll deduct",
+    ]);
+    expect(last.content).toMatch(/\*\*Policy:\*\* "missed the webinar" reads as the policy manual's \*\*Seminar\/Webinar Attendance\*\* \(page 37\)/);
+
     state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
     const { reference } = await create();
     const form = await review(reference.instanceId);
     expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
+    expect(field(form, "policy_violated")!.value).toBe("Absenteeism — Seminar/Webinar Attendance");
+    expect(field(form, "policy_language")!.value).toContain("is treated as a no call no show to a scheduled shift");
   });
 
-  it("a policy the manager named still wins", async () => {
-    const { create } = await conversation([
-      "create a written CA for tess varga for not attending the monthly meeting on 10-20-26. the policy violated is the standards of conduct. payroll deduct not applicable",
-    ]);
+  /* Owner decision, 22 Oct 2026: a missed meeting is Attendance, so this no longer asks "which policy?" first. */
+  it("where the manual does not say, it is still Attendance — and the form says so", async () => {
+    // The manual as the other tests hold it: its Attendance section says nothing about meetings.
+    const { responses, create } = await conversation([E1]);
+
+    expect(responses[0]!.content).not.toMatch(/Which policy applies/);
+    expect(responses[0]!.content).toMatch(/\*\*Policy:\*\* Attendance — missing the monthly meeting is an absence from a scheduled shift\./);
+
+    state.draft = { values: {}, checked: { offense_type: ["standards_of_conduct"] } };
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["absenteeism"]);
+    expect(field(form, "policy_language")!.value).toContain("Source: JBA Policy Manual — Attendance, p. 14");
+    expect(field(form, "warning_type")!.checked).toEqual(["written"]);
+    expect(field(form, "prior_actions")!.value).toBe(
+      "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/01/2026",
+    );
+  });
+
+  it('answered "standards of conduct", the form is the Standards of Conduct', async () => {
+    const { create } = await conversation([E1, "standards of conduct"]);
     state.draft = { values: {}, checked: { offense_type: ["absenteeism"] } };
     const { reference } = await create();
     const form = await review(reference.instanceId);
     expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value).toContain("Standards of Conduct");
   });
 });
 
@@ -1445,8 +1488,7 @@ describe("QA 22 Oct: corrections while the card is open, before Create", () => {
 /*
  * A second Create for the same card — a lost response retried, a second tab,
  * the conversation reopened — returns the draft already filed (QA, 22 Oct
- * 2026; `create-once.ts`). Concurrency and the claim table are covered in
- * `duplicate-create-route.test.ts` and `create-claims.integration.test.ts`.
+ * 2026; `cardInstanceId` in `instances.ts`).
  */
 describe("QA 22 Oct: a repeated Create", () => {
   it("reuses the draft instead of filing a second", async () => {

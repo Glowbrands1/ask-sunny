@@ -363,6 +363,53 @@ export function priorSteps(
   text: string,
   today: string,
 ): { iso: string; named: string; topic?: string; about?: string }[] {
+  /*
+   * A DATE THE MANAGER CORRECTED IS THE STEP'S DATE: "the verbal ca was on
+   * 9-2-26 not 9-1-26" moves the verbal CA listed on 9/1 to 9/2, once.
+   */
+  const corrected = correctedDates(text, today);
+  const seen = new Set<string>();
+  return stepsAsWritten(text, today)
+    .map((step) => (corrected.has(step.iso) ? { ...step, iso: corrected.get(step.iso)! } : step))
+    .filter((step) => {
+      const key = `${step.iso}|${step.named.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/*
+ * ============================================================================
+ * "ON 10-19, NOT 10-20" — A DATE THE MANAGER CORRECTED
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026: a correction typed before the form was created ("the
+ * verbal ca was on 9-2-26 not 9-1-26") left the wrong date on the history
+ * line and offered both as the form's date. A sentence with two dates, one of
+ * them after "not" / "instead of" / "rather than", retracts that one and puts
+ * the other in its place. Returns retracted → replacement.
+ */
+const RETRACTS_BEFORE = /\b(?:not|instead\s+of|rather\s+than|isn['’]?t|wasn['’]?t|was\s+not|is\s+not)\s*(?:on\s+)?$/i;
+
+export function correctedDates(text: string, today: string): Map<string, string> {
+  const corrected = new Map<string, string>();
+  for (const sentence of (text ?? "").split(/(?<=[.!?;\n])\s*/)) {
+    const dates = datesInText(sentence, today);
+    if (dates.length !== 2) continue;
+    const [first, second] = dates as [DateInText, DateInText];
+    const firstOut = RETRACTS_BEFORE.test(sentence.slice(0, first.index));
+    const secondOut = RETRACTS_BEFORE.test(sentence.slice(0, second.index));
+    if (secondOut && !firstOut && first.iso !== second.iso) corrected.set(second.iso, first.iso);
+    else if (firstOut && !secondOut && first.iso !== second.iso) corrected.set(first.iso, second.iso);
+  }
+  return corrected;
+}
+
+function stepsAsWritten(
+  text: string,
+  today: string,
+): { iso: string; named: string; topic?: string; about?: string }[] {
   const dates = datesInText(text, today);
   const steps = labelledSteps(text, dates);
   return dates.flatMap((found) => {
@@ -514,42 +561,6 @@ export function datesInText(text: string, today: string): DateInText[] {
  * `PRIOR_STEP_BEFORE`) is skipped, and so is anything that is not a real day
  * ("13/40", "Feb 30").
  */
-/*
- * ============================================================================
- * "WAIT, THE MEETING WAS 10/19" CORRECTS THE DATE, IT DOES NOT ADD ONE
- * ============================================================================
- *
- * QA, 22 Oct 2026, round 3: "need a CA for tess varga for missing the 10/20/26
- * meeting", then "wait, the meeting was 10/19/26", was dated 10/20 — the first
- * date typed. A turn that corrects the date — said as a correction,
- * with one incident date in it — replaces the earlier one. The latest such
- * turn wins; otherwise the first date typed still dates the form.
- */
-const CORRECTS_DATE =
-  /\b(?:wait|actually|sorry|oops|correction|i\s+meant|i\s+mean|not\s+(?:on\s+)?\d|instead|scratch\s+that|my\s+bad|(?:it|that|the\s+(?:meeting|incident|date|shift|deadline|day))\s+(?:was|is)\s+(?:actually\s+|really\s+)?(?:on\s+)?(?=\d|\w+\s+\d)|happened\s+on|change\s+the\s+date)\b/i;
-
-/* "actually she also missed 10/21" adds an incident; it does not move the first one. */
-const ANOTHER_INCIDENT_DATE = /\b(?:also|again|too|another|as\s+well|second|both)\b/i;
-
-const NOT_THIS_DATE = /\b(?:not|instead\s+of|rather\s+than|wasn'?t|isn'?t)\s+(?:on\s+|the\s+)?$/i;
-
-export function correctedIncidentDate(turns: readonly string[], today: string): string | null {
-  for (let index = turns.length - 1; index > 0; index -= 1) {
-    const turn = turns[index]!;
-    if (!CORRECTS_DATE.test(turn) || ANOTHER_INCIDENT_DATE.test(turn) || /\?\s*$/.test(turn.trim())) continue;
-    // "it was 10/16 not 10/15" — the date it was NOT is not a candidate.
-    const dates = [
-      ...new Set(
-        listFormDates(turn, today)
-          .filter((found) => !NOT_THIS_DATE.test(turn.slice(Math.max(0, found.index - 16), found.index)))
-          .map((found) => found.iso),
-      ),
-    ].filter((iso) => iso <= today);
-    if (dates.length === 1) return dates[0]!;
-  }
-  return null;
-}
-
 export function extractFormDate(text: string, today: string): string | null {
   return listIncidentDates(text, today)[0]?.iso ?? null;
 }
@@ -562,7 +573,16 @@ export function extractFormDate(text: string, today: string): string | null {
 export function listFormDates(text: string, today: string): { iso: string; index: number }[] {
   const dates = datesInText(text, today);
   const labelled = labelledSteps(text, dates);
-  const kept = dates.filter((found) => !isOtherDate(text, found, labelled));
+  /*
+   * A RETRACTED DATE IS NOBODY'S, and the date that corrects an earlier
+   * step's is that step's: neither is offered as the form's date.
+   */
+  const corrected = correctedDates(text, today);
+  const stepDates = new Set(stepsAsWritten(text, today).map((step) => step.iso));
+  const correctsAStep = new Set([...corrected].filter(([from]) => stepDates.has(from)).map(([, to]) => to));
+  const kept = dates
+    .filter((found) => !isOtherDate(text, found, labelled))
+    .filter((found) => !corrected.has(found.iso) && !correctsAStep.has(found.iso));
   // A date given to the FORM leads — the last one typed first, so a later "date it 10/21" corrects an earlier one.
   const explicit = kept.filter((found) => isExplicitFormDate(text, found)).reverse();
   return [...explicit, ...kept.filter((found) => !explicit.includes(found))].map(({ iso, index }) => ({ iso, index }));
@@ -612,6 +632,40 @@ export function heldCoachingDates(text: string, today: string): string[] {
     return HELD_COACHING_BEFORE.test(before) && !EARLIER_CUE.test(clause);
   });
   return [...new Set(held.map((found) => found.iso))].sort();
+}
+
+/*
+ * ============================================================================
+ * A LATER TURN THAT CORRECTS THE DATE DATES THE FORM
+ * ============================================================================
+ *
+ * QA, 22 Oct 2026: "the meeting was actually on 10-19-26" after an account
+ * dated 10-20 left the form dated 10-20 — the first date in the conversation.
+ * The latest turn after the first that says it corrects ("actually",
+ * "sorry", "should be", "wrong", "not …") and gives one incident date, and
+ * does not add another incident, is the form's date. Null when none does.
+ */
+/*
+ * QA, 22 Oct 2026, round 3: "wait, the meeting was 10/19/26" after "… for
+ * missing the 10/20/26 meeting" was dated 10/20.
+ */
+const CORRECTS_DATE =
+  /\b(?:actually|instead|wrong|correction|i\s+meant|i\s+mean|meant\s+to\s+say|should\s+(?:be|have\s+been|say|read)|sorry|oops|typo|my\s+(?:mistake|bad)|wait|scratch\s+that|change\s+the\s+date|happened\s+on|not\s+(?:on\s+)?\d|(?:it|that|the\s+(?:meeting|incident|date|shift|day))\s+(?:was|is)\s+(?:on\s+)?(?=\d))/i;
+const ADDS_AN_INCIDENT = /\b(?:also|too|again|another|as\s+well|plus|and\s+then)\b/i;
+
+export function correctedFormDate(turns: readonly string[], today: string): string | null {
+  // Read against the whole conversation, so a corrected earlier step's date is never the form's.
+  const incidents = new Set(listFormDates(turns.join("\n\n"), today).map((found) => found.iso));
+  let date: string | null = null;
+  for (const turn of turns.slice(1)) {
+    // "wait, was it 10/19/26?" asks; it corrects nothing (QA, 22 Oct 2026, round 3).
+    if (!CORRECTS_DATE.test(turn) || ADDS_AN_INCIDENT.test(turn) || /\?\s*$/.test(turn.trim())) continue;
+    const own = [...new Set(listFormDates(turn, today).map((found) => found.iso))].filter(
+      (iso) => iso <= today && incidents.has(iso),
+    );
+    if (own.length === 1) date = own[0]!;
+  }
+  return date;
 }
 
 /*

@@ -59,6 +59,7 @@ vi.mock("./instance-scope", () => ({
 
 vi.mock("./instances", () => ({
   findOpenRevision: async () => null,
+  recordChatCorrection: async () => {},
   reviseInstance: async (id: string) => {
     state.revised.push(id);
     const seed = TEMPLATE_SEEDS.find((entry) => entry.key === state.templateKey)!;
@@ -366,7 +367,7 @@ describe("the Corrective Action Form's payroll-deduct answer", () => {
   });
 
   it.each(["no", "yes", "is payroll deduct applicable?", "change the name to Jane Smith"])(
-    "leaves %s alone — the payroll answer and the date are what is taken from chat",
+    "leaves %s alone — the name is not taken from chat",
     async (question) => {
       expect(await correct(question)).toBeNull();
       expect(state.saved).toEqual([]);

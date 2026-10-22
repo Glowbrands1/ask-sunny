@@ -18,6 +18,7 @@ import {
 import { useSession } from "@/lib/session/session-context";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
+import { manualStandingNotice } from "@/lib/forms/standing-notices";
 import {
   POLICY_ACKNOWLEDGEMENT_REQUIRED,
   policyAcknowledgementWording,
@@ -363,7 +364,12 @@ export function InlineForm({
   const notice = prefillNoticeFor(prefill, loaded);
   const reviewNotice = reviewConversationNoticeFor(loaded, prefilling);
   const policyNotice = policyVerificationNoticeFor(loaded, prefilling);
-  const policySourceNotice = prefilling ? null : policySourceNoticeFor(loaded);
+  /*
+   * WHERE THE QUOTED POLICY CAME FROM (owner decision, 22 Oct 2026), read off
+   * the stored provenance so a refresh or a reopened draft says it too: a
+   * manual no owner has confirmed. See `standing-notices.ts`.
+   */
+  const manualNotice = prefilling ? null : manualStandingNotice(loaded.values);
   /*
    * THE SAME RULE THE SERVER APPLIES, with no `ask_sunny` gating — a corrective
    * form started by hand in the old Create a Form screen (since removed; its
@@ -688,11 +694,13 @@ export function InlineForm({
           {policyNotice}
         </Notice>
       ) : null}
-      {policySourceNotice ? (
+
+      {manualNotice ? (
         <Notice tone="attention" className="mt-3">
-          {policySourceNotice}
+          {manualNotice}
         </Notice>
       ) : null}
+
 
       {/*
         WHERE THE POLICY CAME FROM, WITH ITS PAGE.
@@ -1129,27 +1137,6 @@ export function storedPolicySources(values: LoadedValueRow[]): StoredPolicySourc
   }
 
   return [...seen.values()];
-}
-
-/*
- * ============================================================================
- * A MANUAL FOUND BY ITS NAME IS NOT YET AN APPROVED SOURCE
- * ============================================================================
- *
- * QA, 22 Oct 2026 (`docs/policy-source-validation-2026-10-22.md`): Ask Sunny's
- * official policy manual is found by its file name — no document carries the
- * `official-policy-manual` tag and no approval names it — so every citation is
- * stored `matchedBy: "fallback"`. The quote is still the manual's own words and
- * the draft keeps it; what the app cannot say is that a person approved that
- * manual as Sun Tan City's source for Corrective Actions, so the card says so
- * until an administrator tags it. A citation from a tagged manual says nothing.
- */
-export function policySourceNoticeFor(loaded: LoadedInstance): string | null {
-  const fallback = loaded.values.some(
-    (row) => row.provenance?.verified === true && row.provenance?.matchedBy === "fallback",
-  );
-  if (!fallback) return null;
-  return "The policy on this form is quoted from a manual Ask Sunny found by its name. It hasn't been confirmed as Sun Tan City's approved policy source, so check the policy before you issue this form.";
 }
 
 export function policyVerificationNoticeFor(
