@@ -3,7 +3,7 @@ import "server-only";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import type { AccessScope } from "@/types";
 
-import { readSalonMentions, rosterSalonName } from "./salon-mention";
+import { ambiguousSalonNumbers, readSalonMentions, rosterSalonName } from "./salon-mention";
 
 /**
  * ============================================================================
@@ -234,6 +234,18 @@ export function proposeLocation(
       ? fromAnsweredSalons(everySalon, answeredSalonIds)
       : fromNamedSalons(everySalon, managerText);
     if (named) return named;
+    /*
+     * "SALON 307" IS A QUESTION, NOT A BLANK. 306, 307 and 314 are each one
+     * salon's number and another salon's Google store code, so they name no
+     * salon above — and an account covering every salon used to get a ready
+     * card naming none, the number dropped without a word. The owner's rule
+     * (22 Oct 2026) is to ask: the card offers just the salons the number can
+     * mean. Not when an answer to the salon question already decided it.
+     */
+    if (!answeredSalonIds) {
+      const candidates = [...new Set(ambiguousSalonNumbers(managerText).flat())];
+      if (candidates.length > 1) return { resolution: "needs_selection", authorizedIds: candidates };
+    }
     /*
      * THE EMPLOYEE'S OWN SALON IS NOT INVENTED EITHER. A global actor filing
      * about somebody the directory places at exactly one salon gets that salon

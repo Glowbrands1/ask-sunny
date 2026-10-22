@@ -3,7 +3,7 @@ import "server-only";
 import { PRODUCTION_SALONS, type ProductionSalon } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { salonForTypedNumber } from "./salon-text";
+import { salonForTypedNumber, salonsForTypedNumber } from "./salon-text";
 
 /**
  * ============================================================================
@@ -280,6 +280,23 @@ export function readSalonMentions(text: string): SalonMention[] {
   }
 
   return mentions;
+}
+
+/**
+ * The salons each AMBIGUOUS number the manager typed with a location word can
+ * mean — "salon 306", "store 307", "#314" — one list per number. These name
+ * no salon in `readSalonMentions` (each is one salon's number and another's
+ * Google store code), and are listed here so the manager can be ASKED between
+ * them rather than have the number dropped (owner decision, 22 Oct 2026:
+ * "ask the manager to clarify. Never guess").
+ */
+export function ambiguousSalonNumbers(text: string): string[][] {
+  const found: string[][] = [];
+  for (const match of text.matchAll(SALON_NUMBER)) {
+    const salons = salonsForTypedNumber(match[1]!);
+    if (salons.length > 1) found.push(salons.map((salon) => salon.id));
+  }
+  return found;
 }
 
 /**

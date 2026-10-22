@@ -130,3 +130,85 @@ describe("multi-turn: the account's times do not move the form, the salon does",
     expect(named.formProposal?.locationId).toBe("loc-0410");
   });
 });
+
+/*
+ * ============================================================================
+ * OWNER DECISION, 22 OCT 2026: 306, 307 AND 314 ARE ASKED, NEVER GUESSED
+ * ============================================================================
+ *
+ * "For ambiguous salon numbers 306/307/314, ask the manager to clarify. Never
+ * guess." Each is one salon's number and ANOTHER salon's Google store code
+ * (306: Wornall 0306 or KS Manhattan 0462; 307: Grand Island 0307 or KS
+ * Shawnee Mission Pkwy 0463; 314: Omaha 144th and Center 0314 or KS Lawrence
+ * 0468). A salon-level manager with several salons was already asked; an
+ * account that covers every salon had the number dropped without a word and
+ * got a ready card naming no salon. It is now asked, offering just the two.
+ */
+describe("owner decision: 306/307/314 are asked, never guessed (an account covering every salon)", () => {
+  const GLOBAL: AccessScope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+  async function propose(question: string) {
+    const { proposeFormForTurn } = await import("./form-proposal");
+    const answer = await proposeFormForTurn({
+      history: [],
+      question,
+      questionMessageId: `m${(counter += 1)}`,
+      actor: { role: "admin" as never, scope: GLOBAL },
+      summaries: LIBRARY as never,
+      today: "2026-10-22",
+    });
+    return answer!.formProposal!;
+  }
+
+  it.each([
+    ["coaching form for Jane Doe at salon 306", ["loc-0306", "loc-0462"]],
+    ["coaching form for Jane Doe at store 306", ["loc-0306", "loc-0462"]],
+    ["coaching form for Jane Doe salon 307", ["loc-0307", "loc-0463"]],
+    ["coaching form for Jane Doe store 307", ["loc-0307", "loc-0463"]],
+    ["coaching form for Jane Doe #314", ["loc-0314", "loc-0468"]],
+    ["coaching form for Jane Doe at location 314", ["loc-0314", "loc-0468"]],
+  ])("%s → no salon filled in; asks between the two", async (question, both) => {
+    const proposal = await propose(question);
+    expect(proposal.locationId).toBeNull();
+    expect(proposal.status).toBe("needs_location");
+    expect(proposal.locationResolution).toBe("needs_selection");
+    expect([...proposal.authorizedLocationIds].sort()).toEqual(both);
+  });
+
+  it.each([
+    ["coaching form for Jane Doe at salon 0307", "loc-0307"],
+    ["coaching form for Jane Doe at store 373", "loc-0476"],
+  ])("an unambiguous number is still filled in: %s", async (question, salon) => {
+    expect((await propose(question)).locationId).toBe(salon);
+  });
+
+  it.each([
+    ["0307", "loc-0307"],
+    ["grand island", "loc-0307"],
+    ["salon 0463", "loc-0463"],
+  ])("answering the question with %s fills in that salon", async (reply, salon) => {
+    const { proposeFormForTurn } = await import("./form-proposal");
+    const ask = "coaching form for Jane Doe salon 307";
+    const asked = await propose(ask);
+    const history: ChatMessage[] = [
+      { id: "q1", role: "user", content: ask, createdAt: "2026-10-22T12:00:00Z" },
+      { id: "a1", role: "assistant", content: "Which salon is this about?", createdAt: "2026-10-22T12:00:00Z", formProposal: asked } as ChatMessage,
+    ];
+    const answer = await proposeFormForTurn({
+      history,
+      question: reply,
+      questionMessageId: "q2",
+      actor: { role: "admin" as never, scope: GLOBAL },
+      continueTemplateKey: continuationFor(history)?.templateKey,
+      summaries: LIBRARY as never,
+      today: "2026-10-22",
+    });
+    expect(answer?.formProposal?.employeeName).toBe("Jane Doe");
+    expect(answer?.formProposal?.locationId).toBe(salon);
+  });
+
+  it("no number at all: the form names no salon, as before", async () => {
+    const proposal = await propose("coaching form for Jane Doe");
+    expect(proposal.locationResolution).toBe("not_applicable");
+    expect(proposal.status).toBe("ready");
+  });
+});
