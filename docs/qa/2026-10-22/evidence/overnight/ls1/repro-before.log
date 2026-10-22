@@ -1,0 +1,103 @@
+
+ RUN  v4.1.11 /home/user/ask-sunny
+
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  19:18:39
+   Duration  5.43s (transform 967ms, setup 0ms, import 1.12s, tests 4.09s, environment 0ms)
+
+
+ RUN  v4.1.11 /home/user/ask-sunny
+
+ERROR:  duplicate key value violates unique constraint "employee_account_links_one_account_per_employee"
+DETAIL:  Key (source_system, external_employee_id)=(woven, LS-ab2bd7-LINKED) already exists.
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_linked_names_employee"
+DETAIL:  Failing row contains (6b3536ea-d926-4344-adaf-ed415be5d55b, woven_linked, woven, null, admin_manual, f, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 19:18:48.258566+00, 2026-10-22 19:18:48.258566+00, null, null, null, null, 0, null).
+ERROR:  new row for relation "employee_account_links" violates check constraint "employee_account_links_unmanaged_manages_nothing"
+DETAIL:  Failing row contains (6b3536ea-d926-4344-adaf-ed415be5d55b, not_woven_managed, woven, null, admin_manual, t, f, f, null, null, null, null, null, null, null, null, test, 2026-10-22 19:18:48.312008+00, 2026-10-22 19:18:48.312008+00, null, null, null, null, 0, null).
+ERROR:  update or delete on table "app_users" violates foreign key constraint "employee_account_links_app_user_id_fkey" on table "employee_account_links"
+DETAIL:  Key (id)=(0df1a657-e403-4f4d-8906-888cb41c9441) is still referenced from table "employee_account_links".
+ERROR:  employee_access_actions is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_actions_guard() line 3 at RAISE
+ERROR:  employee_access_runs is append-only
+CONTEXT:  PL/pgSQL function public.employee_access_runs_guard() line 11 at RAISE
+ERROR:  new row for relation "employee_access_actions" violates check constraint "employee_access_actions_action_check"
+DETAIL:  Failing row contains (d4b2baaa-6767-4ede-8762-5a1228821d48, 06965e9f-83f6-4a3f-9479-af1073cca001, BAD-2, null, DELETE_EVERYONE, t, {}, null, null, null, shadow, 2026-10-22 19:18:50.749421+00, null).
+CONTEXT:  SQL statement "insert into public.employee_access_actions (
+    access_run_id, external_employee_id, app_user_id, action, is_primary, reason_codes,
+    before_values, after_values, woven_source_at, result
+  )
+  select
+    v_run,
+    a ->> 'external_employee_id',
+    nullif(a ->> 'app_user_id', '')::uuid,
+    a ->> 'action',
+    coalesce((a ->> 'is_primary')::boolean, false),
+    coalesce(array(select jsonb_array_elements_text(a -> 'reason_codes')), '{}'),
+    a -> 'before_values',
+    a -> 'after_values',
+    nullif(a ->> 'woven_source_at', '')::timestamptz,
+    'shadow'
+  from jsonb_array_elements(p_actions) as a"
+PL/pgSQL function public.employee_access_record_shadow_run(text,uuid,text,text[],jsonb,jsonb) line 21 at SQL statement
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_account_links
+ERROR:  permission denied for table employee_access_actions
+ERROR:  permission denied for table employee_access_runs
+ERROR:  cannot insert into view "employee_access_accounts"
+DETAIL:  Views that do not select from a single table or view are not automatically updatable.
+HINT:  To enable inserting into the view, provide an INSTEAD OF INSERT trigger or an unconditional ON INSERT DO INSTEAD rule.
+ERROR:  new row for relation "employee_access_runs" violates check constraint "employee_access_runs_shadow_is_final"
+DETAIL:  Failing row contains (49f54c1e-350e-45de-8a3f-b934e11f7235, shadow, x, null, p, running, {}, {}, 2026-10-22 19:18:52.75935+00, null).
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  19:18:46
+   Duration  6.62s (transform 713ms, setup 0ms, import 173ms, tests 6.16s, environment 0ms)
+
+
+ RUN  v4.1.11 /home/user/ask-sunny
+
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+ERROR:  update or delete on table "salons" violates foreign key constraint "woven_location_map_salon_id_fkey" on table "woven_location_map"
+DETAIL:  Key (id)=(ca5a59d4-af48-40b8-b787-565fb04531c2) is still referenced from table "woven_location_map".
+ ❯ src/lib/reviews/month-to-date.local-stack.test.ts (8 tests | 8 skipped) 174ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/reviews/month-to-date.local-stack.test.ts > month to date on the local stack
+Error: Command failed: psql postgres://supabase_admin@127.0.0.1:54329/postgres -At -v ON_ERROR_STOP=1 -c 
+      truncate public.google_reviews, public.google_review_periods,
+               public.google_review_sync_runs cascade;
+      delete from public.google_review_locations;
+      delete from public.salon_period_attributes where ingestion_id = '00000000-0000-0000-0000-00000000a11a';
+      delete from public.salons where salon_number in ('0462','0307','0309','0410','0495');
+NOTICE:  truncate cascades to table "google_review_period_anchors"
+NOTICE:  truncate cascades to table "google_review_apify_runs"
+NOTICE:  truncate cascades to table "google_review_reconciliation_items"
+ERROR:  update or delete on table "salons" violates foreign key constraint "woven_location_map_salon_id_fkey" on table "woven_location_map"
+DETAIL:  Key (id)=(ca5a59d4-af48-40b8-b787-565fb04531c2) is still referenced from table "woven_location_map".
+
+ ❯ sql src/lib/reviews/month-to-date.local-stack.test.ts:47:3
+     45|
+     46| const sql = (query: string) =>
+     47|   execFileSync("psql", [PG, "-At", "-v", "ON_ERROR_STOP=1", "-c", quer…
+       |   ^
+     48|     encoding: "utf8",
+     49|   }).trim();
+ ❯ src/lib/reviews/month-to-date.local-stack.test.ts:108:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  8 skipped (8)
+   Start at  19:18:53
+   Duration  946ms (transform 309ms, setup 0ms, import 454ms, tests 174ms, environment 0ms)
+

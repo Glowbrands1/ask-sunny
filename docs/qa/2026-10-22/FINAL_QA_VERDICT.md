@@ -1,5 +1,7 @@
 # Final QA verdict — Ask Sunny (JB & Associates / Sun Tan City) — 22 Oct 2026 (after the overnight validation)
 
+> **Superseded by the overnight pass:** see `OVERNIGHT_REPORT.md` (heads Sunny `e91b2e6`, Bubbles `7e68a0e`; Bubbles payroll-only is in production as `e7dd377`; B3 and LS-1 fixed).
+
 > **Superseded by the final safety check:** see `FINAL_RELEASE_RECOMMENDATION.md` (final code heads Sunny `880d19a`, Bubbles `225bf10`, payroll-only `56c45e1`; one more payroll defect fixed — corrections after the form exists).
 
 ## Recommendation: **PASS for release — subject to your approval and three decisions (below).**

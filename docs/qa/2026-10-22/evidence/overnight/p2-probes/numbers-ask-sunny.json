@@ -1,0 +1,169 @@
+{
+ "rows": [
+  {
+   "input": "coaching form for pat rivera at salon 306",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at salon 0306",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 306",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at #306",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at salon 307",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at salon 0307",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0307"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 307",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at salon 314",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at salon 0314",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0314"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 314",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at salon 462",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0462"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 140",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at wornall",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at ‹Bubbles store›",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0307"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 309",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0309"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 373",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0476"
+     ]
+    }
+   ]
+  }
+ ],
+ "typed": [
+  {
+   "digits": "306",
+   "one": null,
+   "candidates": [
+    "loc-0306",
+    "loc-0462"
+   ]
+  },
+  {
+   "digits": "307",
+   "one": null,
+   "candidates": [
+    "loc-0307",
+    "loc-0463"
+   ]
+  },
+  {
+   "digits": "314",
+   "one": null,
+   "candidates": [
+    "loc-0314",
+    "loc-0468"
+   ]
+  },
+  {
+   "digits": "0306",
+   "one": "loc-0306",
+   "candidates": [
+    "loc-0306"
+   ]
+  },
+  {
+   "digits": "0307",
+   "one": "loc-0307",
+   "candidates": [
+    "loc-0307"
+   ]
+  },
+  {
+   "digits": "0314",
+   "one": "loc-0314",
+   "candidates": [
+    "loc-0314"
+   ]
+  }
+ ]
+}

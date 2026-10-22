@@ -1,0 +1,10 @@
+
+/home/user/ask-sunny/src/features/admin/woven/dry-run-diagnostics.dom.test.tsx
+  64:26  warning  '_r' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  64:51  warning  '_t' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/home/user/ask-sunny/src/lib/employees/woven/status-evidence.test.ts
+  152:11  warning  'summary' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 3 problems (0 errors, 3 warnings)
+

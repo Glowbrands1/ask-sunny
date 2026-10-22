@@ -1,5 +1,7 @@
 # Final release recommendation — 22 Oct 2026
 
+> **Superseded by the overnight pass:** see `OVERNIGHT_REPORT.md` (heads Sunny `e91b2e6`, Bubbles `7e68a0e`; Bubbles payroll-only is in production as `e7dd377`; B3 and LS-1 fixed).
+
 All three candidates are **GO, subject to your approval and the prerequisites listed**. Nothing has been merged, deployed or opened as a pull request; no real HR record was read or changed. Both apps remain **ON HOLD**.
 
 Final safety check (payroll corrections after the form exists) found and fixed one genuine defect in both apps — `pre-release/POST_CREATION_PAYROLL_CHECK.md`.
