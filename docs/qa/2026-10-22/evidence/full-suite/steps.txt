@@ -1,9 +1,5 @@
-ask-sunny full suite exit 1 (379s)
- Test Files  1 failed | 515 passed | 12 skipped (528)
-      Tests  1 failed | 12324 passed | 131 skipped (12456)
+ask-sunny 771466e full suite exit 0 (381s)
+ Test Files  517 passed | 12 skipped (529)
+      Tests  12367 passed | 131 skipped (12498)
 ask-sunny tsc exit 0
-ask-sunny eslint exit 0 :: ✖ 3 problems (0 errors, 3 warnings)  
-ask-sunny full suite rerun HEAD=4ee4c1b exit 1 (410s)  [corrected: the logged "exit 0" was $? of a command substitution; the JSON report says success=false]
- Test Files  1 failed | 515 passed | 12 skipped (528)
-      Tests  2 failed | 12323 passed | 131 skipped (12456)
-eslint origin/main for comparison: sunny-main 1feaa75 ✖ 3 problems (0 errors, 3 warnings); bubbles-main 3395e8d ✖ 9 problems (0 errors, 9 warnings)
+ask-sunny eslint exit 0 :: ✖ 3 problems (0 errors, 3 warnings)

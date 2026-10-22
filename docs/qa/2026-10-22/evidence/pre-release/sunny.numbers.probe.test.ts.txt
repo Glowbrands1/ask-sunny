@@ -1,0 +1,14 @@
+/** QA PROBE (not committed): how typed salon numbers 306/307/314 resolve. */
+import { writeFileSync } from "node:fs";
+import { it } from "vitest";
+import * as mention from "@/lib/forms/salon-mention";
+const INPUTS = ["coaching form for pat rivera at salon 306", "coaching form for pat rivera at salon 0306", "coaching form for pat rivera at store 306", "coaching form for pat rivera at #306", "coaching form for pat rivera at salon 307", "coaching form for pat rivera at salon 0307", "coaching form for pat rivera at store 307", "coaching form for pat rivera at salon 314", "coaching form for pat rivera at salon 0314", "coaching form for pat rivera at store 314", "coaching form for pat rivera at salon 462", "coaching form for pat rivera at store 140", "coaching form for pat rivera at wornall", "coaching form for pat rivera at ‹Bubbles store›", "coaching form for pat rivera at salon 309", "coaching form for pat rivera at store 373"];
+it("numbers", async () => {
+  const text = await import("@/lib/forms/salon-text").catch(() => null);
+  const rows = INPUTS.map((input) => ({
+    input,
+    mentions: mention.readSalonMentions(input),
+  }));
+  const typed = text && "salonsForTypedNumber" in text ? ["306", "307", "314", "0306", "0307", "0314"].map((d) => ({ digits: d, one: (text as any).salonForTypedNumber(d)?.id ?? null, candidates: (text as any).salonsForTypedNumber(d).map((s: any) => s.id) })) : "salon-text.ts typed-number readers not present";
+  writeFileSync(process.env.QA_OUT!, JSON.stringify({ rows, typed }, null, 1));
+});

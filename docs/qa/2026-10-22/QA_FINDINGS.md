@@ -53,6 +53,17 @@ Probe numbers are branch / `main`, same harness and fixtures (`REGRESSION_MATRIX
 | F-03d | Low | "…for pat rivera dated 10/20" named "pat rivera dated" | Sunny `2eaf93e`; Bubbles guard `999ac00` |
 | T-1 | Low (test) | One Bubbles chat-route expectation still capitalised the name after the spelling decision | Bubbles `2ea0a93` (casing of one expected value, commented) |
 
+### Found and fixed in the overnight validation (after the first final report)
+| ID | Sev. | What | Root cause | Fix (Bubbles / Sunny) | Tests (fail before) |
+|---|---|---|---|---|---|
+| F-01b | **High** | Other negations beside an amount still read **Yes** ("we're not doing / skip / no need for / hold off on the $25 payroll deduction", "payroll deduct $25 does not apply"); "we did not waive…" read No | An amount next to "payroll deduct" was a Yes unless a fixed negative phrasing matched | `e061750` / `9e84273` (+ payroll-only `2897163`): an amount-implied Yes needs no denial beside it, otherwise asked | 31 (16 fail on Bubbles `main`) |
+| F-01c | Medium | Action Plan "**$25,** will be deducted…" (both `main`s) | Money pattern took the clause's comma | `72c24be` / `16b2836` (+ `711f893`) | 7 (3) |
+| F-01d | **High** | A withdrawn Yes stayed on the card: the withdrawing turn left the form (both `main`s) | Open-form continuation only kept payroll turns read as Yes/No | `14c37f3` / `771466e` (+ `483e6b4`) | 4 (4) |
+| UI-T | Low (CI) | Sunny chat-UI tests timed out by chance | First test per file imports the whole chat screen (4.6–6.2 s vs 5 s) | Sunny `52fceb0`: per-file `testTimeout` 20 s, no assertion changed | 0/220 vs 17/220 |
+| LS-2 | Low (test) | Bubbles revocation local-stack test 22/25 since 8 Oct | Liveness proven by a knowledge read that migration `20261003001000` closed | Bubbles `82b34e3`: liveness via `authorizeRequest`; stricter knowledge assertion added; termination checks unchanged | 25/25 |
+
+Final heads: **Ask Sunny `771466e`** (full suite 12,367 / 0 failed), **Ask Bubbles `82b34e3`** (10,139 / 0 failed), payroll-only option `483e6b4` (9,793 / 0 failed, local).
+
 ### Remaining defects (none introduced by the branches)
 | ID | App | Sev. | Description | Origin | Recommended action |
 |---|---|---|---|---|---|
@@ -60,9 +71,9 @@ Probe numbers are branch / `main`, same harness and fixtures (`REGRESSION_MATRIX
 | B3 | both | Low | After a ready card and "i already told you", a one-word "today" falls to the grounded answer; the suggestion picker ends the intake (nothing wrong is saved; the card must be reopened) | pre-existing (both `main`s) | read a bare date/day word as an answer to the open form |
 | R1 | both | Low | "pat rivera was late again today. I already coached her last week… what should I do?" — with a **lower-case** name the turn leaves the forms path (no card); the capitalised R4 works | pre-existing | read typed names in the opportunity detector |
 | N5 | Bubbles | Low | A global admin replies a bare "‹Bubbles store number›" when no store question is open → picker ends the intake (correctly not read as a store, per F-12 criterion 1, but the intake drops) | pre-existing | same mechanism as B3 |
-| UI-T | Sunny | Low (CI flake) | `rollout-fixes.dom.test.tsx` and `rating-stays-in-place.dom.test.tsx` run ~4.4–5.2 s against the 5 s default timeout; baseline 11/110 failed executions vs branch 6/110 | pre-existing | per-file timeout headroom (needs your authorization: test configuration) |
+| UI-T (**fixed** `52fceb0`) | Sunny | Low (CI flake) | `rollout-fixes.dom.test.tsx` and `rating-stays-in-place.dom.test.tsx` run ~4.4–5.2 s against the 5 s default timeout; baseline 11/110 failed executions vs branch 6/110 | pre-existing | per-file timeout headroom (needs your authorization: test configuration) |
 | LS-1 | Sunny | Low (test isolation) | `month-to-date.local-stack.test.ts` fails when run after the Woven access local-stack tests leave `woven_location_map` rows (FK); identical on `main`; passes in the standard order (78/78) | pre-existing | clean up rows in the access test |
-| LS-2 | Bubbles | Low (stale test) | `revocation.local-stack.test.ts`: 3 tests expect a browser token to read knowledge, which migration `20261003001000_knowledge_server_only.sql` deliberately revoked; identical on `main` | pre-existing | update the 3 expectations to the server-only rule |
+| LS-2 (**fixed** `82b34e3`) | Bubbles | Low (stale test) | `revocation.local-stack.test.ts`: 3 tests expect a browser token to read knowledge, which migration `20261003001000_knowledge_server_only.sql` deliberately revoked; identical on `main` | pre-existing | update the 3 expectations to the server-only rule |
 | F-10 | both | Medium (product/data) | district/region managers cannot file | by design | provide verified district→location assignments |
 | F-14 | Sunny | Low | deliberate branch behaviors awaiting confirmation | branch | confirm or revert |
 | F-17 | both | Info/Low | minor reviewer notes | mostly pre-existing | backlog |

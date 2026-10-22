@@ -1,0 +1,153 @@
+{
+ "rows": [
+  {
+   "input": "coaching form for pat rivera at salon 306",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 0306",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 306",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at #306",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 307",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0307"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 0307",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0307"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 307",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0307"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 314",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0314"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 0314",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0314"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 314",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0314"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 462",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0462"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 140",
+   "mentions": []
+  },
+  {
+   "input": "coaching form for pat rivera at wornall",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0306"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at ‹Bubbles store›",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0307"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at salon 309",
+   "mentions": [
+    {
+     "salonIds": [
+      "loc-0309"
+     ]
+    }
+   ]
+  },
+  {
+   "input": "coaching form for pat rivera at store 373",
+   "mentions": []
+  }
+ ],
+ "typed": "salon-text.ts typed-number readers not present"
+}

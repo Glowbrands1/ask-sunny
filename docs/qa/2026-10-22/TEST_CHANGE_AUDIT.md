@@ -113,3 +113,19 @@ No other existing test line changed after F-12. F-03d and X2 are new test files 
 | Failures | 1 (run 1) and 2 (run 2): `rollout-fixes.dom.test.tsx` timeouts only — pre-existing, Phase 2 | **0** |
 
 Fail-before logs: `evidence/fail-before/`.
+
+# Overnight validation (22 Oct, after the first final report)
+
+| App | File | Before → after | Why | Verdict |
+|---|---|---|---|---|
+| Sunny | `src/features/chat/rollout-fixes.dom.test.tsx`, `rating-stays-in-place.dom.test.tsx` (`52fceb0`) | + `vi.setConfig({ testTimeout: 20_000 })` and a comment; nothing removed | First test per file pays the chat-screen import (4.6–6.2 s vs 5 s). 10 alternating runs: 17/220 failed without, 0/220 with. Same headroom as `import-every-role` (`7b3edea`, on `main`). `waitFor` timeouts unchanged | test configuration, authorized ("fix test-harness issues without weakening assertions"); no assertion changed |
+| Bubbles | `src/lib/auth/revocation.local-stack.test.ts` (`82b34e3`) | BEFORE / CONTROL / re-enable: "token reads knowledge_documents" → "session passes `authorizeRequest`"; BEFORE gains "even an ACTIVE token is refused on knowledge_documents and knowledge_chunks" | The direct knowledge read was closed for every browser token by `20261003001000_knowledge_server_only.sql`; the checks were false by design since 8 Oct (identical on `main`). Every termination assertion (sessions, refresh, API, direct reads, recovery link, password) unchanged | liveness proof moved to the app's real path; one stricter assertion added; 25/25 |
+
+New tests (additions only): `qa-f01b-payroll-fail-safe.test.ts` (31 + 7 amount cases, both apps; Bubbles 16 fail on `main`, Sunny 10 fail on `4a4ac93`; amount cases 3 fail before), `qa-w1-payroll-proposal.test.ts` (+4 withdrawal cases, both apps; 4 fail before). Logs: `evidence/pre-release/*-before*.log`.
+
+| | Sunny `771466e` | Bubbles `82b34e3` |
+|---|---|---|
+| Tests vs QA baseline | 12,060 → **12,498** | 9,785 → **10,198** |
+| Skipped | **131** (unchanged) | **59** (unchanged) |
+| Failures | **0** | **0** |
+| `.skip` / `.only` / `.todo` added | none | none |

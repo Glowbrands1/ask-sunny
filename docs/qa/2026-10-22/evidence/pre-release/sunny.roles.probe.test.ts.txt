@@ -1,0 +1,102 @@
+/**
+ * QA PROBE (not committed) — criteria 3 (previous coaching in natural phrasing)
+ * and 5 (location authorization), through the real create route and the real
+ * chat answer path. Records only; no scenario can stop another.
+ */
+import { writeFileSync } from "node:fs";
+import { afterAll, beforeEach, it, vi } from "vitest";
+
+import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
+import type { AccessScope, ChatMessage } from "@/types";
+
+
+const store: FakeStore = { form_instances: [], form_instance_values: [], form_instance_events: [], form_template_versions: [], form_templates: [], form_template_current: [], form_template_assets: [] };
+const state = vi.hoisted(() => ({ role: "", scope: null as unknown, directory: [] as unknown[] }));
+
+vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+vi.mock("@/lib/api/respond", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/respond")>();
+  return { ...actual, assertLiveMode: () => {}, assertNoConfigurationProblems: () => {}, assertWithinRateLimit: () => {} };
+});
+vi.mock("@/lib/auth/server", async () => {
+  const { AuthError } = await import("@/lib/auth/types");
+  const permissions = await import("@/lib/permissions");
+  return {
+    authorizeRequest: async (_request: Request, permission: string) => {
+      if (!permissions.hasPermission(permissions.DEFAULT_PERMISSION_MATRIX, state.role as never, permission as never)) {
+        throw new AuthError("forbidden", "Your role does not have permission to do that.");
+      }
+      return { identity: { subject: `user-${state.role}`, email: "m@example.com", displayName: "Manager", role: state.role, scope: state.scope, verified: true }, permission, provider: "supabase" };
+    },
+  };
+});
+vi.mock("@/lib/config/server-env", async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }) }));
+vi.mock("@/lib/knowledge/providers/supabase", () => ({
+  SupabaseKnowledgeProvider: class {
+    readonly name = "probe";
+    async match() { return []; }
+    async search() { return []; }
+    async fetchRoleGrounding(role: { id: string }) {
+      const rows = ["SECTION 2 – PERFORMANCE MANAGEMENT LADDER", "SECTION 3 – COACHING FRAMEWORK", "SECTION 6 – DPOA FRAMEWORK", "SECTION 8 – FOLLOW-UP DOCUMENTATION FRAMEWORK"].map((locator, index) => ({ chunk_id: `pmf-${index}`, document_id: "doc-pmf", document_title: "PERFORMANCE MANAGEMENT FRAMEWORK", category: "leadership_coaching", locator, page: null, section: locator, content: `Framework text: ${locator}.`, similarity: 0 }));
+      return { ok: true, grounding: { role: { id: role.id }, documentId: "doc-pmf", documentTitle: "PERFORMANCE MANAGEMENT FRAMEWORK", matchedBy: "tag", rows, presentGroups: ["escalation_authority", "escalation_ladder", "coaching_framework", "epp_framework", "dpoa_framework", "follow_up_documentation", "final_operating_rule"] } };
+    }
+    async fetchOfficialPolicyManual() { return { ok: false, reason: "probe" }; }
+    async fetchNamedHandbook() { return { ok: false, reason: "probe" }; }
+  },
+}));
+vi.mock("@/lib/ai/call-claude", () => ({ callClaude: async () => "[MODEL ANSWER]" }));
+vi.mock("@/lib/reporting/read/report-briefing", () => ({ loadReportBriefing: async () => null }));
+vi.mock("@/lib/reporting/read/employee-facts", () => ({ loadEmployeeFacts: async () => null, NO_EMPLOYEE_DATASET_REASON: "no dataset", EMPLOYEE_DATA_HEADING: "CURRENT EMPLOYEE PERFORMANCE DATA" }));
+vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
+  return { ...actual, loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope) };
+});
+
+process.env.NEXT_PUBLIC_DEMO_MODE = "false";
+const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
+const { answerQuestion } = await import("@/lib/ai/server-ask");
+const { continuationFor } = await import("@/lib/forms/proposal-continuation");
+const instancesRoute = await import("@/app/api/forms/instances/route");
+
+
+const results: Record<string, unknown>[] = [];
+const PAT = { id: "e-1", firstName: "Pat", lastName: "Rivera", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0310"] };
+beforeEach(async () => {
+  for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-21T18:00:00Z"));
+  await ensureTemplateLibrary("system");
+  state.directory = [PAT];
+});
+const SALON: AccessScope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
+const permissions = await import("@/lib/permissions");
+it("matrix", () => {
+  for (const role of ["employee", "assistant_salon_director", "salon_director"]) {
+    results.push({ kind: "matrix", role, permissions: [...(permissions.DEFAULT_PERMISSION_MATRIX as Record<string, string[]>)[role]!].sort() });
+  }
+});
+for (const role of ["employee", "assistant_salon_director", "salon_director"]) {
+  it(`create every template as ${role}`, { timeout: 120_000 }, async () => {
+    state.role = role; state.scope = SALON;
+    const keys = ((store.form_templates ?? []) as { key: string; required_permission: string; active: boolean }[]).map((t) => ({ key: t.key, perm: t.required_permission, active: t.active }));
+    for (const t of keys) {
+      let status: number | string;
+      try {
+        const response = await instancesRoute.POST(new Request("https://app.test/api/forms/instances", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ templateKey: t.key, employeeName: "Pat Rivera", locationId: "loc-0310", source: "manual" }) }));
+        status = response.status;
+      } catch (e) { status = `threw ${String(e)}`; }
+      results.push({ kind: "create", role, template: t.key, requiredPermission: t.perm, active: t.active, status });
+    }
+  });
+  it(`chat card as ${role}`, { timeout: 60_000 }, async () => {
+    state.role = role; state.scope = SALON;
+    const q = "create a coaching form for pat rivera, late 3 times this week";
+    let out: unknown;
+    try {
+      const a = (await answerQuestion({ question: q, mode: "standard", history: [] as ChatMessage[], questionMessageId: "u1", scopeId: "sun-tan-city", context: { userName: "Probe", locationName: "", todayIso: "2026-10-21" } } as never, { role: role as never, scope: SALON })) as Record<string, unknown>;
+      out = { proposal: Boolean(a.formProposal), selection: Boolean(a.formSelection), content: String(a.content ?? "").slice(0, 160) };
+    } catch (e) { out = `threw ${String(e)}`; }
+    results.push({ kind: "chat", role, question: q, out });
+  });
+}
+afterAll(() => writeFileSync(process.env.QA_OUT!, JSON.stringify(results, null, 1)));
