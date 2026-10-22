@@ -75,7 +75,7 @@ Ask Sunny's tests, comments and docs now use synthetic people only, the
 policy-manual fixture has invented wording, and
 `src/lib/security/no-real-people.test.ts` guards company addresses.
 
-**Not yet done in Ask Bubbles — needed there too.** Its public tree carries
-some of the same real Sun Tan City names and work addresses through ported
-code and tests. It needs the same cleanup, plus a check of its own company's
-people against its own directory, in a separate pull request.
+**Ported to Ask Bubbles** in Glowbrands1/Ask-bubbles#71, together with the
+Corrective Action recipient fix (6b5f897). Bubbles' own company's people were
+checked against its own directory and replaced too; it has no copy of the
+policy-manual fixture.
