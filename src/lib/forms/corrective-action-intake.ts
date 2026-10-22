@@ -273,8 +273,13 @@ const LEVEL_HISTORY_HEADING =
 /** "actually written", "no, make it verbal" — a correction's lead-in. */
 const LEVEL_LEAD_IN = String.raw`(?:(?:actually|no|sorry|oops|wait|ok|okay|rather|i\s+meant|i\s+mean|make\s+that)[\s,:-]*)*`;
 
+/*
+ * "No, keep it verbal" / "keep it as a verbal" (QA X2, 22 Oct 2026): taking a
+ * level back after "make it a written warning" kept Written, because "keep it"
+ * was not a level statement. The same lead-ins as Ask Bubbles' warning-level.ts.
+ */
 const LEVEL_BARE = new RegExp(
-  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
+  String.raw`^\s*(?:\d+\s*[.)]?\s*)?${LEVEL_LEAD_IN}(?:(?:it'?s|it\s+is|make\s+it|keep\s+(?:it|this)(?:\s+(?:as|at))?|just|only)\s+)?(?:a\s+)?(verbal|written)(?:\s+warning)?\s*$`,
 );
 
 const LEVEL_LABELLED =
