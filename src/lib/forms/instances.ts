@@ -951,7 +951,6 @@ export async function finalizeInstance(
     before.values,
   ).map((field) => field.key);
 
-
   if (unverified.length > 0 && options.acknowledgeUnverifiedPolicy !== true) {
     throw new UnverifiedPolicyError(unverified);
   }
