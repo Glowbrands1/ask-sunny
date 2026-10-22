@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 /**
  * ============================================================================
@@ -115,6 +115,16 @@ async function cookiesFor(session: { access_token: string; refresh_token: string
 }
 
 describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local stack)", { timeout: 90_000 }, () => {
+  /*
+   * THE STORE MAPPINGS THIS SUITE ADDED, REMOVED AGAIN. LS-1 (QA, 22 Oct
+   * 2026): they point at salon 0307 with ON DELETE RESTRICT, so the
+   * month-to-date suite, which resets that salon for its own data, failed its
+   * setup whenever it ran after this one.
+   */
+  afterAll(() => {
+    sql(`delete from public.woven_location_map where woven_location_id in ('WL-${run}')`);
+  });
+
   let admin: SupabaseClient;
   const OURS = [
     "NEW", "LINKME", "DUP1", "DUP2", "UNMAPPED", "NOEMAIL", "CONFLICT", "GONE", "RACE", "NOINVITE",
@@ -413,7 +423,6 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
     expect(sql(`select count(*) from public.employee_account_links where app_user_id in ('${ids.ADMINMATCH}', '${data.user!.id}')`)).toBe("0");
   });
 
-
   it("LINK_EXISTING: the exact email match is linked (status managed for a salon SD), and the account itself is untouched", async () => {
     const before = sql(`select to_jsonb(u)::text from public.app_users u where id = '${ids.LINKME}'`);
     const outcome = await apply(["LINK_EXISTING"], REDIRECT, [id("LINKME")]);
@@ -565,6 +574,16 @@ describe.skipIf(!ENABLED)("the Woven account lifecycle on real services (local s
  * disposable copies of those EmployeeIDs (no real person, no real account).
  * ------------------------------------------------------------------------- */
 describe.skipIf(!ENABLED)("data change: managed_status for the 16 approved SD/ASD links (local stack)", { timeout: 90_000 }, () => {
+  /*
+   * THE STORE MAPPINGS THIS SUITE ADDED, REMOVED AGAIN. LS-1 (QA, 22 Oct
+   * 2026): they point at salon 0307 with ON DELETE RESTRICT, so the
+   * month-to-date suite, which resets that salon for its own data, failed its
+   * setup whenever it ran after this one.
+   */
+  afterAll(() => {
+    sql(`delete from public.woven_location_map where woven_location_id in ('WL-DC-${run}')`);
+  });
+
   const FILE = "supabase/data-changes/20261006_woven_status_managed_sd_asd.sql";
   const APPROVED = [...readApproved()];
   function readApproved(): string[] {

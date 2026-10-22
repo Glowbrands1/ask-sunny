@@ -151,6 +151,13 @@ export const NOT_A_TYPED_NAME = new Set([
   "flops", "jeans", "shorts", "toed", "open", "opened", "closed", "smoking", "vaping",
   "language", "profanity", "gum", "food", "eating", "drinking", "sleeping", "callout",
   "callouts", "call-out", "call-outs", "no-show", "no-shows",
+  /*
+   * "create verbal ca for pat rivera dated 10/20" named "pat rivera dated" (QA
+   * F-03d, 22 Oct 2026): a third word followed by a date was kept as a middle
+   * name. The words that introduce a form's date are never part of a name —
+   * the same rule as Ask Bubbles' `name-words.ts`.
+   */
+  "dated", "dates", "due", "happened", "occurred", "ago",
 ]);
 
 /*

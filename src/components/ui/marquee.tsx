@@ -47,7 +47,7 @@ export function SectionRule({
       {action ? (
         <Link
           href={action.href}
-          className="eyebrow shrink-0 whitespace-nowrap hover:text-foreground"
+          className="eyebrow inline-flex min-h-6 shrink-0 items-center whitespace-nowrap hover:text-foreground"
         >
           {action.label}
           <ArrowUpRight className="ml-1 inline size-2.5" aria-hidden />
@@ -297,7 +297,7 @@ export function BareList({
         {action ? (
           <Link
             href={action.href}
-            className="eyebrow ml-auto whitespace-nowrap hover:text-foreground"
+            className="eyebrow ml-auto inline-flex min-h-6 items-center whitespace-nowrap hover:text-foreground"
           >
             {action.label}
             <ArrowUpRight className="ml-1 inline size-2.5" aria-hidden />

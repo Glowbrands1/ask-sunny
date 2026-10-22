@@ -130,10 +130,13 @@ export async function GET() {
      * assistant, and assuming one rule covers both is the mistake this block
      * exists to stop.
      *
-     * THE REPORTS READ SUPABASE IN EITHER MODE. Not one of the five report
-     * pages consults `isDemoMode`, and the reporting read layer contains no
-     * demo branch at all — verified by test. So a Preview built in demo mode
-     * still shows REAL report data, and report QA on it is valid.
+     * THE REPORTS READ SUPABASE, AND DEMO MODE NEVER HOLDS THE PRIVILEGED KEY.
+     * Not one of the five report pages consults `isDemoMode`, and the reporting
+     * read layer contains no demo branch at all — verified by test. But the key
+     * every report read needs is refused in demo mode (`supabaseSecretKey`), so
+     * a Preview built in demo mode shows reports as NOT CONNECTED. It never
+     * shows seeded report data, and it never shows the Production rows it could
+     * reach through an inherited key. Report QA needs a live-mode deployment.
      *
      * THE ASSISTANT DOES NOT. In demo mode `getAIProvider` returns
      * `MockAIProvider`, which invents figures. So every Ask Sunny answer on a
@@ -146,9 +149,12 @@ export async function GET() {
     qa: {
       reporting: {
         source: "supabase",
-        dependsOnMode: false,
+        dependsOnMode: true,
         configured: readiness.supabase.ready,
-        note: "All five reports read the reporting tables in Supabase in either mode. Demo mode does not substitute seeded report data, so report QA is valid on a preview whatever the mode says.",
+        note:
+          readiness.mode === "live"
+            ? "All five reports read the reporting tables in Supabase. Report QA is valid here."
+            : "Demo mode never holds the privileged Supabase key, so reports show as not connected here. Demo mode does not substitute seeded report data. Set NEXT_PUBLIC_DEMO_MODE=false for this environment and redeploy to QA reports.",
       },
       assistant: {
         provider: readiness.mode === "live" ? "claude" : "mock",

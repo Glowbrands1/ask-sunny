@@ -4,6 +4,7 @@ import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
 import { employeeState, managerContext, samePerson } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
+import { dateAnswerTurns } from "./incident-dates";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -39,8 +40,14 @@ export function checkProposalIsCurrent(input: {
   templateKey: string;
   employeeName: string;
 }): ProposalCurrency {
+  // An answer to "Which date goes on the form?" ("most recent") is not a name: see `dateAnswerTurns`.
+  const answers = dateAnswerTurns(input.conversation);
   const turns = input.conversation.filter(
-    (message) => message.role === "user" && typeof message.content === "string" && message.content.trim() !== "",
+    (message) =>
+      message.role === "user" &&
+      typeof message.content === "string" &&
+      message.content.trim() !== "" &&
+      !answers.has(message.content.trim()),
   );
   const last = turns[turns.length - 1];
   if (!last) return { current: true };

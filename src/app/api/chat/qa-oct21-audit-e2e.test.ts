@@ -32,9 +32,9 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * (in-memory), the employee directory read, the general-answer model, and
  * analytics. Every person is synthetic.
  *
- * ASK SUNNY'S OWN RULES, kept: a payroll Yes is read only when it is stated
- * ("applies", "yes"), never from an amount alone; the warning level is set on
- * the form, not asked in chat. Ask Bubbles' chat correction of the warning
+ * ASK SUNNY'S OWN RULE, kept: the warning level is set on the form, not asked
+ * in chat. Payroll is read with Ask Bubbles' reader since PR #129; the
+ * wordings below state the Yes outright, which both read the same. Ask Bubbles' chat correction of the warning
  * level and its server-side guard against a second Create are not in Ask
  * Sunny, so those scenarios are not here.
  */

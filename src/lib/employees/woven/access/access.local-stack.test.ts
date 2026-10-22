@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { createClient } from "@supabase/supabase-js";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
  * ============================================================================
@@ -55,6 +55,16 @@ const fingerprint = () => {
 };
 
 describe.skipIf(!ENABLED)("stage 1 on real Postgres (local stack)", { timeout: 60_000 }, () => {
+  /*
+   * THE STORE MAPPINGS THIS SUITE ADDED, REMOVED AGAIN. LS-1 (QA, 22 Oct
+   * 2026): they point at salon 0307 with ON DELETE RESTRICT, so the
+   * month-to-date suite, which resets that salon for its own data, failed its
+   * setup whenever it ran after this one.
+   */
+  afterAll(() => {
+    sql(`delete from public.woven_location_map where woven_location_id in ('WL-GI-${run}', 'WL-LIB-${run}')`);
+  });
+
   const ids = {
     protectedAdmin: "",
     candidate: "",

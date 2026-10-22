@@ -1,0 +1,883 @@
+[
+  {
+    "id": "P1",
+    "group": "Payroll stated No",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. we will not payroll deduct $25"
+    ],
+    "expected": "payroll No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "9daea476-0562-46fe-ad7c-f766653f06dc",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "P1-u1"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "P2",
+    "group": "Payroll stated No",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. don't payroll deduct $25"
+    ],
+    "expected": "payroll No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "9b2d1129-079a-42d2-9b82-f1ec4aaddbae",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "P2-u1"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "P3",
+    "group": "Payroll stated No",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. the $25 payroll deduction was waived"
+    ],
+    "expected": "payroll No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "6054e5ad-d7c5-4731-a787-fd3df9642566",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "P3-u1"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "P4",
+    "group": "Payroll stated No",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. payroll deduct $25 does not apply"
+    ],
+    "expected": "payroll No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "514b185e-7107-4f77-a065-07d423c862a9",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "P4-u1"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "P5",
+    "group": "Payroll stated No",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. no payroll deduct"
+    ],
+    "expected": "payroll No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "8f4ec5ed-769b-47e2-9679-0797e50770e2",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "P5-u1"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "Y1",
+    "group": "Payroll stated Yes",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. payroll deduct $25"
+    ],
+    "expected": "payroll Yes (positive control)",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=yes",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **Yes** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "a44983ca-e438-4b5c-bd59-83fe16068a5c",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "Y1-u1"
+          ],
+          "payrollDeduct": "yes",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "Y2",
+    "group": "Payroll stated Yes",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. $25 payroll deduction applies"
+    ],
+    "expected": "payroll Yes",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=yes",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **Yes** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "dd3920e3-a2ce-4a6a-8c31-e11bef7af1f4",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "Y2-u1"
+          ],
+          "payrollDeduct": "yes",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U1",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. we're not doing the $25 payroll deduction"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "402cb5e8-74b8-4ca1-b080-97269a78d7b5",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U1-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U2",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. the DM said skip the $25 payroll deduction"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "e11fda7a-2ab9-4994-9846-0d79eae2fdb2",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": "District Manager",
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U2-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U3",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. no need for the $25 payroll deduction"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "c44e9716-29d3-4169-8837-d4f95a691fff",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U3-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U4",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. maybe payroll deduct $25"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "d3923ddb-21ab-4c97-914f-a1c5f3726201",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U4-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U5",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. we did not waive the $25 payroll deduction"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "72edcc02-8a65-4b42-bbc4-104d84b15c9d",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U5-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U6",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. not sure about the payroll deduction yet"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "6410ae2c-0aee-4fe9-a481-67cade7c7161",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U6-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "U7",
+    "group": "Payroll ambiguous",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. hold off on the $25 payroll deduction"
+    ],
+    "expected": "blank; the card asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "47c24b2c-4456-4271-ab19-55cf155eefd3",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "U7-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "M1",
+    "group": "Payroll multi-turn",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. payroll deduct $25",
+      "actually we're not doing the $25 payroll deduction"
+    ],
+    "expected": "earlier Yes withdrawn: blank; asks",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=null",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **Yes** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "f86b6b15-e340-43b6-8ac7-46e31aafc43c",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M1-u1"
+          ],
+          "payrollDeduct": "yes",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "5c04b23d-b666-48fd-bae4-cc8443460f21",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M1-u1",
+            "M1-u2"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "M2",
+    "group": "Payroll multi-turn",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. no need for the $25 payroll deduction",
+      "no"
+    ],
+    "expected": "asked, then No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "60619f05-0530-4faa-b2a8-20c87bd8e47e",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M2-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "0f70d2e8-c09e-4a7f-9117-0a57f5d1bf3d",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M2-u1",
+            "M2-u2"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "M3",
+    "group": "Payroll multi-turn",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. no need for the $25 payroll deduction",
+      "yes"
+    ],
+    "expected": "asked, then Yes",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=yes",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "24da4bd6-5acb-4ada-976a-6a1da1eb0207",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M3-u1"
+          ],
+          "payrollDeduct": null,
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **Yes** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "0611b840-0f9e-42d0-9f97-cb6c77ad2e26",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M3-u1",
+            "M3-u2"
+          ],
+          "payrollDeduct": "yes",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "M4",
+    "group": "Payroll multi-turn",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. payroll deduct $25",
+      "actually no payroll deduct"
+    ],
+    "expected": "Yes then No: No",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=no",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **Yes** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "b60c533c-7f30-49cb-b500-ce6bd1e52b6f",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M4-u1"
+          ],
+          "payrollDeduct": "yes",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "a8d8d157-ca93-4e7e-b660-1eefb1539af2",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M4-u1",
+            "M4-u2"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  },
+  {
+    "id": "M5",
+    "group": "Payroll multi-turn",
+    "actor": "salon_director",
+    "turns": [
+      "create a verbal ca for pat rivera, she was late today. we will not payroll deduct $25",
+      "sorry, payroll deduct $25 after all"
+    ],
+    "expected": "No then Yes: Yes",
+    "pass": true,
+    "actual": "proposal dpoa employee=\"Pat Rivera\" status=ready location=loc-0310(resolved) formDate=null level=verbal payroll=yes",
+    "raw": [
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **No** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "5ccbb2dd-bbcc-4792-b012-9040c9517a04",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M5-u1"
+          ],
+          "payrollDeduct": "no",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      },
+      {
+        "content": "I'll draft a **Corrective Action Form** for **Pat Rivera** from what you've described, and check the applicable company policy before anything policy-related goes on it.\n\n**Type of Warning:** Verbal Warning, as you said — I'll tick it on the form. Tell me if that should change.\n\nYou'll set any prior coaching or corrective action on the form — I won't guess at it.\n\nIs payroll deduct applicable? **Yes** — tell me if that should change.\n\nCreate the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.",
+        "formProposal": {
+          "proposalId": "64c21347-53b0-420a-9fd4-462c6725ec3b",
+          "templateKey": "dpoa",
+          "templateName": "Corrective Action Form",
+          "supportsInlineDraft": true,
+          "variantKey": null,
+          "employeeName": "Pat Rivera",
+          "employeeRole": null,
+          "formDate": null,
+          "locationId": "loc-0310",
+          "locationName": null,
+          "locationResolution": "resolved",
+          "authorizedLocationIds": [],
+          "status": "ready",
+          "sourceMessageIds": [
+            "M5-u1",
+            "M5-u2"
+          ],
+          "payrollDeduct": "yes",
+          "warningLevel": "verbal"
+        },
+        "formProposals": [],
+        "formSelection": null,
+        "coverage": "not_applicable"
+      }
+    ]
+  }
+]

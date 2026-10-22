@@ -74,6 +74,7 @@ function ask(
   });
 }
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("a demotion asked for in one sentence", () => {
   it("prefills what was said, asks for the rest in one question, and offers the form", async () => {
     const response = await ask("demote paulyne from manager to tanning consultant effective october 5");
@@ -107,6 +108,7 @@ describe("a demotion asked for in one sentence", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("the three ways of naming the employee", () => {
   it.each(["paulyne co", "PAULYNE CO", "Paulyne Co"])("%s", async (name) => {
     const response = await ask(`Create a demotion form for ${name}`);
@@ -143,6 +145,7 @@ describe("a transfer stated rather than requested", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("answering the grouped question", () => {
   it("continues the open form when the reply is only details", async () => {
     const history = [manager("m1", "demote paulyne from manager to tanning consultant effective october 5")];
@@ -192,6 +195,7 @@ describe("permissions", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("the exit form is the one Resignation/Exit Form", () => {
   it("proposes stc-exit, not an employment change form", async () => {
     const response = await ask("I need an exit form for JOHN SMITH");
@@ -202,6 +206,7 @@ describe("the exit form is the one Resignation/Exit Form", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("found in hands-on QA: the chat copy", () => {
   it("does not read capitalised title and status abbreviations as other people", async () => {
     const response = await ask(
@@ -215,6 +220,7 @@ describe("found in hands-on QA: the chat copy", () => {
   });
 });
 
+// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
 describe("found in hands-on QA: facts from another employee's form never carry over", () => {
   it("reads a transfer for Jane from Jane's turn only, not from Paulyne's demotion before it", async () => {
     const history = [

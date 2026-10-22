@@ -20,7 +20,13 @@ import { formDateChange, formDateChangeUnclear, formDateReply } from "./form-dat
 import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
-import { PAYROLL_DEDUCT_KEY, payrollDeductChecked, payrollDeductCorrection, payrollDeductReply } from "./payroll-deduct";
+import {
+  PAYROLL_DEDUCT_KEY,
+  payrollDeductChecked,
+  payrollDeductCorrection,
+  payrollDeductReply,
+  payrollDeductUnclear,
+} from "./payroll-deduct";
 import { extractEmployeeNames } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { applyAssistantDraft, saveInstanceValues } from "./instances";
@@ -81,6 +87,12 @@ export async function correctActiveForm(input: {
     [...(input.history ?? [])].reverse().find((turn) => turn.role === "assistant" && !turn.error)?.content ?? "";
   const payroll = payrollDeductCorrection(input.question) ?? payrollDeductReply(input.question, lastAssistant);
   /*
+   * Something about the deduction that is not a clear Yes or No — "hold off on
+   * the $25 payroll deduction". On a form that asks the question it clears the
+   * answer and asks again (see below), never leaving a Yes in place.
+   */
+  const payrollUnclear = !payroll && payrollDeductUnclear(input.question);
+  /*
    * "CHANGE THE DATE TO 10-19-26" — read only where the date is named as what
    * is corrected; "change the date" or "10-2 or 10-3" is asked about, never
    * guessed. See `formDateChange`.
@@ -88,7 +100,7 @@ export async function correctActiveForm(input: {
   const newFormDate =
     formDateChange(input.question, input.today) ?? formDateReply(input.question, lastAssistant, input.today);
   const dateUnclear = newFormDate === null ? formDateChangeUnclear(input.question, input.today) : null;
-  if (!employmentCorrection && !exitCorrection && !payroll && !newFormDate && !dateUnclear) return null;
+  if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear && !newFormDate && !dateUnclear) return null;
 
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
@@ -120,7 +132,7 @@ export async function correctActiveForm(input: {
     fieldsForVariant(document, variantKey).some((field) => field.key === FORM_DATE_KEY);
   const correctsDate = datesTheIncident && newFormDate !== null;
   const whichDate = datesTheIncident && dateUnclear ? whichDateQuestion(loaded.instance, dateUnclear.offered) : null;
-  const correctsOtherwise = kind || isExit || (asksPayroll && payroll) || correctsDate;
+  const correctsOtherwise = kind || isExit || (asksPayroll && (payroll || payrollUnclear)) || correctsDate;
   if (!correctsOtherwise && !whichDate) return null;
   /*
    * ==========================================================================
@@ -174,7 +186,11 @@ export async function correctActiveForm(input: {
       ? exitValues
       : {
           values: correctsDate ? { [FORM_DATE_KEY]: newFormDate! } : {},
-          checked: asksPayroll ? payrollDeductChecked(payroll) : {},
+          checked: asksPayroll
+            ? payrollUnclear
+              ? { [PAYROLL_DEDUCT_KEY]: [] }
+              : payrollDeductChecked(payroll)
+            : {},
         };
   if (!correction) return null;
 
@@ -373,6 +389,21 @@ export async function correctActiveForm(input: {
     lines.push(
       "",
       payroll === "yes" ? "The Action Plan now states the payroll deduction." : "The Action Plan no longer states a payroll deduction.",
+    );
+  }
+  /*
+   * AN UNCLEAR PAYROLL STATEMENT ABOUT THIS FORM CLEARS THE ANSWER AND ASKS.
+   * QA, 22 Oct 2026: after a form with "Yes" was created, "hold off on the $25
+   * payroll deduction" or "not sure about the payroll deduction anymore" left
+   * the saved Yes — and the Action Plan's deduction sentence — in place while
+   * the chat moved on. A Yes the manager may have withdrawn is never kept: the
+   * box is cleared, the plan no longer states a deduction, and the manager is
+   * asked. Their next "yes" or "no" answers it (`payrollDeductReply`).
+   */
+  if (payrollUnclear && written.includes(PAYROLL_DEDUCT_KEY)) {
+    lines.push(
+      "",
+      `"${input.question.trim()}" isn't a clear Yes or No, so I cleared the answer rather than keep a Yes on the form. **Is payroll deduct applicable?** Yes or No?`,
     );
   }
   if (whichDate) lines.push("", whichDate);

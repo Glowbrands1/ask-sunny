@@ -1,0 +1,346 @@
+[
+ {
+  "text": "we will not payroll deduct $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "don't payroll deduct $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "$25 payroll deduction was waived",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "the $25 payroll deduction was waived",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "we won't payroll deduct the $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": null,
+  "planSentence": null
+ },
+ {
+  "text": "not going to payroll deduct $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "we decided not to payroll deduct $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "no longer payroll deducting $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "we waived the $25 payroll deduction",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "payroll deduction of $25 waived by DM",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "she will not be payroll deducted $25",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "we're not doing the $25 payroll deduction",
+  "want": "no?",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "the DM said skip the $25 payroll deduction",
+  "want": "no?",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "no need for the $25 payroll deduction",
+  "want": "no?",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "$25 payroll deduction is not applicable",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "payroll deduct $25 does not apply",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "payroll deduct $25",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "$25 payroll deduction",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "$25 will be payroll deducted",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "payroll deduct of $3.25 is applicable",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$3.25",
+  "planSentence": "$3.25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "yes payroll deduct",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": null,
+  "planSentence": "A payroll deduction applies."
+ },
+ {
+  "text": "payroll deduct yes",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": null,
+  "planSentence": "A payroll deduction applies."
+ },
+ {
+  "text": "deduct $25 from her paycheck",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "the payroll deduction was not waived, deduct $25",
+  "want": "yes?",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "we did not waive the $25 payroll deduction",
+  "want": "yes?",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "she was late, not her first time. payroll deduct $25",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "she did not call. payroll deduct $25",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "she did not call, payroll deduct $25",
+  "want": "yes?",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "maybe payroll deduct $25",
+  "want": "null",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "not sure about the payroll deduction yet",
+  "want": "null",
+  "stated": null,
+  "correction": null,
+  "amount": null,
+  "planSentence": null
+ },
+ {
+  "text": "payroll deduct $25 because she did not call",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "no call no show payroll deduct $25",
+  "want": "null",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "hold off on the $25 payroll deduction",
+  "want": "null",
+  "stated": null,
+  "correction": null,
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "cancel the $25 payroll deduction",
+  "want": "null",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "$25 payroll deduction is not needed",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": "$25",
+  "planSentence": null
+ },
+ {
+  "text": "yes payroll deduct $25",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "payroll deduct applies, $25",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": null,
+  "planSentence": "A payroll deduction applies."
+ },
+ {
+  "text": "we will payroll deduct $25",
+  "want": "yes",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "she owes $25, payroll deduct it",
+  "want": "yes?",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": null,
+  "planSentence": "A payroll deduction applies."
+ },
+ {
+  "text": "deduct $25 from her pay, not from tips",
+  "want": "null?",
+  "stated": "yes",
+  "correction": "yes",
+  "amount": "$25",
+  "planSentence": "$25 will be deducted from Pat's pay."
+ },
+ {
+  "text": "no payroll deduct",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": null,
+  "planSentence": null
+ },
+ {
+  "text": "payroll deduct no",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": null,
+  "planSentence": null
+ },
+ {
+  "text": "payroll deduct: no",
+  "want": "no",
+  "stated": "no",
+  "correction": "no",
+  "amount": null,
+  "planSentence": null
+ }
+]

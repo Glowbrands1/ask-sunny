@@ -1495,3 +1495,44 @@ describe("HIDE. the hiring forms are not offered as choices", () => {
     expect(response!.content).toMatch(/your role cannot create/i);
   });
 });
+
+/**
+ * ============================================================================
+ * A MANAGER WHO ASKED FOR A CORRECTIVE ACTION IS OFFERED ONE FIRST
+ * ============================================================================
+ *
+ * October 2026 (ported from Ask Bubbles 4cbb84c): "write a CA for Paisley" —
+ * and the cards under the next answer led with the Coaching Form. The
+ * manager's own turns, read through the same detector the explicit path uses,
+ * now put the Corrective Action Form first; nobody else's order changes.
+ */
+describe("suggested forms lead with the one the manager asked for", () => {
+  const suggested = async (history: ChatMessage[]) => {
+    const { proposals } = await load([template(), dpoa()]);
+    const found = proposals.suggestFormsForTurn(
+      turn("What does the policy say about training deadlines?", { history }) as never,
+    );
+    return found
+      ? [found.selection.primary.templateName, ...found.selection.additional.map((entry) => entry.templateName)]
+      : [];
+  };
+
+  // A second rung: coached once, and it happened again.
+  const ACCOUNT = "Paisley Peklo was late again. I verbally coached her last week and she was late again today.";
+
+  it('puts the Corrective Action Form first after "write a CA for …"', async () => {
+    expect(
+      await suggested([managerTurn("m1", "write a CA for Paisley Peklo"), managerTurn("m2", ACCOUNT)]),
+    ).toEqual(["Corrective Action Form", "Coaching Form"]);
+  });
+
+  it("keeps coaching first when nobody asked for a corrective action", async () => {
+    expect((await suggested([managerTurn("m2", ACCOUNT)]))[0]).toBe("Coaching Form");
+  });
+
+  it("does not count a question about the process as asking for one", async () => {
+    expect(
+      (await suggested([managerTurn("m1", "how do I write a CA?"), managerTurn("m2", ACCOUNT)]))[0],
+    ).toBe("Coaching Form");
+  });
+});

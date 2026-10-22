@@ -263,6 +263,14 @@ export function InlineForm({
    * previous "Finalize anyway" cannot silently authorise a later one.
    */
   const [confirmingPolicy, setConfirmingPolicy] = React.useState(false);
+  /*
+   * FINALIZE IS ASKED ONCE, TOO. It freezes an HR record — afterwards the only
+   * way to change it is a new draft that replaces it — and in live QA a single
+   * click did that with no chance to stop. When the policy dialog above is
+   * going to open anyway it is the confirmation, so the manager is never asked
+   * twice.
+   */
+  const [confirmingFinalize, setConfirmingFinalize] = React.useState(false);
 
   const call = React.useCallback(
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
@@ -421,7 +429,20 @@ export function InlineForm({
    * Details and then finalized without saving would freeze the version without
    * their change and have no way to correct it but a revision. So the control
    * is disabled while the editor is dirty, and this is the second guard.
+   *
+   * The button calls `requestFinalize`, which asks first. Where `finalize`
+   * would stop anyway — unsaved changes, or the policy acknowledgement that is
+   * itself a confirmation — it goes straight there instead.
    */
+  function requestFinalize() {
+    if (action.kind === "busy") return;
+    if (save.kind === "dirty" || save.kind === "saving" || unresolvedPolicy.length > 0) {
+      void finalize();
+      return;
+    }
+    setConfirmingFinalize(true);
+  }
+
   async function finalize(acknowledgeUnverifiedPolicy = false) {
     if (action.kind === "busy") return;
     if (save.kind === "dirty" || save.kind === "saving") {
@@ -457,6 +478,7 @@ export function InlineForm({
     }
 
     setConfirmingPolicy(false);
+    setConfirmingFinalize(false);
     setAction({ kind: "busy", what: "finalize" });
     try {
       await call(`/api/forms/instances/${instanceId}`, {
@@ -878,7 +900,7 @@ export function InlineForm({
               <Button
                 variant="accent"
                 size="sm"
-                onClick={() => void finalize()}
+                onClick={requestFinalize}
                 disabled={action.kind === "busy" || save.kind === "dirty" || save.kind === "saving"}
               >
                 {action.kind === "busy" && action.what === "finalize" ? (
@@ -952,6 +974,45 @@ export function InlineForm({
                   <Loader2 className="animate-spin" />
                 ) : null}
                 Finalize anyway
+              </Button>
+            </DialogActions>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      {/*
+        THE ORDINARY CONFIRMATION, worded the way the finalized card is: a
+        finalized form is changed by editing it as a new draft, never reopened.
+      */}
+      <Dialog
+        open={confirmingFinalize}
+        onOpenChange={(open) => {
+          if (!open) setConfirmingFinalize(false);
+        }}
+      >
+        {confirmingFinalize ? (
+          <DialogContent
+            title="Finalize this form?"
+            description={`${loaded.instance.templateName} · ${loaded.instance.employeeName}`}
+          >
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              {loaded.instance.revisesInstanceId
+                ? "Its values are frozen and it replaces the finalized original. To change it afterwards, edit it as a new draft. Signatures are signed on paper."
+                : "Its values are frozen. To change it afterwards, edit it as a new draft. Signatures are signed on paper."}
+            </p>
+            <DialogActions>
+              <Button variant="ghost" onClick={() => setConfirmingFinalize(false)}>
+                Keep editing
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void finalize()}
+                disabled={action.kind === "busy"}
+              >
+                {action.kind === "busy" && action.what === "finalize" ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Yes, finalize
               </Button>
             </DialogActions>
           </DialogContent>
