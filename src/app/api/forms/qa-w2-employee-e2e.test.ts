@@ -438,6 +438,32 @@ describe("F-09: a role before the name names the subject", () => {
   });
 });
 
+describe("F-06: two people is a question, never a form for one of them", () => {
+  it("asks which of them, with no ready card", async () => {
+    const { last } = await conversation(["coaching form for pat rivera and sam jones, both late"]);
+    expect(last.formProposal?.status ?? "needs_employee").toBe("needs_employee");
+    expect(last.formProposal?.employeeName ?? null).toBeNull();
+    expect(last.content).toMatch(/pat rivera/i);
+    expect(last.content).toMatch(/sam jones/i);
+  });
+
+  it("the answer naming one of them proceeds for that person, and only that person is saved", async () => {
+    const { proposal, form } = await filed(
+      ["coaching form for pat rivera and sam jones, both late", "sam jones"],
+      "Sam Jones was late.",
+    );
+    expect(proposal).toMatchObject({ employeeName: "Sam Jones", status: "ready" });
+    expect(form.instance.employeeName).toBe("Sam Jones");
+  });
+
+  it("'both' or 'either' is not an employee", async () => {
+    for (const reply of ["both", "either"]) {
+      const responses = await everyTurn(["coaching form for pat rivera and sam jones, both late", reply]);
+      expect(responses[1]?.formProposal?.employeeName ?? null).toBeNull();
+    }
+  });
+});
+
 describe("spelling: the manager's own, unless the directory matches exactly", () => {
   it("off the directory: as typed, on the card and on the saved form", async () => {
     const { proposal, form } = await filed(["coaching form for jane doe, late twice"], "Jane was late.");

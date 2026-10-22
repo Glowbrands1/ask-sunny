@@ -128,6 +128,13 @@ const WRAPPER_AFTER = /[)\]}"”’'»,.;:!?]+$/;
  * `whole` requires every word to be part of the name: it is the test for a
  * message (or an intake line) that consists of nothing else.
  */
+/*
+ * "BOTH", "EITHER" ARE NOBODY. QA, 22 Oct 2026 (F-06): asked "which of them is
+ * this for — pat rivera or sam jones?", a manager answering "both" got a form
+ * for an employee called "both". A word that counts people is never one.
+ */
+const COUNTS_PEOPLE = new Set(["both", "either", "neither", "each", "all", "everyone", "everybody", "anyone", "anybody", "nobody", "none", "whoever"]);
+
 function readTypedName(words: readonly string[], whole: boolean): string | null {
   const parts: string[] = [];
   let endedOnPunctuation = false;
@@ -150,6 +157,7 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       !ROLE_ABBREVIATION.test(word.toUpperCase()) &&
       (!NOT_A_TYPED_NAME.has(lower) || willAsFirstName(lower, parts.length, words, whole)) &&
       !NOT_A_NAME.has(lower) &&
+      !COUNTS_PEOPLE.has(lower) &&
       !isFormVocabulary(lower);
     if (!usable) {
       if (whole) return null;
@@ -1290,6 +1298,17 @@ function formSubjectNames(text: string): string[] {
     const following = after.slice(candidate.split(/\s+/).length);
     if (/^(?:employee|team|staff|named)$/i.test(following[0] ?? "")) continue;
     subjects.push(candidate);
+    /*
+     * "COACHING FORM FOR PAT RIVERA AND SAM JONES", typed in lower case, named
+     * only Pat (QA, 22 Oct 2026, F-06; ported from Ask Bubbles): the reader
+     * stops at "and", so the second person was dropped and the form went to the
+     * first without a word. A second name joined by "and" / "&" is a second
+     * candidate, so the manager is asked which of them — never handed one.
+     */
+    if (/^(?:and|&)$/i.test(following[0] ?? "")) {
+      const second = readTypedName(withoutSubjectLead(following.slice(1)).slice(0, 4), false);
+      if (second && typedNameAllowed(second) && !opensWithRosterState(second)) subjects.push(second);
+    }
   }
   return subjects;
 }

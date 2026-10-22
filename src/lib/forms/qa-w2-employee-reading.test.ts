@@ -122,6 +122,42 @@ describe("F-09: a role before the name names the subject", () => {
   });
 });
 
+describe("F-06: two people in one request is a question, never a choice", () => {
+  it.each([
+    "coaching form for pat rivera and sam jones, both late",
+    "coaching form for pat rivera & sam jones",
+    "coaching form for Pat Rivera and Sam Jones, both late",
+    "corrective action for the manager pat rivera and sam jones",
+  ])("%s", (text) => {
+    const resolution = after(text);
+    expect(resolution.kind).toBe("ambiguous");
+    expect(resolution.kind === "ambiguous" ? resolution.candidates.map((name) => name.toLowerCase()) : []).toEqual([
+      "pat rivera",
+      "sam jones",
+    ]);
+  });
+
+  it("naming one of them next proceeds for that person", () => {
+    expect(after("coaching form for pat rivera and sam jones, both late", "pat rivera")).toEqual({
+      kind: "resolved",
+      employeeName: "pat rivera",
+    });
+    expect(after("coaching form for pat rivera and sam jones, both late", "sam")).toEqual({
+      kind: "resolved",
+      employeeName: "sam jones",
+    });
+  });
+
+  it("'both' does not pick one", () => {
+    expect(after("coaching form for pat rivera and sam jones, both late", "both").kind).toBe("ambiguous");
+  });
+
+  it("'and' followed by something that is not a person adds nobody", () => {
+    expect(after("coaching form for pat rivera and her attendance")).toEqual({ kind: "resolved", employeeName: "pat rivera" });
+    expect(after("coaching form for pat rivera and the late openings")).toEqual({ kind: "resolved", employeeName: "pat rivera" });
+  });
+});
+
 describe("spelling: the manager's own", () => {
   it.each([
     ["coaching form for jane doe", "jane doe"],
