@@ -23,7 +23,7 @@ describe("an amount beside a denial is never a Yes", () => {
     "the DM said skip the $25 payroll deduction",
     "no need for the $25 payroll deduction",
     "hold off on the $25 payroll deduction",
-    "cancel the $25 payroll deduction",
+    // "cancel the $25 payroll deduction" moved to the No cases below: a cancellation is a waiver (QA, 22 Oct 2026).
     "instead of the $25 payroll deduction she will retrain",
   ])("%s → not read (asked)", (text) => {
     expect(statedPayrollDeduct(text)).toBeNull();
@@ -125,5 +125,21 @@ describe("the Action Plan's amount never carries the comma that ends the clause"
   it("an amount followed by a comma and then the deduction is not read as the amount", () => {
     expect(payrollDeductAmount("she owes $25, payroll deduction applies")).toBeNull();
     expect(payrollDeductSentence({ answer: "yes", amount: null, firstName: "Pat" })).toBe("A payroll deduction applies.");
+  });
+});
+
+describe("a cancelled deduction is a No; a denied cancellation is asked (QA, 22 Oct 2026)", () => {
+  it.each([
+    "we cancelled the $25 payroll deduction",
+    "cancel the $25 payroll deduction",
+    "the $25 payroll deduction was cancelled",
+    "the payroll deduction was called off",
+  ])("%s → No", (text) => {
+    expect(statedPayrollDeduct(text)).toBe("no");
+    expect(payrollDeductCorrection(text)).toBe("no");
+  });
+
+  it.each(["don't cancel the $25 payroll deduction", "we did not cancel the payroll deduction"])("%s → asked", (text) => {
+    expect(statedPayrollDeduct(text)).toBeNull();
   });
 });
