@@ -36,6 +36,8 @@ interface Harness {
   uploads: string[];
   inserted: Record<string, unknown>[];
   embedded: string[][];
+  /** Every pattern passed to `ilike`, in order. */
+  likePatterns: string[];
 }
 
 /** The final `update` that carries a status — the pipeline's verdict. */
@@ -61,11 +63,13 @@ async function loadPipeline(
     embedError?: Error;
     /** Returned by the chunk insert. */
     chunkInsertError?: { message: string } | null;
+    /** Rows the title lookup on knowledge_documents returns. */
+    existingRows?: Record<string, unknown>[];
   } = {},
 ) {
   vi.resetModules();
 
-  const harness: Harness = { ops: [], uploads: [], inserted: [], embedded: [] };
+  const harness: Harness = { ops: [], uploads: [], inserted: [], embedded: [], likePatterns: [] };
   const pages =
     options.pages ??
     Array.from({ length: 6 }, (_, i) => `Page ${i + 1} body text. `.repeat(30));
@@ -113,7 +117,12 @@ async function loadPipeline(
             harness.inserted.push(...(payload as Record<string, unknown>[]));
             return { data: null, error: options.chunkInsertError ?? null };
           }
-          if (verb === "select") return { data: [], error: null };
+          if (verb === "select") {
+            return {
+              data: table === "knowledge_documents" ? (options.existingRows ?? []) : [],
+              error: null,
+            };
+          }
           if (verb === "update") {
             return {
               data: { id: "doc-1", status: "indexed", ...(payload as object) },
@@ -128,7 +137,7 @@ async function loadPipeline(
           select: () => builder,
           eq: () => builder,
           neq: () => builder,
-          ilike: () => builder,
+          ilike: (_column: string, pattern: string) => (harness.likePatterns.push(pattern), builder),
           order: () => builder,
           limit: () => builder,
           upsert: (values: unknown) => ((verb = "upsert"), (payload = values), builder),
@@ -306,5 +315,44 @@ describe("a chunk insert that fails does not index the document", () => {
     expect(
       harness.ops.some((op) => (op.payload as { indexed?: unknown })?.indexed === true),
     ).toBe(false);
+  });
+});
+
+describe("a same-title upload supersedes only the document with exactly that title", () => {
+  function stored(title: string) {
+    return {
+      id: "doc-existing",
+      title,
+      version: 3,
+      previous_versions: [],
+      created_at: "2026-10-01T00:00:00Z",
+      uploaded_by_name: "Earlier",
+      size_bytes: 10,
+    };
+  }
+
+  it("escapes LIKE wildcards in the title it looks up", async () => {
+    const { harness, ingestDocument } = await loadPipeline();
+    await ingestDocument({ ...upload(), title: "Policy_A 100%" });
+
+    expect(harness.likePatterns).toContain("Policy\\_A 100\\%");
+  });
+
+  it("starts a new document when the only near-match differs from the title", async () => {
+    // "Policy-A" is what an unescaped "Policy_A" would have matched.
+    const { harness, ingestDocument } = await loadPipeline({ existingRows: [stored("Policy-A")] });
+    await ingestDocument({ ...upload(), title: "Policy_A" });
+
+    const record = harness.ops.find((op) => op.table === "knowledge_documents" && op.verb === "upsert");
+    expect(record?.payload).toMatchObject({ version: 1 });
+    expect((record?.payload as { id?: unknown }).id).not.toBe("doc-existing");
+  });
+
+  it("still supersedes the document whose title matches, ignoring case", async () => {
+    const { harness, ingestDocument } = await loadPipeline({ existingRows: [stored("safety binder")] });
+    await ingestDocument(upload());
+
+    const record = harness.ops.find((op) => op.table === "knowledge_documents" && op.verb === "upsert");
+    expect(record?.payload).toMatchObject({ id: "doc-existing", version: 4 });
   });
 });
