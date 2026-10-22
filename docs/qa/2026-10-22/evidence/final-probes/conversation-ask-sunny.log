@@ -1,9 +1,0 @@
-
- RUN  v4.1.11 /home/user/ask-sunny
-
-
- Test Files  1 passed (1)
-      Tests  50 passed (50)
-   Start at  15:40:05
-   Duration  6.82s (transform 4.14s, setup 0ms, import 5.79s, tests 699ms, environment 0ms)
-

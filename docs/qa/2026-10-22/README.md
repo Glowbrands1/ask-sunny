@@ -1,28 +1,14 @@
-# QA evidence — Ask Sunny — 22 Oct 2026
-
-Final QA of branch `claude/lucid-shannon-v79zju` at `4ee4c1b` (ON HOLD: no PR, no merge, no deploy).
+# Ask Sunny — QA record for the 22 Oct 2026 full release
 
 | File | What it is |
 |---|---|
-| `FINAL_QA_VERDICT.md` | **The verdict for this app**: SHAs, exact test counts, changed expectations, remaining defects, browser and saved-form evidence, isolation, recommendation, remaining actions |
-| `QA_FINDINGS.md` | Final status of every finding, then the initial findings as first reported |
-| `REGRESSION_MATRIX.md` | Every probe scenario for this app, branch vs `main`, plus the browser runs (generated from `evidence/final-probes/`) |
-| `TEST_CHANGE_AUDIT.md` | Every changed test expectation with its justification; fail-before / pass-after counts |
-| `PARITY_REPORT.md` | What is level with the sibling app, intended differences, the cross-app isolation check |
-| `evidence/full-suite/` | Full `npm test` logs (vitest JSON reports gzipped), `tsc`, `eslint`, `steps.txt` |
-| `evidence/final-probes/` | Raw probe output (JSON + log) for this app's branch and `main` |
-| `evidence/probe-sources/` | Probe sources (`.ts.txt`: copied into `src/__qa__/` to run, never committed as tests) |
-| `evidence/browser/` | Playwright: structured results (`*-browser.jsonl`), logs, screenshots, the harness (`.txt`) |
-| `evidence/fail-before/` | New QA tests run on the commit before their fix, and on the final head |
-| `evidence/baseline/` | Full suite on the QA baseline before any fix; skipped-test inventory |
-| `evidence/integration-steps/` | Logs from integrating each fix group |
-| `evidence/initial-probes/` | The first probe round (before any fix), incl. the bisect for finding A (Sunny) |
-| `pre-release/` | Pre-release pack: payroll root cause and fixes, release checklist, and (per app) the release options + read-only HR audit plan with its synthetic-data validation (Bubbles) or the roles / salon-number note and the UI timing fix (Sunny) |
-| `evidence/pre-release/` | Payroll probes (43 sentences; 19 chat scenarios), fail-before logs, UI timing runs (Sunny), role and salon-number probes (Sunny) |
-| `FINAL_RELEASE_RECOMMENDATION.md` | **The final GO/NO-GO** for Ask Sunny, the Bubbles payroll-only release and the Bubbles full release |
-| `evidence/post-creation/` | Payroll corrections after the form exists: probe results before and after the fix, fail-before / pass-after logs |
-| `evidence/isolation-check.txt` | Cross-company data and terminology scan of every line the branch adds |
+| `PRE_MERGE_QA_REPORT.md` | Final pre-merge QA: results, release decisions, security review, the overlapping pull request, risks, verdict |
+| `QA_SUMMARY.md` | Every QA finding fixed in this release, with its commit; changed test expectations; what is deferred |
+| `RELEASE_DECISIONS.md` | The owner's release decisions and the tests that enforce them |
+| `POST_DEPLOY_SMOKE_TESTS.md` | Checks to run on production after the deploy (synthetic accounts, drafts only), and the rollback |
+| SUNNY_ROLES_AND_SALON_NUMBERS.md, SUNNY_UI_TIMEOUT_FIX.md | Supporting analysis |
+| `evidence/` | Final validation of the release head (suite, typecheck, lint, build, local database, Playwright logs and screenshots), regression probes, isolation check, release-decision and payroll test log, and the overlapping pull request's trial merge |
 
-The cross-app documents mention the sibling app; its location names and ids are replaced with ‹markers› here so this repository holds no data from the other company. The unredacted versions of the shared documents differ only in those markers. All people, accounts and records in this evidence are synthetic; no production or historical HR record was read or changed.
+All evidence uses synthetic data. Local machine paths are replaced with placeholders (`<repo>`, `<qa-scratch>`, `<local-stack>`).
 
-Raw test-runner output (`evidence/full-suite/`, `evidence/baseline/`) reproduces this repository's own test titles verbatim; some of those pre-existing titles name the other company because they are this app's tenant-isolation guards. That output is unedited.
+**Earlier QA material.** The fuller QA record from 22 Oct covered both sibling apps: initial findings, superseded runs and intermediate evidence. It was removed from this folder at the pre-merge review because it carried the other company's details. It remains in this branch's history under `docs/qa/2026-10-22/` at commit `0df223e`. Squash-merging the release keeps it out of `main`.

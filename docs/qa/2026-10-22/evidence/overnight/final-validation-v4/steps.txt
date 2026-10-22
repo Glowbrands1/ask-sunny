@@ -1,5 +1,0 @@
-ask-sunny e91b2e6 full suite exit 0 (349s)
- Test Files  519 passed | 12 skipped (531)
-      Tests  12389 passed | 131 skipped (12520)
-ask-sunny tsc exit 0
-ask-sunny eslint exit 0 :: ✖ 3 problems (0 errors, 3 warnings)

@@ -1,8 +1,0 @@
-     × "today" after "i already told you" keeps the Coaching card for Pat Rivera (QA's exact turns) 915ms
-     × "today" straight after the card keeps it 7ms
-     × "yesterday" straight after the card keeps it 5ms
-     × "on Monday" straight after the card keeps it 5ms
-     × "this morning" straight after the card keeps it 5ms
-     × "Today." straight after the card keeps it 4ms
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
-      Tests  6 failed | 3 passed (9)

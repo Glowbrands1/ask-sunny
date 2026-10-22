@@ -1,3 +1,0 @@
-{"app":"sunny","password":"<local-only QA password>","adminEmail":"qa-admin@local.test","managerEmail":"qa-sd@local.test",
- "ownLocations":[{"id":"loc-0310","name":"NE Lincoln 27th Street"},{"id":"loc-0311","name":"NE Lincoln O Street"}],
- "ownReply":"lincoln o street","otherReply":"kearney","forgedLocationId":"loc-0309"}
