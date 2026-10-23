@@ -8,7 +8,8 @@ import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { loadSalonPerformanceSection } from "@/lib/reporting/read/salon-performance-briefing-source";
 import { loadSalesTotalsSection } from "@/lib/reporting/read/sales-totals-briefing-source";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
-import { loadReviewsSnapshot } from "@/lib/reviews/queries";
+import { loadReviewsOverviewBlock } from "@/lib/reviews/overview-block-read";
+import { loadRatingDistribution, loadReviewsSnapshot } from "@/lib/reviews/queries";
 import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
 import type { AccessScope, Role } from "@/types";
 
@@ -95,6 +96,30 @@ async function reviewLines(storeCodes: readonly string[]): Promise<ReviewSummary
   return lines;
 }
 
+/** The page total, said apart from the weekly qualifying count. */
+export function reviewInventoryLine(total: number, scoped: boolean): string {
+  const where = scoped ? " for the salons in this account" : "";
+  return `The Google Reviews page holds ${total} reviews in total${where}. That is the inventory total, not the count of reviews that qualify this week.`;
+}
+
+async function reviewInventorySentence(storeCodes: readonly string[], unrestricted: boolean): Promise<string | null> {
+  try {
+    if (unrestricted) {
+      const block = await loadReviewsOverviewBlock();
+      if (block.status !== "ready") return null;
+      return reviewInventoryLine(block.totalReviews, false);
+    }
+    let total = 0;
+    for (const storeCode of storeCodes.slice(0, 8)) {
+      const distribution = await loadRatingDistribution({ district: null, storeCode });
+      total += distribution.total;
+    }
+    return reviewInventoryLine(total, true);
+  } catch {
+    return null;
+  }
+}
+
 export async function loadChatDataBlock(input: {
   readonly enabled: boolean;
   readonly question: string;
@@ -164,7 +189,9 @@ export async function loadChatDataBlock(input: {
       const text = input.readReviews
         ? await input.readReviews(storeCodes)
         : formatReviewSummaries(await reviewLines(storeCodes));
-      return { help, data: text };
+      if (input.readReviews || !text) return { help, data: text };
+      const inventory = await reviewInventorySentence(storeCodes, scope.unrestricted);
+      return { help, data: inventory ? `${text}\n\n${inventory}` : text };
     } catch {
       return { help, data: null };
     }

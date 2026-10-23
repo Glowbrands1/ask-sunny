@@ -9,13 +9,14 @@ import {
   formToolsEnabled,
   hybridSearchEnabled,
   longContextEnabled,
+  policyCitationEnabled,
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
-import { manualDisplayTitle } from "@/lib/forms/official-policy-manual";
+import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
@@ -81,7 +82,11 @@ import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
 import { augmentIntakeQuestion } from "./intake-augment";
-import { formatRecalledMemory, memoryCue } from "./chat-memory";
+import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
+import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
+import { mayDescribeSection } from "@/lib/forms/named-policy-section";
+import { pinnedManualBlock } from "./policy-citation-fields";
+import { deliverFormProposal } from "./grounded-turn";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -452,9 +457,14 @@ async function answerQuestionUntraced(
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
-    const proposal = await proposeFormForTurn({
-      history: request.history,
+    const proposal = await deliverFormProposal({
+      request,
+      actor,
       question: questionForProposal(heard ? routingQuestion : request.question, request),
+      decorate: decorateFormAnswer,
+      propose: (question) => proposeFormForTurn({
+      history: request.history,
+      question,
       questionMessageId: request.questionMessageId,
       actor,
       continueTemplateKey: request.continueProposalTemplateKey,
@@ -502,12 +512,18 @@ async function answerQuestionUntraced(
         return manual.ok ? manual.chunks : null;
       },
       /*
-       * WHETHER AN OWNER CONFIRMED IT: tagged `official-policy-manual`, not
-       * found by its name. One read serves both.
+       * The JBA Policy Manual is the approved source whether it was tagged or
+       * found by its name (Pau, 23 Oct 2026). The citation is still the
+       * section and the printed page. One read serves both.
        */
       policyManualIdentity: async () => {
         const manual = await readManual();
-        return manual.ok ? { title: manualDisplayTitle(manual.documentTitle), confirmed: manual.matchedBy === "tag" } : null;
+        return manual.ok
+          ? {
+              title: manualDisplayTitle(manual.documentTitle),
+              confirmed: approvedManualConfirmed(manual),
+            }
+          : null;
       },
       /*
        * THE EMPLOYEE'S FORMS ALREADY ON FILE, read only for a Corrective
@@ -515,9 +531,10 @@ async function answerQuestionUntraced(
        * `prior-forms.ts`.
        */
       priorFormsOnFile: (employeeName, locationId) => priorFormsReadingForChat(actor, employeeName, locationId),
+    }),
     });
     // if (proposal) return proposal;
-    if (proposal) return decorateFormAnswer(proposal);
+    if (proposal) return proposal;
   }
 
   /*
@@ -551,9 +568,14 @@ async function answerQuestionUntraced(
         today: request.context.todayIso,
         openTemplateKey: request.continueProposalTemplateKey ?? null,
         propose: (adjusted) =>
-          proposeFormForTurn({
-            history: request.history,
+          deliverFormProposal({
+            request,
+            actor,
             question: questionForProposal(adjusted.question, request),
+            decorate: decorateFormAnswer,
+            propose: (question) => proposeFormForTurn({
+            history: request.history,
+            question,
             questionMessageId: request.questionMessageId,
             actor,
             continueTemplateKey: adjusted.continueTemplateKey,
@@ -572,15 +594,19 @@ async function answerQuestionUntraced(
             policyManualIdentity: async () => {
               const manual = await readManual();
               return manual.ok
-                ? { title: manualDisplayTitle(manual.documentTitle), confirmed: manual.matchedBy === "tag" }
+                ? {
+                    title: manualDisplayTitle(manual.documentTitle),
+                    confirmed: approvedManualConfirmed(manual),
+                  }
                 : null;
             },
             priorFormsOnFile: (employeeName, locationId) =>
               priorFormsReadingForChat(actor, employeeName, locationId),
           }),
+          }),
       });
       // if (routed) return routed.response;
-      if (routed) return decorateFormAnswer(routed.response);
+      if (routed) return routed.response;
     }
   }
 
@@ -1175,7 +1201,8 @@ async function answerQuestionUntraced(
     scope: actor.scope,
     briefedFamilies: families,
   });
-  const groundingText = buildGroundingBlock(grounding);
+  const pinnedPolicy = await citedManualGrounding(request, knowledge);
+  const groundingText = [buildGroundingBlock(grounding), pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
   const answer = await callClaude({
@@ -1316,7 +1343,28 @@ async function recalledMemoryBlock(request: AskRequest, actor: ChatActor): Promi
         sourceConversationId: request.conversationId ?? null,
       });
     }
-    return formatRecalledMemory(await recallMemory(actor.subject));
+    return formatRecalledMemory(
+      factsVisibleInConversation(await recallMemory(actor.subject), request.conversationId ?? null),
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function citedManualGrounding(
+  request: AskRequest,
+  knowledge: { fetchOfficialPolicyManual(scopeId: string): Promise<{ ok: true; chunks: readonly import("@/lib/forms/official-policy-manual").ManualChunk[] } | { ok: false }> },
+): Promise<string | null> {
+  if (!policyCitationEnabled()) return null;
+  const notes = [
+    request.question,
+    ...request.history.filter((turn) => turn.role === "user").slice(-3).map((turn) => turn.content),
+  ].join("\n");
+  if (describedAttendanceKeys(notes) === null && !mayDescribeSection(notes)) return null;
+  try {
+    const manual = await knowledge.fetchOfficialPolicyManual(request.scopeId);
+    if (!manual.ok) return null;
+    return pinnedManualBlock(notes, manual.chunks);
   } catch {
     return null;
   }

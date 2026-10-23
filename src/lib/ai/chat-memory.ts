@@ -8,6 +8,7 @@ export interface MemoryFact {
   readonly kind: "salon" | "employee" | "preference";
   readonly key: string;
   readonly value: string;
+  readonly sourceConversationId?: string | null;
 }
 
 export interface MemoryCue {
@@ -33,6 +34,20 @@ export function memoryCue(question: string): MemoryCue | null {
     };
   }
   return { kind: "preference", key: "note", value: rest.slice(0, 240) };
+}
+
+/**
+ * Salon notes may follow the user. An employee or a preference is shown
+ * only in the conversation that stored it. No conversation id hides those.
+ */
+export function factsVisibleInConversation(
+  facts: readonly MemoryFact[],
+  conversationId: string | null,
+): MemoryFact[] {
+  return facts.filter((fact) => {
+    if (fact.kind === "salon") return true;
+    return Boolean(conversationId) && fact.sourceConversationId === conversationId;
+  });
 }
 
 export function formatRecalledMemory(facts: readonly MemoryFact[]): string | null {

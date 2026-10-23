@@ -1,10 +1,13 @@
 import { printedPageOf } from "@/lib/ingestion/extract/pdf-sections";
 import {
+  approvedManualConfirmed,
   officialManualProvenance,
   type ManualChunk,
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
+import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
 
+import { accountManualSections } from "./account-manual-sections";
 import { citedSections } from "./violation-policy";
 
 /**
@@ -118,7 +121,7 @@ export function flaggedCitationWrite(input: {
           documentId: input.manual.documentId,
           documentTitle: input.manual.documentTitle,
           matchedBy: input.manual.matchedBy,
-          ownerConfirmed: input.manual.matchedBy === "tag",
+          ownerConfirmed: approvedManualConfirmed(input.manual),
           sections,
         }) as Record<string, unknown>,
       },
@@ -135,6 +138,15 @@ interface CitedLine {
 }
 
 function linesFromChunks(notes: string, chunks: readonly ManualChunk[]): CitedLine[] {
+  const fromAccount = accountManualSections(notes, chunks);
+  if (fromAccount.length > 0) {
+    return fromAccount.map((section) => ({
+      heading: section.heading,
+      page: section.page > 0 ? section.page : null,
+      chunkIndex: section.chunkIndex,
+      foundBy: section.foundBy,
+    }));
+  }
   return citedSections([notes]).map((section) => {
     const chunk =
       chunks.find((item) => (item.section ?? "").toLowerCase() === section.section.toLowerCase()) ??
@@ -148,4 +160,28 @@ function linesFromChunks(notes: string, chunks: readonly ManualChunk[]): CitedLi
       foundBy: listed ? "contents" : "page_heading",
     };
   });
+}
+
+/**
+ * Passages to pin on a search answer when the account resolves a manual
+ * section. Empty when nothing resolved, so the model is not handed a policy
+ * the manual did not return.
+ */
+export function pinnedManualBlock(notes: string, chunks: readonly ManualChunk[], jobTitle?: string | null): string | null {
+  const sections = accountManualSections(notes, chunks, jobTitle);
+  if (sections.length === 0) return null;
+  const paged = sections.filter((section) => section.page > 0);
+  const quoted =
+    paged.length > 0
+      ? policyFieldValue(
+          manualGroundedPolicies(
+            { documentId: "pinned", documentTitle: "JBA Policy Manual", chunks },
+            paged,
+          ),
+        )
+      : null;
+  const lines = sections.map((section) => formatManualCitation(section.heading, section.page > 0 ? section.page : null));
+  const body = [quoted, ...lines].filter((part): part is string => Boolean(part && part.trim())).join("\n\n");
+  if (!body.trim()) return null;
+  return `POLICY FROM THE JBA POLICY MANUAL\n\nRetrieved for this account from the JBA Policy Manual. If you quote a section listed here, do not say the documents do not contain it.\n\n${body}`;
 }

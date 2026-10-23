@@ -4,9 +4,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  actionPlanSentencesEnabled,
   chatMemoryEnabled,
   draftDedupeEnabled,
+  draftMergeEnabled,
   fieldAccuracyEnabled,
+  formStateEnabled,
+  groundedEntitiesEnabled,
   policyCitationEnabled,
   reportBreakdownEnabled,
   secondFormEnabled,
@@ -33,6 +37,10 @@ const NEW_FLAGS = [
   "POLICY_CITATION_ENABLED",
   "CHAT_MEMORY_ENABLED",
   "REPORT_BREAKDOWN_ENABLED",
+  "GROUNDED_ENTITIES_ENABLED",
+  "FORM_STATE_ENABLED",
+  "DRAFT_MERGE_ENABLED",
+  "ACTION_PLAN_SENTENCES_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -110,6 +118,10 @@ describe("new flags default off and wrappers are inert", () => {
     expect(policyCitationEnabled()).toBe(false);
     expect(chatMemoryEnabled()).toBe(false);
     expect(reportBreakdownEnabled()).toBe(false);
+    expect(groundedEntitiesEnabled()).toBe(false);
+    expect(formStateEnabled()).toBe(false);
+    expect(draftMergeEnabled()).toBe(false);
+    expect(actionPlanSentencesEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -144,7 +156,9 @@ describe("new flags default off and wrappers are inert", () => {
     expect(diff("HEAD", PROTECTED)).toBe("");
     const uiBase = uiDiffBase();
     if (uiBase) {
-      expect(diff(uiBase, UI_PATHS)).toBe("");
+      // Test files may change an expectation when Pau changes the wording.
+      // Component, style, and page files stay untouched.
+      expect(diff(uiBase, [...UI_PATHS, ":(exclude)**/*.test.tsx", ":(exclude)**/*.dom.test.tsx"])).toBe("");
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",

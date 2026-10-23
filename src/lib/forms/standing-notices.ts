@@ -7,11 +7,14 @@
  * drafting response, so a refresh or a form reopened next week says what the
  * draft said when it was written:
  *
- *   * the policy quoted is from a manual no owner has confirmed as Ask Sunny's
- *     approved one ("requires owner confirmation").
+ *   * a policy quoted from a manual other than the JBA Policy Manual, when no
+ *     owner has confirmed that manual. The JBA Policy Manual is the approved
+ *     source (Pau, 23 Oct 2026) and is not announced as unconfirmed.
  *
  * Pure, so the form card and its tests share it.
  */
+
+import { isApprovedPolicyManualTitle } from "./official-policy-manual";
 
 export interface StandingValueRow {
   readonly fieldKey: string;
@@ -40,6 +43,11 @@ export function unconfirmedManualOf(rows: readonly StandingValueRow[]): string |
         : !(LEGACY_FALLBACK_IS_UNCONFIRMED && provenance.matchedBy === "fallback");
     if (!confirmed) {
       const title = typeof provenance.documentTitle === "string" ? provenance.documentTitle.trim() : "";
+      /*
+       * Pau, 23 Oct 2026: a citation from the JBA Policy Manual is the
+       * approved source. Reopening the form does not ask anyone to confirm it.
+       */
+      if (title && isApprovedPolicyManualTitle(title)) continue;
       return title || "the policy manual";
     }
   }

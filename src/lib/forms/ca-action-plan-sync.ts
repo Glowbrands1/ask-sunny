@@ -1,5 +1,8 @@
 import "server-only";
 
+import { actionPlanSentencesEnabled } from "@/lib/config/chat-quality-flags";
+
+import { collapseToTwoSentences } from "./action-plan-sentences";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { parseFormDocument } from "./document";
 import { applyAssistantDraft, loadInstance, type LoadedInstance } from "./instances";
@@ -28,7 +31,7 @@ export async function syncCorrectiveActionPlan(
       .filter(([key]) => !loaded.values.some((row) => row.fieldKey === key))
       .map(([fieldKey, checked]) => ({ fieldKey, value: null, checked, filledBy: "manager", provenance: {} })),
   ];
-  const next = refreshedActionPlan({
+  const refreshed = refreshedActionPlan({
     templateKey: loaded.instance.templateKey,
     document: parseFormDocument(loaded.version.document),
     variantKey: loaded.instance.variantKey,
@@ -36,7 +39,12 @@ export async function syncCorrectiveActionPlan(
     values,
     notes: options.notes,
   });
-  if (!next) return [];
+  if (!refreshed) return [];
+  const next = actionPlanSentencesEnabled()
+    ? { ...refreshed, value: collapseToTwoSentences(refreshed.value) }
+    : refreshed;
+  const held = values.find((row) => row.fieldKey === next.key)?.value ?? "";
+  if (next.value === held) return [];
   const written = await applyAssistantDraft(
     instanceId,
     { values: { [next.key]: next.value }, checked: {} },

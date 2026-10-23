@@ -129,3 +129,38 @@ export function chatMemoryEnabled(): boolean {
 export function reportBreakdownEnabled(): boolean {
   return envFlag("REPORT_BREAKDOWN_ENABLED");
 }
+
+/**
+ * An employee, salon, or policy counts only when it resolves against the
+ * Woven roster, the salon list, or the JBA manual. Off, a typed name is
+ * accepted exactly as it is today.
+ */
+export function groundedEntitiesEnabled(): boolean {
+  return envFlag("GROUNDED_ENTITIES_ENABLED");
+}
+
+/**
+ * Read and write the per-conversation form state before asking again.
+ * Off, nothing is read or written and the question is unchanged.
+ */
+export function formStateEnabled(): boolean {
+  return envFlag("FORM_STATE_ENABLED");
+}
+
+/**
+ * "Show draft with edits" merges into the open draft. Offense and Action
+ * Plan are left as they are unless the manager named that field to clear.
+ * Off, a show request still opens the draft and does not write it.
+ */
+export function draftMergeEnabled(): boolean {
+  return envFlag("DRAFT_MERGE_ENABLED");
+}
+
+/**
+ * The Corrective Action plan is the review sentence and the required
+ * closing, and nothing else. Off, the plan Pau's module already builds
+ * is written, including a payroll sentence when payroll applies.
+ */
+export function actionPlanSentencesEnabled(): boolean {
+  return envFlag("ACTION_PLAN_SENTENCES_ENABLED");
+}

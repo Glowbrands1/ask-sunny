@@ -1157,7 +1157,7 @@ describe("Q16 repeated, different date corrections and forms other than the CA",
   });
 });
 
-describe("Q17 the manual's standing: kept, cited by section and page, and marked until an owner confirms it", () => {
+describe("Q17 the manual's standing: the JBA Policy Manual is cited by section and page", () => {
   async function drafted() {
     state.manual = FULL_MANUAL;
     const chat = new Chat();
@@ -1171,16 +1171,18 @@ describe("Q17 the manual's standing: kept, cited by section and page, and marked
     return { reply, id, notice: redraft.notice ?? "" };
   }
 
-  it("found by its name only: the card and the draft say it requires owner confirmation; the citation is the manual's own", async () => {
+  it("found by its name only: cited by section and page, without asking anyone to confirm the manual", async () => {
+    // Pau, 23 Oct 2026: the JBA Policy Manual is the approved policy source.
+    // The citation stays (section and printed page). The confirmation ask does not.
     const { reply, id, notice } = await drafted();
-    expect(reply).toMatch(/\*\*Policy source:\*\* "JBA Policy Manual" — requires owner confirmation as Ask Sunny's approved policy manual/);
-    expect(notice).toContain('Policy source: "JBA Policy Manual" (JBA Policy Manual Edited 5.2025) requires owner confirmation');
+    expect(reply).not.toMatch(/requires owner confirmation/);
+    expect(notice).not.toMatch(/requires owner confirmation/);
     const form = await saved(id);
     expect(form.policy_language).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
     expect(form.observation).not.toMatch(/no[- ]call/i);
     const provenance = (await valueRow(id, "policy_language"))?.provenance as Record<string, unknown>;
-    expect(provenance).toMatchObject({ matchedBy: "fallback" });
+    expect(provenance).toMatchObject({ matchedBy: "fallback", ownerConfirmed: true });
   });
 
   it("confirmed by an owner (the official-policy-manual tag): cited without the mark", async () => {
@@ -1193,9 +1195,6 @@ describe("Q17 the manual's standing: kept, cited by section and page, and marked
 });
 
 const { manualStandingNotice } = await import("@/lib/forms/standing-notices");
-const APP = "Ask Sunny";
-/** Whether a citation stored before `ownerConfirmed` existed reads as unconfirmed in this app. */
-const LEGACY_CITATION_UNCONFIRMED = true;
 
 /* ========================================================================= */
 /* QA ROUND 3 — 22 OCT 2026 (overnight): drafts already open when this ships */
@@ -1287,20 +1286,18 @@ describe("Q18 drafts already open at rollout open, change and file as they stand
     expect((await saved(draftId)).warning_type).toEqual(["written"]);
   });
 
-  it("the manual's standing is said again on every reopening, from what was stored", async () => {
+  it("a stored JBA citation is not a request to confirm the manual", async () => {
+    // Pau, 23 Oct 2026: the JBA Policy Manual is the approved source, including
+    // a citation stored before ownerConfirmed was written. Reopening cites it
+    // and does not ask the manager to confirm the manual.
     const { id } = await legacyDraft("written");
     const view = await reopened(id);
-    if (LEGACY_CITATION_UNCONFIRMED) {
-      expect(view.manual).toMatch(new RegExp(`requires owner confirmation as ${APP}'s approved policy manual`));
-    } else {
-      expect(view.manual).toBeNull();
-    }
-    // Written today, the citation says whether an owner confirmed the manual.
+    expect(view.manual).toBeNull();
     state.manual = FULL_MANUAL;
     await call(`/api/forms/instances/${id}/draft`, { method: "POST", body: JSON.stringify({ notes: OCT21, keepManagerValues: true }) });
     const stored = (await valueRow(id, "policy_language"))?.provenance as Record<string, unknown>;
-    expect(typeof stored.ownerConfirmed).toBe("boolean");
-    expect(Boolean((await reopened(id)).manual)).toBe(stored.ownerConfirmed === false);
+    expect(stored.ownerConfirmed).toBe(true);
+    expect((await reopened(id)).manual).toBeNull();
   });
 });
 

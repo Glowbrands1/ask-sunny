@@ -1,10 +1,23 @@
 import "server-only";
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { AccessScope } from "@/types";
 
 import { isServiceAccountName, type RosterEmployee } from "./employee-match";
 import { authorizedSalonIds } from "./location-scope";
+
+/**
+ * Directory ids the grounded path already chose. Unset, the scoped roster
+ * is the one `loadScopedRoster` already returned. An empty set does not filter.
+ */
+const rosterLimit = new AsyncLocalStorage<ReadonlySet<string>>();
+
+export function withRosterLimit<T>(ids: readonly string[] | null, run: () => T): T {
+  if (!ids || ids.length === 0) return rosterLimit.run(new Set(), run);
+  return rosterLimit.run(new Set(ids), run);
+}
 
 /**
  * ============================================================================
@@ -149,7 +162,97 @@ export async function readDirectoryRoster(): Promise<DirectoryRosterRow[]> {
 export async function loadScopedRoster(scope: AccessScope | null): Promise<RosterEmployee[]> {
   if (!scope || scope.level === "district" || scope.level === "region") return [];
   try {
-    return scopeRoster(await readDirectoryRoster(), scope);
+    const roster = scopeRoster(await readDirectoryRoster(), scope);
+    const limit = rosterLimit.getStore();
+    if (!limit || limit.size === 0) return roster;
+    return roster.filter((person) => limit.has(person.id));
+  } catch {
+    return [];
+  }
+}
+
+/** Roster row plus the Woven title and primary location the name check does not read. */
+export interface DirectoryFact extends RosterEmployee {
+  readonly title: string | null;
+  readonly primaryLocationName: string | null;
+}
+
+/**
+ * The same scoped roster, plus job title and primary location.
+ *
+ * A separate read so `readDirectoryRoster` keeps the select it has today.
+ * Called only when grounded entities are on. A missing column or a failed
+ * read returns an empty list; the caller then uses `loadScopedRoster`.
+ */
+export async function readDirectoryFacts(scope: AccessScope | null): Promise<DirectoryFact[]> {
+  if (!scope || scope.level === "district" || scope.level === "region") return [];
+  try {
+    const supabase = getSupabaseAdmin();
+    const [people, affiliations, map, salons] = await Promise.all([
+      supabase
+        .from("employee_access_directory")
+        .select(
+          "id, first_name, last_name, preferred_first_name, employment_status, position_name, primary_woven_location_id, primary_location_name",
+        )
+        .limit(5000),
+      supabase
+        .from("employee_location_affiliations")
+        .select("employee_id, woven_location_id")
+        .eq("active", true)
+        .limit(20000),
+      supabase
+        .from("woven_location_map")
+        .select("woven_location_id, salon_id")
+        .eq("status", "mapped")
+        .limit(1000),
+      supabase.from("salons").select("id, salon_number").limit(1000),
+    ]);
+    if (people.error || affiliations.error || map.error || salons.error) return [];
+
+    const salonNumberById = new Map(
+      (salons.data ?? []).map((row) => [String(row.id), String(row.salon_number)]),
+    );
+    const locationByWoven = new Map<string, string>();
+    for (const row of map.data ?? []) {
+      const number = row.salon_id ? salonNumberById.get(String(row.salon_id)) : undefined;
+      if (number) locationByWoven.set(String(row.woven_location_id), locationIdForSalonNumber(number));
+    }
+    const salonsByEmployee = new Map<string, Set<string>>();
+    for (const row of affiliations.data ?? []) {
+      const location = locationByWoven.get(String(row.woven_location_id));
+      if (!location) continue;
+      const key = String(row.employee_id);
+      if (!salonsByEmployee.has(key)) salonsByEmployee.set(key, new Set());
+      salonsByEmployee.get(key)!.add(location);
+    }
+
+    const allowed = scope.level === "salon" ? new Set(authorizedSalonIds(scope)) : null;
+    if (allowed && allowed.size === 0) return [];
+
+    const facts: DirectoryFact[] = [];
+    for (const row of people.data ?? []) {
+      const first = String(row.first_name ?? "").trim();
+      const last = String(row.last_name ?? "").trim();
+      if (!first || !last) continue;
+      if (row.employment_status === "terminated") continue;
+      if (isServiceAccountName(first, last)) continue;
+      const affiliated = [...(salonsByEmployee.get(String(row.id)) ?? [])];
+      const primaryWoven = row.primary_woven_location_id ? String(row.primary_woven_location_id) : "";
+      const primaryId = primaryWoven ? locationByWoven.get(primaryWoven) : undefined;
+      const salonIds = affiliated.length > 0 ? affiliated : primaryId ? [primaryId] : [];
+      const inScope = allowed ? salonIds.filter((id) => allowed.has(id)) : salonIds;
+      if (allowed && inScope.length === 0) continue;
+      facts.push({
+        id: String(row.id),
+        firstName: first,
+        lastName: last,
+        preferredFirstName: String(row.preferred_first_name ?? "").trim() || null,
+        salonIds: [...inScope].sort(),
+        title: String(row.position_name ?? "").trim() || null,
+        primaryLocationName: String(row.primary_location_name ?? "").trim() || null,
+      });
+    }
+    return facts;
   } catch {
     return [];
   }

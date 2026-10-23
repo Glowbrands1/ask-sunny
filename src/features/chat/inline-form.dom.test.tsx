@@ -1910,7 +1910,7 @@ describe("the Corrective Action Form's payroll-deduct Yes / No", () => {
   });
 });
 
-describe("a reopened Corrective Action says where its policy came from (owner decision, 22 Oct 2026)", () => {
+describe("a reopened Corrective Action cites the JBA Policy Manual without asking for confirmation", () => {
   const corrective = TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")!;
 
   function correctiveDraft(level: { checked: string[]; filledBy: "ai" | "manager" }, ownerConfirmed: boolean) {
@@ -1947,10 +1947,14 @@ describe("a reopened Corrective Action says where its policy came from (owner de
     );
   }
 
-  it("says the manual requires owner confirmation on reopening, and offers no level notice or Confirm button", async () => {
+  it("does not ask the manager to confirm the JBA Policy Manual, and offers no level notice or Confirm button", async () => {
+    // Pau, 23 Oct 2026: the JBA Policy Manual is the approved source. A stored
+    // citation from it is not a prompt to confirm the manual. The form still
+    // opens with no warning-level notice and no Confirm button.
     fakeFetch(() => ({ payload: correctiveDraft({ checked: ["written"], filledBy: "ai" }, false) }));
     open();
-    expect(await screen.findByText(/requires owner confirmation as Ask Sunny's approved policy manual/)).toBeTruthy();
+    await screen.findByRole("group", { name: "Is payroll deduct applicable?" });
+    expect(screen.queryByText(/requires owner confirmation/)).toBeNull();
     expect(screen.queryByText(/Type of Warning:/)).toBeNull();
     expect(screen.queryByRole("button", { name: /^Confirm / })).toBeNull();
   });
