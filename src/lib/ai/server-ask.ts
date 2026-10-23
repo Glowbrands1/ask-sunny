@@ -8,6 +8,7 @@ import {
   fieldAccuracyEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
+  intentExtractionEnabled,
   longContextEnabled,
   policyCitationEnabled,
   priorCoachingOptionalEnabled,
@@ -78,6 +79,7 @@ import { loadChatDataBlock } from "./chat-data-tools";
 import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
+import { applyIntentExtraction } from "./intent-extraction";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
@@ -230,6 +232,19 @@ async function answerQuestionUntraced(
   // where the secret key belongs, or an embedding width the column cannot hold.
   if (readiness.problems.length > 0) {
     throw new AiError("not_configured", readiness.problems.join(" "), 503);
+  }
+
+  /*
+   * SLOTS, READ ONCE, BEFORE ANYTHING IS ASKED AGAIN.
+   *
+   * Off, this is skipped and the request below is the one the route parsed.
+   * On, a slot is kept only when the roster, the salon list, or the manual
+   * agrees, and a question goes out only for what is still missing.
+   */
+  if (intentExtractionEnabled()) {
+    const prepared = await applyIntentExtraction({ request, actor });
+    if (prepared.clarification) return prepared.clarification;
+    request = prepared.request;
   }
 
   /* ------------------------------------------------------- form request -- */
