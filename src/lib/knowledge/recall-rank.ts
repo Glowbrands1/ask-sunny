@@ -1,6 +1,7 @@
 import type { MatchedChunkRow } from "./mappers";
 import {
   hybridScore,
+  passageHeading,
   policyManualBoost,
   sectionTitleMatches,
   type HybridCandidate,
@@ -78,7 +79,12 @@ export function selectRecallCandidates(
 ): { rows: MatchedChunkRow[]; pinnedIds: string[] } {
   const limit = Math.max(1, options.limit);
   const scored = candidates.map((candidate) => {
-    const named = sectionIsNamed(query, candidate.row.section, candidate.sectionExact);
+    const named = sectionIsNamed(query, passageHeading(candidate.row), candidate.sectionExact);
+    /*
+     * A trigram hit can pull a heading into the window. It must not add the
+     * +1 a named section gets, or a loose heading match outranks the chunk
+     * the question embedding actually found.
+     */
     const sqlFuzzy =
       typeof candidate.sectionSimilarity === "number" && candidate.sectionSimilarity >= 0.3;
     return {
@@ -89,19 +95,24 @@ export function selectRecallCandidates(
         hybridScore({
           vectorRank: candidate.vectorRank,
           keywordRank: candidate.keywordRank,
-          sectionMatch: named || sqlFuzzy,
-        }) +
-        (candidate.sectionSimilarity ?? 0) +
-        policyManualBoost(query, candidate.row),
+          sectionMatch: named,
+          similarity: candidate.row.similarity,
+        }) + policyManualBoost(query, candidate.row),
     };
   });
+  /*
+   * The SQL result has no ORDER BY, so "the first N rows" is not the nearest
+   * N. Filling the window from that order dropped the question embedding's
+   * neighbor once keyword rows happened to come back first. Rank first, then
+   * keep the top of that ranking, then let a heading the question names lead.
+   */
   scored.sort((a, b) => b.score - a.score || b.row.similarity - a.row.similarity);
 
   const chosen: typeof scored = [];
   const seen = new Set<string>();
   for (const item of scored) {
     if (seen.has(item.row.chunk_id)) continue;
-    if (item.keep || chosen.length < limit) {
+    if (item.named || item.keep || chosen.length < limit) {
       chosen.push(item);
       seen.add(item.row.chunk_id);
     }

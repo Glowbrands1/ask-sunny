@@ -185,7 +185,7 @@ describe("hybrid index migration", () => {
             sectionExact: false,
           }),
         ),
-        Q1,
+        expandGlossaryQuery(Q1),
         { vectorFloor: 0.78, limit: 4 },
       );
       expect(ranked[0]?.section).toBe("Attendance");

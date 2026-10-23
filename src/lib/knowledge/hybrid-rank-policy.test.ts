@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { expandGlossaryQuery } from "@/lib/ai/glossary";
 import type { MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { selectHybridMatches, type HybridCandidate } from "@/lib/knowledge/hybrid-rank";
 import { selectRecallCandidates } from "@/lib/knowledge/recall-rank";
 
 /**
- * Production question. plainto_tsquery AND-ed every word and matched nothing,
- * so the Attendance section lost to a nearer Performance Management Framework
- * chunk. The fixture keeps that vector win and gives Attendance the keyword
- * rank an OR query produces.
+ * Production question. The glossary names Attendance for "showed up late" /
+ * "late 3 times", and that heading has to lead a nearer framework chunk.
+ * Keyword rank alone must not do it: a reciprocal keyword term was enough to
+ * bury the question embedding's nearest neighbor.
  */
 
 const Q1 = "what is the policy if an employee showed up late 3 times this month";
@@ -62,7 +63,7 @@ const candidates: HybridCandidate[] = [
 
 describe("policy questions prefer the JBA manual over the framework", () => {
   it("ranks the Attendance chunk above the Performance Management Framework for the late-arrival question", () => {
-    const ranked = selectHybridMatches(candidates, Q1, { vectorFloor: 0.78, limit: 4 });
+    const ranked = selectHybridMatches(candidates, expandGlossaryQuery(Q1), { vectorFloor: 0.78, limit: 4 });
     expect(ranked.map((item) => item.section)).toEqual(["Attendance", "Performance Management Ladder"]);
     expect(ranked[0]).toMatchObject({ section: "Attendance", page: 15, document_title: "JBA Policy Manual Edited 5.2025" });
   });
@@ -70,7 +71,7 @@ describe("policy questions prefer the JBA manual over the framework", () => {
   it("keeps the same order on the recall selector", () => {
     const ranked = selectRecallCandidates(
       candidates.map((candidate) => ({ ...candidate, sectionSimilarity: null })),
-      Q1,
+      expandGlossaryQuery(Q1),
       { limit: 4 },
     );
     expect(ranked.rows[0]?.section).toBe("Attendance");

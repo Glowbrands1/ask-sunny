@@ -5,6 +5,15 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 23 Oct 2026: hybrid rank was burying the nearest chunk (Sunny only)
+
+With both retrieval flags on, reciprocal-rank fusion let an OR keyword hit
+on a common word (employee, shift, late) outrank the chunk the question
+embedding had already found, and the heading-only Haiku pick then dropped
+that neighbor. Ask Bubbles was not attached. Port the rank change and the
+"showed up late" / "late 3 times" glossary lines. Do not copy salon names
+or company wording.
+
 ## 22 Oct 2026: both apps brought level (pending QA review)
 
 Every chat/forms fix merged to either `main` from 12–21 Oct was compared. The
