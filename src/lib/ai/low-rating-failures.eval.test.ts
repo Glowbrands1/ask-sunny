@@ -10,11 +10,14 @@ import type { MatchedChunkRow } from "@/lib/knowledge/mappers";
 
 import { buildSystemPrompt } from "./prompts";
 import {
+  chatDataToolsEnabled,
   chatStyleRulesEnabled,
   chatTraceEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
+  longContextEnabled,
   queryRewriteEnabled,
+  retrievalRecallEnabled,
 } from "@/lib/config/chat-quality-flags";
 import {
   confirmedFromToolTurn,
@@ -135,17 +138,26 @@ describe("flags default off", () => {
       QUERY_REWRITE_ENABLED: process.env.QUERY_REWRITE_ENABLED,
       CHAT_STYLE_RULES_ENABLED: process.env.CHAT_STYLE_RULES_ENABLED,
       CHAT_TRACE_ENABLED: process.env.CHAT_TRACE_ENABLED,
+      RETRIEVAL_RECALL_ENABLED: process.env.RETRIEVAL_RECALL_ENABLED,
+      LONG_CONTEXT_ENABLED: process.env.LONG_CONTEXT_ENABLED,
+      CHAT_DATA_TOOLS_ENABLED: process.env.CHAT_DATA_TOOLS_ENABLED,
     };
     delete process.env.FORM_TOOLS_ENABLED;
     delete process.env.HYBRID_SEARCH_ENABLED;
     delete process.env.QUERY_REWRITE_ENABLED;
     delete process.env.CHAT_STYLE_RULES_ENABLED;
     delete process.env.CHAT_TRACE_ENABLED;
+    delete process.env.RETRIEVAL_RECALL_ENABLED;
+    delete process.env.LONG_CONTEXT_ENABLED;
+    delete process.env.CHAT_DATA_TOOLS_ENABLED;
     expect(formToolsEnabled()).toBe(false);
     expect(hybridSearchEnabled()).toBe(false);
     expect(queryRewriteEnabled()).toBe(false);
     expect(chatStyleRulesEnabled()).toBe(false);
     expect(chatTraceEnabled()).toBe(false);
+    expect(retrievalRecallEnabled()).toBe(false);
+    expect(longContextEnabled()).toBe(false);
+    expect(chatDataToolsEnabled()).toBe(false);
     process.env.FORM_TOOLS_ENABLED = "off";
     expect(formToolsEnabled()).toBe(false);
     process.env.FORM_TOOLS_ENABLED = "true";
@@ -188,7 +200,11 @@ describe("flags default off", () => {
     expect(source).toContain("hybridSearchEnabled()");
     expect(source).toContain("chatStyleRulesEnabled()");
     expect(source).toContain("chatTraceEnabled()");
+    expect(source).toContain("retrievalRecallEnabled()");
+    expect(source).toContain("longContextEnabled()");
+    expect(source).toContain("chatDataToolsEnabled()");
     expect(source).toContain("question: request.question");
+    expect(source).toContain("history: request.history");
   });
 });
 

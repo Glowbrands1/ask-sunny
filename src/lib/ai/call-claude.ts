@@ -4,6 +4,7 @@ import { CLAUDE_EFFORT, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
 import { getAnthropicClient } from "./anthropic";
 import { AiError } from "./errors";
+import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
 
 /**
@@ -92,6 +93,13 @@ export interface CallClaudeInput {
    */
   readonly formRecords?: string | null;
   readonly history: readonly ClaudeTurn[];
+  /**
+   * "budget" keeps the newest messages that fit in a token budget, up to 40.
+   * Omitted, the last 10 non-empty messages are sent.
+   */
+  readonly historyPolicy?: "budget";
+  /** Summary of turns outside that budget. Used only when historyPolicy is "budget". */
+  readonly priorSummary?: string | null;
   readonly question: string;
   readonly maxTokens: number;
 }
@@ -100,14 +108,23 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
   const client = getAnthropicClient();
 
   // Prior turns, trimmed. The grounding block is rebuilt per question, so it is
-  // appended to the current turn rather than carried in history.
-  const history = input.history
-    .filter((message) => message.content.trim().length > 0)
-    .slice(-10)
-    .map((message) => ({
-      role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: message.content,
-    }));
+  // appended to the current turn rather than carried in history. The last 10
+  // is the cost and latency cap. A budget window is used only when the caller
+  // asks for it.
+  const nonempty = input.history.filter((message) => message.content.trim().length > 0);
+  const bounded = input.historyPolicy === "budget" ? selectLongContext(nonempty).kept : nonempty.slice(-10);
+  const history = bounded.map((message) => ({
+    role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
+    content: message.content,
+  }));
+  if (input.historyPolicy === "budget" && input.priorSummary?.trim()) {
+    const note = `Earlier in this conversation:\n${input.priorSummary.trim()}`;
+    if (history.length === 0 || history[0]!.role === "assistant") {
+      history.unshift({ role: "user", content: note });
+    } else {
+      history[0] = { role: "user", content: `${note}\n\n${history[0]!.content}` };
+    }
+  }
 
   // The API requires the first message to be a user turn.
   while (history.length > 0 && history[0]!.role === "assistant") history.shift();

@@ -1,11 +1,14 @@
 import "server-only";
 
 import {
+  chatDataToolsEnabled,
   chatStyleRulesEnabled,
   chatTraceEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
+  longContextEnabled,
   queryRewriteEnabled,
+  retrievalRecallEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -33,6 +36,7 @@ import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/reposit
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
+import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -63,6 +67,8 @@ import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
+import { loadChatDataBlock } from "./chat-data-tools";
+import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
@@ -829,13 +835,19 @@ async function answerQuestionUntraced(
       ? RETRIEVAL.roleAugmentedTopK
       : RETRIEVAL.topK;
   try {
-    rows = hybridSearchEnabled()
-      ? await matchHybridKnowledge({
+    rows = retrievalRecallEnabled()
+      ? await matchRecallKnowledge({
           query,
           scopeId: request.scopeId,
           limit: matchLimit,
         })
-      : await knowledge.match({
+      : hybridSearchEnabled()
+        ? await matchHybridKnowledge({
+            query,
+            scopeId: request.scopeId,
+            limit: matchLimit,
+          })
+        : await knowledge.match({
           /*
            * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
            * with what it points at — see `retrieval-query.ts`. Every other turn is
@@ -1109,11 +1121,29 @@ async function answerQuestionUntraced(
     styleRules: chatStyleRulesEnabled(),
   });
 
+  const longContext = longContextEnabled()
+    ? await prepareLongContext({
+        history: request.history,
+        userId: actor.subject ?? null,
+        conversationId: request.conversationId ?? null,
+      })
+    : null;
+  const dataAddition = await loadChatDataBlock({
+    enabled: chatDataToolsEnabled(),
+    question: request.question,
+    role: actor.role,
+    scope: actor.scope,
+    briefedFamilies: families,
+  });
+  const groundingText = buildGroundingBlock(grounding);
+  const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
   const answer = await callClaude({
     system,
-    grounding: buildGroundingBlock(grounding),
-    reportData: briefing?.text ?? null,
+    grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
+    reportData: dataAddition.data
+      ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+      : reportText,
     /*
      * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
      *
@@ -1127,6 +1157,9 @@ async function answerQuestionUntraced(
     formRecords: formRecords?.block ?? null,
     personMemory,
     history: request.history,
+    ...(longContext
+      ? { historyPolicy: "budget" as const, priorSummary: longContext.summary }
+      : {}),
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
   });

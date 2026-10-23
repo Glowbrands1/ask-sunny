@@ -38,3 +38,27 @@ export function chatStyleRulesEnabled(): boolean {
 export function chatTraceEnabled(): boolean {
   return envFlag("CHAT_TRACE_ENABLED");
 }
+
+/**
+ * Top-N keyword and vector candidates with no similarity floor, fuzzy
+ * section titles, and a Haiku pick. Off keeps the existing cutoff.
+ */
+export function retrievalRecallEnabled(): boolean {
+  return envFlag("RETRIEVAL_RECALL_ENABLED");
+}
+
+/**
+ * Send a longer history window plus a stored summary of older turns.
+ * Off keeps the last 10 messages.
+ */
+export function longContextEnabled(): boolean {
+  return envFlag("LONG_CONTEXT_ENABLED");
+}
+
+/**
+ * Read-only review and sales tools, and the password-reset help text.
+ * Off leaves both off the answer.
+ */
+export function chatDataToolsEnabled(): boolean {
+  return envFlag("CHAT_DATA_TOOLS_ENABLED");
+}
