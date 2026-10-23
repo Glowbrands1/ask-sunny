@@ -259,9 +259,15 @@ async function answerQuestionUntraced(
   let intentForm = false;
   if (intentExtractionEnabled()) {
     const prepared = await applyIntentExtraction({ request, actor });
-    if (prepared.clarification) return prepared.clarification;
+    // A numbered choice (two people, two salons) still asks. The "I still
+    // need …" list does not: it replaced the proposal card on every live
+    // replay, including turns that had already given those slots.
+    const clarificationText = prepared.clarification?.content ?? "";
+    if (prepared.clarification && !clarificationText.startsWith("I still need")) {
+      return prepared.clarification;
+    }
     request = prepared.request;
-    intentForm = prepared.formTurn;
+    intentForm = prepared.formTurn || clarificationText.startsWith("I still need");
   }
 
   /* ------------------------------------------------------- form request -- */
@@ -678,6 +684,7 @@ async function answerQuestionUntraced(
         history: request.history,
         conversationId: request.conversationId,
         userName: request.context.userName,
+        todayIso: request.context.todayIso,
       })
     : Promise.resolve(null);
 

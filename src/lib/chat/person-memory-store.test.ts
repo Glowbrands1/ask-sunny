@@ -182,6 +182,22 @@ describe("recallPeople", () => {
     expect(await recall("What about Sarah Test?")).toBeNull();
   });
 
+  it("does not quote a different chat from today", async () => {
+    const today = "2026-10-23";
+    conversation({
+      createdAt: `${today}T15:00:00Z`,
+      turns: ["coaching for Lisa Smith at Lawrence"],
+    });
+    conversation({
+      createdAt: "2026-10-03T15:00:00Z",
+      turns: ["Lisa Smith was late last month"],
+    });
+    const block = await recall("What about Lisa Smith?", { todayIso: today });
+    expect(block).toContain("Lisa Smith was late last month");
+    expect(block).not.toContain("coaching for Lisa Smith at Lawrence");
+    expect(block).not.toContain(today);
+  });
+
   it("leaves the current conversation out, by its id", async () => {
     const current = conversation({ turns: ["Coaching form for Sarah Test"] });
     expect(await recall("What about Sarah Test?", { conversationId: current.clientId })).toBeNull();

@@ -134,13 +134,13 @@ describe("self-check", () => {
     expect(typo).toEqual([{ kind: "employee", detail: "jorden hale" }]);
   });
 
-  it("skips the employee check when the roster could not be read and fails a name on an empty roster", () => {
+  it("skips the employee check when the roster could not be read or came back empty", () => {
+    // An empty read is not proof the person is absent. Treating it as a miss
+    // took the typed name off the card (live replay, 23 Oct 2026).
     expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], roster: null, employeeName: "Casey Quinn" }))).toEqual([]);
     expect(
-      reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], roster: [], employeeName: "Jordan Hale" })).map(
-        (failure) => failure.kind,
-      ),
-    ).toEqual(["employee"]);
+      reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], roster: [], employeeName: "Jordan Hale" })),
+    ).toEqual([]);
   });
 
   it("does not call repair when the draft is already valid", async () => {
@@ -184,9 +184,11 @@ describe("self-check", () => {
     expect(calls).toBe(1);
     expect(settled.ok).toBe(false);
     expect(settled.repaired).toBe(true);
-    expect(settled.employeeName).toBeNull();
+    // The typed spelling stays on the card. The reply says Woven did not match.
+    expect(settled.employeeName).toBe("Jorden Hale");
     expect(settled.content).not.toContain("p.99");
-    expect(settled.content).toContain("not in the Woven roster");
+    expect(settled.content).toContain("couldn't find **Jorden Hale** in the Woven roster");
+    expect(settled.content).not.toContain("not on the form");
     expect(settled.actionPlan && actionPlanSentenceCount(settled.actionPlan)).toBe(2);
     expect(settled.content).not.toContain("written note");
   });

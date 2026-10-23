@@ -1,6 +1,8 @@
 import "server-only";
 
 import { fewShotExamplesEnabled } from "@/lib/config/chat-quality-flags";
+import { displayName } from "@/lib/forms/employee-match";
+import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { fewShotPrompt, scopeForExchange, selectFewShot, type RatedExchange } from "./feedback-replay";
@@ -16,9 +18,20 @@ export async function fewShotBlock(input: { readonly question: string; readonly 
   if (!fewShotExamplesEnabled()) return "";
   try {
     const exchanges = await loadHighRatedExchanges(input.scopeId);
-    return fewShotPrompt(selectFewShot({ question: input.question, scopeId: input.scopeId, exchanges }));
+    const picked = selectFewShot({ question: input.question, scopeId: input.scopeId, exchanges });
+    return fewShotPrompt(picked, await rosterNames());
   } catch {
     return "";
+  }
+}
+
+/** Names on the Woven roster, so an example cannot carry another chat's employee into this one. */
+async function rosterNames(): Promise<string[]> {
+  try {
+    const roster = await loadScopedRoster({ level: "global", primaryAreaId: null, alsoCoversAreaIds: [] });
+    return roster.map((person) => displayName(person));
+  } catch {
+    return [];
   }
 }
 

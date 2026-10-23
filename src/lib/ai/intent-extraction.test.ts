@@ -243,6 +243,30 @@ describe("slots are grounded and only the missing ones are asked", () => {
     expect(headingFromAccount("she showed up late", ["Late Opening"])).toBeNull();
   });
 
+  it("CA, coaching, and exit name the published form, and the Woven primary salon is used", () => {
+    const erin: GroundedPerson = {
+      ...person({ id: "emp-erin", first: "Erin", last: "Nelson", salonId: "loc-1001", title: "Tanning Consultant" }),
+      salonIds: ["loc-1001", "loc-1002"],
+      primarySalonId: "loc-1001",
+      primaryLocationName: "North Salon",
+    };
+    const templates = [...TEMPLATES, { key: "stc-exit", name: "Resignation/Exit Form" }];
+    const cases = [
+      ["CA for Erin Nelson, she was rude on 9/28/26", "dpoa"],
+      ["coaching for Erin Nelson on 9/29/26", "coaching"],
+      ["exit for Erin Nelson, last day 9/28/26", "stc-exit"],
+    ] as const;
+    for (const [question, key] of cases) {
+      const decision = decideIntentTurn(turn({ question, people: [erin], templates, raw: null }));
+      expect(decision.clarification, question).toBeNull();
+      expect(decision.formTurn, question).toBe(true);
+      expect(decision.state.templateKey, question).toBe(key);
+      expect(decision.state.employeeName, question).toBe("Erin Nelson");
+      expect(decision.state.employeeId, question).toBe("emp-erin");
+      expect(decision.state.salonId, question).toBe("loc-1001");
+    }
+  });
+
   it("asks only for the slots the conversation has not settled", () => {
     const decision = decideIntentTurn(
       turn({
@@ -256,11 +280,15 @@ describe("slots are grounded and only the missing ones are asked", () => {
         },
       }),
     );
-    // Warning level is ticked on the form. Asking it here replaced the card
-    // when the same account was sent again (live, 23 Oct 2026).
-    expect(decision.clarification).toBe("I still need the date it happened.");
-    expect(decision.clarification).not.toContain("which employee");
-    expect(decision.clarification).not.toContain("which salon");
+    // The "I still need …" list replaced the proposal card on every live
+    // replay (23 Oct 2026), including this turn, which already named the
+    // employee, the salon, and the form. The date stays unset on the card.
+    expect(decision.clarification).toBeNull();
+    expect(decision.formTurn).toBe(true);
+    expect(decision.state.employeeName).toBe("Jordan Hale");
+    expect(decision.state.salonId).toBe("loc-1001");
+    expect(decision.state.templateKey).toBe("dpoa");
+    expect(decision.state.formDate).toBeNull();
   });
 
   it("two dates are a choice, and a date the text never stated is dropped", () => {
@@ -282,7 +310,10 @@ describe("slots are grounded and only the missing ones are asked", () => {
       }),
     );
     expect(invented.state.formDate).toBeNull();
-    expect(invented.clarification).toContain("the date it happened");
+    // An invented date is dropped. The missing date is filled on the card
+    // rather than replacing the card with "I still need the date" (live, 23 Oct 2026).
+    expect(invented.clarification).toBeNull();
+    expect(invented.formTurn).toBe(true);
   });
 
   it("reads payroll from dollars, a dollar sign, and a decimal", () => {

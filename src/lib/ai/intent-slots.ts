@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { datesInText, listIncidentDates } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { extractEmployeeNames } from "@/lib/forms/proposal";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -171,8 +173,11 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
   const employee = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
-    : groundEmployee(reading?.employee ?? null, blob, input.people);
-  const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, blob, input.salons, employee.person);
+    : groundEmployee(reading?.employee ?? null, blob, input.people, input.salons);
+  const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
+    .filter((part) => part.trim() !== "")
+    .join("\n");
+  const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   const title = groundTitle(reading?.title ?? null, blob, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, blob, input.today);
@@ -222,7 +227,24 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
 
   if (clarification) return { question: input.question, state, clarification, formTurn };
   if (!formTurn) return { question: input.question, state, clarification: null, formTurn: false };
-  return { question: prependFormState(input.question, state), state, clarification: null, formTurn: true };
+  return { question: questionWithState(input.question, state, input.templates), state, clarification: null, formTurn: true };
+}
+
+/**
+ * The stored slots, then the published form's own name, ahead of this turn.
+ * A reply of "1" does not repeat the form, and the proposal reader only
+ * sees what the question says.
+ */
+function questionWithState(
+  question: string,
+  state: ConversationFormState,
+  templates: readonly TemplateRow[],
+): string {
+  const named = prependFormState(question, state);
+  const template = state.templateKey ? templates.find((item) => item.key === state.templateKey) : undefined;
+  if (!template) return named;
+  if (named.toLowerCase().includes(template.name.toLowerCase())) return named;
+  return `The form is the ${template.name}.\n${named}`;
 }
 
 function pageForHeading(heading: string | null, pages: Readonly<Record<string, number>> | undefined): number | null {
@@ -259,11 +281,19 @@ function groundEmployee(
   typed: string | null,
   blob: string,
   people: readonly GroundedPerson[],
+  salons: readonly SalonRow[] = [],
 ): { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null } {
   const fromText = peopleNamedIn(blob, people);
-  const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null);
+  const extracted = typed?.trim()
+    ? []
+    : extractEmployeeNames(blob).filter((name) => name.trim().split(/\s+/).length >= 2);
+  const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
   if (!probe) {
-    if (fromText.length > 1) return { person: null, name: null, ambiguous: fromText, typed: displayName(fromText[0]!) };
+    if (fromText.length > 1) {
+      const toldApart = personAtNamedSalon(fromText, blob, salons);
+      if (toldApart) return { person: toldApart, name: displayName(toldApart), ambiguous: [], typed: displayName(toldApart) };
+      return { person: null, name: null, ambiguous: fromText, typed: displayName(fromText[0]!) };
+    }
     return { person: null, name: null, ambiguous: [], typed: null };
   }
   if (people.length === 0) return { person: null, name: probe, ambiguous: [], typed: probe };
@@ -278,11 +308,26 @@ function groundEmployee(
     if (rows.length === 1 && words.length > 1) {
       return { person: rows[0]!, name: displayName(rows[0]!), ambiguous: [], typed: probe };
     }
+    const toldApart = personAtNamedSalon(rows, blob, salons);
+    if (toldApart) return { person: toldApart, name: displayName(toldApart), ambiguous: [], typed: probe };
     return { person: null, name: null, ambiguous: rows, typed: probe };
   }
   if (match.kind === "unchecked") return { person: null, name: probe, ambiguous: [], typed: probe };
   // Nobody on the roster is close. The name the manager typed still stands.
   return { person: null, name: probe, ambiguous: [], typed: probe };
+}
+
+/** One salon named in the account picks the one person who works there. */
+function personAtNamedSalon(
+  people: readonly GroundedPerson[],
+  blob: string,
+  salons: readonly SalonRow[],
+): GroundedPerson | null {
+  const named = matchSalonsInText(blob, salons);
+  if (named.length !== 1) return null;
+  const salonId = named[0]!.id;
+  const at = people.filter((person) => person.salonIds.includes(salonId) || person.primarySalonId === salonId);
+  return at.length === 1 ? at[0]! : null;
 }
 
 function peopleNamedIn(blob: string, people: readonly GroundedPerson[]): GroundedPerson[] {
@@ -307,18 +352,17 @@ function groundSalon(
   salons: readonly SalonRow[],
   person: GroundedPerson | null,
 ): { id: string | null; name: string | null; ambiguous: readonly SalonRow[] } {
-  const pool = person && person.salonIds.length > 0 ? salons.filter((salon) => person.salonIds.includes(salon.id)) : salons;
-  const list = pool.length > 0 ? pool : salons;
   const probed = typed?.trim() || null;
-  const matched = probed ? matchSalons(probed, list) : matchSalonsInText(blob, list);
+  // A salon the manager named wins, including one this employee is not
+  // affiliated with. The affiliation list is only the guess when they
+  // named none.
+  const matched = probed ? matchSalons(probed, salons) : matchSalonsInText(blob, salons);
   if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
-  // The manager did not name a salon. The Woven primary location is the salon,
-  // including when the employee is affiliated with more than one.
-  if (!probed && person) {
+  if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
+  if (person) {
     const primary = wovenPrimary(person, salons);
     if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
   }
-  if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
   if (person && person.salonIds.length === 1) {
     const only = salons.find((salon) => salon.id === person.salonIds[0]);
     if (only) return { id: only.id, name: only.name, ambiguous: [] };
@@ -469,10 +513,24 @@ function groundForm(
   const fromTyped = probed ? matchTemplates(probed, templates) : [];
   if (fromTyped.length === 1) return { key: fromTyped[0]!.key, ambiguous: [] };
   if (fromTyped.length > 1) return { key: null, ambiguous: fromTyped };
+  // "CA", "coaching", and "exit" are the words managers type. The form
+  // reader already maps those onto a published template. A short word is
+  // not a reason to ask which form again.
+  const fromShorthand = publishedKey(detectTemplateIntent(probed || blob), templates)
+    ?? publishedKey(detectTemplateIntent(blob), templates);
+  if (fromShorthand) return { key: fromShorthand, ambiguous: [] };
   const fromText = templates.filter((template) => blob.toLowerCase().includes(template.name.toLowerCase()));
   if (fromText.length === 1) return { key: fromText[0]!.key, ambiguous: [] };
   if (fromText.length > 1) return { key: null, ambiguous: fromText };
   return { key: null, ambiguous: [] };
+}
+
+function publishedKey(
+  intent: ReturnType<typeof detectTemplateIntent>,
+  templates: readonly TemplateRow[],
+): string | null {
+  if (intent.kind !== "explicit" && intent.kind !== "clarify") return null;
+  return templates.some((template) => template.key === intent.templateKey) ? intent.templateKey : null;
 }
 
 function matchTemplates(typed: string, templates: readonly TemplateRow[]): TemplateRow[] {
@@ -540,26 +598,12 @@ function clarificationFor(input: {
   if (input.warningLevel.ambiguous) {
     return "Which warning level did you mean? Reply with the number.\n1. **verbal**\n2. **written**";
   }
-  if (!input.formTurn) return null;
-
-  // A stated name that is not on the roster stays on the form. The reply says
-  // so once. Warning level, title, and the policy are filled on the card
-  // rather than replacing it with another question.
-  const missing: string[] = [];
-  if (!input.state.employeeName) missing.push("which employee");
-  if (!input.state.salonId) missing.push("which salon");
-  if (!input.state.formDate) missing.push("the date it happened");
-  const corrective = isCorrective(input.state.templateKey, input.templates);
-  if (corrective && input.state.payrollDeduct === "yes" && !input.state.payrollAmount) missing.push("the payroll amount");
-  if (missing.length === 0) return null;
-  return `I still need ${joinList(missing)}.`;
-}
-
-function isCorrective(key: string | null, templates: readonly TemplateRow[]): boolean {
-  if (!key) return false;
-  const template = templates.find((item) => item.key === key);
-  const name = `${key} ${template?.name ?? ""}`.toLowerCase();
-  return name.includes("corrective");
+  // A missing slot is filled on the proposal card. Returning "I still need …"
+  // here replaced the card on every live replay (23 Oct 2026), including
+  // turns that had already named the employee, the salon, the form, and the
+  // date. Warning level, title, what happened, and which form are optional.
+  // A name that is not on the roster stays on the card with a Woven note.
+  return null;
 }
 
 function personQuestion(people: readonly GroundedPerson[], typed: string | null, salons: readonly SalonRow[]): string {
@@ -707,12 +751,6 @@ function slashDate(iso: string): string {
   const [year, month, day] = iso.split("-");
   if (!year || !month || !day) return iso;
   return `${Number(month)}/${Number(day)}/${year}`;
-}
-
-function joinList(items: readonly string[]): string {
-  if (items.length === 1) return items[0]!;
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
 function blank(value: string | null | undefined): string | null {
