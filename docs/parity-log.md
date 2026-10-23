@@ -157,6 +157,26 @@ is not applied. Ask Bubbles was not attached, so this stays Sunny-only.
 Port the same mechanism when Bubbles is in the session. Do not copy salon
 names or company wording.
 
+## 23 Oct 2026: matcher request store (ported from Ask Bubbles)
+
+The name matcher's `AsyncLocalStorage` moved to `src/lib/forms/kept-typed-names.ts`
+(`server-only`), the same mechanism as Ask Bubbles `kept-typed-names.ts`.
+`employee-match.ts` no longer imports `node:async_hooks`, so a client chat
+page can import the matcher. No salon names or company wording were copied,
+and the JBA Policy Manual title is unchanged.
+
+## 23 Oct 2026: intent extraction (Sunny only)
+
+`INTENT_EXTRACTION_ENABLED` defaults off. When it is on, one Claude tool
+call reads employee, salon, title, incident type, incident date, payroll
+amount, warning level, and form type from the message, the history, and
+the stored form state. Each slot is kept only when the Woven roster, the
+salon list, or a retrieved JBA manual heading agrees. A missing slot is
+asked; an ambiguous person is a numbered choice that shows salon and
+title. No new migration. Ask Bubbles was not attached, so this stays
+Sunny-only. Port the mechanism later. Do not copy salon names or company
+wording, and do not rename the JBA Policy Manual.
+
 ## 22 Oct 2026: Corrective Action QA audit (from Ask-bubbles#68)
 
 Ported in this PR (Glowbrands1/ask-sunny#128), one `Port from Ask Bubbles

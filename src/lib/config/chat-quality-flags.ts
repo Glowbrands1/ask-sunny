@@ -164,3 +164,12 @@ export function draftMergeEnabled(): boolean {
 export function actionPlanSentencesEnabled(): boolean {
   return envFlag("ACTION_PLAN_SENTENCES_ENABLED");
 }
+
+/**
+ * One Claude tool call reads the turn into slots, then each slot is checked
+ * against the roster, the salon list, or the manual before it is kept.
+ * Off, the question is answered exactly as it is today.
+ */
+export function intentExtractionEnabled(): boolean {
+  return envFlag("INTENT_EXTRACTION_ENABLED");
+}

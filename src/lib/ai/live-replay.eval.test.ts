@@ -391,6 +391,8 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
       policyPage: 12,
       templateKey: "dpoa",
       incident: null,
+      incidentType: null,
+      payrollAmount: null,
     });
     expect(next).toContain("The employee is Marissa Lempka.");
     expect(next).toContain("Warning level: verbal.");
