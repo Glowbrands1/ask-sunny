@@ -15,6 +15,12 @@ the skip-Haiku path. Do not add phrase-to-section glossary lines for
 "showed up late" or "late 3 times": the model picks the section by reading
 the retrieved manual text. Do not copy salon names or company wording.
 
+`src/lib/knowledge/hybrid-rank-rewrite.test.ts` is a Sunny regression on
+this manual's production embeddings. It does not add a ranker. A rewrite
+that keeps the manager's "late" wording still places Late Opening ahead of
+Attendance, so there is no new mechanism to port until that order comes
+from the embedding rather than a phrase map.
+
 ## 22 Oct 2026: both apps brought level (pending QA review)
 
 Every chat/forms fix merged to either `main` from 12–21 Oct was compared. The
