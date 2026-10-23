@@ -173,3 +173,11 @@ export function actionPlanSentencesEnabled(): boolean {
 export function intentExtractionEnabled(): boolean {
   return envFlag("INTENT_EXTRACTION_ENABLED");
 }
+
+/**
+ * Similar highly rated past exchanges, this company only, as examples.
+ * Off, nothing is read and the prompt is unchanged.
+ */
+export function fewShotExamplesEnabled(): boolean {
+  return envFlag("FEWSHOT_EXAMPLES_ENABLED");
+}

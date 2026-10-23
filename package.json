@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "export:feedback-replay": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/export-feedback-replay.mts",
     "test:watch": "vitest",
     "dry-run:comp-sales": "vitest run src/lib/reporting/real-workbook.dry-run.test.ts --disableConsoleIntercept",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
