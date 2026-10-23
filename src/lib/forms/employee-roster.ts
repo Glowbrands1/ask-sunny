@@ -175,6 +175,8 @@ export async function loadScopedRoster(scope: AccessScope | null): Promise<Roste
 export interface DirectoryFact extends RosterEmployee {
   readonly title: string | null;
   readonly primaryLocationName: string | null;
+  /** Ask Sunny salon id for `primary_woven_location_id`, when that salon is in scope. */
+  readonly primarySalonId: string | null;
 }
 
 /**
@@ -250,6 +252,7 @@ export async function readDirectoryFacts(scope: AccessScope | null): Promise<Dir
         salonIds: [...inScope].sort(),
         title: String(row.position_name ?? "").trim() || null,
         primaryLocationName: String(row.primary_location_name ?? "").trim() || null,
+        primarySalonId: primaryId && inScope.includes(primaryId) ? primaryId : null,
       });
     }
     return facts;
