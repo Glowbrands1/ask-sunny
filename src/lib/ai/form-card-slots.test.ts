@@ -1,0 +1,423 @@
+import { describe, expect, it } from "vitest";
+
+import { PRODUCTION_SALONS } from "@/data/salons";
+import { HR_TEMPLATE_SEEDS } from "@/lib/forms/library";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import type { AccessScope, ChatFormProposal } from "@/types";
+
+import { attachFormTurnSources, enrichFormCard, formTurnCitations } from "./form-card-slots";
+import { EMPTY_FORM_STATE, type ConversationFormState } from "./form-state";
+import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson } from "./grounded-entities";
+import { proposeFormForTurn } from "./form-proposal";
+import { decideIntentTurn, headingFromAccount, type IntentTurnInput } from "./intent-slots";
+import { promoteSeparateForm, wantsSeparateDocument } from "./second-form";
+import type { AskResponse } from "./types";
+
+/**
+ * Live form-flow failures, 23 Oct 2026. The prompts are the ones that were sent.
+ * The tool payload is a copy of those words. Nothing here names a policy the
+ * retrieved headings do not contain.
+ */
+
+const TODAY = "2026-10-23";
+
+const ERIN_PROMPT = "CA for Erin Nelson, she was rude to Nevaeh on 9-28-26, follow up 10-16-26";
+const MANHATTAN_PROMPT =
+  "manhattan salon opened late on 9/20/26, assistant salon director test testy, CA with $25 payroll deduction";
+const COLENE_PROMPT = "coaching for cell phone use on 9-29-26 for Colene Schildt at Lawrence";
+const LISA_PROMPT = "Lisa smith, tanning consultant at lawrence, coaching form today";
+
+const SALONS = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
+const TEMPLATES = [
+  { key: "dpoa", name: "Corrective Action Form" },
+  { key: "coaching", name: "Coaching Form" },
+] as const;
+const HEADINGS = ["Attendance", "Late Opening", "Standards of Conduct", "Cell Phone/Smart Watch Policy"];
+const PAGES: Record<string, number> = {
+  Attendance: 14,
+  "Late Opening": 15,
+  "Standards of Conduct": 12,
+  "Cell Phone/Smart Watch Policy": 19,
+};
+
+const SCOPE: AccessScope = {
+  level: "salon",
+  primaryAreaId: "loc-0468",
+  alsoCoversAreaIds: ["loc-0462", "loc-0313", "loc-0314"],
+};
+
+const LIBRARY = HR_TEMPLATE_SEEDS.filter((seed) => ["coaching", "dpoa"].includes(seed.key)).map((seed) => ({
+  id: `tpl-${seed.key}`,
+  key: seed.key,
+  name: seed.name,
+  shortName: seed.shortName,
+  description: seed.description,
+  category: seed.category,
+  layoutFamily: seed.layoutFamily,
+  requiredPermission: seed.requiredPermission,
+  active: true,
+  displayOrder: seed.displayOrder,
+  currentVersion: { id: `v-${seed.key}`, status: "published" as const, document: seed.document, variants: seed.variants },
+  draftVersion: null,
+  versionCount: 1,
+  activeAsset: null,
+  assetCount: 0,
+}));
+
+function person(input: {
+  id: string;
+  first: string;
+  last: string;
+  salonIds: string[];
+  title: string | null;
+  primarySalonId?: string | null;
+  primaryLocationName?: string | null;
+}): GroundedPerson {
+  return {
+    id: input.id,
+    firstName: input.first,
+    lastName: input.last,
+    preferredFirstName: null,
+    salonIds: input.salonIds,
+    title: input.title,
+    primaryLocationName: input.primaryLocationName ?? null,
+    primarySalonId: input.primarySalonId ?? null,
+  };
+}
+
+const ERIN = person({
+  id: "emp-erin",
+  first: "Erin",
+  last: "Nelson",
+  salonIds: ["loc-0313", "loc-0314", "loc-0410"],
+  title: "Salon Director",
+  primarySalonId: "loc-0313",
+  primaryLocationName: "NE Omaha 132nd and Maple",
+});
+
+const JORDAN = person({
+  id: "emp-jordan",
+  first: "Jordan",
+  last: "Hale",
+  salonIds: ["loc-0468"],
+  title: "Tanning Consultant",
+  primarySalonId: "loc-0468",
+  primaryLocationName: "KS Lawrence",
+});
+
+const LISA_CLOSE = person({
+  id: "emp-lisa",
+  first: "Lisa",
+  last: "Smyth",
+  salonIds: ["loc-0468"],
+  title: "Tanning Consultant",
+  primarySalonId: "loc-0468",
+  primaryLocationName: "KS Lawrence",
+});
+
+function turn(overrides: Partial<IntentTurnInput>): IntentTurnInput {
+  return {
+    question: "",
+    history: [],
+    today: TODAY,
+    saved: null,
+    raw: null,
+    people: [JORDAN],
+    salons: SALONS,
+    headings: HEADINGS,
+    headingPages: PAGES,
+    templates: TEMPLATES,
+    formInProgress: false,
+    ...overrides,
+  };
+}
+
+function proposal(partial: Partial<ChatFormProposal> & Pick<ChatFormProposal, "templateKey" | "templateName">): ChatFormProposal {
+  return {
+    proposalId: "prop-1",
+    supportsInlineDraft: false,
+    variantKey: null,
+    employeeName: null,
+    employeeRole: null,
+    formDate: null,
+    locationId: null,
+    locationName: null,
+    locationResolution: "needs_selection",
+    authorizedLocationIds: [],
+    status: "needs_employee",
+    sourceMessageIds: [],
+    ...partial,
+  };
+}
+
+function answer(content: string, formProposal: ChatFormProposal): AskResponse {
+  return { content, citations: [], recommendedVideoIds: [], formProposal };
+}
+
+const STANDARDS = {
+  chunkIndex: 2,
+  page: 13,
+  printedPage: 12,
+  section: "Standards of Conduct",
+  content: "Standards of Conduct\n12 | P a g e\nEmployees treat every customer with respect.",
+  sections: [{ heading: "Standards of Conduct", page: 12 }],
+};
+
+const LATE = {
+  chunkIndex: 4,
+  page: 16,
+  printedPage: 15,
+  section: "Late Opening",
+  content: "Late Opening\n15 | P a g e\nWhen a salon opens late the employee reimburses the company.",
+  sections: [{ heading: "Late Opening", page: 15 }],
+};
+
+const PHONE = {
+  chunkIndex: 8,
+  page: 20,
+  printedPage: 19,
+  section: "Cell Phone/Smart Watch Policy",
+  content: "Cell Phone/Smart Watch Policy\n19 | P a g e\nPersonal cell phones stay out of sight during the shift.",
+  sections: [{ heading: "Cell Phone/Smart Watch Policy", page: 19 }],
+};
+
+describe("live form cards, 23 Oct 2026", () => {
+  it("CA for Erin Nelson, she was rude to Nevaeh on 9-28-26, follow up 10-16-26", () => {
+    const decision = decideIntentTurn(
+      turn({
+        question: ERIN_PROMPT,
+        people: [ERIN],
+        raw: {
+          employee: "Erin Nelson",
+          incidentType: "rude to Nevaeh",
+          incidentDate: "9-28-26",
+          formType: "CA",
+          formTurn: true,
+          policyHeading: "Standards of Conduct",
+        },
+      }),
+    );
+    expect(decision.clarification ?? "").not.toMatch(/which salon/i);
+    expect(decision.state.employeeName).toBe("Erin Nelson");
+    expect(decision.state.employeeId).toBe("emp-erin");
+    expect(decision.state.salonId).toBe("loc-0313");
+    expect(decision.state.formDate).toBe("2026-09-28");
+    expect(decision.state.policyHeading).toBe("Standards of Conduct");
+    expect(decision.state.policyPage).toBe(12);
+    expect(headingFromAccount(ERIN_PROMPT, HEADINGS)).toBeNull();
+
+    const asked = answer("I won't choose which salon this belongs to. Which salon is this about?", proposal({
+      templateKey: "dpoa",
+      templateName: "Corrective Action Form",
+      employeeName: "Erin Nelson",
+      status: "needs_location",
+      locationResolution: "needs_selection",
+      authorizedLocationIds: ["loc-0313", "loc-0314", "loc-0410"],
+    }));
+    const prep = prepareGroundedQuestion({ question: ERIN_PROMPT, history: [], people: [ERIN], saved: decision.state });
+    const applied = applyGroundedProposal(asked, { people: [ERIN], prep, rosterEmpty: false });
+    expect(applied.formProposal?.locationId).toBe("loc-0313");
+    expect(applied.formProposal?.locationResolution).toBe("resolved");
+
+    const card = enrichFormCard({
+      response: applied,
+      question: decision.question,
+      today: TODAY,
+      people: [ERIN],
+      saved: decision.state,
+    });
+    expect(card.formProposal?.locationId).toBe("loc-0313");
+    expect(card.formProposal?.formDate).toBe("2026-09-28");
+    expect(card.formProposal?.status).toBe("ready");
+    expect(card.content).not.toMatch(/which salon is this about/i);
+    expect(card.content).toContain("9/28/2026");
+    expect(card.content).toContain("10/16/2026");
+    expect(card.content).toMatch(/Standards of Conduct/);
+
+    const sources = attachFormTurnSources({
+      content: card.content,
+      citations: [],
+      notes: decision.question,
+      chunks: [STANDARDS, LATE],
+      documentId: "doc-manual",
+      documentTitle: "JBA Policy Manual",
+      documentCategory: "policies_compliance",
+      modelHeading: decision.state.policyHeading,
+    });
+    expect(sources.citations).toEqual([
+      expect.objectContaining({ documentTitle: "JBA Policy Manual", locator: "Page 12", category: "policies_compliance" }),
+    ]);
+    expect(formTurnCitations({
+      notes: ERIN_PROMPT,
+      chunks: [STANDARDS],
+      documentId: "doc-manual",
+      documentTitle: "JBA Policy Manual",
+      modelHeading: null,
+    })).toEqual([]);
+    expect(promoteSeparateForm(ERIN_PROMPT)).toBeNull();
+  });
+
+  it("manhattan salon opened late on 9/20/26, assistant salon director test testy, CA with $25 payroll deduction", () => {
+    const raw = {
+      employee: "test testy",
+      salon: "manhattan",
+      title: "assistant salon director",
+      incidentDate: "9/20/26",
+      payrollAmount: "$25",
+      formType: "CA",
+      formTurn: true,
+      policyHeading: "Late Opening",
+    };
+    const first = decideIntentTurn(turn({ question: MANHATTAN_PROMPT, people: [JORDAN], raw }));
+    expect(first.clarification ?? "").not.toMatch(/verbal or written/i);
+    expect(first.state.employeeName).toBe("test testy");
+    expect(first.state.employeeId).toBeNull();
+    expect(first.state.salonId).toBe("loc-0462");
+    expect(first.state.formDate).toBe("2026-09-20");
+    // The form prints the abbreviation extractJobTitle already returns.
+    // "assistant salon director" in the manager's turn is ASD on the card.
+    expect(first.state.title).toBe("ASD");
+    expect(first.state.payrollAmount).toBe("25");
+    expect(first.state.policyHeading).toBe("Late Opening");
+    expect(first.state.policyPage).toBe(15);
+    expect(first.formTurn).toBe(true);
+
+    const resent = decideIntentTurn(
+      turn({
+        question: MANHATTAN_PROMPT,
+        people: [JORDAN],
+        saved: first.state,
+        formInProgress: true,
+        raw: { formTurn: true, formType: "CA" },
+      }),
+    );
+    expect(resent.clarification ?? "").not.toMatch(/verbal or written/i);
+    expect(resent.state.formDate).toBe("2026-09-20");
+    expect(resent.state.payrollAmount).toBe("25");
+    expect(resent.state.employeeName).toBe("test testy");
+    expect(resent.state.salonId).toBe("loc-0462");
+
+    const dropped = answer("Who is this **Corrective Action Form** for? Give me their name and I'll draft it from what you've told me.", proposal({
+      templateKey: "dpoa",
+      templateName: "Corrective Action Form",
+      locationId: "loc-0462",
+      locationResolution: "resolved",
+      status: "needs_employee",
+    }));
+    const card = enrichFormCard({
+      response: dropped,
+      question: MANHATTAN_PROMPT,
+      today: TODAY,
+      people: [JORDAN],
+      saved: first.state,
+    });
+    expect(card.content).not.toMatch(/who is this/i);
+    expect(card.formProposal?.employeeName).toBe("test testy");
+    expect(card.formProposal?.locationId).toBe("loc-0462");
+    expect(card.formProposal?.formDate).toBe("2026-09-20");
+    expect(card.formProposal?.employeeRole).toBe("ASD");
+    expect(card.formProposal?.payrollDeduct).toBe("yes");
+    expect(card.content).toContain("9/20/2026");
+    expect(card.content).toContain("$25");
+    expect(card.content).toMatch(/Late Opening/);
+    expect(card.content).toContain("I couldn't find **test testy** in the Woven roster.");
+    expect(card.content.match(/couldn't find|didn't find/gi)?.length).toBe(1);
+
+    const again = enrichFormCard({ response: card, question: MANHATTAN_PROMPT, today: TODAY, people: [JORDAN], saved: resent.state });
+    expect(again.formProposal?.formDate).toBe("2026-09-20");
+    expect(again.formProposal?.payrollDeduct).toBe("yes");
+    expect(again.content.match(/couldn't find|didn't find/gi)?.length).toBe(1);
+    expect(again.content).not.toMatch(/verbal or written/i);
+  });
+
+  it("coaching for cell phone use on 9-29-26 for Colene Schildt at Lawrence", async () => {
+    expect(detectTemplateIntent(COLENE_PROMPT).kind).toBe("none");
+    const lead = promoteSeparateForm(COLENE_PROMPT);
+    expect(lead).toContain("coaching form for Colene Schildt");
+    expect(lead).toContain(COLENE_PROMPT);
+    expect(detectTemplateIntent(lead ?? "").kind).toBe("explicit");
+    expect(wantsSeparateDocument(COLENE_PROMPT)).toBe(true);
+    expect(wantsSeparateDocument("please redraft the coaching form")).toBe(false);
+    expect(wantsSeparateDocument("create a verbal corrective action")).toBe(false);
+
+    const proposed = await proposeFormForTurn({
+      history: [],
+      question: lead ?? COLENE_PROMPT,
+      questionMessageId: "msg-colene",
+      actor: { role: "salon_director", scope: SCOPE },
+      summaries: LIBRARY as never,
+      today: TODAY,
+    });
+    expect(proposed?.formProposal?.templateKey).toBe("coaching");
+    expect(proposed?.formProposal?.employeeName).toMatch(/Colene Schildt/i);
+    expect(proposed?.formProposal?.formDate).toBe("2026-09-29");
+    expect(proposed?.formProposal?.locationId).toBe("loc-0468");
+    expect(proposed?.content ?? "").not.toMatch(/finalized/i);
+
+    const sources = formTurnCitations({
+      notes: COLENE_PROMPT,
+      chunks: [PHONE, STANDARDS, LATE],
+      documentId: "doc-manual",
+      documentTitle: "JBA Policy Manual",
+      documentCategory: "policies_compliance",
+      modelHeading: null,
+    });
+    expect(sources.map((citation) => citation.locator)).toEqual(["Page 19"]);
+    expect(sources[0]?.excerpt).toContain("cell phones");
+  });
+
+  it("Lisa smith, tanning consultant at lawrence, coaching form today", () => {
+    const decision = decideIntentTurn(
+      turn({
+        question: LISA_PROMPT,
+        people: [JORDAN],
+        raw: {
+          employee: "Lisa smith",
+          salon: "lawrence",
+          title: "tanning consultant",
+          formType: "coaching form",
+          formTurn: true,
+          incidentDate: null,
+        },
+      }),
+    );
+    expect(decision.clarification ?? "").not.toMatch(/which employee|who is this/i);
+    expect(decision.state.employeeName).toBe("Lisa smith");
+    expect(decision.state.employeeId).toBeNull();
+    expect(decision.state.salonId).toBe("loc-0468");
+    expect(decision.state.formDate).toBe(TODAY);
+    expect(decision.state.title?.toLowerCase()).toContain("tanning consultant");
+
+    const asked = answer("Who is this **Coaching Form** for?", proposal({
+      templateKey: "coaching",
+      templateName: "Coaching Form",
+    }));
+    const card = enrichFormCard({
+      response: asked,
+      question: LISA_PROMPT,
+      today: TODAY,
+      people: [JORDAN],
+      saved: decision.state,
+    });
+    expect(card.formProposal?.employeeName).toBe("Lisa smith");
+    expect(card.formProposal?.employeeRole?.toLowerCase()).toContain("tanning consultant");
+    expect(card.formProposal?.locationId).toBe("loc-0468");
+    expect(card.formProposal?.formDate).toBe(TODAY);
+    expect(card.content).toContain("Lisa smith");
+    expect(card.content).toContain("10/23/2026");
+    expect(card.content).toContain("I couldn't find **Lisa smith** in the Woven roster.");
+    expect(card.content).not.toMatch(/who is this/i);
+
+    const suggested = enrichFormCard({
+      response: asked,
+      question: LISA_PROMPT,
+      today: TODAY,
+      people: [LISA_CLOSE],
+      saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+    });
+    expect(suggested.formProposal?.employeeName).toBe("Lisa smith");
+    expect(suggested.content).toContain("Did you mean **Lisa Smyth**");
+    expect(suggested.formProposal?.locationId).toBe("loc-0468");
+    expect(suggested.formProposal?.formDate).toBe(TODAY);
+  });
+});

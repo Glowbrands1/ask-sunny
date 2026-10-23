@@ -44,13 +44,24 @@ export const EMPTY_FORM_STATE: ConversationFormState = {
   payrollAmount: null,
 };
 
+/**
+ * A salon whose name contains "and" ("NE Omaha 132nd and Maple") is split into
+ * a person once any turn is read as a correction. The salon number is the
+ * same salon, and the name reader does not take its last word.
+ */
+function salonForReaders(name: string, salonId: string): string {
+  if (!/\band\b/i.test(name)) return name;
+  const number = salonId.replace(/^loc-/, "");
+  return number ? `salon ${number}` : name;
+}
+
 export function stateSentences(state: ConversationFormState): string[] {
   const lines: string[] = [];
   if (state.employeeName) lines.push(`The employee is ${state.employeeName}.`);
   if (state.title) lines.push(`Job title: ${state.title}.`);
   if (state.salonId) {
     const salon = rosterSalonName(state.salonId);
-    if (salon) lines.push(`It happened at ${salon}.`);
+    if (salon) lines.push(`It happened at ${salonForReaders(salon, state.salonId)}.`);
   }
   if (state.formDate) lines.push(`It happened on ${slashDate(state.formDate)}.`);
   if (state.warningLevel) lines.push(`Warning level: ${state.warningLevel}.`);

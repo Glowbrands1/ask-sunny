@@ -116,7 +116,9 @@ export function reviewOutgoing(draft: OutgoingDraft): SelfCheckFailure[] {
   if (plan && actionPlanSentenceCount(plan) !== 2) {
     failures.push({ kind: "action_plan", detail: plan });
   }
-  if (draft.employeeName && draft.roster && !employeeOnRoster(draft.employeeName, draft.roster)) {
+  // An empty directory is not proof the person is absent. A name the manager
+  // typed stays on the card; the proposal says once that Woven did not match.
+  if (draft.employeeName && draft.roster && draft.roster.length > 0 && !employeeOnRoster(draft.employeeName, draft.roster)) {
     failures.push({ kind: "employee", detail: draft.employeeName });
   }
   return failures;
@@ -158,7 +160,7 @@ export function actionPlanIn(content: string): string | null {
 function fallback(draft: OutgoingDraft, failures: readonly SelfCheckFailure[]): Omit<SettledDraft, "repaired"> {
   let content = draft.content;
   let actionPlan = draft.actionPlan;
-  let employeeName = draft.employeeName;
+  const employeeName = draft.employeeName;
   if (failures.some((failure) => failure.kind === "citation")) {
     content = content
       .split(/(?<=[.!?])\s+/)
@@ -181,9 +183,10 @@ function fallback(draft: OutgoingDraft, failures: readonly SelfCheckFailure[]): 
     }
   }
   if (failures.some((failure) => failure.kind === "employee")) {
-    employeeName = null;
-    if (!content.includes("not in the Woven roster")) {
-      content = `I couldn't confirm that employee. The name is not in the Woven roster, so it is not on the form.\n\n${content}`.trim();
+    // The typed name stays. Clearing it blocked the card whenever Woven had
+    // no close match (live replay, 23 Oct 2026).
+    if (!/couldn'?t find|not in the woven roster/i.test(content) && employeeName) {
+      content = `I couldn't find **${employeeName}** in the Woven roster.\n\n${content}`.trim();
     }
   }
   return { content, employeeName, actionPlan, ok: false };

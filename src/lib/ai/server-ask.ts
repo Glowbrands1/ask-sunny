@@ -9,9 +9,11 @@ import {
   fewShotExamplesEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
+  groundedEntitiesEnabled,
   intentExtractionEnabled,
   longContextEnabled,
   policyCitationEnabled,
+  secondFormEnabled,
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
@@ -81,7 +83,10 @@ import { loadChatDataBlock } from "./chat-data-tools";
 import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
+import { attachFormTurnSources, statedManualHeading } from "./form-card-slots";
+import { prepareProposalQuestion } from "./proposal-question";
 import { applyIntentExtraction } from "./intent-extraction";
+import { promoteSeparateForm } from "./second-form";
 import { fewShotBlock } from "./few-shot-examples";
 import { rewriteToManualTerms } from "./query-rewrite-claude";
 import { guardReply } from "./self-check-run";
@@ -252,10 +257,19 @@ async function answerQuestionUntraced(
    * On, a slot is kept only when the roster, the salon list, or the manual
    * agrees, and a question goes out only for what is still missing.
    */
+  const managerQuestion = request.question;
+  let intentForm = false;
   if (intentExtractionEnabled()) {
     const prepared = await applyIntentExtraction({ request, actor });
-    if (prepared.clarification) return prepared.clarification;
+    // A numbered choice (two people, two salons) still asks. The "I still
+    // need …" list does not: it replaced the proposal card on every live
+    // replay, including turns that had already given those slots.
+    const clarificationText = prepared.clarification?.content ?? "";
+    if (prepared.clarification && !clarificationText.startsWith("I still need")) {
+      return prepared.clarification;
+    }
     request = prepared.request;
+    intentForm = prepared.formTurn || clarificationText.startsWith("I still need");
   }
 
   /* ------------------------------------------------------- form request -- */
@@ -382,12 +396,18 @@ async function answerQuestionUntraced(
   async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
     const coachingOn = priorCoachingOptionalEnabled();
     const recallOn = retrievalRecallEnabled();
-    if (!coachingOn && !recallOn) return response;
+    // A form turn cites the manual section the account resolves. Policy
+    // citation has its own flag. Intent extraction and grounded entities are
+    // the flags that were on for the live replay, and a card from that path
+    // still has to name the section and page.
+    const citeOn = policyCitationEnabled() || intentExtractionEnabled() || groundedEntitiesEnabled();
+    if (!coachingOn && !recallOn && !citeOn) return response;
     const turns = [
       ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
       request.question,
     ];
     let content = response.content;
+    let citations = response.citations;
     if (coachingOn) {
       content = applyOptionalPriorCoaching(content, {
         enabled: true,
@@ -395,15 +415,30 @@ async function answerQuestionUntraced(
         managerText: turns.join("\n"),
       });
     }
-    if (recallOn) {
+    if (recallOn || (citeOn && response.formProposal)) {
       try {
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
-        if (manual.ok) content = withMappedPolicy(content, turns, manual.chunks, true);
+        if (manual.ok && recallOn) content = withMappedPolicy(content, turns, manual.chunks, true);
+        if (manual.ok && citeOn && response.formProposal) {
+          const notes = turns.join("\n");
+          const attached = attachFormTurnSources({
+            content,
+            citations,
+            notes,
+            chunks: manual.chunks,
+            documentId: manual.documentId,
+            documentTitle: manual.documentTitle,
+            documentCategory: manual.documentCategory,
+            modelHeading: statedManualHeading(notes),
+          });
+          content = attached.content;
+          citations = attached.citations;
+        }
       } catch {
         // A manual read that fails leaves the proposal as the forms path wrote it.
       }
     }
-    return content === response.content ? response : { ...response, content };
+    return content === response.content && citations === response.citations ? response : { ...response, content, citations };
   }
 
   let inventoryQuestion: InventoryQuestion = detected;
@@ -446,9 +481,12 @@ async function answerQuestionUntraced(
     }
   }
 
+  const separateLead = secondFormEnabled() ? promoteSeparateForm(managerQuestion) : null;
   const formsTurn =
     inventoryQuestion.kind !== "none" ||
     spokenIntent.kind !== "none" ||
+    intentForm ||
+    Boolean(separateLead) ||
     Boolean(request.continueProposalTemplateKey) ||
     // "The form", answering "coaching guidance, or a Coaching Form?".
     answersFormClarification(request.history, request.question);
@@ -486,7 +524,7 @@ async function answerQuestionUntraced(
     const proposal = await deliverFormProposal({
       request,
       actor,
-      question: questionForProposal(heard ? routingQuestion : request.question, request),
+      question: prepareProposalQuestion(questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request)),
       decorate: decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
       history: request.history,
@@ -597,7 +635,7 @@ async function answerQuestionUntraced(
           deliverFormProposal({
             request,
             actor,
-            question: questionForProposal(adjusted.question, request),
+            question: prepareProposalQuestion(questionForProposal(adjusted.question, request)),
             decorate: decorateFormAnswer,
             propose: (question) => proposeFormForTurn({
             history: request.history,
@@ -652,6 +690,7 @@ async function answerQuestionUntraced(
         history: request.history,
         conversationId: request.conversationId,
         userName: request.context.userName,
+        todayIso: request.context.todayIso,
       })
     : Promise.resolve(null);
 
@@ -1405,6 +1444,14 @@ async function citedManualGrounding(
   } catch {
     return null;
   }
+}
+
+function proposalQuestion(lead: string | null, question: string, original: string): string {
+  if (!lead) return question;
+  if (question === original) return lead;
+  const split = lead.indexOf(". ");
+  const prefix = split > 0 ? lead.slice(0, split) : "";
+  return prefix ? `${prefix}. ${question}` : lead;
 }
 
 function questionForProposal(question: string, request: AskRequest): string {

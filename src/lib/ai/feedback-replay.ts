@@ -151,7 +151,7 @@ export function fewShotPrompt(examples: readonly RatedExchange[], rosterNames: r
     .join("\n\n");
   return `SIMILAR PAST ANSWERS THIS COMPANY RATED HIGHLY
 
-These are examples of shape from this company only. Do not copy a name, a date, a figure, or a policy from them unless the sources for this question also say it.
+These are examples of shape from other conversations at this company. They are not this conversation and not something the manager said earlier today. Do not tell the manager they mentioned a person, a date, or an event from an example. Do not copy a name, a date, a figure, or a policy from them unless the sources for this question also say it.
 
 ${body}`;
 }

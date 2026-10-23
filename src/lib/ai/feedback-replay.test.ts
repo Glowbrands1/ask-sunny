@@ -121,7 +121,27 @@ describe("few-shot examples stay in this company", () => {
     expect(picked.map((item) => item.id)).toEqual(["a"]);
     const prompt = fewShotPrompt(picked, ["Jordan Hale"]);
     expect(prompt).toContain("THIS COMPANY");
+    expect(prompt).toContain("not this conversation");
+    expect(prompt).toContain("earlier today");
     expect(prompt).not.toContain("different company");
+  });
+
+  it("does not carry another chat's employee into the example", () => {
+    const prompt = fewShotPrompt(
+      [
+        {
+          id: "lisa",
+          rating: 5,
+          scopeId: "stc-core",
+          question: "coaching for Lisa Smith at Lawrence today",
+          answer: "You mentioned Lisa Smith earlier today.",
+        },
+      ],
+      ["Lisa Smith"],
+    );
+    expect(prompt).not.toContain("Lisa Smith");
+    expect(prompt).toContain("[employee 1]");
+    expect(prompt).toContain("Do not tell the manager they mentioned");
   });
 
   it("drops a row stored for another company", () => {

@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { datesInText } from "@/lib/forms/form-date-answer";
+import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -19,8 +21,9 @@ import type { GroundedPerson } from "./grounded-entities";
  * or the manual headings agree.
  *
  * The model copies what the manager said. This file decides what is real.
- * A heading that is not in the headings it was given is not an incident
- * type, and a person who is not on the roster is not the employee.
+ * A heading that is not in the headings it was given is dropped. A person
+ * who is not on the roster keeps the name the manager typed; the reply says
+ * once that Woven does not have them, and the other slots stay.
  */
 
 export const INTENT_TOOL_NAME = "record_intent_slots";
@@ -38,6 +41,7 @@ export const intentSlotSchema = z
     warningLevel: warningSchema,
     formType: z.string().nullable().optional(),
     formTurn: z.boolean().optional(),
+    policyHeading: z.string().nullable().optional(),
   })
   .transform((value) => ({
     employee: blank(value.employee),
@@ -49,6 +53,7 @@ export const intentSlotSchema = z
     warningLevel: value.warningLevel ?? null,
     formType: blank(value.formType),
     formTurn: value.formTurn ?? false,
+    policyHeading: blank(value.policyHeading),
   }));
 
 export type IntentSlotReading = z.infer<typeof intentSlotSchema>;
@@ -66,6 +71,7 @@ export const INTENT_TOOL_INPUT_SCHEMA = {
     "warningLevel",
     "formType",
     "formTurn",
+    "policyHeading",
   ],
   properties: {
     employee: { type: ["string", "null"], description: "The person named, in the manager's own spelling. Null when nobody was named." },
@@ -80,6 +86,11 @@ export const INTENT_TOOL_INPUT_SCHEMA = {
     warningLevel: { type: ["string", "null"], enum: ["verbal", "written", null] },
     formType: { type: ["string", "null"], description: "The form they named, in their words. Null when no form was named." },
     formTurn: { type: "boolean", description: "True when this turn is filing or continuing a form." },
+    policyHeading: {
+      type: ["string", "null"],
+      description:
+        "The one heading from the supplied manual list that this account is about. Null when none of those headings fit. Do not invent a heading.",
+    },
   },
 };
 
@@ -107,6 +118,8 @@ export interface IntentTurnInput {
   readonly salons: readonly SalonRow[];
   /** Section headings from the manual that was retrieved. */
   readonly headings: readonly string[];
+  /** Printed page of each retrieved heading, keyed by that heading. */
+  readonly headingPages?: Readonly<Record<string, number>>;
   readonly templates: readonly TemplateRow[];
   readonly formInProgress: boolean;
 }
@@ -115,6 +128,8 @@ export interface IntentTurnDecision {
   readonly question: string;
   readonly state: ConversationFormState;
   readonly clarification: string | null;
+  /** True when this turn is filing or continuing a form. */
+  readonly formTurn: boolean;
 }
 
 interface ChoiceOption {
@@ -158,14 +173,27 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
   const employee = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
-    : groundEmployee(reading?.employee ?? null, blob, input.people);
-  const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, blob, input.salons, employee.person);
-  const title = groundTitle(reading?.title ?? null, blob, input.people, employee.person);
+    : groundEmployee(reading?.employee ?? null, blob, input.people, input.salons);
+  const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
+    .filter((part) => part.trim() !== "")
+    .join("\n");
+  const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
+  const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
-  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, blob, input.today);
+  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
+  const modelPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
+  // A heading already grounded stays. The account reader fills one in only
+  // when this conversation has not chosen one, so a resend does not replace
+  // Late Opening with the broader Attendance section.
+  const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
+  const policyPage = modelPolicy
+    ? pageForHeading(modelPolicy, input.headingPages)
+    : saved.policyHeading
+      ? saved.policyPage
+      : pageForHeading(policyHeading, input.headingPages);
   const formTurn = Boolean(input.formInProgress || reading?.formTurn || formType.key || saved.templateKey);
 
   const state = mergeSlots(saved, {
@@ -177,6 +205,8 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     payrollAmount,
     warningLevel: warningLevel.value,
     formType: formType.key,
+    policyHeading,
+    policyPage,
   });
 
   const clarification = clarificationFor({
@@ -195,9 +225,46 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     templates: input.templates,
   });
 
-  if (clarification) return { question: input.question, state, clarification };
-  if (!formTurn) return { question: input.question, state, clarification: null };
-  return { question: prependFormState(input.question, state), state, clarification: null };
+  const question = formTurn ? questionWithState(input.question, state, input.templates) : input.question;
+  if (clarification) return { question, state, clarification, formTurn };
+  if (!formTurn) return { question, state, clarification: null, formTurn: false };
+  return { question, state, clarification: null, formTurn: true };
+}
+
+/**
+ * The stored slots, then the published form's own name, ahead of this turn.
+ * A reply of "1" does not repeat the form, and the proposal reader only
+ * sees what the question says.
+ */
+function questionWithState(
+  question: string,
+  state: ConversationFormState,
+  templates: readonly TemplateRow[],
+): string {
+  const named = prependFormState(question, state);
+  const template = state.templateKey ? templates.find((item) => item.key === state.templateKey) : undefined;
+  if (!template) return named;
+  if (named.toLowerCase().includes(template.name.toLowerCase())) return named;
+  return `The form is the ${template.name}.\n${named}`;
+}
+
+function pageForHeading(heading: string | null, pages: Readonly<Record<string, number>> | undefined): number | null {
+  if (!heading || !pages) return null;
+  if (pages[heading] && pages[heading]! > 0) return pages[heading]!;
+  const key = headingKey(heading);
+  for (const [name, page] of Object.entries(pages)) {
+    if (headingKey(name) === key && page > 0) return page;
+  }
+  return null;
+}
+
+/** A retrieved heading the model named, or null when that heading was not retrieved. */
+function groundPolicy(typed: string | null, headings: readonly string[]): string | null {
+  if (!typed || headings.length === 0) return null;
+  const exact = headings.find((heading) => headingKey(heading) === headingKey(typed));
+  if (exact) return exact;
+  const named = headings.filter((heading) => namesHeading(typed, heading));
+  return named.length === 1 ? named[0]! : null;
 }
 
 function parseReading(raw: unknown): IntentSlotReading | null {
@@ -215,11 +282,19 @@ function groundEmployee(
   typed: string | null,
   blob: string,
   people: readonly GroundedPerson[],
+  salons: readonly SalonRow[] = [],
 ): { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null } {
   const fromText = peopleNamedIn(blob, people);
-  const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null);
+  const extracted = typed?.trim()
+    ? []
+    : extractEmployeeNames(blob).filter((name) => name.trim().split(/\s+/).length >= 2);
+  const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
   if (!probe) {
-    if (fromText.length > 1) return { person: null, name: null, ambiguous: fromText, typed: displayName(fromText[0]!) };
+    if (fromText.length > 1) {
+      const toldApart = personAtNamedSalon(fromText, blob, salons);
+      if (toldApart) return { person: toldApart, name: displayName(toldApart), ambiguous: [], typed: displayName(toldApart) };
+      return { person: null, name: null, ambiguous: fromText, typed: displayName(fromText[0]!) };
+    }
     return { person: null, name: null, ambiguous: [], typed: null };
   }
   if (people.length === 0) return { person: null, name: probe, ambiguous: [], typed: probe };
@@ -234,10 +309,26 @@ function groundEmployee(
     if (rows.length === 1 && words.length > 1) {
       return { person: rows[0]!, name: displayName(rows[0]!), ambiguous: [], typed: probe };
     }
+    const toldApart = personAtNamedSalon(rows, blob, salons);
+    if (toldApart) return { person: toldApart, name: displayName(toldApart), ambiguous: [], typed: probe };
     return { person: null, name: null, ambiguous: rows, typed: probe };
   }
   if (match.kind === "unchecked") return { person: null, name: probe, ambiguous: [], typed: probe };
-  return { person: null, name: null, ambiguous: [], typed: probe };
+  // Nobody on the roster is close. The name the manager typed still stands.
+  return { person: null, name: probe, ambiguous: [], typed: probe };
+}
+
+/** One salon named in the account picks the one person who works there. */
+function personAtNamedSalon(
+  people: readonly GroundedPerson[],
+  blob: string,
+  salons: readonly SalonRow[],
+): GroundedPerson | null {
+  const named = matchSalonsInText(blob, salons);
+  if (named.length !== 1) return null;
+  const salonId = named[0]!.id;
+  const at = people.filter((person) => person.salonIds.includes(salonId) || person.primarySalonId === salonId);
+  return at.length === 1 ? at[0]! : null;
 }
 
 function peopleNamedIn(blob: string, people: readonly GroundedPerson[]): GroundedPerson[] {
@@ -253,7 +344,7 @@ function peopleNamedIn(blob: string, people: readonly GroundedPerson[]): Grounde
 }
 
 function asGrounded(employee: RosterEmployee, people: readonly GroundedPerson[]): GroundedPerson {
-  return people.find((person) => person.id === employee.id) ?? { ...employee, title: null, primaryLocationName: null };
+  return people.find((person) => person.id === employee.id) ?? { ...employee, title: null, primaryLocationName: null, primarySalonId: null };
 }
 
 function groundSalon(
@@ -262,18 +353,43 @@ function groundSalon(
   salons: readonly SalonRow[],
   person: GroundedPerson | null,
 ): { id: string | null; name: string | null; ambiguous: readonly SalonRow[] } {
-  const pool = person && person.salonIds.length > 0 ? salons.filter((salon) => person.salonIds.includes(salon.id)) : salons;
-  const list = pool.length > 0 ? pool : salons;
   const probed = typed?.trim() || null;
-  const matched = probed ? matchSalons(probed, list) : matchSalonsInText(blob, list);
+  // A salon the manager named wins, including one this employee is not
+  // affiliated with. The affiliation list is only the guess when they
+  // named none.
+  const matched = probed ? matchSalons(probed, salons) : matchSalonsInText(blob, salons);
   if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
-  if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
+  if (matched.length > 1) {
+    // A later turn that names one salon replaces an earlier one. Two salons
+    // in the same turn stay a question.
+    const latest = latestUniqueSalon(blob, salons);
+    if (latest) return { id: latest.id, name: latest.name, ambiguous: [] };
+    return { id: null, name: null, ambiguous: matched };
+  }
+  if (person) {
+    const primary = wovenPrimary(person, salons);
+    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  }
   if (person && person.salonIds.length === 1) {
     const only = salons.find((salon) => salon.id === person.salonIds[0]);
     if (only) return { id: only.id, name: only.name, ambiguous: [] };
     if (person.primaryLocationName) return { id: person.salonIds[0]!, name: person.primaryLocationName, ambiguous: [] };
   }
+  if (person) {
+    const primary = wovenPrimary(person, salons);
+    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  }
   return { id: null, name: null, ambiguous: [] };
+}
+
+function wovenPrimary(person: GroundedPerson, salons: readonly SalonRow[]): SalonRow | null {
+  if (person.primarySalonId) {
+    const row = salons.find((salon) => salon.id === person.primarySalonId);
+    if (row) return row;
+  }
+  if (!person.primaryLocationName) return null;
+  const hits = matchSalons(person.primaryLocationName, salons);
+  return hits.length === 1 ? hits[0]! : null;
 }
 
 function matchSalons(typed: string, salons: readonly SalonRow[]): SalonRow[] {
@@ -281,6 +397,18 @@ function matchSalons(typed: string, salons: readonly SalonRow[]): SalonRow[] {
   if (needle.length === 0) return [];
   const hits = salons.filter((salon) => wordsCover(needle, wordsOf(salon.name)));
   return hits;
+}
+
+function latestUniqueSalon(text: string, salons: readonly SalonRow[]): SalonRow | null {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  // The blob is the current question, then older history. The question is the
+  // latest line, so it is checked first.
+  const chronological = lines.length > 1 ? [...lines.slice(1), lines[0]!] : lines;
+  for (let index = chronological.length - 1; index >= 0; index -= 1) {
+    const matched = matchSalonsInText(chronological[index]!, salons);
+    if (matched.length === 1) return matched[0]!;
+  }
+  return null;
 }
 
 function matchSalonsInText(blob: string, salons: readonly SalonRow[]): SalonRow[] {
@@ -298,6 +426,11 @@ function groundTitle(
   people: readonly GroundedPerson[],
   person: GroundedPerson | null,
 ): string | null {
+  // The title reader is most-specific first. A roster title contained in a
+  // longer one ("salon director" inside "assistant salon director") is not
+  // what the manager stated.
+  const stated = extractJobTitle(blob);
+  if (stated) return stated;
   if (person?.title) return person.title;
   const titles = [...new Set(people.map((row) => row.title).filter((title): title is string => Boolean(title?.trim())))];
   const probe = typed?.trim() || null;
@@ -308,7 +441,10 @@ function groundTitle(
     if (close.length === 1) return close[0]!;
   }
   const inText = titles.filter((title) => blob.toLowerCase().includes(title.toLowerCase()));
-  return inText.length === 1 ? inText[0]! : null;
+  if (inText.length === 1) return inText[0]!;
+  // A title the manager stated stays, even when this person is not on the roster.
+  if (probe && blob.toLowerCase().includes(probe.toLowerCase())) return probe;
+  return null;
 }
 
 function groundIncident(typed: string | null, blob: string, headings: readonly string[]): string | null {
@@ -333,34 +469,57 @@ export function headingFromAccount(text: string, headings: readonly string[]): s
   return null;
 }
 
+/**
+ * "today" is the form's date when the other dates are earlier steps. A prior
+ * step's date, and any date listed after it in that same account, is history.
+ */
+function dateSaidAsToday(text: string, question: string, today: string): string | null {
+  if (!/\btodays?\b/i.test(question)) return null;
+  const steps = priorSteps(text, today);
+  if (steps.length === 0) {
+    if (listIncidentDates(text, today).length === 0 && datesInText(question, today).length === 0) return today;
+    return null;
+  }
+  const foundAt = steps
+    .map((step) => text.toLowerCase().indexOf(step.named.toLowerCase()))
+    .filter((index) => index >= 0);
+  if (foundAt.length === 0) return null;
+  const first = Math.min(...foundAt);
+  const later = new Set(datesInText(text, today).filter((found) => found.index > first).map((found) => found.iso));
+  const prior = new Set(steps.map((step) => step.iso));
+  const live = listIncidentDates(text, today).filter((found) => !prior.has(found.iso) && !later.has(found.iso));
+  return live.length === 0 ? today : null;
+}
+
 function groundDate(
   typed: string | null,
+  question: string,
   blob: string,
   today: string,
 ): { iso: string | null; ambiguous: readonly string[] } {
-  const inText = datesInConversation(blob, today);
+  // Follow-up dates stay off this list. One incident date is the form's date
+  // even when a follow-up date is written beside it.
+  const inText = [...new Set(listIncidentDates(blob, today).map((item) => item.iso))];
   const normalized = typed ? normalizeIncidentDate(typed, today) : null;
   if (normalized && inText.includes(normalized)) return { iso: normalized, ambiguous: [] };
   if (inText.length === 1) return { iso: inText[0]!, ambiguous: [] };
-  if (inText.length > 1) return { iso: null, ambiguous: inText };
-  return { iso: null, ambiguous: [] };
-}
-
-function datesInConversation(blob: string, today: string): string[] {
-  const found = new Set(datesInText(blob, today).map((item) => item.iso));
-  DAY_MONTH.lastIndex = 0;
-  for (const match of blob.matchAll(DAY_MONTH)) {
-    const iso = dayMonthIso(match, today);
-    if (iso) found.add(iso);
+  if (inText.length > 1) {
+    const todayDate = dateSaidAsToday(blob, question, today);
+    if (todayDate) return { iso: todayDate, ambiguous: [] };
+    return { iso: null, ambiguous: inText };
   }
-  return [...found];
-}
-
-function dayMonthIso(match: RegExpMatchArray, today: string): string | null {
-  const month = MONTHS[match[2]!.toLowerCase().replace(/\./g, "")];
-  if (!month) return null;
-  const year = match[3] ? Number(match[3]) : Number(today.slice(0, 4));
-  return calendarIso(year, month, Number(match[1]));
+  // "1 October 2026" is a real date the day-first reader accepts and the
+  // incident list does not. It counts only when those words are in the
+  // conversation, so a date the tool invented still drops.
+  const said = typed ? blob.toLowerCase().includes(typed.trim().toLowerCase()) : false;
+  if (normalized && said) return { iso: normalized, ambiguous: [] };
+  // "todays date" is the form's date. "today" without the s is the same
+  // word; a later turn keeps it because the stored date is already set.
+  if (inText.length === 0) {
+    const saidToday = dateSaidAsToday(blob, question, today);
+    if (saidToday) return { iso: saidToday, ambiguous: [] };
+  }
+  return { iso: null, ambiguous: [] };
 }
 
 function groundPayroll(typed: string | null, blob: string): string | null {
@@ -409,10 +568,24 @@ function groundForm(
   const fromTyped = probed ? matchTemplates(probed, templates) : [];
   if (fromTyped.length === 1) return { key: fromTyped[0]!.key, ambiguous: [] };
   if (fromTyped.length > 1) return { key: null, ambiguous: fromTyped };
+  // "CA", "coaching", and "exit" are the words managers type. The form
+  // reader already maps those onto a published template. A short word is
+  // not a reason to ask which form again.
+  const fromShorthand = publishedKey(detectTemplateIntent(probed || blob), templates)
+    ?? publishedKey(detectTemplateIntent(blob), templates);
+  if (fromShorthand) return { key: fromShorthand, ambiguous: [] };
   const fromText = templates.filter((template) => blob.toLowerCase().includes(template.name.toLowerCase()));
   if (fromText.length === 1) return { key: fromText[0]!.key, ambiguous: [] };
   if (fromText.length > 1) return { key: null, ambiguous: fromText };
   return { key: null, ambiguous: [] };
+}
+
+function publishedKey(
+  intent: ReturnType<typeof detectTemplateIntent>,
+  templates: readonly TemplateRow[],
+): string | null {
+  if (intent.kind !== "explicit" && intent.kind !== "clarify") return null;
+  return templates.some((template) => template.key === intent.templateKey) ? intent.templateKey : null;
 }
 
 function matchTemplates(typed: string, templates: readonly TemplateRow[]): TemplateRow[] {
@@ -434,12 +607,14 @@ function mergeSlots(
     payrollAmount: string | null;
     warningLevel: "verbal" | "written" | null;
     formType: string | null;
+    policyHeading: string | null;
+    policyPage: number | null;
   },
 ): ConversationFormState {
-  const named = slots.employee.name;
+  const named = slots.employee.name ?? slots.employee.typed;
   return {
     ...prior,
-    employeeId: slots.employee.person?.id ?? prior.employeeId,
+    employeeId: slots.employee.person?.id ?? (named && !slots.employee.person ? null : prior.employeeId),
     employeeName: slots.employee.person ? displayName(slots.employee.person) : named ?? prior.employeeName,
     salonId: slots.salon.id ?? prior.salonId,
     title: slots.title ?? prior.title,
@@ -449,6 +624,8 @@ function mergeSlots(
     templateKey: slots.formType ?? prior.templateKey,
     incidentType: slots.incidentType ?? prior.incidentType,
     payrollAmount: slots.payrollAmount ?? prior.payrollAmount,
+    policyHeading: slots.policyHeading ?? prior.policyHeading,
+    policyPage: slots.policyPage ?? prior.policyPage,
   };
 }
 
@@ -476,33 +653,12 @@ function clarificationFor(input: {
   if (input.warningLevel.ambiguous) {
     return "Which warning level did you mean? Reply with the number.\n1. **verbal**\n2. **written**";
   }
-  if (!input.formTurn) return null;
-
-  const missing: string[] = [];
-  if (!input.state.employeeName) {
-    missing.push(
-      input.employee.typed
-        ? `which employee — **${input.employee.typed}** is not in the Woven roster`
-        : "which employee",
-    );
-  }
-  if (!input.state.salonId) missing.push("which salon");
-  if (input.state.employeeName && !input.state.title) missing.push("the job title");
-  if (!input.state.incidentType) missing.push("what happened");
-  if (!input.state.formDate) missing.push("the date it happened");
-  if (!input.state.templateKey) missing.push("which form");
-  const corrective = isCorrective(input.state.templateKey, input.templates);
-  if (corrective && !input.state.warningLevel) missing.push("the warning level, verbal or written");
-  if (corrective && input.state.payrollDeduct === "yes" && !input.state.payrollAmount) missing.push("the payroll amount");
-  if (missing.length === 0) return null;
-  return `I still need ${joinList(missing)}.`;
-}
-
-function isCorrective(key: string | null, templates: readonly TemplateRow[]): boolean {
-  if (!key) return false;
-  const template = templates.find((item) => item.key === key);
-  const name = `${key} ${template?.name ?? ""}`.toLowerCase();
-  return name.includes("corrective");
+  // A missing slot is filled on the proposal card. Returning "I still need …"
+  // here replaced the card on every live replay (23 Oct 2026), including
+  // turns that had already named the employee, the salon, the form, and the
+  // date. Warning level, title, what happened, and which form are optional.
+  // A name that is not on the roster stays on the card with a Woven note.
+  return null;
 }
 
 function personQuestion(people: readonly GroundedPerson[], typed: string | null, salons: readonly SalonRow[]): string {
@@ -650,12 +806,6 @@ function slashDate(iso: string): string {
   const [year, month, day] = iso.split("-");
   if (!year || !month || !day) return iso;
   return `${Number(month)}/${Number(day)}/${year}`;
-}
-
-function joinList(items: readonly string[]): string {
-  if (items.length === 1) return items[0]!;
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
 function blank(value: string | null | undefined): string | null {

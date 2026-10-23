@@ -240,3 +240,49 @@ cancelled order beside the deduction not read as a waiver, the register
 autofill off on typed form fields, and the audit's manual fixture with
 invented wording. Sunny-only: its payroll Yes is read only when stated, and
 the warning level stays on the form.
+
+## 23 Oct 2026: form-card slots and form-turn citations
+
+Live prompts kept asking for a salon Woven already records, dropped a date,
+a title, and a payroll amount when the employee was not verified, re-asked
+the warning level on a resend, and let a finalized corrective action block a
+new coaching card. A form turn also returned no sources. The slots stay on
+the proposal. The salon is the employee's Woven primary location when the
+manager did not name one. A name that is not in the roster stays, with one
+sentence. Citations are the retrieved manual's heading and printed page,
+including a heading the intent tool chose from that list. No new migration.
+Sibling app: not ported. Ask Bubbles `main` has the same files, and this
+session can read them, but the token cannot push (`permissions.push` is
+false). Port the mechanism when a writable checkout is attached. Salon ↔
+store, Form Monitoring ↔ Forms Register. Do not copy salon names or rename
+the JBA Policy Manual.
+
+## 23 Oct 2026: proposal cards instead of the still-need list
+
+With `INTENT_EXTRACTION_ENABLED` on, `applyIntentExtraction` returned
+`I still need …` (employee, salon, what happened, date, which form, warning
+level) and `answerQuestion` sent that instead of a proposal. A live replay
+of 14 chats produced no card. A name missing from Woven, and a missing
+warning level, were in that list. `CA`, `coaching`, and `exit` were not
+read as the published form. Erin Nelson's Woven primary salon was not used
+when she is affiliated with more than one. A salon the manager named
+outside those affiliations was dropped.
+
+The missing-slot list no longer replaces the card. A numbered choice still
+asks when two people, two salons, or two dates are really open. The next
+turn keeps the published form's name, so "1" still proposes. An unverified
+name stays on the card with one Woven sentence. Self-check no longer clears
+that name. Another conversation from the same business day is not recalled,
+and few-shot examples redact roster names and are not narrated as something
+this manager said earlier today. No new migration. No flag default changes.
+
+The 14-case harness is `src/lib/ai/priority-replay.test.ts`. It feeds the
+verbatim manager turns for s4, s9, s11, s5, s27, s28, s29, s17, s20, s21,
+s25, s8, s12, and s16, with Woven rows for the employees in those chats.
+Flags on, a card is required once the manager has given enough, under the
+name they typed. Flags off, the result is held to the 23 Oct 2026 baseline:
+a card the baseline showed still appears, except s5 turns 1–2, which name
+no form. The baseline card there was the live reply. The harness does not
+invent a coaching form from a complaint.
+
+Sibling app: not ported. Same reason as the form-card note above.

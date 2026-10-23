@@ -1,5 +1,6 @@
 import "server-only";
 
+import { businessToday } from "@/lib/business-date";
 import { samePerson } from "@/lib/forms/proposal";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
@@ -89,6 +90,11 @@ export interface RecallInput {
   /** The browser's `conv_*` id for this conversation, if it sent one. */
   readonly conversationId?: string;
   readonly userName: string;
+  /**
+   * The business date of this turn. Another conversation from this same day
+   * is not recalled: parallel chats were quoted as "earlier today".
+   */
+  readonly todayIso?: string;
 }
 
 /**
@@ -269,9 +275,14 @@ async function readMemory(
       const excerpt = excerptFor(person, turns);
       if (excerpt.length === 0) continue;
       const lastMention = [...turns].reverse().find((turn) => mentionsPerson(turn.content, person.name));
+      const date = rememberedDate(lastMention?.createdAt ?? conversation.created_at) ?? "an earlier day";
+      // A different chat from today is not "earlier". The live replay quoted
+      // Lisa Smith from a parallel tab as something said earlier today.
+      const today = input.todayIso?.trim() || businessToday();
+      if (date === today) continue;
       recalled.push({
         title: conversation.title ?? "Untitled conversation",
-        date: rememberedDate(lastMention?.createdAt ?? conversation.created_at) ?? "an earlier day",
+        date,
         excerpt,
       });
     }

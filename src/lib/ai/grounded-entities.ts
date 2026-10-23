@@ -29,6 +29,8 @@ import { namesOfficialPolicyManual } from "./policy-manual-coverage";
 export interface GroundedPerson extends RosterEmployee {
   readonly title: string | null;
   readonly primaryLocationName: string | null;
+  /** Woven primary salon, when the directory mapped one that is in scope. */
+  readonly primarySalonId?: string | null;
 }
 
 export interface GroundedPrep {
@@ -157,8 +159,8 @@ export function applyGroundedProposal(
   }
   if (!input.rosterEmpty && input.prep.unmatched.length > 0) {
     const names = input.prep.unmatched.map((name) => `**${name}**`).join(" or ");
-    const sentence = `I couldn't find ${names} in the Woven roster, so that name is not on the form.`;
-    if (!content.includes("couldn't find")) content = `${sentence}\n\n${content}`;
+    const sentence = `I couldn't find ${names} in the Woven roster.`;
+    if (!content.includes("couldn't find") && !content.includes("didn't find")) content = `${sentence}\n\n${content}`;
   }
   if (!response.formProposal) return content === response.content ? response : { ...response, content };
 
@@ -174,11 +176,6 @@ export function applyGroundedProposal(
     const match = matchEmployeeName(currentName, input.people);
     if (match.kind === "none" && isSalonPhrase(currentName)) {
       proposal = applySalon(clearEmployee(proposal), salonIdForPhrase(currentName));
-    } else if (
-      match.kind === "none" &&
-      input.prep.unmatched.some((name) => name.toLowerCase() === currentName.toLowerCase())
-    ) {
-      proposal = clearEmployee(proposal);
     }
   }
 
@@ -262,7 +259,7 @@ function gateMentions(
       continue;
     }
     if (isSalonPhrase(name)) continue;
-    next = replacePhrase(next, name, "");
+    // The typed name stays in the question. The reply says Woven does not have it.
     unmatched.push(name);
   }
 
@@ -359,9 +356,12 @@ function salonLabel(person: GroundedPerson): string | null {
 }
 
 function factSalonIds(person: GroundedPerson): string[] {
+  const primary = person.primarySalonId ?? null;
+  if (primary && (person.salonIds.length === 0 || person.salonIds.includes(primary))) return [primary];
+  const named = person.primaryLocationName ? salonIdForPhrase(person.primaryLocationName) : null;
+  if (named && (person.salonIds.length === 0 || person.salonIds.includes(named))) return [named];
   if (person.salonIds.length > 0) return [...person.salonIds];
-  const id = person.primaryLocationName ? salonIdForPhrase(person.primaryLocationName) : null;
-  return id ? [id] : [];
+  return [];
 }
 
 function factForProposal(
@@ -407,7 +407,7 @@ function withLocation(proposal: ChatFormProposal, locationId: string): ChatFormP
 }
 
 function asPerson(employee: RosterEmployee): GroundedPerson {
-  return { ...employee, title: null, primaryLocationName: null };
+  return { ...employee, title: null, primaryLocationName: null, primarySalonId: null };
 }
 
 function replacePhrase(text: string, phrase: string, replacement: string): string {
