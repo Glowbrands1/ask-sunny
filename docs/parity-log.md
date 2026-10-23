@@ -227,5 +227,10 @@ the proposal. The salon is the employee's Woven primary location when the
 manager did not name one. A name that is not in the roster stays, with one
 sentence. Citations are the retrieved manual's heading and printed page,
 including a heading the intent tool chose from that list. No new migration.
-Sibling app: port after this branch is green, or recorded here if Ask
-Bubbles is not writable from this session.
+Sibling app: not ported. `Glowbrands1/Ask-bubbles` `main` (`655a61d`) has
+the same files (`intent-slots`, `grounded-entities`, `second-form`,
+`server-ask`, `employee-roster`), and this session can read them, but the
+GitHub token cannot push (`permissions.push` is false). Port the mechanism
+when a writable checkout is attached. Salon ↔ store, Form Monitoring ↔
+Forms Register. Do not copy salon names or company wording, and do not
+rename the JBA Policy Manual.
