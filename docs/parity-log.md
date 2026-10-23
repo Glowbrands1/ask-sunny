@@ -165,6 +165,21 @@ The name matcher's `AsyncLocalStorage` moved to `src/lib/forms/kept-typed-names.
 page can import the matcher. No salon names or company wording were copied,
 and the JBA Policy Manual title is unchanged.
 
+## 23 Oct 2026: self-check and manual-term retrieval (Sunny only)
+
+`SELF_CHECK_ENABLED` defaults off. When it is on, a reply is checked before
+it is sent: a cited policy and page must be on the retrieved JBA chunks,
+an action plan must be two sentences, and an employee on a form must be in
+the Woven roster. One Claude repair runs when a check fails, then a safe
+fallback drops what is still wrong. `QUERY_REWRITE_ENABLED` already
+defaults off. When it is on, the retrieval query is a manual heading the
+account resolves — a person who showed up late searches Attendance, and
+Late Opening only when the salon opens late — or a heading the model names
+that is actually in the retrieved manual. No new migration. Ask Bubbles
+was not attached, so this stays Sunny-only. Port the mechanism later. Do
+not copy salon names or company wording, and do not rename the JBA Policy
+Manual.
+
 ## 23 Oct 2026: feedback replay and few-shot examples (Sunny only)
 
 `npm run export:feedback-replay` reads 1–4 star rows from `ask_sunny_feedback`

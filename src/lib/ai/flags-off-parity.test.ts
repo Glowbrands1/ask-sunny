@@ -16,6 +16,7 @@ import {
   policyCitationEnabled,
   reportBreakdownEnabled,
   secondFormEnabled,
+  selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -45,6 +46,7 @@ const NEW_FLAGS = [
   "ACTION_PLAN_SENTENCES_ENABLED",
   "INTENT_EXTRACTION_ENABLED",
   "FEWSHOT_EXAMPLES_ENABLED",
+  "SELF_CHECK_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -128,6 +130,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(actionPlanSentencesEnabled()).toBe(false);
     expect(intentExtractionEnabled()).toBe(false);
     expect(fewShotExamplesEnabled()).toBe(false);
+    expect(selfCheckEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

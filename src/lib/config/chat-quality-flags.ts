@@ -181,3 +181,11 @@ export function intentExtractionEnabled(): boolean {
 export function fewShotExamplesEnabled(): boolean {
   return envFlag("FEWSHOT_EXAMPLES_ENABLED");
 }
+
+/**
+ * Check a citation, the action plan, and the employee before the reply is sent.
+ * Off, the reply is sent as it was written.
+ */
+export function selfCheckEnabled(): boolean {
+  return envFlag("SELF_CHECK_ENABLED");
+}
