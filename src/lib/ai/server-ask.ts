@@ -15,6 +15,7 @@ import {
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
+  selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
@@ -82,6 +83,8 @@ import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-
 import { understandFormTurn } from "./form-tool-understand";
 import { applyIntentExtraction } from "./intent-extraction";
 import { fewShotBlock } from "./few-shot-examples";
+import { rewriteToManualTerms } from "./query-rewrite-claude";
+import { guardReply } from "./self-check-run";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
@@ -197,7 +200,11 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
-  if (!chatTraceEnabled()) return answerQuestionUntraced(request, actor, memory);
+  const produce = () => answerQuestionUntraced(request, actor, memory);
+  if (!chatTraceEnabled()) {
+    if (!selfCheckEnabled()) return produce();
+    return guardReply(await produce(), { request, actor });
+  }
   const draft = openChatTrace({
     conversationId: request.conversationId,
     messageId: request.questionMessageId,
@@ -207,7 +214,9 @@ export async function answerQuestion(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
-  return finishChatTrace(draft, () => answerQuestionUntraced(request, actor, memory));
+  const response = await finishChatTrace(draft, produce);
+  if (!selfCheckEnabled()) return response;
+  return guardReply(response, { request, actor });
 }
 
 async function answerQuestionUntraced(
@@ -904,8 +913,16 @@ async function answerQuestionUntraced(
     history: request.history,
     openForm: request.openForm ?? null,
   });
-  const query = queryRewriteEnabled()
+  const glossed = queryRewriteEnabled()
     ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
+    : followedUp;
+  const query = queryRewriteEnabled()
+    ? await rewriteToManualTerms({
+        question: request.question,
+        history: request.history,
+        fallback: glossed,
+        scopeId: request.scopeId,
+      })
     : followedUp;
   updateChatTrace({
     rewrittenQuery: query === request.question ? null : query,

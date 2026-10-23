@@ -1,3 +1,7 @@
+import { headingKey } from "@/lib/forms/official-policy-manual";
+
+import { headingFromAccount } from "./intent-slots";
+
 /**
  * Whether a follow-up is too short to search on its own.
  *
@@ -22,6 +26,43 @@ export function shouldRewriteFollowUp(
   const longWords = words.filter((word) => word.replace(/[^A-Za-z]/g, "").length >= 5);
   if (longWords.length >= 3) return false;
   return true;
+}
+
+/**
+ * The manual heading this question should be searched as.
+ *
+ * A person arriving late is the Attendance heading when that heading was
+ * retrieved. Late Opening is used only when the account is the salon opening
+ * late. A model heading is kept only when it is one of the retrieved headings
+ * and the account did not already decide. Null keeps the query unchanged.
+ */
+export function manualTermsQuery(input: {
+  readonly question: string;
+  readonly headings: readonly string[];
+  readonly modelHeading: string | null;
+}): string | null {
+  const fromAccount = headingFromAccount(input.question, input.headings);
+  if (fromAccount) return fromAccount;
+  const typed = input.modelHeading?.trim() ?? "";
+  if (!typed) return null;
+  return input.headings.find((heading) => headingKey(heading) === headingKey(typed)) ?? null;
+}
+
+/**
+ * The search string. A heading the account already resolves does not ask the
+ * model. Otherwise the model heading is used only when it was retrieved.
+ */
+export function queryWithManualTerms(input: {
+  readonly question: string;
+  readonly headings: readonly string[];
+  readonly modelHeading: string | null;
+  readonly fallback: string;
+  readonly onModel?: () => void;
+}): string {
+  const known = manualTermsQuery({ question: input.question, headings: input.headings, modelHeading: null });
+  if (known) return known;
+  input.onModel?.();
+  return manualTermsQuery({ question: input.question, headings: input.headings, modelHeading: input.modelHeading }) ?? input.fallback;
 }
 
 /** SKIP, empty, or a failed rewrite keeps the query the existing path would have used. */

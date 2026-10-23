@@ -4,8 +4,11 @@ import { z } from "zod";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 
+import { manualSectionHeadings } from "@/lib/forms/official-policy-manual";
+import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
+
 import { callClaudeTool } from "./call-claude";
-import { queryAfterRewrite, shouldRewriteFollowUp } from "./query-rewrite";
+import { manualTermsQuery, queryAfterRewrite, shouldRewriteFollowUp } from "./query-rewrite";
 
 /**
  * Rewrite a short follow-up into a standalone search query.
@@ -61,4 +64,68 @@ export async function rewriteFollowUpQuery(input: {
   } catch {
     return input.fallback;
   }
+}
+
+/**
+ * The retrieval query, in the manual's own terms.
+ *
+ * A heading the account already resolves is used and the model is not called.
+ * Otherwise one tool call may name a heading, and only a heading that was
+ * retrieved is kept. Anything else leaves the query the caller already built.
+ */
+export async function rewriteToManualTerms(input: {
+  readonly question: string;
+  readonly history: readonly { role: string; content: string }[];
+  readonly fallback: string;
+  readonly scopeId: string;
+  readonly loadHeadings?: () => Promise<readonly string[]>;
+  readonly callModel?: (headings: readonly string[]) => Promise<unknown>;
+}): Promise<string> {
+  try {
+    const headings = input.loadHeadings ? await input.loadHeadings() : await defaultHeadings(input.scopeId);
+    const known = manualTermsQuery({ question: input.question, headings, modelHeading: null });
+    if (known) return known;
+    const raw = input.callModel
+      ? await input.callModel(headings)
+      : await defaultHeadingCall(input.question, input.history, headings);
+    const heading = raw && typeof raw === "object" && "heading" in raw ? String((raw as { heading: unknown }).heading) : "";
+    return manualTermsQuery({ question: input.question, headings, modelHeading: heading || null }) ?? input.fallback;
+  } catch {
+    return input.fallback;
+  }
+}
+
+async function defaultHeadings(scopeId: string): Promise<string[]> {
+  const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
+  return manual.ok ? manualSectionHeadings(manual.chunks) : [];
+}
+
+async function defaultHeadingCall(
+  question: string,
+  history: readonly { role: string; content: string }[],
+  headings: readonly string[],
+): Promise<unknown> {
+  if (headings.length === 0) return { heading: "" };
+  const prior = [...history].reverse().find((turn) => turn.role === "user" && turn.content.trim() !== "");
+  return callClaudeTool({
+    model: CLAUDE_HAIKU_MODEL,
+    system: `Pick the one manual heading that the manager's question is about. Use only a heading from the list. If none fits, set heading to an empty string. A person who arrived late is not the heading about the salon opening late. Return only the tool call.`,
+    maxTokens: 120,
+    tool: {
+      name: "choose_manual_heading",
+      description: "The manual heading to search, or empty when none of the headings fit.",
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["heading"],
+        properties: { heading: { type: "string" } },
+      },
+    },
+    messages: [
+      {
+        role: "user",
+        content: `Headings:\n${headings.slice(0, 80).join("\n")}\n\nEarlier turn:\n${prior?.content.slice(0, 400) ?? ""}\n\nQuestion:\n${question}`,
+      },
+    ],
+  });
 }
