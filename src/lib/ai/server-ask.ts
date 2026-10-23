@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   chatStyleRulesEnabled,
+  chatTraceEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
   queryRewriteEnabled,
@@ -64,7 +65,10 @@ import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
-import { rewriteFollowUpQuery } from "./query-rewrite-claude";
+import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
+import { updateChatTrace } from "./chat-trace-store";
+import { expandGlossaryQuery } from "./glossary";
+import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
 import {
   buildGroundingBlock,
@@ -169,6 +173,24 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  if (!chatTraceEnabled()) return answerQuestionUntraced(request, actor, memory);
+  const draft = openChatTrace({
+    conversationId: request.conversationId,
+    messageId: request.questionMessageId,
+    userId: actor.subject,
+    originalQuery: request.question,
+    formInProgress: Boolean(
+      request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
+    ),
+  });
+  return finishChatTrace(draft, () => answerQuestionUntraced(request, actor, memory));
+}
+
+async function answerQuestionUntraced(
+  request: AskRequest,
+  actor: ChatActor,
+  memory: { memoryOwnerId?: string } = {},
+): Promise<AskResponse> {
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -221,8 +243,20 @@ export async function answerQuestion(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
-  const detected = detectInventoryQuestion(request.question);
-  const spokenIntent = detectTemplateIntent(request.question);
+  const heard = queryRewriteEnabled()
+    ? await normalizeForChat({ question: request.question, history: request.history })
+    : null;
+  const routingQuestion = heard?.routingText ?? request.question;
+  updateChatTrace({
+    originalQuery: request.question,
+    rewrittenQuery: heard?.modelQuery ?? (heard ? heard.routingText : null),
+    intent: heard?.intent ?? null,
+    formInProgress: Boolean(
+      request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
+    ),
+  });
+  const detected = detectInventoryQuestion(routingQuestion);
+  const spokenIntent = detectTemplateIntent(routingQuestion);
 
   /*
    * "I NEED TO FIND THOSE DOCUMENTS" IS ABOUT WHICHEVER REGISTER THE LAST TURN
@@ -346,6 +380,8 @@ export async function answerQuestion(
     // "The form", answering "coaching guidance, or a Coaching Form?".
     answersFormClarification(request.history, request.question);
 
+  if (!heard) updateChatTrace({ intent: formsTurn ? "form" : "search" });
+
   if (formsTurn) {
     const settled = await summariesPromise;
     if (!settled.ok) {
@@ -376,7 +412,7 @@ export async function answerQuestion(
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
     const proposal = await proposeFormForTurn({
       history: request.history,
-      question: request.question,
+      question: heard ? routingQuestion : request.question,
       questionMessageId: request.questionMessageId,
       actor,
       continueTemplateKey: request.continueProposalTemplateKey,
@@ -782,12 +818,12 @@ export async function answerQuestion(
     openForm: request.openForm ?? null,
   });
   const query = queryRewriteEnabled()
-    ? await rewriteFollowUpQuery({
-        question: request.question,
-        history: request.history,
-        fallback: followedUp,
-      })
+    ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
     : followedUp;
+  updateChatTrace({
+    rewrittenQuery: query === request.question ? null : query,
+    retrievalCount: null,
+  });
   const matchLimit =
     intent.active || wantsDailyStats || wantsPerformanceManagement
       ? RETRIEVAL.roleAugmentedTopK
@@ -826,6 +862,15 @@ export async function answerQuestion(
       502,
     );
   }
+  updateChatTrace({
+    retrievalCount: rows.length,
+    retrieved: rows.slice(0, 20).map((row) => ({
+      id: row.chunk_id,
+      title: row.document_title,
+      section: row.section,
+      score: row.similarity,
+    })),
+  });
 
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
@@ -1064,6 +1109,7 @@ export async function answerQuestion(
     styleRules: chatStyleRulesEnabled(),
   });
 
+  updateChatTrace({ prompt: redactTraceText(system) });
   const answer = await callClaude({
     system,
     grounding: buildGroundingBlock(grounding),

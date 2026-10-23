@@ -24,7 +24,7 @@ export function hybridSearchEnabled(): boolean {
   return envFlag("HYBRID_SEARCH_ENABLED");
 }
 
-/** Haiku rewrite of a short follow-up before retrieval. */
+/** Haiku reading of any manager message before routing and retrieval. */
 export function queryRewriteEnabled(): boolean {
   return envFlag("QUERY_REWRITE_ENABLED");
 }
@@ -32,4 +32,9 @@ export function queryRewriteEnabled(): boolean {
 /** Extra system-prompt rules for name, payroll, and a chosen corrective action. */
 export function chatStyleRulesEnabled(): boolean {
   return envFlag("CHAT_STYLE_RULES_ENABLED");
+}
+
+/** Write one chat_traces row per turn. Off leaves the table untouched. */
+export function chatTraceEnabled(): boolean {
+  return envFlag("CHAT_TRACE_ENABLED");
 }

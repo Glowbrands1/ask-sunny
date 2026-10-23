@@ -11,6 +11,7 @@ import type { MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { buildSystemPrompt } from "./prompts";
 import {
   chatStyleRulesEnabled,
+  chatTraceEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
   queryRewriteEnabled,
@@ -133,15 +134,18 @@ describe("flags default off", () => {
       HYBRID_SEARCH_ENABLED: process.env.HYBRID_SEARCH_ENABLED,
       QUERY_REWRITE_ENABLED: process.env.QUERY_REWRITE_ENABLED,
       CHAT_STYLE_RULES_ENABLED: process.env.CHAT_STYLE_RULES_ENABLED,
+      CHAT_TRACE_ENABLED: process.env.CHAT_TRACE_ENABLED,
     };
     delete process.env.FORM_TOOLS_ENABLED;
     delete process.env.HYBRID_SEARCH_ENABLED;
     delete process.env.QUERY_REWRITE_ENABLED;
     delete process.env.CHAT_STYLE_RULES_ENABLED;
+    delete process.env.CHAT_TRACE_ENABLED;
     expect(formToolsEnabled()).toBe(false);
     expect(hybridSearchEnabled()).toBe(false);
     expect(queryRewriteEnabled()).toBe(false);
     expect(chatStyleRulesEnabled()).toBe(false);
+    expect(chatTraceEnabled()).toBe(false);
     process.env.FORM_TOOLS_ENABLED = "off";
     expect(formToolsEnabled()).toBe(false);
     process.env.FORM_TOOLS_ENABLED = "true";
@@ -183,6 +187,8 @@ describe("flags default off", () => {
     expect(source).toContain("queryRewriteEnabled()");
     expect(source).toContain("hybridSearchEnabled()");
     expect(source).toContain("chatStyleRulesEnabled()");
+    expect(source).toContain("chatTraceEnabled()");
+    expect(source).toContain("question: request.question");
   });
 });
 

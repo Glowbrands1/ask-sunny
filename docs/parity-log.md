@@ -85,7 +85,8 @@ policy-manual fixture.
 Form-tool understanding, form-command routing, hybrid retrieval, Haiku query
 rewrite, and the style-prompt rules are behind flags that default off
 (`FORM_TOOLS_ENABLED`, `HYBRID_SEARCH_ENABLED`, `QUERY_REWRITE_ENABLED`,
-`CHAT_STYLE_RULES_ENABLED`). Ask Bubbles was not attached to this session, so
+`CHAT_STYLE_RULES_ENABLED`, `CHAT_TRACE_ENABLED`). The house glossary and
+any-message rewrite stay on `QUERY_REWRITE_ENABLED`. Ask Bubbles was not attached to this session, so
 the mechanism was not ported. It does not rename the JBA Policy Manual and it
 does not copy salon names or company wording into a sibling. Port the same
 flags and files when Bubbles is in the session.

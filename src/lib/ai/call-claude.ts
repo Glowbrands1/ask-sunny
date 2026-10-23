@@ -4,6 +4,7 @@ import { CLAUDE_EFFORT, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
 import { getAnthropicClient } from "./anthropic";
 import { AiError } from "./errors";
+import { noteModelCall } from "./model-failure";
 
 /**
  * ============================================================================
@@ -111,6 +112,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
   // The API requires the first message to be a user turn.
   while (history.length > 0 && history[0]!.role === "assistant") history.shift();
 
+  const started = Date.now();
   try {
     const response = await client.messages.create({
       model: CLAUDE_MODEL,
@@ -137,7 +139,15 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       ],
     });
 
+    const noted = {
+      model: CLAUDE_MODEL,
+      maxTokens: input.maxTokens,
+      stopReason: response.stop_reason ?? null,
+      latencyMs: Date.now() - started,
+      usage: response.usage,
+    };
     if (response.stop_reason === "refusal") {
+      noteModelCall({ ...noted, subtype: "refused" });
       throw new AiError(
         "refused",
         "Sunny could not answer that question. Try rephrasing it, or ask a manager directly.",
@@ -152,9 +162,11 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       .trim();
 
     if (!text) {
+      noteModelCall({ ...noted, subtype: "empty_answer" });
       throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
     }
 
+    noteModelCall(noted);
     return text;
   } catch (error) {
     if (error instanceof AiError) throw error;
@@ -162,7 +174,16 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       throw new AiError("not_configured", error.message, 503, error.missing);
     }
     // The SDK error can echo the request, which carries confidential grounding
-    // text. Only the class name is kept — never the body.
+    // text. Only the class name is kept — never the body. The class, status,
+    // and subtype are recorded for the trace before this object is discarded.
+    noteModelCall({
+      model: CLAUDE_MODEL,
+      maxTokens: input.maxTokens,
+      stopReason: null,
+      latencyMs: Date.now() - started,
+      usage: null,
+      error,
+    });
     throw new AiError(
       "model_failed",
       "Sunny could not reach the language model. No answer was generated.",
