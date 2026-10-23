@@ -1,6 +1,7 @@
 import type { MatchedChunkRow } from "./mappers";
 import {
   hybridScore,
+  policyManualBoost,
   sectionTitleMatches,
   type HybridCandidate,
 } from "./hybrid-rank";
@@ -89,7 +90,9 @@ export function selectRecallCandidates(
           vectorRank: candidate.vectorRank,
           keywordRank: candidate.keywordRank,
           sectionMatch: named || sqlFuzzy,
-        }) + (candidate.sectionSimilarity ?? 0),
+        }) +
+        (candidate.sectionSimilarity ?? 0) +
+        policyManualBoost(query, candidate.row),
     };
   });
   scored.sort((a, b) => b.score - a.score || b.row.similarity - a.row.similarity);

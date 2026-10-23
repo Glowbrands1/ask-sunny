@@ -11,6 +11,7 @@ import { getEmbeddingProvider } from "@/lib/embeddings";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { MatchedChunkRow } from "./mappers";
+import { loadHybridOrVector, type HybridRpcRow } from "./hybrid-rpc";
 import { selectRecallCandidates, type RecallCandidate } from "./recall-rank";
 
 /**
@@ -18,16 +19,12 @@ import { selectRecallCandidates, type RecallCandidate } from "./recall-rank";
  * a Haiku pick. Called only when RETRIEVAL_RECALL_ENABLED is on.
  *
  * There was no reranker before this flag. A Haiku failure keeps the fused
- * order, including every section the question or the glossary named.
+ * order, including every section the question or the glossary named. An RPC
+ * error or a call past about 5s returns match_knowledge_chunks instead of
+ * failing the turn.
  */
 
 const pickSchema = z.object({ ids: z.array(z.string()) });
-
-interface HybridRpcRow extends MatchedChunkRow {
-  vector_rank: number | null;
-  keyword_rank: number | null;
-  section_exact: boolean | null;
-}
 
 interface FuzzyRpcRow extends MatchedChunkRow {
   section_similarity: number | null;
@@ -111,19 +108,20 @@ export async function matchRecallKnowledge(input: {
     throw new Error("The configured embedding model does not match the database vector width.");
   }
   const queryEmbedding = await embeddings.embedQuery(keywordQuery);
-  const { data, error } = await getSupabaseAdmin().rpc("match_knowledge_chunks_hybrid", {
-    query_embedding: queryEmbedding,
-    query_text: keywordQuery,
-    scope_id: input.scopeId,
-    match_count: Math.min(50, Math.max(limit, 20)),
-    min_similarity: 0,
-    filter_categories: null,
+  const loaded = await loadHybridOrVector({
+    queryEmbedding,
+    queryText: keywordQuery,
+    scopeId: input.scopeId,
+    hybridMatchCount: Math.min(50, Math.max(limit, 20)),
+    hybridMinSimilarity: 0,
+    filterCategories: null,
+    fallbackLimit: limit,
   });
-  if (error) throw new Error(`Knowledge retrieval failed: ${error.message}`);
+  if (loaded.kind === "fallback") return loaded.rows;
 
   const fuzzy = await fuzzyRows(keywordQuery, input.scopeId, limit);
   const similarityById = new Map(fuzzy.map((row) => [row.chunk_id, Number(row.section_similarity)]));
-  const hybrid = ((data ?? []) as HybridRpcRow[]).map((row) => toRecall(row, similarityById.get(row.chunk_id) ?? null));
+  const hybrid = loaded.rows.map((row) => toRecall(row, similarityById.get(row.chunk_id) ?? null));
   const seen = new Set(hybrid.map((candidate) => candidate.row.chunk_id));
   for (const row of fuzzy) {
     if (seen.has(row.chunk_id)) continue;
