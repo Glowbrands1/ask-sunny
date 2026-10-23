@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 import { salonById } from "@/data/salons";
 
+import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import { errorResponse } from "@/lib/api/respond";
+import { draftDedupeEnabled } from "@/lib/config/chat-quality-flags";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
 import {
@@ -23,6 +25,7 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { findResentDraft } from "@/lib/forms/draft-reopen";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
@@ -237,6 +240,25 @@ export async function POST(request: Request) {
         proposalId,
       }).catch(() => null);
       if (existing) return NextResponse.json({ instance: existing, reused: true });
+    }
+
+    /*
+     * A resent create for the same person, form and salon. Only when
+     * DRAFT_DEDUPE_ENABLED is on, and never when the conversation asked for
+     * a second or follow-up document. The card-id match above is unchanged.
+     */
+    if (
+      draftDedupeEnabled() &&
+      body.source === "ask_sunny" &&
+      !historyWantsSeparateDocument(body.conversation)
+    ) {
+      const resent = await findResentDraft({
+        templateKey: body.templateKey,
+        employeeName: body.employeeName.trim().slice(0, 120),
+        createdBy: actor.id,
+        locationId,
+      }).catch(() => null);
+      if (resent) return NextResponse.json({ instance: resent, reused: true });
     }
 
     const instance = await createInstance({

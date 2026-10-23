@@ -98,6 +98,25 @@ the mechanism was not ported. It does not rename the JBA Policy Manual and it
 does not copy salon names or company wording into a sibling. Port the same
 flags and files when Bubbles is in the session.
 
+## 23 Oct 2026: form fixes behind more default-off flags (Sunny only)
+
+Slot retention, field accuracy (a month-day and a payroll amount the
+existing readers skip), draft reopen, a second or follow-up document, and
+a JBA Policy Manual name plus printed page on coaching narrative (and an
+empty Corrective Action policy line) are behind `SLOT_RETENTION_ENABLED`,
+`FIELD_ACCURACY_ENABLED`, `DRAFT_DEDUPE_ENABLED`, `SECOND_FORM_ENABLED`,
+and `POLICY_CITATION_ENABLED`. Each defaults off. The wrappers call the
+readers Pau already shipped; they do not replace them. Ask Bubbles was
+not attached, so this stays Sunny-only. Port the same flags and files
+when Bubbles is in the session. Do not copy salon names or company wording.
+
+Google review star counts, Comp Report and Sales Totals breakdowns, and
+per-user memory are behind `REPORT_BREAKDOWN_ENABLED` and
+`CHAT_MEMORY_ENABLED`, also default off. Product, category, employee, and
+a summed week are not stored and are said to be missing. The memory
+migration `20261023150000_user_memory.sql` is not applied. Ask Bubbles was
+not attached. Port the mechanism later; do not copy salon names.
+
 ## 22 Oct 2026: Corrective Action QA audit (from Ask-bubbles#68)
 
 Ported in this PR (Glowbrands1/ask-sunny#128), one `Port from Ask Bubbles

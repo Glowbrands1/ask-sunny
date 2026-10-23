@@ -2,14 +2,17 @@ import "server-only";
 
 import {
   chatDataToolsEnabled,
+  chatMemoryEnabled,
   chatStyleRulesEnabled,
   chatTraceEnabled,
+  fieldAccuracyEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
   longContextEnabled,
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
+  slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -77,6 +80,9 @@ import { understandFormTurn } from "./form-tool-understand";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
+import { augmentIntakeQuestion } from "./intake-augment";
+import { formatRecalledMemory, memoryCue } from "./chat-memory";
+import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
 import {
@@ -448,7 +454,7 @@ async function answerQuestionUntraced(
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
     const proposal = await proposeFormForTurn({
       history: request.history,
-      question: heard ? routingQuestion : request.question,
+      question: questionForProposal(heard ? routingQuestion : request.question, request),
       questionMessageId: request.questionMessageId,
       actor,
       continueTemplateKey: request.continueProposalTemplateKey,
@@ -547,7 +553,7 @@ async function answerQuestionUntraced(
         propose: (adjusted) =>
           proposeFormForTurn({
             history: request.history,
-            question: adjusted.question,
+            question: questionForProposal(adjusted.question, request),
             questionMessageId: request.questionMessageId,
             actor,
             continueTemplateKey: adjusted.continueTemplateKey,
@@ -1152,6 +1158,7 @@ async function answerQuestionUntraced(
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
+    recalledMemory: await recalledMemoryBlock(request, actor),
   });
 
   const longContext = longContextEnabled()
@@ -1292,6 +1299,37 @@ async function suggestedFormsFor(input: {
   } catch {
     return null;
   }
+}
+
+/**
+ * Salon, name, title, date and payroll amount, copied onto this turn only
+ * when their flags are on. Off, the question string is unchanged.
+ */
+async function recalledMemoryBlock(request: AskRequest, actor: ChatActor): Promise<string | null> {
+  if (!chatMemoryEnabled() || !actor.subject) return null;
+  try {
+    const cue = memoryCue(request.question);
+    if (cue) {
+      await rememberFact({
+        userId: actor.subject,
+        ...cue,
+        sourceConversationId: request.conversationId ?? null,
+      });
+    }
+    return formatRecalledMemory(await recallMemory(actor.subject));
+  } catch {
+    return null;
+  }
+}
+
+function questionForProposal(question: string, request: AskRequest): string {
+  return augmentIntakeQuestion({
+    slots: slotRetentionEnabled(),
+    fields: fieldAccuracyEnabled(),
+    question,
+    history: request.history,
+    today: request.context.todayIso,
+  });
 }
 
 /** The manager's turn before this one, for a question that names nobody. */

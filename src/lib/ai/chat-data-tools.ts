@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
+import { reportBreakdownEnabled } from "@/lib/config/chat-quality-flags";
 import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
 import { loadSalonPerformanceSection } from "@/lib/reporting/read/salon-performance-briefing-source";
 import { loadSalesTotalsSection } from "@/lib/reporting/read/sales-totals-briefing-source";
@@ -12,6 +13,8 @@ import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
 import type { AccessScope, Role } from "@/types";
 
 import { passwordResetHelp } from "./app-help";
+import { planReportBreakdown, type BreakdownPlan } from "./report-breakdown";
+import { readFlaggedBreakdown } from "./report-breakdown-read";
 import { callClaudeTool } from "./call-claude";
 import {
   formatReviewSummaries,
@@ -102,9 +105,23 @@ export async function loadChatDataBlock(input: {
   readonly readReviews?: (storeCodes: readonly string[]) => Promise<string | null>;
   readonly readSales?: () => Promise<string | null>;
   readonly readComp?: () => Promise<string | null>;
+  readonly readBreakdown?: (plan: BreakdownPlan) => Promise<string>;
 }): Promise<ChatDataAddition> {
   if (!input.enabled) return EMPTY;
   const help = passwordResetHelp(input.question);
+  if (reportBreakdownEnabled()) {
+    const plan = planReportBreakdown(input.question);
+    if (plan.kind !== "none") {
+      try {
+        const data = input.readBreakdown
+          ? await input.readBreakdown(plan)
+          : await readFlaggedBreakdown({ plan, role: input.role, scope: input.scope });
+        return { help, data };
+      } catch {
+        return { help, data: "The breakdown could not be read. No figures were estimated." };
+      }
+    }
+  }
   const wants = questionWantsData(input.question);
   if (!wants.reviews && !wants.sales && !wants.comp) return { help, data: null };
 
