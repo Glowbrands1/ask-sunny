@@ -9,6 +9,7 @@ import {
   intentExtractionEnabled,
   draftDedupeEnabled,
   draftMergeEnabled,
+  fewShotExamplesEnabled,
   fieldAccuracyEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
@@ -43,6 +44,7 @@ const NEW_FLAGS = [
   "DRAFT_MERGE_ENABLED",
   "ACTION_PLAN_SENTENCES_ENABLED",
   "INTENT_EXTRACTION_ENABLED",
+  "FEWSHOT_EXAMPLES_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -125,6 +127,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(draftMergeEnabled()).toBe(false);
     expect(actionPlanSentencesEnabled()).toBe(false);
     expect(intentExtractionEnabled()).toBe(false);
+    expect(fewShotExamplesEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

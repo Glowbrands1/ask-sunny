@@ -165,6 +165,18 @@ The name matcher's `AsyncLocalStorage` moved to `src/lib/forms/kept-typed-names.
 page can import the matcher. No salon names or company wording were copied,
 and the JBA Policy Manual title is unchanged.
 
+## 23 Oct 2026: feedback replay and few-shot examples (Sunny only)
+
+`npm run export:feedback-replay` reads 1–4 star rows from `ask_sunny_feedback`
+and the matching `chat_messages`. It only selects. Personal data is
+redacted with patterns and with names from the Woven directory before a
+case is written. `src/lib/ai/live-replay.eval.test.ts` checks every case
+in `src/lib/ai/__fixtures__/feedback-replay-cases.json`.
+`FEWSHOT_EXAMPLES_ENABLED` defaults off. When it is on, similar 5-star
+exchanges from this company's scope are added to the prompt. No new
+migration. Ask Bubbles was not attached, so this stays Sunny-only. Port
+the mechanism later. Do not copy salon names or company wording.
+
 ## 23 Oct 2026: intent extraction (Sunny only)
 
 `INTENT_EXTRACTION_ENABLED` defaults off. When it is on, one Claude tool

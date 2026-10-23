@@ -6,6 +6,7 @@ import {
   chatStyleRulesEnabled,
   chatTraceEnabled,
   fieldAccuracyEnabled,
+  fewShotExamplesEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
   intentExtractionEnabled,
@@ -80,6 +81,7 @@ import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
 import { applyIntentExtraction } from "./intent-extraction";
+import { fewShotBlock } from "./few-shot-examples";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
@@ -1200,6 +1202,9 @@ async function answerQuestionUntraced(
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
     recalledMemory: await recalledMemoryBlock(request, actor),
+    ...(fewShotExamplesEnabled()
+      ? { fewShot: await fewShotBlock({ question: request.question, scopeId: request.scopeId }) }
+      : {}),
   });
 
   const longContext = longContextEnabled()

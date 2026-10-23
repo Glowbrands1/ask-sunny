@@ -1,0 +1,32 @@
+[
+  {
+    "id": "fb-showed-up-late",
+    "rating": 2,
+    "prompts": ["she showed up late for her 2pm shift on 10/1/2026"],
+    "answer": "A person who arrives after the shift starts is covered by Attendance.",
+    "headings": ["Attendance", "Late Opening"],
+    "expectHeading": "Attendance"
+  },
+  {
+    "id": "fb-late-opening",
+    "rating": 1,
+    "prompts": ["jorden hale was late opening the salon on october 1"],
+    "answer": "[employee 1] opened the salon late.",
+    "headings": ["Attendance", "Late Opening"],
+    "expectHeading": "Late Opening"
+  },
+  {
+    "id": "fb-lowercase",
+    "rating": 4,
+    "prompts": ["SHE WAS 20 MINUTES LATE FOR HER SHIFT ON 10-1-26"],
+    "answer": "That is Attendance, not a late opening.",
+    "headings": ["Attendance", "Late Opening"],
+    "expectHeading": "Attendance"
+  },
+  {
+    "id": "fb-redacted",
+    "rating": 3,
+    "prompts": ["[employee 1] at [address] called from [phone]"],
+    "answer": "The note was [email]. Reach them at [phone]."
+  }
+]
