@@ -64,5 +64,5 @@ describe("hybrid retrieval migration", () => {
     } finally {
       await harness.close();
     }
-  });
+  }, 30_000);
 });

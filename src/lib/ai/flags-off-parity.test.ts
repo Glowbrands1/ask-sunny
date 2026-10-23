@@ -62,6 +62,43 @@ function diff(ref: string, args: string[]): string {
   return execFileSync("git", ["diff", ref, "--", ...args], { encoding: "utf8" });
 }
 
+function hasRef(ref: string): boolean {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", ref], { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Actions checkout is often a single commit, so `origin/main` is absent.
+ * Use it when it is already there, fetch it when the remote can provide it,
+ * otherwise diff against the merge-base with a local main. Null means this
+ * checkout cannot see main at all, and only the UI diff is skipped.
+ */
+function uiDiffBase(): string | null {
+  if (!hasRef("origin/main")) {
+    try {
+      execFileSync("git", ["fetch", "--depth=1", "origin", "main:refs/remotes/origin/main"], {
+        stdio: "pipe",
+        timeout: 20_000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      });
+    } catch {
+      // The remote ref is unavailable. Fall through to a local main.
+    }
+  }
+  if (hasRef("origin/main")) return "origin/main";
+  if (!hasRef("main")) return null;
+  try {
+    const base = execFileSync("git", ["merge-base", "HEAD", "main"], { encoding: "utf8", stdio: "pipe" }).trim();
+    return base || null;
+  } catch {
+    return null;
+  }
+}
+
 describe("new flags default off and wrappers are inert", () => {
   it("treats unset flags as off and returns the caller's own values", () => {
     const previous = Object.fromEntries(NEW_FLAGS.map((name) => [name, process.env[name]]));
@@ -105,7 +142,14 @@ describe("new flags default off and wrappers are inert", () => {
 
   it("does not edit Pau's modules or any UI file", () => {
     expect(diff("HEAD", PROTECTED)).toBe("");
-    expect(diff("origin/main", UI_PATHS)).toBe("");
+    const uiBase = uiDiffBase();
+    if (uiBase) {
+      expect(diff(uiBase, UI_PATHS)).toBe("");
+    } else {
+      console.warn(
+        "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",
+      );
+    }
     const ask = readFileSync("src/lib/ai/server-ask.ts", "utf8");
     const code = ask.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toContain("process.env");
@@ -113,7 +157,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(ask).toContain("question: request.question");
     expect(ask).toContain("slotRetentionEnabled()");
     expect(ask).toContain("fieldAccuracyEnabled()");
-  });
+  }, 60_000);
 });
 
 const CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
