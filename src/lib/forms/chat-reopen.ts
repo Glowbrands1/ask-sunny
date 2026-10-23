@@ -8,8 +8,11 @@ import { correctActiveForm } from "./chat-correction";
 import { reviseActiveForm } from "./chat-revision";
 import { formOpenedFor, openEditableDraft, openingLine } from "./editable-draft";
 import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./instance-scope";
-import { listInstances, type InstanceRow } from "./instances";
+import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { extractEmployeeNames, samePerson } from "./proposal";
+import { draftMergeEnabled } from "@/lib/config/chat-quality-flags";
+
+import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
 import { readReopenRequest } from "./reopen-request";
 
 /**
@@ -51,6 +54,7 @@ export async function reopenRequestedForm(input: {
 }): Promise<AskResponse | null> {
   const reading = readReopenRequest(input.question);
   if (!reading) return null;
+  const merging = draftMergeEnabled() && reading.mode === "show" && showDraftWithEdits(input.question);
   /*
    * A PROPOSAL NOT YET CREATED IS WHAT "CHANGE THE EXIT FORM" MEANS while it
    * is on screen — the proposal flow takes that turn, and no form on file is
@@ -123,7 +127,22 @@ export async function reopenRequestedForm(input: {
    * sentence asked for no particular change, and the draft is simply open.
    */
   let applied: AskResponse | null = null;
-  if (reading.mode === "edit" && draft.status === "draft") {
+  let heldRows: { fieldKey: string; value: string | null; checked: readonly string[] }[] | null = null;
+  let editorId: string | null = null;
+  if (merging && draft.status === "draft") {
+    try {
+      const opened = await authorizeInstance(input.request, draft.instanceId, "edit");
+      heldRows = opened.loaded.values.map((row) => ({
+        fieldKey: row.fieldKey,
+        value: row.value,
+        checked: row.checked,
+      }));
+      editorId = opened.actor.id;
+    } catch {
+      heldRows = null;
+    }
+  }
+  if ((reading.mode === "edit" || merging) && draft.status === "draft") {
     applied =
       (await correctActiveForm({
         request: input.request,
@@ -132,7 +151,7 @@ export async function reopenRequestedForm(input: {
         today: input.today,
       })) ??
       // A redraft asks the model; only when the sentence asked for a change.
-      (reading.asksChange
+      (reading.asksChange || merging
         ? await reviseActiveForm({
             request: input.request,
             instanceId: draft.instanceId,
@@ -141,6 +160,27 @@ export async function reopenRequestedForm(input: {
             today: input.today,
           })
         : null);
+  }
+  if (heldRows && editorId) {
+    try {
+      const after = await loadInstance(draft.instanceId);
+      const restore = after
+        ? fieldsToRestore({
+            question: input.question,
+            before: heldRows,
+            after: after.values.map((row) => ({
+              fieldKey: row.fieldKey,
+              value: row.value,
+              checked: row.checked,
+            })),
+          })
+        : { values: {}, checked: {} };
+      if (Object.keys(restore.values).length > 0 || Object.keys(restore.checked).length > 0) {
+        await applyAssistantDraft(draft.instanceId, restore, editorId);
+      }
+    } catch {
+      // The draft is already open. A failed restore leaves the edit as written.
+    }
   }
 
   const closing =

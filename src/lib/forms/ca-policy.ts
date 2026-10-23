@@ -1,6 +1,7 @@
 import { JOIN } from "./bounded-context";
 import {
   findManualSection,
+  isApprovedPolicyManualTitle,
   manualSectionHeadings,
   manualSectionsFor,
   type ManualChunk,
@@ -367,6 +368,20 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
 }
 
 /**
+ * Attendance boxes the account itself describes, when the manager did not
+ * name Attendance as the policy. Null when the account describes neither
+ * lateness nor absence — it does not default every note to tardiness.
+ */
+export function describedAttendanceKeys(rawText: string): string[] | null {
+  const text = normalize(rawText);
+  const absent = ABSENCE.test(text);
+  const late = LATENESS.test(text);
+  if (!absent && !late) return null;
+  if (absent && late) return ["tardiness", "absenteeism"];
+  return absent ? ["absenteeism"] : ["tardiness"];
+}
+
+/**
  * The Type of Offense as the manager named it. Only keys this version offers
  * are ticked; the model's other ticks and its "Other" write-in give way.
  */
@@ -496,12 +511,14 @@ export const CA_POLICY_QUESTION = "Which policy applies?";
  * say beyond the usual "I'll check the applicable company policy".
  */
 /**
- * SAID WHEREVER A SECTION IS CITED FROM A MANUAL NO OWNER HAS CONFIRMED (owner
- * decision, 22 Oct 2026): the JBA manual is kept, but its identity as the
- * approved manual is not assumed because a copy is in the Knowledge Base.
+ * A manual that is not the JBA Policy Manual, found by name and not tagged.
+ *
+ * Pau, 23 Oct 2026: the JBA Policy Manual is the approved source. Its section
+ * and printed page are the citation. The manager is not asked to confirm it.
  */
 export function unconfirmedManualLine(named: NamedPolicyReading | null): string | null {
   if (!named || (named.lookup !== "found" && named.lookup !== "described") || !named.unconfirmedManual) return null;
+  if (isApprovedPolicyManualTitle(named.unconfirmedManual)) return null;
   return `**Policy source:** "${named.unconfirmedManual}" — requires owner confirmation as Ask Sunny's approved policy manual. I'll cite it with its section and page; check the wording against your current manual before you finalize.`;
 }
 

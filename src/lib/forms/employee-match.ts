@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 /**
  * ============================================================================
  * IS THE NAME THE MANAGER TYPED SOMEBODY ON THEIR TEAM?
@@ -76,6 +78,19 @@ const SERVICE_NAME_WORDS = new Set([
 export function isServiceAccountName(firstName: string, lastName: string): boolean {
   const words = `${firstName} ${lastName}`.toLowerCase().split(/[^a-z]+/).filter(Boolean);
   return words.length > 0 && words.every((word) => SERVICE_NAME_WORDS.has(word));
+}
+
+/**
+ * Typed names the manager already said to keep. Set only on the grounded
+ * path. Unset, `matchEmployeeName` is unchanged. A kept name that would have
+ * been a confirm question is left as typed, so the same two people are not
+ * asked about on every later turn.
+ */
+const keptTypedNames = new AsyncLocalStorage<ReadonlySet<string>>();
+
+export function withKeptTypedNames<T>(names: readonly string[], run: () => T): T {
+  const set = new Set(names.map((name) => normalize(name)).filter((name) => name.length > 0));
+  return keptTypedNames.run(set, run);
 }
 
 /** How many close candidates are ever put to the manager. */
@@ -249,10 +264,13 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
   const ranked = [...candidates]
     .sort((a, b) => a.score - b.score || displayName(a.employee).localeCompare(displayName(b.employee)))
     .slice(0, MAX_SUGGESTIONS);
-  return {
+  const result: NameMatch = {
     kind: "confirm",
     candidates: ranked.map(({ employee }) => ({ employee, name: displayName(employee) })),
   };
+  const kept = keptTypedNames.getStore();
+  if (kept?.has(normalize(typed))) return { kind: "unchecked" };
+  return result;
 }
 
 /* ------------------------------------------------- asking, and answering --- */

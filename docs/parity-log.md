@@ -98,6 +98,25 @@ the mechanism was not ported. It does not rename the JBA Policy Manual and it
 does not copy salon names or company wording into a sibling. Port the same
 flags and files when Bubbles is in the session.
 
+## 23 Oct 2026: live replay fixes (Sunny only)
+
+Grounded names, a per-conversation form state, incident-matched draft
+reopen, coaching citations from the same JBA manual retrieval Corrective
+Action uses, review inventory totals, and conversation-scoped memory are
+behind `GROUNDED_ENTITIES_ENABLED`, `FORM_STATE_ENABLED`, and the flags
+already on main (`POLICY_CITATION_ENABLED`, `DRAFT_DEDUPE_ENABLED`,
+`CHAT_DATA_TOOLS_ENABLED`, `CHAT_MEMORY_ENABLED`). "Show draft with edits"
+keeps a filled Offense and Action Plan behind `DRAFT_MERGE_ENABLED`. The
+Action Plan is two sentences behind `ACTION_PLAN_SENTENCES_ENABLED`.
+Each new flag defaults off. The JBA Policy Manual is the approved citation
+source: the bot cites the section and printed page and does not ask the
+manager to confirm the manual. "JBA Manual" is not an employee. Finalized
+forms are unchanged: an edit still opens a new draft. Migration
+`20261023200000_chat_form_state.sql` is additive and is not applied.
+Ask Bubbles was not attached, so this stays Sunny-only. Port the mechanism
+later. Do not copy salon names or company wording, and do not rename the
+JBA Policy Manual.
+
 ## 23 Oct 2026: form fixes behind more default-off flags (Sunny only)
 
 Slot retention, field accuracy (a month-day and a payroll amount the

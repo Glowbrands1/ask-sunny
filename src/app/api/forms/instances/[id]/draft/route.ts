@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
-import { policyCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { actionPlanSentencesEnabled, draftMergeEnabled, policyCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -82,7 +82,9 @@ import {
   formDerivedProvenance,
 } from "@/lib/forms/policy-fields";
 import {
+  approvedManualConfirmed,
   boxSectionNames,
+  isApprovedPolicyManualTitle,
   manualSectionsFor,
   officialManualProvenance,
   unconfirmedManualNotice,
@@ -138,6 +140,8 @@ import {
   planPayrollAmount,
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
+import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import { retainFilledFields } from "@/lib/forms/draft-merge";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
   COACHING_CONTEXT_RULES,
@@ -1601,7 +1605,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
                 documentId: manual.documentId,
                 documentTitle: manual.documentTitle,
                 matchedBy: manual.matchedBy,
-                ownerConfirmed: manual.matchedBy === "tag",
+                ownerConfirmed: approvedManualConfirmed(manual),
                 sections: manualSections,
               }),
               /* The structured citation the value was rendered from. */
@@ -1624,7 +1628,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
               documentId: manual.documentId,
               documentTitle: manual.documentTitle,
               matchedBy: manual.matchedBy,
-              ownerConfirmed: manual.matchedBy === "tag",
+              ownerConfirmed: approvedManualConfirmed(manual),
               sections: eppPassages.map((passage) => passage.section),
             }),
           }
@@ -1740,7 +1744,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const planned =
       fixedPlan && planInput && draftedAnything && !keeps(fixedPlan.key)
         ? {
-            values: { ...named.values, [fixedPlan.key]: correctiveActionPlan(planInput) },
+            values: {
+              ...named.values,
+              [fixedPlan.key]: actionPlanSentencesEnabled()
+                ? twoSentenceActionPlan(planInput)
+                : correctiveActionPlan(planInput),
+            },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
         : { values: named.values, provenance };
@@ -1773,16 +1782,25 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             : null,
         })
       : { values: planned.values, provenance: {} as Record<string, Record<string, unknown>> };
+    const draftedPayload = {
+      values: Object.fromEntries(Object.entries(cited.values).filter(([key]) => !keeps(key))),
+      checked: Object.fromEntries(
+        Object.entries(validated.checked).filter(
+          ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
+        ),
+      ),
+    };
+    const kept = draftMergeEnabled()
+      ? retainFilledFields({
+          question: notes,
+          existing: loaded.values ?? [],
+          values: draftedPayload.values,
+          checked: draftedPayload.checked,
+        })
+      : draftedPayload;
     const guarded = await applyAssistantDraft(
       id,
-      {
-        values: Object.fromEntries(Object.entries(cited.values).filter(([key]) => !keeps(key))),
-        checked: Object.fromEntries(
-          Object.entries(validated.checked).filter(
-            ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
-          ),
-        ),
-      },
+      kept,
       actor.id,
       { ...planned.provenance, ...cited.provenance },
     );
@@ -1876,7 +1894,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
          * from a manual found by its name, which no owner has confirmed as the
          * approved one (the `official-policy-manual` tag).
          */
-        manual.ok && manual.matchedBy === "fallback" && (manualSections.length > 0 || eppPassages.length > 0)
+        manual.ok &&
+        manual.matchedBy === "fallback" &&
+        !isApprovedPolicyManualTitle(manual.documentTitle) &&
+        (manualSections.length > 0 || eppPassages.length > 0)
           ? unconfirmedManualNotice(manual.documentTitle)
           : null,
         requirements.adjusted.length > 0 ? POLICY_REQUIREMENT_REMOVED_NOTICE : null,

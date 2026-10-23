@@ -3,6 +3,7 @@ import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { payrollDeductAmount, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
+import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 
 /**
  * Facts the current turn left out, copied forward from earlier manager turns.
@@ -52,7 +53,8 @@ function slotLines(question: string, history: readonly IntakeTurn[]): string[] {
     lines.push(`Job title: ${title}.`);
   }
 
-  const salon = singleSalon([...earlier, question]) ?? fuzzySalon([...earlier, question].join("\n"));
+  const joined = [...earlier, question].join("\n");
+  const salon = singleSalon([...earlier, question]) ?? fuzzySalon(joined) ?? uniqueRosterSalon(joined);
   if (salon && readSalonMentions(question).length === 0) {
     lines.push(`It happened at ${salon}.`);
   }
@@ -111,6 +113,31 @@ function fuzzySalon(text: string): string | null {
   return best?.name ?? null;
 }
 
+/**
+ * One salon the words uniquely resemble, when `readSalonMentions` did not
+ * take them. Two salons, or a weak resemblance, is no salon.
+ */
+export function uniqueRosterSalon(text: string): string | null {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9']+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const hits = new Map<string, number>();
+  for (let start = 0; start < tokens.length; start += 1) {
+    for (let length = 1; length <= 3 && start + length <= tokens.length; length += 1) {
+      const phrase = tokens.slice(start, start + length).join(" ");
+      if (phrase.length < 3) continue;
+      const ranked = rankSalons(phrase);
+      if (!ranked) continue;
+      hits.set(ranked.name, Math.max(hits.get(ranked.name) ?? 0, ranked.score));
+    }
+  }
+  if (hits.size !== 1) return null;
+  return [...hits.keys()][0] ?? null;
+}
+
 function rankSalons(phrase: string): { name: string; score: number } | null {
   const ranked = PRODUCTION_SALONS.map((salon) => {
     const local = salon.name.replace(/^[A-Z]{2}\s+/, "");
@@ -145,6 +172,16 @@ export function fieldLines(question: string, today: string, earlier = ""): strin
     const missed = missedDeduction(corpus);
     const amount = known ? `$${known.replace(/^\$/, "")}` : missed;
     if (amount) lines.push(`Payroll deduction of ${amount}.`);
+  }
+
+  if (statedPayrollDeduct(question) === null && earlier.trim()) {
+    const known = statedPayrollDeduct(earlier);
+    if (known === "yes") lines.push("Payroll deduct applies.");
+    else if (known === "no") lines.push("No payroll deduction.");
+  }
+  if (statedWarningLevel(question) === null && earlier.trim()) {
+    const level = warningLevelFromTurns(earlier.split("\n").map((line) => line.trim()).filter(Boolean));
+    if (level) lines.push(`Warning level: ${level}.`);
   }
   return lines;
 }

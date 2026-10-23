@@ -252,11 +252,21 @@ export async function POST(request: Request) {
       body.source === "ask_sunny" &&
       !historyWantsSeparateDocument(body.conversation)
     ) {
+      const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
+      const incidentText = turns
+        .filter((turn) => turn.role === "user")
+        .map((turn) => turn.content)
+        .join("\n")
+        .trim()
+        .slice(0, 2000);
       const resent = await findResentDraft({
         templateKey: body.templateKey,
         employeeName: body.employeeName.trim().slice(0, 120),
         createdBy: actor.id,
         locationId,
+        ...(incidentText
+          ? { incident: incidentText, formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null }
+          : {}),
       }).catch(() => null);
       if (resent) return NextResponse.json({ instance: resent, reused: true });
     }

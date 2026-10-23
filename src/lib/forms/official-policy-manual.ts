@@ -158,8 +158,35 @@ export function manualDisplayTitle(documentTitle: string): string {
 }
 
 /**
+ * The JBA Policy Manual is the approved citation source (Pau, 23 Oct 2026).
+ *
+ * A title or filename that is this manual — including a later revision such as
+ * "JBA Policy Manual Edited 5.2025" — is approved. The citation is the section
+ * and the printed page. The manager is not asked to confirm the manual.
+ */
+export function isApprovedPolicyManualTitle(title: string): boolean {
+  const text = normalize(title);
+  if (!text) return false;
+  const display = normalize(manualDisplayTitle(title));
+  const prefixes = [...OFFICIAL_POLICY_MANUAL.fallbackTitles, ...OFFICIAL_POLICY_MANUAL.fallbackFilenames]
+    .map(normalize)
+    .filter((prefix) => prefix !== "");
+  return prefixes.some((prefix) => text.startsWith(prefix) || display.startsWith(prefix));
+}
+
+/** Tagged, or the JBA Policy Manual found by the name the business already uses. */
+export function approvedManualConfirmed(input: {
+  readonly matchedBy: "tag" | "fallback";
+  readonly documentTitle: string;
+}): boolean {
+  return input.matchedBy === "tag" || isApprovedPolicyManualTitle(input.documentTitle);
+}
+
+/**
  * What a draft says when the policy it quotes is from a manual found by its
  * name rather than one an owner confirmed (owner decision, 22 Oct 2026).
+ *
+ * Not used for the JBA Policy Manual. That manual is the approved source.
  */
 export function unconfirmedManualNotice(documentTitle: string): string {
   return `Policy source: "${manualDisplayTitle(documentTitle)}" (${documentTitle.trim()}) requires owner confirmation as Ask Sunny's approved policy manual — it was found by its name, and no owner has confirmed it. The section and page are cited; check the quoted wording against your current manual before you finalize. An owner confirms it by tagging that document "official-policy-manual" in the Knowledge Base.`;
