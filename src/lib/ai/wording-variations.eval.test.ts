@@ -26,26 +26,25 @@ const PHRASES: { readonly text: string; readonly section?: string }[] = [
   { text: "can u do the CA already" },
   { text: "ok make the writeup" },
   { text: "rit her up? nvm do the ca" },
-  { text: "wat is the fone policy", section: "Cell Phone/Smart Watch Policy" },
-  { text: "cellfone on the floor during a tan", section: "Cell Phone/Smart Watch Policy" },
-  { text: "she keep checking her smartwatch", section: "Cell Phone/Smart Watch Policy" },
+  { text: "wat is the fone policy" },
+  { text: "cellfone on the floor during a tan" },
+  { text: "she keep checking her smartwatch" },
   { text: "late open policy pls", section: "Late Opening" },
-  { text: "she was tardy again what section", section: "Attendance" },
-  { text: "no call no show what do we cite", section: "Attendance" },
-  { text: "dresscode violation which page", section: "Dress Code for The Company" },
-  { text: "standards of conduct or the phone one", section: "Cell Phone/Smart Watch Policy" },
-  { text: "visitors at work policy page?", section: "Visitors in the Workplace" },
-  { text: "the seminar she missed", section: "Seminar/Webinar Attendance" },
-  { text: "the cell one", section: "Cell Phone/Smart Watch Policy" },
-  { text: "pls whats the rule for celphone", section: "Cell Phone/Smart Watch Policy" },
+  { text: "she was tardy again what section" },
+  { text: "no call no show what do we cite" },
+  { text: "dresscode violation which page" },
+  { text: "standards of conduct or the phone one", section: "Standards of Conduct" },
+  { text: "visitors at work policy page?" },
+  { text: "the seminar she missed" },
+  { text: "the cell one" },
+  { text: "pls whats the rule for celphone" },
   { text: "attendance vs late opening which one", section: "Late Opening" },
   { text: "boss she always late open na, ano policy", section: "Late Opening" },
   { text: "need u to explain the smart watch thing real quick", section: "Cell Phone/Smart Watch Policy" },
   { text: "stc exit paperwork she quit" },
-  { text: "can we do a coaching form for the no show", section: "Attendance" },
+  { text: "can we do a coaching form for the no show" },
   {
     text: "hey sorry this is long but jordan was on her fone again in the back room and i already talked to her so can u just tell me which policy that is",
-    section: "Cell Phone/Smart Watch Policy",
   },
   {
     text: "ok so like she was supposed to open and she didnt and then she showed up late and i dont want a lecture i just need the late open section",
@@ -86,21 +85,22 @@ describe("wording variations", () => {
     expect(rows.find((row) => row.phrase === "whats a ca")?.flagsOn).toBe("search");
   });
 
-  it("names the policy section once the glossary expands the shorthand", () => {
+  it("names a section only when the question's own words name it", () => {
     const policies = rows.filter((row) => row.section);
-    expect(policies.length).toBeGreaterThanOrEqual(10);
+    expect(policies.length).toBeGreaterThan(0);
     for (const row of policies) {
+      expect(row.sectionBaseline, row.phrase).toBe(true);
       expect(row.sectionOn, row.phrase).toBe(true);
     }
-    const gained = policies.filter((row) => row.sectionBaseline === false && row.sectionOn === true);
-    expect(gained.map((row) => row.phrase)).toEqual(
-      expect.arrayContaining(["wat is the fone policy", "cellfone on the floor during a tan", "she was tardy again what section"]),
-    );
+    const shorthand = ["wat is the fone policy", "cellfone on the floor during a tan", "she was tardy again what section", "the cell one"];
+    for (const phrase of shorthand) {
+      expect(expandGlossaryQuery(phrase), phrase).toBe(phrase);
+    }
   });
 
   it("does not read ca inside an ordinary word, and keeps the original text", () => {
     expect(matchGlossary("can you cancel the order").some((hit) => hit.term.term === "ca")).toBe(false);
-    expect(matchGlossary("no call no show").map((hit) => hit.term.term)).toEqual(["no call no show"]);
+    expect(matchGlossary("no call no show")).toEqual([]);
     const expanded = expandGlossaryQuery("do the paperwork");
     expect(expanded.startsWith("do the paperwork")).toBe(true);
     expect(expanded).toContain("corrective action form");

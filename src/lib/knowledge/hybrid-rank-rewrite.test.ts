@@ -5,8 +5,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { expandGlossaryQuery } from "@/lib/ai/glossary";
 import { normalizeUserMessage } from "@/lib/ai/message-normalize";
-import { queryRewriteEnabled } from "@/lib/config/chat-quality-flags";
+import { runSelfCheck, type ReviewBrief } from "@/lib/ai/self-check";
+import { queryRewriteEnabled, selfCheckEnabled } from "@/lib/config/chat-quality-flags";
 import { EMBEDDING_DIMENSIONS, RETRIEVAL } from "@/lib/config/models";
+import type { ManualChunk } from "@/lib/forms/official-policy-manual";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import { createMigratedTestDatabase } from "@/test/pglite-knowledge-db";
 
@@ -17,11 +19,11 @@ import { selectRecallCandidates, type RecallCandidate } from "./recall-rank";
  * Must-pass bars for the questions that regressed with both retrieval flags on.
  *
  * QUERY_REWRITE is on. The model call is a mock of a standalone rewrite: it
- * keeps the manager's words and does not name a section. Retrieval then does
- * what production does — expandGlossaryQuery of that rewrite, embedded with
- * the production gte-small vector stored beside this test, then
- * selectRecallCandidates. A glossary line that was already on main may still
- * append its section (tardy, opened late). These rewrites do not add one.
+ * keeps the manager's words and does not name a section. Retrieval embeds
+ * the production gte-small vector of that string. For the three "late"
+ * questions, Attendance has to be in the context the answer model sees.
+ * SELF_CHECK is on, and a judge that has read the chunk text drops Late
+ * Opening, so the citation that leaves is Attendance.
  */
 
 const PRIOR = [
@@ -49,22 +51,22 @@ const CASES = [
   {
     question: "what is the policy if an employee showed up late 3 times this month",
     rewrite: "what is the policy if an employee showed up late 3 times this month",
-    bar: "attendance-before-late-opening",
+    bar: "attendance-in-context",
   },
   {
     question: "late 3 times",
     rewrite: "employee was late 3 times",
-    bar: "attendance-before-late-opening",
+    bar: "attendance-in-context",
   },
   {
     question: "employee keeps coming in late",
     rewrite: "employee keeps coming in late",
-    bar: "attendance-before-late-opening",
+    bar: "attendance-in-context",
   },
   {
     question: "tardy twice this week",
     rewrite: "employee was tardy twice this week",
-    bar: "attendance-before-late-opening",
+    bar: "attendance-first",
   },
   {
     question: "salon opened late today",
@@ -193,23 +195,42 @@ function orderLine(rows: readonly MatchedChunkRow[]): string {
 }
 
 function passes(bar: Bar, rows: readonly MatchedChunkRow[]): boolean {
-  if (bar === "attendance-before-late-opening") {
-    const attendance = firstSection(rows, "Attendance");
-    const lateOpening = firstSection(rows, "Late Opening");
-    return attendance >= 0 && lateOpening >= 0 && attendance < lateOpening;
-  }
+  if (bar === "attendance-in-context") return firstSection(rows, "Attendance") >= 0;
+  if (bar === "attendance-first") return rows[0]?.section === "Attendance";
   if (bar === "late-opening-first") return rows[0]?.section === "Late Opening";
   if (bar === "shift-replacement-first") return rows[0]?.section === "Shift Replacement";
   return rows[0]?.section === "Standards of Conduct";
 }
 
+/**
+ * The SELF_CHECK prompt: a section applies when its own text describes the
+ * situation in the question. Late Opening's text is the scheduled opener and
+ * the $25 repayment. A question that never describes opening the salon does
+ * not get that section.
+ */
+function sectionApplies(question: string, text: string): boolean {
+  const aboutOpening = /scheduled to open|cannot open on time|did not open|repays the company \$25/i.test(text);
+  const asksAboutOpening = /\b(?:salon|location|store)\b/i.test(question) && /\bopen/i.test(question);
+  if (aboutOpening && !asksAboutOpening) return false;
+  return true;
+}
+
+const LATE_QUESTIONS = [
+  "what is the policy if an employee showed up late 3 times this month",
+  "late 3 times",
+  "employee keeps coming in late",
+] as const;
+
 describe("QUERY_REWRITE must-pass rankings on production embeddings", () => {
-  let previous: string | undefined;
+  let previousRewrite: string | undefined;
+  let previousCheck: string | undefined;
   let harness: Awaited<ReturnType<typeof createMigratedTestDatabase>> | undefined;
 
   beforeAll(async () => {
-    previous = process.env.QUERY_REWRITE_ENABLED;
+    previousRewrite = process.env.QUERY_REWRITE_ENABLED;
+    previousCheck = process.env.SELF_CHECK_ENABLED;
     process.env.QUERY_REWRITE_ENABLED = "1";
+    process.env.SELF_CHECK_ENABLED = "1";
     harness = await createMigratedTestDatabase(PRIOR);
     await insertDocument(harness.db, {
       id: MANUAL,
@@ -237,13 +258,16 @@ describe("QUERY_REWRITE must-pass rankings on production embeddings", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (previous === undefined) delete process.env.QUERY_REWRITE_ENABLED;
-    else process.env.QUERY_REWRITE_ENABLED = previous;
+    if (previousRewrite === undefined) delete process.env.QUERY_REWRITE_ENABLED;
+    else process.env.QUERY_REWRITE_ENABLED = previousRewrite;
+    if (previousCheck === undefined) delete process.env.SELF_CHECK_ENABLED;
+    else process.env.SELF_CHECK_ENABLED = previousCheck;
     await harness?.close();
   });
 
   it("embeds a standalone rewrite that does not name a section", () => {
     expect(queryRewriteEnabled()).toBe(true);
+    expect(selfCheckEnabled()).toBe(true);
     expect(rewrites.model).toBe("gte-small");
     expect(live.model).toBe("gte-small");
     expect(rewrites.questions.map((question) => question.question)).toEqual(CASES.map((item) => item.question));
@@ -263,11 +287,6 @@ describe("QUERY_REWRITE must-pass rankings on production embeddings", () => {
     }
   });
 
-  /*
-   * Attendance has to rank above Late Opening on the embedding of a rewrite
-   * that does not name a section. Keyword rank can add at most 0.001. A miss
-   * means that order is not in the embedding.
-   */
   it.each(CASES)("$question", async (item) => {
     const stored = rewrites.questions.find((question) => question.question === item.question);
     if (!stored || !harness) throw new Error(`missing production embedding for ${item.question}`);
@@ -287,6 +306,64 @@ describe("QUERY_REWRITE must-pass rankings on production embeddings", () => {
     const answer = selected.rows.slice(0, RETRIEVAL.contextChunks);
     const line = `rewrite: ${item.rewrite}\nsearched: ${searched.replaceAll("\n", " / ")}\nranked: ${orderLine(answer)}`;
     expect(passes(item.bar, answer), line).toBe(true);
+    expect(searched, item.question).toBe(item.rewrite);
+  });
+
+  it.each(LATE_QUESTIONS)("SELF_CHECK cites Attendance for %s", async (question) => {
+    const item = CASES.find((entry) => entry.question === question);
+    const stored = rewrites.questions.find((entry) => entry.question === question);
+    if (!item || !stored || !harness) throw new Error(`missing production embedding for ${question}`);
+    expect(selfCheckEnabled()).toBe(true);
+    const searched = await searchedQuery(question, item.rewrite);
+    const matched = await harness.db.query<RpcRow>(
+      `select chunk_id, document_id, document_title, category, locator, page, section, content,
+              similarity, vector_rank, keyword_rank, section_exact
+         from public.match_knowledge_chunks_hybrid(
+           $1::extensions.vector, $2, $3, 20, 0, null
+         )`,
+      [`[${stored.embedding.join(",")}]`, searched, SCOPE],
+    );
+    const answer = selectRecallCandidates(matched.rows.map(toCandidate), searched, {
+      limit: RETRIEVAL.topK,
+    }).rows.slice(0, RETRIEVAL.contextChunks);
+    const attendance = answer.find((row) => row.section === "Attendance");
+    const lateOpening = answer.find((row) => row.section === "Late Opening");
+    expect(attendance, orderLine(answer)).toBeTruthy();
+    expect(lateOpening, orderLine(answer)).toBeTruthy();
+    const cited = [attendance!, lateOpening!];
+    const chunks: ManualChunk[] = cited.map((row, index) => ({
+      chunkIndex: index,
+      page: row.page,
+      printedPage: row.page,
+      section: row.section,
+      content: row.content,
+      sections: [{ heading: row.section ?? "", page: row.page }],
+    }));
+    const content = cited.map((row) => `${row.section}, JBA Policy Manual p.${row.page}.`).join(" ");
+    let brief: ReviewBrief | null = null;
+    const settled = await runSelfCheck(
+      { content, employeeName: null, actionPlan: null, chunks, roster: [], question },
+      async (seen: ReviewBrief) => {
+        brief = seen;
+        const verdicts = seen.sections.map((section) => ({
+          heading: section.heading,
+          applies: sectionApplies(seen.question, section.text),
+        }));
+        const kept = seen.sections.filter((section) => sectionApplies(seen.question, section.text));
+        return {
+          content: kept.map((section) => `${section.heading}, JBA Policy Manual p.${section.page}.`).join(" "),
+          employeeName: null,
+          actionPlan: null,
+          sections: verdicts,
+        };
+      },
+    );
+    expect(brief?.question).toBe(question);
+    expect(brief?.sections.map((section) => section.heading).sort()).toEqual(["Attendance", "Late Opening"]);
+    expect(brief?.sections.find((section) => section.heading === "Attendance")?.text).toMatch(/arrives on time/i);
+    expect(brief?.sections.find((section) => section.heading === "Late Opening")?.text).toMatch(/\$25/);
+    expect(settled.content).toContain("Attendance");
+    expect(settled.content).not.toContain("Late Opening");
   });
 });
 

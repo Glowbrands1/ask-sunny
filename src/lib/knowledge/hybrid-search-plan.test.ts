@@ -194,24 +194,9 @@ describe("hybrid index migration", () => {
         ranked.findIndex((row) => row.section === "Attendance"),
       );
 
-      const glossaryQuery = expandGlossaryQuery("tardy");
-      expect(glossaryQuery).toContain("Attendance");
-      const glossaryHit = await harness.db.query<{ section: string }>(
-        `select section from public.match_knowledge_chunks_hybrid(
-           $1::extensions.vector, $2, $3, 8, 0.0, null
-         ) where section = 'Attendance'`,
-        [`[${attendanceVector.join(",")}]`, glossaryQuery, SCOPE],
-      );
-      expect(glossaryHit.rows).toHaveLength(1);
-      const glossaryAnd = await harness.db.query<{ n: number }>(
-        `select count(*)::int as n
-           from public.knowledge_chunks
-          where knowledge_scope_id = $1
-            and section = 'Attendance'
-            and content_tsv @@ plainto_tsquery('english', $2)`,
-        [SCOPE, glossaryQuery],
-      );
-      expect(glossaryAnd.rows[0]?.n).toBe(0);
+      for (const phrase of ["tardy", "opened late", "no show", "cell phone", "parking lot", "dress code"]) {
+        expect(expandGlossaryQuery(phrase), phrase).toBe(phrase);
+      }
 
       await harness.db.exec("analyze public.knowledge_chunks; analyze public.knowledge_documents;");
       const vectorLiteral = `[${frameworkVector.join(",")}]`;

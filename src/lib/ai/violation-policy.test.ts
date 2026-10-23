@@ -10,14 +10,12 @@ import { selectRecallCandidates, type RecallCandidate } from "@/lib/knowledge/re
 import { citedSections, withMappedPolicy } from "./violation-policy";
 
 /**
- * Staff describe the violation. Baseline is vector-only with a 0.78 floor.
- * Flags-on expands the glossary, pins the section, and attaches that
- * section's manual text to the form. Haiku is not called.
+ * A phrase is not mapped onto a section title. The glossary no longer
+ * attaches a manual section to a form. A question that already contains
+ * the heading's own words can still pin that heading in recall.
  *
  * "Client Service Must-See Behaviors" is not a heading in the checked-in
- * manual fixture. The dress-code body is not in that fixture either: the
- * heading is recorded on the Late Opening chunk, whose text is Late Opening.
- * The extra chunks below are synthetic so attachment can be measured.
+ * manual fixture. The dress-code body is not in that fixture either.
  */
 
 const PROPOSAL = "I'll draft a **Corrective Action Form**.\n\nCreate the draft here when you're ready.";
@@ -39,33 +37,16 @@ const MUST_SEE: ManualChunk = {
 
 const CHUNKS: readonly ManualChunk[] = [...JBA_MANUAL_CHUNKS, DRESS, MUST_SEE];
 
-const CASES: { readonly phrase: string; readonly section: string; readonly excerpt: string }[] = [
-  {
-    phrase: "CA for cleaning duties not completed",
-    section: "Standards of Conduct",
-    excerpt: "Standards of Conduct\nSynthetic policy wording",
-  },
-  {
-    phrase: "verbal CA for missing the 10/15 woven deadline",
-    section: "Standards of Conduct",
-    excerpt: "Standards of Conduct\nSynthetic policy wording",
-  },
-  {
-    phrase: "new hire didn't complete policy acknowledgments",
-    section: "Standards of Conduct",
-    excerpt: "Standards of Conduct\nSynthetic policy wording",
-  },
-  {
-    phrase: "CA for late opening is a verbal warning",
-    section: "Late Opening",
-    excerpt: "Late Opening\nSynthetic policy wording",
-  },
-  {
-    phrase: "client service must-see behaviors",
-    section: "Client Service Must-See Behaviors",
-    excerpt: "Synthetic policy wording, service.",
-  },
-];
+const PHRASES = [
+  "CA for cleaning duties not completed",
+  "verbal CA for missing the 10/15 woven deadline",
+  "new hire didn't complete policy acknowledgments",
+  "she was tardy again",
+  "the salon opened late",
+  "add dress code policy too",
+  "insubordination",
+  "cell phone on the floor",
+] as const;
 
 function row(section: string, similarity: number, vectorRank: number): RecallCandidate {
   const chunk: MatchedChunkRow = {
@@ -103,47 +84,21 @@ function flagsOnHit(query: string, wanted: string): boolean {
 }
 
 describe("violation to policy section", () => {
-  const table = CASES.map((item) => ({
-    phrase: item.phrase,
-    section: item.section,
-    baselineRecallAt4: baseline(pool(item.section)) ? 1 : 0,
-    flagsOnRecallAt4: flagsOnHit(item.phrase, item.section) ? 1 : 0,
-    attached: withMappedPolicy(PROPOSAL, [item.phrase], CHUNKS, true).includes(item.excerpt),
-  }));
-
-  it("cites the section and attaches its manual text for the reported phrases", () => {
-    expect(table.map((item) => item.baselineRecallAt4)).toEqual([0, 0, 0, 0, 0]);
-    expect(table.map((item) => item.flagsOnRecallAt4)).toEqual([1, 1, 1, 1, 1]);
-    expect(table.every((item) => item.attached)).toBe(true);
-    for (const item of CASES) {
-      const cited = citedSections([item.phrase]);
-      expect(cited.map((section) => section.section)).toEqual([item.section]);
-      const attached = withMappedPolicy(PROPOSAL, [item.phrase], CHUNKS, true);
-      expect(attached).toContain(`JBA Policy Manual — ${item.section}`);
-      expect(attached).toContain(item.excerpt);
-      expect(withMappedPolicy(PROPOSAL, [item.phrase], CHUNKS, false)).toBe(PROPOSAL);
+  it("does not attach a section from a phrase", () => {
+    for (const phrase of PHRASES) {
+      expect(citedSections([phrase]), phrase).toEqual([]);
+      expect(withMappedPolicy(PROPOSAL, [phrase], CHUNKS, true), phrase).toBe(PROPOSAL);
     }
   });
 
-  it("keeps the earlier section when the manager adds dress code policy too", () => {
-    const turns = ["CA for cleaning duties not completed", "add dress code policy too"];
-    expect(citedSections(turns).map((section) => section.section)).toEqual([
-      "Standards of Conduct",
-      "Dress Code for The Company",
-    ]);
-    const attached = withMappedPolicy(PROPOSAL, turns, CHUNKS, true);
-    expect(attached).toContain("Standards of Conduct\nSynthetic policy wording");
-    expect(attached).toContain("Dress Code for The Company\nSynthetic policy wording, dress.");
-    expect(attached).toContain("Create the draft here");
+  it("pins a heading the question itself names", () => {
+    expect(baseline(pool("Client Service Must-See Behaviors"))).toBe(false);
+    expect(flagsOnHit("client service must-see behaviors", "Client Service Must-See Behaviors")).toBe(true);
+    expect(flagsOnHit("what is the dress code policy", "Dress Code for The Company")).toBe(true);
+    expect(flagsOnHit("CA for cleaning duties not completed", "Standards of Conduct")).toBe(false);
   });
 
-  it("maps insubordination, misconduct, and tardiness onto the manual sections", () => {
-    expect(citedSections(["insubordination"]).map((section) => section.section)).toEqual(["Standards of Conduct"]);
-    expect(citedSections(["general misconduct"]).map((section) => section.section)).toEqual(["Standards of Conduct"]);
-    expect(citedSections(["she was tardy again"]).map((section) => section.section)).toEqual(["Attendance"]);
-  });
-
-  it("does not invent a client-service or dress-code passage the fixture does not hold", () => {
+  it("does not invent a passage the fixture does not hold", () => {
     expect(
       JBA_MANUAL_CHUNKS.some((chunk) => chunk.section === "Client Service Must-See Behaviors"),
     ).toBe(false);
@@ -154,8 +109,5 @@ describe("violation to policy section", () => {
           chunk.content.includes("Dress Code for The Company"),
       ),
     ).toBe(false);
-    const cited = withMappedPolicy(PROPOSAL, ["add dress code policy too"], JBA_MANUAL_CHUNKS, true);
-    expect(cited).toContain("JBA Policy Manual — Dress Code for The Company (p.15)");
-    expect(cited).not.toContain("Synthetic policy wording, dress.");
   });
 });
