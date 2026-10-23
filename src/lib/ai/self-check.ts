@@ -7,10 +7,11 @@ import { headingKey, type ManualChunk } from "@/lib/forms/official-policy-manual
 /**
  * A last look before a form or an answer is sent.
  *
- * A cited policy and page have to be on the JBA chunks this turn retrieved.
- * An action plan is two sentences. An employee on a form has to be on the
- * Woven roster. One repair may fix a failure. What is still wrong is removed
- * rather than sent.
+ * A cited page has to be the page on the retrieved chunk. A cited section
+ * whose own text does not fit the question is dropped when the model says so
+ * from that text. An action plan is two sentences. An employee on a form has
+ * to be on the Woven roster. One repair may fix a failure. What is still
+ * wrong is removed rather than sent.
  */
 
 const CITATION = /([A-Za-z][^,\n]{1,80}?)\s*,\s*JBA Policy Manual p\.(\d+)/g;
@@ -23,6 +24,20 @@ export interface OutgoingDraft {
   readonly chunks: readonly ManualChunk[];
   /** Null when the directory could not be read. An empty list was read and is empty. */
   readonly roster: readonly RosterEmployee[] | null;
+  /** The manager's question, when a cited section should be judged against it. */
+  readonly question?: string;
+}
+
+export interface CitedSectionText {
+  readonly heading: string;
+  readonly page: number | null;
+  readonly text: string;
+}
+
+export interface ReviewBrief {
+  readonly question: string;
+  readonly sections: readonly CitedSectionText[];
+  readonly failures: readonly SelfCheckFailure[];
 }
 
 export interface RepairDraft {
@@ -50,15 +65,39 @@ const repairSchema = z.object({
   actionPlan: z.string().nullable().optional(),
 });
 
+const verdictSchema = z.object({
+  heading: z.string(),
+  applies: z.boolean(),
+});
+
+const reviewSchema = repairSchema.extend({
+  sections: z.array(verdictSchema).optional(),
+});
+
+export interface SectionVerdict {
+  readonly heading: string;
+  readonly applies: boolean;
+}
+
 export function parseRepair(raw: unknown): RepairDraft | null {
-  const parsed = repairSchema.safeParse(raw);
-  if (!parsed.success) return null;
+  return parseReview(raw).repair;
+}
+
+export function parseReview(raw: unknown): { repair: RepairDraft | null; sections: SectionVerdict[] } {
+  const parsed = reviewSchema.safeParse(raw);
+  if (!parsed.success) return { repair: null, sections: [] };
+  const sections = (parsed.data.sections ?? [])
+    .map((section) => ({ heading: section.heading.trim(), applies: section.applies }))
+    .filter((section) => section.heading.length > 0);
   const content = parsed.data.content.trim();
-  if (!content) return null;
+  if (!content) return { repair: null, sections };
   return {
-    content,
-    employeeName: parsed.data.employeeName?.trim() || null,
-    actionPlan: parsed.data.actionPlan?.trim() || null,
+    repair: {
+      content,
+      employeeName: parsed.data.employeeName?.trim() || null,
+      actionPlan: parsed.data.actionPlan?.trim() || null,
+    },
+    sections,
   };
 }
 
@@ -85,31 +124,28 @@ export function reviewOutgoing(draft: OutgoingDraft): SelfCheckFailure[] {
 
 export async function runSelfCheck(
   draft: OutgoingDraft,
-  repair: () => Promise<unknown>,
+  repair: (brief: ReviewBrief) => Promise<unknown>,
 ): Promise<SettledDraft> {
   const failures = reviewOutgoing(draft);
-  if (failures.length === 0) {
+  const cited = citedSections(`${draft.content}\n${draft.actionPlan ?? ""}`, draft.chunks);
+  const ask = failures.length > 0 || (Boolean(draft.question?.trim()) && cited.some((section) => section.text.trim()));
+  if (!ask) {
     return { content: draft.content, employeeName: draft.employeeName, actionPlan: draft.actionPlan, ok: true, repaired: false };
   }
-  let repaired: RepairDraft | null = null;
+  let reviewed = { repair: null as RepairDraft | null, sections: [] as SectionVerdict[] };
   try {
-    repaired = parseRepair(await repair());
+    reviewed = parseReview(await repair({ question: draft.question?.trim() ?? "", sections: cited, failures }));
   } catch {
-    repaired = null;
+    reviewed = { repair: null, sections: [] };
   }
-  if (repaired) {
-    const next: OutgoingDraft = {
-      ...draft,
-      content: repaired.content,
-      employeeName: repaired.employeeName,
-      actionPlan: repaired.actionPlan,
-    };
-    if (reviewOutgoing(next).length === 0) {
-      return { ...repaired, ok: true, repaired: true };
-    }
-    return { ...fallback(next, reviewOutgoing(next)), repaired: true };
+  const next = applyReview(draft, reviewed.repair, reviewed.sections);
+  const remaining = reviewOutgoing({ ...draft, ...next });
+  if (remaining.length === 0) {
+    const changed =
+      next.content !== draft.content || next.employeeName !== draft.employeeName || next.actionPlan !== draft.actionPlan;
+    return { ...next, ok: true, repaired: changed };
   }
-  return { ...fallback(draft, failures), repaired: true };
+  return { ...fallback({ ...draft, ...next }, remaining), repaired: true };
 }
 
 export function actionPlanIn(content: string): string | null {
@@ -165,38 +201,171 @@ function citationsIn(text: string): { heading: string; page: number }[] {
 }
 
 function citationOnChunks(heading: string, page: number, chunks: readonly ManualChunk[]): boolean {
-  const wanted = headingKey(heading.replace(/\s+policy$/i, ""));
-  if (!wanted) return false;
-  const hits = headingHits(wanted, chunks);
-  if (hits.length === 0) return false;
-  const longest = Math.max(...hits.map((hit) => hit.key.length));
-  const best = hits.filter((hit) => hit.key.length === longest);
-  const listed = best.filter((hit) => hit.listed);
-  const pool = listed.length > 0 ? listed : best;
-  return pool.some((hit) => hit.page === page);
+  const expected = pageForHeading(heading, chunks);
+  return expected !== null && expected === page;
 }
 
 /**
- * A citation may name the heading after other words. The longest retrieved
- * heading that the citation ends with is the one that was cited, and a page
- * printed on a `sections` entry wins over the chunk's sheet page.
+ * The page on the retrieved chunk.
+ *
+ * The number the chunk itself carries wins. A heading list inside the chunk
+ * is used only when the chunk has no page of its own, so a list that still
+ * says an older page cannot override the indexed chunk.
  */
-function headingHits(
-  wanted: string,
-  chunks: readonly ManualChunk[],
-): { key: string; page: number; listed: boolean }[] {
-  const hits: { key: string; page: number; listed: boolean }[] = [];
-  for (const chunk of chunks) {
-    for (const section of chunk.sections ?? []) {
-      const key = headingKey(section.heading);
-      if (key && headingFits(wanted, key)) hits.push({ key, page: section.page, listed: true });
+export function pageForHeading(heading: string, chunks: readonly ManualChunk[]): number | null {
+  const pages = new Set<number>();
+  for (const chunk of chunksCarrying(heading, chunks)) {
+    const indexed = indexedPage(chunk);
+    if (indexed) pages.add(indexed);
+    else {
+      const listed = listedPage(heading, chunk);
+      if (listed) pages.add(listed);
     }
-    if (!chunk.section) continue;
-    const key = headingKey(chunk.section);
-    const printed = chunk.printedPage ?? chunk.page;
-    if (key && printed != null && headingFits(wanted, key)) hits.push({ key, page: printed, listed: false });
   }
-  return hits;
+  if (pages.size !== 1) return null;
+  return [...pages][0]!;
+}
+
+function applyReview(
+  draft: OutgoingDraft,
+  repair: RepairDraft | null,
+  verdicts: readonly SectionVerdict[],
+): { content: string; employeeName: string | null; actionPlan: string | null } {
+  let content = repair?.content ?? draft.content;
+  let actionPlan = repair ? repair.actionPlan : draft.actionPlan;
+  const employeeName = repair ? repair.employeeName : draft.employeeName;
+  for (const verdict of verdicts) {
+    if (verdict.applies) continue;
+    content = dropSection(content, verdict.heading, draft.chunks, verdicts);
+    if (actionPlan) {
+      const next = dropSection(actionPlan, verdict.heading, draft.chunks, verdicts);
+      actionPlan = next.trim() ? next : null;
+    }
+  }
+  content = alignCitationPages(content, draft.chunks);
+  if (actionPlan) {
+    const aligned = alignCitationPages(actionPlan, draft.chunks);
+    actionPlan = aligned.trim() ? aligned : null;
+  }
+  if (!content.trim() && verdicts.some((verdict) => !verdict.applies)) {
+    content = "I can't cite a manual section whose own text fits this situation.";
+  }
+  return { content, employeeName, actionPlan };
+}
+
+function citedSections(text: string, chunks: readonly ManualChunk[]): CitedSectionText[] {
+  const found: CitedSectionText[] = [];
+  const seen = new Set<string>();
+  for (const citation of citationsIn(text)) {
+    const label = labelFor(citation.heading, chunks);
+    const key = headingKey(label);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    found.push({
+      heading: label,
+      page: pageForHeading(citation.heading, chunks),
+      text: textForHeading(label, chunks),
+    });
+  }
+  return found;
+}
+
+function dropSection(
+  text: string,
+  heading: string,
+  chunks: readonly ManualChunk[],
+  verdicts: readonly SectionVerdict[],
+): string {
+  const droppedAmounts = exclusiveAmounts(heading, chunks, verdicts);
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => {
+      const cited = citationsIn(sentence);
+      if (cited.some((citation) => sameHeading(citation.heading, heading))) return false;
+      const citesKept = cited.some((citation) => !sameHeading(citation.heading, heading));
+      if (!citesKept && droppedAmounts.some((amount) => sentenceHasAmount(sentence, amount))) return false;
+      return true;
+    })
+    .join(" ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function alignCitationPages(text: string, chunks: readonly ManualChunk[]): string {
+  return text.replace(new RegExp(CITATION.source, "g"), (full, heading: string, page: string) => {
+    const expected = pageForHeading(heading, chunks);
+    if (!expected || expected === Number(page)) return full;
+    return full.replace(/p\.\d+$/, `p.${expected}`);
+  });
+}
+
+function exclusiveAmounts(heading: string, chunks: readonly ManualChunk[], verdicts: readonly SectionVerdict[]): number[] {
+  const dropped = moneyAmounts(textForHeading(heading, chunks));
+  const kept = verdicts
+    .filter((verdict) => verdict.applies && !sameHeading(verdict.heading, heading))
+    .map((verdict) => textForHeading(verdict.heading, chunks))
+    .join("\n");
+  const keptAmounts = new Set(moneyAmounts(kept));
+  return dropped.filter((amount) => !keptAmounts.has(amount));
+}
+
+function moneyAmounts(text: string): number[] {
+  return [...text.matchAll(/\$\s*(\d+(?:\.\d+)?)/g)].flatMap((match) => {
+    const amount = Number(match[1]);
+    return Number.isFinite(amount) ? [amount] : [];
+  });
+}
+
+function sentenceHasAmount(sentence: string, amount: number): boolean {
+  return moneyAmounts(sentence).some((value) => value === amount);
+}
+
+function textForHeading(heading: string, chunks: readonly ManualChunk[]): string {
+  return chunksCarrying(heading, chunks)
+    .map((chunk) => chunk.content.trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 2000);
+}
+
+function labelFor(heading: string, chunks: readonly ManualChunk[]): string {
+  const wanted = headingKey(heading.replace(/\s+policy$/i, ""));
+  for (const chunk of chunksCarrying(heading, chunks)) {
+    if (chunk.section && headingFits(wanted, headingKey(chunk.section))) return chunk.section.trim();
+    const listed = (chunk.sections ?? []).find((section) => headingFits(wanted, headingKey(section.heading)));
+    if (listed) return listed.heading.trim();
+  }
+  return heading.replace(/\s+policy$/i, "").trim();
+}
+
+function chunksCarrying(heading: string, chunks: readonly ManualChunk[]): ManualChunk[] {
+  const wanted = headingKey(heading.replace(/\s+policy$/i, ""));
+  if (!wanted) return [];
+  return chunks.filter((chunk) => carries(chunk, wanted));
+}
+
+function carries(chunk: ManualChunk, wanted: string): boolean {
+  if (chunk.section && headingFits(wanted, headingKey(chunk.section))) return true;
+  return (chunk.sections ?? []).some((section) => headingFits(wanted, headingKey(section.heading)));
+}
+
+function indexedPage(chunk: ManualChunk): number | null {
+  if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (typeof chunk.page === "number" && chunk.page > 0) return chunk.page;
+  return null;
+}
+
+function listedPage(heading: string, chunk: ManualChunk): number | null {
+  const wanted = headingKey(heading.replace(/\s+policy$/i, ""));
+  const listed = (chunk.sections ?? []).find((section) => headingFits(wanted, headingKey(section.heading)));
+  return listed && listed.page > 0 ? listed.page : null;
+}
+
+function sameHeading(left: string, right: string): boolean {
+  const a = headingKey(left.replace(/\s+policy$/i, ""));
+  const b = headingKey(right.replace(/\s+policy$/i, ""));
+  if (!a || !b) return false;
+  return a === b || headingFits(a, b) || headingFits(b, a);
 }
 
 function headingFits(wanted: string, key: string): boolean {

@@ -8,7 +8,7 @@ import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 import { callClaudeTool } from "./call-claude";
 import type { ChatActor } from "./form-proposal";
-import { actionPlanIn, reviewOutgoing, runSelfCheck } from "./self-check";
+import { actionPlanIn, runSelfCheck } from "./self-check";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -20,7 +20,8 @@ import type { AskRequest, AskResponse } from "./types";
  */
 
 const REPAIR_SYSTEM = `You repair one assistant reply. Call repair_reply once.
-Cite a policy and page only when that heading and page are in the chunk list.
+For each cited section, read that chunk's own text and the manager's question. Set applies to false when the chunk's text limits the section to a situation the question does not describe. Omit that section from content, including a consequence stated only in that chunk. Judge only from the chunk text and the question.
+Cite a heading only when it is in the chunk list, and the page must be that chunk's page.
 An action plan, when you include one, is exactly two sentences.
 employeeName is a roster name from the list, or null.
 Do not invent a policy, a page, or a person. If a part cannot be repaired, omit it.`;
@@ -36,10 +37,11 @@ export async function guardReply(
       loadRoster(input.actor),
     ]);
     const names = roster?.map((person) => displayName(person)) ?? [];
-    const headings = chunks.flatMap((chunk) => [
-      ...(chunk.section ? [chunk.section] : []),
-      ...(chunk.sections ?? []).map((section) => `${section.heading} p.${section.page}`),
-    ]);
+    const headings = chunks.flatMap((chunk) => {
+      const page = (chunk.printedPage ?? chunk.page) || null;
+      const label = chunk.section?.trim() || chunk.sections?.[0]?.heading?.trim() || "";
+      return label && page ? [`${label} p.${page}`] : [];
+    });
     const employeeName = response.formProposal?.employeeName ?? null;
     const settled = await runSelfCheck(
       {
@@ -48,38 +50,54 @@ export async function guardReply(
         actionPlan: actionPlanIn(response.content),
         chunks,
         roster,
+        question: input.request.question,
       },
-      () =>
+      (brief) =>
         callClaudeTool({
           model: CLAUDE_HAIKU_MODEL,
           system: REPAIR_SYSTEM,
           maxTokens: 700,
           tool: {
             name: "repair_reply",
-            description: "The repaired reply. Omit anything you cannot support from the lists.",
+            description: "The repaired reply, and whether each cited section's own text fits the question.",
             input_schema: {
               type: "object",
               additionalProperties: false,
-              required: ["content", "employeeName", "actionPlan"],
+              required: ["content", "employeeName", "actionPlan", "sections"],
               properties: {
                 content: { type: "string" },
                 employeeName: { type: ["string", "null"] },
                 actionPlan: { type: ["string", "null"] },
+                sections: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["heading", "applies"],
+                    properties: {
+                      heading: { type: "string" },
+                      applies: { type: "boolean" },
+                    },
+                  },
+                },
               },
             },
           },
           messages: [
             {
               role: "user",
-              content: `Failures:\n${reviewOutgoing({
-                content: response.content,
-                employeeName,
-                actionPlan: actionPlanIn(response.content),
-                chunks,
-                roster,
-              })
-                .map((failure) => failure.detail)
-                .join("\n")}\n\nRoster:\n${names.slice(0, 80).join("\n")}\n\nChunks:\n${headings.slice(0, 80).join("\n")}\n\nReply:\n${response.content.slice(0, 4000)}`,
+              content: [
+                brief.question ? `Question:\n${brief.question}` : "",
+                `Failures:\n${brief.failures.map((failure) => failure.detail).join("\n")}`,
+                `Cited sections:\n${brief.sections
+                  .map((section) => `${section.heading} — page ${section.page ?? ""}\n${section.text}`)
+                  .join("\n\n")}`,
+                `Roster:\n${names.slice(0, 80).join("\n")}`,
+                headings.length > 0 ? `Chunk pages:\n${headings.slice(0, 80).join("\n")}` : "",
+                `Reply:\n${response.content.slice(0, 4000)}`,
+              ]
+                .filter((part) => part.trim())
+                .join("\n\n"),
             },
           ],
         }),

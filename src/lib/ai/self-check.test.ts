@@ -8,7 +8,7 @@ import type { ManualChunk } from "@/lib/forms/official-policy-manual";
 import { actionPlanSentenceCount } from "@/lib/forms/action-plan-sentences";
 
 import { manualTermsQuery, queryWithManualTerms } from "./query-rewrite";
-import { reviewOutgoing, runSelfCheck, type OutgoingDraft } from "./self-check";
+import { reviewOutgoing, runSelfCheck, type OutgoingDraft, type ReviewBrief } from "./self-check";
 
 /**
  * Varied phrasings, lowercase names, typos, and date formats.
@@ -36,12 +36,13 @@ function chunk(input: {
   page?: number | null;
   printedPage?: number | null;
   sections?: { heading: string; page: number }[];
+  content?: string;
 }): ManualChunk {
   return {
     chunkIndex: 0,
     page: input.page ?? null,
     printedPage: input.printedPage,
-    content: "",
+    content: input.content ?? "",
     section: input.section ?? null,
     sections: input.sections ?? null,
   };
@@ -95,10 +96,10 @@ describe("self-check", () => {
     ).toEqual([]);
   });
 
-  it("prefers the page on the section list over the sheet page", () => {
+  it("uses the indexed chunk page when a heading list still has an older page", () => {
     const chunks = [chunk({ section: "Attendance", page: 16, printedPage: 15, sections: [{ heading: "Attendance", page: 14 }] })];
-    expect(reviewOutgoing(draft({ content: "Attendance Policy, JBA Policy Manual p.14.", actionPlan: null, employeeName: null, chunks }))).toEqual([]);
-    expect(reviewOutgoing(draft({ content: "Attendance Policy, JBA Policy Manual p.15.", actionPlan: null, employeeName: null, chunks })).map((failure) => failure.kind)).toEqual(["citation"]);
+    expect(reviewOutgoing(draft({ content: "Attendance Policy, JBA Policy Manual p.15.", actionPlan: null, employeeName: null, chunks }))).toEqual([]);
+    expect(reviewOutgoing(draft({ content: "Attendance Policy, JBA Policy Manual p.14.", actionPlan: null, employeeName: null, chunks })).map((failure) => failure.kind)).toEqual(["citation"]);
   });
 
   it("rejects a page the retrieved chunks do not have", () => {
@@ -205,6 +206,87 @@ describe("self-check", () => {
     );
     expect(thrown.ok).toBe(false);
     expect(thrown.actionPlan && actionPlanSentenceCount(thrown.actionPlan)).toBe(2);
+  });
+
+  it("corrects Attendance to the indexed page and drops a section whose text does not fit: what is the policy if an employee showed up late 3 times this month", async () => {
+    const question = "what is the policy if an employee showed up late 3 times this month";
+    const chunks = [
+      chunk({
+        section: "Attendance",
+        page: 15,
+        sections: [{ heading: "Attendance", page: 14 }],
+        content: "Attendance\nAn employee is expected to be present at the scheduled start of the shift. Repeated lateness is covered here.",
+      }),
+      chunk({
+        section: "Late Opening",
+        page: 15,
+        content:
+          "Late Opening\nWhen an employee assigned to open a location is unable to open the location at the proper time, the employee will reimburse the company $25.00 via payroll deduction.",
+      }),
+    ];
+    const content = [
+      "An employee who showed up late is covered by Attendance Policy, JBA Policy Manual p.14.",
+      "Late Opening Policy, JBA Policy Manual p.15.",
+      "The employee will reimburse the company $25.00.",
+    ].join(" ");
+    let calls = 0;
+    const captured: { brief: ReviewBrief | null } = { brief: null };
+    const settled = await runSelfCheck(
+      draft({ content, actionPlan: null, employeeName: null, chunks, roster: [], question }),
+      async (brief: ReviewBrief) => {
+        calls += 1;
+        captured.brief = brief;
+        return {
+          content,
+          employeeName: null,
+          actionPlan: null,
+          sections: [
+            { heading: "Attendance", applies: true },
+            { heading: "Late Opening", applies: false },
+          ],
+        };
+      },
+    );
+    expect(calls).toBe(1);
+    expect(captured.brief?.question).toBe(question);
+    expect(captured.brief?.sections.some((section) => section.heading === "Attendance" && section.page === 15 && section.text.includes("scheduled start"))).toBe(true);
+    expect(captured.brief?.sections.some((section) => section.heading === "Late Opening" && section.text.includes("$25.00") && section.text.includes("open a location"))).toBe(true);
+    expect(settled.ok).toBe(true);
+    expect(settled.content).toContain("Attendance Policy, JBA Policy Manual p.15");
+    expect(settled.content).not.toContain("p.14");
+    expect(settled.content).not.toContain("Late Opening");
+    expect(settled.content).not.toContain("$25");
+  });
+
+  it("keeps a cited section when the model says that chunk's text fits the question", async () => {
+    const chunks = [
+      chunk({
+        section: "Late Opening",
+        page: 15,
+        content: "Late Opening\nWhen an employee assigned to open a location is unable to open the location at the proper time, the employee will reimburse the company $25.00.",
+      }),
+    ];
+    const content = "Late Opening Policy, JBA Policy Manual p.15. The employee will reimburse the company $25.00.";
+    const settled = await runSelfCheck(
+      draft({
+        content,
+        actionPlan: null,
+        employeeName: null,
+        chunks,
+        roster: [],
+        question: "what is the policy if an employee showed up late 3 times this month",
+      }),
+      async () => ({
+        content,
+        employeeName: null,
+        actionPlan: null,
+        sections: [{ heading: "Late Opening", applies: true }],
+      }),
+    );
+    expect(settled.ok).toBe(true);
+    expect(settled.repaired).toBe(false);
+    expect(settled.content).toContain("Late Opening Policy, JBA Policy Manual p.15");
+    expect(settled.content).toContain("$25.00");
   });
 });
 
@@ -316,6 +398,12 @@ describe("self-check and query rewrite flags", () => {
     expect(ask).toContain("queryRewriteEnabled()");
     expect(guard).toContain("if (!selfCheckEnabled()) return response;");
     expect(guard).toContain('status: settled.employeeName ? proposal.status : "needs_employee"');
+    expect(guard).toContain("brief.question");
+    expect(guard).toContain("applies");
+    const checker = readFileSync("src/lib/ai/self-check.ts", "utf8");
+    expect(checker).not.toContain("showed up late");
+    expect(checker).not.toContain("Late Opening");
+    expect(guard).not.toContain("Late Opening");
     expect(rewrite).toContain("if (known) return known;");
     for (const source of [guard, rewrite]) {
       expect(source).not.toMatch(/\.insert\(|\.update\(|\.upsert\(|\.delete\(/);

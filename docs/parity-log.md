@@ -168,10 +168,12 @@ and the JBA Policy Manual title is unchanged.
 ## 23 Oct 2026: self-check and manual-term retrieval (Sunny only)
 
 `SELF_CHECK_ENABLED` defaults off. When it is on, a reply is checked before
-it is sent: a cited policy and page must be on the retrieved JBA chunks,
-an action plan must be two sentences, and an employee on a form must be in
-the Woven roster. One Claude repair runs when a check fails, then a safe
-fallback drops what is still wrong. `QUERY_REWRITE_ENABLED` already
+it is sent: a cited page must equal the retrieved chunk's own page, a cited
+section is dropped when one Claude call reads that chunk's text and says its
+conditions do not fit the question, an action plan must be two sentences, and
+an employee on a form must be in the Woven roster. The same call repairs a
+failure, then a safe fallback drops what is still wrong. There is no
+hard-coded list of which section fits which situation. `QUERY_REWRITE_ENABLED` already
 defaults off. When it is on, the retrieval query is a manual heading the
 account resolves — a person who showed up late searches Attendance, and
 Late Opening only when the salon opens late — or a heading the model names
