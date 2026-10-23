@@ -26,6 +26,13 @@ export const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
 export const CLAUDE_EFFORT = (process.env.ANTHROPIC_EFFORT ||
   "medium") as "low" | "medium" | "high" | "xhigh" | "max";
 
+/**
+ * Cheap model for flagged form-turn tool use and follow-up query rewrite.
+ * The answering model stays `CLAUDE_MODEL`. Override with ANTHROPIC_HAIKU_MODEL
+ * without a deploy of the flag itself.
+ */
+export const CLAUDE_HAIKU_MODEL = process.env.ANTHROPIC_HAIKU_MODEL || "claude-haiku-4-5";
+
 /** Output ceiling per answer mode. Detailed answers need the most room. */
 export const CLAUDE_MAX_TOKENS: Record<"quick" | "standard" | "detailed", number> = {
   quick: 1024,

@@ -170,3 +170,70 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     );
   }
 }
+
+/**
+ * One forced tool call. Used by the flagged form reader and the flagged
+ * query rewrite. The answering path stays on `callClaude`. A failure here
+ * uses the same wording and never echoes the request.
+ */
+export async function callClaudeTool(input: {
+  readonly model: string;
+  readonly system: string;
+  readonly messages: readonly { role: "user" | "assistant"; content: string }[];
+  readonly tool: {
+    readonly name: string;
+    readonly description: string;
+    readonly input_schema: {
+      readonly type: "object";
+      readonly properties?: unknown;
+      readonly required?: readonly string[];
+      readonly additionalProperties?: boolean;
+    };
+  };
+  readonly maxTokens: number;
+}): Promise<unknown> {
+  const client = getAnthropicClient();
+  const messages = input.messages.filter((message) => message.content.trim() !== "");
+  try {
+    const response = await client.messages.create({
+      model: input.model,
+      max_tokens: input.maxTokens,
+      system: input.system,
+      tools: [
+        {
+          name: input.tool.name,
+          description: input.tool.description,
+          input_schema: {
+            type: "object",
+            properties: input.tool.input_schema.properties ?? {},
+            required: input.tool.input_schema.required ? [...input.tool.input_schema.required] : undefined,
+            additionalProperties: input.tool.input_schema.additionalProperties,
+          },
+        },
+      ],
+      tool_choice: { type: "tool", name: input.tool.name },
+      messages: messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+    });
+
+    const block = response.content.find((item) => item.type === "tool_use");
+    if (!block || block.type !== "tool_use") {
+      throw new AiError(
+        "model_failed",
+        "Sunny could not reach the language model. No answer was generated.",
+        502,
+      );
+    }
+    return block.input;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    if (error instanceof MissingConfigurationError) throw error;
+    throw new AiError(
+      "model_failed",
+      "Sunny could not reach the language model. No answer was generated.",
+      502,
+    );
+  }
+}

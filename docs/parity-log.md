@@ -80,6 +80,16 @@ Corrective Action recipient fix (6b5f897). Bubbles' own company's people were
 checked against its own directory and replaced too; it has no copy of the
 policy-manual fixture.
 
+## 23 Oct 2026: flagged chat-quality path (Sunny only this session)
+
+Form-tool understanding, form-command routing, hybrid retrieval, Haiku query
+rewrite, and the style-prompt rules are behind flags that default off
+(`FORM_TOOLS_ENABLED`, `HYBRID_SEARCH_ENABLED`, `QUERY_REWRITE_ENABLED`,
+`CHAT_STYLE_RULES_ENABLED`). Ask Bubbles was not attached to this session, so
+the mechanism was not ported. It does not rename the JBA Policy Manual and it
+does not copy salon names or company wording into a sibling. Port the same
+flags and files when Bubbles is in the session.
+
 ## 22 Oct 2026: Corrective Action QA audit (from Ask-bubbles#68)
 
 Ported in this PR (Glowbrands1/ask-sunny#128), one `Port from Ask Bubbles

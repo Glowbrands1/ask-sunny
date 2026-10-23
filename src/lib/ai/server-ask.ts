@@ -1,5 +1,11 @@
 import "server-only";
 
+import {
+  chatStyleRulesEnabled,
+  formToolsEnabled,
+  hybridSearchEnabled,
+  queryRewriteEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
@@ -25,6 +31,7 @@ import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
+import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -55,6 +62,9 @@ import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
+import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
+import { understandFormTurn } from "./form-tool-understand";
+import { rewriteFollowUpQuery } from "./query-rewrite-claude";
 import { AiError } from "./errors";
 import {
   buildGroundingBlock,
@@ -431,6 +441,69 @@ export async function answerQuestion(
     if (proposal) return proposal;
   }
 
+  /*
+   * FORM COMMANDS THE PHRASE LIST MISSED. Off unless FORM_TOOLS_ENABLED.
+   * A turn the existing detectors already claimed is left on that path.
+   * A tool failure returns null and this falls through to retrieval.
+   */
+  if (formToolsEnabled() && !formsTurn) {
+    const understood = await understandFormTurn({
+      question: request.question,
+      history: request.history,
+      today: request.context.todayIso,
+      openTemplateKey: request.continueProposalTemplateKey ?? null,
+    });
+    if (understood && formCommandBypassesSearch(understood)) {
+      const settled = await summariesPromise;
+      if (!settled.ok) {
+        throw new AiError(
+          "retrieval_failed",
+          "The form library could not be read, so nothing was said about which forms exist. Nothing was answered from memory.",
+          502,
+        );
+      }
+      const summaries = settled.rows;
+      let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
+      const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
+      const routed = await routeUnderstoodFormTurn({
+        reading: understood,
+        question: request.question,
+        history: request.history,
+        today: request.context.todayIso,
+        openTemplateKey: request.continueProposalTemplateKey ?? null,
+        propose: (adjusted) =>
+          proposeFormForTurn({
+            history: request.history,
+            question: adjusted.question,
+            questionMessageId: request.questionMessageId,
+            actor,
+            continueTemplateKey: adjusted.continueTemplateKey,
+            summaries,
+            today: request.context.todayIso,
+            progressionAvailable: () =>
+              isFrameworkAvailable(
+                knowledge,
+                PERFORMANCE_MANAGEMENT_FRAMEWORK,
+                ACTIVE_BRAND.knowledgeScopeId,
+              ),
+            policyManual: async () => {
+              const manual = await readManual();
+              return manual.ok ? manual.chunks : null;
+            },
+            policyManualIdentity: async () => {
+              const manual = await readManual();
+              return manual.ok
+                ? { title: manualDisplayTitle(manual.documentTitle), confirmed: manual.matchedBy === "tag" }
+                : null;
+            },
+            priorFormsOnFile: (employeeName, locationId) =>
+              priorFormsReadingForChat(actor, employeeName, locationId),
+          }),
+      });
+      if (routed) return routed.response;
+    }
+  }
+
   /* ------------------------------------------------------------ retrieve -- */
 
   /*
@@ -703,30 +776,46 @@ export async function answerQuestion(
     : Promise.resolve(null);
 
   let rows: MatchedChunkRow[];
-  try {
-    rows = await knowledge.match({
-      /*
-       * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
-       * with what it points at — see `retrieval-query.ts`. Every other turn is
-       * searched on its own words, exactly as before.
-       */
-      query: retrievalQueryFor({
+  const followedUp = retrievalQueryFor({
+    question: request.question,
+    history: request.history,
+    openForm: request.openForm ?? null,
+  });
+  const query = queryRewriteEnabled()
+    ? await rewriteFollowUpQuery({
         question: request.question,
         history: request.history,
-        openForm: request.openForm ?? null,
-      }),
-      scopeId: request.scopeId,
-      /*
-       * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
-       * manual in the corpus on its own topics, and `assembleGrounding` drops
-       * it from the retrieved half once it is pinned; at the ordinary `topK`
-       * that would leave no evidence at all for policy to outrank it with.
-       */
-      limit:
-        intent.active || wantsDailyStats || wantsPerformanceManagement
-          ? RETRIEVAL.roleAugmentedTopK
-          : RETRIEVAL.topK,
-    });
+        fallback: followedUp,
+      })
+    : followedUp;
+  const matchLimit =
+    intent.active || wantsDailyStats || wantsPerformanceManagement
+      ? RETRIEVAL.roleAugmentedTopK
+      : RETRIEVAL.topK;
+  try {
+    rows = hybridSearchEnabled()
+      ? await matchHybridKnowledge({
+          query,
+          scopeId: request.scopeId,
+          limit: matchLimit,
+        })
+      : await knowledge.match({
+          /*
+           * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
+           * with what it points at — see `retrieval-query.ts`. Every other turn is
+           * searched on its own words, exactly as before. Hybrid search and the
+           * Haiku rewrite run only when their flags are on.
+           */
+          query,
+          scopeId: request.scopeId,
+          /*
+           * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
+           * manual in the corpus on its own topics, and `assembleGrounding` drops
+           * it from the retrieved half once it is pinned; at the ordinary `topK`
+           * that would leave no evidence at all for policy to outrank it with.
+           */
+          limit: matchLimit,
+        });
   } catch (error) {
     if (error instanceof MissingConfigurationError) {
       throw new AiError("not_configured", error.message, 503, error.missing);
@@ -972,6 +1061,7 @@ export async function answerQuestion(
     canViewReports:
       actor.role !== null &&
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
+    styleRules: chatStyleRulesEnabled(),
   });
 
   const answer = await callClaude({
