@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-
 /**
  * ============================================================================
  * IS THE NAME THE MANAGER TYPED SOMEBODY ON THEIR TEAM?
@@ -81,16 +79,22 @@ export function isServiceAccountName(firstName: string, lastName: string): boole
 }
 
 /**
- * Typed names the manager already said to keep. Set only on the grounded
- * path. Unset, `matchEmployeeName` is unchanged. A kept name that would have
- * been a confirm question is left as typed, so the same two people are not
- * asked about on every later turn.
+ * Typed names the manager already said to keep. The server request store
+ * (`kept-typed-names.ts`) installs the reader. Unset — including every
+ * client import of this file — `matchEmployeeName` is unchanged. A kept
+ * name that would have been a confirm question is left as typed, so the
+ * same two people are not asked about on every later turn.
  */
-const keptTypedNames = new AsyncLocalStorage<ReadonlySet<string>>();
+type KeptNameStore = ReadonlySet<string> | undefined;
+let readKeptTypedNames: () => KeptNameStore = () => undefined;
 
-export function withKeptTypedNames<T>(names: readonly string[], run: () => T): T {
-  const set = new Set(names.map((name) => normalize(name)).filter((name) => name.length > 0));
-  return keptTypedNames.run(set, run);
+export function installKeptTypedNames(read: () => KeptNameStore): void {
+  readKeptTypedNames = read;
+}
+
+/** Same key the matcher uses, so the server store and the check agree. */
+export function normalizeTypedName(text: string): string {
+  return normalize(text);
 }
 
 /** How many close candidates are ever put to the manager. */
@@ -268,7 +272,7 @@ export function matchEmployeeName(typed: string, roster: readonly RosterEmployee
     kind: "confirm",
     candidates: ranked.map(({ employee }) => ({ employee, name: displayName(employee) })),
   };
-  const kept = keptTypedNames.getStore();
+  const kept = readKeptTypedNames();
   if (kept?.has(normalize(typed))) return { kind: "unchecked" };
   return result;
 }

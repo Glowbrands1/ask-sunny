@@ -157,6 +157,14 @@ is not applied. Ask Bubbles was not attached, so this stays Sunny-only.
 Port the same mechanism when Bubbles is in the session. Do not copy salon
 names or company wording.
 
+## 23 Oct 2026: matcher request store (ported from Ask Bubbles)
+
+The name matcher's `AsyncLocalStorage` moved to `src/lib/forms/kept-typed-names.ts`
+(`server-only`), the same mechanism as Ask Bubbles `kept-typed-names.ts`.
+`employee-match.ts` no longer imports `node:async_hooks`, so a client chat
+page can import the matcher. No salon names or company wording were copied,
+and the JBA Policy Manual title is unchanged.
+
 ## 23 Oct 2026: intent extraction (Sunny only)
 
 `INTENT_EXTRACTION_ENABLED` defaults off. When it is on, one Claude tool

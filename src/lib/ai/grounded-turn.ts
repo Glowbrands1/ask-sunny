@@ -7,7 +7,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
-import { withKeptTypedNames } from "@/lib/forms/employee-match";
+import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { loadScopedRoster, readDirectoryFacts, withRosterLimit, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { findResentDraft } from "@/lib/forms/draft-reopen";
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
