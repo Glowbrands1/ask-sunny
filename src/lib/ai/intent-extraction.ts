@@ -87,7 +87,10 @@ export async function applyIntentExtraction(input: {
       ),
     });
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
-    if (decision.clarification) {
+    // A form turn keeps its card. A date, a salon, or a warning question used
+    // to come back instead of the proposal, so the live replay showed no card.
+    // The proposal asks what is still genuinely open and still carries the card.
+    if (decision.clarification && !decision.formTurn) {
       return {
         request: input.request,
         clarification: {

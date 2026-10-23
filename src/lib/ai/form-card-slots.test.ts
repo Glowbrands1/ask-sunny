@@ -274,7 +274,9 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(first.state.employeeId).toBeNull();
     expect(first.state.salonId).toBe("loc-0462");
     expect(first.state.formDate).toBe("2026-09-20");
-    expect(first.state.title?.toLowerCase()).toContain("assistant salon director");
+    // The form prints the abbreviation extractJobTitle already returns.
+    // "assistant salon director" in the manager's turn is ASD on the card.
+    expect(first.state.title).toBe("ASD");
     expect(first.state.payrollAmount).toBe("25");
     expect(first.state.policyHeading).toBe("Late Opening");
     expect(first.state.policyPage).toBe(15);
@@ -313,7 +315,7 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(card.formProposal?.employeeName).toBe("test testy");
     expect(card.formProposal?.locationId).toBe("loc-0462");
     expect(card.formProposal?.formDate).toBe("2026-09-20");
-    expect(card.formProposal?.employeeRole?.toLowerCase()).toContain("assistant salon director");
+    expect(card.formProposal?.employeeRole).toBe("ASD");
     expect(card.formProposal?.payrollDeduct).toBe("yes");
     expect(card.content).toContain("9/20/2026");
     expect(card.content).toContain("$25");

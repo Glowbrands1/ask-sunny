@@ -20,6 +20,8 @@ import type { ChatActor } from "./form-proposal";
 import type { AskRequest } from "./types";
 
 import { captureFormState, prependFormState, type ConversationFormState } from "./form-state";
+import { oneSalonVisibleIn } from "./proposal-question";
+import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
@@ -56,11 +58,16 @@ export async function deliverFormProposal(input: {
   if (!entities && !stateOn && !dedupe) {
     const proposed = await input.propose(input.question);
     if (!proposed) return null;
-    const decorated = await input.decorate(proposed);
+    const decorated = await input.decorate(withVisibleSalon(proposed, input));
     if (!cardSlotsEnabled()) return decorated;
+    const said = [
+      ...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+      input.question,
+    ].join("\n");
     return enrichFormCard({
       response: decorated,
       question: input.question,
+      said,
       today: input.request.context.todayIso,
       people: [],
       saved: null,
@@ -91,23 +98,48 @@ export async function deliverFormProposal(input: {
     ? applyGroundedProposal(decorated, { people, prep, rosterEmpty: people.length === 0 })
     : decorated;
 
+  const said = [
+    ...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+    input.question,
+  ].join("\n");
   const enriched = cardSlotsEnabled()
     ? enrichFormCard({
         response: applied,
         question: input.question,
+        said,
         today: input.request.context.todayIso,
         people,
         saved,
       })
     : applied;
 
-  const reopened = await reopenSameIncident(dedupe, input, enriched);
+  const settled = withVisibleSalon(enriched, input);
+  const reopened = await reopenSameIncident(dedupe, input, settled);
   if (reopened) {
-    await writeSaved(stateOn, input, saved, enriched, prep);
+    await writeSaved(stateOn, input, saved, settled, prep);
     return reopened;
   }
-  await writeSaved(stateOn, input, saved, enriched, prep);
-  return enriched;
+  await writeSaved(stateOn, input, saved, settled, prep);
+  return settled;
+}
+
+function withVisibleSalon(
+  response: AskResponse,
+  input: { readonly request: AskRequest; readonly question: string },
+): AskResponse {
+  const proposal = response.formProposal;
+  if (!proposal || proposal.locationId || proposal.locationResolution !== "not_applicable") return response;
+  const locationId = oneSalonVisibleIn(managerContext(input.request.history, { content: input.question }).text);
+  if (!locationId) return response;
+  return {
+    ...response,
+    formProposal: {
+      ...proposal,
+      locationId,
+      locationResolution: "resolved",
+      status: proposal.employeeName ? "ready" : proposal.status,
+    },
+  };
 }
 
 function cardSlotsEnabled(): boolean {

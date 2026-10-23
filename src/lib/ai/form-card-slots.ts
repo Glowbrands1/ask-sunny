@@ -1,11 +1,12 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { datesInText, listIncidentDates } from "@/lib/forms/form-date-answer";
-import { matchEmployeeName } from "@/lib/forms/employee-match";
+import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
-import { findManualSection, type ManualChunk } from "@/lib/forms/official-policy-manual";
+import { describedManualSection } from "@/lib/forms/named-policy-section";
+import { findManualSection, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
 import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -42,6 +43,8 @@ const CATEGORIES = new Set<KnowledgeCategory>([
 export function enrichFormCard(input: {
   readonly response: AskResponse;
   readonly question: string;
+  /** Manager turns, so a name given earlier is still the person on the card. */
+  readonly said?: string;
   readonly today: string;
   readonly people: readonly GroundedPerson[];
   readonly saved: ConversationFormState | null;
@@ -50,16 +53,25 @@ export function enrichFormCard(input: {
   if (!proposal) return input.response;
 
   const blob = [input.question, input.saved?.incident ?? ""].filter(Boolean).join("\n");
+  const said = input.said?.trim() ? input.said : blob;
   const statedName = statedEmployee(blob) ?? input.saved?.employeeName ?? null;
-  const employeeName = proposal.employeeName ?? statedName;
+  const employeeName = preferRosterName(proposal.employeeName ?? statedName, said, input.people);
   const title = statedTitle(blob, input.saved?.title ?? null) ?? proposal.employeeRole;
-  const formDate = proposal.formDate ?? statedDate(blob, input.question, input.today) ?? input.saved?.formDate ?? null;
+  const spoken = withoutStateSentences(input.question);
+  const groundedOn = incidentMarkedIn(input.question, input.today);
+  const spokenIncidents = listIncidentDates(spoken, input.today);
+  const formDate =
+    groundedOn && spokenIncidents.length === 0
+      ? groundedOn
+      : proposal.formDate ?? statedDate(blob, input.question, input.today) ?? input.saved?.formDate ?? null;
+  const askedHere = salonIdsIn(spoken);
   const namedSalon = salonIdsIn(blob);
   const locationId =
+    (askedHere.length === 1 ? askedHere[0]! : null) ??
     proposal.locationId ??
     (namedSalon.length === 1 ? namedSalon[0]! : null) ??
     input.saved?.salonId ??
-    (namedSalon.length === 0 ? primarySalon(employeeName, input.people) : null);
+    (namedSalon.length === 0 && askedHere.length === 0 ? primarySalon(employeeName, input.people) : null);
   const amount = payrollDeductAmount(blob) ?? (input.saved?.payrollAmount ? `$${input.saved.payrollAmount}` : null);
   const payrollDeduct = proposal.payrollDeduct ?? (amount || input.saved?.payrollDeduct === "yes" ? "yes" : input.saved?.payrollDeduct ?? null);
   const warningLevel = proposal.warningLevel ?? input.saved?.warningLevel ?? null;
@@ -72,15 +84,15 @@ export function enrichFormCard(input: {
     payrollDeduct,
     warningLevel,
   };
-  if (locationId && !next.locationId) next = settleLocation(next, locationId);
+  if (locationId && next.locationId !== locationId) next = settleLocation(next, locationId);
   else if (next.employeeName && next.locationId && next.status !== "ready") next = settleLocation(next, next.locationId);
 
   const followUps = followUpDates(blob, input.today, next.formDate ?? null);
   const policy = statedPolicy(blob, input.saved);
   let content = withoutBlocking(input.response.content, next);
-  if (blockingOnly(input.response.content) && (next.employeeName || next.locationId)) {
-    content = leadFor(next);
-  }
+  // The salon question used to be the whole reply. Once the salon is known,
+  // that line goes and the policy line that was under it stays.
+  if (!content.trim() && (next.employeeName || next.locationId)) content = leadFor(next);
   const lines = fieldLines({ proposal: next, followUps, policy, amount, statedTitle: title });
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
@@ -111,7 +123,7 @@ export function formTurnCitations(input: {
       documentTitle: input.documentTitle,
       locator: `Page ${section.page}`,
       category,
-      excerpt: (chunk?.content ?? section.heading).slice(0, 500),
+      excerpt: `${section.heading}. ${chunk?.content ?? ""}`.slice(0, 500),
       relevance: 1,
     });
   }
@@ -133,7 +145,7 @@ export function attachFormTurnSources(input: {
   const citations = input.citations.length > 0 ? [...input.citations] : found;
   let content = input.content;
   for (const section of sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes))) {
-    const line = `**Policy:** ${formatManualCitation(section.heading, section.page > 0 ? section.page : null)}`;
+    const line = formatManualCitation(section.heading, section.page > 0 ? section.page : null);
     if (!content.toLowerCase().includes(section.heading.toLowerCase())) content = content ? `${content}\n\n${line}` : line;
   }
   return { content, citations };
@@ -146,7 +158,14 @@ export function statedManualHeading(notes: string): string | null {
 }
 
 function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading: string | null) {
-  const fromAccount = accountManualSections(notes, chunks);
+  const described = describedInLatestLines(notes, chunks);
+  const fromAccount = accountManualSections(notes, chunks).filter(
+    (section) => !headingIsOnlyTheJobTitle(section.heading, notes),
+  );
+  if (described) {
+    const key = described.heading.toLowerCase();
+    return [described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)];
+  }
   if (fromAccount.length > 0) return fromAccount;
   const heading = modelHeading ?? statedManualHeading(notes);
   if (!heading) return [];
@@ -154,9 +173,55 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
   return section ? [section] : [];
 }
 
+/**
+ * The newest line that describes a policy, walking past a later turn that
+ * only names the salon or says "create the form". The whole account is not
+ * one description: an earlier "dress code" keeps the cell-phone line from
+ * being read, and "tanning consultant" is then the only heading left.
+ */
+function describedInLatestLines(notes: string, chunks: readonly ManualChunk[]): ManualSection | null {
+  const lines = notes.split("\n").map((line) => line.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]!;
+    if (/^(?:The form is the |The employee is |Job title:|It happened at |It happened on |Warning level:|Payroll |No payroll|Policy reference:|Incident:)/.test(line)) {
+      continue;
+    }
+    const described = describedManualSection({ text: line, chunks });
+    if (described) return described.section;
+  }
+  return null;
+}
+
+/** "Tanning" inside "tanning consultant" is the job title, not the Tanning section. */
+function headingIsOnlyTheJobTitle(heading: string, notes: string): boolean {
+  const word = heading.trim().toLowerCase();
+  if (!word || /\s/.test(word)) return false;
+  const title = extractJobTitle(notes);
+  if (!title) return false;
+  const titleWords = title.toLowerCase().split(/\s+/);
+  if (!titleWords.includes(word)) return false;
+  const remaining = notes.toLowerCase().split(title.toLowerCase()).join(" ");
+  return !new RegExp(`\\b${word}\\b`, "i").test(remaining);
+}
+
 function categoryOf(value: string | null | undefined): KnowledgeCategory {
   if (value && CATEGORIES.has(value as KnowledgeCategory)) return value as KnowledgeCategory;
   return "policies_compliance";
+}
+
+/**
+ * The person the manager named in full, when the card is holding a fragment
+ * ("lisa", "lawrence") or nobody. An exact directory spelling stays. A name
+ * the roster does not have stays as typed when the manager named nobody else.
+ */
+function preferRosterName(name: string | null, text: string, people: readonly GroundedPerson[]): string | null {
+  if (people.length === 0) return name;
+  const named = rosterNameNamedIn(text, people);
+  if (!name) return named;
+  const match = matchEmployeeName(name, people);
+  if (match.kind === "exact") return match.name;
+  if (named && (match.kind === "none" || match.kind === "confirm")) return named;
+  return name;
 }
 
 function statedEmployee(text: string): string | null {
@@ -180,8 +245,52 @@ function statedDate(text: string, question: string, today: string): string | nul
   }
   const incidents = [...new Set(listIncidentDates(text, today).map((item) => item.iso))];
   if (incidents.length === 1) return incidents[0]!;
-  if (/\btoday\b/i.test(question) && datesInText(question, today).length === 0) return today;
-  return null;
+  return dateSaidAsToday(text, question, today);
+}
+
+/** The incident date already written as "It happened on …", or null. */
+function incidentMarkedIn(text: string, today: string): string | null {
+  const marked = /It happened on ([^.\n]+)\./i.exec(text)?.[1]?.trim();
+  if (!marked) return null;
+  const known = datesInText(marked, today);
+  return known.length === 1 ? known[0]!.iso : null;
+}
+
+/**
+ * "today" is the form's date when the other dates are earlier steps. A prior
+ * step's date, and any date listed after it in that same account, is history.
+ */
+function dateSaidAsToday(text: string, question: string, today: string): string | null {
+  if (!/\btodays?\b/i.test(question)) return null;
+  const steps = priorSteps(text, today);
+  if (steps.length === 0) {
+    if (listIncidentDates(text, today).length === 0 && datesInText(question, today).length === 0) return today;
+    return null;
+  }
+  const foundAt = steps
+    .map((step) => text.toLowerCase().indexOf(step.named.toLowerCase()))
+    .filter((index) => index >= 0);
+  if (foundAt.length === 0) return null;
+  const first = Math.min(...foundAt);
+  const later = new Set(datesInText(text, today).filter((found) => found.index > first).map((found) => found.iso));
+  const prior = new Set(steps.map((step) => step.iso));
+  const live = listIncidentDates(text, today).filter((found) => !prior.has(found.iso) && !later.has(found.iso));
+  return live.length === 0 ? today : null;
+}
+
+function withoutStateSentences(question: string): string {
+  return question
+    .replace(/\bThe form is the [^.\n]+\./gi, " ")
+    .replace(/\bThe employee is [^.\n]+\./gi, " ")
+    .replace(/\bJob title: [^.\n]+\./gi, " ")
+    .replace(/\bIt happened at [^.\n]+\./gi, " ")
+    .replace(/\bIt happened on [^.\n]+\./gi, " ")
+    .replace(/\bWarning level: [^.\n]+\./gi, " ")
+    .replace(/\bPayroll deduct applies\./gi, " ")
+    .replace(/\bNo payroll deduction\./gi, " ")
+    .replace(/\bPolicy reference: [^.\n]+\./gi, " ")
+    .replace(/\bIncident: [^.\n]+\./gi, " ")
+    .replace(/\bPayroll amount: [^.\n]+\./gi, " ");
 }
 
 function statedPolicy(text: string, saved: ConversationFormState | null): { heading: string; page: number | null } | null {
@@ -286,16 +395,6 @@ function withoutBlocking(content: string, proposal: ChatFormProposal): string {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function blockingOnly(content: string): boolean {
-  const text = content.trim();
-  return (
-    /^Who is this \*\*/.test(text) ||
-    /which salon is this about/i.test(text) ||
-    /^Which warning level/.test(text) ||
-    /^I still need /.test(text)
-  );
-}
-
 function leadFor(proposal: ChatFormProposal): string {
   const who = proposal.employeeName ? ` for **${proposal.employeeName}**` : "";
   return `Here is what I would put on a **${proposal.templateName}**${who}.`;
@@ -315,7 +414,7 @@ function fieldLines(input: {
   if (input.proposal.payrollDeduct === "yes") {
     lines.push(input.amount ? `**Payroll deduction:** Yes, ${input.amount.startsWith("$") ? input.amount : `$${input.amount}`}` : "**Payroll deduction:** Yes");
   }
-  if (input.policy) lines.push(`**Policy:** ${formatManualCitation(input.policy.heading, input.policy.page)}`);
+  if (input.policy) lines.push(formatManualCitation(input.policy.heading, input.policy.page));
   return lines;
 }
 

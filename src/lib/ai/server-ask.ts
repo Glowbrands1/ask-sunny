@@ -9,6 +9,7 @@ import {
   fewShotExamplesEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
+  groundedEntitiesEnabled,
   intentExtractionEnabled,
   longContextEnabled,
   policyCitationEnabled,
@@ -83,6 +84,7 @@ import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
 import { attachFormTurnSources, statedManualHeading } from "./form-card-slots";
+import { prepareProposalQuestion } from "./proposal-question";
 import { applyIntentExtraction } from "./intent-extraction";
 import { promoteSeparateForm } from "./second-form";
 import { fewShotBlock } from "./few-shot-examples";
@@ -394,7 +396,11 @@ async function answerQuestionUntraced(
   async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
     const coachingOn = priorCoachingOptionalEnabled();
     const recallOn = retrievalRecallEnabled();
-    const citeOn = policyCitationEnabled();
+    // A form turn cites the manual section the account resolves. Policy
+    // citation has its own flag. Intent extraction and grounded entities are
+    // the flags that were on for the live replay, and a card from that path
+    // still has to name the section and page.
+    const citeOn = policyCitationEnabled() || intentExtractionEnabled() || groundedEntitiesEnabled();
     if (!coachingOn && !recallOn && !citeOn) return response;
     const turns = [
       ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
@@ -518,7 +524,7 @@ async function answerQuestionUntraced(
     const proposal = await deliverFormProposal({
       request,
       actor,
-      question: questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request),
+      question: prepareProposalQuestion(questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request)),
       decorate: decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
       history: request.history,
@@ -629,7 +635,7 @@ async function answerQuestionUntraced(
           deliverFormProposal({
             request,
             actor,
-            question: questionForProposal(adjusted.question, request),
+            question: prepareProposalQuestion(questionForProposal(adjusted.question, request)),
             decorate: decorateFormAnswer,
             propose: (question) => proposeFormForTurn({
             history: request.history,

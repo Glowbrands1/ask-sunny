@@ -252,9 +252,13 @@ that name. Another conversation from the same business day is not recalled,
 and few-shot examples redact roster names and are not narrated as something
 this manager said earlier today. No new migration. No flag default changes.
 
-The 14-case harness is `src/lib/ai/priority-replay.test.ts`. Pau's
-`replay/priority14.md` and `replay_set.json` are not in the repository.
-The turns are reconstructed from the 24 Oct 2026 replay results for s4, s9,
-s11, s5, s27, s28, s29, s17, s20, s21, s25, s8, s12, and s16.
+The 14-case harness is `src/lib/ai/priority-replay.test.ts`. It feeds the
+verbatim manager turns for s4, s9, s11, s5, s27, s28, s29, s17, s20, s21,
+s25, s8, s12, and s16, with Woven rows for the employees in those chats.
+Flags on, a card is required once the manager has given enough, under the
+name they typed. Flags off, the result is held to the 23 Oct 2026 baseline:
+a card the baseline showed still appears, except s5 turns 1–2, which name
+no form. The baseline card there was the live reply. The harness does not
+invent a coaching form from a complaint.
 
 Sibling app: not ported. Same reason as the form-card note above.

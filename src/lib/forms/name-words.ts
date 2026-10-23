@@ -75,7 +75,7 @@ export const NOT_A_NAME = new Set([
  */
 export const NOT_A_TYPED_NAME = new Set([
   // Clause and sentence glue.
-  "and", "or", "but", "because", "since", "as", "so", "then", "when", "while",
+  "and", "or", "but", "because", "since", "as", "based", "so", "then", "when", "while",
   "who", "whom", "whose", "which", "what", "where", "why", "how", "these",
   "those", "is", "was", "were", "are", "be", "been", "being", "has", "have",
   "had", "did", "does", "do", "not", "no", "to", "of", "at", "in", "on", "by",

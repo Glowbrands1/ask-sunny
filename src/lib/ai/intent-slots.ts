@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import { datesInText, listIncidentDates } from "@/lib/forms/form-date-answer";
+import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
-import { extractEmployeeNames } from "@/lib/forms/proposal";
+import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -178,9 +178,9 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
-  const title = groundTitle(reading?.title ?? null, blob, input.people, employee.person);
+  const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
-  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, blob, input.today);
+  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
@@ -225,9 +225,10 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     templates: input.templates,
   });
 
-  if (clarification) return { question: input.question, state, clarification, formTurn };
-  if (!formTurn) return { question: input.question, state, clarification: null, formTurn: false };
-  return { question: questionWithState(input.question, state, input.templates), state, clarification: null, formTurn: true };
+  const question = formTurn ? questionWithState(input.question, state, input.templates) : input.question;
+  if (clarification) return { question, state, clarification, formTurn };
+  if (!formTurn) return { question, state, clarification: null, formTurn: false };
+  return { question, state, clarification: null, formTurn: true };
 }
 
 /**
@@ -358,7 +359,13 @@ function groundSalon(
   // named none.
   const matched = probed ? matchSalons(probed, salons) : matchSalonsInText(blob, salons);
   if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
-  if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
+  if (matched.length > 1) {
+    // A later turn that names one salon replaces an earlier one. Two salons
+    // in the same turn stay a question.
+    const latest = latestUniqueSalon(blob, salons);
+    if (latest) return { id: latest.id, name: latest.name, ambiguous: [] };
+    return { id: null, name: null, ambiguous: matched };
+  }
   if (person) {
     const primary = wovenPrimary(person, salons);
     if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
@@ -392,6 +399,18 @@ function matchSalons(typed: string, salons: readonly SalonRow[]): SalonRow[] {
   return hits;
 }
 
+function latestUniqueSalon(text: string, salons: readonly SalonRow[]): SalonRow | null {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  // The blob is the current question, then older history. The question is the
+  // latest line, so it is checked first.
+  const chronological = lines.length > 1 ? [...lines.slice(1), lines[0]!] : lines;
+  for (let index = chronological.length - 1; index >= 0; index -= 1) {
+    const matched = matchSalonsInText(chronological[index]!, salons);
+    if (matched.length === 1) return matched[0]!;
+  }
+  return null;
+}
+
 function matchSalonsInText(blob: string, salons: readonly SalonRow[]): SalonRow[] {
   const haystack = ` ${wordsOf(blob).join(" ")} `;
   return salons.filter((salon) => {
@@ -407,6 +426,11 @@ function groundTitle(
   people: readonly GroundedPerson[],
   person: GroundedPerson | null,
 ): string | null {
+  // The title reader is most-specific first. A roster title contained in a
+  // longer one ("salon director" inside "assistant salon director") is not
+  // what the manager stated.
+  const stated = extractJobTitle(blob);
+  if (stated) return stated;
   if (person?.title) return person.title;
   const titles = [...new Set(people.map((row) => row.title).filter((title): title is string => Boolean(title?.trim())))];
   const probe = typed?.trim() || null;
@@ -445,6 +469,28 @@ export function headingFromAccount(text: string, headings: readonly string[]): s
   return null;
 }
 
+/**
+ * "today" is the form's date when the other dates are earlier steps. A prior
+ * step's date, and any date listed after it in that same account, is history.
+ */
+function dateSaidAsToday(text: string, question: string, today: string): string | null {
+  if (!/\btodays?\b/i.test(question)) return null;
+  const steps = priorSteps(text, today);
+  if (steps.length === 0) {
+    if (listIncidentDates(text, today).length === 0 && datesInText(question, today).length === 0) return today;
+    return null;
+  }
+  const foundAt = steps
+    .map((step) => text.toLowerCase().indexOf(step.named.toLowerCase()))
+    .filter((index) => index >= 0);
+  if (foundAt.length === 0) return null;
+  const first = Math.min(...foundAt);
+  const later = new Set(datesInText(text, today).filter((found) => found.index > first).map((found) => found.iso));
+  const prior = new Set(steps.map((step) => step.iso));
+  const live = listIncidentDates(text, today).filter((found) => !prior.has(found.iso) && !later.has(found.iso));
+  return live.length === 0 ? today : null;
+}
+
 function groundDate(
   typed: string | null,
   question: string,
@@ -457,13 +503,22 @@ function groundDate(
   const normalized = typed ? normalizeIncidentDate(typed, today) : null;
   if (normalized && inText.includes(normalized)) return { iso: normalized, ambiguous: [] };
   if (inText.length === 1) return { iso: inText[0]!, ambiguous: [] };
-  if (inText.length > 1) return { iso: null, ambiguous: inText };
+  if (inText.length > 1) {
+    const todayDate = dateSaidAsToday(blob, question, today);
+    if (todayDate) return { iso: todayDate, ambiguous: [] };
+    return { iso: null, ambiguous: inText };
+  }
   // "1 October 2026" is a real date the day-first reader accepts and the
   // incident list does not. It counts only when those words are in the
   // conversation, so a date the tool invented still drops.
   const said = typed ? blob.toLowerCase().includes(typed.trim().toLowerCase()) : false;
   if (normalized && said) return { iso: normalized, ambiguous: [] };
-  if (/\btoday\b/i.test(question) && datesInText(question, today).length === 0) return { iso: today, ambiguous: [] };
+  // "todays date" is the form's date. "today" without the s is the same
+  // word; a later turn keeps it because the stored date is already set.
+  if (inText.length === 0) {
+    const saidToday = dateSaidAsToday(blob, question, today);
+    if (saidToday) return { iso: saidToday, ambiguous: [] };
+  }
   return { iso: null, ambiguous: [] };
 }
 
