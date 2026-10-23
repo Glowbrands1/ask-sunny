@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getAnthropicClient } from "@/lib/ai/anthropic";
+import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
+import { policyCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -479,7 +481,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * ticked because that is not known until the model has answered.
      */
     const manual = await readOfficialPolicyManual(
-      wantsEppPolicy || fields.some((field) => field.key === "policy_language"),
+      wantsEppPolicy ||
+        fields.some((field) => field.key === "policy_language") ||
+        (policyCitationEnabled() &&
+          (loaded.instance.templateKey === "coaching" || loaded.instance.templateKey === "follow-up-coaching")),
     );
 
     /*
@@ -1752,10 +1757,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         row.checked.length > 0 &&
         row.provenance?.source === "manager_statement",
     );
+    const cited = policyCitationEnabled()
+      ? flaggedCitationWrite({
+          enabled: true,
+          templateKey: loaded.instance.templateKey,
+          values: planned.values,
+          notes,
+          chunks: manual.ok ? manual.chunks : [],
+          manual: manual.ok
+            ? {
+                documentId: manual.documentId,
+                documentTitle: manual.documentTitle,
+                matchedBy: manual.matchedBy,
+              }
+            : null,
+        })
+      : { values: planned.values, provenance: {} as Record<string, Record<string, unknown>> };
     const guarded = await applyAssistantDraft(
       id,
       {
-        values: Object.fromEntries(Object.entries(planned.values).filter(([key]) => !keeps(key))),
+        values: Object.fromEntries(Object.entries(cited.values).filter(([key]) => !keeps(key))),
         checked: Object.fromEntries(
           Object.entries(validated.checked).filter(
             ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
@@ -1763,7 +1784,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ),
       },
       actor.id,
-      planned.provenance,
+      { ...planned.provenance, ...cited.provenance },
     );
 
     return NextResponse.json({

@@ -1,6 +1,8 @@
 import { REPORTS } from "@/features/reports/reports-routes";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
+import { CHAT_STYLE_RULES } from "./chat-style-rules";
+import { PRIOR_COACHING_OPTIONAL_RULES } from "./prior-coaching-optional";
 import type { AskContext, OpenFormSummary } from "./types";
 
 /**
@@ -446,6 +448,23 @@ export function buildSystemPrompt(input: {
    */
   openForm?: OpenFormSummary | null;
   /**
+   * Low-star style rules (employee name, payroll amount, no coaching push
+   * after a chosen corrective action). Omitted or false leaves the prompt
+   * unchanged. Set only when CHAT_STYLE_RULES_ENABLED is on.
+   */
+  styleRules?: boolean;
+  /**
+   * Prior coaching does not block a corrective action. Omitted or false
+   * leaves the prompt unchanged. Set only when PRIOR_COACHING_OPTIONAL_ENABLED
+   * is on.
+   */
+  priorCoachingOptional?: boolean;
+  /**
+   * Notes recalled for this user. Omitted or empty leaves the prompt
+   * unchanged. Set only when CHAT_MEMORY_ENABLED is on.
+   */
+  recalledMemory?: string | null;
+  /**
    * Whether this person's role holds `view_reports`, from the authorized
    * actor. Selects which Reports & Analytics guidance the prompt carries — see
    * `buildReportsGuideSection`. Absent is treated as no access: a caller that
@@ -623,6 +642,9 @@ export function buildSystemPrompt(input: {
     : "";
 
   const policyManualSection = input.policyManualNote ? `\n\n${input.policyManualNote}` : "";
+  const styleSection = input.styleRules ? `\n\n${CHAT_STYLE_RULES}` : "";
+  const priorCoachingSection = input.priorCoachingOptional ? `\n\n${PRIOR_COACHING_OPTIONAL_RULES}` : "";
+  const memorySection = input.recalledMemory ? `\n\n${input.recalledMemory}` : "";
 
   const reportsGuideSection = `\n\n${buildReportsGuideSection(input.canViewReports ?? false, assistantName)}`;
 
@@ -647,7 +669,7 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-${input.openForm ? openFormRule(input.openForm) : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`}${formsLibrarySection}${formRecordsSection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}
+${input.openForm ? openFormRule(input.openForm) : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`}${formsLibrarySection}${formRecordsSection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}${styleSection}${priorCoachingSection}${memorySection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 

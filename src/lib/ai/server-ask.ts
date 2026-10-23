@@ -1,5 +1,19 @@
 import "server-only";
 
+import {
+  chatDataToolsEnabled,
+  chatMemoryEnabled,
+  chatStyleRulesEnabled,
+  chatTraceEnabled,
+  fieldAccuracyEnabled,
+  formToolsEnabled,
+  hybridSearchEnabled,
+  longContextEnabled,
+  priorCoachingOptionalEnabled,
+  queryRewriteEnabled,
+  retrievalRecallEnabled,
+  slotRetentionEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-env";
@@ -25,6 +39,10 @@ import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
+import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
+import { withMappedPolicy } from "./violation-policy";
+import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
+import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import {
   DAILY_STATS_INTERPRETATION_FRAMEWORK,
@@ -55,6 +73,17 @@ import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
 import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
+import { loadChatDataBlock } from "./chat-data-tools";
+import { prepareLongContext } from "./long-context-claude";
+import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
+import { understandFormTurn } from "./form-tool-understand";
+import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
+import { updateChatTrace } from "./chat-trace-store";
+import { expandGlossaryQuery } from "./glossary";
+import { augmentIntakeQuestion } from "./intake-augment";
+import { formatRecalledMemory, memoryCue } from "./chat-memory";
+import { recallMemory, rememberFact } from "./chat-memory-store";
+import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
 import {
   buildGroundingBlock,
@@ -159,6 +188,24 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  if (!chatTraceEnabled()) return answerQuestionUntraced(request, actor, memory);
+  const draft = openChatTrace({
+    conversationId: request.conversationId,
+    messageId: request.questionMessageId,
+    userId: actor.subject,
+    originalQuery: request.question,
+    formInProgress: Boolean(
+      request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
+    ),
+  });
+  return finishChatTrace(draft, () => answerQuestionUntraced(request, actor, memory));
+}
+
+async function answerQuestionUntraced(
+  request: AskRequest,
+  actor: ChatActor,
+  memory: { memoryOwnerId?: string } = {},
+): Promise<AskResponse> {
   const readiness = liveReadiness();
 
   // Missing variables first: that is the ordinary "not set up yet" case, and it
@@ -211,8 +258,20 @@ export async function answerQuestion(
    * fetched once one of them has something to say — or, further down, in
    * parallel with retrieval when neither has.
    */
-  const detected = detectInventoryQuestion(request.question);
-  const spokenIntent = detectTemplateIntent(request.question);
+  const heard = queryRewriteEnabled()
+    ? await normalizeForChat({ question: request.question, history: request.history })
+    : null;
+  const routingQuestion = heard?.routingText ?? request.question;
+  updateChatTrace({
+    originalQuery: request.question,
+    rewrittenQuery: heard?.modelQuery ?? (heard ? heard.routingText : null),
+    intent: heard?.intent ?? null,
+    formInProgress: Boolean(
+      request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
+    ),
+  });
+  const detected = detectInventoryQuestion(routingQuestion);
+  const spokenIntent = detectTemplateIntent(routingQuestion);
 
   /*
    * "I NEED TO FIND THOSE DOCUMENTS" IS ABOUT WHICHEVER REGISTER THE LAST TURN
@@ -289,6 +348,33 @@ export async function answerQuestion(
    */
   const knowledge = new SupabaseKnowledgeProvider();
 
+  async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
+    const coachingOn = priorCoachingOptionalEnabled();
+    const recallOn = retrievalRecallEnabled();
+    if (!coachingOn && !recallOn) return response;
+    const turns = [
+      ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+      request.question,
+    ];
+    let content = response.content;
+    if (coachingOn) {
+      content = applyOptionalPriorCoaching(content, {
+        enabled: true,
+        records: [],
+        managerText: turns.join("\n"),
+      });
+    }
+    if (recallOn) {
+      try {
+        const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+        if (manual.ok) content = withMappedPolicy(content, turns, manual.chunks, true);
+      } catch {
+        // A manual read that fails leaves the proposal as the forms path wrote it.
+      }
+    }
+    return content === response.content ? response : { ...response, content };
+  }
+
   let inventoryQuestion: InventoryQuestion = detected;
   if (elliptical) {
     const settled = await summariesPromise;
@@ -336,6 +422,8 @@ export async function answerQuestion(
     // "The form", answering "coaching guidance, or a Coaching Form?".
     answersFormClarification(request.history, request.question);
 
+  if (!heard) updateChatTrace({ intent: formsTurn ? "form" : "search" });
+
   if (formsTurn) {
     const settled = await summariesPromise;
     if (!settled.ok) {
@@ -366,7 +454,7 @@ export async function answerQuestion(
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
     const proposal = await proposeFormForTurn({
       history: request.history,
-      question: request.question,
+      question: questionForProposal(heard ? routingQuestion : request.question, request),
       questionMessageId: request.questionMessageId,
       actor,
       continueTemplateKey: request.continueProposalTemplateKey,
@@ -428,7 +516,72 @@ export async function answerQuestion(
        */
       priorFormsOnFile: (employeeName, locationId) => priorFormsReadingForChat(actor, employeeName, locationId),
     });
-    if (proposal) return proposal;
+    // if (proposal) return proposal;
+    if (proposal) return decorateFormAnswer(proposal);
+  }
+
+  /*
+   * FORM COMMANDS THE PHRASE LIST MISSED. Off unless FORM_TOOLS_ENABLED.
+   * A turn the existing detectors already claimed is left on that path.
+   * A tool failure returns null and this falls through to retrieval.
+   */
+  if (formToolsEnabled() && !formsTurn) {
+    const understood = await understandFormTurn({
+      question: request.question,
+      history: request.history,
+      today: request.context.todayIso,
+      openTemplateKey: request.continueProposalTemplateKey ?? null,
+    });
+    if (understood && formCommandBypassesSearch(understood)) {
+      const settled = await summariesPromise;
+      if (!settled.ok) {
+        throw new AiError(
+          "retrieval_failed",
+          "The form library could not be read, so nothing was said about which forms exist. Nothing was answered from memory.",
+          502,
+        );
+      }
+      const summaries = settled.rows;
+      let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
+      const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
+      const routed = await routeUnderstoodFormTurn({
+        reading: understood,
+        question: request.question,
+        history: request.history,
+        today: request.context.todayIso,
+        openTemplateKey: request.continueProposalTemplateKey ?? null,
+        propose: (adjusted) =>
+          proposeFormForTurn({
+            history: request.history,
+            question: questionForProposal(adjusted.question, request),
+            questionMessageId: request.questionMessageId,
+            actor,
+            continueTemplateKey: adjusted.continueTemplateKey,
+            summaries,
+            today: request.context.todayIso,
+            progressionAvailable: () =>
+              isFrameworkAvailable(
+                knowledge,
+                PERFORMANCE_MANAGEMENT_FRAMEWORK,
+                ACTIVE_BRAND.knowledgeScopeId,
+              ),
+            policyManual: async () => {
+              const manual = await readManual();
+              return manual.ok ? manual.chunks : null;
+            },
+            policyManualIdentity: async () => {
+              const manual = await readManual();
+              return manual.ok
+                ? { title: manualDisplayTitle(manual.documentTitle), confirmed: manual.matchedBy === "tag" }
+                : null;
+            },
+            priorFormsOnFile: (employeeName, locationId) =>
+              priorFormsReadingForChat(actor, employeeName, locationId),
+          }),
+      });
+      // if (routed) return routed.response;
+      if (routed) return decorateFormAnswer(routed.response);
+    }
   }
 
   /* ------------------------------------------------------------ retrieve -- */
@@ -703,30 +856,52 @@ export async function answerQuestion(
     : Promise.resolve(null);
 
   let rows: MatchedChunkRow[];
+  const followedUp = retrievalQueryFor({
+    question: request.question,
+    history: request.history,
+    openForm: request.openForm ?? null,
+  });
+  const query = queryRewriteEnabled()
+    ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
+    : followedUp;
+  updateChatTrace({
+    rewrittenQuery: query === request.question ? null : query,
+    retrievalCount: null,
+  });
+  const matchLimit =
+    intent.active || wantsDailyStats || wantsPerformanceManagement
+      ? RETRIEVAL.roleAugmentedTopK
+      : RETRIEVAL.topK;
   try {
-    rows = await knowledge.match({
-      /*
-       * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
-       * with what it points at — see `retrieval-query.ts`. Every other turn is
-       * searched on its own words, exactly as before.
-       */
-      query: retrievalQueryFor({
-        question: request.question,
-        history: request.history,
-        openForm: request.openForm ?? null,
-      }),
-      scopeId: request.scopeId,
-      /*
-       * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
-       * manual in the corpus on its own topics, and `assembleGrounding` drops
-       * it from the retrieved half once it is pinned; at the ordinary `topK`
-       * that would leave no evidence at all for policy to outrank it with.
-       */
-      limit:
-        intent.active || wantsDailyStats || wantsPerformanceManagement
-          ? RETRIEVAL.roleAugmentedTopK
-          : RETRIEVAL.topK,
-    });
+    rows = retrievalRecallEnabled()
+      ? await matchRecallKnowledge({
+          query,
+          scopeId: request.scopeId,
+          limit: matchLimit,
+        })
+      : hybridSearchEnabled()
+        ? await matchHybridKnowledge({
+            query,
+            scopeId: request.scopeId,
+            limit: matchLimit,
+          })
+        : await knowledge.match({
+          /*
+           * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
+           * with what it points at — see `retrieval-query.ts`. Every other turn is
+           * searched on its own words, exactly as before. Hybrid search and the
+           * Haiku rewrite run only when their flags are on.
+           */
+          query,
+          scopeId: request.scopeId,
+          /*
+           * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
+           * manual in the corpus on its own topics, and `assembleGrounding` drops
+           * it from the retrieved half once it is pinned; at the ordinary `topK`
+           * that would leave no evidence at all for policy to outrank it with.
+           */
+          limit: matchLimit,
+        });
   } catch (error) {
     if (error instanceof MissingConfigurationError) {
       throw new AiError("not_configured", error.message, 503, error.missing);
@@ -737,6 +912,15 @@ export async function answerQuestion(
       502,
     );
   }
+  updateChatTrace({
+    retrievalCount: rows.length,
+    retrieved: rows.slice(0, 20).map((row) => ({
+      id: row.chunk_id,
+      title: row.document_title,
+      section: row.section,
+      score: row.similarity,
+    })),
+  });
 
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
@@ -972,12 +1156,34 @@ export async function answerQuestion(
     canViewReports:
       actor.role !== null &&
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
+    styleRules: chatStyleRulesEnabled(),
+    priorCoachingOptional: priorCoachingOptionalEnabled(),
+    recalledMemory: await recalledMemoryBlock(request, actor),
   });
 
+  const longContext = longContextEnabled()
+    ? await prepareLongContext({
+        history: request.history,
+        userId: actor.subject ?? null,
+        conversationId: request.conversationId ?? null,
+      })
+    : null;
+  const dataAddition = await loadChatDataBlock({
+    enabled: chatDataToolsEnabled(),
+    question: request.question,
+    role: actor.role,
+    scope: actor.scope,
+    briefedFamilies: families,
+  });
+  const groundingText = buildGroundingBlock(grounding);
+  const reportText = briefing?.text ?? null;
+  updateChatTrace({ prompt: redactTraceText(system) });
   const answer = await callClaude({
     system,
-    grounding: buildGroundingBlock(grounding),
-    reportData: briefing?.text ?? null,
+    grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
+    reportData: dataAddition.data
+      ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+      : reportText,
     /*
      * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
      *
@@ -991,6 +1197,9 @@ export async function answerQuestion(
     formRecords: formRecords?.block ?? null,
     personMemory,
     history: request.history,
+    ...(longContext
+      ? { historyPolicy: "budget" as const, priorSummary: longContext.summary }
+      : {}),
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
   });
@@ -1090,6 +1299,37 @@ async function suggestedFormsFor(input: {
   } catch {
     return null;
   }
+}
+
+/**
+ * Salon, name, title, date and payroll amount, copied onto this turn only
+ * when their flags are on. Off, the question string is unchanged.
+ */
+async function recalledMemoryBlock(request: AskRequest, actor: ChatActor): Promise<string | null> {
+  if (!chatMemoryEnabled() || !actor.subject) return null;
+  try {
+    const cue = memoryCue(request.question);
+    if (cue) {
+      await rememberFact({
+        userId: actor.subject,
+        ...cue,
+        sourceConversationId: request.conversationId ?? null,
+      });
+    }
+    return formatRecalledMemory(await recallMemory(actor.subject));
+  } catch {
+    return null;
+  }
+}
+
+function questionForProposal(question: string, request: AskRequest): string {
+  return augmentIntakeQuestion({
+    slots: slotRetentionEnabled(),
+    fields: fieldAccuracyEnabled(),
+    question,
+    history: request.history,
+    today: request.context.todayIso,
+  });
 }
 
 /** The manager's turn before this one, for a question that names nobody. */

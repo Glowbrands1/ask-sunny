@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { answerQuestion } from "@/lib/ai/server-ask";
+import { wantsSeparateDocument } from "@/lib/ai/second-form";
+import { secondFormEnabled } from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -191,8 +193,9 @@ export async function POST(request: Request) {
        * than a new form drafted from scratch. Null for anything that is not
        * that, exactly like the correction above. See `lib/forms/chat-revision.ts`.
        */
+      const separateDocument = secondFormEnabled() && wantsSeparateDocument(parsed.question);
       const revision =
-        !correction && !policyChange && !redraft && parsed.activeFormInstanceId
+        !correction && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
