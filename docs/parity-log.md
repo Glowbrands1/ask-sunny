@@ -149,7 +149,9 @@ The fix is an app fallback to `match_knowledge_chunks` when the hybrid RPC
 errors or passes about 5s, plus a new migration
 `20261023161000_match_knowledge_chunks_hybrid_index.sql` that reads
 candidates through the indexes and ORs significant words (glossary lines
-included). Policy-type questions prefer the policy-manual category from the
+included). Supabase rejected a function-level `SET hnsw.iterative_scan`
+(42501), so the function calls `set_config` inside the body and, when that
+is denied, reads `k*4` vector neighbors before the visibility filter. Policy-type questions prefer the policy-manual category from the
 document's own category and title, not from a new word map. The migration
 is not applied. Ask Bubbles was not attached, so this stays Sunny-only.
 Port the same mechanism when Bubbles is in the session. Do not copy salon

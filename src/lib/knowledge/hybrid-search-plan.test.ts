@@ -53,8 +53,14 @@ describe("hybrid index migration", () => {
     expect(live).toContain("websearch_to_tsquery");
     expect(live).toMatch(/order by c\.embedding operator\(extensions\.<=>\) query_embedding/i);
     expect(live).toMatch(/content_tsv @@ \(select keyword_query\.tsq from keyword_query\)/i);
+    expect(live).toContain("language plpgsql");
     expect(live).toContain("set statement_timeout = '6s'");
-    expect(live).toContain("set hnsw.iterative_scan = 'strict_order'");
+    expect(live).toContain("set_config('hnsw.iterative_scan', 'strict_order', true)");
+    expect(live).toContain("insufficient_privilege");
+    expect(live).toMatch(
+      /order by c\.embedding operator\(extensions\.<=>\) query_embedding\s+limit neighbor_limit \* 4/i,
+    );
+    expect(live).not.toMatch(/\bset\s+hnsw\.iterative_scan\b/i);
     expect(live).not.toContain("plainto_tsquery");
     expect(live).not.toMatch(/drop (table|column|function|index)/i);
     expect(live).not.toMatch(/create or replace function public\.match_knowledge_chunks\(/i);
@@ -126,11 +132,15 @@ describe("hybrid index migration", () => {
       );
       expect(andMatch.rows[0]?.n).toBe(0);
 
-      const config = await harness.db.query<{ proconfig: string[] | null }>(
-        `select proconfig from pg_proc where proname = 'match_knowledge_chunks_hybrid'`,
+      const config = await harness.db.query<{ proconfig: string[] | null; lanname: string }>(
+        `select p.proconfig, l.lanname
+           from pg_proc p
+           join pg_language l on l.oid = p.prolang
+          where p.proname = 'match_knowledge_chunks_hybrid'`,
       );
+      expect(config.rows[0]?.lanname).toBe("plpgsql");
       expect(config.rows[0]?.proconfig?.join(" ") ?? "").toContain("statement_timeout=6s");
-      expect(config.rows[0]?.proconfig?.join(" ") ?? "").toContain("hnsw.iterative_scan=strict_order");
+      expect(config.rows[0]?.proconfig?.join(" ") ?? "").not.toContain("hnsw.iterative_scan");
 
       const matched = await harness.db.query<{
         chunk_id: string;
@@ -261,6 +271,93 @@ describe("hybrid index migration", () => {
       expect(keywordPlan, keywordPlan).toContain("knowledge_chunks_content_tsv_idx");
       expect(materializedPlan, materializedPlan).not.toContain("knowledge_chunks_embedding_idx");
       expect(materializedPlan, materializedPlan).not.toContain("knowledge_chunks_content_tsv_idx");
+
+      /*
+       * Five closer chunks are not indexed. match_count 1 with the visibility
+       * filter inside LIMIT 1 still returns the farther indexed chunk.
+       * LIMIT 1*4 before that filter does not: those four neighbors are all hidden.
+       * The session GUC is reset so this only passes when the function turns
+       * iterative scan on itself and takes that branch.
+       */
+      await harness.db.exec("set enable_seqscan = on");
+      await harness.db.exec("set enable_sort = on");
+      await harness.db.exec("reset hnsw.iterative_scan");
+      const visibleScope = "hybrid-visible";
+      const visibleId = "55555555-5555-4555-8555-555555555555";
+      const queryVector = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, index) => (index === 0 ? 1 : 0));
+      const fartherVector = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, index) => {
+        if (index === 0) return 0.95;
+        if (index === 1) return Math.sqrt(1 - 0.95 * 0.95);
+        return 0;
+      });
+      for (let index = 0; index < 5; index += 1) {
+        const id = `44444444-4444-4444-8444-${String(index).padStart(12, "0")}`;
+        await insertDocument(harness.db, {
+          id,
+          title: `Hidden ${index}`,
+          category: "operations",
+          file: `hidden-${index}.txt`,
+          indexed: false,
+          scope: visibleScope,
+        });
+        await insertChunk(harness.db, {
+          documentId: id,
+          index: 0,
+          section: "Hidden",
+          page: 1,
+          content: `hidden neighbor ${index}`,
+          embedding: queryVector,
+          scope: visibleScope,
+        });
+      }
+      await insertDocument(harness.db, {
+        id: visibleId,
+        title: "JBA Policy Manual Edited 5.2025",
+        category: "policies_compliance",
+        file: "visible-anchor.txt",
+        scope: visibleScope,
+      });
+      await insertChunk(harness.db, {
+        documentId: visibleId,
+        index: 0,
+        section: "Anchor",
+        page: 3,
+        content: "anchor chunk stays visible",
+        embedding: fartherVector,
+        scope: visibleScope,
+      });
+      const vectorLiteralVisible = `[${queryVector.join(",")}]`;
+      const starved = await harness.db.query<{ n: number }>(
+        `with fetched as (
+           select c.document_id, c.version
+             from public.knowledge_chunks c
+            where c.knowledge_scope_id = $1
+            order by c.embedding operator(extensions.<=>) $2::extensions.vector
+            limit 4
+         )
+         select count(*)::int as n
+           from fetched
+          where exists (
+            select 1
+              from public.knowledge_documents d
+             where d.id = fetched.document_id
+               and d.indexed = true
+               and d.status = 'indexed'
+               and d.version = fetched.version
+          )`,
+        [visibleScope, vectorLiteralVisible],
+      );
+      expect(starved.rows[0]?.n).toBe(0);
+      const visibleHit = await harness.db.query<{ document_id: string; section: string }>(
+        `select document_id, section
+           from public.match_knowledge_chunks_hybrid(
+             $1::extensions.vector, 'ab', $2, 1, 0, null
+           )`,
+        [vectorLiteralVisible, visibleScope],
+      );
+      expect(visibleHit.rows).toHaveLength(1);
+      expect(visibleHit.rows[0]?.document_id).toBe(visibleId);
+      expect(visibleHit.rows[0]?.section).toBe("Anchor");
     } finally {
       await harness.close();
     }
@@ -274,17 +371,22 @@ async function explain(db: { query: (sql: string) => Promise<{ rows: { "QUERY PL
 
 async function insertDocument(
   db: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  input: { id: string; title: string; category: string; file: string },
+  input: { id: string; title: string; category: string; file: string; indexed?: boolean; scope?: string },
 ) {
+  const indexed = input.indexed !== false;
+  const scope = input.scope ?? SCOPE;
   await db.query(
     `insert into public.knowledge_documents (
        id, knowledge_scope_id, title, description, category, tags, original_filename, mime_type, file_type,
        storage_path, size_bytes, character_count, source, status, indexed, version, previous_versions,
        uploaded_by_name, indexed_at
      ) values (
-       $1, $2, $3, '', $4, '{}', $5, 'text/plain', 'txt', $6, 100, 100, 'upload', 'indexed', true, 1, '[]', 'fixture', now()
+       $1, $2, $3, '', $4, '{}', $5, 'text/plain', 'txt', $6, 100, 100, 'upload',
+       case when $7 then 'indexed'::public.knowledge_document_status
+            else 'processing'::public.knowledge_document_status end,
+       $7, 1, '[]', 'fixture', case when $7 then now() else null end
      )`,
-    [input.id, SCOPE, input.title, input.category, input.file, `${SCOPE}/${input.id}/1/${input.file}`],
+    [input.id, scope, input.title, input.category, input.file, `${scope}/${input.id}/1/${input.file}`, indexed],
   );
 }
 
@@ -297,8 +399,10 @@ async function insertChunk(
     page: number;
     content: string;
     embedding: readonly number[];
+    scope?: string;
   },
 ) {
+  const scope = input.scope ?? SCOPE;
   await db.query(
     `insert into public.knowledge_chunks (
        document_id, knowledge_scope_id, chunk_index, version, content, locator, page, section,
@@ -308,7 +412,7 @@ async function insertChunk(
      )`,
     [
       input.documentId,
-      SCOPE,
+      scope,
       input.index,
       input.content,
       `Page ${input.page} — ${input.section}`,
