@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { priorCoachingOptionalEnabled } from "@/lib/config/chat-quality-flags";
 import { readCorrectiveActionIntake, describesIncident, type IntakeItem } from "@/lib/forms/corrective-action-intake";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
@@ -264,7 +265,9 @@ export function missingIntakeItems(text: string, fields: ConfirmedFormFields): I
     if (item.key === "what_happened" && fields.whatHappened) return false;
     if (item.key === "warning_level" && fields.warningLevel) return false;
     if (item.key === "payroll_deduct" && fields.payrollDeduct) return false;
-    if (item.key === "previous_action") return true;
+    // Off: prior coaching stays unanswered, which is the current intake.
+    // On: a blank line is allowed, so it is not something still to collect.
+    if (item.key === "previous_action") return !priorCoachingOptionalEnabled();
     return true;
   });
 }

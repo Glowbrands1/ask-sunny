@@ -62,3 +62,11 @@ export function longContextEnabled(): boolean {
 export function chatDataToolsEnabled(): boolean {
   return envFlag("CHAT_DATA_TOOLS_ENABLED");
 }
+
+/**
+ * A corrective action may be created when no prior coaching form is in the
+ * app. Off, the existing intake still treats that history as required.
+ */
+export function priorCoachingOptionalEnabled(): boolean {
+  return envFlag("PRIOR_COACHING_OPTIONAL_ENABLED");
+}

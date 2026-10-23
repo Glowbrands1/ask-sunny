@@ -7,6 +7,7 @@ import {
   formToolsEnabled,
   hybridSearchEnabled,
   longContextEnabled,
+  priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -35,6 +36,8 @@ import { buildFormInventory, publishedEntries } from "@/lib/forms/inventory";
 import { listTemplateSummaries, type TemplateSummary } from "@/lib/forms/repository";
 import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-records";
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
+import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
+import { withMappedPolicy } from "./violation-policy";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -339,6 +342,33 @@ async function answerQuestionUntraced(
    */
   const knowledge = new SupabaseKnowledgeProvider();
 
+  async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
+    const coachingOn = priorCoachingOptionalEnabled();
+    const recallOn = retrievalRecallEnabled();
+    if (!coachingOn && !recallOn) return response;
+    const turns = [
+      ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+      request.question,
+    ];
+    let content = response.content;
+    if (coachingOn) {
+      content = applyOptionalPriorCoaching(content, {
+        enabled: true,
+        records: [],
+        managerText: turns.join("\n"),
+      });
+    }
+    if (recallOn) {
+      try {
+        const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+        if (manual.ok) content = withMappedPolicy(content, turns, manual.chunks, true);
+      } catch {
+        // A manual read that fails leaves the proposal as the forms path wrote it.
+      }
+    }
+    return content === response.content ? response : { ...response, content };
+  }
+
   let inventoryQuestion: InventoryQuestion = detected;
   if (elliptical) {
     const settled = await summariesPromise;
@@ -480,7 +510,8 @@ async function answerQuestionUntraced(
        */
       priorFormsOnFile: (employeeName, locationId) => priorFormsReadingForChat(actor, employeeName, locationId),
     });
-    if (proposal) return proposal;
+    // if (proposal) return proposal;
+    if (proposal) return decorateFormAnswer(proposal);
   }
 
   /*
@@ -542,7 +573,8 @@ async function answerQuestionUntraced(
               priorFormsReadingForChat(actor, employeeName, locationId),
           }),
       });
-      if (routed) return routed.response;
+      // if (routed) return routed.response;
+      if (routed) return decorateFormAnswer(routed.response);
     }
   }
 
@@ -1119,6 +1151,7 @@ async function answerQuestionUntraced(
       actor.role !== null &&
       hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_reports"),
     styleRules: chatStyleRulesEnabled(),
+    priorCoachingOptional: priorCoachingOptionalEnabled(),
   });
 
   const longContext = longContextEnabled()

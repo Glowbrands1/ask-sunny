@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 import { hasPermission, DEFAULT_PERMISSION_MATRIX } from "@/lib/permissions";
+import { loadSalonPerformanceSection } from "@/lib/reporting/read/salon-performance-briefing-source";
 import { loadSalesTotalsSection } from "@/lib/reporting/read/sales-totals-briefing-source";
 import { reportingScopeOf } from "@/lib/reporting/scope/authorized-salons";
 import { loadReviewsSnapshot } from "@/lib/reviews/queries";
@@ -24,13 +25,15 @@ import {
 /**
  * Read-only salon data for one chat turn.
  *
- * Off, this returns empty and reads nothing. Sales figures the report router
- * already briefed are not loaded again. Reviews come from the same snapshot
- * the reviews page uses, limited to the caller's listings. An employee, who
- * holds neither permission, gets neither.
+ * Off, this returns empty and reads nothing. Sales totals and the Comp Report
+ * the report router already briefed are not loaded again. Reviews come from
+ * the same snapshot the reviews page uses, limited to the caller's listings.
+ * An employee, who holds neither permission, gets neither. The Comp Report
+ * read is the salon-performance briefing, which carries EFT revenue and the
+ * other ingested comp measures.
  */
 
-const choiceSchema = z.object({ read: z.enum(["reviews", "sales", "none"]) });
+const choiceSchema = z.object({ read: z.enum(["reviews", "sales", "comp", "none"]) });
 
 export interface ChatDataAddition {
   readonly help: string | null;
@@ -44,7 +47,7 @@ async function chooseRead(question: string): Promise<DataChoice> {
     model: CLAUDE_HAIKU_MODEL,
     maxTokens: 200,
     system:
-      "Decide whether the question needs Google review counts or sales totals. Choose none when it needs neither. Do not answer the question.",
+      "Decide whether the question needs Google review counts, sales totals, or the Comp Report (EFT revenue and the other comp measures). Choose none when it needs none of them. Do not answer the question.",
     tool: {
       name: "choose_salon_data",
       description: "Which read-only salon dataset the question needs.",
@@ -52,7 +55,7 @@ async function chooseRead(question: string): Promise<DataChoice> {
         type: "object",
         additionalProperties: false,
         required: ["read"],
-        properties: { read: { type: "string", enum: ["reviews", "sales", "none"] } },
+        properties: { read: { type: "string", enum: ["reviews", "sales", "comp", "none"] } },
       },
     },
     messages: [{ role: "user", content: question }],
@@ -98,18 +101,20 @@ export async function loadChatDataBlock(input: {
   readonly choose?: () => Promise<DataChoice>;
   readonly readReviews?: (storeCodes: readonly string[]) => Promise<string | null>;
   readonly readSales?: () => Promise<string | null>;
+  readonly readComp?: () => Promise<string | null>;
 }): Promise<ChatDataAddition> {
   if (!input.enabled) return EMPTY;
   const help = passwordResetHelp(input.question);
   const wants = questionWantsData(input.question);
-  if (!wants.reviews && !wants.sales) return { help, data: null };
+  if (!wants.reviews && !wants.sales && !wants.comp) return { help, data: null };
 
   let choice: DataChoice = "none";
   try {
     choice = input.choose ? await input.choose() : await chooseRead(input.question);
   } catch {
-    choice = wants.reviews ? "reviews" : wants.sales ? "sales" : "none";
+    choice = wants.reviews ? "reviews" : wants.comp ? "comp" : wants.sales ? "sales" : "none";
   }
+  if (wants.comp && choice !== "reviews") choice = "comp";
   const planned = planDataRead({
     choice,
     canViewReviews:
@@ -117,8 +122,20 @@ export async function loadChatDataBlock(input: {
     canViewReports:
       input.role !== null && hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, "view_reports"),
     salesAlreadyBriefed: input.briefedFamilies.includes("sales-totals"),
+    compAlreadyBriefed: input.briefedFamilies.includes("salon-performance"),
   });
   if (planned === "none") return { help, data: null };
+
+  if (planned === "comp") {
+    try {
+      const text = input.readComp
+        ? await input.readComp()
+        : (await loadSalonPerformanceSection(null, null, reportingScopeOf(input.scope)))?.text ?? null;
+      return { help, data: text };
+    } catch {
+      return { help, data: null };
+    }
+  }
 
   if (planned === "reviews") {
     const scope = reportingScopeOf(input.scope);

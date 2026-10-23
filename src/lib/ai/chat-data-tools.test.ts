@@ -102,6 +102,67 @@ describe("chat data tools", () => {
     expect(result.data).toContain("SALES TOTALS");
   });
 
+  it("loads Comp Report EFT revenue when that family was not already briefed", async () => {
+    let salesReads = 0;
+    let compReads = 0;
+    const result = await loadChatDataBlock({
+      enabled: true,
+      question: "what are our EFTs on the comp report",
+      role: "salon_director",
+      scope: WORNALL,
+      briefedFamilies: ["sales-totals"],
+      choose: async () => "sales",
+      readSales: async () => {
+        salesReads += 1;
+        return "SALES TOTALS";
+      },
+      readComp: async () => {
+        compReads += 1;
+        return "SALON PERFORMANCE (Comp Report)\nEFT Revenue: 22000";
+      },
+    });
+    expect(salesReads).toBe(0);
+    expect(compReads).toBe(1);
+    expect(result.data).toContain("EFT Revenue");
+    expect(result.data).toContain("Comp Report");
+  });
+
+  it("does not load the Comp Report again when the briefing already has it", async () => {
+    let compReads = 0;
+    const result = await loadChatDataBlock({
+      enabled: true,
+      question: "what are our EFTs on the comp report",
+      role: "salon_director",
+      scope: WORNALL,
+      briefedFamilies: ["salon-performance"],
+      choose: async () => "comp",
+      readComp: async () => {
+        compReads += 1;
+        return "should not be used";
+      },
+    });
+    expect(compReads).toBe(0);
+    expect(result.data).toBeNull();
+  });
+
+  it("does not give an employee Comp Report figures", async () => {
+    let compReads = 0;
+    const result = await loadChatDataBlock({
+      enabled: true,
+      question: "what are our EFTs on the comp report",
+      role: "employee",
+      scope: WORNALL,
+      briefedFamilies: [],
+      choose: async () => "comp",
+      readComp: async () => {
+        compReads += 1;
+        return "should not be used";
+      },
+    });
+    expect(compReads).toBe(0);
+    expect(result.data).toBeNull();
+  });
+
   it("answers a password reset from the auth routes", async () => {
     let chose = 0;
     const result = await loadChatDataBlock({

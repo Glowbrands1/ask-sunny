@@ -3,19 +3,21 @@ import { GOOGLE_REVIEW_LOCATIONS } from "@/lib/reviews/store-codes";
 /**
  * Which read a data turn may perform.
  *
- * Sales totals already reach chat through the report briefing when the
- * question routes to that family. This plan does not load them a second time.
- * Google reviews are a separate table. A role without the matching permission
- * gets neither.
+ * Sales totals and the Comp Report already reach chat through the report
+ * briefing when the question routes to those families. This plan does not
+ * load a family a second time. Google reviews are a separate table. A role
+ * without the matching permission gets neither.
  */
 
 const REVIEW = /\b(?:google\s+)?reviews?\b|\bstar ratings?\b|\breviewer\b/i;
 const SALES = /\b(?:sales totals|revenue|grand total|ppta|per person|new customers?|sunless|efts?)\b/i;
+/** Comp Report questions, including EFT revenue stated as part of that report. */
+const COMP = /\bcomp report\b|\beft revenue\b|\befts?\b[\s\S]{0,40}\bcomp\b|\bcomp\b[\s\S]{0,40}\befts?\b/i;
 
-export type DataChoice = "reviews" | "sales" | "none";
+export type DataChoice = "reviews" | "sales" | "comp" | "none";
 
-export function questionWantsData(question: string): { reviews: boolean; sales: boolean } {
-  return { reviews: REVIEW.test(question), sales: SALES.test(question) };
+export function questionWantsData(question: string): { reviews: boolean; sales: boolean; comp: boolean } {
+  return { reviews: REVIEW.test(question), sales: SALES.test(question), comp: COMP.test(question) };
 }
 
 export function planDataRead(input: {
@@ -23,8 +25,10 @@ export function planDataRead(input: {
   readonly canViewReviews: boolean;
   readonly canViewReports: boolean;
   readonly salesAlreadyBriefed: boolean;
+  readonly compAlreadyBriefed: boolean;
 }): DataChoice {
   if (input.choice === "reviews" && input.canViewReviews) return "reviews";
+  if (input.choice === "comp" && input.canViewReports && !input.compAlreadyBriefed) return "comp";
   if (input.choice === "sales" && input.canViewReports && !input.salesAlreadyBriefed) return "sales";
   return "none";
 }

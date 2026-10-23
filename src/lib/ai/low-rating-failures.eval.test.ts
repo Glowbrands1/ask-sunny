@@ -16,6 +16,7 @@ import {
   formToolsEnabled,
   hybridSearchEnabled,
   longContextEnabled,
+  priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -141,6 +142,7 @@ describe("flags default off", () => {
       RETRIEVAL_RECALL_ENABLED: process.env.RETRIEVAL_RECALL_ENABLED,
       LONG_CONTEXT_ENABLED: process.env.LONG_CONTEXT_ENABLED,
       CHAT_DATA_TOOLS_ENABLED: process.env.CHAT_DATA_TOOLS_ENABLED,
+      PRIOR_COACHING_OPTIONAL_ENABLED: process.env.PRIOR_COACHING_OPTIONAL_ENABLED,
     };
     delete process.env.FORM_TOOLS_ENABLED;
     delete process.env.HYBRID_SEARCH_ENABLED;
@@ -150,6 +152,7 @@ describe("flags default off", () => {
     delete process.env.RETRIEVAL_RECALL_ENABLED;
     delete process.env.LONG_CONTEXT_ENABLED;
     delete process.env.CHAT_DATA_TOOLS_ENABLED;
+    delete process.env.PRIOR_COACHING_OPTIONAL_ENABLED;
     expect(formToolsEnabled()).toBe(false);
     expect(hybridSearchEnabled()).toBe(false);
     expect(queryRewriteEnabled()).toBe(false);
@@ -158,6 +161,7 @@ describe("flags default off", () => {
     expect(retrievalRecallEnabled()).toBe(false);
     expect(longContextEnabled()).toBe(false);
     expect(chatDataToolsEnabled()).toBe(false);
+    expect(priorCoachingOptionalEnabled()).toBe(false);
     process.env.FORM_TOOLS_ENABLED = "off";
     expect(formToolsEnabled()).toBe(false);
     process.env.FORM_TOOLS_ENABLED = "true";
@@ -203,6 +207,8 @@ describe("flags default off", () => {
     expect(source).toContain("retrievalRecallEnabled()");
     expect(source).toContain("longContextEnabled()");
     expect(source).toContain("chatDataToolsEnabled()");
+    expect(source).toContain("priorCoachingOptionalEnabled()");
+    expect(source).toContain("if (proposal) return proposal;");
     expect(source).toContain("question: request.question");
     expect(source).toContain("history: request.history");
   });

@@ -86,9 +86,13 @@ Form-tool understanding, form-command routing, hybrid retrieval, Haiku query
 rewrite, and the style-prompt rules are behind flags that default off
 (`FORM_TOOLS_ENABLED`, `HYBRID_SEARCH_ENABLED`, `QUERY_REWRITE_ENABLED`,
 `CHAT_STYLE_RULES_ENABLED`, `CHAT_TRACE_ENABLED`, `RETRIEVAL_RECALL_ENABLED`,
-`LONG_CONTEXT_ENABLED`, `CHAT_DATA_TOOLS_ENABLED`). The house glossary and
-any-message rewrite stay on `QUERY_REWRITE_ENABLED`. Recall, the longer
-history window, and the read-only review/sales tools are the later flags.
+`LONG_CONTEXT_ENABLED`, `CHAT_DATA_TOOLS_ENABLED`,
+`PRIOR_COACHING_OPTIONAL_ENABLED`). The house glossary and any-message rewrite
+stay on `QUERY_REWRITE_ENABLED`. Recall, the longer history window, and the
+read-only review/sales/comp-report tools are the later flags. Violation
+phrases (cleaning, a missed deadline, policy acknowledgments, insubordination,
+misconduct, must-see behaviors) sit on the glossary so recall can name the
+manual section. Prior coaching is optional only when its own flag is on.
 Ask Bubbles was not attached to this session, so
 the mechanism was not ported. It does not rename the JBA Policy Manual and it
 does not copy salon names or company wording into a sibling. Port the same
