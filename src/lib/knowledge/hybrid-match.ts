@@ -3,25 +3,19 @@ import "server-only";
 import { expandGlossaryQuery } from "@/lib/ai/glossary";
 import { EMBEDDING_DIMENSIONS, RETRIEVAL } from "@/lib/config/models";
 import { getEmbeddingProvider } from "@/lib/embeddings";
-import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { MatchedChunkRow } from "./mappers";
 import { selectHybridMatches, type HybridCandidate } from "./hybrid-rank";
+import { loadHybridOrVector, type HybridRpcRow } from "./hybrid-rpc";
 
 /**
  * Keyword + vector retrieval through match_knowledge_chunks_hybrid.
  *
- * Called only when HYBRID_SEARCH_ENABLED is on. The existing
- * match_knowledge_chunks path is unchanged. Similarity on each row is the
+ * Called only when HYBRID_SEARCH_ENABLED is on. Similarity on each row is the
  * cosine the database computed, including rows the keyword or section leg
- * rescued from below the vector floor.
+ * rescued from below the vector floor. An RPC error or a call past about 5s
+ * returns match_knowledge_chunks instead of failing the turn.
  */
-
-interface HybridRpcRow extends MatchedChunkRow {
-  vector_rank: number | null;
-  keyword_rank: number | null;
-  section_exact: boolean | null;
-}
 
 function toCandidate(row: HybridRpcRow): HybridCandidate {
   return {
@@ -59,21 +53,18 @@ export async function matchHybridKnowledge(input: {
   const queryEmbedding = await embeddings.embedQuery(trimmed);
   const keywordQuery = expandGlossaryQuery(trimmed);
   const limit = input.limit ?? RETRIEVAL.topK;
-  const { data, error } = await getSupabaseAdmin().rpc("match_knowledge_chunks_hybrid", {
-    query_embedding: queryEmbedding,
-    query_text: keywordQuery,
-    scope_id: input.scopeId,
-    match_count: Math.min(50, Math.max(limit, 20)),
-    min_similarity: RETRIEVAL.minSimilarity,
-    filter_categories: input.categories?.length ? [...input.categories] : null,
+  const loaded = await loadHybridOrVector({
+    queryEmbedding,
+    queryText: keywordQuery,
+    scopeId: input.scopeId,
+    hybridMatchCount: Math.min(50, Math.max(limit, 20)),
+    hybridMinSimilarity: RETRIEVAL.minSimilarity,
+    filterCategories: input.categories ?? null,
+    fallbackLimit: limit,
   });
+  if (loaded.kind === "fallback") return loaded.rows;
 
-  if (error) {
-    throw new Error(`Knowledge retrieval failed: ${error.message}`);
-  }
-
-  const rows = (data ?? []) as HybridRpcRow[];
-  return selectHybridMatches(rows.map((row) => toCandidate(row)), keywordQuery, {
+  return selectHybridMatches(loaded.rows.map((row) => toCandidate(row)), keywordQuery, {
     vectorFloor: RETRIEVAL.minSimilarity,
     limit,
   });

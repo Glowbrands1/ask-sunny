@@ -111,7 +111,12 @@ export function matchGlossary(text: string): GlossaryHit[] {
   return hits;
 }
 
-/** The original words, then any canonical term or section title they did not already contain. */
+/**
+ * The original words, then any canonical term or section title they did not already contain.
+ *
+ * Hybrid keyword search ORs the significant words of this string. A glossary
+ * line is an extra optional term, not a word the chunk must also contain.
+ */
 export function expandGlossaryQuery(text: string): string {
   const extras: string[] = [];
   const hay = text.toLowerCase();

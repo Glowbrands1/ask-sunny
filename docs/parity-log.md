@@ -136,6 +136,25 @@ a summed week are not stored and are said to be missing. The memory
 migration `20261023150000_user_memory.sql` is not applied. Ask Bubbles was
 not attached. Port the mechanism later; do not copy salon names.
 
+## 23 Oct 2026: hybrid retrieval timeout (Sunny only this session)
+
+`match_knowledge_chunks_hybrid` was scanning a materialized copy of every
+visible chunk, so the HNSW and GIN indexes were never used (about 4.5s, and
+sometimes the 8s statement timeout, which chat shows as "The company
+knowledge base could not be searched"). The keyword leg also AND-ed every
+word, so a long policy question matched nothing and the Performance
+Management Framework outranked the JBA Policy Manual.
+
+The fix is an app fallback to `match_knowledge_chunks` when the hybrid RPC
+errors or passes about 5s, plus a new migration
+`20261023161000_match_knowledge_chunks_hybrid_index.sql` that reads
+candidates through the indexes and ORs significant words (glossary lines
+included). Policy-type questions prefer the policy-manual category from the
+document's own category and title, not from a new word map. The migration
+is not applied. Ask Bubbles was not attached, so this stays Sunny-only.
+Port the same mechanism when Bubbles is in the session. Do not copy salon
+names or company wording.
+
 ## 22 Oct 2026: Corrective Action QA audit (from Ask-bubbles#68)
 
 Ported in this PR (Glowbrands1/ask-sunny#128), one `Port from Ask Bubbles
