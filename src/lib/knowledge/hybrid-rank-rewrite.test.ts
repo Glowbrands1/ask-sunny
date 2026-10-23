@@ -331,20 +331,23 @@ describe("QUERY_REWRITE must-pass rankings on production embeddings", () => {
     expect(attendance, orderLine(answer)).toBeTruthy();
     expect(lateOpening, orderLine(answer)).toBeTruthy();
     const cited = [attendance!, lateOpening!];
-    const chunks: ManualChunk[] = cited.map((row, index) => ({
-      chunkIndex: index,
-      page: row.page,
-      printedPage: row.page,
-      section: row.section,
-      content: row.content,
-      sections: [{ heading: row.section ?? "", page: row.page }],
-    }));
+    const chunks: ManualChunk[] = cited.map((row, index) => {
+      const page = row.page ?? 0;
+      return {
+        chunkIndex: index,
+        page,
+        printedPage: page,
+        section: row.section,
+        content: row.content,
+        sections: [{ heading: row.section ?? "", page }],
+      };
+    });
     const content = cited.map((row) => `${row.section}, JBA Policy Manual p.${row.page}.`).join(" ");
-    let brief: ReviewBrief | null = null;
+    const captured: { brief: ReviewBrief | null } = { brief: null };
     const settled = await runSelfCheck(
       { content, employeeName: null, actionPlan: null, chunks, roster: [], question },
       async (seen: ReviewBrief) => {
-        brief = seen;
+        captured.brief = seen;
         const verdicts = seen.sections.map((section) => ({
           heading: section.heading,
           applies: sectionApplies(seen.question, section.text),
@@ -358,10 +361,10 @@ describe("QUERY_REWRITE must-pass rankings on production embeddings", () => {
         };
       },
     );
-    expect(brief?.question).toBe(question);
-    expect(brief?.sections.map((section) => section.heading).sort()).toEqual(["Attendance", "Late Opening"]);
-    expect(brief?.sections.find((section) => section.heading === "Attendance")?.text).toMatch(/arrives on time/i);
-    expect(brief?.sections.find((section) => section.heading === "Late Opening")?.text).toMatch(/\$25/);
+    expect(captured.brief?.question).toBe(question);
+    expect(captured.brief?.sections.map((section) => section.heading).sort()).toEqual(["Attendance", "Late Opening"]);
+    expect(captured.brief?.sections.find((section) => section.heading === "Attendance")?.text).toMatch(/arrives on time/i);
+    expect(captured.brief?.sections.find((section) => section.heading === "Late Opening")?.text).toMatch(/\$25/);
     expect(settled.content).toContain("Attendance");
     expect(settled.content).not.toContain("Late Opening");
   });
