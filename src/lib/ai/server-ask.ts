@@ -6,13 +6,16 @@ import {
   chatStyleRulesEnabled,
   chatTraceEnabled,
   fieldAccuracyEnabled,
+  fewShotExamplesEnabled,
   formToolsEnabled,
   hybridSearchEnabled,
+  intentExtractionEnabled,
   longContextEnabled,
   policyCitationEnabled,
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
+  selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
@@ -78,6 +81,10 @@ import { loadChatDataBlock } from "./chat-data-tools";
 import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
+import { applyIntentExtraction } from "./intent-extraction";
+import { fewShotBlock } from "./few-shot-examples";
+import { rewriteToManualTerms } from "./query-rewrite-claude";
+import { guardReply } from "./self-check-run";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
@@ -193,7 +200,11 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
-  if (!chatTraceEnabled()) return answerQuestionUntraced(request, actor, memory);
+  const produce = () => answerQuestionUntraced(request, actor, memory);
+  if (!chatTraceEnabled()) {
+    if (!selfCheckEnabled()) return produce();
+    return guardReply(await produce(), { request, actor });
+  }
   const draft = openChatTrace({
     conversationId: request.conversationId,
     messageId: request.questionMessageId,
@@ -203,7 +214,9 @@ export async function answerQuestion(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
-  return finishChatTrace(draft, () => answerQuestionUntraced(request, actor, memory));
+  const response = await finishChatTrace(draft, produce);
+  if (!selfCheckEnabled()) return response;
+  return guardReply(response, { request, actor });
 }
 
 async function answerQuestionUntraced(
@@ -230,6 +243,19 @@ async function answerQuestionUntraced(
   // where the secret key belongs, or an embedding width the column cannot hold.
   if (readiness.problems.length > 0) {
     throw new AiError("not_configured", readiness.problems.join(" "), 503);
+  }
+
+  /*
+   * SLOTS, READ ONCE, BEFORE ANYTHING IS ASKED AGAIN.
+   *
+   * Off, this is skipped and the request below is the one the route parsed.
+   * On, a slot is kept only when the roster, the salon list, or the manual
+   * agrees, and a question goes out only for what is still missing.
+   */
+  if (intentExtractionEnabled()) {
+    const prepared = await applyIntentExtraction({ request, actor });
+    if (prepared.clarification) return prepared.clarification;
+    request = prepared.request;
   }
 
   /* ------------------------------------------------------- form request -- */
@@ -887,8 +913,16 @@ async function answerQuestionUntraced(
     history: request.history,
     openForm: request.openForm ?? null,
   });
-  const query = queryRewriteEnabled()
+  const glossed = queryRewriteEnabled()
     ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
+    : followedUp;
+  const query = queryRewriteEnabled()
+    ? await rewriteToManualTerms({
+        question: request.question,
+        history: request.history,
+        fallback: glossed,
+        scopeId: request.scopeId,
+      })
     : followedUp;
   updateChatTrace({
     rewrittenQuery: query === request.question ? null : query,
@@ -1185,6 +1219,9 @@ async function answerQuestionUntraced(
     styleRules: chatStyleRulesEnabled(),
     priorCoachingOptional: priorCoachingOptionalEnabled(),
     recalledMemory: await recalledMemoryBlock(request, actor),
+    ...(fewShotExamplesEnabled()
+      ? { fewShot: await fewShotBlock({ question: request.question, scopeId: request.scopeId }) }
+      : {}),
   });
 
   const longContext = longContextEnabled()

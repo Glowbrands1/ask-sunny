@@ -30,6 +30,9 @@ import { isApprovedPolicyManualTitle } from "@/lib/forms/official-policy-manual"
 import { manualStandingNotice } from "@/lib/forms/standing-notices";
 
 import { accountManualSections } from "./account-manual-sections";
+import feedbackReplayCases from "./__fixtures__/feedback-replay-cases.json";
+import { containsPersonalData, type FeedbackReplayCase } from "./feedback-replay";
+import { headingFromAccount } from "./intent-slots";
 import { actionPlanSentenceCount, collapseToTwoSentences, twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { factsVisibleInConversation } from "./chat-memory";
 import { reviewInventoryLine } from "./chat-data-tools";
@@ -391,6 +394,8 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
       policyPage: 12,
       templateKey: "dpoa",
       incident: null,
+      incidentType: null,
+      payrollAmount: null,
     });
     expect(next).toContain("The employee is Marissa Lempka.");
     expect(next).toContain("Warning level: verbal.");
@@ -497,5 +502,29 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
     expect(actionPlanSentenceCount(three)).toBe(3);
     expect(actionPlanSentenceCount(collapseToTwoSentences(three))).toBe(2);
     expect(collapseToTwoSentences(three)).not.toMatch(/deduct/i);
+  });
+});
+
+const FEEDBACK_CASES = feedbackReplayCases as FeedbackReplayCase[];
+
+describe("every exported feedback replay case is checked", () => {
+  it("has cases to check", () => {
+    expect(FEEDBACK_CASES.length).toBeGreaterThan(0);
+  });
+
+  it.each(FEEDBACK_CASES)("$id rating $rating", (item) => {
+    expect(item.rating).toBeGreaterThanOrEqual(1);
+    expect(item.rating).toBeLessThanOrEqual(4);
+    expect(item.prompts.length).toBeGreaterThan(0);
+    for (const prompt of item.prompts) {
+      expect(prompt.trim().length).toBeGreaterThan(0);
+      expect(containsPersonalData(prompt)).toBe(false);
+    }
+    expect(item.answer.trim().length).toBeGreaterThan(0);
+    expect(containsPersonalData(item.answer)).toBe(false);
+    if (item.note) expect(containsPersonalData(item.note)).toBe(false);
+    if (item.expectHeading) {
+      expect(headingFromAccount(item.prompts.join("\n"), item.headings ?? [])).toBe(item.expectHeading);
+    }
   });
 });

@@ -6,14 +6,17 @@ import { describe, expect, it } from "vitest";
 import {
   actionPlanSentencesEnabled,
   chatMemoryEnabled,
+  intentExtractionEnabled,
   draftDedupeEnabled,
   draftMergeEnabled,
+  fewShotExamplesEnabled,
   fieldAccuracyEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
   policyCitationEnabled,
   reportBreakdownEnabled,
   secondFormEnabled,
+  selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -41,6 +44,9 @@ const NEW_FLAGS = [
   "FORM_STATE_ENABLED",
   "DRAFT_MERGE_ENABLED",
   "ACTION_PLAN_SENTENCES_ENABLED",
+  "INTENT_EXTRACTION_ENABLED",
+  "FEWSHOT_EXAMPLES_ENABLED",
+  "SELF_CHECK_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -122,6 +128,9 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formStateEnabled()).toBe(false);
     expect(draftMergeEnabled()).toBe(false);
     expect(actionPlanSentencesEnabled()).toBe(false);
+    expect(intentExtractionEnabled()).toBe(false);
+    expect(fewShotExamplesEnabled()).toBe(false);
+    expect(selfCheckEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

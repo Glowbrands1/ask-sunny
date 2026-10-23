@@ -164,3 +164,28 @@ export function draftMergeEnabled(): boolean {
 export function actionPlanSentencesEnabled(): boolean {
   return envFlag("ACTION_PLAN_SENTENCES_ENABLED");
 }
+
+/**
+ * One Claude tool call reads the turn into slots, then each slot is checked
+ * against the roster, the salon list, or the manual before it is kept.
+ * Off, the question is answered exactly as it is today.
+ */
+export function intentExtractionEnabled(): boolean {
+  return envFlag("INTENT_EXTRACTION_ENABLED");
+}
+
+/**
+ * Similar highly rated past exchanges, this company only, as examples.
+ * Off, nothing is read and the prompt is unchanged.
+ */
+export function fewShotExamplesEnabled(): boolean {
+  return envFlag("FEWSHOT_EXAMPLES_ENABLED");
+}
+
+/**
+ * Check a citation, the action plan, and the employee before the reply is sent.
+ * Off, the reply is sent as it was written.
+ */
+export function selfCheckEnabled(): boolean {
+  return envFlag("SELF_CHECK_ENABLED");
+}

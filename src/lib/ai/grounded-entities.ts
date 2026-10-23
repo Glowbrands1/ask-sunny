@@ -4,9 +4,9 @@ import {
   displayName,
   matchEmployeeName,
   rosterNameNamedIn,
-  withKeptTypedNames,
   type RosterEmployee,
 } from "@/lib/forms/employee-match";
+import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
