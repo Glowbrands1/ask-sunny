@@ -79,18 +79,22 @@ export function selectRecallCandidates(
 ): { rows: MatchedChunkRow[]; pinnedIds: string[] } {
   const limit = Math.max(1, options.limit);
   const scored = candidates.map((candidate) => {
-    const named = sectionIsNamed(query, passageHeading(candidate.row), candidate.sectionExact);
+    const heading = passageHeading(candidate.row);
     /*
-     * A trigram hit can pull a heading into the window. It must not add the
-     * +1 a named section gets, or a loose heading match outranks the chunk
-     * the question embedding actually found.
+     * A heading leads only when the question names it: the SQL found the
+     * title, or the title's own words are in the question. A trigram hit
+     * ("employee" inside "Buddy Passes (... Employees ONLY)", or the SQL
+     * fuzzy score) can keep that row in the window. It must not add the +1,
+     * or the loose heading outranks the chunk the question embedding found.
      */
+    const named = candidate.sectionExact || sectionTitleMatches(query, heading);
+    const wordFuzzy = sectionFuzzyMatches(query, heading);
     const sqlFuzzy =
       typeof candidate.sectionSimilarity === "number" && candidate.sectionSimilarity >= 0.3;
     return {
       row: candidate.row,
       named,
-      keep: named || sqlFuzzy,
+      keep: named || wordFuzzy || sqlFuzzy,
       score:
         hybridScore({
           vectorRank: candidate.vectorRank,

@@ -10,9 +10,10 @@ See `CLAUDE.md`.
 With both retrieval flags on, reciprocal-rank fusion let an OR keyword hit
 on a common word (employee, shift, late) outrank the chunk the question
 embedding had already found, and the heading-only Haiku pick then dropped
-that neighbor. Ask Bubbles was not attached. Port the rank change and the
-"showed up late" / "late 3 times" glossary lines. Do not copy salon names
-or company wording.
+that neighbor. Ask Bubbles was not attached. Port the cosine-led rank and
+the skip-Haiku path. Do not add phrase-to-section glossary lines for
+"showed up late" or "late 3 times": the model picks the section by reading
+the retrieved manual text. Do not copy salon names or company wording.
 
 ## 22 Oct 2026: both apps brought level (pending QA review)
 

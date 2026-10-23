@@ -15,8 +15,9 @@ import { sectionIsNamed, selectRecallCandidates, type RecallCandidate } from "./
 
 /**
  * The four questions that regressed once both retrieval flags were on.
- * Vectors are the production gte-small embeddings of those questions (after
- * the same glossary expansion recall embeds), not a chunk matched to itself.
+ * Vectors are the production gte-small embeddings stored beside this test,
+ * not a chunk matched to itself. The ranker is given the manager's words,
+ * and those words must not grow a section title before they are embedded.
  * Headings are whatever the rows carry. Nothing here names the expected policy.
  */
 
@@ -129,8 +130,9 @@ function legacyRecall(candidates: readonly RecallCandidate[], query: string, lim
   return chosen.map((item) => item.candidate);
 }
 
+/** A heading the question names by its own title words. A trigram lookalike does not count. */
 function headingNamed(query: string, row: MatchedChunkRow, exact = false): boolean {
-  return sectionIsNamed(query, passageHeading(row), exact) || sectionTitleMatches(query, passageHeading(row));
+  return exact || sectionTitleMatches(query, passageHeading(row));
 }
 
 /** Keyword rank may nudge by at most 0.001. A larger inversion is the old reciprocal-rank bug. */
@@ -192,14 +194,15 @@ describe("live question embeddings stay in cosine order", () => {
       const legacyOrders: boolean[] = [];
 
       for (const question of live.questions) {
-        const expanded = expandGlossaryQuery(question.text);
+        const query = question.text;
+        expect(expandGlossaryQuery(query), query).toBe(query);
         const matched = await harness.db.query<RpcRow>(
           `select chunk_id, document_id, document_title, category, locator, page, section, content,
                   similarity, vector_rank, keyword_rank, section_exact
              from public.match_knowledge_chunks_hybrid(
                $1::extensions.vector, $2, $3, 20, 0, null
              )`,
-          [`[${question.embedding.join(",")}]`, expanded, SCOPE],
+          [`[${question.embedding.join(",")}]`, query, SCOPE],
         );
         const candidates = matched.rows.map(toCandidate);
         const nearest = [...byId.values()].reduce((best, chunk) =>
@@ -209,30 +212,32 @@ describe("live question embeddings stay in cosine order", () => {
         expect(vectorBest, question.text).toBeTruthy();
         expect(fixtureByUuid.get(vectorBest?.row.chunk_id ?? ""), question.text).toBe(nearest.id);
 
-        const legacy = legacyRecall(candidates, expanded, RETRIEVAL.contextChunks);
-        const selected = selectRecallCandidates(candidates, expanded, { limit: RETRIEVAL.topK });
+        const legacy = legacyRecall(candidates, query, RETRIEVAL.contextChunks);
+        const selected = selectRecallCandidates(candidates, query, { limit: RETRIEVAL.topK });
         const answer = selected.rows.slice(0, RETRIEVAL.contextChunks);
         const anyNamed = candidates.some((candidate) =>
-          headingNamed(expanded, candidate.row, candidate.sectionExact),
+          headingNamed(query, candidate.row, candidate.sectionExact),
         );
-        if (anyNamed) {
-          expect(headingNamed(expanded, answer[0], false), question.text).toBe(true);
-        } else {
-          expect(answer[0]?.chunk_id, question.text).toBe(vectorBest?.row.chunk_id);
-        }
-        expect(answer.some((row) => row.chunk_id === vectorBest?.row.chunk_id) || anyNamed, question.text).toBe(true);
+        /*
+         * The first row is the question embedding's neighbor. A heading the
+         * question's own words match may lead other rows; it may not pass
+         * that neighbor. No glossary line is allowed to create the match.
+         */
+        expect(answer[0]?.chunk_id, question.text).toBe(vectorBest?.row.chunk_id);
+        if (anyNamed) expect(headingNamed(query, answer[0], false), question.text).toBe(true);
+        expect(answer.some((row) => row.chunk_id === vectorBest?.row.chunk_id), question.text).toBe(true);
         expect(Math.max(...answer.map((row) => row.similarity)), question.text).toBeGreaterThanOrEqual(
           RETRIEVAL.minSimilarity,
         );
 
-        const named = candidates.filter((candidate) => headingNamed(expanded, candidate.row, candidate.sectionExact));
+        const named = candidates.filter((candidate) => headingNamed(query, candidate.row, candidate.sectionExact));
         const leaderPool = named.length > 0 ? named : candidates;
         const leader = leaderPool.reduce((best, candidate) =>
           candidate.row.similarity > best.row.similarity ? candidate : best,
         );
         expect(answer[0]?.chunk_id, question.text).toBe(leader.row.chunk_id);
-        expect(unnamedInSimilarityOrder(answer, expanded), question.text).toBe(true);
-        legacyOrders.push(unnamedInSimilarityOrder(legacy.map((candidate) => candidate.row), expanded));
+        expect(unnamedInSimilarityOrder(answer, query), question.text).toBe(true);
+        legacyOrders.push(unnamedInSimilarityOrder(legacy.map((candidate) => candidate.row), query));
 
         /*
          * Heading-only Haiku returned no ids. A neighbor that was not pinned
@@ -254,7 +259,7 @@ describe("live question embeddings stay in cosine order", () => {
            from public.match_knowledge_chunks_hybrid(
              $1::extensions.vector, $2, $3, 20, 0, null
            )`,
-        [`[${swap.embedding.join(",")}]`, expandGlossaryQuery(swap.text), SCOPE],
+        [`[${swap.embedding.join(",")}]`, swap.text, SCOPE],
       );
       const swapCandidates = swapRows.rows.map(toCandidate);
       const swapBest = swapCandidates.find((candidate) => candidate.vectorRank === 1);
@@ -286,8 +291,8 @@ describe("live question embeddings stay in cosine order", () => {
       };
       const crowded = [...dualListed, missed];
       const window = dualListed.length;
-      const before = legacyRecall(crowded, expandGlossaryQuery(swap.text), window);
-      const after = selectRecallCandidates(crowded, expandGlossaryQuery(swap.text), { limit: window });
+      const before = legacyRecall(crowded, swap.text, window);
+      const after = selectRecallCandidates(crowded, swap.text, { limit: window });
       expect(before[0]?.row.chunk_id).not.toBe(missed.row.chunk_id);
       expect(before.some((candidate) => candidate.row.chunk_id === missed.row.chunk_id)).toBe(false);
       expect(after.rows[0]?.chunk_id).toBe(missed.row.chunk_id);

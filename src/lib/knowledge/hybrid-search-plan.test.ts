@@ -68,7 +68,7 @@ describe("hybrid index migration", () => {
     expect(SQL).toContain("Rollback");
   });
 
-  it("ORs the late-arrival question onto Attendance and prefers it to the framework", async () => {
+  it("ORs the late-arrival question onto the keyword hit and keeps that hit behind the nearer vector neighbor", async () => {
     const harness = await createMigratedTestDatabase(PRIOR);
     try {
       const attendanceText = "Attendance. When an employee is late, the late arrival is recorded.";
@@ -185,12 +185,13 @@ describe("hybrid index migration", () => {
             sectionExact: false,
           }),
         ),
-        expandGlossaryQuery(Q1),
+        Q1,
         { vectorFloor: 0.78, limit: 4 },
       );
-      expect(ranked[0]?.section).toBe("Attendance");
-      expect(ranked.findIndex((row) => row.section === "Attendance")).toBeLessThan(
-        ranked.findIndex((row) => row.section === "Performance Management Ladder"),
+      expect(ranked[0]?.section).toBe("Performance Management Ladder");
+      expect(ranked.some((row) => row.section === "Attendance")).toBe(true);
+      expect(ranked.findIndex((row) => row.section === "Performance Management Ladder")).toBeLessThan(
+        ranked.findIndex((row) => row.section === "Attendance"),
       );
 
       const glossaryQuery = expandGlossaryQuery("tardy");
