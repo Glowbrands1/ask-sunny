@@ -68,7 +68,7 @@ describe("hybrid index migration", () => {
     expect(SQL).toContain("Rollback");
   });
 
-  it("ORs the late-arrival question onto Attendance and prefers it to the framework", async () => {
+  it("ORs the late-arrival question onto the keyword hit and keeps that hit behind the nearer vector neighbor", async () => {
     const harness = await createMigratedTestDatabase(PRIOR);
     try {
       const attendanceText = "Attendance. When an employee is late, the late arrival is recorded.";
@@ -188,29 +188,15 @@ describe("hybrid index migration", () => {
         Q1,
         { vectorFloor: 0.78, limit: 4 },
       );
-      expect(ranked[0]?.section).toBe("Attendance");
-      expect(ranked.findIndex((row) => row.section === "Attendance")).toBeLessThan(
-        ranked.findIndex((row) => row.section === "Performance Management Ladder"),
+      expect(ranked[0]?.section).toBe("Performance Management Ladder");
+      expect(ranked.some((row) => row.section === "Attendance")).toBe(true);
+      expect(ranked.findIndex((row) => row.section === "Performance Management Ladder")).toBeLessThan(
+        ranked.findIndex((row) => row.section === "Attendance"),
       );
 
-      const glossaryQuery = expandGlossaryQuery("tardy");
-      expect(glossaryQuery).toContain("Attendance");
-      const glossaryHit = await harness.db.query<{ section: string }>(
-        `select section from public.match_knowledge_chunks_hybrid(
-           $1::extensions.vector, $2, $3, 8, 0.0, null
-         ) where section = 'Attendance'`,
-        [`[${attendanceVector.join(",")}]`, glossaryQuery, SCOPE],
-      );
-      expect(glossaryHit.rows).toHaveLength(1);
-      const glossaryAnd = await harness.db.query<{ n: number }>(
-        `select count(*)::int as n
-           from public.knowledge_chunks
-          where knowledge_scope_id = $1
-            and section = 'Attendance'
-            and content_tsv @@ plainto_tsquery('english', $2)`,
-        [SCOPE, glossaryQuery],
-      );
-      expect(glossaryAnd.rows[0]?.n).toBe(0);
+      for (const phrase of ["tardy", "opened late", "no show", "cell phone", "parking lot", "dress code"]) {
+        expect(expandGlossaryQuery(phrase), phrase).toBe(phrase);
+      }
 
       await harness.db.exec("analyze public.knowledge_chunks; analyze public.knowledge_documents;");
       const vectorLiteral = `[${frameworkVector.join(",")}]`;

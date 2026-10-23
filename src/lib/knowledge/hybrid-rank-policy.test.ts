@@ -5,10 +5,9 @@ import { selectHybridMatches, type HybridCandidate } from "@/lib/knowledge/hybri
 import { selectRecallCandidates } from "@/lib/knowledge/recall-rank";
 
 /**
- * Production question. plainto_tsquery AND-ed every word and matched nothing,
- * so the Attendance section lost to a nearer Performance Management Framework
- * chunk. The fixture keeps that vector win and gives Attendance the keyword
- * rank an OR query produces.
+ * Production question, with the manager's words and no section title appended.
+ * The framework chunk is the nearer neighbor. A keyword hit on "late" must
+ * not pass it. A heading leads only when the question itself names that heading.
  */
 
 const Q1 = "what is the policy if an employee showed up late 3 times this month";
@@ -60,11 +59,16 @@ const candidates: HybridCandidate[] = [
   { row: attendance, vectorRank: null, keywordRank: 1, sectionExact: false },
 ];
 
-describe("policy questions prefer the JBA manual over the framework", () => {
-  it("ranks the Attendance chunk above the Performance Management Framework for the late-arrival question", () => {
+describe("cosine order keeps the nearer neighbor ahead of a keyword hit", () => {
+  it("keeps the nearer neighbor ahead of a keyword hit that does not name a section", () => {
     const ranked = selectHybridMatches(candidates, Q1, { vectorFloor: 0.78, limit: 4 });
-    expect(ranked.map((item) => item.section)).toEqual(["Attendance", "Performance Management Ladder"]);
-    expect(ranked[0]).toMatchObject({ section: "Attendance", page: 15, document_title: "JBA Policy Manual Edited 5.2025" });
+    expect(ranked.map((item) => item.section)).toEqual(["Performance Management Ladder", "Attendance"]);
+    expect(ranked[0]).toMatchObject({
+      section: "Performance Management Ladder",
+      page: 2,
+      document_title: "Performance Management Framework",
+    });
+    expect(ranked.some((item) => item.chunk_id === "attendance")).toBe(true);
   });
 
   it("keeps the same order on the recall selector", () => {
@@ -73,13 +77,14 @@ describe("policy questions prefer the JBA manual over the framework", () => {
       Q1,
       { limit: 4 },
     );
-    expect(ranked.rows[0]?.section).toBe("Attendance");
-    expect(ranked.rows.findIndex((item) => item.section === "Attendance")).toBeLessThan(
-      ranked.rows.findIndex((item) => item.chunk_id === "pmf"),
+    expect(ranked.rows[0]?.chunk_id).toBe("pmf");
+    expect(ranked.rows.findIndex((item) => item.chunk_id === "pmf")).toBeLessThan(
+      ranked.rows.findIndex((item) => item.chunk_id === "attendance"),
     );
+    expect(ranked.pinnedIds).toEqual([]);
   });
 
-  it("does not prefer the manual when the question is not a policy question", () => {
+  it("keeps the nearer neighbor for a coaching question", () => {
     const ranked = selectHybridMatches(candidates, "how do I coach this employee", {
       vectorFloor: 0.78,
       limit: 4,

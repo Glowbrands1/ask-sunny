@@ -67,14 +67,42 @@ export function sectionTitleMatches(query: string, section: string | null | unde
   return hits.length >= 2 && hits.length / tokens.length >= 0.5;
 }
 
+/**
+ * The heading a manager would recognise. Some indexed chunks keep it only on
+ * the locator ("Page 37 — …") and leave `section` empty. Naming checks use
+ * this so that chunk can still be pinned.
+ */
+export function passageHeading(row: Pick<MatchedChunkRow, "section" | "locator">): string | null {
+  const section = row.section?.trim() ?? "";
+  if (section.length >= 4) return section;
+  const locator = row.locator.replace(/^page\s+\d+\s*[—–-]\s*/i, "").trim();
+  return locator.length >= 4 ? locator : null;
+}
+
 export function hybridScore(input: {
   vectorRank: number | null;
   keywordRank: number | null;
   sectionMatch: boolean;
+  /** Cosine similarity of the question embedding. The rank terms are not a substitute for it. */
+  similarity?: number;
 }): number {
-  let score = 0;
-  if (input.vectorRank && input.vectorRank > 0) score += 1 / (RRF_K + input.vectorRank);
-  if (input.keywordRank && input.keywordRank > 0) score += 1 / (RRF_K + input.keywordRank);
+  /*
+   * Reciprocal rank used to add a full keyword term (~1/61) on top of the
+   * vector term. That bonus is larger than the gap between vector rank 1 and
+   * vector rank 20, so any chunk the OR query also listed outranked the
+   * nearest neighbor whenever that neighbor was not itself a keyword hit.
+   * Common words (employee, shift, late) made that the usual case, and the
+   * section the question embedding had found fell out of the window.
+   *
+   * The question's cosine is the order. Keyword rank can only nudge, by less
+   * than the gap between the neighbors of these questions (about 0.004).
+   * A heading the question names still leads.
+   */
+  let score = input.similarity ?? 0;
+  if (input.keywordRank && input.keywordRank > 0) score += 0.001 / input.keywordRank;
+  if (!input.similarity && input.vectorRank && input.vectorRank > 0) {
+    score += 0.001 / input.vectorRank;
+  }
   if (input.sectionMatch) score += 1;
   return score;
 }
@@ -140,7 +168,7 @@ export function selectHybridMatches(
   const ranked = candidates
     .map((candidate) => {
       const sectionMatch =
-        candidate.sectionExact || sectionTitleMatches(query, candidate.row.section);
+        candidate.sectionExact || sectionTitleMatches(query, passageHeading(candidate.row));
       const aboveFloor = candidate.row.similarity >= options.vectorFloor && candidate.vectorRank !== null;
       const strongKeyword = candidate.keywordRank !== null && candidate.keywordRank <= 3;
       return {
@@ -151,6 +179,7 @@ export function selectHybridMatches(
             vectorRank: candidate.vectorRank,
             keywordRank: candidate.keywordRank,
             sectionMatch,
+            similarity: candidate.row.similarity,
           }) + policyManualBoost(query, candidate.row),
       };
     })

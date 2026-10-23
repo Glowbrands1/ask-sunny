@@ -1,9 +1,9 @@
 /**
- * House terms. One line adds a shorthand.
+ * House terms for forms. One line adds a shorthand.
  *
  * `term` is what a manager types. `canonical` is the wording the form
- * detectors and the policy headings already use. `section` and `page` are
- * the manual's own heading when the shorthand names one.
+ * detectors already use. A phrase is not mapped onto a manual section
+ * title; retrieval returns the passages and the model picks the policy.
  */
 
 export interface HouseTerm {
@@ -36,48 +36,6 @@ export const HOUSE_GLOSSARY: readonly HouseTerm[] = [
   { term: "position transfer", canonical: "position transfer", kind: "form", templateKey: "position-transfer" },
   { term: "sdit epp", canonical: "sdit epp", kind: "form", templateKey: "sdit-epp" },
   { term: "tsd epp", canonical: "tsd epp", kind: "form", templateKey: "tsd-epp" },
-  { term: "late open", canonical: "Late Opening", section: "Late Opening", page: 15, kind: "policy" },
-  { term: "late opening", canonical: "Late Opening", section: "Late Opening", page: 15, kind: "policy" },
-  { term: "opened late", canonical: "Late Opening", section: "Late Opening", page: 15, kind: "policy" },
-  { term: "tardy", canonical: "Attendance", section: "Attendance", page: 14, kind: "policy" },
-  { term: "tardiness", canonical: "Attendance", section: "Attendance", page: 14, kind: "policy" },
-  { term: "no call no show", canonical: "Attendance", section: "Attendance", page: 14, kind: "policy" },
-  { term: "no show", canonical: "Attendance", section: "Attendance", page: 14, kind: "policy" },
-  { term: "cell phone", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "cellphone", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "cellfone", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "celphone", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "fone", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "phone", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "cell", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "smart watch", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "parking lot", canonical: "Employee Parking", section: "Employee Parking", page: 18, kind: "policy" },
-  { term: "employee parking", canonical: "Employee Parking", section: "Employee Parking", page: 18, kind: "policy" },
-  { term: "smartwatch", canonical: "Cell Phone/Smart Watch Policy", section: "Cell Phone/Smart Watch Policy", page: 19, kind: "policy" },
-  { term: "dress code", canonical: "Dress Code for The Company", section: "Dress Code for The Company", page: 15, kind: "policy" },
-  { term: "dresscode", canonical: "Dress Code for The Company", section: "Dress Code for The Company", page: 15, kind: "policy" },
-  { term: "standards of conduct", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "insubordination", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "general misconduct", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "misconduct", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "cleaning duties not completed", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "cleaning duties", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "cleaning duty", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "policy acknowledgments", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "policy acknowledgements", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "policy acknowledgment", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "policy acknowledgement", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "woven deadline", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "missing a deadline", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "missing the deadline", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "missed the deadline", canonical: "Standards of Conduct", section: "Standards of Conduct", page: 12, kind: "policy" },
-  { term: "attendance", canonical: "Attendance", section: "Attendance", page: 14, kind: "policy" },
-  { term: "client service must-see behaviors", canonical: "Client Service Must-See Behaviors", section: "Client Service Must-See Behaviors", kind: "policy" },
-  { term: "must-see behaviors", canonical: "Client Service Must-See Behaviors", section: "Client Service Must-See Behaviors", kind: "policy" },
-  { term: "must see behaviors", canonical: "Client Service Must-See Behaviors", section: "Client Service Must-See Behaviors", kind: "policy" },
-  { term: "visitors at work", canonical: "Visitors in the Workplace", section: "Visitors in the Workplace", page: 30, kind: "policy" },
-  { term: "seminar", canonical: "Seminar/Webinar Attendance", section: "Seminar/Webinar Attendance", page: 37, kind: "policy" },
-  { term: "webinar", canonical: "Seminar/Webinar Attendance", section: "Seminar/Webinar Attendance", page: 37, kind: "policy" },
 ];
 
 export interface GlossaryHit {
@@ -103,7 +61,6 @@ export function matchGlossary(text: string): GlossaryHit[] {
       const start = (match.index ?? 0) + match[0].indexOf(raw);
       const end = start + raw.length;
       if (taken.some((span) => start < span.end && end > span.start)) continue;
-      if (term.term === "phone" && /^\s+interviews?\b/i.test(text.slice(end))) continue;
       taken.push({ start, end });
       hits.push({ term, start, end });
     }

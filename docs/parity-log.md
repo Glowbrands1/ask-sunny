@@ -5,6 +5,29 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 23 Oct 2026: hybrid rank was burying the nearest chunk (Sunny only)
+
+With both retrieval flags on, reciprocal-rank fusion let an OR keyword hit
+on a common word (employee, shift, late) outrank the chunk the question
+embedding had already found, and the heading-only Haiku pick then dropped
+that neighbor. Ask Bubbles was not attached. Port the cosine-led rank and
+the skip-Haiku path. Do not add phrase-to-section glossary lines for
+"showed up late" or "late 3 times": the model picks the section by reading
+the retrieved manual text. Do not copy salon names or company wording.
+
+`src/lib/knowledge/hybrid-rank-rewrite.test.ts` is a Sunny regression on
+this manual's production embeddings. A rewrite that keeps the manager's
+"late" wording still places Late Opening ahead of Attendance, and Attendance
+stays inside the context passed to the answer. SELF_CHECK, already on main,
+drops Late Opening when its own text is the salon opening. Every glossary
+line that mapped a phrase onto a manual section title is removed, including
+tardy, late opening, and the violation phrases listed in the chat-quality
+entry below. Form shorthand stays. "tardy twice this week" still ranks
+Attendance first from the rewrite embedding alone. Ask Bubbles was not
+attached. Port the cosine rank, the skip-Haiku path, and that glossary
+removal. Do not add a phrase-to-section map back. Do not copy salon names
+or company wording.
+
 ## 22 Oct 2026: both apps brought level (pending QA review)
 
 Every chat/forms fix merged to either `main` from 12–21 Oct was compared. The
@@ -91,8 +114,9 @@ rewrite, and the style-prompt rules are behind flags that default off
 stay on `QUERY_REWRITE_ENABLED`. Recall, the longer history window, and the
 read-only review/sales/comp-report tools are the later flags. Violation
 phrases (cleaning, a missed deadline, policy acknowledgments, insubordination,
-misconduct, must-see behaviors) sit on the glossary so recall can name the
-manual section. Prior coaching is optional only when its own flag is on.
+misconduct, must-see behaviors) were briefly on the glossary so recall could
+name a section. Those phrase-to-section lines are removed; see the hybrid-rank
+entry above. Prior coaching is optional only when its own flag is on.
 Ask Bubbles was not attached to this session, so
 the mechanism was not ported. It does not rename the JBA Policy Manual and it
 does not copy salon names or company wording into a sibling. Port the same
