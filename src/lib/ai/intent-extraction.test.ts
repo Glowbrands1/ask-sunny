@@ -256,7 +256,9 @@ describe("slots are grounded and only the missing ones are asked", () => {
         },
       }),
     );
-    expect(decision.clarification).toBe("I still need the date it happened and the warning level, verbal or written.");
+    // Warning level is ticked on the form. Asking it here replaced the card
+    // when the same account was sent again (live, 23 Oct 2026).
+    expect(decision.clarification).toBe("I still need the date it happened.");
     expect(decision.clarification).not.toContain("which employee");
     expect(decision.clarification).not.toContain("which salon");
   });
@@ -305,7 +307,7 @@ describe("slots are grounded and only the missing ones are asked", () => {
     expect(decision.clarification).toBeNull();
   });
 
-  it("a name that is not on the roster is not the employee", () => {
+  it("a name that is not on the roster stays on the form", () => {
     const decision = decideIntentTurn(
       turn({
         question: "verbal corrective action for Casey Quinn at north salon on 10/1/2026, showed up late",
@@ -320,9 +322,11 @@ describe("slots are grounded and only the missing ones are asked", () => {
         },
       }),
     );
-    expect(decision.state.employeeName).toBeNull();
+    // The proposal says once that Woven does not have them. This turn must
+    // not replace the card with a who-question (live, 23 Oct 2026).
+    expect(decision.state.employeeName).toBe("Casey Quinn");
     expect(decision.state.employeeId).toBeNull();
-    expect(decision.clarification).toContain("not in the Woven roster");
+    expect(decision.clarification).toBeNull();
   });
 
   it("a policy question does not get a form interview", () => {

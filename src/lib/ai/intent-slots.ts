@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { datesInText } from "@/lib/forms/form-date-answer";
+import { datesInText, listIncidentDates } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -19,8 +19,9 @@ import type { GroundedPerson } from "./grounded-entities";
  * or the manual headings agree.
  *
  * The model copies what the manager said. This file decides what is real.
- * A heading that is not in the headings it was given is not an incident
- * type, and a person who is not on the roster is not the employee.
+ * A heading that is not in the headings it was given is dropped. A person
+ * who is not on the roster keeps the name the manager typed; the reply says
+ * once that Woven does not have them, and the other slots stay.
  */
 
 export const INTENT_TOOL_NAME = "record_intent_slots";
@@ -38,6 +39,7 @@ export const intentSlotSchema = z
     warningLevel: warningSchema,
     formType: z.string().nullable().optional(),
     formTurn: z.boolean().optional(),
+    policyHeading: z.string().nullable().optional(),
   })
   .transform((value) => ({
     employee: blank(value.employee),
@@ -49,6 +51,7 @@ export const intentSlotSchema = z
     warningLevel: value.warningLevel ?? null,
     formType: blank(value.formType),
     formTurn: value.formTurn ?? false,
+    policyHeading: blank(value.policyHeading),
   }));
 
 export type IntentSlotReading = z.infer<typeof intentSlotSchema>;
@@ -66,6 +69,7 @@ export const INTENT_TOOL_INPUT_SCHEMA = {
     "warningLevel",
     "formType",
     "formTurn",
+    "policyHeading",
   ],
   properties: {
     employee: { type: ["string", "null"], description: "The person named, in the manager's own spelling. Null when nobody was named." },
@@ -80,6 +84,11 @@ export const INTENT_TOOL_INPUT_SCHEMA = {
     warningLevel: { type: ["string", "null"], enum: ["verbal", "written", null] },
     formType: { type: ["string", "null"], description: "The form they named, in their words. Null when no form was named." },
     formTurn: { type: "boolean", description: "True when this turn is filing or continuing a form." },
+    policyHeading: {
+      type: ["string", "null"],
+      description:
+        "The one heading from the supplied manual list that this account is about. Null when none of those headings fit. Do not invent a heading.",
+    },
   },
 };
 
@@ -107,6 +116,8 @@ export interface IntentTurnInput {
   readonly salons: readonly SalonRow[];
   /** Section headings from the manual that was retrieved. */
   readonly headings: readonly string[];
+  /** Printed page of each retrieved heading, keyed by that heading. */
+  readonly headingPages?: Readonly<Record<string, number>>;
   readonly templates: readonly TemplateRow[];
   readonly formInProgress: boolean;
 }
@@ -115,6 +126,8 @@ export interface IntentTurnDecision {
   readonly question: string;
   readonly state: ConversationFormState;
   readonly clarification: string | null;
+  /** True when this turn is filing or continuing a form. */
+  readonly formTurn: boolean;
 }
 
 interface ChoiceOption {
@@ -162,10 +175,20 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, blob, input.salons, employee.person);
   const title = groundTitle(reading?.title ?? null, blob, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
-  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, blob, input.today);
+  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, blob, input.today);
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
+  const modelPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
+  // A heading already grounded stays. The account reader fills one in only
+  // when this conversation has not chosen one, so a resend does not replace
+  // Late Opening with the broader Attendance section.
+  const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
+  const policyPage = modelPolicy
+    ? pageForHeading(modelPolicy, input.headingPages)
+    : saved.policyHeading
+      ? saved.policyPage
+      : pageForHeading(policyHeading, input.headingPages);
   const formTurn = Boolean(input.formInProgress || reading?.formTurn || formType.key || saved.templateKey);
 
   const state = mergeSlots(saved, {
@@ -177,6 +200,8 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     payrollAmount,
     warningLevel: warningLevel.value,
     formType: formType.key,
+    policyHeading,
+    policyPage,
   });
 
   const clarification = clarificationFor({
@@ -195,9 +220,28 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     templates: input.templates,
   });
 
-  if (clarification) return { question: input.question, state, clarification };
-  if (!formTurn) return { question: input.question, state, clarification: null };
-  return { question: prependFormState(input.question, state), state, clarification: null };
+  if (clarification) return { question: input.question, state, clarification, formTurn };
+  if (!formTurn) return { question: input.question, state, clarification: null, formTurn: false };
+  return { question: prependFormState(input.question, state), state, clarification: null, formTurn: true };
+}
+
+function pageForHeading(heading: string | null, pages: Readonly<Record<string, number>> | undefined): number | null {
+  if (!heading || !pages) return null;
+  if (pages[heading] && pages[heading]! > 0) return pages[heading]!;
+  const key = headingKey(heading);
+  for (const [name, page] of Object.entries(pages)) {
+    if (headingKey(name) === key && page > 0) return page;
+  }
+  return null;
+}
+
+/** A retrieved heading the model named, or null when that heading was not retrieved. */
+function groundPolicy(typed: string | null, headings: readonly string[]): string | null {
+  if (!typed || headings.length === 0) return null;
+  const exact = headings.find((heading) => headingKey(heading) === headingKey(typed));
+  if (exact) return exact;
+  const named = headings.filter((heading) => namesHeading(typed, heading));
+  return named.length === 1 ? named[0]! : null;
 }
 
 function parseReading(raw: unknown): IntentSlotReading | null {
@@ -237,7 +281,8 @@ function groundEmployee(
     return { person: null, name: null, ambiguous: rows, typed: probe };
   }
   if (match.kind === "unchecked") return { person: null, name: probe, ambiguous: [], typed: probe };
-  return { person: null, name: null, ambiguous: [], typed: probe };
+  // Nobody on the roster is close. The name the manager typed still stands.
+  return { person: null, name: probe, ambiguous: [], typed: probe };
 }
 
 function peopleNamedIn(blob: string, people: readonly GroundedPerson[]): GroundedPerson[] {
@@ -253,7 +298,7 @@ function peopleNamedIn(blob: string, people: readonly GroundedPerson[]): Grounde
 }
 
 function asGrounded(employee: RosterEmployee, people: readonly GroundedPerson[]): GroundedPerson {
-  return people.find((person) => person.id === employee.id) ?? { ...employee, title: null, primaryLocationName: null };
+  return people.find((person) => person.id === employee.id) ?? { ...employee, title: null, primaryLocationName: null, primarySalonId: null };
 }
 
 function groundSalon(
@@ -267,13 +312,33 @@ function groundSalon(
   const probed = typed?.trim() || null;
   const matched = probed ? matchSalons(probed, list) : matchSalonsInText(blob, list);
   if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
+  // The manager did not name a salon. The Woven primary location is the salon,
+  // including when the employee is affiliated with more than one.
+  if (!probed && person) {
+    const primary = wovenPrimary(person, salons);
+    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  }
   if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
   if (person && person.salonIds.length === 1) {
     const only = salons.find((salon) => salon.id === person.salonIds[0]);
     if (only) return { id: only.id, name: only.name, ambiguous: [] };
     if (person.primaryLocationName) return { id: person.salonIds[0]!, name: person.primaryLocationName, ambiguous: [] };
   }
+  if (person) {
+    const primary = wovenPrimary(person, salons);
+    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  }
   return { id: null, name: null, ambiguous: [] };
+}
+
+function wovenPrimary(person: GroundedPerson, salons: readonly SalonRow[]): SalonRow | null {
+  if (person.primarySalonId) {
+    const row = salons.find((salon) => salon.id === person.primarySalonId);
+    if (row) return row;
+  }
+  if (!person.primaryLocationName) return null;
+  const hits = matchSalons(person.primaryLocationName, salons);
+  return hits.length === 1 ? hits[0]! : null;
 }
 
 function matchSalons(typed: string, salons: readonly SalonRow[]): SalonRow[] {
@@ -308,7 +373,10 @@ function groundTitle(
     if (close.length === 1) return close[0]!;
   }
   const inText = titles.filter((title) => blob.toLowerCase().includes(title.toLowerCase()));
-  return inText.length === 1 ? inText[0]! : null;
+  if (inText.length === 1) return inText[0]!;
+  // A title the manager stated stays, even when this person is not on the roster.
+  if (probe && blob.toLowerCase().includes(probe.toLowerCase())) return probe;
+  return null;
 }
 
 function groundIncident(typed: string | null, blob: string, headings: readonly string[]): string | null {
@@ -335,32 +403,24 @@ export function headingFromAccount(text: string, headings: readonly string[]): s
 
 function groundDate(
   typed: string | null,
+  question: string,
   blob: string,
   today: string,
 ): { iso: string | null; ambiguous: readonly string[] } {
-  const inText = datesInConversation(blob, today);
+  // Follow-up dates stay off this list. One incident date is the form's date
+  // even when a follow-up date is written beside it.
+  const inText = [...new Set(listIncidentDates(blob, today).map((item) => item.iso))];
   const normalized = typed ? normalizeIncidentDate(typed, today) : null;
   if (normalized && inText.includes(normalized)) return { iso: normalized, ambiguous: [] };
   if (inText.length === 1) return { iso: inText[0]!, ambiguous: [] };
   if (inText.length > 1) return { iso: null, ambiguous: inText };
+  // "1 October 2026" is a real date the day-first reader accepts and the
+  // incident list does not. It counts only when those words are in the
+  // conversation, so a date the tool invented still drops.
+  const said = typed ? blob.toLowerCase().includes(typed.trim().toLowerCase()) : false;
+  if (normalized && said) return { iso: normalized, ambiguous: [] };
+  if (/\btoday\b/i.test(question) && datesInText(question, today).length === 0) return { iso: today, ambiguous: [] };
   return { iso: null, ambiguous: [] };
-}
-
-function datesInConversation(blob: string, today: string): string[] {
-  const found = new Set(datesInText(blob, today).map((item) => item.iso));
-  DAY_MONTH.lastIndex = 0;
-  for (const match of blob.matchAll(DAY_MONTH)) {
-    const iso = dayMonthIso(match, today);
-    if (iso) found.add(iso);
-  }
-  return [...found];
-}
-
-function dayMonthIso(match: RegExpMatchArray, today: string): string | null {
-  const month = MONTHS[match[2]!.toLowerCase().replace(/\./g, "")];
-  if (!month) return null;
-  const year = match[3] ? Number(match[3]) : Number(today.slice(0, 4));
-  return calendarIso(year, month, Number(match[1]));
 }
 
 function groundPayroll(typed: string | null, blob: string): string | null {
@@ -434,12 +494,14 @@ function mergeSlots(
     payrollAmount: string | null;
     warningLevel: "verbal" | "written" | null;
     formType: string | null;
+    policyHeading: string | null;
+    policyPage: number | null;
   },
 ): ConversationFormState {
-  const named = slots.employee.name;
+  const named = slots.employee.name ?? slots.employee.typed;
   return {
     ...prior,
-    employeeId: slots.employee.person?.id ?? prior.employeeId,
+    employeeId: slots.employee.person?.id ?? (named && !slots.employee.person ? null : prior.employeeId),
     employeeName: slots.employee.person ? displayName(slots.employee.person) : named ?? prior.employeeName,
     salonId: slots.salon.id ?? prior.salonId,
     title: slots.title ?? prior.title,
@@ -449,6 +511,8 @@ function mergeSlots(
     templateKey: slots.formType ?? prior.templateKey,
     incidentType: slots.incidentType ?? prior.incidentType,
     payrollAmount: slots.payrollAmount ?? prior.payrollAmount,
+    policyHeading: slots.policyHeading ?? prior.policyHeading,
+    policyPage: slots.policyPage ?? prior.policyPage,
   };
 }
 
@@ -478,21 +542,14 @@ function clarificationFor(input: {
   }
   if (!input.formTurn) return null;
 
+  // A stated name that is not on the roster stays on the form. The reply says
+  // so once. Warning level, title, and the policy are filled on the card
+  // rather than replacing it with another question.
   const missing: string[] = [];
-  if (!input.state.employeeName) {
-    missing.push(
-      input.employee.typed
-        ? `which employee — **${input.employee.typed}** is not in the Woven roster`
-        : "which employee",
-    );
-  }
+  if (!input.state.employeeName) missing.push("which employee");
   if (!input.state.salonId) missing.push("which salon");
-  if (input.state.employeeName && !input.state.title) missing.push("the job title");
-  if (!input.state.incidentType) missing.push("what happened");
   if (!input.state.formDate) missing.push("the date it happened");
-  if (!input.state.templateKey) missing.push("which form");
   const corrective = isCorrective(input.state.templateKey, input.templates);
-  if (corrective && !input.state.warningLevel) missing.push("the warning level, verbal or written");
   if (corrective && input.state.payrollDeduct === "yes" && !input.state.payrollAmount) missing.push("the payroll amount");
   if (missing.length === 0) return null;
   return `I still need ${joinList(missing)}.`;

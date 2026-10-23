@@ -216,3 +216,16 @@ cancelled order beside the deduction not read as a waiver, the register
 autofill off on typed form fields, and the audit's manual fixture with
 invented wording. Sunny-only: its payroll Yes is read only when stated, and
 the warning level stays on the form.
+
+## 23 Oct 2026: form-card slots and form-turn citations
+
+Live prompts kept asking for a salon Woven already records, dropped a date,
+a title, and a payroll amount when the employee was not verified, re-asked
+the warning level on a resend, and let a finalized corrective action block a
+new coaching card. A form turn also returned no sources. The slots stay on
+the proposal. The salon is the employee's Woven primary location when the
+manager did not name one. A name that is not in the roster stays, with one
+sentence. Citations are the retrieved manual's heading and printed page,
+including a heading the intent tool chose from that list. No new migration.
+Sibling app: port after this branch is green, or recorded here if Ask
+Bubbles is not writable from this session.

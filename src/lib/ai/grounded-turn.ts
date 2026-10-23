@@ -2,8 +2,13 @@ import "server-only";
 
 import {
   draftDedupeEnabled,
+  fieldAccuracyEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
+  intentExtractionEnabled,
+  policyCitationEnabled,
+  secondFormEnabled,
+  slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
@@ -16,6 +21,7 @@ import type { AskRequest } from "./types";
 
 import { captureFormState, prependFormState, type ConversationFormState } from "./form-state";
 import { loadFormState, saveFormState } from "./form-state-store";
+import { enrichFormCard } from "./form-card-slots";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
 /**
@@ -49,7 +55,16 @@ export async function deliverFormProposal(input: {
   const dedupe = draftDedupeEnabled();
   if (!entities && !stateOn && !dedupe) {
     const proposed = await input.propose(input.question);
-    return proposed ? input.decorate(proposed) : null;
+    if (!proposed) return null;
+    const decorated = await input.decorate(proposed);
+    if (!cardSlotsEnabled()) return decorated;
+    return enrichFormCard({
+      response: decorated,
+      question: input.question,
+      today: input.request.context.todayIso,
+      people: [],
+      saved: null,
+    });
   }
 
   const saved = await readSaved(stateOn, input.actor.subject, input.request.conversationId);
@@ -76,13 +91,34 @@ export async function deliverFormProposal(input: {
     ? applyGroundedProposal(decorated, { people, prep, rosterEmpty: people.length === 0 })
     : decorated;
 
-  const reopened = await reopenSameIncident(dedupe, input, applied);
+  const enriched = cardSlotsEnabled()
+    ? enrichFormCard({
+        response: applied,
+        question: input.question,
+        today: input.request.context.todayIso,
+        people,
+        saved,
+      })
+    : applied;
+
+  const reopened = await reopenSameIncident(dedupe, input, enriched);
   if (reopened) {
-    await writeSaved(stateOn, input, saved, applied, prep);
+    await writeSaved(stateOn, input, saved, enriched, prep);
     return reopened;
   }
-  await writeSaved(stateOn, input, saved, applied, prep);
-  return applied;
+  await writeSaved(stateOn, input, saved, enriched, prep);
+  return enriched;
+}
+
+function cardSlotsEnabled(): boolean {
+  return (
+    slotRetentionEnabled() ||
+    fieldAccuracyEnabled() ||
+    groundedEntitiesEnabled() ||
+    intentExtractionEnabled() ||
+    policyCitationEnabled() ||
+    secondFormEnabled()
+  );
 }
 
 async function loadPeople(actor: ChatActor): Promise<GroundedPerson[]> {
@@ -90,7 +126,7 @@ async function loadPeople(actor: ChatActor): Promise<GroundedPerson[]> {
     const facts = await readDirectoryFacts(actor.scope);
     if (facts.length > 0) return facts.map(asPerson);
     const roster = await loadScopedRoster(actor.scope);
-    return roster.map((person) => ({ ...person, title: null, primaryLocationName: null }));
+    return roster.map((person) => ({ ...person, title: null, primaryLocationName: null, primarySalonId: null }));
   } catch {
     return [];
   }
@@ -105,6 +141,7 @@ function asPerson(fact: DirectoryFact): GroundedPerson {
     salonIds: fact.salonIds,
     title: fact.title,
     primaryLocationName: fact.primaryLocationName,
+    primarySalonId: fact.primarySalonId,
   };
 }
 
