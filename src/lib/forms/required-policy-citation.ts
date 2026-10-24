@@ -1,3 +1,5 @@
+import { citationAppendOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { describedAttendanceKeys, readCaPolicy } from "./ca-policy";
 import {
   findManualSection,
@@ -89,6 +91,12 @@ export function policyFieldsWithCitation(input: {
       if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
       const current = (values[key] ?? "").trim();
       if (/p\.\s*\d+|page\s+\d+/i.test(current) || current.includes(line)) continue;
+      /*
+       * An empty Observation, coaching, or policy field stays empty.
+       * The citation is appended only where the manager already has text.
+       * Off, an empty field is still replaced by "Section, p.N".
+       */
+      if (!current && citationAppendOnlyEnabled()) continue;
       values[key] = current ? `${current}\n\n${line}` : line;
     }
   }

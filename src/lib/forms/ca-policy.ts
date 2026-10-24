@@ -1,3 +1,5 @@
+import { policyReadsAsEnabled } from "@/lib/config/chat-quality-flags";
+
 import { JOIN } from "./bounded-context";
 import {
   findManualSection,
@@ -93,6 +95,12 @@ export interface CaPolicyReading {
   ambiguous: CaPolicyName[] | null;
   /** A scheduled meeting, seminar or training session the account says was not attended: "the monthly meeting". */
   missedEvent: string | null;
+  /**
+   * The stated policy was inferred from what happened ("wore leggings",
+   * "opened late"), not from the policy's own name. Absent means named,
+   * or not stated.
+   */
+  inferred?: boolean;
 }
 
 /* ------------------------------------------------------------ the words -- */
@@ -252,8 +260,15 @@ const POLICY_FRAME =
 const AGAINST_BEFORE = /\b(?:against|breaking|broke|breaks)\s+(?:the\s+|our\s+|company\s+)?$/;
 const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\s+){0,2}$/;
 
-function statedIn(turn: string): CaPolicyName | null {
-  let found: { name: CaPolicyName; at: number } | null = null;
+/** "wore leggings" and "opened late" are the incident, not the policy's name. */
+function inferredPolicyPhrase(name: CaPolicyName, matched: string): boolean {
+  if (name === "dress_code" && /\bleggings\b/i.test(matched)) return true;
+  if (name === "late_opening" && /\bopen(?:ed|ing)\s+late\b/i.test(matched)) return true;
+  return false;
+}
+
+function statedIn(turn: string): { name: CaPolicyName; inferred: boolean } | null {
+  let found: { name: CaPolicyName; at: number; inferred: boolean } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
   for (const sentence of statements(turn)) {
     for (const { name, pattern, alwaysAPolicy } of NAMED) {
@@ -265,10 +280,10 @@ function statedIn(turn: string): CaPolicyName | null {
       }
       // The last policy named in the turn is its answer: "not attendance — standards of conduct".
       const at = turn.indexOf(sentence) + match.index;
-      if (!found || at >= found.at) found = { name, at };
+      if (!found || at >= found.at) found = { name, at, inferred: inferredPolicyPhrase(name, match[0]) };
     }
   }
-  return found?.name ?? null;
+  return found ? { name: found.name, inferred: found.inferred } : null;
 }
 
 /* ------------------------------------------------------------- reading -- */
@@ -287,7 +302,13 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
   const missedEvent = missedEventIn(sentences);
 
   let stated: CaPolicyName | null = null;
-  for (const turn of turns) stated = statedIn(turn) ?? stated;
+  let inferred = false;
+  for (const turn of turns) {
+    const next = statedIn(turn);
+    if (!next) continue;
+    stated = next.name;
+    inferred = next.inferred;
+  }
   /*
    * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
    * District Manager's 21 Oct report ("not attending the monthly meeting" was
@@ -317,6 +338,7 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
       source: stated === STANDARDS_OF_CONDUCT ? "stated" : null,
       ambiguous: null,
       missedEvent,
+      inferred,
     };
   }
   if (topics.length === 0) {
@@ -563,6 +585,15 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   }
   if (reading.suggestion && reading.source === "stated") {
     return "**Policy:** Standards of Conduct, as you said. I'll quote that section from the current policy manual on the draft.";
+  }
+  if (policyReadsAsEnabled() && reading.inferred && reading.stated) {
+    const label = CA_POLICY_LABEL[reading.stated];
+    if (reading.stated === "attendance" || reading.stated === "dress_code" || reading.stated === "late_opening") {
+      return `**Policy:** this reads as **${label}**. I'll quote that section from the current policy manual on the draft.`;
+    }
+    if (reading.stated === "under_performance" || reading.stated === "company_policies") {
+      return `**Policy:** this reads as **${label}**. The policy manual has no single section to quote for it, so Direct policy is left for you to complete.`;
+    }
   }
   if (reading.stated === "attendance" || reading.stated === "dress_code" || reading.stated === "late_opening") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. I'll quote that section from the current policy manual on the draft.`;

@@ -36,6 +36,13 @@ import {
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
+  warningLevelExplicitEnabled,
+  policyReadsAsEnabled,
+  personNameOnlyEnabled,
+  payrollExplicitDeductEnabled,
+  citationAppendOnlyEnabled,
+  incidentDateOnFormEnabled,
+  formFullRemapEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -89,6 +96,13 @@ const NEW_FLAGS = [
   "CODE_SLOTS_ENABLED",
   "GLOBAL_SALON_ASK_ENABLED",
   "MANUAL_TOPIC_PIN_ENABLED",
+  "WARNING_LEVEL_EXPLICIT_ENABLED",
+  "POLICY_READS_AS_ENABLED",
+  "PERSON_NAME_ONLY_ENABLED",
+  "PAYROLL_EXPLICIT_DEDUCT_ENABLED",
+  "CITATION_APPEND_ONLY_ENABLED",
+  "INCIDENT_DATE_ON_FORM_ENABLED",
+  "FORM_FULL_REMAP",
 ] as const;
 
 const PROTECTED = [
@@ -191,6 +205,13 @@ describe("new flags default off and wrappers are inert", () => {
     expect(codeSlotsEnabled()).toBe(false);
     expect(globalSalonAskEnabled()).toBe(false);
     expect(manualTopicPinEnabled()).toBe(false);
+    expect(warningLevelExplicitEnabled()).toBe(false);
+    expect(policyReadsAsEnabled()).toBe(false);
+    expect(personNameOnlyEnabled()).toBe(false);
+    expect(payrollExplicitDeductEnabled()).toBe(false);
+    expect(citationAppendOnlyEnabled()).toBe(false);
+    expect(incidentDateOnFormEnabled()).toBe(false);
+    expect(formFullRemapEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

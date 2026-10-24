@@ -1,3 +1,4 @@
+import { citationAppendOnlyEnabled } from "@/lib/config/chat-quality-flags";
 import { printedPageOf } from "@/lib/ingestion/extract/pdf-sections";
 import {
   approvedManualConfirmed,
@@ -96,6 +97,12 @@ export function flaggedCitationWrite(input: {
   if (narrative) {
     const current = input.values[narrative] ?? "";
     if (current.includes(line)) return { values: input.values, provenance: {} };
+    /*
+     * The older citation path, with POLICY_PAGE_REQUIRED off. An empty
+     * coaching or follow-up observation was replaced by the reference.
+     * With the append-only flag, that empty field is left alone.
+     */
+    if (!current.trim() && citationAppendOnlyEnabled()) return { values: input.values, provenance: {} };
     const next = current.trim() ? `${current.trim()}\n\nPolicy reference: ${line}` : `Policy reference: ${line}`;
     return { values: { ...input.values, [narrative]: next }, provenance: {} };
   }
@@ -104,6 +111,7 @@ export function flaggedCitationWrite(input: {
   if (
     (input.templateKey === "dpoa" || input.templateKey === "policy-review") &&
     !(input.values.policy_language ?? "").trim() &&
+    !citationAppendOnlyEnabled() &&
     paged.length > 0 &&
     input.manual
   ) {

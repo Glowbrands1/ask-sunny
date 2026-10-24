@@ -13,6 +13,19 @@
 
 import { statedPayrollDeduct } from "./payroll-deduct-answer";
 
+/**
+ * Same on-values as `envFlag`, read here so this file keeps its one import.
+ * `chat-quality-flags.ts` would pull the reader back into the intake cycle
+ * this module was split out to break (22 Oct 2026).
+ */
+const WARNING_LEVEL_EXPLICIT_ON = new Set(["1", "true", "on", "yes"]);
+
+function warningLevelExplicitEnabled(): boolean {
+  const raw = process.env.WARNING_LEVEL_EXPLICIT_ENABLED;
+  if (typeof raw !== "string") return false;
+  return WARNING_LEVEL_EXPLICIT_ON.has(raw.trim().toLowerCase());
+}
+
 /** Lower-cased, with horizontal runs collapsed and newlines kept (the same reading as the intake's). */
 function normalize(text: string): string {
   return (text ?? "").toLowerCase().replace(/[^\S\n]+/g, " ");
@@ -194,8 +207,17 @@ function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
 /** The level one manager turn states for this form, or null. */
 export function statedWarningLevel(text: string): StatedWarningLevel | null {
   const levels = new Set<StatedWarningLevel>();
+  /*
+   * "WRITE UP" AND "WRITTEN UP" NAME THE FORM, not the Written Warning
+   * level. "type of warning - written up" was read as written because
+   * the label pattern stops at the word "written". Masked only when the
+   * flag is on, so a real "written warning" or a bare "written" stays.
+   */
+  const source = warningLevelExplicitEnabled()
+    ? text.replace(/\bwritten\s+up\b/gi, " ").replace(/\bwrite[- ]?ups?\b/gi, " ")
+    : text;
   // A sentence at a time, so a cue in one sentence says nothing about the next.
-  for (const sentence of normalize(text).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
+  for (const sentence of normalize(source).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
     if (sentence[0].endsWith("?") && !POLITE_LEVEL_REQUEST.test(body) && !ASKS_FOR_THE_FORM.test(body)) continue;
 

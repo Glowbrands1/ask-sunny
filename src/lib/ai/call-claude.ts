@@ -332,10 +332,17 @@ export async function callClaudeTool(input: {
     };
   };
   readonly maxTokens: number;
+  /**
+   * Record this call on the open chat trace. The answer path stays on
+   * `callClaude`. Form extraction opts in so a form turn has a model and
+   * token counts. Omitted, this function does not touch the trace.
+   */
+  readonly trace?: boolean;
 }): Promise<unknown> {
-  const client = getAnthropicClient();
+  const started = Date.now();
   const messages = input.messages.filter((message) => message.content.trim() !== "");
   try {
+    const client = getAnthropicClient();
     const toolParams = {
       model: input.model,
       max_tokens: input.maxTokens,
@@ -371,8 +378,27 @@ export async function callClaudeTool(input: {
         502,
       );
     }
+    if (input.trace) {
+      noteModelCall({
+        model: input.model,
+        maxTokens: input.maxTokens,
+        stopReason: response.stop_reason ?? null,
+        latencyMs: Date.now() - started,
+        usage: response.usage,
+      });
+    }
     return block.input;
   } catch (error) {
+    if (input.trace) {
+      noteModelCall({
+        model: input.model,
+        maxTokens: input.maxTokens,
+        stopReason: null,
+        latencyMs: Date.now() - started,
+        usage: null,
+        error,
+      });
+    }
     if (error instanceof AiError) throw error;
     if (error instanceof MissingConfigurationError) throw error;
     throw modelUnavailable(error);
