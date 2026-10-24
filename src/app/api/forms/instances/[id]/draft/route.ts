@@ -6,6 +6,7 @@ import {
   actionPlanSentencesEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
+  payrollAmountFieldEnabled,
   policyCitationEnabled,
   policyPageRequiredEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -136,8 +137,13 @@ import {
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
 import {
+  PAYROLL_AMOUNT_KEY,
+  PAYROLL_AMOUNT_STATED_KEYS,
+} from "@/lib/forms/payroll-amount-field";
+import {
   PAYROLL_DEDUCT_KEY,
   isPayrollDeductAnswer,
+  payrollAmountFromConversation,
   payrollDeductAmount,
 } from "@/lib/forms/payroll-deduct";
 import {
@@ -310,6 +316,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * change to forms nobody asked about.
      */
     const changeKind = employmentChangeKind(loaded.instance.templateKey);
+    /*
+     * THE AMOUNT THE MANAGER STATED, onto the blank Payroll deduction amount
+     * line. Only when that line is on, payroll is already Yes, and these notes
+     * state a figure. A quoted policy amount is not written. An empty line
+     * stays empty. See `payrollAmountFromConversation`.
+     */
+    if (payrollAmountFieldEnabled()) {
+      const payrollAnswer =
+        (loaded.values ?? [])
+          .find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)
+          ?.checked.find(isPayrollDeductAnswer) ?? null;
+      const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
+        payrollAnswer,
+      });
+      if (amount) {
+        await applyStatedFacts(
+          id,
+          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+        );
+      }
+    }
     const statedFacts = changeKind
       ? await applyStatedFacts(
           id,

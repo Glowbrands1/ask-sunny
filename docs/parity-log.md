@@ -5,6 +5,23 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Payroll deduction amount — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Pau approved the field; the guide-check note below that said no amount
+field is superseded for this line only.
+
+- `PAYROLL_AMOUNT_FIELD_ENABLED` — the Corrective Action card and PDF gain
+  **Payroll deduction amount** immediately after "Is payroll deduct
+  applicable?". The figure is one the manager stated (`payrollDeductAmount`,
+  or a figure on that same Yes, or a bare figure answering the question).
+  Late Opening's "$25.00 via payroll deduction" does not fill it. The line
+  stays blank when payroll is not Yes. When payroll is Yes and no figure was
+  given, the chat asks once and does not ask again. The card and finalize
+  are not held for it. Off, the document, the ask, and the PDF do not
+  include the line.
+
 ## 24 Oct 2026: guide code check — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.

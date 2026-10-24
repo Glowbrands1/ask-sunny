@@ -4,7 +4,11 @@ import { salonById } from "@/data/salons";
 
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import { errorResponse } from "@/lib/api/respond";
-import { conversationProposalDedupeEnabled, draftDedupeEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  conversationProposalDedupeEnabled,
+  draftDedupeEnabled,
+  payrollAmountFieldEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
 import {
@@ -34,8 +38,13 @@ import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
 import {
+  PAYROLL_AMOUNT_KEY,
+  PAYROLL_AMOUNT_STATED_KEYS,
+} from "@/lib/forms/payroll-amount-field";
+import {
   isPayrollDeductAnswer,
   PAYROLL_DEDUCT_STATED_KEYS,
+  payrollAmountFromConversation,
   payrollDeductChecked,
 } from "@/lib/forms/payroll-deduct";
 import type { Permission } from "@/types";
@@ -131,6 +140,7 @@ export async function POST(request: Request) {
       source?: "manual" | "ask_sunny";
       formDate?: string;
       payrollDeduct?: unknown;
+      payrollDeductAmount?: unknown;
       warningLevel?: unknown;
       /** The chat the proposal came from, for `checkProposalIsCurrent`. Ask Sunny only. */
       conversation?: unknown;
@@ -322,6 +332,27 @@ export async function POST(request: Request) {
         actor.id,
         PAYROLL_DEDUCT_STATED_KEYS,
       );
+    }
+
+    /*
+     * PAYROLL DEDUCTION AMOUNT, FROM THE MANAGER'S OWN WORDS.
+     *
+     * Written only when the amount field is on, payroll is Yes, and the
+     * conversation states a figure. The body may carry the same figure; it is
+     * not the source. A policy quotation is not a figure. No figure means the
+     * line stays blank, and the form is still created.
+     */
+    if (payrollAmountFieldEnabled() && body.payrollDeduct === "yes" && Array.isArray(body.conversation)) {
+      const turns = parseHistory(body.conversation);
+      const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
+      if (amount) {
+        await applyStatedFacts(
+          String(instance.id),
+          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+        );
+      }
     }
 
     /*

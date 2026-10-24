@@ -279,10 +279,20 @@ export function unifiedAuthorityOrderEnabled(): boolean {
 /**
  * The payroll amount on a corrective action is only an amount the manager
  * stated. Off, a Yes with no amount can still take the one figure Direct
- * policy quotes ("$25.00" under Late Opening). No amount field is added.
+ * policy quotes ("$25.00" under Late Opening) into the action-plan sentence.
+ * The visible amount field is a separate flag.
  */
 export function managerPayrollAmountOnlyEnabled(): boolean {
   return envFlag("MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED");
+}
+
+/**
+ * The Corrective Action card and PDF show "Payroll deduction amount" after
+ * the payroll Yes/No. The figure is one the manager stated. Off, that line
+ * is not on the document, not asked, and not written.
+ */
+export function payrollAmountFieldEnabled(): boolean {
+  return envFlag("PAYROLL_AMOUNT_FIELD_ENABLED");
 }
 
 /**
