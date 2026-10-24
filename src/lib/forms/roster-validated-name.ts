@@ -1,4 +1,4 @@
-import { isFieldLabelWord, NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
+import { isFieldLabelWord, nameAfterNameLabel, NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
 import { extractEmployeeNames } from "./proposal";
 
@@ -87,6 +87,8 @@ export function stripNonNameTokens(span: string, salonNames: readonly string[]):
 }
 
 function nameIs(text: string): string | null {
+  const afterLabel = nameAfterNameLabel(text);
+  if (afterLabel) return afterLabel;
   const labelled = /(?:employee(?:'s)?\s+name|name)\s+is\s+([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,3})/i.exec(text)?.[1];
   if (labelled) return labelled;
   // The saved slot is repeated as its own line: "The employee is Betty Sue."

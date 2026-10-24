@@ -588,5 +588,21 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(s17.formProposal?.employeeName).toBe("Marissa Lempka");
     expect(s17.formProposal?.employeeName).not.toBe("Marissa Lempka Job");
     expect(s17.formProposal?.employeeRole).toBe("Tanning Consultant");
+
+    const named = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "stc-exit",
+        templateName: "Exit Form",
+        employeeName: "Job title",
+        employeeRole: "Job title",
+      })),
+      question: "Name: Christiana Headley, job title tanning consultant",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(named.formProposal?.employeeName).toBe("Christiana Headley");
+    expect(named.formProposal?.employeeName?.toLowerCase()).not.toBe("job title");
+    expect(named.formProposal?.employeeRole).toBe("Tanning Consultant");
   });
 });

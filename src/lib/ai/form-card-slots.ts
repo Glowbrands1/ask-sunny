@@ -6,7 +6,7 @@ import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/confi
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
-import { isFieldLabelWord, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
+import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
 import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
 import {
@@ -290,6 +290,8 @@ function preferRosterName(name: string | null, text: string, people: readonly Gr
 }
 
 function statedEmployee(text: string): string | null {
+  const labelled = nameAfterNameLabel(text);
+  if (labelled) return labelled;
   const marked = /The employee is ([^.\n]+)\./i.exec(text)?.[1]?.trim();
   if (marked && !isDocumentish(marked)) {
     const cleaned = stripFieldLabels(marked);
