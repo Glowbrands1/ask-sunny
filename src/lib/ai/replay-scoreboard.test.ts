@@ -7,10 +7,17 @@ import {
   REPLAY_LATENCY_GATE_MS,
   casesWhereOldPromptScoresBetter,
   judgeReplayCard,
+  judgeRulebookRun,
+  judgeRulebookRuns,
   latencyOverGate,
+  renderRulebookScoreboard,
   renderScoreboard,
+  rulebookVerdict,
+  twoSentencePlan,
   type ReplayCardCriteria,
   type ReplayRound,
+  type RulebookRun,
+  type RulebookSpec,
 } from "./replay-scoreboard";
 
 const CRITERIA: ReplayCardCriteria = {
@@ -106,6 +113,11 @@ describe("replay card criteria", () => {
       expect(board).toContain("417e80c12d7275681411606f87af851fb080b348");
       expect(board).toContain("prompt revert: none");
     }
+    if (board.includes("## Rulebook — old behaviour against guide v3")) {
+      expect(board).toContain("b9ae362fd80e1fc492c4326f80834cf105ef19b8");
+      expect(board).toContain("Totals:");
+      expect(board).toMatch(/worse 0\./);
+    }
   });
 
   it("names a case only when the old prompt passes and the current prompt fails", () => {
@@ -144,5 +156,75 @@ describe("replay card criteria", () => {
     expect(board).toContain("prompt text differs: no");
     expect(board).toContain("prompt revert: none");
     expect(board).toContain("417e80c12d7275681411606f87af851fb080b348");
+  });
+});
+
+const PLAN =
+  "Management will review the Late Opening policy with Test. Future policy violations may result in additional corrective action up to and including termination of employment.";
+
+const SPEC: RulebookSpec = {
+  employee: "Colene Shildt",
+  salon: null,
+  cardExpected: true,
+  date: "2026-09-29",
+  policy: "Attendance p.14",
+  expectPlan: true,
+  amount: { expect: "$25" },
+};
+
+function run(overrides: Partial<RulebookRun> = {}): RulebookRun {
+  return {
+    employeeName: "Colene Shildt",
+    locationId: null,
+    formDate: "2026-09-29",
+    hasCard: true,
+    speech: "The draft is ready.",
+    cardText: PLAN,
+    policySatisfied: true,
+    payrollDeductAmount: "$25.00",
+    ...overrides,
+  };
+}
+
+describe("rulebook old against new", () => {
+  it("keeps a typed name, an unknown salon, the manager's amount, and a two-sentence plan", () => {
+    expect(twoSentencePlan(PLAN)).toBe(true);
+    expect(
+      twoSentencePlan(
+        "Management will review the Late Opening policy with Test. A payroll deduction of $25 applies. Future policy violations may result in additional corrective action up to and including termination of employment.",
+      ),
+    ).toBe(false);
+    expect(judgeRulebookRun(SPEC, run())).toEqual([]);
+    expect(judgeRulebookRun(SPEC, run({ employeeName: "Colene Schildt", hasCard: false, payrollDeductAmount: null }))).toEqual([
+      "employee",
+      "typed",
+      "salon",
+      "amount",
+    ]);
+  });
+
+  it("calls a column worse only when it misses a rule the other passed", () => {
+    expect(rulebookVerdict(["amount", "plan"], ["plan"])).toBe("better");
+    expect(rulebookVerdict(["plan"], ["plan"])).toBe("same");
+    expect(rulebookVerdict(["plan"], ["plan", "employee"])).toBe("worse");
+    expect(judgeRulebookRuns(SPEC, [run(), run({ formDate: null }), run()], 30)).toEqual(["date"]);
+    expect(judgeRulebookRuns(SPEC, [run(), run(), run()], REPLAY_LATENCY_GATE_MS + 1)).toEqual(["latency"]);
+  });
+
+  it("writes the per-case table without a failing mark", () => {
+    const board = renderRulebookScoreboard({
+      oldCommit: "b9ae362fd80e1fc492c4326f80834cf105ef19b8",
+      newCommit: "ac804b960940ac642edca27629df9de0f4e51d88",
+      runs: 3,
+      rows: [
+        { id: "n2", oldMisses: ["amount"], newMisses: [], verdict: "better" },
+        { id: "s20", oldMisses: [], newMisses: [], verdict: "same" },
+      ],
+    });
+    expect(board).toContain("| n2 | amount | pass | better |");
+    expect(board).toContain("| s20 | pass | pass | same |");
+    expect(board).toContain("Totals: better 1, same 1, worse 0.");
+    expect(board).not.toContain("FAIL");
+    expect(board).toContain("salon does not gate the card");
   });
 });
