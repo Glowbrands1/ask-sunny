@@ -230,35 +230,37 @@ Totals: better 17, same 4, worse 0.
 
 One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the 3 runs together. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.
 
-- commit: `b82ee7cd5bcbf851e32dc55b32bda050182c6fce`
-- flag set: `INTENT_EXTRACTION_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, CODE_SLOTS_ENABLED`
+- commit: `bd882f0430822d486f721d77f0b75a1608e6da3d`
+- harness: local
+- flag set: `INTENT_EXTRACTION_ENABLED=1 GROUNDED_ENTITIES_ENABLED=1 DRAFT_MERGE_ENABLED=1 TYPED_NAME_PROCEEDS_ENABLED=1 CODE_SLOTS_ENABLED=1 SELF_CHECK_ENABLED=false`
+- SELF_CHECK_ENABLED=false
 - SELF_CHECK: off
 - runs: 3
 - accepted: yes
 
 | Case | Before | After | Latency | Round |
 | --- | --- | --- | --- | --- |
-| s4 | pass | pass | 1017ms vs 3059ms | held |
-| s9 | date | pass | 458ms vs 485ms | fixed |
-| s11 | pass | pass | 437ms vs 452ms | held |
-| s5 | date | pass | 406ms vs 439ms | fixed |
-| s27 | pass | pass | 589ms vs 630ms | held |
-| s28 | salon | pass | 105ms vs 117ms | fixed |
-| s29 | salon | pass | 62ms vs 66ms | fixed |
-| s17 | date | pass | 344ms vs 360ms | fixed |
-| s20 | pass | pass | 312ms vs 334ms | held |
-| s21 | pass | pass | 383ms vs 398ms | held |
+| s4 | pass | pass | 943ms vs 3106ms | held |
+| s9 | date | pass | 520ms vs 501ms | fixed |
+| s11 | pass | pass | 456ms vs 460ms | held |
+| s5 | date | pass | 403ms vs 439ms | fixed |
+| s27 | pass | pass | 580ms vs 662ms | held |
+| s28 | salon | pass | 106ms vs 129ms | fixed |
+| s29 | salon | pass | 64ms vs 66ms | fixed |
+| s17 | date | pass | 350ms vs 377ms | fixed |
+| s20 | pass | pass | 311ms vs 339ms | held |
+| s21 | pass | pass | 382ms vs 423ms | held |
 | s25 | blocking | pass | 136ms vs 146ms | fixed |
-| s8 | blocking | pass | 1008ms vs 1056ms | fixed |
-| s12 | pass | pass | 146ms vs 151ms | held |
-| s16 | pass | pass | 172ms vs 178ms | held |
-| b9 | blocking | pass | 330ms vs 345ms | fixed |
-| b10 | employee, typed, salon, date | pass | 570ms vs 603ms | fixed |
-| b11 | employee, typed, salon | pass | 76ms vs 87ms | fixed |
-| b12 | pass | pass | 739ms vs 762ms | held |
-| n1 | pass | pass | 205ms vs 212ms | held |
+| s8 | blocking | pass | 1002ms vs 1079ms | fixed |
+| s12 | pass | pass | 145ms vs 153ms | held |
+| s16 | pass | pass | 170ms vs 179ms | held |
+| b9 | blocking | pass | 328ms vs 349ms | fixed |
+| b10 | employee, typed, salon, date | pass | 565ms vs 603ms | fixed |
+| b11 | employee, typed, salon | pass | 77ms vs 87ms | fixed |
+| b12 | pass | pass | 745ms vs 767ms | held |
+| n1 | pass | pass | 203ms vs 212ms | held |
 | n2 | blocking | pass | 45ms vs 49ms | fixed |
-| n3 | date | pass | 66ms vs 69ms | fixed |
+| n3 | date | pass | 67ms vs 98ms | fixed |
 
 Gate: fixed 12 (s9, s5, s28, s29, s17, s25, s8, b9, b10, b11, n2, n3), broken 0, latency 0, leaked 0.
 

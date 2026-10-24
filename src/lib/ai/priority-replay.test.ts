@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { selfCheckEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MODEL } from "@/lib/config/models";
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
@@ -1117,10 +1118,16 @@ function setFlags(on: boolean) {
   }
 }
 
+/** Explicit env for round 1. Self-check is set to false, not left unset. */
+const ROUND1_FLAG_SET = [
+  ...ROUND1_FLAGS.map((name) => `${name}=1`),
+  "SELF_CHECK_ENABLED=false",
+] as const;
+
 function setRound1Flags() {
   setFlags(false);
   for (const name of ROUND1_FLAGS) process.env[name] = "1";
-  delete process.env.SELF_CHECK_ENABLED;
+  process.env.SELF_CHECK_ENABLED = "false";
   selectPromptRevision("current");
   captured.recordSystems = false;
   recordHarness.on = false;
@@ -1672,7 +1679,9 @@ describe("round 1 structural name, slot, and salon", () => {
       setFlags(false);
       const before = await structuralRuns(item, `-r1off-${item.id}`);
       setRound1Flags();
-      expect(process.env.SELF_CHECK_ENABLED, "SELF_CHECK stays off").toBeUndefined();
+      expect(process.env.SELF_CHECK_ENABLED, "SELF_CHECK_ENABLED=false").toBe("false");
+      expect(selfCheckEnabled(), "self-check stays off").toBe(false);
+      for (const name of ROUND1_FLAGS) expect(process.env[name], name).toBe("1");
       const after = await structuralRuns(item, `-r1-${item.id}`);
       const spec = structuralSpec(item);
       const beforeMisses = judgeRulebookRuns(
@@ -1706,8 +1715,9 @@ describe("round 1 structural name, slot, and salon", () => {
     round1Markdown = renderFixRound({
       title: "Round 1 — structural name, slot, and salon",
       commit,
-      flags: ROUND1_FLAGS,
+      flags: ROUND1_FLAG_SET,
       selfCheck: "off",
+      harness: "local",
       runs: RUNS,
       rows,
       decision,

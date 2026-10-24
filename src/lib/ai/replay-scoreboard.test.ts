@@ -122,10 +122,12 @@ describe("replay card criteria", () => {
     }
     if (board.includes("## Round 1 — structural name, slot, and salon")) {
       const round1 = board.slice(board.indexOf("## Round 1 — structural name, slot, and salon"));
+      expect(round1).toContain("SELF_CHECK_ENABLED=false");
       expect(round1).toContain("SELF_CHECK: off");
+      expect(round1).toContain("harness: local");
       expect(round1).toContain("- accepted: yes");
       expect(round1).toContain("broken 0, latency 0, leaked 0");
-      expect(round1).not.toContain("SELF_CHECK_ENABLED");
+      expect(round1).not.toMatch(/SELF_CHECK_ENABLED=(1|true|on|yes)/);
     }
   });
 

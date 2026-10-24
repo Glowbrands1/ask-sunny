@@ -14,9 +14,10 @@ SELF_CHECK stays off. Nothing was published. The manual title stays
 chat or form seam.
 
 - The replay's round 1 flag set is intent extraction, grounded entities,
-  draft merge, typed name proceeds, and code slots. A round is kept only
-  when it fixes at least one failing case, breaks none, stays within 25%
-  of the previous round's latency, and leaks no internal text.
+  draft merge, typed name proceeds, and code slots, each `=1`, with
+  `SELF_CHECK_ENABLED=false`. It ran on the local harness. A round is
+  kept only when it fixes at least one failing case, breaks none, stays
+  within 25% of the previous round's latency, and leaks no internal text.
 
 ## 24 Oct 2026: Rulebook score, main against this branch — Sunny-only
 

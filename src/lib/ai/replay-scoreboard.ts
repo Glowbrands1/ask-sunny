@@ -403,6 +403,7 @@ export function renderFixRound(input: {
   readonly commit: string;
   readonly flags: readonly string[];
   readonly selfCheck: "off";
+  readonly harness: string;
   readonly runs: number;
   readonly rows: readonly FixRoundRow[];
   readonly decision: FixRoundDecision;
@@ -413,7 +414,9 @@ export function renderFixRound(input: {
     "One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the 3 runs together. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.",
     "",
     `- commit: \`${input.commit}\``,
-    `- flag set: \`${input.flags.join(", ")}\``,
+    `- harness: ${input.harness}`,
+    `- flag set: \`${input.flags.join(" ")}\``,
+    "- SELF_CHECK_ENABLED=false",
     "- SELF_CHECK: off",
     `- runs: ${input.runs}`,
     `- accepted: ${input.decision.accepted ? "yes" : "no"}`,
