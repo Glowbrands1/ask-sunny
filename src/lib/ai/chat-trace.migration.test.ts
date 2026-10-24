@@ -10,8 +10,18 @@ const SQL = readFileSync("supabase/migrations/20261023001100_chat_traces.sql", "
 const SLOTS_SQL = readFileSync("supabase/migrations/20261024012000_chat_traces_slots.sql", "utf8");
 const CACHE_SQL = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
 const E2E_SQL = readFileSync("supabase/migrations/20261024160000_chat_traces_e2e_latency.sql", "utf8");
+const RAW_SQL = readFileSync("supabase/migrations/20261024200000_chat_traces_raw_answer.sql", "utf8");
 
 describe("chat trace insert", () => {
+  it("warns when the raw answer column is missing", () => {
+    const warning = traceInsertWarning({
+      message: 'column "raw_answer" of relation "chat_traces" does not exist',
+      code: "42703",
+    });
+    expect(warning).toContain("raw answer column is missing");
+    expect(warning).toContain("20261024200000_chat_traces_raw_answer.sql");
+  });
+
   it("warns when the end-to-end latency column is missing", () => {
     const warning = traceInsertWarning({
       message: 'column "e2e_latency_ms" of relation "chat_traces" does not exist',
@@ -222,6 +232,56 @@ describe("chat_traces migration", () => {
       await harness.close();
     }
   });
+
+  it("appends a nullable raw_answer and leaves chat_traces_live as it was", async () => {
+    const statements = RAW_SQL.split("\n")
+      .filter((line) => !line.trim().startsWith("--"))
+      .join("\n");
+    expect(statements).toMatch(/add column if not exists raw_answer text/i);
+    expect(statements).not.toMatch(/not null/i);
+    expect(statements).not.toMatch(/drop (table|column|function|index|view)/i);
+    expect(statements).not.toMatch(/create (or replace )?view/i);
+
+    const harness = await createMigratedTestDatabase(
+      [
+        "20261023001100_chat_traces",
+        "20261024012000_chat_traces_slots",
+        "20261024020000_chat_traces_cache",
+        "20261024160000_chat_traces_e2e_latency",
+      ],
+      { platform: "create extension if not exists pgcrypto with schema extensions;" },
+    );
+    try {
+      const viewColumns = async () =>
+        (
+          await harness.db.query<{ column_name: string }>(
+            `select column_name from information_schema.columns
+              where table_schema = 'public' and table_name = 'chat_traces_live'
+              order by ordinal_position`,
+          )
+        ).rows.map((row) => row.column_name);
+      const before = await viewColumns();
+      // Run twice: the file is safe to apply again.
+      await harness.db.exec(RAW_SQL);
+      await harness.db.exec(RAW_SQL);
+      const table = await harness.db.query<{ column_name: string; is_nullable: string; data_type: string }>(
+        `select column_name, is_nullable, data_type from information_schema.columns
+          where table_schema = 'public' and table_name = 'chat_traces'
+          order by ordinal_position`,
+      );
+      const last = table.rows.at(-1);
+      expect(last).toEqual({ column_name: "raw_answer", is_nullable: "YES", data_type: "text" });
+      expect(table.rows.at(-2)?.column_name).toBe("e2e_latency_ms");
+      expect(await viewColumns()).toEqual(before);
+      // A writer from before the flag still inserts without naming the column.
+      await harness.db.exec("insert into public.chat_traces (original_query) values ('what is the dress code')");
+      const row = await harness.db.query<{ raw_answer: string | null }>("select raw_answer from public.chat_traces");
+      expect(row.rows).toEqual([{ raw_answer: null }]);
+    } finally {
+      await harness.close();
+    }
+    // Starting PGlite with its extensions takes several seconds on its own.
+  }, 30_000);
 
   it("redacts a key before the prompt is stored", () => {
     expect(redactTraceText("token sk-ant-abc123XYZ and the question")).toBe("token [redacted] and the question");

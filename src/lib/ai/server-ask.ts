@@ -123,7 +123,7 @@ import {
 import { loadFullManualContext } from "./full-manual-load";
 import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
-import { updateChatTrace } from "./chat-trace-store";
+import { noteRawAnswer, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
@@ -1513,6 +1513,8 @@ async function answerQuestionUntraced(
     manualBlock,
     fullManualBlock,
   });
+  // Before applyFullManualAnswer and marker stripping change a word.
+  noteRawAnswer(answer);
 
   /* ----------------------------------------------------------- citations -- */
   // Only the markers the model actually used become source cards, and each one

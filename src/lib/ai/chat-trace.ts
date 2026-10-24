@@ -96,6 +96,9 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
+      // Named only when CHAT_TRACE_RAW_ANSWER_ENABLED set it, so a database
+      // without the raw_answer column still takes the row.
+      ...(typeof draft.rawAnswer === "string" ? { raw_answer: draft.rawAnswer } : {}),
     });
     const error = inserted && typeof inserted === "object" && "error" in inserted ? inserted.error : null;
     if (error) throw error;
@@ -114,6 +117,9 @@ export function traceInsertWarning(error: unknown): string {
       : error && typeof error === "object" && "message" in error && typeof error.message === "string"
         ? error.message
         : String(error);
+  if (/raw_answer/i.test(message)) {
+    return `chat_traces insert skipped: the raw answer column is missing. Apply supabase/migrations/20261024200000_chat_traces_raw_answer.sql before CHAT_TRACE_RAW_ANSWER_ENABLED. ${message}`;
+  }
   if (/e2e_latency_ms/i.test(message)) {
     return `chat_traces insert skipped: the end-to-end latency column is missing. Apply supabase/migrations/20261024160000_chat_traces_e2e_latency.sql before CHAT_TRACE_ENABLED. ${message}`;
   }
