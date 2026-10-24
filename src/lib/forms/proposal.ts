@@ -7,7 +7,7 @@ import { storeNameKey } from "@/lib/reporting/store-identity";
 import { groundedEntitiesEnabled, intentExtractionEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
-import { extractFormDate } from "./form-date-answer";
+import { resolveStatedFormDate } from "./form-input-fidelity";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD, isFieldLabelWord, lowercaseMonths, stripFieldLabels } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
@@ -1904,7 +1904,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     formDate:
       input.formDateFromConversation === false
         ? null
-        : extractFormDate(input.context.text, input.today ?? businessToday()),
+        : resolveStatedFormDate(input.context.text, input.today ?? businessToday()),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and

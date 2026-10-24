@@ -355,3 +355,12 @@ export function globalSalonAskEnabled(): boolean {
 export function manualTopicPinEnabled(): boolean {
   return envFlag("MANUAL_TOPIC_PIN_ENABLED");
 }
+
+/**
+ * A typed incident date stays on the form, and a one-word follow-up stays
+ * off Job Title. Off, a relative day is still not a calendar date, and a
+ * short reply the model copied into the title slot is still kept.
+ */
+export function formInputFidelityEnabled(): boolean {
+  return envFlag("FORM_INPUT_FIDELITY_ENABLED");
+}

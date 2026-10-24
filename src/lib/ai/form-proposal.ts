@@ -100,6 +100,7 @@ import {
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { correctedDates, correctedFormDate, extractFormDate, priorSteps } from "@/lib/forms/form-date-answer";
+import { resolveStatedFormDate } from "@/lib/forms/form-input-fidelity";
 import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
@@ -759,7 +760,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
       correctedFormDate(
         scoped.messages.map((message) => message.content),
         input.today ?? businessToday(),
-      ) ?? extractFormDate(scoped.text, input.today ?? businessToday());
+      ) ?? resolveStatedFormDate(scoped.text, input.today ?? businessToday());
   }
 
   /*

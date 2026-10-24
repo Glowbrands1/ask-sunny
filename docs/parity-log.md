@@ -1,5 +1,23 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: typed dates and bare follow-ups — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No migration and
+no merge.
+
+- `FORM_INPUT_FIDELITY_ENABLED` defaults off. Off, a relative day is still
+  not a calendar date, and a one-word reply the model copied into the title
+  slot is still kept.
+- On, "yesterday" and "last Tuesday" resolve against the business day passed
+  in, the same way a departure date already does. "Oct 20" and "10/20" stay
+  the incident date. A missing date is still the day the form is created.
+  A prior warning's "yesterday" is not the incident.
+- A bare "verbal", "written", "yes", or "Monday" is not Job Title. It fills
+  the question just asked (warning, date, or payroll) or it is left off the
+  title. A numbered intake that also lists the title is not a title question.
+  A real title ("TC", words after a job-title label that name one) stays.
+
 ## 24 Oct 2026: pin time off, W-2 and direct deposit by manual heading — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
