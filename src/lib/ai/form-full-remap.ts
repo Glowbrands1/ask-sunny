@@ -605,6 +605,8 @@ function phraseOffense(clause: string): string | null {
   let text = clause.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ");
   text = text.replace(/(?<![\d-])\d{1,2}-\d{1,2}(?!-\d)(?!\s*(?:min|mins|minutes|hrs|hours|hr)\b)/g, " ");
   text = text.replace(/\s+/g, " ").trim().replace(/^[,\s]+|[,\s.]+$/g, "");
+  // "register short $40 on 10-20" leaves "on" behind once the date is lifted.
+  text = text.replace(/\s+(?:on|at)$/i, "");
   if (!text || text.length > 80) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
   const title = titleAfterJobTitleLabel(text) ?? extractJobTitle(text) ?? teamMemberTitle(text);
@@ -640,6 +642,10 @@ function slotClause(clause: string): boolean {
   if (/^\s*coached on\b/i.test(text)) return true;
   if (/\bprior\s*=/i.test(text)) return true;
   if (/\bno payroll\b/i.test(text) && text.split(/\s+/).length <= 6) return true;
+  // "payroll deduct $40 applies" and "yes payroll deduct" answer the payroll
+  // question. Read as the incident, they replaced "register short $40".
+  if (/^(?:yes|no|yeah|nope)\b[\s,.!-]*payroll\b/i.test(text)) return true;
+  if (/\bpayroll\s+deduct(?:ion|ed|s)?\b/i.test(text) && text.split(/\s+/).length <= 8) return true;
   if (/\buse\s+.+\bas the (?:location|salon|store)\b/i.test(text)) return true;
   return false;
 }
