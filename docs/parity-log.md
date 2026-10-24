@@ -5,6 +5,121 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Payroll deduction amount — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Pau approved the field; the guide-check note below that said no amount
+field is superseded for this line only.
+
+- `PAYROLL_AMOUNT_FIELD_ENABLED` — the Corrective Action card and PDF gain
+  **Payroll deduction amount** immediately after "Is payroll deduct
+  applicable?". The figure is one the manager stated (`payrollDeductAmount`,
+  or a figure on that same Yes, or a bare figure answering the question).
+  Late Opening's "$25.00 via payroll deduction" does not fill it. The line
+  stays blank when payroll is not Yes. When payroll is Yes and no figure was
+  given, the chat asks once and does not ask again. The card and finalize
+  are not held for it. Off, the document, the ask, and the PDF do not
+  include the line.
+
+## 24 Oct 2026: guide code check — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. Every flag
+defaults off. Bubbles `self-check.ts` accepting either the printed page or
+the PDF sheet (guide item 10 / 20c) is Bubbles-only until that repo is
+attached.
+
+- `ACTION_PLAN_SENTENCES_ENABLED` — `correctiveActionPlan` leaves
+  `payrollDeductSentence` out of `action_plan`. The field is the review
+  sentence and the required closing. Rev 5 "may be subject to" is unchanged.
+  Self-check rejects a plan that is not those two sentences, including one
+  that still says an amount will be deducted.
+- `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — a Yes does not take "$25.00" from
+  Late Opening text. The amount is one the manager stated. No amount field
+  is added; Pau is deciding that.
+- `POLICY_GATE_NONBLOCKING_ENABLED` (browser:
+  `NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED`) — a blank Direct policy
+  stays blank and does not hold the card or finalize. A policy value
+  somebody typed that was never verified still asks for an acknowledgement.
+- `TYPED_NAME_PROCEEDS_ENABLED` — the close-match line is "Woven has **Jane
+  Doe** — say so if that's who you mean. Carry on; do not wait." The card
+  uses the typed name in that same reply. The note is not asked again. A
+  name that is not in Woven is not mentioned.
+- `MANUAL_SECTION_DEDUPE_ENABLED` — retrieval keeps one current-year chunk
+  per section heading (nearest match). The three indexed 2025 copies
+  (ce6b00f1, 5c626f3c, 94d9810f) are the test fixture, not a keep-list.
+  Nothing is deleted.
+- `PRINTED_PAGE_CITATION_ENABLED` — a citation uses the printed page. The
+  PDF `page` column is not cited when no printed page was stored.
+
+## 24 Oct 2026: prompt rule conflicts — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. Every flag
+defaults off.
+
+- `TYPED_NAME_PROCEEDS_ENABLED` — a name that is not an exact roster match
+  stays as typed. "Did you mean" and "Who is this for?" do not hold the
+  card. A close roster match may be offered in the same reply. Two people
+  the manager actually named are still a real "Which of them".
+- `ATTENDANCE_POLICY_CITATION_ENABLED` — tardiness cites Attendance by name
+  and page. A late opening still cites Late Opening. The ticked
+  "Tardiness/Leaving Early" box is not the citation.
+- `POLICY_PAGE_REQUIRED_ENABLED` — a form that resolves a manual section
+  cites that section's name and page on Direct policy, or on the coaching
+  or follow-up narrative. A page the manual did not print is not invented.
+- `ACTION_PLAN_SENTENCES_ENABLED` — already the two-sentence plan. A payroll
+  Yes stays on its own field, including when a plan is rebuilt on a newer
+  template version.
+- `UNIFIED_AUTHORITY_ORDER_ENABLED` — the employee-performance block and the
+  daily-stats block share one order of authority. Off, each list stays.
+
+## 24 Oct 2026: Late Opening, and the current manual at retrieval — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store.
+
+- `readCaPolicy` treats `late opening` and `opened late` as the Late Opening
+  policy. The offense box stays tardiness. A late arrival stays unnamed.
+  `policy acknowledgement` reads as unfinished required work (Standards of
+  Conduct). `wore leggings` reads as the dress code.
+- `CURRENT_MANUAL_SCOPE_ENABLED` (default off) asks the match for the SQL
+  clamp of 50 rows, drops older JBA editions, and collapses identical
+  sections. The 0.78 similarity floor is unchanged. Nothing here writes a
+  migration or deletes chunks. Two copies of the same year stay when their
+  text differs.
+
+## 24 Oct 2026: backend quality flags (Part A) — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The answering model stays whatever that app already uses; Sunny
+stays on Opus. Every flag defaults off.
+
+- `PROMPT_CACHE_ENABLED` — `cache_control: { type: "ephemeral" }` on the
+  static system prompt and the pinned policy-manual block. Off, the request
+  shape is unchanged.
+- `MODEL_RETRY_ENABLED` — 45s timeout, `maxRetries: 2`, and a plain message
+  when the model returns 529. Off, the SDK defaults and the existing failure
+  text stay.
+- `REQUIRED_FIELD_CHECK_ENABLED` — the next reply lists template fields the
+  proposal has not filled (Zod against the published template). A typed name
+  fills the employee field. Not being in Woven is not a missing field.
+- `CONVERSATION_PROPOSAL_DEDUPE_ENABLED` — a second create of the same
+  conversation and proposal returns that draft. Off, the existing card
+  lookup stays. Sunny's create source is `ask_sunny`.
+- `LONG_CONTEXT_ENABLED` — already the long-chat summary path. No second flag.
+- `CITATION_VERIFY_ENABLED` — a JBA Policy Manual heading and page is kept
+  only when the current manual chunks contain it.
+- `CHAT_TRACE_ENABLED` — already writes one row per turn. A no-card turn and
+  a turn with at most one retrieved chunk are tagged on `intent`
+  (`no_card`, `low_retrieval`) so they can be read back into replay cases.
+
+Part B (streaming, checklist, inline edits, citation chips, quick replies,
+resume-draft banner, accessibility) is a separate Sunny branch for Pau to
+approve. It is not in this change. Do not port that UI until it is approved
+and Ask Bubbles is attached.
+
 ## 24 Oct 2026: four low-rated Bubbles chats (b9–b12) — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy people, store

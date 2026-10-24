@@ -140,6 +140,12 @@ export async function createInlineForm({
        */
       ...(proposal.payrollDeduct ? { payrollDeduct: proposal.payrollDeduct } : {}),
       /*
+       * THE AMOUNT, ONLY WHERE THE MANAGER STATED ONE. Omitted otherwise, so
+       * the line stays blank. The create route reads it again from this
+       * conversation and does not take a figure from a policy.
+       */
+      ...(proposal.payrollDeductAmount ? { payrollDeductAmount: proposal.payrollDeductAmount } : {}),
+      /*
        * THE TYPE OF WARNING, ONLY WHERE THE MANAGER STATED IT FOR THIS FORM.
        * Omitted otherwise, so the box starts empty. Revalidated by the route
        * against the pinned version.

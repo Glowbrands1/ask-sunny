@@ -4,6 +4,7 @@ import {
   readPayrollDeduct,
   statedPayrollDeduct as statedAnswer,
 } from "./payroll-deduct-answer";
+import { PAYROLL_AMOUNT_QUESTION } from "./payroll-amount-field";
 import { detectTemplateIntent } from "./template-intent";
 
 /**
@@ -360,6 +361,81 @@ const AMOUNT_PATTERNS: readonly RegExp[] = [
 export function payrollDeductAmount(text: string): string | null {
   const amount = latestAmount(text);
   return amount === null || isZero(amount) ? null : amount;
+}
+
+/**
+ * "payroll deduct yes $25". The Yes/No reader stops when a figure follows
+ * "yes". This is that Yes and that figure. A policy sentence does not match:
+ * it puts the figure before "via payroll deduction".
+ */
+export function payrollYesAmount(text: string): string | null {
+  return amountBesidePayrollYes(text);
+}
+
+function amountBesidePayrollYes(text: string): string | null {
+  const match =
+    /\bpayroll\s+deduct(?:ion)?\s+yes\b[^$\n]{0,40}(\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i.exec(
+      text ?? "",
+    );
+  if (!match) return null;
+  const amount = match[1]!.replace(/\s+/g, "");
+  return isZero(amount) ? null : amount;
+}
+
+/** A reply that is only a figure: "$25", "$25.00", "25 dollars". */
+function bareMoney(text: string): string | null {
+  const match =
+    /^\s*(?:\$\s?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)|(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*dollars?)\s*[.!]?\s*$/i.exec(
+      text ?? "",
+    );
+  if (!match) return null;
+  const amount = `$${match[1] ?? match[2]}`;
+  return isZero(amount) ? null : amount;
+}
+
+/**
+ * The figure that may be written on Payroll deduction amount.
+ *
+ * Only when payroll is Yes. Only `payrollDeductAmount` (a deduction the
+ * manager stated), a figure sitting on that same Yes, or a bare figure that
+ * answers the amount question already asked. A policy quotation is never read,
+ * including Late Opening's "$25.00 via payroll deduction". No when the answer
+ * is No or still open — the line stays blank.
+ */
+export function payrollAmountFromConversation(
+  turns: readonly ConversationTurn[],
+  input: { payrollAnswer: PayrollDeductAnswer | null },
+): string | null {
+  if (input.payrollAnswer !== "yes") return null;
+  const usable = turns.filter(
+    (turn) => !turn.error && typeof turn.content === "string" && turn.content.trim() !== "",
+  );
+  const manager = usable
+    .filter((turn) => turn.role === "user")
+    .map((turn) => turn.content)
+    .join("\n");
+  const stated = payrollDeductAmount(manager) ?? amountBesidePayrollYes(manager);
+  if (stated) return stated;
+
+  let lastAssistant = "";
+  let bare: string | null = null;
+  for (const turn of usable) {
+    if (turn.role === "assistant") {
+      lastAssistant = turn.content;
+      continue;
+    }
+    if (turn.role !== "user") continue;
+    if (!lastAssistant.includes(PAYROLL_AMOUNT_QUESTION)) continue;
+    const figure = bareMoney(turn.content);
+    if (figure) bare = figure;
+  }
+  return bare;
+}
+
+/** A bare figure that answers the amount question, or null. */
+export function payrollAmountReply(text: string, lastAssistant: string): string | null {
+  if (!lastAssistant.includes(PAYROLL_AMOUNT_QUESTION)) return null;
+  return bareMoney(text);
 }
 
 /** The latest amount stated for the deduction, zero included. */

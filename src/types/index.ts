@@ -639,6 +639,13 @@ export interface ChatFormProposal {
    */
   payrollDeduct?: "yes" | "no" | null;
   /**
+   * The Corrective Action Form's "Payroll deduction amount", where the manager
+   * stated a figure and payroll is Yes. Absent when they have not, when payroll
+   * is not Yes, or when the amount field is off. Never a figure taken from a
+   * policy. See `payrollAmountFromConversation`.
+   */
+  payrollDeductAmount?: string | null;
+  /**
    * The Corrective Action Form's Type of Warning, where the MANAGER stated it
    * for this form — "create verbal CA for …", "… verbal. …". Null (or absent)
    * when they did not; never defaulted and never a termination or demotion.

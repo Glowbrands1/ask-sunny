@@ -195,6 +195,28 @@ THE ORDER OF AUTHORITY, HIGHEST FIRST
 WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the policy, and cite it.`;
 
 /**
+ * One order for both framework blocks. The two older lists named different
+ * second and third steps, so a turn that carried both could not say which
+ * outranked which. Used only when `unifiedAuthority` is set.
+ */
+export const UNIFIED_ORDER_OF_AUTHORITY = `THE ORDER OF AUTHORITY, HIGHEST FIRST
+
+1. Current official {{BRAND}} policy, manuals, bonus policy, training and reporting guidance.
+2. Current ingested data — employee performance data and the current report data. A figure is current only when it is in that data or the manager stated it.
+3. A framework's reasoning — the Employee Performance Framework or the Daily Stats Interpretation Framework. Reasoning is not evidence about a person, a salon, or a day.
+4. Historical examples and patterns — reusable shapes only, never current facts.
+
+WHERE POLICY AND A FRAMEWORK CONFLICT, POLICY WINS. Say so plainly, follow the policy, and cite it.`;
+
+const AUTHORITY_BLOCK =
+  /THE ORDER OF AUTHORITY, HIGHEST FIRST\n\n1\.[\s\S]*?WHERE POLICY AND THE FRAMEWORK CONFLICT, POLICY WINS\. Say so plainly, follow the policy, and cite it\./;
+
+export function withUnifiedAuthority(text: string, unified: boolean): string {
+  if (!unified) return text;
+  return text.replace(AUTHORITY_BLOCK, UNIFIED_ORDER_OF_AUTHORITY);
+}
+
+/**
  * The reasoning contract itself, true with or without the document.
  *
  * The paragraph that matters most is REASON ONLY FROM MEASURES THAT ARE
@@ -476,6 +498,12 @@ export function buildSystemPrompt(input: {
    * cannot say the person may open the section has not said they may.
    */
   canViewReports?: boolean;
+  /**
+   * One shared order of authority for both framework blocks. Omitted or
+   * false leaves each block's own list. Set only when
+   * UNIFIED_AUTHORITY_ORDER_ENABLED is on.
+   */
+  unifiedAuthority?: boolean;
 }): string {
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
@@ -551,7 +579,7 @@ export function buildSystemPrompt(input: {
     .join("\n");
 
   const employeeSection = hasFrameworkGrounding
-    ? `\n\n${EMPLOYEE_PERFORMANCE_RULES.replaceAll("{{BRAND}}", brandName)}\n\n${
+    ? `\n\n${withUnifiedAuthority(EMPLOYEE_PERFORMANCE_RULES, input.unifiedAuthority === true).replaceAll("{{BRAND}}", brandName)}\n\n${
         hasEmployeeFactsBlock ? EMPLOYEE_FACTS_ATTACHED_RULES : NO_INGESTED_DATASET_RULES
       }`
     : "";
@@ -568,7 +596,7 @@ export function buildSystemPrompt(input: {
    */
   const dailyStatsSection = [
     hasDailyStatsFramework
-      ? DAILY_STATS_SOURCE_RULES.replaceAll("{{BRAND}}", brandName)
+      ? withUnifiedAuthority(DAILY_STATS_SOURCE_RULES, input.unifiedAuthority === true).replaceAll("{{BRAND}}", brandName)
       : null,
     wantsDailyStatsReasoning ? DAILY_STATS_REASONING : null,
     wantsDailyStatsReasoning && hasReportData ? MANAGER_ANSWER_SHAPE : null,

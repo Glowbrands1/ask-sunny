@@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { groundedEntitiesEnabled, intentExtractionEnabled } from "@/lib/config/chat-quality-flags";
+import { groundedEntitiesEnabled, intentExtractionEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -169,11 +169,13 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
     const lower = word.toLowerCase();
     // "Test Employee." — the surname is a form word and the sentence ends on it.
     // "ima employee, tan consultant" is a role after the name, so the comma does not count.
+    // "Test Employee," keeps the capitalised surname. "ima employee," does not:
+    // a lower-case form word before a comma is the role, not the last name.
     const formWordAsSurname =
       parts.length > 0 &&
-      /[.!?]/.test(raw) &&
       isFormVocabulary(lower) &&
-      (groundedEntitiesEnabled() || intentExtractionEnabled());
+      (groundedEntitiesEnabled() || intentExtractionEnabled() || typedNameProceedsEnabled()) &&
+      (/[.!?]/.test(raw) || (/^[A-Z]/.test(word) && raw.includes(",")));
     const usable =
       TYPED_NAME_WORD.test(word) &&
       // The first part is a real word; a trailing initial ("C") may follow it.

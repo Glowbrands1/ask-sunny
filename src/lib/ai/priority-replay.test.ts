@@ -12,13 +12,16 @@ import type { AccessScope, ChatMessage } from "@/types";
  * b9–b12 are the 24 Oct 2026 Bubbles low-rated turns.
  *
  * Turns are the user messages in the verbatim replay script (replay_set.json).
- * The roster is the people those chats name. A case runs twice: the seven
+ * The roster is the people those chats name. A case runs twice: the quality
  * flags on, and the same turns with the flags off. Flags off is the floor
  * from the 23 Oct 2026 baseline (a card the baseline showed must still
  * appear, and a name the baseline got right must stay right). Flags on is
  * the bar: the card by the turn the manager has given enough, the person
  * they named, Erin's Woven salon, Paisley's "Yes", no re-ask, no other chat,
  * and the manual section and page on a form turn that names one.
+ * n1–n3 are the 24 Oct 2026 rule conflicts: a name already given is not
+ * asked again, a close spelling stays as typed, and tardiness cites
+ * Attendance with a two-sentence plan when payroll deduct is Yes.
  */
 
 const FLAGS = [
@@ -29,6 +32,14 @@ const FLAGS = [
   "GROUNDED_ENTITIES_ENABLED",
   "DRAFT_MERGE_ENABLED",
   "ACTION_PLAN_SENTENCES_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED",
+  "ATTENDANCE_POLICY_CITATION_ENABLED",
+  "POLICY_PAGE_REQUIRED_ENABLED",
+  "MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED",
+  "POLICY_GATE_NONBLOCKING_ENABLED",
+  "MANUAL_SECTION_DEDUPE_ENABLED",
+  "PRINTED_PAGE_CITATION_ENABLED",
+  "PAYROLL_AMOUNT_FIELD_ENABLED",
 ] as const;
 
 const TODAY = "2026-10-23";
@@ -721,12 +732,15 @@ const CASES: readonly ReplayCase[] = [
     turns: ["create a corrective action form for Pasiley Peklo", "Yes"],
     on: [
       {
-        from: 2,
+        // A close spelling stays as typed. "Yes" used to accept the roster
+        // spelling; that question no longer holds the card.
+        from: 1,
         card: true,
-        employee: "Paisley Peklo",
-        employeeNot: ["pasiley", "pasiley peklo", "based"],
+        employee: "Pasiley Peklo",
+        employeeNot: ["paisley peklo", "based"],
         templateKey: "dpoa",
         locationId: "loc-0313",
+        noReask: true,
       },
     ],
     off: [],
@@ -953,6 +967,75 @@ const CASES: readonly ReplayCase[] = [
     ],
     off: [],
   },
+  {
+    id: "n1",
+    turns: [
+      "create a coaching form for Test Employee, Tanning Consultant at Manhattan",
+      "name is Test Employee, Tanning Consultant at Manhattan",
+      "Create a form from this conversation.",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Test Employee",
+        role: "Tanning Consultant",
+        locationId: "loc-0462",
+        templateKey: "coaching",
+        noReask: true,
+        contentNot: ["who is this", "employee's full name", "want to be sure before it goes on the form"],
+      },
+      {
+        from: 3,
+        card: true,
+        employee: "Test Employee",
+        templateKey: "coaching",
+        noReask: true,
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "n2",
+    turns: [
+      "create a corrective action for Colene Shildt, tanning consultant at manhattan. she was late for her shift on 9-29-26. payroll deduct yes $25",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Colene Shildt",
+        employeeNot: ["colene schildt"],
+        role: "Tanning Consultant",
+        locationId: "loc-0462",
+        formDate: "2026-09-29",
+        templateKey: "dpoa",
+        payroll: "yes",
+        policyHeading: "Attendance",
+        policyPage: 14,
+        actionPlan: true,
+        noReask: true,
+        contentNot: ["Tardiness/Leaving Early", "want to be sure before it goes on the form"],
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "n3",
+    turns: ["name is TT and use todays date to create coaching form"],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "TT",
+        formDate: TODAY,
+        templateKey: "coaching",
+        noReask: true,
+        contentNot: ["employee's full name", "who is this", "the date for the form"],
+      },
+    ],
+    off: [],
+  },
 ];
 
 function setFlags(on: boolean) {
@@ -1116,7 +1199,7 @@ beforeEach(() => {
   }));
 });
 
-describe("priority replay with the seven flags on", () => {
+describe("priority replay with the quality flags on", () => {
   beforeEach(() => setFlags(true));
   it.each(CASES)("$id follows the real turns", async (item) => {
     await replay(item, true);

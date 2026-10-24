@@ -1,3 +1,5 @@
+import { withPayrollAmountField } from "./payroll-amount-field";
+
 /**
  * THE FORM DOCUMENT MODEL.
  *
@@ -842,7 +844,7 @@ export function parseFormDocument(raw: unknown): FormDocument {
     }
   }
 
-  return { paper: "letter", ...(style ? { style } : {}), blocks: parsed };
+  return withPayrollAmountField({ paper: "letter", ...(style ? { style } : {}), blocks: parsed });
 }
 
 export function parseFormVariants(raw: unknown): FormVariant[] {

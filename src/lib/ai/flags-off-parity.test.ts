@@ -16,7 +16,22 @@ import {
   policyCitationEnabled,
   reportBreakdownEnabled,
   secondFormEnabled,
+  citationVerifyEnabled,
+  conversationProposalDedupeEnabled,
+  attendancePolicyCitationEnabled,
+  currentManualScopeEnabled,
+  modelRetryEnabled,
+  promptCacheEnabled,
+  policyPageRequiredEnabled,
+  requiredFieldCheckEnabled,
   selfCheckEnabled,
+  typedNameProceedsEnabled,
+  unifiedAuthorityOrderEnabled,
+  managerPayrollAmountOnlyEnabled,
+  manualSectionDedupeEnabled,
+  payrollAmountFieldEnabled,
+  policyGateNonblockingEnabled,
+  printedPageCitationEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -47,6 +62,22 @@ const NEW_FLAGS = [
   "INTENT_EXTRACTION_ENABLED",
   "FEWSHOT_EXAMPLES_ENABLED",
   "SELF_CHECK_ENABLED",
+  "PROMPT_CACHE_ENABLED",
+  "MODEL_RETRY_ENABLED",
+  "REQUIRED_FIELD_CHECK_ENABLED",
+  "CONVERSATION_PROPOSAL_DEDUPE_ENABLED",
+  "CITATION_VERIFY_ENABLED",
+  "CURRENT_MANUAL_SCOPE_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED",
+  "ATTENDANCE_POLICY_CITATION_ENABLED",
+  "POLICY_PAGE_REQUIRED_ENABLED",
+  "UNIFIED_AUTHORITY_ORDER_ENABLED",
+  "MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED",
+  "POLICY_GATE_NONBLOCKING_ENABLED",
+  "NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED",
+  "MANUAL_SECTION_DEDUPE_ENABLED",
+  "PRINTED_PAGE_CITATION_ENABLED",
+  "PAYROLL_AMOUNT_FIELD_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -131,6 +162,21 @@ describe("new flags default off and wrappers are inert", () => {
     expect(intentExtractionEnabled()).toBe(false);
     expect(fewShotExamplesEnabled()).toBe(false);
     expect(selfCheckEnabled()).toBe(false);
+    expect(promptCacheEnabled()).toBe(false);
+    expect(modelRetryEnabled()).toBe(false);
+    expect(requiredFieldCheckEnabled()).toBe(false);
+    expect(conversationProposalDedupeEnabled()).toBe(false);
+    expect(citationVerifyEnabled()).toBe(false);
+    expect(currentManualScopeEnabled()).toBe(false);
+    expect(typedNameProceedsEnabled()).toBe(false);
+    expect(attendancePolicyCitationEnabled()).toBe(false);
+    expect(policyPageRequiredEnabled()).toBe(false);
+    expect(unifiedAuthorityOrderEnabled()).toBe(false);
+    expect(managerPayrollAmountOnlyEnabled()).toBe(false);
+    expect(policyGateNonblockingEnabled()).toBe(false);
+    expect(manualSectionDedupeEnabled()).toBe(false);
+    expect(printedPageCitationEnabled()).toBe(false);
+    expect(payrollAmountFieldEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

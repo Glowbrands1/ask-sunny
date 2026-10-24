@@ -62,9 +62,16 @@ import type { ManualChunk } from "@/lib/forms/official-policy-manual";
 import { offeredInChooser } from "@/lib/forms/chooser";
 import { exitDetailsSupplied, readExitDetails } from "@/lib/forms/exit-details";
 import {
+  PAYROLL_AMOUNT_LABEL,
+  PAYROLL_AMOUNT_QUESTION,
+  payrollAmountAlreadyAsked,
+} from "@/lib/forms/payroll-amount-field";
+import {
   PAYROLL_DEDUCT_KEY,
   PAYROLL_DEDUCT_LABEL,
+  payrollAmountFromConversation,
   payrollDeductFromConversation,
+  payrollYesAmount,
   payrollDeductUnclear,
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
@@ -104,6 +111,8 @@ import {
   settledNameQuestions,
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
+import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { inlineCloseMatch, wovenNoteAlreadyShown } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
 import {
@@ -760,10 +769,31 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
    * request that adds nothing keeps the answer already given.
    */
   if (correctiveAction && asksPayrollDeduct(match)) {
-    proposal.payrollDeduct = payrollDeductFromConversation(
-      [...formHistory(input.history, scoped), { role: "user", content: input.question }],
-      { fromThisForm: true },
-    );
+    const payrollTurns = [
+      ...formHistory(input.history, scoped),
+      { role: "user", content: input.question },
+    ];
+    proposal.payrollDeduct = payrollDeductFromConversation(payrollTurns, { fromThisForm: true });
+    /*
+     * THE FIGURE, ONLY WHEN THEY GAVE ONE AND PAYROLL IS YES. A policy
+     * quotation is not a figure. Absent, the field stays blank.
+     *
+     * "payroll deduct yes $25" is that Yes. The Yes/No reader stops at "yes"
+     * when a figure follows it; the amount line still takes both.
+     */
+    if (payrollAmountFieldEnabled()) {
+      if (proposal.payrollDeduct == null) {
+        const manager = payrollTurns
+          .filter((turn) => turn.role === "user")
+          .map((turn) => turn.content)
+          .join("\n");
+        if (payrollYesAmount(manager)) proposal.payrollDeduct = "yes";
+      }
+      const amount = payrollAmountFromConversation(payrollTurns, {
+        payrollAnswer: proposal.payrollDeduct ?? null,
+      });
+      if (amount) proposal.payrollDeductAmount = amount;
+    }
   }
 
   /*
@@ -847,6 +877,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
             correctiveAction && proposal.employeeName && proposal.status !== "needs_employee"
               ? ((await input.priorFormsOnFile?.(proposal.employeeName, proposal.locationId)) ?? NO_PRIOR_FORMS)
               : NO_PRIOR_FORMS,
+          payrollAmountAsked: payrollAmountAlreadyAsked(input.history),
         });
   const notes = [
     directory.note,
@@ -996,6 +1027,7 @@ async function checkTypedEmployee(
   if (settled.kept.some((name) => same(name, typed.employeeName))) return {};
 
   if (result.kind === "none") {
+    if (typedNameProceedsEnabled()) return {};
     return {
       note: `I didn't find **${tidyTypedName(typed.employeeName)}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
     };
@@ -1017,6 +1049,14 @@ async function checkTypedEmployee(
   }
 
   const names = result.candidates.map((candidate) => candidate.name);
+  if (typedNameProceedsEnabled()) {
+    const kept = tidyTypedName(typed.employeeName);
+    const noted = wovenNoteAlreadyShown(input.history);
+    return {
+      resolution: { kind: "resolved", employeeName: kept },
+      ...(noted ? {} : { note: inlineCloseMatch(kept, names) }),
+    };
+  }
   return {
     resolution: { kind: "ambiguous", candidates: names },
     question: nameConfirmationQuestion(typed.employeeName, names),
@@ -2000,6 +2040,7 @@ function proposalContent(
   extra: {
     readonly namedPolicy?: NamedPolicyReading | null;
     readonly priorOnFile?: PriorFormsReading;
+    readonly payrollAmountAsked?: boolean;
   } = {},
 ): string {
   /*
@@ -2180,6 +2221,7 @@ function proposalContent(
         statedPriorActions(context.text, today),
         extra.namedPolicy ?? null,
         extra.priorOnFile ?? NO_PRIOR_FORMS,
+        extra.payrollAmountAsked === true,
       );
     }
   }
@@ -2371,6 +2413,7 @@ function correctiveActionReady(
   priorActions: readonly string[] = [],
   namedPolicy: NamedPolicyReading | null = null,
   priorOnFile: PriorFormsReading = NO_PRIOR_FORMS,
+  payrollAmountAsked = false,
 ): string {
   // A step the manager already dated is theirs; the record adds only the rest.
   const notStated = (form: PriorFormOnFile) => !priorActions.some((line) => line.includes(signedDate(form.formDate)));
@@ -2476,6 +2519,22 @@ function correctiveActionReady(
       "",
       `One more question: **${PAYROLL_DEDUCT_LABEL}** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.`,
     );
+  }
+
+  /*
+   * THE AMOUNT, ASKED ONCE, AND ONLY AFTER A YES. It does not hold the card.
+   * A figure they already gave is read back. A policy quotation is not one.
+   * Asked once: a later turn that still has no figure does not ask again.
+   */
+  if (payrollAmountFieldEnabled() && asksPayroll && proposal.payrollDeduct === "yes") {
+    if (proposal.payrollDeductAmount) {
+      lines.push(
+        "",
+        `**${PAYROLL_AMOUNT_LABEL}** **${proposal.payrollDeductAmount}** — tell me if that should change.`,
+      );
+    } else if (!payrollAmountAsked) {
+      lines.push("", PAYROLL_AMOUNT_QUESTION);
+    }
   }
 
   lines.push("");

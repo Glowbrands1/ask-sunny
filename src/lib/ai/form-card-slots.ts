@@ -2,7 +2,9 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
+import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
@@ -11,6 +13,14 @@ import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
+
+import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import {
+  citeAttendanceForTardiness,
+  formatPolicyCitation,
+  sectionsWithNameAndPage,
+  withoutTardinessBoxLabel,
+} from "@/lib/forms/required-policy-citation";
 
 import { accountManualSections } from "./account-manual-sections";
 import type { ConversationFormState } from "./form-state";
@@ -48,6 +58,8 @@ export function enrichFormCard(input: {
   readonly today: string;
   readonly people: readonly GroundedPerson[];
   readonly saved: ConversationFormState | null;
+  /** The close-match note was already in an earlier reply. */
+  readonly wovenNoteShown?: boolean;
 }): AskResponse {
   const proposal = input.response.formProposal;
   if (!proposal) return input.response;
@@ -97,7 +109,7 @@ export function enrichFormCard(input: {
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
   }
-  content = rosterOnce(content, next.employeeName, input.people);
+  content = rosterOnce(content, next.employeeName, input.people, input.wovenNoteShown === true);
 
   return content === input.response.content && next === proposal
     ? input.response
@@ -140,14 +152,46 @@ export function attachFormTurnSources(input: {
   readonly documentTitle: string;
   readonly documentCategory?: string | null;
   readonly modelHeading?: string | null;
+  readonly attendanceCitation?: boolean;
+  readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
   const found = formTurnCitations(input);
   const citations = input.citations.length > 0 ? [...input.citations] : found;
   let content = input.content;
-  for (const section of sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes))) {
-    const line = formatManualCitation(section.heading, section.page > 0 ? section.page : null);
-    if (!content.toLowerCase().includes(section.heading.toLowerCase())) content = content ? `${content}\n\n${line}` : line;
+  let sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes));
+  sections = citeAttendanceForTardiness({
+    enabled: input.attendanceCitation === true,
+    notes: input.notes,
+    chunks: input.chunks,
+    sections,
+  });
+  if (input.pageRequired) {
+    const reading = readCaPolicy(input.notes);
+    const keys =
+      statedOffenseKeys(reading, input.notes) ?? describedAttendanceKeys(input.notes) ?? [];
+    for (const section of sectionsWithNameAndPage({
+      enabled: true,
+      notes: input.notes,
+      chunks: input.chunks,
+      offenseKeys: keys,
+    })) {
+      if (!sections.some((seen) => headingKey(seen.heading) === headingKey(section.heading))) sections.push(section);
+    }
   }
+  const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
+  for (const section of sections) {
+    const line =
+      section.page > 0 ? formatPolicyCitation(section.heading, section.page) : formatManualCitation(section.heading, null);
+    const hasHeading = content.toLowerCase().includes(section.heading.toLowerCase());
+    const pageMissing =
+      section.page > 0 && !new RegExp(String.raw`(?:\bp\.?\s*|page\s+)${section.page}\b`, "i").test(content);
+    if (hasHeading && !(mustCitePage && pageMissing)) continue;
+    content = content ? `${content}\n\n${line}` : line;
+  }
+  content = withoutTardinessBoxLabel(
+    content,
+    input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
+  );
   return { content, citations };
 }
 
@@ -423,14 +467,23 @@ function fieldLines(input: {
   return lines;
 }
 
-function rosterOnce(content: string, name: string | null, people: readonly GroundedPerson[]): string {
+function rosterOnce(
+  content: string,
+  name: string | null,
+  people: readonly GroundedPerson[],
+  wovenNoteShown: boolean,
+): string {
   if (!name || people.length === 0) return content;
   if (/couldn'?t find|didn'?t find|not in the woven roster/i.test(content)) return content;
   const match = matchEmployeeName(name, people);
-  if (match.kind === "confirm" && match.candidates.length === 1 && match.candidates[0]!.name.toLowerCase() !== name.toLowerCase()) {
-    const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
-    if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
+  if (match.kind !== "confirm" || match.candidates.length !== 1) return content;
+  if (match.candidates[0]!.name.toLowerCase() === name.toLowerCase()) return content;
+  if (typedNameProceedsEnabled()) {
+    if (wovenNoteShown || /Woven has \*\*/.test(content)) return content;
+    return `${inlineCloseMatch(name, [match.candidates[0]!.name])}\n\n${content}`;
   }
+  const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
+  if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
   return content;
 }
 

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import { actionPlanSentencesEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { isProposalId } from "./proposal-id";
@@ -35,6 +36,7 @@ import {
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
+import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
@@ -386,6 +388,11 @@ export interface NewInstance {
   formDate?: string;
   /** The chat card this form was created from; recorded so a repeated press finds it. */
   proposalId?: string;
+  /**
+   * Set only when the conversation-and-proposal duplicate check is on.
+   * Absent, the card id is the one it has always been.
+   */
+  conversationKey?: string | null;
 }
 
 /**
@@ -492,8 +499,17 @@ export async function findRecentAssistantDraft(input: {
  * row the first one made. No other create is affected: without a card id the
  * database chooses the id, as before.
  */
-export function cardInstanceId(createdBy: string, templateKey: string, proposalId: string): string {
-  const bytes = Buffer.from(createHash("sha256").update(`form-card\u0000${createdBy}\u0000${templateKey}\u0000${proposalId}`).digest().subarray(0, 16));
+export function cardInstanceId(
+  createdBy: string,
+  templateKey: string,
+  proposalId: string,
+  conversationKey?: string | null,
+): string {
+  const conversation = conversationKey?.trim() ?? "";
+  const material = conversation
+    ? `form-card\u0000${createdBy}\u0000${templateKey}\u0000${proposalId}\u0000${conversation}`
+    : `form-card\u0000${createdBy}\u0000${templateKey}\u0000${proposalId}`;
+  const bytes = Buffer.from(createHash("sha256").update(material).digest().subarray(0, 16));
   // An RFC 4122 shape (version 5, variant 10xx), so the column accepts it as a uuid.
   bytes[6] = (bytes[6]! & 0x0f) | 0x50;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
@@ -524,7 +540,7 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow & 
   if (!version) throw new Error("That template has no published version yet.");
 
   const cardId = isProposalId(input.proposalId)
-    ? cardInstanceId(input.createdBy, input.templateKey, input.proposalId)
+    ? cardInstanceId(input.createdBy, input.templateKey, input.proposalId, input.conversationKey)
     : null;
   const { data, error } = await supabase
     .from("form_instances")
@@ -593,6 +609,7 @@ export async function createInstance(input: NewInstance): Promise<InstanceRow & 
     source: input.source,
     seededFromRecord: Object.keys(seeded),
     ...(isProposalId(input.proposalId) ? { proposalId: input.proposalId } : {}),
+    ...(input.conversationKey?.trim() ? { conversationKey: input.conversationKey.trim() } : {}),
   });
 
   const loaded = await loadInstance(String(data.id));
@@ -1195,10 +1212,12 @@ export async function reviseInstance(
           provenance: row.provenance,
         })),
       });
-    const planRow = plan ? rows.find((row) => row.field_key === plan.key) : undefined;
-    if (plan && planRow) {
-      planRow.value = plan.value;
-      planRow.provenance = plan.provenance;
+    const twoSentencePlan =
+      plan && actionPlanSentencesEnabled() ? { ...plan, value: collapseToTwoSentences(plan.value) } : plan;
+    const planRow = twoSentencePlan ? rows.find((row) => row.field_key === twoSentencePlan.key) : undefined;
+    if (twoSentencePlan && planRow) {
+      planRow.value = twoSentencePlan.value;
+      planRow.provenance = twoSentencePlan.provenance;
     }
   }
 

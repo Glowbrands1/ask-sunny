@@ -61,6 +61,7 @@
  * one, because it looks checked.
  */
 
+import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { headingOf, isPageFooter } from "@/lib/ingestion/extract/pdf-sections";
 
 /* ------------------------------------------------------------- identity --- */
@@ -615,7 +616,9 @@ function escapeForRegExp(value: string): string {
  * 1-based, as a reader counts.
  */
 function citedPageOfChunk(chunk: ManualChunk): number | null {
-  return chunk.printedPage ?? chunk.page;
+  if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (printedPageCitationEnabled()) return null;
+  return chunk.page;
 }
 
 export function findManualSection(
@@ -889,7 +892,7 @@ const DESCRIBED_SECTIONS: readonly {
   {
     offenseKey: "tardiness",
     describes:
-      /\b(?:late[- ]open(?:ing|ed)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
+      /\b(?:open(?:ed|ing)\s+late|late[- ]open(?:ing|ed|er)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
     headings: ["Late Opening"],
   },
   /*

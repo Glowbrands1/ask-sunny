@@ -1,3 +1,5 @@
+import { actionPlanSentencesEnabled, managerPayrollAmountOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fieldsForVariant, type FormDocument } from "./document";
 import { employeeFirstName } from "./employee-reference";
 import { PLAN_OF_ACTION } from "./narrative-draft";
@@ -31,11 +33,17 @@ import { CA_ACTION_PLAN_CLOSING, withRequiredClosing } from "./required-closing"
  *   and including termination of employment.
  *
  * The payroll sentence is there only when the form's own "Is payroll deduct
- * applicable?" says Yes (the manager's answer; `payroll-deduct.ts`). Its
- * amount is the manager's, always; with none stated, the one amount the
- * section Direct policy quotes states for a payroll deduction ("$25.00" under
- * Late Opening), and otherwise none. The last sentence is the version's
- * required closing (`required-closing.ts`).
+ * applicable?" says Yes (the manager's answer; `payroll-deduct.ts`) AND
+ * `ACTION_PLAN_SENTENCES_ENABLED` is off. When that flag is on, the field is
+ * the review sentence and the required closing, and nothing else. The amount
+ * stays on the payroll answer; it is not a third sentence and it is not a
+ * new field.
+ *
+ * The amount is the manager's, always. With none stated, and only while
+ * `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` is off, the one amount the section
+ * Direct policy quotes states for a payroll deduction ("$25.00" under Late
+ * Opening). Otherwise none. The last sentence is the version's required
+ * closing (`required-closing.ts`). Rev 5 "may be subject to" is unchanged.
  *
  * THE POLICY IS THE ONE DIRECT POLICY CITES, never the model's: the manual
  * sections on the line's verified provenance, by the headings the manual
@@ -129,9 +137,12 @@ export interface ActionPlanInput {
 export function correctiveActionPlan(input: ActionPlanInput): string {
   const firstName = employeeFirstName(input.employeeName);
   const names = input.citedPolicies.length > 0 ? input.citedPolicies : policyNamesFromViolated(input.policyViolated);
+  const payroll = actionPlanSentencesEnabled()
+    ? null
+    : payrollDeductSentence({ answer: input.payroll.answer, amount: input.payroll.amount, firstName });
   const sentences = [
     `Management will review ${policyPhrase(names)} with ${firstName ?? "the employee"}.`,
-    payrollDeductSentence({ answer: input.payroll.answer, amount: input.payroll.amount, firstName }),
+    payroll,
   ].filter((sentence): sentence is string => sentence !== null);
   return withRequiredClosing(sentences.join(" "), input.closing?.trim() || CA_ACTION_PLAN_CLOSING);
 }
@@ -164,6 +175,7 @@ export function planPayrollAmount(input: {
   readonly quotedPolicy: string | null;
 }): { amount: string | null; amountFrom?: "manager" | "manual" } {
   if (input.stated) return { amount: input.stated, amountFrom: "manager" };
+  if (managerPayrollAmountOnlyEnabled()) return { amount: null };
   const quoted = input.answer === "yes" ? quotedDeductionAmount(input.quotedPolicy) : null;
   return quoted ? { amount: quoted, amountFrom: "manual" } : { amount: null };
 }

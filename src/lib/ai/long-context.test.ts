@@ -16,6 +16,14 @@ describe("long context window", () => {
     expect(source).toContain('historyPolicy === "budget"');
   });
 
+  it("summarises older turns only when LONG_CONTEXT_ENABLED is on", () => {
+    const ask = readFileSync("src/lib/ai/server-ask.ts", "utf8");
+    expect(ask).toContain("longContextEnabled()");
+    expect(ask).toContain("prepareLongContext");
+    expect(ask).toContain('historyPolicy: "budget" as const');
+    expect(ask).toContain("priorSummary: longContext.summary");
+  });
+
   it("keeps at most 40 messages and leaves the older ones out", () => {
     const messages = Array.from({ length: 45 }, (_, index) => turn(`m${index}`, "ok"));
     const selected = selectLongContext(messages);

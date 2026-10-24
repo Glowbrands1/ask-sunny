@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
@@ -312,6 +313,10 @@ function groundEmployee(
   }
   if (match.kind === "confirm") {
     const rows = match.candidates.map((candidate) => asGrounded(candidate.employee, people));
+    // One close roster match can still supply the salon. The name stays as typed.
+    if (typedNameProceedsEnabled()) {
+      return { person: rows.length === 1 ? rows[0]! : null, name: probe, ambiguous: [], typed: probe };
+    }
     const words = probe.split(/\s+/).filter(Boolean);
     if (rows.length === 1 && words.length > 1) {
       return { person: rows[0]!, name: displayName(rows[0]!), ambiguous: [], typed: probe };
@@ -636,10 +641,13 @@ function mergeSlots(
   },
 ): ConversationFormState {
   const named = slots.employee.name ?? slots.employee.typed;
+  const directoryName = slots.employee.person ? displayName(slots.employee.person) : null;
+  const keepTyped =
+    typedNameProceedsEnabled() && named && directoryName && named.toLowerCase() !== directoryName.toLowerCase();
   return {
     ...prior,
     employeeId: slots.employee.person?.id ?? (named && !slots.employee.person ? null : prior.employeeId),
-    employeeName: slots.employee.person ? displayName(slots.employee.person) : named ?? prior.employeeName,
+    employeeName: keepTyped ? named : directoryName ?? named ?? prior.employeeName,
     salonId: slots.salon.id ?? prior.salonId,
     title: slots.title ?? prior.title,
     formDate: slots.date ?? prior.formDate,

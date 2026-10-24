@@ -72,6 +72,7 @@ export async function deliverFormProposal(input: {
           today: input.request.context.todayIso,
           people: [],
           saved: null,
+          wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     return holdFilledSlots({
       response: enriched,
@@ -118,6 +119,7 @@ export async function deliverFormProposal(input: {
         today: input.request.context.todayIso,
         people,
         saved,
+        wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
       })
     : applied;
 

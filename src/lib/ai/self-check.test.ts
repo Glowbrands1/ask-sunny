@@ -118,6 +118,31 @@ describe("self-check", () => {
     ).toBe(true);
   });
 
+  it("cites the heading list's printed page, not the PDF sheet, when that flag is on", () => {
+    const chunks = [chunk({ section: "Late Opening", page: 16, sections: [{ heading: "Late Opening", page: 15 }] })];
+    const pdf = draft({
+      content: "Late Opening Policy, JBA Policy Manual p.16.",
+      actionPlan: null,
+      employeeName: null,
+      chunks,
+    });
+    const printed = draft({
+      content: "Late Opening Policy, JBA Policy Manual p.15.",
+      actionPlan: null,
+      employeeName: null,
+      chunks,
+    });
+    expect(reviewOutgoing(pdf)).toEqual([]);
+    expect(reviewOutgoing(printed).map((failure) => failure.kind)).toEqual(["citation"]);
+    process.env.PRINTED_PAGE_CITATION_ENABLED = "1";
+    try {
+      expect(reviewOutgoing(printed)).toEqual([]);
+      expect(reviewOutgoing(pdf).map((failure) => failure.kind)).toEqual(["citation"]);
+    } finally {
+      delete process.env.PRINTED_PAGE_CITATION_ENABLED;
+    }
+  });
+
   it("accepts an action plan of two sentences and rejects three", () => {
     expect(reviewOutgoing(draft({ content: TWO, actionPlan: null, employeeName: null, chunks: [] }))).toEqual([]);
     expect(
@@ -125,6 +150,11 @@ describe("self-check", () => {
     ).toEqual(["action_plan"]);
     expect(actionPlanSentenceCount(TWO)).toBe(2);
     expect(actionPlanSentenceCount(THREE)).toBe(3);
+    const payroll =
+      "Management will review the Attendance policy with Jordan. $25 will be deducted from Jordan's pay.";
+    expect(
+      reviewOutgoing(draft({ content: payroll, actionPlan: payroll, chunks: [] })).map((failure) => failure.kind),
+    ).toEqual(["action_plan"]);
   });
 
   it("never sends the repair model's refusal: I cannot repair this reply, Test Testy does not appear on the employee roster", async () => {

@@ -19,9 +19,14 @@ import { isExitDocumentKeys } from "./exit-draft";
 import { formDateChange, formDateChangeUnclear, formDateReply } from "./form-date-answer";
 import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
+import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
+
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
+import { PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_LABEL } from "./payroll-amount-field";
 import {
   PAYROLL_DEDUCT_KEY,
+  payrollAmountFromConversation,
+  payrollAmountReply,
   payrollDeductChecked,
   payrollDeductCorrection,
   payrollDeductReply,
@@ -104,6 +109,17 @@ export async function correctActiveForm(input: {
     formDateChange(input.question, input.today) ?? formDateReply(input.question, lastAssistant, input.today);
   const dateUnclear = newFormDate === null ? formDateChangeUnclear(input.question, input.today) : null;
   if (!employmentCorrection && !exitCorrection && !payroll && !payrollUnclear && !newFormDate && !dateUnclear) {
+    /*
+     * "$25" AFTER THE AMOUNT QUESTION. Only that reply, only when payroll is
+     * already Yes, and only onto the amount line. Anything else falls through.
+     */
+    if (payrollAmountFieldEnabled()) {
+      const figure = payrollAmountReply(input.question, lastAssistant);
+      if (figure) {
+        const saved = await writeStatedPayrollAmount(input, figure);
+        if (saved) return saved;
+      }
+    }
     /*
      * A DATE ON AN OPEN CORRECTIVE ACTION THE READERS ABOVE DO NOT TAKE (owner
      * decision, 22 Oct 2026): "the meeting was actually on 10-19-26", a prior
@@ -226,10 +242,21 @@ export async function correctActiveForm(input: {
     ? CORRECTABLE_KEYS
     : isExit
       ? EXIT_CORRECTABLE_KEYS
-      : new Set([PAYROLL_DEDUCT_KEY, FORM_DATE_KEY]);
+      : new Set([
+          PAYROLL_DEDUCT_KEY,
+          FORM_DATE_KEY,
+          ...(payrollAmountFieldEnabled() ? [PAYROLL_AMOUNT_KEY] : []),
+        ]);
   const restrict = <T,>(entries: Record<string, T>) =>
     Object.fromEntries(Object.entries(entries).filter(([key]) => correctable.has(key)));
-  const values = restrict(correction.values);
+  const statedAmount =
+    payrollAmountFieldEnabled() && !kind && !isExit && payroll === "yes"
+      ? payrollAmountFromConversation([{ role: "user", content: input.question }], { payrollAnswer: "yes" })
+      : null;
+  const values = {
+    ...restrict(correction.values),
+    ...(statedAmount ? { [PAYROLL_AMOUNT_KEY]: statedAmount } : {}),
+  };
   const checked = restrict(correction.checked);
 
   // Only keys this version actually has; the rest are not a correction to THIS form.
@@ -575,6 +602,47 @@ async function correctCorrectiveActionFacts(input: {
 
 function reply(content: string): AskResponse {
   return { content, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+}
+
+/**
+ * A bare figure answering the amount question, written as the manager's edit.
+ * Payroll must already be Yes. The line must be on the document. A finalized
+ * form is left for the ordinary correction path.
+ */
+async function writeStatedPayrollAmount(
+  input: {
+    request: Request;
+    instanceId: string;
+    question: string;
+  },
+  amount: string,
+): Promise<AskResponse | null> {
+  let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
+  try {
+    authorized = await authorizeInstance(input.request, input.instanceId, "edit");
+  } catch {
+    return null;
+  }
+  const { actor, loaded } = authorized;
+  if (loaded.instance.status !== "draft") return null;
+  const document = parseFormDocument(loaded.version.document);
+  const variantKey = loaded.instance.variantKey;
+  const payroll = (loaded.values.find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)?.checked ?? []).find(
+    (option) => option === "yes" || option === "no",
+  );
+  if (payroll !== "yes") return null;
+  if (!fieldsForVariant(document, variantKey).some((field) => field.key === PAYROLL_AMOUNT_KEY)) return null;
+  const saved = await saveInstanceValues(
+    input.instanceId,
+    { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+    actor.id,
+  );
+  if (saved.rejected.some((entry) => entry.key === PAYROLL_AMOUNT_KEY)) return null;
+  const who = `**${loaded.instance.templateName}** for **${loaded.instance.employeeName}**`;
+  return {
+    ...reply(`Updated the ${who}: ${PAYROLL_AMOUNT_LABEL} → ${amount}.`),
+    formUpdate: { instanceId: input.instanceId, updated: [PAYROLL_AMOUNT_KEY] },
+  };
 }
 
 /**

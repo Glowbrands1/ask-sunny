@@ -366,6 +366,36 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(sources[0]?.excerpt).toContain("cell phones");
   });
 
+  it("builds the card from the typed name in the same turn, and does not ask the note again", async () => {
+    process.env.TYPED_NAME_PROCEEDS_ENABLED = "1";
+    try {
+      const first = await proposeFormForTurn({
+        history: [],
+        question: "coaching form for Colene Shildt, tanning consultant at Lawrence, today",
+        questionMessageId: "msg-shildt",
+        actor: { role: "salon_director", scope: SCOPE },
+        summaries: LIBRARY as never,
+        today: TODAY,
+      });
+      expect(first?.formProposal).toBeTruthy();
+      expect(first?.formProposal?.employeeName).toMatch(/^Colene Shildt$/i);
+      expect(first?.content).not.toMatch(/did you mean|who is this|want to be sure|didn't find|employee list for your salons/i);
+
+      const missing = await proposeFormForTurn({
+        history: [],
+        question: "coaching form for Jane Doe at Lawrence today",
+        questionMessageId: "msg-jane",
+        actor: { role: "salon_director", scope: SCOPE },
+        summaries: LIBRARY as never,
+        today: TODAY,
+      });
+      expect(missing?.formProposal?.employeeName).toMatch(/jane doe/i);
+      expect(missing?.content ?? "").not.toMatch(/didn't find|didn’t find|employee list for your salons/i);
+    } finally {
+      delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
+    }
+  });
+
   it("Lisa smith, tanning consultant at lawrence, coaching form today", () => {
     const decision = decideIntentTurn(
       turn({
@@ -419,5 +449,33 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(suggested.content).toContain("Did you mean **Lisa Smyth**");
     expect(suggested.formProposal?.locationId).toBe("loc-0468");
     expect(suggested.formProposal?.formDate).toBe(TODAY);
+
+    process.env.TYPED_NAME_PROCEEDS_ENABLED = "1";
+    try {
+      const noted = enrichFormCard({
+        response: asked,
+        question: LISA_PROMPT,
+        today: TODAY,
+        people: [LISA_CLOSE],
+        saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+      });
+      expect(noted.formProposal?.employeeName).toBe("Lisa smith");
+      expect(noted.content).toContain(
+        "Woven has **Lisa Smyth** — say so if that's who you mean. Carry on; do not wait.",
+      );
+      expect(noted.content).not.toMatch(/did you mean|who is this|want to be sure/i);
+      const later = enrichFormCard({
+        response: { ...asked, content: "Here is the card for Lisa smith." },
+        question: LISA_PROMPT,
+        today: TODAY,
+        people: [LISA_CLOSE],
+        saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+        wovenNoteShown: true,
+      });
+      expect(later.formProposal?.employeeName).toBe("Lisa smith");
+      expect(later.content).not.toMatch(/Woven has \*\*|did you mean/i);
+    } finally {
+      delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
+    }
   });
 });
