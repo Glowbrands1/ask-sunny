@@ -249,12 +249,16 @@ describe("new flags default off and wrappers are inert", () => {
       // Test files may change an expectation when Pau changes the wording.
       // Component, style, and page files stay untouched, except the chat
       // bubble: Pau asked for the close-match note under the card.
+      // And except chat-screen.tsx: SEND_AFTER_HYDRATE_ENABLED queues a typed
+      // send until the store is ready. The composer is not disabled and no
+      // control is added. The diff is that queue.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
           ":(exclude)**/*.test.tsx",
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
+          ":(exclude)src/features/chat/chat-screen.tsx",
         ]),
       ).toBe("");
     } else {

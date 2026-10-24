@@ -61,6 +61,21 @@ migration, and no merge.
   from the chunk's own lines, including the chunk labelled Time Records.
   Other retrieved chunks stay.
 
+## 24 Oct 2026: chat_traces_live cache columns stay at the end — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism if Bubbles replaces
+`chat_traces_live` the same way. Do not copy company wording. The manual
+title stays **JBA Policy Manual**. No production migration apply and no merge.
+
+- `create or replace view` cannot insert columns in the middle. The three
+  cache columns are listed after `slots`. Both unapplied replaces, slots
+  and cache, set `security_invoker = true`, because a replace without WITH
+  clears the option production already has. There is still no row filter.
+  Grants stay service_role select. Both replaces revoke all from
+  service_role before that grant, and revoke anon and authenticated.
+  Production recorded `chat_traces` as version `20261024004307`, so these
+  files are applied with `apply_migration`, not `db push`.
+
 ## 24 Oct 2026: prompt reorder stays behind the cache flag — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
