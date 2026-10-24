@@ -74,6 +74,26 @@ const FLAGS = [
   "CODE_SLOTS_ENABLED",
 ] as const;
 
+/**
+ * One-flag replay. Chat data tools stay out of the flags-on card column.
+ * s22 and s23 are scored only on this row.
+ */
+const ABLATION_FLAGS = [...FLAGS, "CHAT_DATA_TOOLS_ENABLED"] as const;
+
+/** Verbatim s22 and s23. The reply model is mocked, so a pass is the attached block. */
+const DATA_CASES = [
+  {
+    id: "s22",
+    turns: ["How can I change my password", "How can I change the password on this platform"],
+    mark: /APP HELP — PASSWORD RESET/,
+  },
+  {
+    id: "s23",
+    turns: ["How many google reviews do we have this far"],
+    mark: /The Google Reviews page holds 254 reviews in total/,
+  },
+] as const;
+
 /** Round 1. Name, slot, and salon only. SELF_CHECK stays off. */
 const ROUND1_FLAGS = [
   "INTENT_EXTRACTION_ENABLED",
@@ -121,6 +141,8 @@ const captured = vi.hoisted(() => ({
   systems: [] as { revision: string; system: string }[],
   recordSystems: false,
   revision: "current" as "current" | "last-known-good",
+  grounding: "",
+  reportData: "",
 }));
 
 /** Live intent calls filled the salon with the Woven primary and offered the retirement "Warning" sheet. */
@@ -402,9 +424,31 @@ vi.mock("@/lib/reporting/read/employee-facts", () => ({
   EMPLOYEE_DATA_HEADING: "CURRENT EMPLOYEE PERFORMANCE DATA",
 }));
 
+vi.mock("@/lib/reviews/overview-block-read", () => ({
+  loadReviewsOverviewBlock: async () => ({
+    status: "ready",
+    totalReviews: 254,
+    averageRating: 4.63,
+    salonCount: 15,
+  }),
+}));
+
+vi.mock("@/lib/reviews/queries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/reviews/queries")>();
+  return {
+    ...actual,
+    loadReviewsSnapshot: async () => ({
+      summary: { qualifyingThisWeek: 4, unanswered: 0, averageRating: 4.6 },
+      empty: false,
+    }),
+  };
+});
+
 vi.mock("./call-claude", () => ({
-  callClaude: async (input: { personMemory?: string | null; system?: string }) => {
+  callClaude: async (input: { personMemory?: string | null; system?: string; grounding?: string; reportData?: string | null }) => {
     captured.memory.push(input.personMemory ?? null);
+    captured.grounding = input.grounding ?? "";
+    captured.reportData = input.reportData ?? "";
     if (captured.recordSystems) {
       captured.systems.push({ revision: captured.revision, system: input.system ?? "" });
     }
@@ -413,6 +457,10 @@ vi.mock("./call-claude", () => ({
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
     const tool = input.tool?.name ?? "";
     const text = JSON.stringify(input.messages ?? []);
+    if (tool === "choose_salon_data") {
+      if (/\b(?:google\s+)?reviews?\b/i.test(text)) return { read: "reviews" };
+      return { read: "none" };
+    }
     if (tool === "repair_reply") {
       const failures = /Failures:\\n([^]*?)\\n\\n/.exec(text)?.[1] ?? "";
       if (failures && !/p\.\d+/.test(failures)) {
@@ -1111,6 +1159,10 @@ const CASES: readonly ReplayCase[] = [
 ];
 
 function setFlags(on: boolean) {
+  if (!savedFlags.has("CHAT_DATA_TOOLS_ENABLED")) {
+    savedFlags.set("CHAT_DATA_TOOLS_ENABLED", process.env.CHAT_DATA_TOOLS_ENABLED);
+  }
+  delete process.env.CHAT_DATA_TOOLS_ENABLED;
   for (const name of FLAGS) {
     if (!savedFlags.has(name)) savedFlags.set(name, process.env[name]);
     if (on) process.env[name] = "1";
@@ -1544,17 +1596,24 @@ describe("priority replay with the flags off is no worse than the baseline", () 
   });
 });
 
+interface DataCaseScore {
+  readonly id: string;
+  readonly off: "pass" | "miss";
+  readonly on: "pass" | "miss";
+}
+
 interface FlagEffect {
   readonly flag: string;
   readonly floorPass: number;
   readonly cardPass: number;
   readonly broken: readonly string[];
   readonly cardFailures: readonly string[];
+  readonly dataCases?: readonly DataCaseScore[];
 }
 
 const flagEffects: FlagEffect[] = [];
 
-function setOnlyFlag(flag: (typeof FLAGS)[number]) {
+function setOnlyFlag(flag: (typeof ABLATION_FLAGS)[number]) {
   setFlags(false);
   process.env[flag] = "1";
   selectPromptRevision("current");
@@ -1562,11 +1621,41 @@ function setOnlyFlag(flag: (typeof FLAGS)[number]) {
   recordHarness.on = false;
 }
 
+function attachedBlock(): string {
+  return `${captured.grounding}\n${captured.reportData}`;
+}
+
+/** True when every verbatim turn attaches the block this case is missing. */
+async function dataCaseAttaches(item: (typeof DATA_CASES)[number], suffix: string): Promise<boolean> {
+  stateBag.forms.clear();
+  const history: ChatMessage[] = [];
+  let attached = true;
+  for (let index = 0; index < item.turns.length; index += 1) {
+    captured.grounding = "";
+    captured.reportData = "";
+    await ask(item.turns[index], history, `conv-${item.id}-data-${suffix}`);
+    if (!item.mark.test(attachedBlock())) attached = false;
+    history.push({
+      id: `u-${item.id}-${suffix}-${index}`,
+      role: "user",
+      content: item.turns[index],
+      createdAt: "2026-10-23T15:00:00Z",
+    });
+    history.push({
+      id: `a-${item.id}-${suffix}-${index}`,
+      role: "assistant",
+      content: "An answer.",
+      createdAt: "2026-10-23T15:01:00Z",
+    });
+  }
+  return attached;
+}
+
 describe("one quality flag at a time", () => {
   afterAll(() => {
     recordHarness.on = true;
   });
-  it.each(FLAGS)("%s", async (flag) => {
+  it.each(ABLATION_FLAGS)("%s", async (flag) => {
     setOnlyFlag(flag);
     const broken: string[] = [];
     const cardFailures: string[] = [];
@@ -1597,7 +1686,23 @@ describe("one quality flag at a time", () => {
       if (failures.length === 0) cardPass += 1;
       else cardFailures.push(`${item.id}: ${failures.join("; ")}`);
     }
-    flagEffects.push({ flag, floorPass, cardPass, broken, cardFailures });
+    let dataCases: DataCaseScore[] | undefined;
+    if (flag === "CHAT_DATA_TOOLS_ENABLED") {
+      dataCases = [];
+      for (const item of DATA_CASES) {
+        setFlags(false);
+        const off = await dataCaseAttaches(item, "off");
+        setOnlyFlag(flag);
+        const on = await dataCaseAttaches(item, "on");
+        dataCases.push({ id: item.id, off: off ? "pass" : "miss", on: on ? "pass" : "miss" });
+      }
+      expect(broken, "CHAT_DATA_TOOLS_ENABLED breaks another case").toEqual([]);
+      expect(dataCases, "s22 and s23").toEqual([
+        { id: "s22", off: "miss", on: "miss" },
+        { id: "s23", off: "miss", on: "pass" },
+      ]);
+    }
+    flagEffects.push({ flag, floorPass, cardPass, broken, cardFailures, ...(dataCases ? { dataCases } : {}) });
   }, 60_000);
 });
 
@@ -1632,6 +1737,38 @@ function renderFlagAblation(effects: readonly FlagEffect[]): string {
     lines.push("These miss the floor for another reason:");
     lines.push("");
     for (const effect of unsafe) lines.push(`- \`${effect.flag}\`: ${effect.broken.join(" | ")}`);
+  }
+  const data = effects.find((effect) => effect.dataCases && effect.dataCases.length > 0);
+  if (data?.dataCases) {
+    lines.push("");
+    lines.push(
+      "`CHAT_DATA_TOOLS_ENABLED` is also scored on s22 and s23. The turns are verbatim. The reply model is mocked, so a data case passes when the flag attaches the block the answer was missing. The review read in this harness is the page inventory the earlier miss named, 254 reviews. The chooser is stubbed the same way the other tools are, because the model is mocked.",
+    );
+    lines.push("");
+    lines.push("| Case | Flag off | Flag on |");
+    lines.push("| --- | --- | --- |");
+    for (const row of data.dataCases) lines.push(`| ${row.id} | ${row.off} | ${row.on} |`);
+    const s22 = data.dataCases.find((row) => row.id === "s22");
+    const s23 = data.dataCases.find((row) => row.id === "s23");
+    const notes: string[] = [];
+    if (s22?.on === "pass" && s22.off === "miss") {
+      notes.push("s22 passes with the flag on and misses with it off.");
+    } else if (s22) {
+      notes.push(
+        `s22 is ${s22.on} with the flag on and ${s22.off} with it off. Both turns say "change my password", and the help text is attached only for a reset, a forgotten password, or a sign-in failure.`,
+      );
+    }
+    if (s23?.on === "pass" && s23.off === "miss") {
+      notes.push(
+        's23 passes with the flag on and misses with it off. The flag attaches "The Google Reviews page holds 254 reviews in total".',
+      );
+    } else if (s23) {
+      notes.push(`s23 is ${s23.on} with the flag on and ${s23.off} with it off.`);
+    }
+    if (data.broken.length === 0) notes.push("The other 21 cases hold the floor.");
+    else notes.push(`The flag breaks the floor on ${data.broken.map((row) => row.split(":")[0]).join(", ")}.`);
+    lines.push("");
+    lines.push(notes.join(" "));
   }
   lines.push("");
   return lines.join("\n");

@@ -169,6 +169,7 @@ Each row turns one quality flag on and leaves the others off. The reply model is
 | PRINTED_PAGE_CITATION_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
 | PAYROLL_AMOUNT_FIELD_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
 | CODE_SLOTS_ENABLED | 20/21 | 7/21 | s17 | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| CHAT_DATA_TOOLS_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
 
 Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all 21.
 
@@ -177,17 +178,27 @@ Safe order for Pau: turn these on from the top. A flag with no floor break holds
 3. `ATTENDANCE_POLICY_CITATION_ENABLED` — card 12/21
 4. `POLICY_PAGE_REQUIRED_ENABLED` — card 12/21
 5. `ACTION_PLAN_SENTENCES_ENABLED` — card 7/21
-6. `CODE_SLOTS_ENABLED` — card 7/21 — stores s17's date
-7. `DRAFT_MERGE_ENABLED` — card 7/21
-8. `FEWSHOT_EXAMPLES_ENABLED` — card 7/21
-9. `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — card 7/21
-10. `MANUAL_SECTION_DEDUPE_ENABLED` — card 7/21
-11. `PAYROLL_AMOUNT_FIELD_ENABLED` — card 7/21
-12. `POLICY_GATE_NONBLOCKING_ENABLED` — card 7/21
-13. `PRINTED_PAGE_CITATION_ENABLED` — card 7/21
-14. `QUERY_REWRITE_ENABLED` — card 7/21
-15. `SELF_CHECK_ENABLED` — card 7/21
-16. `TYPED_NAME_PROCEEDS_ENABLED` — card 6/21
+6. `CHAT_DATA_TOOLS_ENABLED` — card 7/21
+7. `CODE_SLOTS_ENABLED` — card 7/21 — stores s17's date
+8. `DRAFT_MERGE_ENABLED` — card 7/21
+9. `FEWSHOT_EXAMPLES_ENABLED` — card 7/21
+10. `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — card 7/21
+11. `MANUAL_SECTION_DEDUPE_ENABLED` — card 7/21
+12. `PAYROLL_AMOUNT_FIELD_ENABLED` — card 7/21
+13. `POLICY_GATE_NONBLOCKING_ENABLED` — card 7/21
+14. `PRINTED_PAGE_CITATION_ENABLED` — card 7/21
+15. `QUERY_REWRITE_ENABLED` — card 7/21
+16. `SELF_CHECK_ENABLED` — card 7/21
+17. `TYPED_NAME_PROCEEDS_ENABLED` — card 6/21
+
+`CHAT_DATA_TOOLS_ENABLED` is also scored on s22 and s23. The turns are verbatim. The reply model is mocked, so a data case passes when the flag attaches the block the answer was missing. The review read in this harness is the page inventory the earlier miss named, 254 reviews. The chooser is stubbed the same way the other tools are, because the model is mocked.
+
+| Case | Flag off | Flag on |
+| --- | --- | --- |
+| s22 | miss | miss |
+| s23 | miss | pass |
+
+s22 is miss with the flag on and miss with it off. Both turns say "change my password", and the help text is attached only for a reset, a forgotten password, or a sign-in failure. s23 passes with the flag on and misses with it off. The flag attaches "The Google Reviews page holds 254 reviews in total". The other 21 cases hold the floor.
 
 
 ## Rulebook — old behaviour against guide v3

@@ -1,5 +1,14 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: Chat data tools in the one-flag replay — Sunny-only
+
+Ask Bubbles was not attached. No chat mechanism changed. The manual title
+stays **JBA Policy Manual**. Port is not needed.
+
+- The one-flag replay now includes `CHAT_DATA_TOOLS_ENABLED`. s22 and s23
+  are scored from the verbatim turns. The flag does not break the other
+  21 cases.
+
 Ask Bubbles (`Glowbrands1/Ask-bubbles`) is a port of this app. Every fix to
 chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
