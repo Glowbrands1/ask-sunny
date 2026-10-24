@@ -1337,7 +1337,14 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
       expect(dateShown(response.content, iso), `${where} missing ${iso} in: ${preview}`).toBe(true);
     }
   }
-  if (check.noReask) expect(response.content, where).not.toMatch(/who is this|which employee|which salon is this about|which of them/i);
+  if (check.noReask) {
+    expect(response.content, where).not.toMatch(/who is this|which employee|which of them/i);
+    /*
+     * A global non-admin is asked which salon once, and the card is still
+     * built. That question is a re-ask only when the salon is already on the card.
+     */
+    if (check.locationId) expect(response.content, where).not.toMatch(/which salon is this about/i);
+  }
   if (check.noIncidentGap) expect(response.content, where).not.toMatch(/haven't told me what happened/i);
   if (check.offense) {
     expect(response.content.toLowerCase(), `${where} content: ${preview}`).toContain(check.offense.toLowerCase());

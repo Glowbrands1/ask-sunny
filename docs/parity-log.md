@@ -1,5 +1,25 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: validation code fixes — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production writes
+and no merge.
+
+- Corrective-action questions collapse identical JBA copies at query time
+  and stay on the current manual. Other policy questions boost that manual
+  and keep the rest of the retrieval behind it. A synonym map sends
+  insubordination and acknowledgment to Standards of Conduct, uniform,
+  slippers, and leggings to Dress Code, tardy and late to shift to
+  Attendance, and opened late to Late Opening. Hybrid search is tested, not
+  turned on in production.
+- Before create, an open draft for the same employee, template, and incident
+  is reopened.
+- Drafts are left out of what chat calls previous coaching.
+- A global non-admin is asked for the salon once. The card is still built.
+  The form is not filed with no salon. An admin global account is unchanged.
+
+
 ## 24 Oct 2026: Job title is not an employee name — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

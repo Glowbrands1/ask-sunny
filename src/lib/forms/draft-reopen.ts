@@ -134,3 +134,82 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
   const loaded = await loadInstance(id);
   return loaded?.instance.status === "draft" ? loaded.instance : null;
 }
+
+/**
+ * An open draft for the same employee, template, and incident, from any chat.
+ *
+ * A new conversation used to file another draft. This returns the open one
+ * so the create route can reopen it. A different form date, or a narrative
+ * that is a different incident, stays a new draft. Another manager's draft
+ * counts: the edit check still decides whether this caller may change it.
+ */
+export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: ResentDraftWanted): string | null {
+  const matches = rows.filter((row) => {
+    if (!sameEmployee(row.employeeName, wanted.employeeName)) return false;
+    if (wanted.formDate && row.formDate && wanted.formDate !== row.formDate) return false;
+    if (wanted.formDate && row.formDate === wanted.formDate) {
+      if (wanted.incident && row.narrative && !sameIncident(wanted.incident, row.narrative)) return false;
+      return true;
+    }
+    if (!wanted.formDate && wanted.incident && row.narrative) return sameIncident(wanted.incident, row.narrative);
+    return false;
+  });
+  if (matches.length === 0) return null;
+  return [...matches].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]!.id;
+}
+
+export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<InstanceRow | null> {
+  const supabase = getSupabaseAdmin();
+  const { data: template, error: templateError } = await supabase
+    .from("form_templates")
+    .select("id")
+    .eq("key", input.templateKey)
+    .maybeSingle();
+  if (templateError || !template) return null;
+
+  let query = supabase
+    .from("form_instances")
+    .select("id, employee_name, location_id, created_at, form_date")
+    .eq("template_id", template.id)
+    .eq("status", "draft")
+    .ilike("employee_name", input.employeeName.trim())
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (input.formDate) query = query.eq("form_date", input.formDate);
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) return null;
+
+  let rows: ResentDraftRow[] = (
+    data as { id: unknown; employee_name: unknown; location_id: unknown; created_at: unknown; form_date: unknown }[]
+  ).map((row) => ({
+    id: String(row.id),
+    employeeName: String(row.employee_name ?? ""),
+    locationId: (row.location_id as string | null) ?? null,
+    createdAt: String(row.created_at ?? ""),
+    formDate: typeof row.form_date === "string" ? row.form_date : null,
+  }));
+
+  if (input.incident) {
+    const ids = rows.map((row) => row.id);
+    if (ids.length === 0) return null;
+    const { data: values, error: valuesError } = await supabase
+      .from("form_instance_values")
+      .select("instance_id, field_key, value")
+      .in("instance_id", ids);
+    if (valuesError || !Array.isArray(values)) return null;
+    const narrative = new Map<string, string>();
+    for (const row of values) {
+      const key = String(row.field_key ?? "");
+      const value = String(row.value ?? "").trim();
+      if (!value || !NARRATIVE_FIELD.test(key)) continue;
+      const id = String(row.instance_id);
+      narrative.set(id, [narrative.get(id), value].filter(Boolean).join("\n"));
+    }
+    rows = rows.map((row) => ({ ...row, narrative: narrative.get(row.id) ?? "" }));
+  }
+
+  const id = pickOpenIncidentDraft(rows, input);
+  if (!id) return null;
+  const loaded = await loadInstance(id);
+  return loaded?.instance.status === "draft" ? loaded.instance : null;
+}

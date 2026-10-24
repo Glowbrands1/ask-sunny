@@ -585,8 +585,11 @@ describe("QA 3 — location, title and dates", () => {
       turn("exit form for Lawrence Smith, he quit on the spot", { scope: GLOBAL }),
     );
     expect(response!.formProposal!.employeeName).toBe("Lawrence Smith");
+    // Lawrence is a person. A global salon director is asked for the salon once; KS Lawrence is not filled in.
     expect(response!.formProposal!.locationId).toBeNull();
-    expect(response!.formProposal!.locationResolution).toBe("not_applicable");
+    expect(response!.formProposal!.locationResolution).toBe("needs_selection");
+    expect(response!.formProposal!.status).toBe("needs_location");
+    expect(response!.content.match(/which salon is this about/gi)).toHaveLength(1);
   });
 
   it("an owner who names a roster salon gets it", async () => {

@@ -164,15 +164,26 @@ describe("loadFormRecords", () => {
 
     const block = result!.block;
     expect(block.startsWith(FORM_RECORDS_HEADING)).toBe(true);
-    expect(block).toContain("Forms naming the person in the question (2)");
+    expect(block).toContain("Forms naming the person in the question (1)");
     expect(block).toContain("2026-09-12 — Coaching Form");
     expect(block).toContain("follow-up: Followed up");
-    expect(block).toContain("2026-10-02 — Coaching Form");
-    expect(block).toContain("draft — not finalized");
+    expect(block).not.toContain("2026-10-02 — Coaching Form");
+    expect(block).not.toContain("draft — not finalized");
     expect(block).not.toContain("Salon 999");
     // A first-name-only match is offered as a question, not as theirs.
     expect(block).toMatch(/Possible matches[\s\S]*Wren Park/);
     expect(block).toContain("only the salons this user may see");
+  });
+
+  it("lists a draft when the question asks for drafts", async () => {
+    state.rows = [row({ formDate: "2026-10-02", status: "draft" })];
+    const result = await loadFormRecords({
+      actor: SALON_DIRECTOR,
+      question: "any drafts for wren halvorsen",
+      today: "2026-10-20",
+    });
+    expect(result!.block).toContain("draft — not finalized");
+    expect(result!.block).toContain("2026-10-02 — Coaching Form");
   });
 
   it("says nothing is on file when the named person has no forms, without listing anybody else's", async () => {

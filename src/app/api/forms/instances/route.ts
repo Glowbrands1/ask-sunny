@@ -31,7 +31,8 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
-import { findResentDraft } from "@/lib/forms/draft-reopen";
+import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
+import { globalNonAdminNeedsSalon } from "@/lib/forms/global-salon-ask";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
@@ -232,6 +233,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: location.reason }, { status: 403 });
     }
     const locationId = location.kind === "authorized" ? location.locationId : null;
+
+    /*
+     * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
+     * reopened instead of filing another one. A different date or a different
+     * account of what happened still creates.
+     */
+    if (body.source === "ask_sunny" && !historyWantsSeparateDocument(body.conversation)) {
+      const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
+      const incidentText = turns
+        .filter((turn) => turn.role === "user")
+        .map((turn) => turn.content)
+        .join("\n")
+        .trim()
+        .slice(0, 2000);
+      const open = await findOpenIncidentDraft({
+        templateKey: body.templateKey,
+        employeeName: body.employeeName.trim().slice(0, 120),
+        createdBy: actor.id,
+        locationId,
+        formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null,
+        incident: incidentText || null,
+      }).catch(() => null);
+      if (open) return NextResponse.json({ instance: open, reused: true });
+    }
+
+    if (location.kind === "no_location" && globalNonAdminNeedsSalon(actor.role, actor.scope)) {
+      return NextResponse.json(
+        { error: "Say which salon this form is about before creating it." },
+        { status: 400 },
+      );
+    }
 
     /* See `resolveLocationName`. */
     const locationName = resolveLocationName(locationId, body.locationName ?? null);
