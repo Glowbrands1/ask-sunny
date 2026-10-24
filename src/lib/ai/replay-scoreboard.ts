@@ -467,7 +467,7 @@ export function renderPromptCacheScoreboard(input: {
   return [
     "## Prompt cache",
     "",
-    "The instruction text is unchanged. Sections 1–11 are the static block and do not include the manager's name, salon, or today. Those three facts follow `---DYNAMIC---`. `call-claude.ts` puts `cache_control: { type: \"ephemeral\" }` on the static block only. The reply model is mocked, so the token counts are the local replay's cache log and the latency is time-to-first-token for the whole prompt (OLD) against the dynamic tail (NEW).",
+    "Standing sentences are unchanged. The cached prefix does not include the manager, the salon, today's date, an open form, form records, person memory, recalled memory, prior coaching, a pinned framework, a matched manual section, or few-shot examples. Those follow `---DYNAMIC---`. The built replay prompt differs from last-known-good because those blocks moved. `call-claude.ts` puts `cache_control: { type: \"ephemeral\" }` on the static block only. The reply model is mocked, so the token counts are the local replay's cache log, not Anthropic usage, and the latency is time-to-first-token for the whole prompt (OLD) against the dynamic tail (NEW).",
     "",
     `- 1st call usage.cache_creation_input_tokens: ${input.creationTokens}`,
     `- later calls with usage.cache_read_input_tokens > 0: ${input.laterReads}`,
