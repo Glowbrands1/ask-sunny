@@ -1,5 +1,19 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: Name labels and a trailing Job — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production writes
+and no merge.
+
+- Label words are job, title, position, role, location, salon, and store.
+  They reject a candidate only when the candidate is the label itself
+  ("Job title", "Store"). A surname that is one of those words still passes
+  ("Jane Store", "Jane Salon"). A trailing Job or Title comes off only after
+  a full name (s17 "Marissa Lempka Job"). The value after "Name:" stays the
+  name ("Name: Christiana Headley, job title tanning consultant"). s8 still
+  does not store "Job title".
+
 ## 24 Oct 2026: validation code fixes — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
