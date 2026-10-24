@@ -12,7 +12,7 @@ import type { MatchedChunkRow } from "./mappers";
  */
 const SYNONYMS: readonly { readonly pattern: RegExp; readonly section: string }[] = [
   {
-    pattern: /\b(?:insubordination|acknowledg(?:e)?ment|acknowledge|refusal)\b/i,
+    pattern: /\b(?:insubordination|acknowledg(?:e)?ments?|acknowledge|refus(?:al|ed|es|e))\b/i,
     section: "Standards of Conduct",
   },
   {
@@ -20,11 +20,13 @@ const SYNONYMS: readonly { readonly pattern: RegExp; readonly section: string }[
     section: "Dress Code for The Company",
   },
   {
-    pattern: /\b(?:tardy|tardiness|late to (?:her |his |their |a )?shift|showed up late for shift)\b/i,
+    pattern:
+      /\b(?:tardy|tardiness|late (?:to|for) (?:her |his |their |a )?shift|showed up late for shift)\b/i,
     section: "Attendance",
   },
   {
-    pattern: /\b(?:opened late|opening the (?:store|salon) late|late opening|open(?:ing)? the store late)\b/i,
+    pattern:
+      /\b(?:opened late|store opened late|opening the (?:store|salon) late|late opening|open(?:ed|ing)? the (?:store|salon) late)\b/i,
     section: "Late Opening",
   },
   {

@@ -6,6 +6,11 @@ Ask Bubbles was not attached. Port the mechanism. Do not copy company
 wording. The manual title stays **JBA Policy Manual**. No production writes
 and no merge.
 
+- Plain-language regression cases for round 1 are in
+  `research/reports/full-validation-2026-10-24.md` and run in the local
+  harness only. Hybrid search is not turned on. `store opened late` maps to
+  Late Opening, and `policy acknowledgements` maps to Standards of Conduct.
+  Drafts are listed under Not on file and are never called previous coaching.
 - Corrective-action questions collapse identical JBA copies at query time
   and stay on the current manual. Other policy questions boost that manual
   and keep the rest of the retrieval behind it. A synonym map sends
@@ -15,7 +20,7 @@ and no merge.
   turned on in production.
 - Before create, an open draft for the same employee, template, and incident
   is reopened.
-- Drafts are left out of what chat calls previous coaching.
+- Drafts are listed under Not on file. Chat does not call them previous coaching.
 - A global non-admin is asked for the salon once. The card is still built.
   The form is not filed with no salon. An admin global account is unchanged.
 

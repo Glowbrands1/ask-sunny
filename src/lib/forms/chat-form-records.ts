@@ -148,7 +148,7 @@ export function matchRowsToQuestion(
 export const FORM_RECORDS_HEADING = "FORMS ON FILE (FORM MONITORING)";
 
 const STATUS_LABEL: Record<InstanceRow["status"], string> = {
-  draft: "draft — not finalized",
+  draft: "not on file",
   finalized: "finalized",
   revised: "revised — replaced by a newer version",
 };
@@ -174,7 +174,23 @@ function scopeSentence(visibility: AccessScope): string {
 }
 
 const RECORDS_RULES =
-  "These are records of forms that exist, read from Form Monitoring for this user. Never mark them with a source marker. Only the form name, employee, salon, dates and status are shown — you have NOT seen what any form says, so never describe or guess its contents, reasons or wording. A draft is not previous coaching and is not listed here unless the manager asked for drafts. Tell the manager they can open any of these in Forms → Form Monitoring.";
+  "These are records of forms that exist, read from Form Monitoring for this user. Never mark them with a source marker. Only the form name, employee, salon, dates and status are shown — you have NOT seen what any form says, so never describe or guess its contents, reasons or wording. A draft is not previous coaching. Drafts are listed only under Not on file, and that list is never called previous coaching or a corrective action on file. Tell the manager they can open any of these in Forms → Form Monitoring.";
+
+const NOT_ON_FILE =
+  "Not on file. These drafts are not previous coaching and are not a corrective action on file:";
+
+function onFileRows(rows: readonly InstanceRow[]): InstanceRow[] {
+  return rows.filter((row) => row.status !== "draft");
+}
+
+function draftRows(rows: readonly InstanceRow[]): InstanceRow[] {
+  return rows.filter((row) => row.status === "draft");
+}
+
+function notOnFileSection(rows: readonly InstanceRow[], today: string): string | null {
+  if (rows.length === 0) return null;
+  return `${NOT_ON_FILE}\n${rows.map((row) => describeRow(row, today)).join("\n")}`;
+}
 
 export function renderFormRecordsBlock(input: {
   visibility: AccessScope;
@@ -192,24 +208,38 @@ export function renderFormRecordsBlock(input: {
 
   if (matches) {
     const searched = words.join(", ");
-    if (matches.named.length > 0) {
+    const named = onFileRows(matches.named);
+    const possible = onFileRows(matches.possible);
+    const drafts = draftRows([...matches.named, ...matches.possible]);
+    if (named.length > 0) {
       sections.push(
-        `Forms naming the person in the question (${matches.named.length}), newest first:\n${matches.named.map((row) => describeRow(row, today)).join("\n")}`,
+        `Forms naming the person in the question (${named.length}), newest first:\n${named.map((row) => describeRow(row, today)).join("\n")}`,
       );
     } else {
       sections.push(
         `No form on file names the person in the question (searched for: ${searched}). Say so plainly — there is no coaching or other form on file for them at the salons this user can see.`,
       );
     }
-    if (matches.possible.length > 0) {
+    if (possible.length > 0) {
       sections.push(
-        `Possible matches — part of the name matches, so they may be somebody else. Ask before treating them as the same person:\n${matches.possible.map((row) => describeRow(row, today)).join("\n")}`,
+        `Possible matches — part of the name matches, so they may be somebody else. Ask before treating them as the same person:\n${possible.map((row) => describeRow(row, today)).join("\n")}`,
       );
     }
+    const draftsBlock = notOnFileSection(drafts, today);
+    if (draftsBlock) sections.push(draftsBlock);
   } else if (recent.length > 0) {
-    sections.push(
-      `The question names nobody. The ${recent.length} most recent forms this user can see, newest first:\n${recent.map((row) => describeRow(row, today)).join("\n")}`,
-    );
+    const filed = onFileRows(recent);
+    const drafts = draftRows(recent);
+    if (filed.length > 0) {
+      sections.push(
+        `The question names nobody. The ${filed.length} most recent forms this user can see, newest first:\n${filed.map((row) => describeRow(row, today)).join("\n")}`,
+      );
+    }
+    const draftsBlock = notOnFileSection(drafts, today);
+    if (draftsBlock) sections.push(draftsBlock);
+    if (filed.length === 0 && !draftsBlock) {
+      sections.push("No forms are on file at the salons this user can see.");
+    }
   } else {
     sections.push("No forms are on file at the salons this user can see.");
   }
@@ -285,16 +315,10 @@ export async function loadFormRecords(input: {
       words = candidateNameWords(nameSource);
     }
 
-    const askedForDrafts = /\b(?:drafts?|drafted|unfinished)\b/i.test(input.question);
-    const withoutDrafts = (rows: InstanceRow[]) =>
-      askedForDrafts ? rows : rows.filter((row) => row.status !== "draft");
-
     if (words.length > 0) {
-      const rows = withoutDrafts(
-        visibleInstances(
-          formsActor,
-          await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
-        ),
+      const rows = visibleInstances(
+        formsActor,
+        await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
       );
       const matches = matchRowsToQuestion(rows, words);
       if (matches.named.length > 0 || matches.possible.length > 0) {
@@ -302,7 +326,7 @@ export async function loadFormRecords(input: {
       }
     }
 
-    const recent = withoutDrafts(visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter)));
+    const recent = visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter));
     /*
      * A question that names somebody nobody on file matches is reported as
      * "no form names them" — with the recent list left out, so the model
