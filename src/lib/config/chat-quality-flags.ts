@@ -382,6 +382,18 @@ export function formFullRemapEnabled(): boolean {
   return envFlag("FORM_FULL_REMAP_ENABLED");
 }
 
+/**
+ * The warning level kept for a Corrective Action is only one the manager
+ * stated: read from their own turns, never from Ask Sunny's ("You'll set the
+ * verbal/written warning level" is not "written"), never from the slot
+ * model's guess, and a bare "Yes" only where Ask Sunny's turn just before it
+ * asked one yes/no question about that exact level. Off, the intent reading
+ * grounds the level as it does today.
+ */
+export function warningLevelManagerOnlyEnabled(): boolean {
+  return envFlag("WARNING_LEVEL_MANAGER_ONLY_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

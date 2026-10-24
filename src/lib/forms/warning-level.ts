@@ -192,10 +192,15 @@ function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
 }
 
 /** The level one manager turn states for this form, or null. */
-export function statedWarningLevel(text: string): StatedWarningLevel | null {
+export function statedWarningLevel(
+  text: string,
+  options: { readonly undecidedStatesNothing?: boolean } = {},
+): StatedWarningLevel | null {
   const levels = new Set<StatedWarningLevel>();
+  // Only `managerStatedWarningLevel` asks for this; it is reached behind WARNING_LEVEL_MANAGER_ONLY_ENABLED.
+  const read = options.undecidedStatesNothing ? withoutUndecidedLevels(normalize(text)) : normalize(text);
   // A sentence at a time, so a cue in one sentence says nothing about the next.
-  for (const sentence of normalize(text).matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
+  for (const sentence of read.matchAll(/[^.;!?\n]+[.;!?\n]?/g)) {
     const body = sentence[0].replace(/[.;!?\n]$/, "");
     if (sentence[0].endsWith("?") && !POLITE_LEVEL_REQUEST.test(body) && !ASKS_FOR_THE_FORM.test(body)) continue;
 
@@ -223,6 +228,73 @@ export function statedWarningLevel(text: string): StatedWarningLevel | null {
     }
   }
   return levels.size === 1 ? [...levels][0]! : null;
+}
+
+/*
+ * "THE VERBAL/WRITTEN WARNING LEVEL" NAMES THE CHOICE, NOT A LEVEL. Live
+ * replays, 24 Oct 2026: Ask Sunny's own "You'll set the verbal/written warning
+ * level … I won't guess at them" was read as "written warning", and the next
+ * reply said "Written Warning, as you said". "verbal or written", "written /
+ * verbal", "verbal vs written" are the two options side by side, undecided.
+ * Read so by `managerStatedWarningLevel` only, which the intent reading calls
+ * behind WARNING_LEVEL_MANAGER_ONLY_ENABLED (this module imports no flags).
+ */
+const UNDECIDED_LEVELS = /\b(?:verbal|written)\s*(?:\/|\bor\b|\bvs\.?|\bversus\b)\s*(?:verbal|written)\b/g;
+
+function withoutUndecidedLevels(text: string): string {
+  return text.replace(UNDECIDED_LEVELS, "either level");
+}
+
+/** A whole reply that only says yes. */
+const BARE_YES = /^\s*(?:yes|yeah|yep|yup|correct|that'?s\s+(?:right|correct))\s*[.!]*\s*$/i;
+
+/** A yes/no question opens with the verb: "Should this be …?", "Is it …?". */
+const YES_NO_OPENING =
+  /^\s*(?:so\s+|and\s+|just\s+to\s+confirm,?\s+)?(?:is|isn'?t|are|was|should|shall|do|does|did|will|would|can|could)\b/;
+
+/**
+ * The one level an assistant turn asks a single yes/no question about —
+ * "Should I tick **Written Warning** on the form?" — or null. Null when the
+ * turn asks more than one question (a bare "Yes" could answer either), when
+ * the question offers a choice ("verbal or written?", "Yes or No?"), or when
+ * it names no level or both.
+ */
+export function levelAskedYesNo(assistant: string): StatedWarningLevel | null {
+  const plain = normalize((assistant ?? "").replace(/[*_`]/g, ""));
+  const questions = plain.match(/[^.!?\n]*\?/g) ?? [];
+  if (questions.length !== 1) return null;
+  const question = questions[0]!;
+  if (!YES_NO_OPENING.test(question) || /\bor\b/.test(question)) return null;
+  const named = new Set([...question.matchAll(LEVEL_NAMED)].map((match) => match[1] as StatedWarningLevel));
+  return named.size === 1 ? [...named][0]! : null;
+}
+
+export interface WarningLevelTurn {
+  readonly role: string;
+  readonly content: string;
+}
+
+/**
+ * The level the MANAGER stated, read from their turns only — the latest that
+ * states one winning. Ask Sunny's turns never state a level; they only make a
+ * bare "Yes" count, and only when the assistant turn right before it asked one
+ * yes/no question about that exact level (see `levelAskedYesNo`). Live
+ * replays, 24 Oct 2026: "for Test Employee" and a bare "Yes" (answering the
+ * payroll question) were each read as "Written Warning, as you said".
+ */
+export function managerStatedWarningLevel(turns: readonly WarningLevelTurn[]): StatedWarningLevel | null {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]!;
+    if (turn.role !== "user" || typeof turn.content !== "string") continue;
+    const level = statedWarningLevel(turn.content, { undecidedStatesNothing: true });
+    if (level) return level;
+    const before = turns[index - 1];
+    if (BARE_YES.test(turn.content) && before?.role === "assistant") {
+      const asked = levelAskedYesNo(before.content);
+      if (asked) return asked;
+    }
+  }
+  return null;
 }
 
 /**

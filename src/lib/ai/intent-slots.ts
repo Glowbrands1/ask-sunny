@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { codeSlotsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  codeSlotsEnabled,
+  typedNameProceedsEnabled,
+  warningLevelManagerOnlyEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
@@ -11,7 +15,8 @@ import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
-import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
+import { managerStatedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -219,7 +224,22 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
     : groundedDate;
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
-  const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
+  /*
+   * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
+   * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
+   * verbal/written warning level", and the slot model's guess was taken as
+   * given, so "for Test Employee" and a bare "Yes" came back "Written Warning,
+   * as you said". With the flag, the level is a numbered choice the manager
+   * just made, or what their own turns state — nothing else.
+   */
+  const managerOnly = warningLevelManagerOnlyEnabled();
+  const warningLevel = managerOnly
+    ? {
+        value:
+          choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
+        ambiguous: false,
+      }
+    : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
   const modelPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
   // A heading already grounded stays. The account reader fills one in only
@@ -254,6 +274,10 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     policyHeading,
     policyPage,
   });
+  if (managerOnly) {
+    const answered = payrollAnsweredNow(input.history, input.question);
+    if (answered) state = { ...state, payrollDeduct: answered };
+  }
   if (codeSlotsEnabled()) {
     const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
     const prior = cleanPersonName(saved.employeeName, salonNames);
@@ -282,6 +306,39 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   if (clarification) return { question, state, clarification, formTurn };
   if (!formTurn) return { question, state, clarification: null, formTurn: false };
   return { question, state, clarification: null, formTurn: true };
+}
+
+/** Another yes/no question beside the payroll one: "Did you mean **Rowan Testo**?". */
+const OTHER_YES_NO =
+  /^\s*(?:did\s+you\s+mean|is|isn'?t|are|was|should|shall|do|does|did|will|would|can|could)\b/i;
+
+/**
+ * "Yes" / "No" ANSWERING "Is payroll deduct applicable? Yes or No?" — read
+ * here, while the reply is still bare. Live replay, 24 Oct 2026: once the
+ * stored slots are put ahead of it ("The form is the Corrective Action Form.
+ * The employee is … Yes") the reply is no longer a bare answer, and the card
+ * asked the payroll question again. Only the assistant turn right before it
+ * counts, and only when that turn asks no other yes/no question, so the "Yes"
+ * that confirms a name is never a payroll answer. Behind
+ * WARNING_LEVEL_MANAGER_ONLY_ENABLED.
+ */
+function payrollAnsweredNow(
+  history: readonly { role: string; content: string }[],
+  question: string,
+): "yes" | "no" | null {
+  const before = history[history.length - 1];
+  if (!before || before.role !== "assistant") return null;
+  const questions = (before.content.replace(/[*_`]/g, "").match(/[^.!?\n]*\?/g) ?? [])
+    .map((line) => line.trim())
+    .filter((line) => !/payroll/i.test(line) && !/^yes\s+or\s+no\?$/i.test(line));
+  if (questions.some((line) => OTHER_YES_NO.test(line))) return null;
+  return payrollDeductFromConversation(
+    [
+      { role: "assistant", content: before.content },
+      { role: "user", content: question },
+    ],
+    { fromThisForm: true },
+  );
 }
 
 /**
