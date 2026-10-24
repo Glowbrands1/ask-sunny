@@ -643,11 +643,11 @@ function leadsWithTheForm(q: string, original: string): boolean {
  * "WRITE A …" IS A REQUEST ONLY WHEN WHAT IS WRITTEN IS THE FORM
  * ============================================================================
  *
- * "write a CA for Paisley" was read as a question about the progression and
+ * "write a CA for Daisley" was read as a question about the progression and
  * the manager was told to rephrase (October 2026), so "write a" / "write an"
  * were made creation verbs. QA, 22 Oct 2026 (F-04): as bare verbs they also
  * turned "can you write a summary of the corrective action policy", "write a
- * note explaining the corrective action steps" and "write an email to Paisley
+ * note explaining the corrective action steps" and "write an email to Daisley
  * about her CA" into requests to create a Corrective Action Form. Writing is a
  * request for the form only when its object IS the form or the warning;
  * "how do I write a CA?" is still ruled a question before this is consulted.
@@ -674,7 +674,7 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
-  /* "write a CA for Paisley" is read by `writesTheForm`, not by a bare "write a". */
+  /* "write a CA for Daisley" is read by `writesTheForm`, not by a bare "write a". */
   "write her up",
   "write him up",
   "write them up",

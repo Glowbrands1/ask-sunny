@@ -21,10 +21,10 @@ import type { AskResponse } from "./types";
 
 const TODAY = "2026-10-23";
 
-const ERIN_PROMPT = "CA for Erin Nelson, she was rude to Nevaeh on 9-28-26, follow up 10-16-26";
+const ELIN_PROMPT = "CA for Elin Haskett, she was rude to Tavaeh on 9-28-26, follow up 10-16-26";
 const MANHATTAN_PROMPT =
   "manhattan salon opened late on 9/20/26, assistant salon director test testy, CA with $25 payroll deduction";
-const COLENE_PROMPT = "coaching for cell phone use on 9-29-26 for Colene Schildt at Lawrence";
+const CORENA_PROMPT = "coaching for cell phone use on 9-29-26 for Corena Schardt at Lawrence";
 const LISA_PROMPT = "Lisa smith, tanning consultant at lawrence, coaching form today";
 
 const SALONS = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
@@ -85,10 +85,10 @@ function person(input: {
   };
 }
 
-const ERIN = person({
-  id: "emp-erin",
-  first: "Erin",
-  last: "Nelson",
+const ELIN = person({
+  id: "emp-elin",
+  first: "Elin",
+  last: "Haskett",
   salonIds: ["loc-0313", "loc-0314", "loc-0410"],
   title: "Salon Director",
   primarySalonId: "loc-0313",
@@ -182,14 +182,14 @@ const PHONE = {
 };
 
 describe("live form cards, 23 Oct 2026", () => {
-  it("CA for Erin Nelson, she was rude to Nevaeh on 9-28-26, follow up 10-16-26", () => {
+  it("CA for Elin Haskett, she was rude to Tavaeh on 9-28-26, follow up 10-16-26", () => {
     const decision = decideIntentTurn(
       turn({
-        question: ERIN_PROMPT,
-        people: [ERIN],
+        question: ELIN_PROMPT,
+        people: [ELIN],
         raw: {
-          employee: "Erin Nelson",
-          incidentType: "rude to Nevaeh",
+          employee: "Elin Haskett",
+          incidentType: "rude to Tavaeh",
           incidentDate: "9-28-26",
           formType: "CA",
           formTurn: true,
@@ -198,24 +198,24 @@ describe("live form cards, 23 Oct 2026", () => {
       }),
     );
     expect(decision.clarification ?? "").not.toMatch(/which salon/i);
-    expect(decision.state.employeeName).toBe("Erin Nelson");
-    expect(decision.state.employeeId).toBe("emp-erin");
+    expect(decision.state.employeeName).toBe("Elin Haskett");
+    expect(decision.state.employeeId).toBe("emp-elin");
     expect(decision.state.salonId).toBe("loc-0313");
     expect(decision.state.formDate).toBe("2026-09-28");
     expect(decision.state.policyHeading).toBe("Standards of Conduct");
     expect(decision.state.policyPage).toBe(12);
-    expect(headingFromAccount(ERIN_PROMPT, HEADINGS)).toBeNull();
+    expect(headingFromAccount(ELIN_PROMPT, HEADINGS)).toBeNull();
 
     const asked = answer("I won't choose which salon this belongs to. Which salon is this about?", proposal({
       templateKey: "dpoa",
       templateName: "Corrective Action Form",
-      employeeName: "Erin Nelson",
+      employeeName: "Elin Haskett",
       status: "needs_location",
       locationResolution: "needs_selection",
       authorizedLocationIds: ["loc-0313", "loc-0314", "loc-0410"],
     }));
-    const prep = prepareGroundedQuestion({ question: ERIN_PROMPT, history: [], people: [ERIN], saved: decision.state });
-    const applied = applyGroundedProposal(asked, { people: [ERIN], prep, rosterEmpty: false });
+    const prep = prepareGroundedQuestion({ question: ELIN_PROMPT, history: [], people: [ELIN], saved: decision.state });
+    const applied = applyGroundedProposal(asked, { people: [ELIN], prep, rosterEmpty: false });
     expect(applied.formProposal?.locationId).toBe("loc-0313");
     expect(applied.formProposal?.locationResolution).toBe("resolved");
 
@@ -223,7 +223,7 @@ describe("live form cards, 23 Oct 2026", () => {
       response: applied,
       question: decision.question,
       today: TODAY,
-      people: [ERIN],
+      people: [ELIN],
       saved: decision.state,
     });
     expect(card.formProposal?.locationId).toBe("loc-0313");
@@ -248,13 +248,13 @@ describe("live form cards, 23 Oct 2026", () => {
       expect.objectContaining({ documentTitle: "JBA Policy Manual", locator: "Page 12", category: "policies_compliance" }),
     ]);
     expect(formTurnCitations({
-      notes: ERIN_PROMPT,
+      notes: ELIN_PROMPT,
       chunks: [STANDARDS],
       documentId: "doc-manual",
       documentTitle: "JBA Policy Manual",
       modelHeading: null,
     })).toEqual([]);
-    expect(promoteSeparateForm(ERIN_PROMPT)).toBeNull();
+    expect(promoteSeparateForm(ELIN_PROMPT)).toBeNull();
   });
 
   it("manhattan salon opened late on 9/20/26, assistant salon director test testy, CA with $25 payroll deduction", () => {
@@ -396,32 +396,32 @@ describe("live form cards, 23 Oct 2026", () => {
     delete process.env.PAYROLL_AMOUNT_FIELD_ENABLED;
   });
 
-  it("coaching for cell phone use on 9-29-26 for Colene Schildt at Lawrence", async () => {
-    expect(detectTemplateIntent(COLENE_PROMPT).kind).toBe("none");
-    const lead = promoteSeparateForm(COLENE_PROMPT);
-    expect(lead).toContain("coaching form for Colene Schildt");
-    expect(lead).toContain(COLENE_PROMPT);
+  it("coaching for cell phone use on 9-29-26 for Corena Schardt at Lawrence", async () => {
+    expect(detectTemplateIntent(CORENA_PROMPT).kind).toBe("none");
+    const lead = promoteSeparateForm(CORENA_PROMPT);
+    expect(lead).toContain("coaching form for Corena Schardt");
+    expect(lead).toContain(CORENA_PROMPT);
     expect(detectTemplateIntent(lead ?? "").kind).toBe("explicit");
-    expect(wantsSeparateDocument(COLENE_PROMPT)).toBe(true);
+    expect(wantsSeparateDocument(CORENA_PROMPT)).toBe(true);
     expect(wantsSeparateDocument("please redraft the coaching form")).toBe(false);
     expect(wantsSeparateDocument("create a verbal corrective action")).toBe(false);
 
     const proposed = await proposeFormForTurn({
       history: [],
-      question: lead ?? COLENE_PROMPT,
-      questionMessageId: "msg-colene",
+      question: lead ?? CORENA_PROMPT,
+      questionMessageId: "msg-corena",
       actor: { role: "salon_director", scope: SCOPE },
       summaries: LIBRARY as never,
       today: TODAY,
     });
     expect(proposed?.formProposal?.templateKey).toBe("coaching");
-    expect(proposed?.formProposal?.employeeName).toMatch(/Colene Schildt/i);
+    expect(proposed?.formProposal?.employeeName).toMatch(/Corena Schardt/i);
     expect(proposed?.formProposal?.formDate).toBe("2026-09-29");
     expect(proposed?.formProposal?.locationId).toBe("loc-0468");
     expect(proposed?.content ?? "").not.toMatch(/finalized/i);
 
     const sources = formTurnCitations({
-      notes: COLENE_PROMPT,
+      notes: CORENA_PROMPT,
       chunks: [PHONE, STANDARDS, LATE],
       documentId: "doc-manual",
       documentTitle: "JBA Policy Manual",
@@ -437,14 +437,14 @@ describe("live form cards, 23 Oct 2026", () => {
     try {
       const first = await proposeFormForTurn({
         history: [],
-        question: "coaching form for Colene Shildt, tanning consultant at Lawrence, today",
-        questionMessageId: "msg-shildt",
+        question: "coaching form for Corena Shardt, tanning consultant at Lawrence, today",
+        questionMessageId: "msg-shardt",
         actor: { role: "salon_director", scope: SCOPE },
         summaries: LIBRARY as never,
         today: TODAY,
       });
       expect(first?.formProposal).toBeTruthy();
-      expect(first?.formProposal?.employeeName).toMatch(/^Colene Shildt$/i);
+      expect(first?.formProposal?.employeeName).toMatch(/^Corena Shardt$/i);
       expect(first?.content).not.toMatch(/did you mean|who is this|want to be sure|didn't find|employee list for your salons/i);
 
       const missing = await proposeFormForTurn({
@@ -564,12 +564,12 @@ describe("live form cards, 23 Oct 2026", () => {
         employeeName: "Job title",
         employeeRole: "Job title",
       })),
-      question: "christiana headley, tanning consultant at shawnee",
+      question: "evangeline pembury, tanning consultant at shawnee",
       today: TODAY,
       people: [],
       saved: null,
     });
-    expect(s8.formProposal?.employeeName).toBe("christiana headley");
+    expect(s8.formProposal?.employeeName).toBe("evangeline pembury");
     expect(s8.formProposal?.employeeName?.toLowerCase()).not.toBe("job title");
     expect(s8.formProposal?.employeeRole).toBe("Tanning Consultant");
 
@@ -577,16 +577,16 @@ describe("live form cards, 23 Oct 2026", () => {
       response: answer("An answer.", proposal({
         templateKey: "dpoa",
         templateName: "Corrective Action Form",
-        employeeName: "Marissa Lempka Job",
+        employeeName: "Larissa Venko Job",
         employeeRole: null,
       })),
-      question: "Marissa Lempka Job title: Tanning Consultant",
+      question: "Larissa Venko Job title: Tanning Consultant",
       today: TODAY,
       people: [],
       saved: null,
     });
-    expect(s17.formProposal?.employeeName).toBe("Marissa Lempka");
-    expect(s17.formProposal?.employeeName).not.toBe("Marissa Lempka Job");
+    expect(s17.formProposal?.employeeName).toBe("Larissa Venko");
+    expect(s17.formProposal?.employeeName).not.toBe("Larissa Venko Job");
     expect(s17.formProposal?.employeeRole).toBe("Tanning Consultant");
 
     const named = enrichFormCard({
@@ -596,12 +596,12 @@ describe("live form cards, 23 Oct 2026", () => {
         employeeName: "Job title",
         employeeRole: "Job title",
       })),
-      question: "Name: Christiana Headley, job title tanning consultant",
+      question: "Name: Evangeline Pembury, job title tanning consultant",
       today: TODAY,
       people: [],
       saved: null,
     });
-    expect(named.formProposal?.employeeName).toBe("Christiana Headley");
+    expect(named.formProposal?.employeeName).toBe("Evangeline Pembury");
     expect(named.formProposal?.employeeName?.toLowerCase()).not.toBe("job title");
     expect(named.formProposal?.employeeRole).toBe("Tanning Consultant");
 

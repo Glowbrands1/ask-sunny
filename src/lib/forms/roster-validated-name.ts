@@ -189,7 +189,7 @@ function renameTarget(
 
 /**
  * A stored name changes only when this turn names somebody on purpose.
- * "erin" does not shorten "Erin Nelson". A narrative mention is not a change.
+ * "elin" does not shorten "Elin Haskett". A narrative mention is not a change.
  */
 export function employeeNamedOnPurpose(
   question: string,

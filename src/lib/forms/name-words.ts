@@ -211,7 +211,7 @@ export const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
 /**
  * Form-field labels. A candidate that is only these words is not a person.
  *
- * "Job title" was read as the employee (s8). "Marissa Lempka Job" kept the
+ * "Job title" was read as the employee (s8). "Larissa Venko Job" kept the
  * label on a name that was already complete (s17). A trailing "Job" or
  * "Title" comes off only after a full name — first and last — so a surname
  * that is also one of these words can still be the name. The value after
@@ -245,7 +245,7 @@ function readNameFieldValue(text: string): string | null {
 
 /**
  * The name after a "Name:" label.
- * "Name: Christiana Headley, job title tanning consultant" is Christiana Headley.
+ * "Name: Evangeline Pembury, job title tanning consultant" is Evangeline Pembury.
  */
 export function nameAfterNameLabel(text: string): string | null {
   const value = readNameFieldValue(text);
@@ -267,12 +267,12 @@ function wordKey(word: string): string {
 
 /**
  * A trailing Job or Title is the field label when a full name already
- * precedes it ("Marissa Lempka Job"). One given name plus Job is still a
- * full name ("Marissa Job"), so the trailing word stays.
+ * precedes it ("Larissa Venko Job"). One given name plus Job is still a
+ * full name ("Larissa Job"), so the trailing word stays.
  */
 /**
  * A leading label in front of a real name is the field, not the person.
- * "Location Colene Schildt" is Colene Schildt. "Jane Store" is unchanged:
+ * "Location Corena Schardt" is Corena Schardt. "Jane Store" is unchanged:
  * Store is the surname, not a label in front of the name.
  */
 function withoutLeadingLabels(words: readonly string[]): string[] {

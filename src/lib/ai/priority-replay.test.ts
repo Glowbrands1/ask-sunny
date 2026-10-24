@@ -53,7 +53,7 @@ import type { AccessScope, ChatMessage } from "@/types";
  * from the 23 Oct 2026 baseline (a card the baseline showed must still
  * appear, and a name the baseline got right must stay right). Flags on is
  * the bar: the card by the turn the manager has given enough, the person
- * they named, Erin's Woven salon, Paisley's "Yes", no re-ask, no other chat,
+ * they named, Elin's Woven salon, Daisley's "Yes", no re-ask, no other chat,
  * and the manual section and page on a form turn that names one.
  * n1–n3 are the 24 Oct 2026 rule conflicts: a name already given is not
  * asked again, a close spelling stays as typed, and tardiness cites
@@ -200,17 +200,17 @@ function person(input: {
 
 const PEOPLE: DirectoryFact[] = [
   person({
-    id: "erin",
-    firstName: "Erin",
-    lastName: "Nelson",
+    id: "elin",
+    firstName: "Elin",
+    lastName: "Haskett",
     salonIds: ["loc-0313", "loc-0410"],
     title: "Salon Director",
     primarySalonId: "loc-0313",
     primaryLocationName: "NE Omaha 132nd and Maple",
   }),
   person({
-    id: "nevaeh",
-    firstName: "Nevaeh",
+    id: "tavaeh",
+    firstName: "Tavaeh",
     lastName: "Styles",
     salonIds: ["loc-0313"],
     title: "Tanning Consultant",
@@ -218,46 +218,46 @@ const PEOPLE: DirectoryFact[] = [
     primaryLocationName: "NE Omaha 132nd and Maple",
   }),
   person({
-    id: "kennedy",
-    firstName: "Kennedy",
-    lastName: "Morehouse",
+    id: "sloane",
+    firstName: "Sloane",
+    lastName: "Wexford",
     salonIds: ["loc-0314", "loc-0410"],
     title: "Tanning Consultant",
     primarySalonId: "loc-0314",
     primaryLocationName: "NE Omaha 144th and Center",
   }),
   person({
-    id: "paisley",
-    firstName: "Paisley",
-    lastName: "Peklo",
+    id: "daisley",
+    firstName: "Daisley",
+    lastName: "Veklo",
     salonIds: ["loc-0313"],
     title: "Tanning Consultant",
     primarySalonId: "loc-0313",
     primaryLocationName: "NE Omaha 132nd and Maple",
   }),
   person({
-    id: "colene",
-    firstName: "Colene",
-    lastName: "Schildt",
+    id: "corena",
+    firstName: "Corena",
+    lastName: "Schardt",
     salonIds: ["loc-0462", "loc-0468"],
     title: "Tanning Consultant",
     primarySalonId: "loc-0462",
     primaryLocationName: "KS Manhattan",
   }),
   person({
-    id: "kayla",
-    firstName: "Kayla",
-    lastName: "Koehn",
+    id: "marnie",
+    firstName: "Marnie",
+    lastName: "Kettering",
     salonIds: ["loc-0309"],
     title: "Tanning Consultant",
     primarySalonId: "loc-0309",
     primaryLocationName: "NE Kearney",
   }),
-  // Sadie is on the directory. Testy Testerson and Test Employee are not.
+  // Odette is on the directory. Testy Testerson and Test Employee are not.
   person({
-    id: "sadie",
-    firstName: "Sadie",
-    lastName: "Hoffart",
+    id: "odette",
+    firstName: "Odette",
+    lastName: "Brannock",
     salonIds: ["loc-0901", "loc-0902"],
     title: "Team Member Part Time",
     primarySalonId: "loc-0901",
@@ -269,8 +269,8 @@ const PEOPLE: DirectoryFact[] = [
 const SIOUX_FALLS = ["loc-0901", "loc-0902"] as const;
 const WEST_DODGE = "loc-0903";
 
-const PAISLEY_PRIOR: PriorFormOnFile = {
-  instanceId: "prior-paisley",
+const DAISLEY_PRIOR: PriorFormOnFile = {
+  instanceId: "prior-daisley",
   templateKey: "dpoa",
   formDate: "2026-10-15",
   line: "Verbal corrective action — signed 10/15/2026",
@@ -361,8 +361,8 @@ vi.mock("@/lib/forms/repository", () => ({
 
 vi.mock("@/lib/forms/prior-forms", () => ({
   priorFormsReadingForChat: async (_actor: unknown, employeeName: string) =>
-    /paisley peklo/i.test(employeeName)
-      ? { attach: [PAISLEY_PRIOR], possible: [], identity: "unambiguous" }
+    /daisley veklo/i.test(employeeName)
+      ? { attach: [DAISLEY_PRIOR], possible: [], identity: "unambiguous" }
       : { attach: [], possible: [], identity: "none" },
 }));
 
@@ -646,10 +646,10 @@ const CASES: readonly ReplayCase[] = [
     id: "s11",
     turns: [
       "create coaching form for employee test testy who is a tanning consultant at manhattan. on 9-29-26 test was out of dress code",
-      "employee name is colene schildt",
-      "create coaching form for colene schildt",
+      "employee name is corena schardt",
+      "create coaching form for corena schardt",
       "sunny created a coaching form for an employee who was not in dress code and reflected it as underperformance and should be retraining",
-      "create a coaching form for lawrence location tanning consultant, colene schildt, who was talking on her cell phone for 25 minutes on 9-29-26 when customers were waiting to check in",
+      "create a coaching form for lawrence location tanning consultant, corena schardt, who was talking on her cell phone for 25 minutes on 9-29-26 when customers were waiting to check in",
       "salon location is lawrence, ks",
       "Create a Coaching Form from this conversation.",
     ],
@@ -658,7 +658,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 2,
         card: true,
-        employee: "Colene Schildt",
+        employee: "Corena Schardt",
         employeeNot: ["lawrence", "test testy", "job title", "lisa", "based"],
       },
       {
@@ -703,20 +703,20 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "s27",
     turns: [
-      "create a CA for salon director, erin nelson for violating the standards of conduct",
-      "Erin Nelson, Salon Director",
-      "change observation of offense to: Erin completed onboarding with new hire Nevaeh Styles on 9-28-26. As of 10-16-26 Nevaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding.",
+      "create a CA for salon director, elin haskett for violating the standards of conduct",
+      "Elin Haskett, Salon Director",
+      "change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding.",
       "create the ca",
-      "create ca for erin nelson, salon director. the offense is: change observation of offense to: Erin completed onboarding with new hire Nevaeh Styles on 9-28-26. As of 10-16-26 Nevaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
-      "create ca for erin nelson, salon director. the offense is: change observation of offense to: Erin completed onboarding with new hire Nevaeh Styles on 9-28-26. As of 10-16-26 Nevaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
-      "erin",
+      "create ca for elin haskett, salon director. the offense is: change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
+      "create ca for elin haskett, salon director. the offense is: change observation of offense to: Elin completed onboarding with new hire Tavaeh Quarles on 9-28-26. As of 10-16-26 Tavaeh had not acknowledged onboarding policies in Woven that should have been completed during onboarding. the policy violated is standards of conduct.",
+      "elin",
     ],
     on: [
       {
         from: 1,
         card: true,
-        employee: "Erin Nelson",
-        employeeNot: ["nevaeh", "neveah", "nevaeh styles", "neveah styles"],
+        employee: "Elin Haskett",
+        employeeNot: ["tavaeh", "taveah", "tavaeh quarles", "taveah quarles"],
         locationId: "loc-0313",
         templateKey: "dpoa",
         role: "Salon Director",
@@ -730,15 +730,15 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "s28",
     turns: [
-      "create ca for Erin Nelson, Salon Director for violating standards of conduct. Erin failed to have Neveah Styles complete required policy acknowledgements in woven during Neveah's onboarding on 9-28-26 as reflected on the woven policy acknowledgement report run on 10-16-26.",
-      "for Erin Nelson",
+      "create ca for Elin Haskett, Salon Director for violating standards of conduct. Elin failed to have Taveah Quarles complete required policy acknowledgements in woven during Taveah's onboarding on 9-28-26 as reflected on the woven policy acknowledgement report run on 10-16-26.",
+      "for Elin Haskett",
     ],
     on: [
       {
         from: 1,
         card: true,
-        employee: "Erin Nelson",
-        employeeNot: ["neveah", "nevaeh", "neveah styles"],
+        employee: "Elin Haskett",
+        employeeNot: ["taveah", "tavaeh", "taveah quarles"],
         locationId: "loc-0313",
         templateKey: "dpoa",
         role: "Salon Director",
@@ -751,12 +751,12 @@ const CASES: readonly ReplayCase[] = [
   },
   {
     id: "s29",
-    turns: ["create corrective action form for Erin Nelson, Salon Director"],
+    turns: ["create corrective action form for Elin Haskett, Salon Director"],
     on: [
       {
         from: 1,
         card: true,
-        employee: "Erin Nelson",
+        employee: "Elin Haskett",
         locationId: "loc-0313",
         templateKey: "dpoa",
         role: "Salon Director",
@@ -811,8 +811,8 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "s21",
     turns: [
-      "Put together a written CA for Kennedy Morehouse, primary salon is Omaha Center. But on Monday 10/05/2026 Kennedy was working a shift at Omaha Pacific and did not complete the 10 minute disenfect",
-      "Kennedy Morehouse",
+      "Put together a written CA for Sloane Wexford, primary salon is Omaha Center. But on Monday 10/05/2026 Sloane was working a shift at Omaha Pacific and did not complete the 10 minute disenfect",
+      "Sloane Wexford",
       "Create a form from this conversation.",
       "Create a Corrective Action Form from this conversation.",
     ],
@@ -820,7 +820,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 1,
         card: true,
-        employee: "Kennedy Morehouse",
+        employee: "Sloane Wexford",
         employeeNot: ["omaha", "center", "pacific", "based"],
         locationId: "loc-0410",
         formDate: "2026-10-05",
@@ -832,7 +832,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 1,
         card: true,
-        employee: "Kennedy Morehouse",
+        employee: "Sloane Wexford",
         templateKey: "dpoa",
         formDate: "2026-10-05",
         locationId: "loc-0410",
@@ -841,15 +841,15 @@ const CASES: readonly ReplayCase[] = [
   },
   {
     id: "s25",
-    turns: ["create a corrective action form for Pasiley Peklo", "Yes"],
+    turns: ["create a corrective action form for Dasiley Veklo", "Yes"],
     on: [
       {
         // A close spelling stays as typed. "Yes" used to accept the roster
         // spelling; that question no longer holds the card.
         from: 1,
         card: true,
-        employee: "Pasiley Peklo",
-        employeeNot: ["paisley peklo", "based"],
+        employee: "Dasiley Veklo",
+        employeeNot: ["daisley veklo", "based"],
         templateKey: "dpoa",
         locationId: "loc-0313",
         noReask: true,
@@ -862,12 +862,12 @@ const CASES: readonly ReplayCase[] = [
     turns: [
       "what does policy say about pets in salon",
       "assist with creating an exit form",
-      "christiana headley, tanning consultant at shawnee",
+      "evangeline pembury, tanning consultant at shawnee",
       "last day worked was 9-20-26. management called her with no response on 9-27-26",
       "its a no call no show",
       "create exit form",
       "Create a form from this conversation.",
-      "create exit: Christiana Headley, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
+      "create exit: Evangeline Pembury, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
       "Create a form from this conversation.",
       "Create a form from this conversation.",
     ],
@@ -875,7 +875,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 4,
         card: true,
-        employee: "Christiana Headley",
+        employee: "Evangeline Pembury",
         employeeNot: ["job title", "shawnee", "based"],
         locationId: "loc-0463",
         templateKey: "stc-exit",
@@ -888,7 +888,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 8,
         card: true,
-        employee: "Christiana Headley",
+        employee: "Evangeline Pembury",
         locationId: "loc-0463",
         templateKey: "stc-exit",
       },
@@ -897,14 +897,14 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "s12",
     turns: [
-      "create an exit form. employee name is colene schildt. colene was a tanning consultant at manhattan location. on 9-15-26 colene provided her resignation to management and her last day worked was 9-28-26",
-      "colene gave and worked 2 week notice. colene messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
+      "create an exit form. employee name is corena schardt. corena was a tanning consultant at manhattan location. on 9-15-26 corena provided her resignation to management and her last day worked was 9-28-26",
+      "corena gave and worked 2 week notice. corena messaged management her resignation via woven. all salon items were returned and she is eligible for rehire",
     ],
     on: [
       {
         from: 1,
         card: true,
-        employee: "Colene Schildt",
+        employee: "Corena Schardt",
         employeeNot: ["manhattan", "based", "job title"],
         locationId: "loc-0462",
         templateKey: "stc-exit",
@@ -916,7 +916,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 1,
         card: true,
-        employee: "Colene Schildt",
+        employee: "Corena Schardt",
         locationId: "loc-0462",
         templateKey: "stc-exit",
       },
@@ -926,13 +926,13 @@ const CASES: readonly ReplayCase[] = [
     id: "s16",
     turns: [
       "Can you create an exit form for me?",
-      "Kayla Koehn\nTanning Consultant \nNE Kearney\nGave notice - fulfilled notice\nGave notice 9/25/26 - date notice fulfilled 10/9/26\nResigning to pursue other career options\nStore items returned payroll deduction does not apply eligible for rehire",
+      "Marnie Kettering\nTanning Consultant \nNE Kearney\nGave notice - fulfilled notice\nGave notice 9/25/26 - date notice fulfilled 10/9/26\nResigning to pursue other career options\nStore items returned payroll deduction does not apply eligible for rehire",
     ],
     on: [
       {
         from: 2,
         card: true,
-        employee: "Kayla Koehn",
+        employee: "Marnie Kettering",
         employeeNot: ["kearney", "based", "job title"],
         locationId: "loc-0309",
         templateKey: "stc-exit",
@@ -944,7 +944,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 2,
         card: true,
-        employee: "Kayla Koehn",
+        employee: "Marnie Kettering",
         locationId: "loc-0309",
         templateKey: "stc-exit",
       },
@@ -1047,7 +1047,7 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "b12",
     turns: [
-      "do verbal for team member sadie hoffart at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 sadie was not scheduled to work and came into the store to show her team her new puppy. Sadie was in the store 45 min",
+      "do verbal for team member odette brannock at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 odette was not scheduled to work and came into the store to show her team her new puppy. Odette was in the store 45 min",
       "jba manual 11-1-25",
       "cite pets in workplace",
       "cite animals in the workplace policy",
@@ -1057,7 +1057,7 @@ const CASES: readonly ReplayCase[] = [
       {
         from: 1,
         card: true,
-        employee: "Sadie Hoffart",
+        employee: "Odette Brannock",
         employeeNot: ["empire", "workplace", "jba manual", "store director", "salon director"],
         templateKey: "dpoa",
         role: "Team Member Part Time",
@@ -1110,14 +1110,14 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "n2",
     turns: [
-      "create a corrective action for Colene Shildt, tanning consultant at manhattan. she was late for her shift on 9-29-26. payroll deduct yes $25",
+      "create a corrective action for Corena Shardt, tanning consultant at manhattan. she was late for her shift on 9-29-26. payroll deduct yes $25",
     ],
     on: [
       {
         from: 1,
         card: true,
-        employee: "Colene Shildt",
-        employeeNot: ["colene schildt"],
+        employee: "Corena Shardt",
+        employeeNot: ["corena schardt"],
         role: "Tanning Consultant",
         locationId: "loc-0462",
         formDate: "2026-09-29",
@@ -1544,7 +1544,7 @@ const NAMED_TURNS: readonly {
 }[] = [
   { id: "s4", turns: [5, 9], employee: "Test Testy", cardOn: 4, cardOff: 7 },
   { id: "s9", turns: [1], employee: "Ima", cardOn: 1, cardOff: 1 },
-  { id: "s8", turns: [6, 7], employee: "Christiana Headley", cardOn: 4, cardOff: 8 },
+  { id: "s8", turns: [6, 7], employee: "Evangeline Pembury", cardOn: 4, cardOff: 8 },
 ];
 
 const REFUSAL =
