@@ -5,6 +5,18 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Self-check must not refuse a typed name — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. No prompt section
+was removed. Do not publish templates.
+
+- A name that is not in Woven is not a self-check failure, and the reply does
+  not say "I couldn't find **Name** in the Woven roster." Repair text that
+  refuses the form, or that scrubs down to nothing, falls back to the last
+  good reply and the name stays on the card. The repair instruction tells the
+  model to keep the typed name and not to refuse the form.
+
 ## 24 Oct 2026: Prompt A/B on the replay — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.

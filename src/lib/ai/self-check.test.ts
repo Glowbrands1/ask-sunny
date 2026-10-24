@@ -157,6 +157,31 @@ describe("self-check", () => {
     ).toEqual(["action_plan"]);
   });
 
+  it("keeps Test Testy when the repair only says I couldn't find **Test Testy** in the Woven roster", async () => {
+    let calls = 0;
+    const settled = await runSelfCheck(
+      draft({
+        content: "Invented Section, JBA Policy Manual p.4. The form is for Test Testy.",
+        actionPlan: null,
+        employeeName: "Test Testy",
+        chunks: [],
+        roster: [JORDAN],
+      }),
+      async () => {
+        calls += 1;
+        return {
+          content: "I couldn't find **Test Testy** in the Woven roster.",
+          employeeName: null,
+          actionPlan: null,
+        };
+      },
+    );
+    expect(calls).toBe(1);
+    expect(settled.employeeName).toBe("Test Testy");
+    expect(settled.content).toContain("The form is for Test Testy.");
+    expect(settled.content).not.toMatch(/couldn't find|I cannot repair|does not appear|Woven roster/i);
+  });
+
   it("never sends the repair model's refusal: I cannot repair this reply, Test Testy does not appear on the employee roster", async () => {
     const settled = await runSelfCheck(
       draft({
@@ -451,7 +476,8 @@ describe("self-check and query rewrite flags", () => {
     expect(ask).toContain("rewriteToManualTerms");
     expect(ask).toContain("queryRewriteEnabled()");
     expect(guard).toContain("if (!selfCheckEnabled()) return response;");
-    expect(guard).toContain('status: settled.employeeName ? proposal.status : "needs_employee"');
+    expect(guard).toContain("settled.employeeName?.trim() || proposal?.employeeName");
+    expect(guard).toContain('status: keptName ? proposal.status : "needs_employee"');
     expect(guard).toContain("brief.question");
     expect(guard).toContain("applies");
     const checker = readFileSync("src/lib/ai/self-check.ts", "utf8");

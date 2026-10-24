@@ -42,5 +42,5 @@ export function displayTypedName(name: string): string {
 }
 
 export function repairSpeaksAsValidator(content: string): boolean {
-  return /\bI cannot repair\b|\bdoes not appear on the employee roster\b|\bI cannot create this form\b/i.test(content);
+  return /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|in the Woven roster|not found in the roster/i.test(content);
 }

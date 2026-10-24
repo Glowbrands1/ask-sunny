@@ -22,8 +22,8 @@ import type { AskRequest, AskResponse } from "./types";
 const REPAIR_SYSTEM = `You repair one assistant reply. Call repair_reply once.
 For each cited section, read that chunk's own text and the manager's question. Set applies to false when the chunk's text limits the section to a situation the question does not describe. Omit that section from content, including a consequence stated only in that chunk. Judge only from the chunk text and the question.
 An action plan, when you include one, is exactly two sentences.
-employeeName is the name already on the reply, or a roster spelling of that same person. Never clear it because the roster has no row.
-Do not invent a policy, a page, or a person. Do not refuse the form. If a part cannot be repaired, omit that part and leave the rest of the reply.`;
+employeeName is the name already on the reply. A person who is not in Woven stays as typed. Never clear employeeName, and never replace it with null because the roster has no row.
+Do not invent a policy, a page, or a person. Do not refuse the form. Do not say you cannot repair the reply, and do not say the person is missing from Woven. If a part cannot be repaired, leave the rest of the reply as it was.`;
 
 export async function guardReply(
   response: AskResponse,
@@ -105,7 +105,9 @@ export async function guardReply(
         }),
     );
     const proposal = response.formProposal;
-    const employeeChanged = proposal && settled.employeeName !== proposal.employeeName;
+    // A typed name stays on the card. Self-check does not blank it when Woven has no row.
+    const keptName = settled.employeeName?.trim() || proposal?.employeeName || null;
+    const employeeChanged = proposal && keptName !== proposal.employeeName;
     return {
       ...response,
       content: settled.content,
@@ -113,8 +115,8 @@ export async function guardReply(
         ? {
             formProposal: {
               ...proposal,
-              employeeName: settled.employeeName,
-              status: settled.employeeName ? proposal.status : "needs_employee",
+              employeeName: keptName,
+              status: keptName ? proposal.status : "needs_employee",
             },
           }
         : {}),

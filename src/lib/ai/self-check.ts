@@ -149,26 +149,26 @@ export async function runSelfCheck(
   if (codeSlotsEnabled()) {
     // Repair prose is never the reply. A failed repair keeps the last good draft.
     if (!usable) {
-      return {
-        content: scrubRosterBlock(draft.content),
+      return keepGoodReply(draft, {
+        content: draft.content,
         employeeName: draft.employeeName,
         actionPlan: draft.actionPlan,
         ok: false,
         repaired: false,
-      };
+      });
     }
     const actionPlan = usable.actionPlan && exactTwoSentencePlan(usable.actionPlan) ? usable.actionPlan : draft.actionPlan;
     let content = draft.content;
     if (actionPlan && draft.actionPlan && content.includes(draft.actionPlan) && actionPlan !== draft.actionPlan) {
       content = content.replace(draft.actionPlan, actionPlan);
     }
-    return {
-      content: scrubRosterBlock(content),
+    return keepGoodReply(draft, {
+      content,
       employeeName: draft.employeeName,
       actionPlan,
       ok: reviewOutgoing({ ...draft, content, actionPlan }).length === 0,
       repaired: actionPlan !== draft.actionPlan,
-    };
+    });
   }
   const next = applyReview(draft, usable, reviewed.sections);
   const remaining = reviewOutgoing({ ...draft, ...next });
@@ -182,7 +182,24 @@ export async function runSelfCheck(
             (next.content !== draft.content || next.employeeName !== draft.employeeName || next.actionPlan !== draft.actionPlan),
         }
       : { ...fallback({ ...draft, ...next }, remaining), repaired: true };
-  return { ...settled, content: scrubRosterBlock(settled.content), employeeName: settled.employeeName ?? draft.employeeName };
+  return keepGoodReply(draft, settled);
+}
+
+/**
+ * The reply the manager already had. A repair that refuses the form, says
+ * the person is missing from Woven, or scrubs down to nothing is not sent.
+ */
+function keepGoodReply(draft: OutgoingDraft, settled: SettledDraft): SettledDraft {
+  const employeeName = settled.employeeName?.trim() || draft.employeeName;
+  let content = scrubRosterBlock(settled.content);
+  // A blank left by stripping a bad citation stays blank. A validator's
+  // refusal is replaced with the reply we already had.
+  if (repairSpeaksAsValidator(settled.content) || repairSpeaksAsValidator(content)) {
+    const restored = scrubRosterBlock(draft.content);
+    if (restored.trim() && !repairSpeaksAsValidator(restored)) content = restored;
+    else if (draft.content.trim() && !repairSpeaksAsValidator(draft.content)) content = draft.content;
+  }
+  return { ...settled, content, employeeName };
 }
 
 /** The review sentence and one closing. A payroll sentence is not a plan. */

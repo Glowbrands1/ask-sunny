@@ -1073,6 +1073,7 @@ function setFlags(on: boolean) {
 }
 
 const RUNS = REPLAY_RUNS;
+const recordHarness = { on: true };
 /** prompts.ts at 417e80c, the commit before the unified-authority prompt edit. */
 const LAST_KNOWN_GOOD_COMMIT = "417e80c12d7275681411606f87af851fb080b348";
 const harnessEvents: { caseId: string; event: string }[] = [];
@@ -1125,7 +1126,7 @@ async function ask(question: string, history: ChatMessage[], conversationId: str
   const { answerQuestion } = await import("./server-ask");
   let used = history;
   if (firstMessageDropped(history, modelPayload(history))) {
-    harnessEvents.push({ caseId: conversationId, event: "resend-first-message" });
+    if (recordHarness.on) harnessEvents.push({ caseId: conversationId, event: "resend-first-message" });
     const first = history.find((message) => message.role === "user");
     used = first ? [first, ...history.filter((message) => message.id !== first.id)] : history;
   }
@@ -1242,6 +1243,33 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
   }
 }
 
+const NAMED_TURNS: readonly {
+  id: string;
+  turns: readonly number[];
+  employee: string;
+  /** 1-based turn the card is required. Earlier turns still keep the name when a card is already up. */
+  cardOn: number;
+  cardOff: number;
+}[] = [
+  { id: "s4", turns: [5, 9], employee: "Test Testy", cardOn: 4, cardOff: 7 },
+  { id: "s9", turns: [1], employee: "Ima", cardOn: 1, cardOff: 1 },
+  { id: "s8", turns: [6, 7], employee: "Christiana Headley", cardOn: 4, cardOff: 8 },
+];
+
+const REFUSAL =
+  /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|didn'?t find \*\*|in the Woven roster|not found in the roster/i;
+
+function guardNamedTurn(item: ReplayCase, turn: number, response: Awaited<ReturnType<typeof ask>>, flagsOn: boolean) {
+  const spec = NAMED_TURNS.find((row) => row.id === item.id && row.turns.includes(turn));
+  if (!spec) return;
+  expect(response.content, `${item.id} T${turn}`).not.toMatch(REFUSAL);
+  const name = response.formProposal?.employeeName ?? "";
+  const cardFrom = flagsOn ? spec.cardOn : spec.cardOff;
+  if (turn >= cardFrom || name) {
+    expect(name, `${item.id} T${turn}`).toMatch(new RegExp(`^${spec.employee}$`, "i"));
+  }
+}
+
 async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptRevision = "current") {
   captured.memory.length = 0;
   const history: ChatMessage[] = [];
@@ -1264,6 +1292,7 @@ async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptR
       }
     }
     for (const check of checks) applyCheck(item.id, turn, response, check);
+    guardNamedTurn(item, turn, response, flagsOn);
     history.push({
       id: `u-${item.id}-${index}`,
       role: "user",
@@ -1380,6 +1409,99 @@ describe("priority replay with the flags off is no worse than the baseline", () 
   });
 });
 
+interface FlagEffect {
+  readonly flag: string;
+  readonly floorPass: number;
+  readonly cardPass: number;
+  readonly broken: readonly string[];
+  readonly cardFailures: readonly string[];
+}
+
+const flagEffects: FlagEffect[] = [];
+
+function setOnlyFlag(flag: (typeof FLAGS)[number]) {
+  setFlags(false);
+  process.env[flag] = "1";
+  selectPromptRevision("current");
+  captured.recordSystems = false;
+  recordHarness.on = false;
+}
+
+describe("one quality flag at a time", () => {
+  afterAll(() => {
+    recordHarness.on = true;
+  });
+  it.each(FLAGS)("%s", async (flag) => {
+    setOnlyFlag(flag);
+    const broken: string[] = [];
+    const cardFailures: string[] = [];
+    let floorPass = 0;
+    let cardPass = 0;
+    for (const item of CASES) {
+      stateBag.forms.clear();
+      let floorDetail: string | undefined;
+      let last: Awaited<ReturnType<typeof replay>> = null;
+      try {
+        last = await replay(item, false);
+      } catch (error) {
+        floorDetail = error instanceof Error ? error.message : String(error);
+      }
+      if (floorDetail) broken.push(`${item.id}: ${floorDetail.replace(/\s+/g, " ").slice(0, 160)}`);
+      else floorPass += 1;
+      const criteria = criteriaWrittenBeforeRun(item.id);
+      const policyName = criteria.policy?.replace(/ p\.\d+$/, "") ?? "";
+      const policyPage = Number(criteria.policy?.match(/p\.(\d+)$/)?.[1] ?? "0");
+      const failures = judgeReplayCard({
+        criteria,
+        employeeName: last?.formProposal?.employeeName ?? null,
+        locationId: last?.formProposal?.locationId ?? null,
+        formDate: last?.formProposal?.formDate ?? null,
+        content: last?.content ?? "",
+        policySatisfied: criteria.policy ? cites(last?.content ?? "", last?.citations ?? [], policyName, policyPage) : true,
+      });
+      if (failures.length === 0) cardPass += 1;
+      else cardFailures.push(`${item.id}: ${failures.join("; ")}`);
+    }
+    flagEffects.push({ flag, floorPass, cardPass, broken, cardFailures });
+  }, 60_000);
+});
+
+function renderFlagAblation(effects: readonly FlagEffect[]): string {
+  const lines = [
+    "## Flag ablation — one flag at a time",
+    "",
+    "Each row turns one quality flag on and leaves the others off. The reply model is mocked, so each case runs once. Floor is the flags-off checks. Card is the written card criteria. A flag is safe when every case holds the floor.",
+    "",
+    "| Flag | Floor | Card criteria | Breaks the floor | Card still open |",
+    "| --- | --- | --- | --- | --- |",
+  ];
+  for (const effect of effects) {
+    const broken = effect.broken.length === 0 ? "—" : effect.broken.map((row) => row.split(":")[0]).join(", ");
+    const open = effect.cardFailures.map((row) => row.split(":")[0]).join(", ") || "—";
+    lines.push(`| ${effect.flag} | ${effect.floorPass}/${CASES.length} | ${effect.cardPass}/${CASES.length} | ${broken} | ${open} |`);
+  }
+  lines.push("");
+  const dateOnly = (effect: FlagEffect) =>
+    effect.broken.length > 0 && effect.broken.every((row) => row.includes("to be null"));
+  const safe = effects.filter((effect) => effect.broken.length === 0 || dateOnly(effect));
+  const unsafe = effects.filter((effect) => effect.broken.length > 0 && !dateOnly(effect));
+  const ordered = [...safe].sort((a, b) => b.cardPass - a.cardPass || a.flag.localeCompare(b.flag));
+  lines.push("Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all 21.");
+  lines.push("");
+  ordered.forEach((effect, index) => {
+    const note = dateOnly(effect) ? " — stores s17's date" : "";
+    lines.push(`${index + 1}. \`${effect.flag}\` — card ${effect.cardPass}/${CASES.length}${note}`);
+  });
+  if (unsafe.length > 0) {
+    lines.push("");
+    lines.push("These miss the floor for another reason:");
+    lines.push("");
+    for (const effect of unsafe) lines.push(`- \`${effect.flag}\`: ${effect.broken.join(" | ")}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 afterAll(() => {
   const replaySet = JSON.stringify(CASES.map((item) => ({ id: item.id, turns: item.turns, criteria: cardCriteria(item) })));
   const fixture = readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8");
@@ -1442,13 +1564,16 @@ afterAll(() => {
   console.log(
     `prompt A/B differ=${round.promptAb?.promptsDiffer} revert=${round.promptAb?.revert}\ncurrent ${round.promptAb?.currentBuiltHash}\nlast-known-good ${round.promptAb?.lastKnownGoodBuiltHash}\nfile ${round.promptAb?.lastKnownGoodFileHash}\n${scoreLine}`,
   );
+  if (flagEffects.length > 0) console.log(renderFlagAblation(flagEffects));
   if (process.env.REPLAY_RECORD_SCOREBOARD === "1") {
     const existing = readFileSync("docs/scoreboard.md", "utf8");
     const section = renderScoreboardRound(round);
     const marker = `## ${round.title}`;
     const index = existing.indexOf(marker);
-    const next = index === -1 ? `${existing.trimEnd()}\n\n${section}\n` : `${existing.slice(0, index).trimEnd()}\n\n${section}\n`;
-    writeFileSync("docs/scoreboard.md", next);
+    const withoutRound = index === -1 ? existing.trimEnd() : existing.slice(0, index).trimEnd();
+    const ablation = flagEffects.length === 0 ? "" : renderFlagAblation(flagEffects);
+    const next = [withoutRound, section, ablation].filter((part) => part.trim()).join("\n\n");
+    writeFileSync("docs/scoreboard.md", `${next.trim()}\n`);
   }
   if (worse.length > 0) {
     throw new Error(`last-known-good prompt scores better on ${worse.join(", ")}. Revert those prompt sections and keep the code fixes.`);
