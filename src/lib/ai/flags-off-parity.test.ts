@@ -27,6 +27,10 @@ import {
   selfCheckEnabled,
   typedNameProceedsEnabled,
   unifiedAuthorityOrderEnabled,
+  managerPayrollAmountOnlyEnabled,
+  manualSectionDedupeEnabled,
+  policyGateNonblockingEnabled,
+  printedPageCitationEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -67,6 +71,11 @@ const NEW_FLAGS = [
   "ATTENDANCE_POLICY_CITATION_ENABLED",
   "POLICY_PAGE_REQUIRED_ENABLED",
   "UNIFIED_AUTHORITY_ORDER_ENABLED",
+  "MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED",
+  "POLICY_GATE_NONBLOCKING_ENABLED",
+  "NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED",
+  "MANUAL_SECTION_DEDUPE_ENABLED",
+  "PRINTED_PAGE_CITATION_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -161,6 +170,10 @@ describe("new flags default off and wrappers are inert", () => {
     expect(attendancePolicyCitationEnabled()).toBe(false);
     expect(policyPageRequiredEnabled()).toBe(false);
     expect(unifiedAuthorityOrderEnabled()).toBe(false);
+    expect(managerPayrollAmountOnlyEnabled()).toBe(false);
+    expect(policyGateNonblockingEnabled()).toBe(false);
+    expect(manualSectionDedupeEnabled()).toBe(false);
+    expect(printedPageCitationEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

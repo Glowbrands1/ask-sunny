@@ -1238,6 +1238,40 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
     expect(screen.queryByRole("dialog", { name: "Finalize this form?" })).toBeNull();
   });
 
+  it("a blank policy leaves the card up and does not open the verification dialog", async () => {
+    process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
+    process.env.NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED = "1";
+    try {
+      const row = loadedInstance();
+      const document = {
+        ...COACHING_DOCUMENT,
+        blocks: [
+          ...COACHING_DOCUMENT.blocks,
+          {
+            kind: "field" as const,
+            field: {
+              key: "policy_language",
+              label: "Direct policy from official manual",
+              input: "long_text" as const,
+              responsibility: "ai" as const,
+              policyGrounded: true,
+            },
+          },
+        ],
+      };
+      phase4({ ...row, version: { ...row.version, document } } as typeof row);
+      mounted();
+
+      await screen.findByDisplayValue("Arrived late on three shifts this week.");
+      fireEvent.click(screen.getByRole("button", { name: /^finalize$/i }));
+      expect(await screen.findByRole("dialog", { name: "Finalize this form?" })).toBeTruthy();
+      expect(screen.queryByRole("dialog", { name: /does not see this policy/i })).toBeNull();
+    } finally {
+      delete process.env.POLICY_GATE_NONBLOCKING_ENABLED;
+      delete process.env.NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED;
+    }
+  });
+
   it("sends the canonical follow-up date with the action", async () => {
     const { server } = phase4();
     mounted();

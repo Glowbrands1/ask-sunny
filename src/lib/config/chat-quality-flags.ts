@@ -242,10 +242,11 @@ export function currentManualScopeEnabled(): boolean {
 }
 
 /**
- * A name that is not in the roster stays as typed. "Did you mean" and
- * "Who is this for?" do not block the form. A close roster match may be
- * offered in the same reply. Off, a close match is still a question that
- * holds the card.
+ * A name that is not in the roster stays as typed. "Who is this for?" does
+ * not block the form. A close roster match is one note — "Woven has **Jane
+ * Doe** — say so if that's who you mean. Carry on; do not wait." — shown
+ * once, in the same reply as the card. Off, a close match is still a
+ * question that holds the card.
  */
 export function typedNameProceedsEnabled(): boolean {
   return envFlag("TYPED_NAME_PROCEEDS_ENABLED");
@@ -273,4 +274,46 @@ export function policyPageRequiredEnabled(): boolean {
  */
 export function unifiedAuthorityOrderEnabled(): boolean {
   return envFlag("UNIFIED_AUTHORITY_ORDER_ENABLED");
+}
+
+/**
+ * The payroll amount on a corrective action is only an amount the manager
+ * stated. Off, a Yes with no amount can still take the one figure Direct
+ * policy quotes ("$25.00" under Late Opening). No amount field is added.
+ */
+export function managerPayrollAmountOnlyEnabled(): boolean {
+  return envFlag("MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED");
+}
+
+/**
+ * A blank Direct policy does not hold the card or the finalize. The field
+ * stays empty. A value somebody typed that was never verified still asks
+ * for an acknowledgement. Off, a blank policy field still blocks finalize.
+ *
+ * The browser reads `NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED` because
+ * the form card is a client component. The server reads the name without
+ * that prefix. Either one turns the gate off.
+ */
+export function policyGateNonblockingEnabled(): boolean {
+  return (
+    envFlag("POLICY_GATE_NONBLOCKING_ENABLED") ||
+    envFlag("NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED")
+  );
+}
+
+/**
+ * One chunk per section heading among the current year's manuals. Off, two
+ * copies of the same section with different text both stay.
+ */
+export function manualSectionDedupeEnabled(): boolean {
+  return envFlag("MANUAL_SECTION_DEDUPE_ENABLED");
+}
+
+/**
+ * A citation uses the printed page. The PDF sheet column (`page`, often
+ * printed + 1) is not a citation. Off, a chunk with no printed page can
+ * still be cited by that sheet column.
+ */
+export function printedPageCitationEnabled(): boolean {
+  return envFlag("PRINTED_PAGE_CITATION_ENABLED");
 }

@@ -19,6 +19,7 @@ import {
   retrievalRecallEnabled,
   promptCacheEnabled,
   currentManualScopeEnabled,
+  manualSectionDedupeEnabled,
   attendancePolicyCitationEnabled,
   policyPageRequiredEnabled,
   unifiedAuthorityOrderEnabled,
@@ -996,7 +997,8 @@ async function answerQuestionUntraced(
    * clamp is 50, so the wider fetch only happens when the scope flag is on.
    * Off, `matchLimit` is the limit the match already used.
    */
-  const fetchLimit = manualScopeFetchLimit(matchLimit, currentManualScopeEnabled());
+  const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
+  const fetchLimit = manualScopeFetchLimit(matchLimit, scopeManual);
   try {
     rows = retrievalRecallEnabled()
       ? await matchRecallKnowledge({
@@ -1037,8 +1039,8 @@ async function answerQuestionUntraced(
       502,
     );
   }
-  if (currentManualScopeEnabled()) {
-    rows = scopeToCurrentManual(rows, { limit: matchLimit });
+  if (scopeManual) {
+    rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
   }
   updateChatTrace({
     retrievalCount: rows.length,

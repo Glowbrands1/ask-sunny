@@ -23,6 +23,11 @@ import type { MatchedChunkRow } from "./mappers";
  * that newest year both stay. Identical section text collapses to the nearer
  * row. A title with no year cannot be ranked and is dropped once any manual
  * row has a year. Rows that are not the policy manual are kept.
+ *
+ * `dedupeBySection` stays off unless the caller passes it
+ * (`MANUAL_SECTION_DEDUPE_ENABLED`). On, one current-year chunk per section
+ * heading remains, the nearest match. A chunk with no heading is still keyed
+ * by its text. Document ids are not a keep-list.
  */
 
 /** The clamp inside `match_knowledge_chunks`. Asking for more does not return more. */
@@ -46,9 +51,10 @@ export function manualEditionYear(title: string): number | null {
   return null;
 }
 
-function sectionKey(row: MatchedChunkRow): string {
+function sectionKey(row: MatchedChunkRow, dedupeBySection: boolean): string {
   const section = (row.section ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   const content = row.content.trim().toLowerCase().replace(/\s+/g, " ");
+  if (dedupeBySection && section) return `section\0${section}`;
   return `${section}\0${content}`;
 }
 
@@ -62,7 +68,12 @@ function sectionKey(row: MatchedChunkRow): string {
  */
 export function scopeToCurrentManual(
   rows: readonly MatchedChunkRow[],
-  options: { readonly limit: number; readonly currentDocumentId?: string | null },
+  options: {
+    readonly limit: number;
+    readonly currentDocumentId?: string | null;
+    /** One current-year chunk per section heading. Off, different text both stays. */
+    readonly dedupeBySection?: boolean;
+  },
 ): MatchedChunkRow[] {
   const manuals = rows.filter((row) => isPolicyManualChunk(row));
   const currentId = options.currentDocumentId?.trim() || null;
@@ -80,7 +91,7 @@ export function scopeToCurrentManual(
   const narrowed = rows.filter((row) => !isPolicyManualChunk(row) || keepManual(row));
   const best = new Map<string, MatchedChunkRow>();
   for (const row of narrowed) {
-    const key = isPolicyManualChunk(row) ? sectionKey(row) : `row\0${row.chunk_id}`;
+    const key = isPolicyManualChunk(row) ? sectionKey(row, options.dedupeBySection === true) : `row\0${row.chunk_id}`;
     const existing = best.get(key);
     if (!existing || row.similarity > existing.similarity) best.set(key, row);
   }

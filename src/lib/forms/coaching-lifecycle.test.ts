@@ -357,6 +357,35 @@ describe("a new coaching form", () => {
     ]);
   });
 
+  it("B. a blank Direct policy does not block finalize when the gate is non-blocking", async () => {
+    process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
+    try {
+      const instance = await startCorrectiveForm();
+      const finalized = await finalizeInstance(instance.id, "dana", null);
+      expect(finalized.status).toBe("finalized");
+      const loaded = await loadInstance(instance.id);
+      const policy = loaded!.values.find((row) => row.fieldKey === "policy_language");
+      expect((policy?.value ?? "").trim()).toBe("");
+    } finally {
+      delete process.env.POLICY_GATE_NONBLOCKING_ENABLED;
+    }
+  });
+
+  it("B. a hand-typed Direct policy still asks when the gate is non-blocking", async () => {
+    process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
+    try {
+      const instance = await startCorrectiveForm();
+      await saveInstanceValues(
+        instance.id,
+        { values: { policy_language: "Typed from the manager's own copy." } },
+        "dana",
+      );
+      await expect(finalizeInstance(instance.id, "dana", null)).rejects.toBeInstanceOf(UnverifiedPolicyError);
+    } finally {
+      delete process.env.POLICY_GATE_NONBLOCKING_ENABLED;
+    }
+  });
+
   /*
    * PRODUCTION, 21 Oct 2026: Ask Sunny verified the policy, the manager fixed
    * a line in Observation and pressed Save — which sends every value on the

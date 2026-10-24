@@ -105,7 +105,7 @@ import {
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
-import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
+import { inlineCloseMatch, wovenNoteAlreadyShown } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
 import {
@@ -998,6 +998,7 @@ async function checkTypedEmployee(
   if (settled.kept.some((name) => same(name, typed.employeeName))) return {};
 
   if (result.kind === "none") {
+    if (typedNameProceedsEnabled()) return {};
     return {
       note: `I didn't find **${tidyTypedName(typed.employeeName)}** in the employee list for your salons, so the form will use the name exactly as you typed it. Check the spelling before you file it.`,
     };
@@ -1021,9 +1022,10 @@ async function checkTypedEmployee(
   const names = result.candidates.map((candidate) => candidate.name);
   if (typedNameProceedsEnabled()) {
     const kept = tidyTypedName(typed.employeeName);
+    const noted = wovenNoteAlreadyShown(input.history);
     return {
       resolution: { kind: "resolved", employeeName: kept },
-      note: inlineCloseMatch(kept, names),
+      ...(noted ? {} : { note: inlineCloseMatch(kept, names) }),
     };
   }
   return {

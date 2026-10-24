@@ -1,3 +1,4 @@
+import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
 import { describedManualSection, namedManualSection } from "@/lib/forms/named-policy-section";
 import {
@@ -76,7 +77,7 @@ function headingOnChunk(chunks: readonly ManualChunk[], heading: string): Manual
       };
     }
     if (chunk.section && headingKey(chunk.section) === key) {
-      const printed = chunk.printedPage ?? chunk.page;
+      const printed = printedPageCitationEnabled() ? chunk.printedPage : (chunk.printedPage ?? chunk.page);
       return {
         heading: chunk.section.trim(),
         page: typeof printed === "number" && printed > 0 ? printed : 0,

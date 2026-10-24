@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { actionPlanSentenceCount, collapseToTwoSentences } from "@/lib/forms/action-plan-sentences";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { headingKey, type ManualChunk } from "@/lib/forms/official-policy-manual";
@@ -20,6 +21,7 @@ import { repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
 const CITATION = /([A-Za-z][^,\n]{1,80}?)\s*,\s*JBA Policy Manual p\.(\d+)/g;
 const PLAN_START = /Management will review\b/;
+const PAYROLL_SENTENCE = /will be deducted from|a payroll deduction applies/i;
 
 export interface OutgoingDraft {
   readonly content: string;
@@ -117,7 +119,7 @@ export function reviewOutgoing(draft: OutgoingDraft): SelfCheckFailure[] {
     }
   }
   const plan = draft.actionPlan ?? actionPlanIn(draft.content);
-  if (plan && actionPlanSentenceCount(plan) !== 2) {
+  if (plan && !exactTwoSentencePlan(plan)) {
     failures.push({ kind: "action_plan", detail: plan });
   }
   // A name that is not on the Woven roster is not a failure. Refusing the
@@ -158,6 +160,19 @@ export async function runSelfCheck(
   return { ...settled, content: scrubRosterBlock(settled.content), employeeName: settled.employeeName ?? draft.employeeName };
 }
 
+/** The review sentence and one closing. A payroll sentence is not a plan. */
+function exactTwoSentencePlan(plan: string): boolean {
+  return actionPlanSentenceCount(plan) === 2 && !PAYROLL_SENTENCE.test(plan);
+}
+
+function withoutPayrollSentence(plan: string): string {
+  return plan
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0 && !PAYROLL_SENTENCE.test(sentence))
+    .join(" ");
+}
+
 export function actionPlanIn(content: string): string | null {
   const start = content.search(PLAN_START);
   if (start < 0) return null;
@@ -181,8 +196,8 @@ function fallback(draft: OutgoingDraft, failures: readonly SelfCheckFailure[]): 
   }
   if (failures.some((failure) => failure.kind === "action_plan")) {
     const plan = actionPlan ?? actionPlanIn(content);
-    const collapsed = plan ? collapseToTwoSentences(plan) : "";
-    if (collapsed && actionPlanSentenceCount(collapsed) === 2) {
+    const collapsed = plan ? withoutPayrollSentence(collapseToTwoSentences(plan)) : "";
+    if (collapsed && exactTwoSentencePlan(collapsed)) {
       content = plan && content.includes(plan) ? content.replace(plan, collapsed) : content;
       actionPlan = collapsed;
     } else if (plan && content.includes(plan)) {
@@ -356,6 +371,7 @@ function carries(chunk: ManualChunk, wanted: string): boolean {
 
 function indexedPage(chunk: ManualChunk): number | null {
   if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (printedPageCitationEnabled()) return null;
   if (typeof chunk.page === "number" && chunk.page > 0) return chunk.page;
   return null;
 }

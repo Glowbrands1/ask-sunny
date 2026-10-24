@@ -13,7 +13,7 @@ import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
 } from "@/lib/forms/required-policy-citation";
-import { blocksOnNameQuestion, inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
+import { blocksOnNameQuestion, inlineCloseMatch, wovenNoteAlreadyShown } from "@/lib/forms/typed-name-proceeds";
 
 const PLAN = {
   citedPolicies: ["Attendance"],
@@ -36,17 +36,20 @@ describe("an unverified name is used as typed", () => {
   it("offers one close roster match without making it a gate", () => {
     const note = inlineCloseMatch("Colene Shildt", ["Colene Schildt"]);
     expect(note).toBe(
-      "Did you mean **Colene Schildt**? I'll keep **Colene Shildt** on the form unless you say otherwise.",
+      "Woven has **Colene Schildt** — say so if that's who you mean. Carry on; do not wait.",
     );
     expect(blocksOnNameQuestion(note)).toBe(false);
+    expect(note).not.toMatch(/did you mean|I'll keep/i);
   });
 
-  it("offers several close matches in the same reply", () => {
+  it("offers several close matches in the same reply, and not again later", () => {
     const note = inlineCloseMatch("Pat", ["Pat Rivera", "Pat Jones"]);
-    expect(note).toContain("**Pat Rivera**");
-    expect(note).toContain("**Pat Jones**");
-    expect(note).toContain("I'll keep **Pat**");
-    expect(note).not.toMatch(/reply with the number/i);
+    expect(note).toBe(
+      "Woven has **Pat Rivera** or **Pat Jones** — say so if that's who you mean. Carry on; do not wait.",
+    );
+    expect(note).not.toMatch(/reply with the number|did you mean/i);
+    expect(wovenNoteAlreadyShown([{ content: note }])).toBe(true);
+    expect(wovenNoteAlreadyShown([{ content: "coaching form for Pat" }])).toBe(false);
   });
 
   it("still recognises the question that holds the card", () => {

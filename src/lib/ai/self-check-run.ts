@@ -1,7 +1,7 @@
 import "server-only";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { selfCheckEnabled } from "@/lib/config/chat-quality-flags";
+import { printedPageCitationEnabled, selfCheckEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName } from "@/lib/forms/employee-match";
 import { loadScopedRoster, readDirectoryFacts } from "@/lib/forms/employee-roster";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -21,7 +21,6 @@ import type { AskRequest, AskResponse } from "./types";
 
 const REPAIR_SYSTEM = `You repair one assistant reply. Call repair_reply once.
 For each cited section, read that chunk's own text and the manager's question. Set applies to false when the chunk's text limits the section to a situation the question does not describe. Omit that section from content, including a consequence stated only in that chunk. Judge only from the chunk text and the question.
-Cite a heading only when it is in the chunk list, and the page must be that chunk's page.
 An action plan, when you include one, is exactly two sentences.
 employeeName is the name already on the reply, or a roster spelling of that same person. Never clear it because the roster has no row.
 Do not invent a policy, a page, or a person. Do not refuse the form. If a part cannot be repaired, omit that part and leave the rest of the reply.`;
@@ -38,10 +37,13 @@ export async function guardReply(
     ]);
     const names = roster?.map((person) => displayName(person)) ?? [];
     const headings = chunks.flatMap((chunk) => {
-      const page = (chunk.printedPage ?? chunk.page) || null;
+      const page = citationPage(chunk);
       const label = chunk.section?.trim() || chunk.sections?.[0]?.heading?.trim() || "";
       return label && page ? [`${label} p.${page}`] : [];
     });
+    const pageRule = printedPageCitationEnabled()
+      ? "Cite a heading only when it is in the chunk list, and the page must be the printed page, never the PDF sheet number."
+      : "Cite a heading only when it is in the chunk list, and the page must be that chunk's page.";
     const employeeName = response.formProposal?.employeeName ?? null;
     const settled = await runSelfCheck(
       {
@@ -55,7 +57,7 @@ export async function guardReply(
       (brief) =>
         callClaudeTool({
           model: CLAUDE_HAIKU_MODEL,
-          system: REPAIR_SYSTEM,
+          system: `${pageRule}\n${REPAIR_SYSTEM}`,
           maxTokens: 700,
           tool: {
             name: "repair_reply",
@@ -120,6 +122,19 @@ export async function guardReply(
   } catch {
     return response;
   }
+}
+
+function citationPage(chunk: {
+  readonly printedPage?: number | null;
+  readonly page: number | null;
+  readonly sections?: readonly { readonly heading: string; readonly page: number }[] | null;
+}): number | null {
+  if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (printedPageCitationEnabled()) {
+    const listed = chunk.sections?.find((section) => section.page > 0);
+    return listed ? listed.page : null;
+  }
+  return typeof chunk.page === "number" && chunk.page > 0 ? chunk.page : null;
 }
 
 async function loadChunks(scopeId: string) {

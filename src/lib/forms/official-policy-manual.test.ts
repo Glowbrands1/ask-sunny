@@ -332,6 +332,24 @@ describe("3. the page belongs to the heading, not to the chunk", () => {
   it("reads past a leading footer, which belongs to the chunk's own sheet", () => {
     expect(findManualSection([LEGACY_LATE_OPENING], ["Late Opening"])?.page).toBe(15);
   });
+
+  it("does not cite the PDF sheet when the printed page is required and none was stored", () => {
+    const sheetOnly: ManualChunk = {
+      chunkIndex: 4,
+      page: 16,
+      printedPage: null,
+      section: "Late Opening",
+      content: "Late Opening\nThe employee reimburses the company.",
+      sections: null,
+    };
+    expect(findManualSection([sheetOnly], ["Late Opening"])?.page).toBe(16);
+    process.env.PRINTED_PAGE_CITATION_ENABLED = "1";
+    try {
+      expect(findManualSection([sheetOnly], ["Late Opening"])).toBeNull();
+    } finally {
+      delete process.env.PRINTED_PAGE_CITATION_ENABLED;
+    }
+  });
 });
 
 describe("4. the offense box decides which section", () => {

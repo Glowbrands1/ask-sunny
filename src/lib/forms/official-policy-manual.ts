@@ -61,6 +61,7 @@
  * one, because it looks checked.
  */
 
+import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { headingOf, isPageFooter } from "@/lib/ingestion/extract/pdf-sections";
 
 /* ------------------------------------------------------------- identity --- */
@@ -615,7 +616,9 @@ function escapeForRegExp(value: string): string {
  * 1-based, as a reader counts.
  */
 function citedPageOfChunk(chunk: ManualChunk): number | null {
-  return chunk.printedPage ?? chunk.page;
+  if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (printedPageCitationEnabled()) return null;
+  return chunk.page;
 }
 
 export function findManualSection(

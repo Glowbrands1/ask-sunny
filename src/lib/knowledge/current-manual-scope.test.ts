@@ -99,6 +99,71 @@ describe("scope to the current JBA manual", () => {
     expect(scopeToCurrentManual(rows, { limit: 1 }).map((item) => item.chunk_id)).toEqual(["a"]);
   });
 
+  it("keeps one chunk per section across the three indexed 2025 copies when asked", () => {
+    const rows = [
+      row({
+        chunk_id: "copy-a",
+        document_id: "ce6b00f1",
+        document_title: "JBA Policy Manual 2025",
+        section: "Attendance",
+        content: "First wording of attendance.",
+        similarity: 0.9,
+      }),
+      row({
+        chunk_id: "copy-b",
+        document_id: "5c626f3c",
+        document_title: "JBA Policy Manual 2025",
+        section: "Attendance",
+        content: "Second wording of attendance.",
+        similarity: 0.97,
+      }),
+      row({
+        chunk_id: "copy-c",
+        document_id: "94d9810f",
+        document_title: "JBA Policy Manual 2025",
+        section: "Attendance",
+        content: "Third wording of attendance.",
+        similarity: 0.88,
+      }),
+      row({
+        chunk_id: "old",
+        document_id: "f527da34",
+        document_title: OLDER,
+        section: "Attendance",
+        content: "2024 wording.",
+        similarity: 0.99,
+      }),
+      row({
+        chunk_id: "untitled-low",
+        document_id: "ce6b00f1",
+        document_title: "JBA Policy Manual 2025",
+        section: "",
+        content: "No heading one.",
+        similarity: 0.7,
+      }),
+      row({
+        chunk_id: "untitled-high",
+        document_id: "5c626f3c",
+        document_title: "JBA Policy Manual 2025",
+        section: " ",
+        content: "No heading two.",
+        similarity: 0.71,
+      }),
+    ];
+    expect(scopeToCurrentManual(rows, { limit: 14 }).map((item) => item.chunk_id)).toEqual([
+      "copy-b",
+      "copy-a",
+      "copy-c",
+      "untitled-high",
+      "untitled-low",
+    ]);
+    expect(scopeToCurrentManual(rows, { limit: 14, dedupeBySection: true }).map((item) => item.chunk_id)).toEqual([
+      "copy-b",
+      "untitled-high",
+      "untitled-low",
+    ]);
+  });
+
   it("uses the pinned document when that id was retrieved", () => {
     const rows = [
       row({ chunk_id: "other-2025", document_id: "copy", document_title: CURRENT, content: "Copy.", similarity: 0.99 }),

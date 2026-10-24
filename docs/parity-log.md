@@ -5,6 +5,37 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: guide code check — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. Every flag
+defaults off. Bubbles `self-check.ts` accepting either the printed page or
+the PDF sheet (guide item 10 / 20c) is Bubbles-only until that repo is
+attached.
+
+- `ACTION_PLAN_SENTENCES_ENABLED` — `correctiveActionPlan` leaves
+  `payrollDeductSentence` out of `action_plan`. The field is the review
+  sentence and the required closing. Rev 5 "may be subject to" is unchanged.
+  Self-check rejects a plan that is not those two sentences, including one
+  that still says an amount will be deducted.
+- `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — a Yes does not take "$25.00" from
+  Late Opening text. The amount is one the manager stated. No amount field
+  is added; Pau is deciding that.
+- `POLICY_GATE_NONBLOCKING_ENABLED` (browser:
+  `NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED`) — a blank Direct policy
+  stays blank and does not hold the card or finalize. A policy value
+  somebody typed that was never verified still asks for an acknowledgement.
+- `TYPED_NAME_PROCEEDS_ENABLED` — the close-match line is "Woven has **Jane
+  Doe** — say so if that's who you mean. Carry on; do not wait." The card
+  uses the typed name in that same reply. The note is not asked again. A
+  name that is not in Woven is not mentioned.
+- `MANUAL_SECTION_DEDUPE_ENABLED` — retrieval keeps one current-year chunk
+  per section heading (nearest match). The three indexed 2025 copies
+  (ce6b00f1, 5c626f3c, 94d9810f) are the test fixture, not a keep-list.
+  Nothing is deleted.
+- `PRINTED_PAGE_CITATION_ENABLED` — a citation uses the printed page. The
+  PDF `page` column is not cited when no printed page was stored.
+
 ## 24 Oct 2026: prompt rule conflicts — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.

@@ -2,7 +2,9 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
+import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
@@ -56,6 +58,8 @@ export function enrichFormCard(input: {
   readonly today: string;
   readonly people: readonly GroundedPerson[];
   readonly saved: ConversationFormState | null;
+  /** The close-match note was already in an earlier reply. */
+  readonly wovenNoteShown?: boolean;
 }): AskResponse {
   const proposal = input.response.formProposal;
   if (!proposal) return input.response;
@@ -105,7 +109,7 @@ export function enrichFormCard(input: {
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
   }
-  content = rosterOnce(content, next.employeeName, input.people);
+  content = rosterOnce(content, next.employeeName, input.people, input.wovenNoteShown === true);
 
   return content === input.response.content && next === proposal
     ? input.response
@@ -463,14 +467,23 @@ function fieldLines(input: {
   return lines;
 }
 
-function rosterOnce(content: string, name: string | null, people: readonly GroundedPerson[]): string {
+function rosterOnce(
+  content: string,
+  name: string | null,
+  people: readonly GroundedPerson[],
+  wovenNoteShown: boolean,
+): string {
   if (!name || people.length === 0) return content;
   if (/couldn'?t find|didn'?t find|not in the woven roster/i.test(content)) return content;
   const match = matchEmployeeName(name, people);
-  if (match.kind === "confirm" && match.candidates.length === 1 && match.candidates[0]!.name.toLowerCase() !== name.toLowerCase()) {
-    const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
-    if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
+  if (match.kind !== "confirm" || match.candidates.length !== 1) return content;
+  if (match.candidates[0]!.name.toLowerCase() === name.toLowerCase()) return content;
+  if (typedNameProceedsEnabled()) {
+    if (wovenNoteShown || /Woven has \*\*/.test(content)) return content;
+    return `${inlineCloseMatch(name, [match.candidates[0]!.name])}\n\n${content}`;
   }
+  const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
+  if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
   return content;
 }
 
