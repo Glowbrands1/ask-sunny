@@ -1473,7 +1473,12 @@ async function answerQuestionUntraced(
   // resolves to the row at that position — retrieved data, not model output.
   const checked =
     policyAnswer && fullManuals.length > 0
-      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
+      ? applyFullManualAnswer({
+          content: answer,
+          manuals: fullManuals,
+          sourceCount: 0,
+          question: request.question,
+        })
       : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));

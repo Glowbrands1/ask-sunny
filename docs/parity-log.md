@@ -1,5 +1,27 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: citation post-processor keeps model words — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No ingest change
+and no merge. `FULL_MANUAL_CONTEXT_ENABLED` still defaults off. Off, the
+prompt, retrieval, and `[S#]` sources are unchanged.
+
+Sibling app: not ported because Ask Bubbles is not attached.
+
+- The post-processor does not rewrite a sentence and does not delete or
+  split a word the model wrote. It does not retarget a page, and it does
+  not cut at a comma in front of a heading.
+- It may append `[p.N]` after a sentence that already names that printed
+  page, when the page is in the loaded manual and answers the question.
+- It may remove a `[p.N]` or `[S#]` marker whose page is not a Sources
+  row. A page that does not answer the question is not a Sources row, and
+  the sentence stays. The cover (p.1) is not a source for dress code or
+  PTO. Termination payout (p.22) and bereavement (p.47) are not sources
+  for a PTO question.
+- A one-word heading that is only a word of the manual title ("Manual"
+  inside "JBA Policy Manual") is not the Sources excerpt.
+
 ## 24 Oct 2026: inline printed-page citations — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

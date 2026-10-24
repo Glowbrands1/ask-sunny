@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { fullManualContextEnabled } from "@/lib/config/chat-quality-flags";
@@ -69,6 +71,22 @@ function pagesIn(checked: {
     for (const match of citation.locator.matchAll(/\b(\d{1,4})\b/g)) pages.add(Number(match[1]));
   }
   return [...pages].sort((a, b) => a - b);
+}
+
+/**
+ * Model words, in order, with `[p.N]` and `[S#]` ignored.
+ *
+ * Appending a marker or removing one whose page is not a Sources row does
+ * not change this list. Deleting or splitting a word the model wrote does.
+ */
+function proseWords(text: string): string[] {
+  return text.toLowerCase().replace(/\[(?:p\.\d+|s\d+)\]/gi, " ").match(/[a-z0-9]+/g) ?? [];
+}
+
+function wordsRemainInOrder(model: string, final: string): boolean {
+  const source = proseWords(model);
+  const out = proseWords(final);
+  return source.length === out.length && source.every((word, index) => word === out[index]);
 }
 
 const JBA = manual("JBA Policy Manual Edited 5.2025", [
@@ -203,13 +221,21 @@ describe("full manual assembly", () => {
     expect(result.block).not.toContain("Office staff wear business casual.");
     expect(result.block).not.toContain("More crunch shirt detail.");
 
+    // f44631a deleted the Buff City Soap sentence. The post-processor no longer
+    // deletes model words. Page 16 is the excluded brand sheet, so it is not a
+    // Sources row and no [p.16] is appended. Page 17 is, and the marker goes
+    // after the sentence.
+    const model = "See Buff City Soap, JBA Policy Manual p.16. Wear the uniform. Sun Tan City, JBA Policy Manual p.17.";
     const checked = applyFullManualAnswer({
-      content: "See Buff City Soap, JBA Policy Manual p.16. Wear the uniform. Sun Tan City, JBA Policy Manual p.17.",
+      content: model,
       manuals: result.manuals,
       sourceCount: 0,
+      question: "What is the dress code?",
     });
-    expect(checked.content).not.toContain("Buff");
-    expect(checked.content).toContain("Sun Tan City, JBA Policy Manual p.17");
+    expect(wordsRemainInOrder(model, checked.content)).toBe(true);
+    expect(checked.content).toContain("See Buff City Soap, JBA Policy Manual p.16.");
+    expect(checked.content).toContain("Sun Tan City, JBA Policy Manual p.17. [p.17]");
+    expect(checked.content).not.toContain("[p.16]");
   });
 });
 
@@ -269,31 +295,31 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(occurrences(result.block, BLACKOUT)).toBe(1);
     expect(occurrences(result.block, NOTICE)).toBe(1);
 
+    // f44631a rewrote prose "p.42" to "p.41" and deleted the DM manual, Salon
+    // Director, and Table of Contents sentences. Those words stay. The sheet
+    // prints 41, so a [p.42] marker has no Sources row. Page 6 is the
+    // Reference List and does not answer a PTO question, so its marker is
+    // removed too. [p.41] is not invented from a sentence that said p.42.
+    const model = [
+      `Paid time off accrues each pay period. ${BLACKOUT}`,
+      "Paid time Off (PTO), JBA Policy Manual p.42 and p.6 [p.42][p.6][S9][S11].",
+      "See the DM manual p.6 and the Salon Director manual pp.3-5.",
+      "See Table of Contents, JBA Policy Manual p.6.",
+    ].join(" ");
     const checked = applyFullManualAnswer({
-      content: [
-        `Paid time off accrues each pay period. ${BLACKOUT}`,
-        "Paid time Off (PTO), JBA Policy Manual p.42 and p.6 [p.42][p.6][S9][S11].",
-        "See the DM manual p.6 and the Salon Director manual pp.3-5.",
-        "See Table of Contents, JBA Policy Manual p.6.",
-      ].join(" "),
+      content: model,
       manuals: result.manuals,
       sourceCount: 0,
+      question: "What is the PTO policy?",
     });
+    expect(wordsRemainInOrder(model, checked.content)).toBe(true);
     expect(checked.content).toContain(BLACKOUT);
-    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.41 [p.41]");
-    expect(checked.content).not.toContain("p.42");
-    expect(checked.content).not.toContain("p.6");
+    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.42 and p.6.");
+    expect(checked.content).toContain("See the DM manual p.6 and the Salon Director manual pp.3-5.");
+    expect(checked.content).toContain("See Table of Contents, JBA Policy Manual p.6.");
+    expect(checked.content).not.toMatch(/\[p\.\d+\]/);
     expect(checked.content).not.toContain("[S");
-    expect(checked.content).not.toMatch(/DM manual|Salon Director|Table of Contents/i);
-    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.41]"]);
-    expect(pagesIn(checked)).toEqual([41]);
-    expect(checked.citations).toEqual([
-      expect.objectContaining({
-        documentTitle: "JBA Policy Manual",
-        excerpt: "Paid time Off (PTO)",
-        locator: "Page 41",
-      }),
-    ]);
+    expect(checked.citations).toEqual([]);
   });
 
   it("conv_mvmjfgcv573j1oz cites Cell Phone/Smart Watch on the printed page", () => {
@@ -323,26 +349,24 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(result.block).not.toContain("P a g e");
     expect(result.block).toContain("## Cell Phone/Smart Watch Policy");
     expect(result.block).toContain("Phones stay off the sales floor during a shift.");
+    // f44631a rewrote prose "p.20" to "p.19" and deleted the DM manual sentence.
+    // The printed page is 19, so the model's [p.20] has no Sources row and is
+    // removed. The words "p.20" and "DM manual" stay, and [p.19] is not invented.
+    const model =
+      "Phones stay off the sales floor during a shift. Cell Phone/Smart Watch Policy, JBA Policy Manual p.20 [p.20][S9]. See the DM manual p.6.";
     const checked = applyFullManualAnswer({
-      content:
-        "Phones stay off the sales floor during a shift. Cell Phone/Smart Watch Policy, JBA Policy Manual p.20 [p.20][S9]. See the DM manual p.6.",
+      content: model,
       manuals: result.manuals,
       sourceCount: 0,
+      question: "What is the cell phone policy?",
     });
+    expect(wordsRemainInOrder(model, checked.content)).toBe(true);
     expect(checked.content).toContain("Phones stay off the sales floor during a shift.");
-    expect(checked.content).toContain("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19 [p.19]");
-    expect(checked.content).not.toContain("p.20");
+    expect(checked.content).toContain("Cell Phone/Smart Watch Policy, JBA Policy Manual p.20.");
+    expect(checked.content).toContain("See the DM manual p.6.");
+    expect(checked.content).not.toMatch(/\[p\.\d+\]/);
     expect(checked.content).not.toContain("[S");
-    expect(checked.content).not.toMatch(/DM manual/i);
-    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.19]"]);
-    expect(pagesIn(checked)).toEqual([19]);
-    expect(checked.citations).toEqual([
-      expect.objectContaining({
-        documentTitle: "JBA Policy Manual",
-        excerpt: "Cell Phone/Smart Watch Policy",
-        locator: "Page 19",
-      }),
-    ]);
+    expect(checked.citations).toEqual([]);
   });
 
   it("conv_mvmjfwnx8psm0nx rebuilds Tattoos and Jewelry without a repeated or broken line", () => {
@@ -454,24 +478,34 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(result.block).not.toMatch(/buff|crunch|table of contents/i);
     expect(result.block).not.toContain("Tattoos ................................................................ 16");
 
+    // f44631a rewrote the model's page numbers onto the printed page and
+    // deleted Crunch, Buff City Soap, and Salon Director sentences. Those
+    // words stay. A marker is kept only when that page is in the loaded
+    // manual and answers the question. p.18, p.20, and pp.3-5 are not pages
+    // in this manual, so they get no marker. The model wrote p.16 and p.17,
+    // and both pages answer a dress-code question, so those markers stay.
+    // The processor does not invent p.15 from a sentence that said p.16.
+    const model = [
+      "No sandals, crocs. Shoes, JBA Policy Manual p.16 [p.16].",
+      `${TATTOOS} Tattoos, JBA Policy Manual p.17 [p.17].`,
+      `${JEWELRY} Jewelry/Accessories, JBA Policy Manual p.17 [S11].`,
+      "Name tags are worn on the shirt. Name tags, JBA Policy Manual p.20.",
+      "Sun Tan City shirts are the salon uniform. Shirts, JBA Policy Manual p.16.",
+      "Pants are black. Pants, JBA Policy Manual p.18.",
+      "Tanning is offered to staff. Tanning, JBA Policy Manual p.18.",
+      "Crunch Shirts, JBA Policy Manual p.17.",
+      "Crunch Pants, JBA Policy Manual p.17.",
+      "See Buff City Soap p.16 and the Crunch policy manual p.16.",
+      "Crunch Fitness Specific Dress Code, JBA Policy Manual p.16.",
+      "Salon Director manual pp.3-5.",
+    ].join(" ");
     const checked = applyFullManualAnswer({
-      content: [
-        "No sandals, crocs. Shoes, JBA Policy Manual p.16 [p.16].",
-        `${TATTOOS} Tattoos, JBA Policy Manual p.17 [p.17].`,
-        `${JEWELRY} Jewelry/Accessories, JBA Policy Manual p.17 [S11].`,
-        "Name tags are worn on the shirt. Name tags, JBA Policy Manual p.20.",
-        "Sun Tan City shirts are the salon uniform. Shirts, JBA Policy Manual p.16.",
-        "Pants are black. Pants, JBA Policy Manual p.18.",
-        "Tanning is offered to staff. Tanning, JBA Policy Manual p.18.",
-        "Crunch Shirts, JBA Policy Manual p.17.",
-        "Crunch Pants, JBA Policy Manual p.17.",
-        "See Buff City Soap p.16 and the Crunch policy manual p.16.",
-        "Crunch Fitness Specific Dress Code, JBA Policy Manual p.16.",
-        "Salon Director manual pp.3-5.",
-      ].join(" "),
+      content: model,
       manuals: result.manuals,
       sourceCount: 0,
+      question: "What is the dress code for tattoos and jewelry?",
     });
+    expect(wordsRemainInOrder(model, checked.content)).toBe(true);
     expect(checked.content).toContain("No sandals, crocs.");
     expect(checked.content).toContain("Name tags are worn on the shirt.");
     expect(checked.content).toContain("Sun Tan City shirts are the salon uniform.");
@@ -479,32 +513,21 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(checked.content).toContain("Tanning is offered to staff.");
     expect(checked.content).toContain(TATTOOS);
     expect(checked.content).toContain(JEWELRY);
-    expect(checked.content).toContain("Shoes, JBA Policy Manual p.15 [p.15]");
-    expect(checked.content).toContain("Name tags, JBA Policy Manual p.15 [p.15]");
-    expect(checked.content).toContain("Tattoos, JBA Policy Manual p.16 [p.16]");
-    expect(checked.content).toContain("Jewelry/Accessories, JBA Policy Manual p.16 [p.16]");
-    expect(checked.content).toContain("Shirts, JBA Policy Manual p.17 [p.17]");
-    expect(checked.content).toContain("Pants, JBA Policy Manual p.17 [p.17]");
-    expect(checked.content).toContain("Tanning, JBA Policy Manual p.17 [p.17]");
-    expect(checked.content).not.toContain("p.18");
-    expect(checked.content).not.toContain("p.20");
+    expect(checked.content).toContain("Shoes, JBA Policy Manual p.16 [p.16].");
+    expect(checked.content).toContain("Crunch Shirts, JBA Policy Manual p.17. [p.17]");
+    expect(checked.content).toContain("Crunch Pants, JBA Policy Manual p.17. [p.17]");
+    expect(checked.content).toContain("See Buff City Soap p.16 and the Crunch policy manual p.16. [p.16]");
+    expect(checked.content).toContain("Crunch Fitness Specific Dress Code, JBA Policy Manual p.16. [p.16]");
+    expect(checked.content).toContain("Salon Director manual pp.3-5.");
+    expect(checked.content).toContain("JBA Policy Manual p.18.");
+    expect(checked.content).toContain("JBA Policy Manual p.20.");
     expect(checked.content).not.toContain("[S");
-    expect(checked.content).not.toMatch(/Buff|Crunch|Salon Director/i);
-    expect(pagesIn(checked)).toEqual([15, 16, 17]);
-    expect(checked.content).toMatch(/p\.15\b/);
-    expect(checked.content).toMatch(/p\.16\b/);
-    expect(checked.content).toMatch(/p\.17\b/);
-    const page17 = checked.citations.filter((citation) => citation.locator === "Page 17");
-    expect(page17.map((citation) => citation.excerpt)).toEqual(["Shirts", "Pants", "Tanning"]);
-    expect(checked.citations).toEqual([
-      expect.objectContaining({ excerpt: "Shoes", locator: "Page 15" }),
-      expect.objectContaining({ excerpt: "Tattoos", locator: "Page 16" }),
-      expect.objectContaining({ excerpt: "Jewelry/Accessories", locator: "Page 16" }),
-      expect.objectContaining({ excerpt: "Name tags", locator: "Page 15" }),
-      expect.objectContaining({ excerpt: "Shirts", locator: "Page 17" }),
-      expect.objectContaining({ excerpt: "Pants", locator: "Page 17" }),
-      expect.objectContaining({ excerpt: "Tanning", locator: "Page 17" }),
-    ]);
+    expect(checked.content).not.toMatch(/\[p\.(?:3|4|5|15|18|20)\]/);
+    expect(checked.citations.every((citation) => citation.locator === "Page 16" || citation.locator === "Page 17")).toBe(
+      true,
+    );
+    expect(checked.citations.some((citation) => citation.locator === "Page 16")).toBe(true);
+    expect(checked.citations.some((citation) => citation.locator === "Page 17")).toBe(true);
   });
 
   it("does not shift a cover sheet that has no printed page", () => {
@@ -554,18 +577,20 @@ describe("citation validation", () => {
     if (!result.ok) return;
     expect(result.manuals[0]?.pages.map((page) => page.page)).toEqual([15, 16, 41]);
 
-    const kept = (raw: string, page: number) => {
-      expect(raw.endsWith(`p.${page})`)).toBe(true);
-      return `${raw.slice(0, -1)} [p.${page}])`;
-    };
-
+    // The marker is appended after the sentence. f44631a inserted it in front
+    // of the closing paren by rewriting the citation, which cut the sentence
+    // at the comma before the heading.
+    const model = live.map((item) => item.raw).join("\n");
     const checked = applyFullManualAnswer({
-      content: live.map((item) => item.raw).join("\n"),
+      content: model,
       manuals: result.manuals,
       sourceCount: 0,
+      question: "What do the tattoos, shoes, and eligibility rules say?",
     });
+    expect(wordsRemainInOrder(model, checked.content)).toBe(true);
     for (const item of live) {
-      const intact = kept(item.raw, item.page);
+      const intact = `${item.raw} [p.${item.page}]`;
+      expect(item.raw.endsWith(`p.${item.page})`)).toBe(true);
       expect(checked.content).toContain(intact);
       expect(checked.content).toContain(item.sentence);
       expect(checked.content).toContain(item.label);
@@ -593,7 +618,9 @@ describe("citation validation", () => {
         content: streamed.text,
         manuals: result.manuals,
         sourceCount: 0,
+        question: "What do the tattoos, shoes, and eligibility rules say?",
       });
+      expect(wordsRemainInOrder(item.raw, fromStream.content)).toBe(true);
       expect(fromStream.content).toContain(intact);
       expect(fromStream.content).toContain(item.sentence);
       expect(fromStream.content).toContain(item.label);
@@ -643,8 +670,10 @@ describe("citation validation", () => {
         content: streamed.text,
         manuals: result.manuals,
         sourceCount: 0,
+        question: "What do the tattoos, shoes, and eligibility rules say?",
       });
-      const intact = `${item.sentence} (${item.label} [p.${item.page}]`;
+      const intact = `${item.raw} [p.${item.page}]`;
+      expect(wordsRemainInOrder(item.raw, fromStream.content)).toBe(true);
       expect(fromStream.content).toContain(intact);
       expect(fromStream.content).toContain(item.sentence);
       expect(fromStream.content).toContain(item.label);
@@ -653,25 +682,34 @@ describe("citation validation", () => {
   });
 
 
-  it("keeps a real page, fixes a heading that is on another page, and drops an invented one", () => {
+  it("keeps a real page and leaves an unknown heading and an unknown page in the sentence", () => {
     const result = choosePolicyManuals("What is the attendance policy?", [JBA]);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    // f44631a deleted "Unicorn" and rewrote "Dress Code ... p.99" onto the
+    // Dress Code for The Company page. Neither sentence is rewritten. Page 19
+    // is in the manual, so that sentence gains [p.19]. Page 99 is not, so it
+    // gains no marker.
+    const model = [
+      "Be on time. See Attendance, JBA Policy Manual p.19.",
+      "Dress Code, JBA Policy Manual p.99.",
+      "Also Unicorn Policy, JBA Policy Manual p.19.",
+    ].join("\n");
     const checked = applyFullManualAnswer({
-      content: [
-        "Be on time. See Attendance, JBA Policy Manual p.19.",
-        "Dress Code, JBA Policy Manual p.99.",
-        "Also Unicorn Policy, JBA Policy Manual p.19.",
-      ].join("\n"),
+      content: model,
       manuals: result.manuals,
       sourceCount: 0,
+      question: "What is the attendance policy?",
     });
-    expect(checked.content).toContain("Attendance, JBA Policy Manual p.19");
-    expect(checked.content).toContain("Dress Code for The Company, JBA Policy Manual p.20");
-    expect(checked.content).not.toContain("p.99");
-    expect(checked.content).not.toContain("Unicorn");
-    expect(checked.citations.map((citation) => citation.locator)).toEqual(["Page 19", "Page 20"]);
-    expect(checked.citations.every((citation) => citation.documentTitle === "JBA Policy Manual")).toBe(true);
+    expect(wordsRemainInOrder(model, checked.content)).toBe(true);
+    expect(checked.content).toContain("See Attendance, JBA Policy Manual p.19. [p.19]");
+    expect(checked.content).toContain("Dress Code, JBA Policy Manual p.99.");
+    expect(checked.content).toContain("Also Unicorn Policy, JBA Policy Manual p.19. [p.19]");
+    expect(checked.content).not.toContain("[p.99]");
+    expect(checked.content).not.toContain("[p.20]");
+    expect(checked.citations).toEqual([
+      expect.objectContaining({ excerpt: "Attendance", locator: "Page 19", documentTitle: "JBA Policy Manual" }),
+    ]);
   });
 
   it("drops an out-of-range [S11] when only 8 sources exist", () => {
@@ -683,6 +721,99 @@ describe("citation validation", () => {
     expect(checked.content).toContain("[S8]");
     expect(checked.content).toContain("[S3]");
     expect(checked.citations).toEqual([]);
+  });
+});
+
+describe("conv_mvmnwgmq2y3usjb and conv_mvmnvara2iixygm", () => {
+  // Located by conversation_id in chat_traces. That table has no completion
+  // column (its prompt is the system prompt). The files are chat_messages.content
+  // for message_id msg_mvmnwgmq1i3955b (dress, conv_mvmnwgmq2y3usjb) and
+  // msg_mvmnvara1eirwcx (PTO, conv_mvmnvara2iixygm): the text production stored
+  // after f44631a. Pages 1, 22, and 47 are in this manual on purpose. Keeping
+  // a marker or a Sources row for them fails the test. f44631a kept them.
+  function liveManual(): FullManualDocument {
+    return manual("JBA Policy Manual Edited 5.2025", [
+      chunk(0, 1, "Manual", "1 | P a g e\nCover.", 1),
+      chunk(10, 16, "Dress Code for The Company", "15 | P a g e\nDress Code for The Company\nA neat appearance.", 16),
+      chunk(11, 16, "All Locations Dress Code", "All Locations Dress Code\nName tags are worn.", 16),
+      chunk(12, 16, "Shoes", "Shoes\nClosed-toe shoes.", 16),
+      chunk(13, 16, "Belts", "Belts\nDark belts.", 16),
+      chunk(14, 16, "Hair", "Hair\nClean hair.", 16),
+      chunk(15, 16, "Facial Hair", "Facial Hair\nClean facial hair.", 16),
+      chunk(16, 16, "Make-up", "Make-up\nNatural make-up.", 16),
+      chunk(20, 17, "Jewelry/Accessories", "16 | P a g e\nJewelry/Accessories\nNo dangling chains.", 17),
+      chunk(21, 17, "Tattoos", "Tattoos\nLarge tattoos stay covered.", 17),
+      chunk(30, 18, "Sun Tan City", "17 | P a g e\nSun Tan City\nA branded top.", 18),
+      chunk(31, 18, "Shirts", "Shirts\nAny colored collared shirt.", 18),
+      chunk(32, 18, "Pants", "Pants\nKhaki or black pants.", 18),
+      chunk(33, 18, "Tanning", "Tanning\nA consistent schedule.", 18),
+      chunk(40, 23, "Termination", "22 | P a g e\nTermination\nPayout of accrued PTO.", 23),
+      chunk(50, 42, "Employee Benefits", "41 | P a g e\nEmployee Benefits\nBenefits overview.", 42),
+      chunk(51, 42, "Paid time Off (PTO)", "Paid time Off (PTO)\nPaid time away from work.", 42),
+      chunk(52, 42, "Eligibility", "Eligibility\nAfter 90 days.", 42),
+      chunk(60, 43, "Provisions", "42 | P a g e\nProvisions\nUnused time carries over.", 43),
+      chunk(61, 43, "Usage", "Usage\nHalf-day increments.", 43),
+      chunk(70, 48, "Bereavement Leave", "47 | P a g e\nBereavement Leave\nBereavement days.", 48),
+    ]);
+  }
+
+  function locatorPages(citations: readonly { readonly locator: string }[]): number[] {
+    return [...new Set(citations.map((citation) => Number(citation.locator.replace(/\D/g, ""))))].sort((a, b) => a - b);
+  }
+
+  it("keeps every model word and drops pages that do not answer the question", () => {
+    const dressModel = readFileSync("src/lib/ai/__fixtures__/live-answers/conv_mvmnwgmq2y3usjb.txt", "utf8");
+    const ptoModel = readFileSync("src/lib/ai/__fixtures__/live-answers/conv_mvmnvara2iixygm.txt", "utf8");
+    const dressResult = choosePolicyManuals("What is the dress code?", [liveManual()]);
+    const ptoResult = choosePolicyManuals("What is the PTO policy?", [liveManual()]);
+    expect(dressResult.ok).toBe(true);
+    expect(ptoResult.ok).toBe(true);
+    if (!dressResult.ok || !ptoResult.ok) return;
+    expect(dressResult.manuals[0]?.pages.map((page) => page.page)).toEqual(
+      expect.arrayContaining([1, 15, 16, 17, 22, 41, 42, 47]),
+    );
+
+    const dress = applyFullManualAnswer({
+      content: dressModel,
+      manuals: dressResult.manuals,
+      sourceCount: 0,
+      question: "What is the dress code?",
+    });
+    expect(wordsRemainInOrder(dressModel, dress.content)).toBe(true);
+    const chains = dress.content.indexOf("chains,");
+    const gray = dress.content.indexOf("any gray,");
+    const yoga = dress.content.indexOf("no yoga pants,");
+    expect(chains).toBeGreaterThan(-1);
+    expect(gray).toBeGreaterThan(chains);
+    expect(yoga).toBeGreaterThan(gray);
+    expect(dress.content).toContain("[p.15]");
+    expect(dress.content).toContain("[p.16]");
+    expect(dress.content).toContain("[p.17]");
+    expect(dress.content).not.toContain("[p.1]");
+    expect(locatorPages(dress.citations)).toEqual([15, 16, 17]);
+    expect(dress.citations.map((citation) => citation.excerpt)).not.toContain("Manual");
+
+    const pto = applyFullManualAnswer({
+      content: ptoModel,
+      manuals: ptoResult.manuals,
+      sourceCount: 0,
+      question: "What is the PTO policy?",
+    });
+    expect(wordsRemainInOrder(ptoModel, pto.content)).toBe(true);
+    expect(pto.content).toContain("[p.41]");
+    expect(pto.content).toContain("[p.42]");
+    expect(pto.content).not.toContain("[p.1]");
+    expect(pto.content).not.toContain("[p.22]");
+    expect(pto.content).not.toContain("[p.47]");
+    expect(pto.content).toContain("accrual cap 120 hours");
+    expect(pto.content).not.toContain("120 hours [p.");
+    expect(pto.content).toContain('("Bereavement Leave" Bereavement Leave, JBA Policy Manual p.47');
+    expect(pto.content).toContain("Payout of accrued PTO at termination follows all state and federal guidelines.");
+    expect(locatorPages(pto.citations)).toEqual([41, 42]);
+    const ptoExcerpts = pto.citations.map((citation) => citation.excerpt);
+    expect(ptoExcerpts).not.toContain("Manual");
+    expect(ptoExcerpts).not.toContain("Termination");
+    expect(ptoExcerpts).not.toContain("Bereavement Leave");
   });
 });
 
