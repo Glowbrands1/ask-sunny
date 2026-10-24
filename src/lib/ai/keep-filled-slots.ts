@@ -15,6 +15,7 @@ import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import {
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
+  globalSalonAskEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -153,7 +154,12 @@ export function holdFilledSlots(input: {
   if (slotsOn) {
     content = withObservation(content, turns, next.employeeName);
     if (next.locationResolution === "needs_selection" && !next.locationId) {
-      content = withSalonChoices(content, next.authorizedLocationIds);
+      const asked = salonAlreadyAsked(input.history);
+      // The global question already named every salon. A later turn does not
+      // ask again and does not reprint the whole company. A short assignment
+      // still lists its salons so the choice stays on the card.
+      const everySalon = next.authorizedLocationIds.length === PRODUCTION_SALONS.length;
+      if (!(asked && everySalon)) content = withSalonChoices(content, next.authorizedLocationIds, asked);
     }
   }
 
@@ -489,12 +495,19 @@ function withObservation(content: string, turns: readonly string[], employeeName
   return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
 }
 
+/** The global salon question is once per conversation. A later turn does not ask it again. */
+function salonAlreadyAsked(history: readonly HistoryTurn[]): boolean {
+  if (!globalSalonAskEnabled()) return false;
+  return history.some((message) => message.role === "assistant" && /which salon is this about/i.test(message.content));
+}
+
 /** The real salons, named, when the place they typed is not one of them. */
-function withSalonChoices(content: string, ids: readonly string[]): string {
+function withSalonChoices(content: string, ids: readonly string[], alreadyAsked = false): string {
   const names = ids.map((id) => salonById(id)?.name).filter((name): name is string => Boolean(name));
   if (names.length === 0 || names.every((name) => content.includes(name))) return content;
   const lines = names.map((name, index) => `${index + 1}. **${name}**`);
-  const ask = /which salon/i.test(content) ? lines.join("\n") : `Which salon is this about?\n${lines.join("\n")}`;
+  const ask =
+    alreadyAsked || /which salon/i.test(content) ? lines.join("\n") : `Which salon is this about?\n${lines.join("\n")}`;
   return `${content}\n\n${ask}`.trim();
 }
 

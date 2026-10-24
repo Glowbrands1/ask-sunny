@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { redactTraceText } from "./chat-trace";
 
 const SQL = readFileSync("supabase/migrations/20261023001100_chat_traces.sql", "utf8");
+const CACHE_SQL = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
 
 describe("chat_traces migration", () => {
   it("only adds a table and a view", () => {
@@ -24,6 +25,21 @@ describe("chat_traces migration", () => {
     expect(statements).not.toMatch(/vector\s*\(\s*\d+\s*\)/i);
     expect(statements).toMatch(/revoke all on public\.chat_traces from public, anon, authenticated/i);
     expect(statements).toMatch(/grant select, insert on public\.chat_traces to service_role/i);
+  });
+
+  it("adds nullable cache columns and no destructive change", () => {
+    const statements = CACHE_SQL.split("\n")
+      .filter((line) => !line.trim().startsWith("--"))
+      .join("\n");
+    expect(statements).toMatch(/add column if not exists cache_creation_input_tokens integer/i);
+    expect(statements).toMatch(/add column if not exists cache_read_input_tokens integer/i);
+    expect(statements).toMatch(/add column if not exists first_token_ms integer/i);
+    expect(statements).toMatch(/cache_read_input_tokens/);
+    expect(statements).toMatch(/first_token_ms/);
+    expect(statements).not.toMatch(/not null/i);
+    expect(statements).not.toMatch(/drop (table|column|function|index)/i);
+    expect(statements).toMatch(/create or replace view public\.chat_traces_live/i);
+    expect(statements).toMatch(/grant select on public\.chat_traces_live to service_role/i);
   });
 
   it("redacts a key before the prompt is stored", () => {

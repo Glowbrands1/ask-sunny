@@ -546,6 +546,12 @@ interface TurnCheck {
   readonly noIncidentGap?: boolean;
   /** An unknown store stays unset and the reply names these roster salons. */
   readonly salonAsk?: readonly string[];
+  /** This check applies only on `from`, not on later turns. */
+  readonly only?: boolean;
+  /** The global salon question is in this reply once, or not at all. */
+  readonly salonQuestion?: "once" | "none";
+  /** The card is ready and the draft can be created with no salon chosen. */
+  readonly draftReady?: boolean;
   /** A title the manager did not state and the directory does not hold. */
   readonly roleNot?: readonly string[];
   readonly contentNot?: readonly string[];
@@ -560,6 +566,8 @@ interface ReplayCase {
   readonly on: readonly TurnCheck[];
   /** No worse than the 23 Oct 2026 flags-off baseline. */
   readonly off: readonly TurnCheck[];
+  /** How many times the salon question may appear in the whole conversation. */
+  readonly salonQuestionAtMost?: number;
 }
 
 const CASES: readonly ReplayCase[] = [
@@ -1218,6 +1226,69 @@ const CASES: readonly ReplayCase[] = [
     ],
     off: [],
   },
+  {
+    id: "g5",
+    role: "district_manager",
+    salonQuestionAtMost: 1,
+    turns: [
+      "create a coaching form for Sarah Test",
+      "ok",
+      "she was out of dress code",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Sarah Test",
+        templateKey: "coaching",
+        draftReady: true,
+      },
+      { from: 1, only: true, salonQuestion: "once" },
+      { from: 2, salonQuestion: "none", contentNot: ["which salon is this about"] },
+    ],
+    off: [],
+  },
+  {
+    id: "g6",
+    role: "district_manager",
+    turns: [
+      "create a coaching form for Sarah Test",
+      "she was out of dress code",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Sarah Test",
+        templateKey: "coaching",
+        draftReady: true,
+        contentNot: ["can't create", "cannot create this", "nothing has been created yet"],
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "g7",
+    role: "district_manager",
+    salonQuestionAtMost: 1,
+    turns: [
+      "create a coaching form for Sarah Test",
+      "Dodge",
+    ],
+    on: [
+      { from: 1, only: true, card: true, employee: "Sarah Test", salonQuestion: "once", draftReady: true },
+      {
+        from: 2,
+        card: true,
+        employee: "Sarah Test",
+        locationId: "loc-0903",
+        templateKey: "coaching",
+        salonQuestion: "none",
+        contentNot: ["which salon is this about"],
+      },
+    ],
+    off: [],
+  },
 ];
 
 function setFlags(on: boolean) {
@@ -1367,7 +1438,7 @@ function cites(content: string, citations: readonly { locator?: string; excerpt?
 }
 
 function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<typeof ask>>, check: TurnCheck) {
-  if (turn < check.from) return;
+  if (check.only ? turn !== check.from : turn < check.from) return;
   const where = `${itemId} turn ${turn}`;
   const proposal = response.formProposal;
   const preview = response.content.slice(0, 500);
@@ -1441,6 +1512,18 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
     for (const phrase of check.contentNot) {
       expect(response.content.toLowerCase(), where).not.toContain(phrase.toLowerCase());
     }
+  }
+  if (check.draftReady) {
+    expect(proposal?.status, where).toBe("ready");
+    expect(proposal?.supportsInlineDraft, where).toBe(true);
+    expect(proposal?.locationId ?? null, where).toBeNull();
+    expect(proposal?.locationResolution, where).toBe("needs_selection");
+  }
+  if (check.salonQuestion === "once") {
+    expect(response.content.match(/which salon is this about/gi) ?? [], where).toHaveLength(1);
+  }
+  if (check.salonQuestion === "none") {
+    expect(response.content, where).not.toMatch(/which salon is this about/i);
   }
   if (check.noOtherChat) {
     expect(response.content, where).not.toMatch(/earlier today|other tab|you and I talked through this/i);
@@ -1527,6 +1610,10 @@ async function replay(
       }
     }
     for (const check of checks) applyCheck(item.id, turn, response, check);
+    if (flagsOn && item.salonQuestionAtMost !== undefined) {
+      const asked = [...turnContents, response.content].join("\n").match(/which salon is this about/gi)?.length ?? 0;
+      expect(asked, `${item.id} turn ${turn} salon question`).toBeLessThanOrEqual(item.salonQuestionAtMost);
+    }
     guardNamedTurn(item, turn, response, flagsOn);
     turnContents.push(response.content);
     history.push({
@@ -1801,7 +1888,7 @@ function renderFlagAblation(effects: readonly FlagEffect[]): string {
   const safe = effects.filter((effect) => effect.broken.length === 0 || dateOnly(effect));
   const unsafe = effects.filter((effect) => effect.broken.length > 0 && !dateOnly(effect));
   const ordered = [...safe].sort((a, b) => b.cardPass - a.cardPass || a.flag.localeCompare(b.flag));
-  lines.push("Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all 21.");
+  lines.push(`Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all ${CASES.length}.`);
   lines.push("");
   ordered.forEach((effect, index) => {
     const note = dateOnly(effect) ? " — stores s17's date" : "";

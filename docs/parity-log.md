@@ -1,5 +1,22 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: cache columns and the dynamic prompt tail — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production
+migration apply and no merge.
+
+- `chat_traces` gains nullable `cache_creation_input_tokens`,
+  `cache_read_input_tokens`, and `first_token_ms`. The slots migration is
+  already applied, so this is a new additive migration. `call-claude.ts`
+  writes Anthropic's usage fields and the time to the first text token.
+  A finished message, which is what the tests return, leaves
+  `first_token_ms` empty.
+- Per-request data sits below `---DYNAMIC---`: an open form, form records,
+  person memory, recalled memory, prior coaching, a pinned framework, a
+  matched manual section, and few-shot examples. The standing rules above
+  the marker do not carry them. The manual title is unchanged.
+
 ## 24 Oct 2026: superseded blocklist and global salon ask — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
@@ -12,9 +29,12 @@ and no merge.
   blocklist. Supersession is still only an admin or manual action, or a
   newer edition of the same record. No new table.
 - `GLOBAL_SALON_ASK_ENABLED` asks a global non-admin which salon once and
-  still builds the draft. A salon named in the same message, an earlier
-  turn, a short name, or a one-character typo is filled in and not asked.
-  Off, the draft is not blocked and the question is not added.
+  still builds the draft. Ignoring the question, or answering something
+  else, does not ask it again. The card stays ready and the draft can be
+  created with no salon. After the salon is given, the question is not
+  asked again. A salon named in the same message, an earlier turn, a short
+  name, or a one-character typo is filled in and not asked. Off, the draft
+  is not blocked and the question is not added.
 
 ## 24 Oct 2026: replay each case once — Sunny-only
 

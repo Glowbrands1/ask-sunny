@@ -20,6 +20,10 @@ const SALON_SENTENCE =
 export const GLOBAL_SALON_ASK =
   "Which salon is this about? The card is ready — choose the salon before you create the draft, so it is not filed with no salon.";
 
+/** After the one question, the card stays ready and the draft can still be created. */
+const DRAFT_STAYS_READY =
+  "Create the draft here when you're ready and edit it below — nothing is saved to anyone's file until you do.";
+
 const NOT_A_SALON = new Set([
   "about",
   "action",
@@ -97,6 +101,7 @@ export function askGlobalNonAdminForSalon(
   response: AskResponse,
   actor: { readonly role: Role | null; readonly scope: AccessScope | null },
   managerText = "",
+  priorAssistant = "",
 ): AskResponse {
   if (!globalSalonAskEnabled()) return response;
   const proposal = response.formProposal;
@@ -116,10 +121,12 @@ export function askGlobalNonAdminForSalon(
       status: proposal.status === "needs_location" ? "ready" : proposal.status,
       supportsInlineDraft: proposal.supportsInlineDraft,
     };
-    return { ...response, formProposal: next };
+    return { ...response, content: withoutSalonQuestion(response.content), formProposal: next };
   }
 
-  if (proposal.locationResolution !== "not_applicable") return response;
+  if (proposal.locationResolution !== "not_applicable" && proposal.locationResolution !== "needs_selection") {
+    return response;
+  }
 
   const next: ChatFormProposal = {
     ...proposal,
@@ -129,11 +136,25 @@ export function askGlobalNonAdminForSalon(
     status: "ready",
     supportsInlineDraft: true,
   };
+  const askedAlready = /which salon is this about/i.test(`${priorAssistant}\n${response.content}`);
+  if (askedAlready) {
+    return { ...response, content: withoutSalonQuestion(response.content), formProposal: next };
+  }
   const replaced = response.content.replace(SALON_SENTENCE, GLOBAL_SALON_ASK);
   const content = /which salon is this about/i.test(replaced)
     ? replaced
     : `${replaced.trim()}\n\n${GLOBAL_SALON_ASK}`;
   return { ...response, content, formProposal: next };
+}
+
+/** Drop a repeated salon question and the "won't name one" sentence. The create line stays. */
+function withoutSalonQuestion(content: string): string {
+  const stripped = content
+    .replace(SALON_SENTENCE, DRAFT_STAYS_READY)
+    .replace(/\n*Which salon is this about\? The card is ready — choose the salon before you create the draft, so it is not filed with no salon\./g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return /create the draft here/i.test(stripped) ? stripped : `${stripped}\n\n${DRAFT_STAYS_READY}`;
 }
 
 function personTokens(text: string): Set<string> {

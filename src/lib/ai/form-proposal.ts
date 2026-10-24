@@ -894,7 +894,16 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     ...input.history.filter((message) => message.role === "user").map((message) => message.content),
     input.question,
   ].join("\n");
-  return askGlobalNonAdminForSalon(turn([content, ...notes].join("\n\n"), proposal), input.actor, managerText);
+  const priorAssistant = input.history
+    .filter((message) => message.role === "assistant")
+    .map((message) => message.content)
+    .join("\n");
+  return askGlobalNonAdminForSalon(
+    turn([content, ...notes].join("\n\n"), proposal),
+    input.actor,
+    managerText,
+    priorAssistant,
+  );
 }
 
 /**

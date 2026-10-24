@@ -26,6 +26,12 @@ export interface ModelCallSnapshot {
   readonly inputTokens: number | null;
   readonly outputTokens: number | null;
   readonly thinkingTokens: number | null;
+  /** Anthropic usage.cache_creation_input_tokens. Null when the call did not report it. */
+  readonly cacheCreationInputTokens: number | null;
+  /** Anthropic usage.cache_read_input_tokens. Null when the call did not report it. */
+  readonly cacheReadInputTokens: number | null;
+  /** Milliseconds until the first text token. Null when the call was not streamed. */
+  readonly firstTokenMs: number | null;
   readonly errorSubtype: ErrorSubtype | null;
   readonly errorClass: string | null;
   readonly errorStatus: number | null;
@@ -67,6 +73,7 @@ export function noteModelCall(input: {
   readonly maxTokens: number;
   readonly stopReason: string | null;
   readonly latencyMs: number;
+  readonly firstTokenMs?: number | null;
   readonly usage: unknown;
   readonly error?: unknown;
   readonly subtype?: ErrorSubtype | null;
@@ -82,6 +89,9 @@ export function noteModelCall(input: {
       inputTokens: readUsageNumber(input.usage, "input_tokens"),
       outputTokens: readUsageNumber(input.usage, "output_tokens"),
       thinkingTokens: readThinkingTokens(input.usage),
+      cacheCreationInputTokens: readUsageNumber(input.usage, "cache_creation_input_tokens"),
+      cacheReadInputTokens: readUsageNumber(input.usage, "cache_read_input_tokens"),
+      firstTokenMs: input.firstTokenMs ?? null,
       errorSubtype,
       errorClass: discarded?.errorClass ?? (errorSubtype ? "AiError" : null),
       errorStatus: discarded?.errorStatus ?? null,
@@ -113,7 +123,10 @@ function readErrorType(error: unknown): string | null {
   return typeof type === "string" ? type : null;
 }
 
-function readUsageNumber(usage: unknown, key: "input_tokens" | "output_tokens"): number | null {
+function readUsageNumber(
+  usage: unknown,
+  key: "input_tokens" | "output_tokens" | "cache_creation_input_tokens" | "cache_read_input_tokens",
+): number | null {
   if (typeof usage !== "object" || usage === null) return null;
   const value = (usage as Record<string, unknown>)[key];
   return typeof value === "number" ? value : null;

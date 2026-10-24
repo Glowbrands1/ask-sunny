@@ -111,6 +111,98 @@ export interface CallClaudeInput {
   readonly manualBlock?: string | null;
 }
 
+export interface CollectedModelResult {
+  readonly stopReason: string | null;
+  readonly text: string;
+  readonly usage: unknown;
+  /** Null when the SDK returned a finished message instead of a text stream. */
+  readonly firstTokenMs: number | null;
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
+
+function textFromContent(content: readonly { type?: string; text?: string }[]): string {
+  return content
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text ?? "")
+    .join("\n")
+    .trim();
+}
+
+/** Keep a number already seen when a later usage event leaves that field empty. */
+function mergeUsage(previous: unknown, next: unknown): unknown {
+  if (typeof next !== "object" || next === null) return previous;
+  if (typeof previous !== "object" || previous === null) return next;
+  const merged: Record<string, unknown> = { ...(previous as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(next as Record<string, unknown>)) {
+    if (value === null || value === undefined) continue;
+    const prior = merged[key];
+    if (
+      key === "output_tokens_details" &&
+      typeof value === "object" &&
+      typeof prior === "object" &&
+      prior !== null
+    ) {
+      merged[key] = { ...(prior as Record<string, unknown>), ...(value as Record<string, unknown>) };
+      continue;
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
+
+/**
+ * A streamed reply records the wait until the first text delta. A finished
+ * Message — what the tests return — has no delta, so first-token time stays
+ * empty rather than being filled with the whole-call latency.
+ */
+export async function collectModelResult(response: unknown, started: number): Promise<CollectedModelResult> {
+  if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
+    const message = response as {
+      stop_reason?: string | null;
+      content?: readonly { type?: string; text?: string }[];
+      usage?: unknown;
+    };
+    return {
+      stopReason: message.stop_reason ?? null,
+      text: textFromContent(message.content ?? []),
+      usage: message.usage ?? null,
+      firstTokenMs: null,
+    };
+  }
+
+  if (!isAsyncIterable(response)) {
+    return { stopReason: null, text: "", usage: null, firstTokenMs: null };
+  }
+
+  let text = "";
+  let stopReason: string | null = null;
+  let usage: unknown = null;
+  let firstTokenMs: number | null = null;
+  for await (const event of response) {
+    if (typeof event !== "object" || event === null || !("type" in event)) continue;
+    const typed = event as {
+      type?: string;
+      message?: { usage?: unknown };
+      delta?: { type?: string; text?: string; stop_reason?: string | null };
+      usage?: unknown;
+    };
+    if (typed.type === "message_start") {
+      usage = mergeUsage(usage, typed.message?.usage);
+    } else if (typed.type === "content_block_delta" && typed.delta?.type === "text_delta") {
+      const delta = typed.delta.text ?? "";
+      if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
+      text += delta;
+    } else if (typed.type === "message_delta") {
+      if (typeof typed.delta?.stop_reason === "string") stopReason = typed.delta.stop_reason;
+      usage = mergeUsage(usage, typed.usage);
+    }
+  }
+  return { stopReason, text: text.trim(), usage, firstTokenMs };
+}
+
 export async function callClaude(input: CallClaudeInput): Promise<string> {
   const client = getAnthropicClient();
 
@@ -167,18 +259,23 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
   };
   try {
     const options = modelRequestOptions();
-    const response = options
-      ? await client.messages.create(params, options)
-      : await client.messages.create(params);
+    // Stream so the first text delta can be timed. A caller that returns a
+    // finished message is still accepted, with first_token_ms left empty.
+    const streamed = { ...params, stream: true as const };
+    const created = options
+      ? await client.messages.create(streamed, options)
+      : await client.messages.create(streamed);
+    const response = await collectModelResult(created, started);
 
     const noted = {
       model: CLAUDE_MODEL,
       maxTokens: input.maxTokens,
-      stopReason: response.stop_reason ?? null,
+      stopReason: response.stopReason,
       latencyMs: Date.now() - started,
+      firstTokenMs: response.firstTokenMs,
       usage: response.usage,
     };
-    if (response.stop_reason === "refusal") {
+    if (response.stopReason === "refusal") {
       noteModelCall({ ...noted, subtype: "refused" });
       throw new AiError(
         "refused",
@@ -187,19 +284,13 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       );
     }
 
-    const text = response.content
-      .filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-
-    if (!text) {
+    if (!response.text) {
       noteModelCall({ ...noted, subtype: "empty_answer" });
       throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
     }
 
     noteModelCall(noted);
-    return text;
+    return response.text;
   } catch (error) {
     if (error instanceof AiError) throw error;
     if (error instanceof MissingConfigurationError) {
@@ -213,6 +304,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       maxTokens: input.maxTokens,
       stopReason: null,
       latencyMs: Date.now() - started,
+      firstTokenMs: null,
       usage: null,
       error,
     });

@@ -48,6 +48,56 @@ describe("buildSystemPrompt", () => {
     expect(tail).toContain("You are talking to Dana Reyes, who runs MO Kansas City Wornall. Today is 2026-08-29.");
   });
 
+  it("keeps per-request data out of the cached prefix", () => {
+    const prompt = buildSystemPrompt({
+      assistantName: "Sunny",
+      brandName: "Sun Tan City",
+      salonNoun: "salon",
+      context: { userName: "SENTINEL_USER", locationName: "SENTINEL_SALON", todayIso: "2099-01-02" },
+      mode: "standard",
+      hasContext: true,
+      hasFormRecords: true,
+      hasPersonMemory: true,
+      hasFrameworkGrounding: true,
+      hasDailyStatsFramework: true,
+      priorCoachingOptional: true,
+      policyManualNote: "MATCHED_SOURCE_SENTINEL Attendance page 14",
+      recalledMemory: "RECALLED_SENTINEL about the usual closer",
+      fewShot: "FEWSHOT_SENTINEL from another chat",
+      openForm: {
+        templateName: "Corrective Action Form",
+        employeeName: "EMPLOYEE_SENTINEL",
+        status: "draft",
+        lines: [{ label: "Notes", value: "FIELD_SENTINEL" }],
+        unverifiedPolicy: [],
+      },
+    });
+    const [cached, tail] = prompt.split("---DYNAMIC---");
+    for (const secret of [
+      "SENTINEL_USER",
+      "SENTINEL_SALON",
+      "2099-01-02",
+      "MATCHED_SOURCE_SENTINEL",
+      "RECALLED_SENTINEL",
+      "FEWSHOT_SENTINEL",
+      "EMPLOYEE_SENTINEL",
+      "FIELD_SENTINEL",
+    ]) {
+      expect(cached, secret).not.toContain(secret);
+      expect(tail, secret).toContain(secret);
+    }
+    for (const section of [
+      "FORMS ALREADY ON FILE",
+      "Do not recite the history back unprompted.",
+      "PRIOR COACHING DOES NOT BLOCK A CORRECTIVE ACTION",
+      "EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK",
+      "DAILY OPERATIONAL INTERPRETATION — HOW TO USE THE FRAMEWORK",
+    ]) {
+      expect(cached, section).not.toContain(section);
+      expect(tail, section).toContain(section);
+    }
+  });
+
   it("forbids fabricating policy, documents and citations", () => {
     const prompt = buildSystemPrompt({
       assistantName: "Sunny",
