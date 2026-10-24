@@ -113,7 +113,7 @@ import {
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
-import { inlineCloseMatch, wovenNoteAlreadyShown } from "@/lib/forms/typed-name-proceeds";
+import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
 import {
@@ -867,6 +867,8 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
     dateQuestion = decided.question;
   }
 
+  if (directory.wovenCloseMatch) proposal.wovenCloseMatch = directory.wovenCloseMatch;
+
   if (directory.question) return turn(directory.question, proposal);
 
   const content =
@@ -984,6 +986,8 @@ interface DirectoryCheck {
   question?: string;
   /** Said AFTER the proposal text. */
   note?: string;
+  /** Shown under the card. Not part of the reply, and not a question. */
+  wovenCloseMatch?: string;
 }
 
 async function checkTypedEmployee(
@@ -1052,10 +1056,11 @@ async function checkTypedEmployee(
   const names = result.candidates.map((candidate) => candidate.name);
   if (typedNameProceedsEnabled()) {
     const kept = tidyTypedName(typed.employeeName);
-    const noted = wovenNoteAlreadyShown(input.history);
+    const different = names.filter((name) => name.trim().toLowerCase() !== kept.toLowerCase());
+    const note = inlineCloseMatch(kept, different);
     return {
       resolution: { kind: "resolved", employeeName: kept },
-      ...(noted ? {} : { note: inlineCloseMatch(kept, names) }),
+      ...(note ? { wovenCloseMatch: note } : {}),
     };
   }
   return {
