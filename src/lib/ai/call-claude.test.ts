@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { collectModelResult } from "./call-claude";
+
 /**
  * THE EXTRACTION, PINNED.
  *
@@ -63,6 +65,61 @@ describe("the key never leaves the server and never reaches a message", () => {
       expect(code).not.toContain("ANTHROPIC_API_KEY");
       expect(code).not.toContain("process.env");
     }
+  });
+});
+
+describe("a streamed reply records cache tokens and the first text token", () => {
+  it("keeps cache reads from a later event and ignores a thinking delta", async () => {
+    const started = Date.now();
+    const result = await collectModelResult(
+      {
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: "message_start",
+            message: {
+              usage: {
+                input_tokens: 10,
+                cache_creation_input_tokens: 4,
+                cache_read_input_tokens: 0,
+                output_tokens: 0,
+              },
+            },
+          };
+          yield { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "hmm" } };
+          yield { type: "content_block_delta", delta: { type: "text_delta", text: "Hello" } };
+          yield { type: "content_block_delta", delta: { type: "text_delta", text: " there" } };
+          yield {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn" },
+            usage: { output_tokens: 3, cache_creation_input_tokens: null, cache_read_input_tokens: 8 },
+          };
+        },
+      },
+      started,
+    );
+    expect(result.text).toBe("Hello there");
+    expect(result.stopReason).toBe("end_turn");
+    expect(result.firstTokenMs).not.toBeNull();
+    expect(result.usage).toMatchObject({
+      input_tokens: 10,
+      cache_creation_input_tokens: 4,
+      cache_read_input_tokens: 8,
+      output_tokens: 3,
+    });
+  });
+
+  it("leaves first-token time empty when the caller returns a finished message", async () => {
+    const result = await collectModelResult(
+      {
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "Hi" }],
+        usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 2 },
+      },
+      Date.now(),
+    );
+    expect(result.text).toBe("Hi");
+    expect(result.firstTokenMs).toBeNull();
+    expect(result.usage).toMatchObject({ cache_read_input_tokens: 2 });
   });
 });
 

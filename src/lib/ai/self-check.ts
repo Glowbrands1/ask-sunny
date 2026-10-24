@@ -1,21 +1,28 @@
 import { z } from "zod";
 
+import { codeSlotsEnabled, printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { actionPlanSentenceCount, collapseToTwoSentences } from "@/lib/forms/action-plan-sentences";
-import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { headingKey, type ManualChunk } from "@/lib/forms/official-policy-manual";
+
+import { repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
 /**
  * A last look before a form or an answer is sent.
  *
  * A cited page has to be the page on the retrieved chunk. A cited section
  * whose own text does not fit the question is dropped when the model says so
- * from that text. An action plan is two sentences. An employee on a form has
- * to be on the Woven roster. One repair may fix a failure. What is still
- * wrong is removed rather than sent.
+ * from that text. An action plan is two sentences. A name the manager typed
+ * is not checked against Woven: a missing row is not a failure and the
+ * repair model is not asked to refuse it. One repair may fix a citation or
+ * an action plan. What is still wrong is removed rather than sent. The
+ * repair model's own instructions never become the reply.
  */
 
 const CITATION = /([A-Za-z][^,\n]{1,80}?)\s*,\s*JBA Policy Manual p\.(\d+)/g;
 const PLAN_START = /Management will review\b/;
+const PAYROLL_SENTENCE = /will be deducted from|a payroll deduction applies/i;
 
 export interface OutgoingDraft {
   readonly content: string;
@@ -113,14 +120,12 @@ export function reviewOutgoing(draft: OutgoingDraft): SelfCheckFailure[] {
     }
   }
   const plan = draft.actionPlan ?? actionPlanIn(draft.content);
-  if (plan && actionPlanSentenceCount(plan) !== 2) {
+  if (plan && !exactTwoSentencePlan(plan)) {
     failures.push({ kind: "action_plan", detail: plan });
   }
-  // An empty directory is not proof the person is absent. A name the manager
-  // typed stays on the card; the proposal says once that Woven did not match.
-  if (draft.employeeName && draft.roster && draft.roster.length > 0 && !employeeOnRoster(draft.employeeName, draft.roster)) {
-    failures.push({ kind: "employee", detail: draft.employeeName });
-  }
+  // A name that is not on the Woven roster is not a failure. Refusing the
+  // form, or sending the repair model's "I cannot repair this reply", took
+  // the typed name off the card (live replay, 23 Oct 2026).
   return failures;
 }
 
@@ -140,14 +145,74 @@ export async function runSelfCheck(
   } catch {
     reviewed = { repair: null, sections: [] };
   }
-  const next = applyReview(draft, reviewed.repair, reviewed.sections);
-  const remaining = reviewOutgoing({ ...draft, ...next });
-  if (remaining.length === 0) {
-    const changed =
-      next.content !== draft.content || next.employeeName !== draft.employeeName || next.actionPlan !== draft.actionPlan;
-    return { ...next, ok: true, repaired: changed };
+  const usable = reviewed.repair && !repairSpeaksAsValidator(reviewed.repair.content) ? reviewed.repair : null;
+  if (codeSlotsEnabled()) {
+    // Repair prose is never the reply. A failed repair keeps the last good draft.
+    if (!usable) {
+      return keepGoodReply(draft, {
+        content: draft.content,
+        employeeName: draft.employeeName,
+        actionPlan: draft.actionPlan,
+        ok: false,
+        repaired: false,
+      });
+    }
+    const actionPlan = usable.actionPlan && exactTwoSentencePlan(usable.actionPlan) ? usable.actionPlan : draft.actionPlan;
+    let content = draft.content;
+    if (actionPlan && draft.actionPlan && content.includes(draft.actionPlan) && actionPlan !== draft.actionPlan) {
+      content = content.replace(draft.actionPlan, actionPlan);
+    }
+    return keepGoodReply(draft, {
+      content,
+      employeeName: draft.employeeName,
+      actionPlan,
+      ok: reviewOutgoing({ ...draft, content, actionPlan }).length === 0,
+      repaired: actionPlan !== draft.actionPlan,
+    });
   }
-  return { ...fallback({ ...draft, ...next }, remaining), repaired: true };
+  const next = applyReview(draft, usable, reviewed.sections);
+  const remaining = reviewOutgoing({ ...draft, ...next });
+  const settled =
+    remaining.length === 0
+      ? {
+          ...next,
+          ok: true as const,
+          repaired:
+            usable !== null &&
+            (next.content !== draft.content || next.employeeName !== draft.employeeName || next.actionPlan !== draft.actionPlan),
+        }
+      : { ...fallback({ ...draft, ...next }, remaining), repaired: true };
+  return keepGoodReply(draft, settled);
+}
+
+/**
+ * The reply the manager already had. A repair that refuses the form, says
+ * the person is missing from Woven, or scrubs down to nothing is not sent.
+ */
+function keepGoodReply(draft: OutgoingDraft, settled: SettledDraft): SettledDraft {
+  const employeeName = settled.employeeName?.trim() || draft.employeeName;
+  let content = scrubRosterBlock(settled.content);
+  // A blank left by stripping a bad citation stays blank. A validator's
+  // refusal is replaced with the reply we already had.
+  if (repairSpeaksAsValidator(settled.content) || repairSpeaksAsValidator(content)) {
+    const restored = scrubRosterBlock(draft.content);
+    if (restored.trim() && !repairSpeaksAsValidator(restored)) content = restored;
+    else if (draft.content.trim() && !repairSpeaksAsValidator(draft.content)) content = draft.content;
+  }
+  return { ...settled, content, employeeName };
+}
+
+/** The review sentence and one closing. A payroll sentence is not a plan. */
+function exactTwoSentencePlan(plan: string): boolean {
+  return actionPlanSentenceCount(plan) === 2 && !PAYROLL_SENTENCE.test(plan);
+}
+
+function withoutPayrollSentence(plan: string): string {
+  return plan
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0 && !PAYROLL_SENTENCE.test(sentence))
+    .join(" ");
 }
 
 export function actionPlanIn(content: string): string | null {
@@ -173,20 +238,13 @@ function fallback(draft: OutgoingDraft, failures: readonly SelfCheckFailure[]): 
   }
   if (failures.some((failure) => failure.kind === "action_plan")) {
     const plan = actionPlan ?? actionPlanIn(content);
-    const collapsed = plan ? collapseToTwoSentences(plan) : "";
-    if (collapsed && actionPlanSentenceCount(collapsed) === 2) {
+    const collapsed = plan ? withoutPayrollSentence(collapseToTwoSentences(plan)) : "";
+    if (collapsed && exactTwoSentencePlan(collapsed)) {
       content = plan && content.includes(plan) ? content.replace(plan, collapsed) : content;
       actionPlan = collapsed;
     } else if (plan && content.includes(plan)) {
       content = content.replace(plan, "").replace(/\n{3,}/g, "\n\n").trim();
       actionPlan = null;
-    }
-  }
-  if (failures.some((failure) => failure.kind === "employee")) {
-    // The typed name stays. Clearing it blocked the card whenever Woven had
-    // no close match (live replay, 23 Oct 2026).
-    if (!/couldn'?t find|not in the woven roster/i.test(content) && employeeName) {
-      content = `I couldn't find **${employeeName}** in the Woven roster.\n\n${content}`.trim();
     }
   }
   return { content, employeeName, actionPlan, ok: false };
@@ -236,7 +294,8 @@ function applyReview(
 ): { content: string; employeeName: string | null; actionPlan: string | null } {
   let content = repair?.content ?? draft.content;
   let actionPlan = repair ? repair.actionPlan : draft.actionPlan;
-  const employeeName = repair ? repair.employeeName : draft.employeeName;
+  // A repair may correct a spelling. It may not clear a name the manager typed.
+  const employeeName = repair?.employeeName?.trim() ? repair.employeeName : draft.employeeName;
   for (const verdict of verdicts) {
     if (verdict.applies) continue;
     content = dropSection(content, verdict.heading, draft.chunks, verdicts);
@@ -353,7 +412,12 @@ function carries(chunk: ManualChunk, wanted: string): boolean {
 }
 
 function indexedPage(chunk: ManualChunk): number | null {
+  if (codeSlotsEnabled()) {
+    const mapped = printedPageForPolicy(chunk.section);
+    if (mapped) return mapped;
+  }
   if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (printedPageCitationEnabled()) return null;
   if (typeof chunk.page === "number" && chunk.page > 0) return chunk.page;
   return null;
 }
@@ -375,9 +439,3 @@ function headingFits(wanted: string, key: string): boolean {
   return wanted === key || wanted.endsWith(` ${key}`);
 }
 
-function employeeOnRoster(name: string, roster: readonly RosterEmployee[]): boolean {
-  if (roster.length === 0) return false;
-  const match = matchEmployeeName(name, roster);
-  if (match.kind === "exact") return true;
-  return roster.some((person) => displayName(person).toLowerCase() === name.trim().toLowerCase());
-}

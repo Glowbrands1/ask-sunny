@@ -189,3 +189,160 @@ export function fewShotExamplesEnabled(): boolean {
 export function selfCheckEnabled(): boolean {
   return envFlag("SELF_CHECK_ENABLED");
 }
+
+/**
+ * Cache the static system prompt and the policy-manual block.
+ * Off, both are sent exactly as they are today.
+ */
+export function promptCacheEnabled(): boolean {
+  return envFlag("PROMPT_CACHE_ENABLED");
+}
+
+/**
+ * A 45 second model timeout, two retries, and a plain message when the
+ * model is overloaded. Off, the client keeps the SDK defaults and the
+ * existing failure text.
+ */
+export function modelRetryEnabled(): boolean {
+  return envFlag("MODEL_RETRY_ENABLED");
+}
+
+/**
+ * The reply lists template fields the proposal has not filled yet.
+ * Off, the reply is unchanged. A typed name fills Employee Name; not
+ * being in Woven is not a missing field.
+ */
+export function requiredFieldCheckEnabled(): boolean {
+  return envFlag("REQUIRED_FIELD_CHECK_ENABLED");
+}
+
+/**
+ * A second create of the same conversation and proposal returns the draft.
+ * Off, a repeated card is still matched the way it is today.
+ */
+export function conversationProposalDedupeEnabled(): boolean {
+  return envFlag("CONVERSATION_PROPOSAL_DEDUPE_ENABLED");
+}
+
+/**
+ * Drop a JBA Policy Manual citation whose heading or page is not in the
+ * current manual chunks. Off, citations are left as they were written.
+ */
+export function citationVerifyEnabled(): boolean {
+  return envFlag("CITATION_VERIFY_ENABLED");
+}
+
+/**
+ * After a match, keep the current JBA Policy Manual edition and collapse
+ * identical sections. Off, the rows the database returned are used as they
+ * are. The 0.78 similarity floor is unchanged.
+ */
+export function currentManualScopeEnabled(): boolean {
+  return envFlag("CURRENT_MANUAL_SCOPE_ENABLED");
+}
+
+/**
+ * A name that is not in the roster stays as typed. "Who is this for?" does
+ * not block the form. A close roster match is one note under the card —
+ * "Woven has Jane Doe" — in the same turn. It is not a question and it does
+ * not hold the card. No note when nothing is close. Off, a close match is
+ * still a question that holds the card.
+ */
+export function typedNameProceedsEnabled(): boolean {
+  return envFlag("TYPED_NAME_PROCEEDS_ENABLED");
+}
+
+/**
+ * Tardiness cites the Attendance policy by name and page. Off, the ticked
+ * box label is what Policy Violated carries.
+ */
+export function attendancePolicyCitationEnabled(): boolean {
+  return envFlag("ATTENDANCE_POLICY_CITATION_ENABLED");
+}
+
+/**
+ * A form that resolves a manual section cites that section's name and page.
+ * Off, a citation can be only the offense box.
+ */
+export function policyPageRequiredEnabled(): boolean {
+  return envFlag("POLICY_PAGE_REQUIRED_ENABLED");
+}
+
+/**
+ * The employee-performance and daily-stats prompts share one order of
+ * authority. Off, each block keeps its own list.
+ */
+export function unifiedAuthorityOrderEnabled(): boolean {
+  return envFlag("UNIFIED_AUTHORITY_ORDER_ENABLED");
+}
+
+/**
+ * The payroll amount on a corrective action is only an amount the manager
+ * stated. Off, a Yes with no amount can still take the one figure Direct
+ * policy quotes ("$25.00" under Late Opening) into the action-plan sentence.
+ * The visible amount field is a separate flag.
+ */
+export function managerPayrollAmountOnlyEnabled(): boolean {
+  return envFlag("MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED");
+}
+
+/**
+ * The Corrective Action card and PDF show "Payroll deduction amount" after
+ * the payroll Yes/No. The figure is one the manager stated. Off, that line
+ * is not on the document, not asked, and not written.
+ */
+export function payrollAmountFieldEnabled(): boolean {
+  return envFlag("PAYROLL_AMOUNT_FIELD_ENABLED");
+}
+
+/**
+ * A blank Direct policy does not hold the card or the finalize. The field
+ * stays empty. A value somebody typed that was never verified still asks
+ * for an acknowledgement. Off, a blank policy field still blocks finalize.
+ *
+ * The browser reads `NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED` because
+ * the form card is a client component. The server reads the name without
+ * that prefix. Either one turns the gate off.
+ */
+export function policyGateNonblockingEnabled(): boolean {
+  return (
+    envFlag("POLICY_GATE_NONBLOCKING_ENABLED") ||
+    envFlag("NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED")
+  );
+}
+
+/**
+ * One chunk per section heading among the current year's manuals. Off, two
+ * copies of the same section with different text both stay.
+ */
+export function manualSectionDedupeEnabled(): boolean {
+  return envFlag("MANUAL_SECTION_DEDUPE_ENABLED");
+}
+
+/**
+ * A citation uses the printed page. The PDF sheet column (`page`, often
+ * printed + 1) is not a citation. Off, a chunk with no printed page can
+ * still be cited by that sheet column.
+ */
+export function printedPageCitationEnabled(): boolean {
+  return envFlag("PRINTED_PAGE_CITATION_ENABLED");
+}
+
+/**
+ * Slots, the employee name, the salon, a yes/no, the date, and the printed
+ * page are decided in code. The model does not write Employee. Off, those
+ * paths stay as they are.
+ */
+export function codeSlotsEnabled(): boolean {
+  return envFlag("CODE_SLOTS_ENABLED");
+}
+
+/**
+ * A global non-admin is asked which salon once. The draft is still built.
+ * A salon they already named — this turn, an earlier turn, a short name, or
+ * a one-character typo — is filled in and the question is not asked.
+ * Off, a global account files with no salon, as it does today.
+ */
+export function globalSalonAskEnabled(): boolean {
+  return envFlag("GLOBAL_SALON_ASK_ENABLED");
+}

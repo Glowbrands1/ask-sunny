@@ -90,4 +90,29 @@ describe("discarded model errors", () => {
     expect(trace.modelCall?.thinkingTokens).toBe(0);
     expect(trace.modelCall?.retried).toBe(false);
   });
+
+  it("records Anthropic cache tokens and first-token time", async () => {
+    const trace = draft();
+    await runChatTrace(trace, async () => {
+      noteModelCall({
+        model: "claude-opus-5",
+        maxTokens: 1024,
+        stopReason: "end_turn",
+        latencyMs: 400,
+        firstTokenMs: 90,
+        usage: {
+          input_tokens: 20,
+          output_tokens: 6,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 1800,
+        },
+      });
+    });
+    expect(trace.modelCall).toMatchObject({
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 1800,
+      firstTokenMs: 90,
+      inputTokens: 20,
+    });
+  });
 });

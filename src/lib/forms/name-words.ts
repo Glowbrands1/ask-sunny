@@ -207,3 +207,109 @@ export function lowercaseMonths(text: string): string {
 
 /** A word a lower-case or all-caps name can be made of: letters, ' and -. */
 export const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
+
+/**
+ * Form-field labels. A candidate that is only these words is not a person.
+ *
+ * "Job title" was read as the employee (s8). "Marissa Lempka Job" kept the
+ * label on a name that was already complete (s17). A trailing "Job" or
+ * "Title" comes off only after a full name — first and last — so a surname
+ * that is also one of these words can still be the name. The value after
+ * "Name:" is the name. The words after "job title" are the title.
+ */
+export const FIELD_LABEL_WORDS = new Set([
+  "job", "title", "position", "role", "location", "salon", "salons", "store", "date",
+]);
+
+export function isFieldLabelWord(word: string): boolean {
+  const key = word.toLowerCase().replace(/[^a-z]/g, "");
+  return key.length > 0 && FIELD_LABEL_WORDS.has(key);
+}
+
+const NAME_FIELD =
+  /(?:^|[\n.;]\s*|\b(?:employee|her|his|their)(?:['’]s)?\s+)name\s*:\s*([^\n]+)/i;
+
+/** The value written after "Name:", before a comma or a "job title" label. */
+function readNameFieldValue(text: string): string | null {
+  const match = NAME_FIELD.exec(text);
+  if (!match?.[1]) return null;
+  const rest = match[1].trim();
+  const jobAt = rest.search(/\bjob\s+title\b/i);
+  const commaAt = rest.indexOf(",");
+  let end = rest.length;
+  if (jobAt >= 0) end = Math.min(end, jobAt);
+  if (commaAt >= 0) end = Math.min(end, commaAt);
+  const value = rest.slice(0, end).trim();
+  return value || null;
+}
+
+/**
+ * The name after a "Name:" label.
+ * "Name: Christiana Headley, job title tanning consultant" is Christiana Headley.
+ */
+export function nameAfterNameLabel(text: string): string | null {
+  const value = readNameFieldValue(text);
+  if (!value) return null;
+  return stripFieldLabels(value);
+}
+
+function nameWords(name: string): string[] {
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z'’-]+$/g, ""))
+    .filter((word) => word.length > 0);
+}
+
+function wordKey(word: string): string {
+  return word.toLowerCase().replace(/[^a-z]/g, "");
+}
+
+/**
+ * A trailing Job or Title is the field label when a full name already
+ * precedes it ("Marissa Lempka Job"). One given name plus Job is still a
+ * full name ("Marissa Job"), so the trailing word stays.
+ */
+/**
+ * A leading label in front of a real name is the field, not the person.
+ * "Location Colene Schildt" is Colene Schildt. "Jane Store" is unchanged:
+ * Store is the surname, not a label in front of the name.
+ */
+function withoutLeadingLabels(words: readonly string[]): string[] {
+  let start = 0;
+  while (start < words.length && isFieldLabelWord(words[start]!)) start += 1;
+  if (start === 0) return [...words];
+  const rest = words.slice(start);
+  if (rest.some((word) => !isFieldLabelWord(word))) return rest;
+  return [...words];
+}
+
+function withoutTrailingJobOrTitle(words: readonly string[]): string[] {
+  let end = words.length;
+  while (end > 2) {
+    const last = wordKey(words[end - 1]!);
+    if (last !== "job" && last !== "title") break;
+    end -= 1;
+  }
+  if (end === words.length) return [...words];
+  const head = words.slice(0, end);
+  if (head.length < 2 || head.some((word) => isFieldLabelWord(word))) return [...words];
+  return head;
+}
+
+/**
+ * True when the candidate is the label and nothing else.
+ * "Job title" and "Store" are labels. "Jane Store" is a name.
+ */
+export function isOnlyFieldLabel(name: string): boolean {
+  const words = nameWords(name);
+  return words.length > 0 && words.every((word) => isFieldLabelWord(word));
+}
+
+/** The name with a leading field label, or a trailing Job or Title, removed. A label alone is not a name. */
+export function stripFieldLabels(name: string): string | null {
+  const source = readNameFieldValue(name) ?? name;
+  const words = withoutTrailingJobOrTitle(withoutLeadingLabels(nameWords(source)));
+  if (words.length === 0 || words.every((word) => isFieldLabelWord(word))) return null;
+  return words.join(" ");
+}

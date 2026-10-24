@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 /**
  * Tests cover what can be verified without an external account: chunking, file
@@ -9,10 +9,7 @@ import { defineConfig } from "vitest/config";
  * Supabase and Anthropic paths are not exercised end to end, because doing so
  * honestly requires credentials this project does not yet have.
  */
-export default defineConfig({
-  resolve: {
-    tsconfigPaths: true,
-    alias: {
+const alias = {
       // `import "server-only"` throws outside a React Server Component. In a
       // Node test it is a no-op: the guard's job is to fail the Next build if a
       // client component imports a module holding secrets, and that guard is
@@ -51,26 +48,69 @@ export default defineConfig({
         "./src/lib/demo/runtime.demo.ts",
         import.meta.url,
       ).pathname,
-    },
+};
+
+export default defineConfig({
+  resolve: {
+    tsconfigPaths: true,
+    alias,
   },
   test: {
-    environment: "node",
-    // `.test.tsx` is included so component behaviour can be tested by rendering
-    // and clicking. A source scan cannot see that a Radix `asChild` trigger has
-    // stopped forwarding its props — the markup still looks correct and the
-    // control is inert — and that shipped once. Files needing a DOM opt in with
-    // `// @vitest-environment jsdom` rather than slowing the whole suite down.
-    // `extension/**/*.test.mjs` is the Brave extension's own suite. The parser
-    // ships as a plain ES module because a Manifest V3 content script imports
-    // it at runtime, so its tests import THE FILE THE EXTENSION RUNS rather
-    // than a TypeScript copy that could drift from it. `.mjs` keeps them out of
-    // the Next build's type-check, which has no business compiling a browser
-    // extension's source against the app's tsconfig.
-    include: [
-      "src/**/*.test.ts",
-      "src/**/*.test.tsx",
-      "extension/**/*.test.mjs",
+    // `flags-off-parity.test.ts` starts a second Vitest over chat and forms.
+    // That used to run inside the main suite, so the two copies fought for
+    // CPU and 5s tests timed out. It is its own project, and groupOrder 1
+    // waits until the unit project has finished. Timeouts stay at 5s.
+    projects: [
+      {
+        resolve: {
+          tsconfigPaths: true,
+          alias,
+        },
+        test: {
+          name: "unit",
+          environment: "node",
+          setupFiles: ["./src/test/restore-env.ts"],
+          pool: "forks",
+          isolate: true,
+          restoreMocks: true,
+          sequence: { groupOrder: 0 },
+          // `.test.tsx` is included so component behaviour can be tested by rendering
+          // and clicking. A source scan cannot see that a Radix `asChild` trigger has
+          // stopped forwarding its props — the markup still looks correct and the
+          // control is inert — and that shipped once. Files needing a DOM opt in with
+          // `// @vitest-environment jsdom` rather than slowing the whole suite down.
+          // `extension/**/*.test.mjs` is the Brave extension's own suite. The parser
+          // ships as a plain ES module because a Manifest V3 content script imports
+          // it at runtime, so its tests import THE FILE THE EXTENSION RUNS rather
+          // than a TypeScript copy that could drift from it. `.mjs` keeps them out of
+          // the Next build's type-check, which has no business compiling a browser
+          // extension's source against the app's tsconfig.
+          include: [
+            "src/**/*.test.ts",
+            "src/**/*.test.tsx",
+            "extension/**/*.test.mjs",
+          ],
+          exclude: [...configDefaults.exclude, "src/lib/ai/flags-off-parity.test.ts"],
+        },
+      },
+      {
+        resolve: {
+          tsconfigPaths: true,
+          alias,
+        },
+        test: {
+          name: "flags-off-parity",
+          environment: "node",
+          setupFiles: ["./src/test/restore-env.ts"],
+          pool: "forks",
+          isolate: true,
+          restoreMocks: true,
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+          include: ["src/lib/ai/flags-off-parity.test.ts"],
+          exclude: [...configDefaults.exclude],
+        },
+      },
     ],
-    restoreMocks: true,
   },
 });

@@ -10,6 +10,7 @@ const PRESERVED = [
   { key: "offense_type", label: "offense" },
   { key: "action_plan", label: "action plan" },
   { key: "plan_of_action", label: "action plan" },
+  { key: "payroll_deduct_amount", label: "payroll deduction amount" },
 ] as const;
 
 export function showDraftWithEdits(question: string): boolean {

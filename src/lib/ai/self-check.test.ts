@@ -118,6 +118,31 @@ describe("self-check", () => {
     ).toBe(true);
   });
 
+  it("cites the heading list's printed page, not the PDF sheet, when that flag is on", () => {
+    const chunks = [chunk({ section: "Late Opening", page: 16, sections: [{ heading: "Late Opening", page: 15 }] })];
+    const pdf = draft({
+      content: "Late Opening Policy, JBA Policy Manual p.16.",
+      actionPlan: null,
+      employeeName: null,
+      chunks,
+    });
+    const printed = draft({
+      content: "Late Opening Policy, JBA Policy Manual p.15.",
+      actionPlan: null,
+      employeeName: null,
+      chunks,
+    });
+    expect(reviewOutgoing(pdf)).toEqual([]);
+    expect(reviewOutgoing(printed).map((failure) => failure.kind)).toEqual(["citation"]);
+    process.env.PRINTED_PAGE_CITATION_ENABLED = "1";
+    try {
+      expect(reviewOutgoing(printed)).toEqual([]);
+      expect(reviewOutgoing(pdf).map((failure) => failure.kind)).toEqual(["citation"]);
+    } finally {
+      delete process.env.PRINTED_PAGE_CITATION_ENABLED;
+    }
+  });
+
   it("accepts an action plan of two sentences and rejects three", () => {
     expect(reviewOutgoing(draft({ content: TWO, actionPlan: null, employeeName: null, chunks: [] }))).toEqual([]);
     expect(
@@ -125,13 +150,65 @@ describe("self-check", () => {
     ).toEqual(["action_plan"]);
     expect(actionPlanSentenceCount(TWO)).toBe(2);
     expect(actionPlanSentenceCount(THREE)).toBe(3);
+    const payroll =
+      "Management will review the Attendance policy with Jordan. $25 will be deducted from Jordan's pay.";
+    expect(
+      reviewOutgoing(draft({ content: payroll, actionPlan: payroll, chunks: [] })).map((failure) => failure.kind),
+    ).toEqual(["action_plan"]);
   });
 
-  it("accepts a lowercase roster name and rejects a typo", () => {
+  it("keeps Test Testy when the repair only says I couldn't find **Test Testy** in the Woven roster", async () => {
+    let calls = 0;
+    const settled = await runSelfCheck(
+      draft({
+        content: "Invented Section, JBA Policy Manual p.4. The form is for Test Testy.",
+        actionPlan: null,
+        employeeName: "Test Testy",
+        chunks: [],
+        roster: [JORDAN],
+      }),
+      async () => {
+        calls += 1;
+        return {
+          content: "I couldn't find **Test Testy** in the Woven roster.",
+          employeeName: null,
+          actionPlan: null,
+        };
+      },
+    );
+    expect(calls).toBe(1);
+    expect(settled.employeeName).toBe("Test Testy");
+    expect(settled.content).toContain("The form is for Test Testy.");
+    expect(settled.content).not.toMatch(/couldn't find|I cannot repair|does not appear|Woven roster/i);
+  });
+
+  it("never sends the repair model's refusal: I cannot repair this reply, Test Testy does not appear on the employee roster", async () => {
+    const settled = await runSelfCheck(
+      draft({
+        content: "Invented Section, JBA Policy Manual p.4. The form is for Test Testy.",
+        actionPlan: null,
+        employeeName: "Test Testy",
+        chunks: [],
+      }),
+      async () => ({
+        content: "I cannot repair this reply. 'Test Testy' does not appear on the employee roster.",
+        employeeName: null,
+        actionPlan: null,
+        sections: [],
+      }),
+    );
+    expect(settled.content).not.toMatch(/I cannot repair|does not appear on the employee roster|I cannot create this form/i);
+    expect(settled.employeeName).toBe("Test Testy");
+    expect(settled.content).toContain("Test Testy");
+  });
+
+  it("does not treat a name that is missing from Woven as a failure", () => {
+    // Pau, 23 Oct 2026: a person who is not in Woven is still the employee.
+    // The old check rejected "jorden hale" and the repair model then refused the form.
     expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "jordan hale" }))).toEqual([]);
     expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "JORDAN HALE" }))).toEqual([]);
-    const typo = reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "jorden hale" }));
-    expect(typo).toEqual([{ kind: "employee", detail: "jorden hale" }]);
+    expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "jorden hale" }))).toEqual([]);
+    expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "Test Testy" }))).toEqual([]);
   });
 
   it("skips the employee check when the roster could not be read or came back empty", () => {
@@ -184,10 +261,10 @@ describe("self-check", () => {
     expect(calls).toBe(1);
     expect(settled.ok).toBe(false);
     expect(settled.repaired).toBe(true);
-    // The typed spelling stays on the card. The reply says Woven did not match.
+    // The typed spelling stays. A missing Woven row is not said as an error.
     expect(settled.employeeName).toBe("Jorden Hale");
     expect(settled.content).not.toContain("p.99");
-    expect(settled.content).toContain("couldn't find **Jorden Hale** in the Woven roster");
+    expect(settled.content).not.toMatch(/couldn'?t find|does not appear|I cannot repair/i);
     expect(settled.content).not.toContain("not on the form");
     expect(settled.actionPlan && actionPlanSentenceCount(settled.actionPlan)).toBe(2);
     expect(settled.content).not.toContain("written note");
@@ -399,7 +476,8 @@ describe("self-check and query rewrite flags", () => {
     expect(ask).toContain("rewriteToManualTerms");
     expect(ask).toContain("queryRewriteEnabled()");
     expect(guard).toContain("if (!selfCheckEnabled()) return response;");
-    expect(guard).toContain('status: settled.employeeName ? proposal.status : "needs_employee"');
+    expect(guard).toContain("settled.employeeName?.trim() || proposal?.employeeName");
+    expect(guard).toContain('status: keptName ? proposal.status : "needs_employee"');
     expect(guard).toContain("brief.question");
     expect(guard).toContain("applies");
     const checker = readFileSync("src/lib/ai/self-check.ts", "utf8");

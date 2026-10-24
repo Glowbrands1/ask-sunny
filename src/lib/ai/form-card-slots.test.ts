@@ -320,14 +320,80 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(card.content).toContain("9/20/2026");
     expect(card.content).toContain("$25");
     expect(card.content).toMatch(/Late Opening/);
-    expect(card.content).toContain("I couldn't find **test testy** in the Woven roster.");
-    expect(card.content.match(/couldn't find|didn't find/gi)?.length).toBe(1);
+    // A name Woven does not have stays on the card and is not reported as an error.
+    expect(card.content).not.toMatch(/couldn'?t find|didn'?t find/i);
 
     const again = enrichFormCard({ response: card, question: MANHATTAN_PROMPT, today: TODAY, people: [JORDAN], saved: resent.state });
     expect(again.formProposal?.formDate).toBe("2026-09-20");
     expect(again.formProposal?.payrollDeduct).toBe("yes");
-    expect(again.content.match(/couldn't find|didn't find/gi)?.length).toBe(1);
+    expect(again.content).not.toMatch(/couldn'?t find|didn'?t find/i);
     expect(again.content).not.toMatch(/verbal or written/i);
+  });
+
+  it("puts a stated amount on the card and does not take $25 from the policy", () => {
+    process.env.PAYROLL_AMOUNT_FIELD_ENABLED = "1";
+    const policy =
+      "The employee will reimburse The Company $25.00 via payroll deduction. payroll deduct yes";
+    const quoted = enrichFormCard({
+      response: answer("Here is the form.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        payrollDeduct: "yes",
+        status: "ready",
+      })),
+      question: policy,
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(quoted.formProposal?.payrollDeductAmount ?? null).toBeNull();
+    expect(quoted.content).not.toContain("$25");
+
+    const stated = enrichFormCard({
+      response: answer("Here is the form.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        payrollDeduct: "yes",
+        status: "ready",
+      })),
+      question: "payroll deduct yes $40",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(stated.formProposal?.payrollDeductAmount).toBe("$40");
+
+    const carried = enrichFormCard({
+      response: answer("Redraft it.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        payrollDeduct: "yes",
+        status: "ready",
+      })),
+      question: "redraft it",
+      today: TODAY,
+      people: [],
+      saved: {
+        employeeId: null,
+        employeeName: "Dana Moss",
+        keptTypedName: null,
+        salonId: null,
+        title: null,
+        formDate: null,
+        warningLevel: null,
+        payrollDeduct: "yes",
+        policyHeading: null,
+        policyPage: null,
+        templateKey: "dpoa",
+        incident: null,
+        incidentType: null,
+        payrollAmount: "25",
+        payrollDeductAmount: "$40",
+      },
+    });
+    expect(carried.formProposal?.payrollDeductAmount).toBe("$40");
+    expect(carried.content).not.toContain("$25");
+    delete process.env.PAYROLL_AMOUNT_FIELD_ENABLED;
   });
 
   it("coaching for cell phone use on 9-29-26 for Colene Schildt at Lawrence", async () => {
@@ -364,6 +430,38 @@ describe("live form cards, 23 Oct 2026", () => {
     });
     expect(sources.map((citation) => citation.locator)).toEqual(["Page 19"]);
     expect(sources[0]?.excerpt).toContain("cell phones");
+  });
+
+  it("builds the card from the typed name in the same turn, and does not ask the note again", async () => {
+    process.env.TYPED_NAME_PROCEEDS_ENABLED = "1";
+    try {
+      const first = await proposeFormForTurn({
+        history: [],
+        question: "coaching form for Colene Shildt, tanning consultant at Lawrence, today",
+        questionMessageId: "msg-shildt",
+        actor: { role: "salon_director", scope: SCOPE },
+        summaries: LIBRARY as never,
+        today: TODAY,
+      });
+      expect(first?.formProposal).toBeTruthy();
+      expect(first?.formProposal?.employeeName).toMatch(/^Colene Shildt$/i);
+      expect(first?.content).not.toMatch(/did you mean|who is this|want to be sure|didn't find|employee list for your salons/i);
+
+      const missing = await proposeFormForTurn({
+        history: [],
+        question: "coaching form for Jane Doe at Lawrence today",
+        questionMessageId: "msg-jane",
+        actor: { role: "salon_director", scope: SCOPE },
+        summaries: LIBRARY as never,
+        today: TODAY,
+      });
+      expect(missing?.formProposal?.employeeName).toMatch(/jane doe/i);
+      expect(missing?.formProposal?.wovenCloseMatch ?? null).toBeNull();
+      expect(missing?.content ?? "").not.toMatch(/didn't find|didn’t find|employee list for your salons|Woven has/i);
+      expect(first?.content ?? "").not.toMatch(/Woven has/);
+    } finally {
+      delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
+    }
   });
 
   it("Lisa smith, tanning consultant at lawrence, coaching form today", () => {
@@ -405,7 +503,7 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(card.formProposal?.formDate).toBe(TODAY);
     expect(card.content).toContain("Lisa smith");
     expect(card.content).toContain("10/23/2026");
-    expect(card.content).toContain("I couldn't find **Lisa smith** in the Woven roster.");
+    expect(card.content).not.toMatch(/couldn'?t find|didn'?t find/i);
     expect(card.content).not.toMatch(/who is this/i);
 
     const suggested = enrichFormCard({
@@ -419,5 +517,121 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(suggested.content).toContain("Did you mean **Lisa Smyth**");
     expect(suggested.formProposal?.locationId).toBe("loc-0468");
     expect(suggested.formProposal?.formDate).toBe(TODAY);
+
+    process.env.TYPED_NAME_PROCEEDS_ENABLED = "1";
+    try {
+      const noted = enrichFormCard({
+        response: asked,
+        question: LISA_PROMPT,
+        today: TODAY,
+        people: [LISA_CLOSE],
+        saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+      });
+      expect(noted.formProposal?.employeeName).toBe("Lisa smith");
+      expect(noted.formProposal?.wovenCloseMatch).toBe("Woven has Lisa Smyth");
+      expect(noted.content).not.toMatch(/Woven has|did you mean|say so if|who is this|want to be sure/i);
+      const later = enrichFormCard({
+        response: { ...asked, content: "Here is the card for Lisa smith." },
+        question: LISA_PROMPT,
+        today: TODAY,
+        people: [LISA_CLOSE],
+        saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+        wovenNoteShown: true,
+      });
+      expect(later.formProposal?.employeeName).toBe("Lisa smith");
+      expect(later.formProposal?.wovenCloseMatch).toBe("Woven has Lisa Smyth");
+      expect(later.content).not.toMatch(/Woven has|did you mean/i);
+      const nobody = enrichFormCard({
+        response: asked,
+        question: LISA_PROMPT,
+        today: TODAY,
+        people: [JORDAN],
+        saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+      });
+      expect(nobody.formProposal?.employeeName).toBe("Lisa smith");
+      expect(nobody.formProposal?.wovenCloseMatch ?? null).toBeNull();
+      expect(nobody.content).not.toMatch(/Woven has|didn'?t find/i);
+    } finally {
+      delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
+    }
+  });
+
+  it("puts the words after job title on the title, never on the employee", () => {
+    const s8 = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "stc-exit",
+        templateName: "Exit Form",
+        employeeName: "Job title",
+        employeeRole: "Job title",
+      })),
+      question: "christiana headley, tanning consultant at shawnee",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(s8.formProposal?.employeeName).toBe("christiana headley");
+    expect(s8.formProposal?.employeeName?.toLowerCase()).not.toBe("job title");
+    expect(s8.formProposal?.employeeRole).toBe("Tanning Consultant");
+
+    const s17 = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        employeeName: "Marissa Lempka Job",
+        employeeRole: null,
+      })),
+      question: "Marissa Lempka Job title: Tanning Consultant",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(s17.formProposal?.employeeName).toBe("Marissa Lempka");
+    expect(s17.formProposal?.employeeName).not.toBe("Marissa Lempka Job");
+    expect(s17.formProposal?.employeeRole).toBe("Tanning Consultant");
+
+    const named = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "stc-exit",
+        templateName: "Exit Form",
+        employeeName: "Job title",
+        employeeRole: "Job title",
+      })),
+      question: "Name: Christiana Headley, job title tanning consultant",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(named.formProposal?.employeeName).toBe("Christiana Headley");
+    expect(named.formProposal?.employeeName?.toLowerCase()).not.toBe("job title");
+    expect(named.formProposal?.employeeRole).toBe("Tanning Consultant");
+
+    const store = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        employeeName: "Store",
+        employeeRole: null,
+      })),
+      question: "create a corrective action for Jane Store, tanning consultant",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(store.formProposal?.employeeName).toBe("Jane Store");
+    expect(store.formProposal?.employeeRole).toBe("Tanning Consultant");
+
+    const salon = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        employeeName: "Jane Salon",
+        employeeRole: null,
+      })),
+      question: "create a corrective action for Jane Salon, tanning consultant",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(salon.formProposal?.employeeName).toBe("Jane Salon");
   });
 });

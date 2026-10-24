@@ -1,9 +1,411 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: prompt reorder stays behind the cache flag — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production
+migration apply and no merge.
+
+- With `PROMPT_CACHE_ENABLED` off, `buildSystemPrompt` is main's prompt:
+  the manager line stays in the opening sentence, the data sections stay
+  before TONE, and `---DYNAMIC---` is not sent. The reorder and the marker
+  run only when that flag is on. The proof is a frozen copy of main's
+  return template (`b9ae362`), because CI checks out only the pull request
+  tip. A missing `chat_traces` cache column logs a warning instead of
+  dropping the insert with no record.
+- `f4b2616..eb18de7` touches 4 files: `docs/parity-log.md`,
+  `docs/scoreboard.md`, `src/lib/ai/prompts-main-b9ae362.template.txt`,
+  and `src/lib/ai/prompts.test.ts`.
+- The flags-off parity child is its own Vitest project and starts after
+  the unit project. It does not run a second copy of the suite beside the
+  main one. That child passes `--maxWorkers=2` so it does not run the
+  chat and form files at full concurrency. Timeouts stay at 5 seconds.
+
+## 24 Oct 2026: cache columns and the dynamic prompt tail — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production
+migration apply and no merge.
+
+- `chat_traces` gains nullable `cache_creation_input_tokens`,
+  `cache_read_input_tokens`, and `first_token_ms`. The slots migration is
+  already applied, so this is a new additive migration. `call-claude.ts`
+  writes Anthropic's usage fields and the time to the first text token.
+  A finished message, which is what the tests return, leaves
+  `first_token_ms` empty.
+- Per-request data sits below `---DYNAMIC---`: an open form, form records,
+  person memory, recalled memory, prior coaching, a pinned framework, a
+  matched manual section, and few-shot examples. The standing rules above
+  the marker do not carry them. The manual title is unchanged.
+
+## 24 Oct 2026: superseded blocklist and global salon ask — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production sync
+and no merge.
+
+- While `WOVEN_KNOWLEDGE_SYNC_ENABLED` is on, a knowledge document that is
+  already superseded is not re-indexed, by its document id or by the same
+  file hash on a new Woven record. Off, the sync does not consult that
+  blocklist. Supersession is still only an admin or manual action, or a
+  newer edition of the same record. No new table.
+- `GLOBAL_SALON_ASK_ENABLED` asks a global non-admin which salon once and
+  still builds the draft. Ignoring the question, or answering something
+  else, does not ask it again. The card stays ready and the draft can be
+  created with no salon. After the salon is given, the question is not
+  asked again. A salon named in the same message, an earlier turn, a short
+  name, or a one-character typo is filled in and not asked. Off, the draft
+  is not blocked and the question is not added.
+
+## 24 Oct 2026: replay each case once — Sunny-only
+
+Ask Bubbles was not attached. The local scoreboard harness now runs each
+case once. Pass rules, the 20000 ms latency gate, the card criteria, the
+rulebook comparison, and the prompt-cache log stay. The frozen main column
+is not re-recorded. No production writes and no merge.
+
+## 24 Oct 2026: prompt cache split — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production writes
+and no merge.
+
+- `buildSystemPrompt` keeps sections 1–11 as the static block. The manager's
+  name, salon, and today follow `---DYNAMIC---`, in the same sentences.
+  `PROMPT_CACHE_ENABLED` puts `cache_control: { type: "ephemeral" }` on the
+  static block only. Off, the request is still one string. The local replay
+  logs cache creation on the first call and a cache read on later calls.
+
+## 24 Oct 2026: leading Location is not part of the name — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**.
+
+- A field label in front of a real name comes off. s11 "lawrence location
+  tanning consultant, colene schildt" is Colene Schildt, not "Location
+  Colene Schildt". "Jane Store" still keeps the surname.
+
+## 24 Oct 2026: Woven edition dedupe — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production sync
+and no merge.
+
+- A Woven sync groups items by file hash. The newest Woven updated date
+  stays indexed. The others are marked superseded and the next scan does
+  not ingest them. A document that is already superseded is not chosen,
+  even when its date is later. `5c626f3c` stays superseded beside the kept
+  manual `ce6b00f1`. Nothing here runs a sync against production.
+
+## 24 Oct 2026: Name labels and a trailing Job — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production writes
+and no merge.
+
+- Label words are job, title, position, role, location, salon, and store.
+  They reject a candidate only when the candidate is the label itself
+  ("Job title", "Store"). A surname that is one of those words still passes
+  ("Jane Store", "Jane Salon"). A trailing Job or Title comes off only after
+  a full name (s17 "Marissa Lempka Job"). The value after "Name:" stays the
+  name ("Name: Christiana Headley, job title tanning consultant"). s8 still
+  does not store "Job title".
+
+## 24 Oct 2026: validation code fixes — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production writes
+and no merge.
+
+- Plain-language regression cases for round 1 are in
+  `research/reports/full-validation-2026-10-24.md` and run in the local
+  harness only. Hybrid search is not turned on. `store opened late` maps to
+  Late Opening, and `policy acknowledgements` maps to Standards of Conduct.
+  Drafts are listed under Not on file and are never called previous coaching.
+- Corrective-action questions collapse identical JBA copies at query time
+  and stay on the current manual. Other policy questions boost that manual
+  and keep the rest of the retrieval behind it. A synonym map sends
+  insubordination and acknowledgment to Standards of Conduct, uniform,
+  slippers, and leggings to Dress Code, tardy and late to shift to
+  Attendance, and opened late to Late Opening. Hybrid search is tested, not
+  turned on in production.
+- Before create, an open draft for the same employee, template, and incident
+  is reopened.
+- Drafts are listed under Not on file. Chat does not call them previous coaching.
+- A global non-admin is asked for the salon once. The card is still built.
+  The form is not filed with no salon. An admin global account is unchanged.
+
+
+## 24 Oct 2026: Job title is not an employee name — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. Nothing was published.
+Do not merge or deploy until Pau says otherwise.
+
+- Field labels (job title, title, position, location, salon, date) are
+  stripped from an employee-name candidate. The words after "job title" go
+  on the Job Title slot. s8 no longer stores "Job title", and a name does
+  not keep the trailing "Job" from that label.
+
+## 24 Oct 2026: Chat data tools in the one-flag replay — Sunny-only
+
+Ask Bubbles was not attached. No chat mechanism changed. The manual title
+stays **JBA Policy Manual**. Port is not needed.
+
+- The one-flag replay now includes `CHAT_DATA_TOOLS_ENABLED`. s22 and s23
+  are scored from the verbatim turns. The flag does not break the other
+  21 cases.
+
 Ask Bubbles (`Glowbrands1/Ask-bubbles`) is a port of this app. Every fix to
 chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
+
+## 24 Oct 2026: Round 1 structural name, slot, and salon — Sunny-only
+
+Ask Bubbles was not attached. No new chat mechanism in this round: the
+name, slot, and salon behaviour is the flagged code already on this stack.
+SELF_CHECK stays off. Nothing was published. The manual title stays
+**JBA Policy Manual**. Port is not needed until a later change touches the
+chat or form seam.
+
+- The replay's round 1 flag set is intent extraction, grounded entities,
+  draft merge, typed name proceeds, and code slots, each `=1`, with
+  `SELF_CHECK_ENABLED=false`. It ran on the local harness. A round is
+  kept only when it fixes at least one failing case, breaks none, stays
+  within 25% of the previous round's latency, and leaks no internal text.
+
+## 24 Oct 2026: Rulebook score, main against this branch — Sunny-only
+
+Ask Bubbles was not attached. No chat mechanism changed in this step, and
+nothing was published. The manual title stays **JBA Policy Manual**. The
+guide was not pasted over the system prompt. Port is not needed until a
+later change touches the chat or form seam.
+
+- The replay scores guide v3 on two columns. OLD is `origin/main` with the
+  flags off. NEW is this branch with the rulebook flags on. A case that is
+  worse on NEW has to be fixed before the pull request is ready.
+
+## 24 Oct 2026: Self-check must not refuse a typed name — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. No prompt section
+was removed. Do not publish templates.
+
+- A name that is not in Woven is not a self-check failure, and the reply does
+  not say "I couldn't find **Name** in the Woven roster." Repair text that
+  refuses the form, or that scrubs down to nothing, falls back to the last
+  good reply and the name stays on the card. The repair instruction tells the
+  model to keep the typed name and not to refuse the form.
+
+## 24 Oct 2026: Prompt A/B on the replay — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. No prompt text
+was reverted: the last-known-good system prompt is `417e80c` (before the
+unified-authority edit), and with the replay flags that section is off, so
+the built prompt matches the current one. Code fixes stay in code. Do not
+publish templates. `chat_traces.slots` is already applied in production.
+
+- The replay can build either the current system prompt or that saved
+  prompt, with the same code and the same flags. A case the old prompt
+  passes and the current prompt fails is reverted in the prompt. A tie
+  keeps the current prompt.
+
+## 24 Oct 2026: Close-match note under the card — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Do not publish templates.
+
+- `TYPED_NAME_PROCEEDS_ENABLED` — when a typed name is close to a different
+  Woven employee, the card is built in that same turn with the typed spelling.
+  A short note sits under the card: "Woven has Jane Doe". Several close people
+  read "Woven has Pat Rivera or Pat Jones". The note is not a question and
+  does not hold the card. There is no note when nobody is close, and no
+  "I didn't find…" line. Off, a close match is still "Did you mean …?" and
+  that question holds the card.
+
+## 24 Oct 2026: Code-owned form slots — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Do not publish templates. `chat_traces.slots` is already applied in
+production. This change does not add a migration and does not re-apply one.
+
+- `CODE_SLOTS_ENABLED` — the model does not write Employee. Code takes a
+  candidate span, strips salon and city tokens, field labels, and promo
+  words, then fuzzy-matches the roster. An exact row uses the directory
+  spelling. A close spelling or a person who is not on the roster stays as
+  typed. Slots already filled stay until the manager changes them. Empty
+  required slots (employee, and the date on a corrective action or coaching
+  form) get a non-blocking line. A salon never holds the card: one salon on
+  the account, or the roster match, or blank. A stored `pendingConfirmation`
+  resolves a bare yes or no before the model runs; a bare yes with nothing
+  pending leaves the slots alone. A roster-refusal reply is not shown. A
+  failed repair falls back to the last good reply and card. An incident date
+  is parsed to ISO in code and replaces the stored date only when this turn
+  states a new one. Printed pages for the cited sections are Attendance 14,
+  Late Opening 15, Dress Code 15, Cell Phone 19, Standards of Conduct 12
+  (the section runs 12–14), Animals 30. Each traced turn can store those
+  slots on `chat_traces.slots`.
+
+## 24 Oct 2026: Payroll deduction amount — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Pau approved the field; the guide-check note below that said no amount
+field is superseded for this line only.
+
+- `PAYROLL_AMOUNT_FIELD_ENABLED` — the Corrective Action card and PDF gain
+  **Payroll deduction amount** immediately after "Is payroll deduct
+  applicable?". The figure is one the manager stated (`payrollDeductAmount`,
+  or a figure on that same Yes, or a bare figure answering the question).
+  Late Opening's "$25.00 via payroll deduction" does not fill it. The line
+  stays blank when payroll is not Yes. When payroll is Yes and no figure was
+  given, the chat asks once (including a chat correction) and does not ask
+  again. The card and finalize are not held for it. The figure is kept on
+  `chat_form_state` and through a redraft merge. It is not a sentence in the
+  Action Plan. Off, the document, the ask, and the PDF do not include the
+  line. The dpoa seed is revision 7, matching the live library, and
+  `ensureTemplateLibrary` still writes revision 6 without this line until
+  Pau approves a publish. Do not publish the template to the database.
+
+## 24 Oct 2026: guide code check — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. Every flag
+defaults off. Bubbles `self-check.ts` accepting either the printed page or
+the PDF sheet (guide item 10 / 20c) is Bubbles-only until that repo is
+attached.
+
+- `ACTION_PLAN_SENTENCES_ENABLED` — `correctiveActionPlan` leaves
+  `payrollDeductSentence` out of `action_plan`. The field is the review
+  sentence and the required closing. Rev 5 "may be subject to" is unchanged.
+  Self-check rejects a plan that is not those two sentences, including one
+  that still says an amount will be deducted.
+- `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — a Yes does not take "$25.00" from
+  Late Opening text. The amount is one the manager stated. No amount field
+  is added; Pau is deciding that.
+- `POLICY_GATE_NONBLOCKING_ENABLED` (browser:
+  `NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED`) — a blank Direct policy
+  stays blank and does not hold the card or finalize. A policy value
+  somebody typed that was never verified still asks for an acknowledgement.
+- `TYPED_NAME_PROCEEDS_ENABLED` — see the close-match note at the top of
+  this log. The card uses the typed name in that same reply. The note under
+  the card is "Woven has Jane Doe", not a question. A name that is not close
+  to anyone in Woven gets no note.
+- `MANUAL_SECTION_DEDUPE_ENABLED` — retrieval keeps one current-year chunk
+  per section heading (nearest match). The three indexed 2025 copies
+  (ce6b00f1, 5c626f3c, 94d9810f) are the test fixture, not a keep-list.
+  Nothing is deleted.
+- `PRINTED_PAGE_CITATION_ENABLED` — a citation uses the printed page. The
+  PDF `page` column is not cited when no printed page was stored.
+
+## 24 Oct 2026: prompt rule conflicts — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. Every flag
+defaults off.
+
+- `TYPED_NAME_PROCEEDS_ENABLED` — a name that is not an exact roster match
+  stays as typed. "Did you mean" and "Who is this for?" do not hold the
+  card. A close roster match is the short note under the card. Two people
+  the manager actually named are still a real "Which of them".
+- `ATTENDANCE_POLICY_CITATION_ENABLED` — tardiness cites Attendance by name
+  and page. A late opening still cites Late Opening. The ticked
+  "Tardiness/Leaving Early" box is not the citation.
+- `POLICY_PAGE_REQUIRED_ENABLED` — a form that resolves a manual section
+  cites that section's name and page on Direct policy, or on the coaching
+  or follow-up narrative. A page the manual did not print is not invented.
+- `ACTION_PLAN_SENTENCES_ENABLED` — already the two-sentence plan. A payroll
+  Yes stays on its own field, including when a plan is rebuilt on a newer
+  template version.
+- `UNIFIED_AUTHORITY_ORDER_ENABLED` — the employee-performance block and the
+  daily-stats block share one order of authority. Off, each list stays.
+
+## 24 Oct 2026: Late Opening, and the current manual at retrieval — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store.
+
+- `readCaPolicy` treats `late opening` and `opened late` as the Late Opening
+  policy. The offense box stays tardiness. A late arrival stays unnamed.
+  `policy acknowledgement` reads as unfinished required work (Standards of
+  Conduct). `wore leggings` reads as the dress code.
+- `CURRENT_MANUAL_SCOPE_ENABLED` (default off) asks the match for the SQL
+  clamp of 50 rows, drops older JBA editions, and collapses identical
+  sections. The 0.78 similarity floor is unchanged. Nothing here writes a
+  migration or deletes chunks. Two copies of the same year stay when their
+  text differs.
+
+## 24 Oct 2026: backend quality flags (Part A) — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The answering model stays whatever that app already uses; Sunny
+stays on Opus. Every flag defaults off.
+
+- `PROMPT_CACHE_ENABLED` — `cache_control: { type: "ephemeral" }` on the
+  static system prompt and the pinned policy-manual block. Off, the request
+  shape is unchanged.
+- `MODEL_RETRY_ENABLED` — 45s timeout, `maxRetries: 2`, and a plain message
+  when the model returns 529. Off, the SDK defaults and the existing failure
+  text stay.
+- `REQUIRED_FIELD_CHECK_ENABLED` — the next reply lists template fields the
+  proposal has not filled (Zod against the published template). A typed name
+  fills the employee field. Not being in Woven is not a missing field.
+- `CONVERSATION_PROPOSAL_DEDUPE_ENABLED` — a second create of the same
+  conversation and proposal returns that draft. Off, the existing card
+  lookup stays. Sunny's create source is `ask_sunny`.
+- `LONG_CONTEXT_ENABLED` — already the long-chat summary path. No second flag.
+- `CITATION_VERIFY_ENABLED` — a JBA Policy Manual heading and page is kept
+  only when the current manual chunks contain it.
+- `CHAT_TRACE_ENABLED` — already writes one row per turn. A no-card turn and
+  a turn with at most one retrieved chunk are tagged on `intent`
+  (`no_card`, `low_retrieval`) so they can be read back into replay cases.
+
+Part B (streaming, checklist, inline edits, citation chips, quick replies,
+resume-draft banner, accessibility) is a separate Sunny branch for Pau to
+approve. It is not in this change. Do not port that UI until it is approved
+and Ask Bubbles is attached.
+
+## 24 Oct 2026: four low-rated Bubbles chats (b9–b12) — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy people, store
+names, or company wording. Salon ↔ store. The manual title stays **JBA
+Policy Manual**.
+
+What Bubbles must port, behind the same default-off flags (no new flag, no
+phrase list, no UI change):
+
+- A prior verbal or written step is history. Both words in one account do
+  not ask "which warning level" and do not block the card. "do verbal" is a
+  verbal corrective action, not a coaching question.
+- A roster state abbreviation ("NE") and a name made only of the manual
+  title's own words ("JBA Manual") are never offered as the employee.
+- A comma plus a roster state ("empire, sd") is that state, not a job title.
+- "at Dodge, NE" / "location is Empire, SD" is a place plus a roster state.
+  One store in that state whose name contains the place words is that store.
+  None is unknown: ask, and list the employee's real stores. Do not file the
+  Woven primary, and do not treat a policy phrase ("workplace policy") as a
+  store.
+- The title they started is filled from the directory when that person's
+  title starts with those words. A person who is not in the directory keeps
+  only the words they said, not the rest of someone else's title.
+- The turn that already describes what happened is the offense on the card.
+  With the action-plan flag on, the card carries the two-sentence plan
+  (review the cited section, then the required closing). A named manual
+  heading, including Animals in the Workplace, is cited with its page.
+
+## 23 Oct 2026: a name not in Woven is not a blocker (Sunny only)
+
+Live replay with the seven flags on refused forms, leaked the repair model's
+"I cannot repair this reply", and dropped slots that an earlier turn had
+already filled. A typed name stays on the card. Filled slots stay for the
+rest of the chat. The salon the manager named wins over the Woven primary.
+The retirement "Warning" sheet is not cited as a policy. "Exit plan" is the
+Resignation/Exit Form. Ask Bubbles was not attached (`permissions.push` is
+false). Port the mechanism. Do not copy salon names, people, or company wording.
 
 ## 23 Oct 2026: hybrid rank was burying the nearest chunk (Sunny only)
 

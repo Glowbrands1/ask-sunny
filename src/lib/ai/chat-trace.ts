@@ -67,7 +67,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
   try {
     const model = draft.modelCall;
     const admin = getSupabaseAdmin();
-    await admin.from("chat_traces").insert({
+    const inserted = await admin.from("chat_traces").insert({
       conversation_id: draft.conversationId,
       message_id: draft.messageId,
       user_id: draft.userId,
@@ -83,18 +83,41 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       input_tokens: model?.inputTokens ?? null,
       output_tokens: model?.outputTokens ?? null,
       thinking_tokens: model?.thinkingTokens ?? null,
+      cache_creation_input_tokens: model?.cacheCreationInputTokens ?? null,
+      cache_read_input_tokens: model?.cacheReadInputTokens ?? null,
+      first_token_ms: model?.firstTokenMs ?? null,
       latency_ms: model?.latencyMs ?? Date.now() - draft.startedAt,
       error_subtype: draft.errorSubtype,
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
+      slots: draft.slots ?? {},
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
     });
-  } catch {
-    // Tracing never changes what the manager sees.
+    const error = inserted && typeof inserted === "object" && "error" in inserted ? inserted.error : null;
+    if (error) throw error;
+  } catch (error) {
+    // Tracing never changes what the manager sees. A missing cache-column
+    // migration used to drop the row with no log.
+    console.warn(traceInsertWarning(error));
   }
+}
+
+/** What to log when a chat_traces insert does not land. */
+export function traceInsertWarning(error: unknown): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : error && typeof error === "object" && "message" in error && typeof error.message === "string"
+        ? error.message
+        : String(error);
+  const missingCacheColumns = /cache_creation_input_tokens|cache_read_input_tokens|first_token_ms/i.test(message);
+  if (missingCacheColumns) {
+    return `chat_traces insert skipped: the cache columns are missing. Apply supabase/migrations/20261024020000_chat_traces_cache.sql before CHAT_TRACE_ENABLED. ${message}`;
+  }
+  return `chat_traces insert skipped: ${message}`;
 }
 
 export function traceIsOpen(): boolean {

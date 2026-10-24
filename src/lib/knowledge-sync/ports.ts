@@ -101,6 +101,18 @@ export interface KnowledgeSink {
    * without touching them. See `supersession.ts`.
    */
   supersedeDuplicates?(currentDocumentIds: string[]): Promise<DuplicateOutcome>;
+  /**
+   * Marks one synced document superseded by the newer edition of the same
+   * file. Must not set it back to indexed. See `edition-dedupe.ts`.
+   */
+  supersedeEdition?(documentId: string, supersededBy: string): Promise<void>;
+  /**
+   * True when this document id is already superseded, or when this id is not
+   * a live document and the file hash belongs to a superseded document.
+   * A live document id is never blocked by a hash match: that id is the
+   * edition that stays. Absent, the engine does not consult a blocklist.
+   */
+  supersededBlocked?(documentId: string, contentHash: string): Promise<boolean>;
 }
 
 /** Why a sink call failed — a code the audit log can carry and a user-safe sentence. */

@@ -17,6 +17,12 @@ import {
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
   retrievalRecallEnabled,
+  promptCacheEnabled,
+  currentManualScopeEnabled,
+  manualSectionDedupeEnabled,
+  attendancePolicyCitationEnabled,
+  policyPageRequiredEnabled,
+  unifiedAuthorityOrderEnabled,
   selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -47,6 +53,8 @@ import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-re
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
+import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
+import { expandPolicyQuery, isCaOrPolicyQuestion, orderPolicyRetrieval } from "@/lib/knowledge/policy-retrieval";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -91,6 +99,9 @@ import { fewShotBlock } from "./few-shot-examples";
 import { rewriteToManualTerms } from "./query-rewrite-claude";
 import { guardReply } from "./self-check-run";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
+import { groundingWithoutCachedManual } from "./prompt-cache";
+import { applyQuietQuality } from "./quiet-quality";
+import { noteTraceOutcome } from "./trace-outcome";
 import { updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -205,7 +216,11 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
-  const produce = () => answerQuestionUntraced(request, actor, memory);
+  const produce = async () => {
+    const response = await answerQuestionUntraced(request, actor, memory);
+    noteTraceOutcome(response);
+    return applyQuietQuality(response);
+  };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
     return guardReply(await produce(), { request, actor });
@@ -400,7 +415,12 @@ async function answerQuestionUntraced(
     // citation has its own flag. Intent extraction and grounded entities are
     // the flags that were on for the live replay, and a card from that path
     // still has to name the section and page.
-    const citeOn = policyCitationEnabled() || intentExtractionEnabled() || groundedEntitiesEnabled();
+    const citeOn =
+      policyCitationEnabled() ||
+      intentExtractionEnabled() ||
+      groundedEntitiesEnabled() ||
+      attendancePolicyCitationEnabled() ||
+      policyPageRequiredEnabled();
     if (!coachingOn && !recallOn && !citeOn) return response;
     const turns = [
       ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
@@ -430,6 +450,8 @@ async function answerQuestionUntraced(
             documentTitle: manual.documentTitle,
             documentCategory: manual.documentCategory,
             modelHeading: statedManualHeading(notes),
+            attendanceCitation: attendancePolicyCitationEnabled(),
+            pageRequired: policyPageRequiredEnabled(),
           });
           content = attached.content;
           citations = attached.citations;
@@ -963,26 +985,34 @@ async function answerQuestionUntraced(
         scopeId: request.scopeId,
       })
     : followedUp;
+  const searched = expandPolicyQuery(query);
   updateChatTrace({
-    rewrittenQuery: query === request.question ? null : query,
+    rewrittenQuery: searched === request.question ? null : searched,
     retrievalCount: null,
   });
   const matchLimit =
     intent.active || wantsDailyStats || wantsPerformanceManagement
       ? RETRIEVAL.roleAugmentedTopK
       : RETRIEVAL.topK;
+  /*
+   * CURRENT MANUAL. Duplicate indexed editions all clear 0.78, and the SQL
+   * clamp is 50, so the wider fetch only happens when the scope flag is on.
+   * Off, `matchLimit` is the limit the match already used.
+   */
+  const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
+  const fetchLimit = manualScopeFetchLimit(matchLimit, scopeManual);
   try {
     rows = retrievalRecallEnabled()
       ? await matchRecallKnowledge({
-          query,
+          query: searched,
           scopeId: request.scopeId,
-          limit: matchLimit,
+          limit: fetchLimit,
         })
       : hybridSearchEnabled()
         ? await matchHybridKnowledge({
-            query,
+            query: searched,
             scopeId: request.scopeId,
-            limit: matchLimit,
+            limit: fetchLimit,
           })
         : await knowledge.match({
           /*
@@ -991,7 +1021,7 @@ async function answerQuestionUntraced(
            * searched on its own words, exactly as before. Hybrid search and the
            * Haiku rewrite run only when their flags are on.
            */
-          query,
+          query: searched,
           scopeId: request.scopeId,
           /*
            * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
@@ -999,7 +1029,7 @@ async function answerQuestionUntraced(
            * it from the retrieved half once it is pinned; at the ordinary `topK`
            * that would leave no evidence at all for policy to outrank it with.
            */
-          limit: matchLimit,
+          limit: fetchLimit,
         });
   } catch (error) {
     if (error instanceof MissingConfigurationError) {
@@ -1011,6 +1041,14 @@ async function answerQuestionUntraced(
       502,
     );
   }
+  if (scopeManual) {
+    rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
+  }
+  rows = orderPolicyRetrieval(
+    rows,
+    request.question,
+    isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
+  );
   updateChatTrace({
     retrievalCount: rows.length,
     retrieved: rows.slice(0, 20).map((row) => ({
@@ -1220,6 +1258,7 @@ async function answerQuestionUntraced(
     hasContext: grounding.length > 0,
     hasReportData: (briefing?.present.length ?? 0) > 0,
     hasFrameworkGrounding: employeeFrameworkIncluded,
+    unifiedAuthority: unifiedAuthorityOrderEnabled(),
     hasEmployeeFactsBlock: Boolean(employeeFacts?.block),
     hasDailyStatsFramework: dailyStatsIncluded,
     /*
@@ -1278,7 +1317,9 @@ async function answerQuestionUntraced(
     briefedFamilies: families,
   });
   const pinnedPolicy = await citedManualGrounding(request, knowledge);
-  const groundingText = [buildGroundingBlock(grounding), pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
+  const joinedGrounding = [buildGroundingBlock(grounding), pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
+  const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
+  const groundingText = groundingWithoutCachedManual(joinedGrounding, manualBlock);
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
   const answer = await callClaude({
@@ -1305,6 +1346,7 @@ async function answerQuestionUntraced(
       : {}),
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
+    manualBlock,
   });
 
   /* ----------------------------------------------------------- citations -- */

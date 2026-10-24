@@ -1,9 +1,18 @@
 import { z } from "zod";
 
+import { codeSlotsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
+import { PRODUCTION_SALONS } from "@/data/salons";
+import { stripFieldLabels } from "@/lib/forms/name-words";
+import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
-import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
+import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
+import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -22,8 +31,8 @@ import type { GroundedPerson } from "./grounded-entities";
  *
  * The model copies what the manager said. This file decides what is real.
  * A heading that is not in the headings it was given is dropped. A person
- * who is not on the roster keeps the name the manager typed; the reply says
- * once that Woven does not have them, and the other slots stay.
+ * who is not on the roster keeps the name the manager typed. That is not an
+ * error, and the other slots stay.
  */
 
 export const INTENT_TOOL_NAME = "record_intent_slots";
@@ -166,21 +175,49 @@ export function normalizeIncidentDate(raw: string, today: string): string | null
   return calendarIso(year, month, Number(named[1]));
 }
 
+const BARE_YES_NO = /^(yes|yeah|yep|yup|no|nope)\b[.!]*$/i;
+
+/**
+ * A bare yes or no is resolved against pendingConfirmation before the model
+ * runs. With nothing pending, the stored slots stay — "Yes" does not clear
+ * the employee (s25).
+ */
+function settleYesNo(question: string, saved: ConversationFormState): ConversationFormState | null {
+  if (!BARE_YES_NO.test(question.trim()) || !saved.templateKey) return null;
+  const pending = saved.pendingConfirmation ?? null;
+  if (!pending) return { ...saved, pendingConfirmation: null };
+  const accept = /^(yes|yeah|yep|yup)\b/i.test(question.trim());
+  return {
+    ...saved,
+    employeeName: accept ? pending.candidate : pending.typed,
+    pendingConfirmation: null,
+  };
+}
+
 export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const saved = input.saved ?? EMPTY_FORM_STATE;
+  if (codeSlotsEnabled()) {
+    const settled = settleYesNo(input.question, saved);
+    if (settled) {
+      return { question: input.question, state: settled, clarification: null, formTurn: true };
+    }
+  }
   const reading = parseReading(input.raw);
   const blob = conversationBlob(input);
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
   const employee = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
-    : groundEmployee(reading?.employee ?? null, blob, input.people, input.salons);
+    : groundEmployee(codeSlotsEnabled() ? null : reading?.employee ?? null, blob, input.people, input.salons);
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
-  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
+  const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
+  const date = codeSlotsEnabled()
+    ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
+    : groundedDate;
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
@@ -189,16 +226,25 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
   const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
-  const policyPage = modelPolicy
-    ? pageForHeading(modelPolicy, input.headingPages)
-    : saved.policyHeading
-      ? saved.policyPage
-      : pageForHeading(policyHeading, input.headingPages);
+  const policyPage = codeSlotsEnabled()
+    ? pageForHeading(policyHeading, input.headingPages) ?? saved.policyPage ?? printedPageForPolicy(policyHeading)
+    : modelPolicy
+      ? pageForHeading(modelPolicy, input.headingPages)
+      : saved.policyHeading
+        ? saved.policyPage
+        : pageForHeading(policyHeading, input.headingPages);
   const formTurn = Boolean(input.formInProgress || reading?.formTurn || formType.key || saved.templateKey);
 
-  const state = mergeSlots(saved, {
-    employee,
-    salon,
+  const salonForMerge = codeSlotsEnabled() && salon.ambiguous.length > 1
+    ? { id: salon.id, name: salon.name, ambiguous: [] as readonly SalonRow[] }
+    : salon;
+  const employeeForMerge = codeSlotsEnabled()
+    ? { ...employee, ambiguous: [] as readonly GroundedPerson[] }
+    : employee;
+
+  let state = mergeSlots(saved, {
+    employee: employeeForMerge,
+    salon: salonForMerge,
     title,
     incidentType,
     date: date.iso,
@@ -208,11 +254,18 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     policyHeading,
     policyPage,
   });
+  if (codeSlotsEnabled()) {
+    const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
+    const prior = cleanPersonName(saved.employeeName, salonNames);
+    const named = employeeNamedOnPurpose(input.question, prior, input.people, salonNames);
+    const employeeName = named ?? prior ?? cleanPersonName(state.employeeName, salonNames);
+    if (employeeName !== state.employeeName) state = { ...state, employeeName };
+  }
 
   const clarification = clarificationFor({
     formTurn,
-    employee,
-    salon,
+    employee: employeeForMerge,
+    salon: salonForMerge,
     title,
     incidentType,
     date,
@@ -260,7 +313,8 @@ function pageForHeading(heading: string | null, pages: Readonly<Record<string, n
 
 /** A retrieved heading the model named, or null when that heading was not retrieved. */
 function groundPolicy(typed: string | null, headings: readonly string[]): string | null {
-  if (!typed || headings.length === 0) return null;
+  // "Warning" is a retirement notice in the manual, not a policy heading.
+  if (!typed || headings.length === 0 || headingKey(typed) === "warning") return null;
   const exact = headings.find((heading) => headingKey(heading) === headingKey(typed));
   if (exact) return exact;
   const named = headings.filter((heading) => namesHeading(typed, heading));
@@ -287,8 +341,12 @@ function groundEmployee(
   const fromText = peopleNamedIn(blob, people);
   const extracted = typed?.trim()
     ? []
-    : extractEmployeeNames(blob).filter((name) => name.trim().split(/\s+/).length >= 2);
-  const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
+    : extractEmployeeNames(blob).filter(
+        (name) =>
+          name.trim().split(/\s+/).length >= 2 && !isDocumentName(name) && !isRosterStateName(name),
+      );
+  const rawProbe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
+  const probe = rawProbe ? stripFieldLabels(rawProbe) : null;
   if (!probe) {
     if (fromText.length > 1) {
       const toldApart = personAtNamedSalon(fromText, blob, salons);
@@ -305,6 +363,10 @@ function groundEmployee(
   }
   if (match.kind === "confirm") {
     const rows = match.candidates.map((candidate) => asGrounded(candidate.employee, people));
+    // One close roster match can still supply the salon. The name stays as typed.
+    if (typedNameProceedsEnabled()) {
+      return { person: rows.length === 1 ? rows[0]! : null, name: probe, ambiguous: [], typed: probe };
+    }
     const words = probe.split(/\s+/).filter(Boolean);
     if (rows.length === 1 && words.length > 1) {
       return { person: rows[0]!, name: displayName(rows[0]!), ambiguous: [], typed: probe };
@@ -353,33 +415,48 @@ function groundSalon(
   salons: readonly SalonRow[],
   person: GroundedPerson | null,
 ): { id: string | null; name: string | null; ambiguous: readonly SalonRow[] } {
-  const probed = typed?.trim() || null;
-  // A salon the manager named wins, including one this employee is not
-  // affiliated with. The affiliation list is only the guess when they
-  // named none.
-  const matched = probed ? matchSalons(probed, salons) : matchSalonsInText(blob, salons);
-  if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
-  if (matched.length > 1) {
-    // A later turn that names one salon replaces an earlier one. Two salons
-    // in the same turn stay a question.
+  // "at Dodge, NE" is the one salon in that state whose name contains the
+  // place. A place in a roster state that matches none is unknown: do not
+  // fall through to the Woven primary.
+  const place = readPlaceState(blob);
+  if (place.kind === "one") return { id: place.salon.id, name: place.salon.name, ambiguous: [] };
+  // The salon the manager named wins over a model slot and over the Woven
+  // primary. "Primary salon is …" names the home salon; the other salon in
+  // that same account is where it happened.
+  const incident = salonBesidesPrimary(blob, salons);
+  if (incident) return { id: incident.id, name: incident.name, ambiguous: [] };
+  const named = matchSalonsInText(blob, salons);
+  if (named.length === 1) return { id: named[0]!.id, name: named[0]!.name, ambiguous: [] };
+  if (named.length > 1) {
     const latest = latestUniqueSalon(blob, salons);
     if (latest) return { id: latest.id, name: latest.name, ambiguous: [] };
-    return { id: null, name: null, ambiguous: matched };
+    return { id: null, name: null, ambiguous: named };
   }
-  if (person) {
-    const primary = wovenPrimary(person, salons);
-    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  // The model slot and the Woven primary are not a store the manager named.
+  if (place.kind === "unknown") return { id: null, name: null, ambiguous: [] };
+  const probed = typed?.trim() || null;
+  if (probed) {
+    const matched = matchSalons(probed, salons);
+    if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
+    if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
   }
-  if (person && person.salonIds.length === 1) {
+  if (!person) return { id: null, name: null, ambiguous: [] };
+  const primary = wovenPrimary(person, salons);
+  if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  if (person.salonIds.length === 1) {
     const only = salons.find((salon) => salon.id === person.salonIds[0]);
     if (only) return { id: only.id, name: only.name, ambiguous: [] };
     if (person.primaryLocationName) return { id: person.salonIds[0]!, name: person.primaryLocationName, ambiguous: [] };
   }
-  if (person) {
-    const primary = wovenPrimary(person, salons);
-    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
-  }
   return { id: null, name: null, ambiguous: [] };
+}
+
+/** The salon that is not the one introduced as "primary salon is …". */
+function salonBesidesPrimary(text: string, salons: readonly SalonRow[]): SalonRow | null {
+  const stripped = text.replace(/\bprimary\s+salon\s+is\s+[^.\n]+/gi, " ");
+  if (stripped === text) return null;
+  const hits = matchSalonsInText(stripped, salons);
+  return hits.length === 1 ? hits[0]! : null;
 }
 
 function wovenPrimary(person: GroundedPerson, salons: readonly SalonRow[]): SalonRow | null {
@@ -429,6 +506,8 @@ function groundTitle(
   // The title reader is most-specific first. A roster title contained in a
   // longer one ("salon director" inside "assistant salon director") is not
   // what the manager stated.
+  const labelled = titleAfterJobTitleLabel(blob);
+  if (labelled) return extractJobTitle(labelled) ?? labelled;
   const stated = extractJobTitle(blob);
   if (stated) return stated;
   if (person?.title) return person.title;
@@ -548,14 +627,16 @@ function groundWarning(
   typed: "verbal" | "written" | null,
   blob: string,
 ): { value: "verbal" | "written" | null; ambiguous: boolean } {
+  // A prior "Verbal CA" beside the level being issued is history. Both words
+  // in the account are not a question, and the card is not held for one.
+  const turns = blob.split("\n").map((line) => line.trim()).filter(Boolean);
+  const stated = warningLevelFromTurns(turns);
+  if (stated) return { value: stated, ambiguous: false };
+  if (typed === "verbal" || typed === "written") return { value: typed, ambiguous: false };
   const verbal = /\bverbal\b/i.test(blob);
   const written = /\bwritten\b/i.test(blob);
-  if (verbal && written) {
-    if (typed === "verbal" || typed === "written") return { value: typed, ambiguous: false };
-    return { value: null, ambiguous: true };
-  }
-  if (verbal) return { value: "verbal", ambiguous: false };
-  if (written) return { value: "written", ambiguous: false };
+  if (verbal && !written) return { value: "verbal", ambiguous: false };
+  if (written && !verbal) return { value: "written", ambiguous: false };
   return { value: null, ambiguous: false };
 }
 
@@ -612,10 +693,13 @@ function mergeSlots(
   },
 ): ConversationFormState {
   const named = slots.employee.name ?? slots.employee.typed;
+  const directoryName = slots.employee.person ? displayName(slots.employee.person) : null;
+  const keepTyped =
+    typedNameProceedsEnabled() && named && directoryName && named.toLowerCase() !== directoryName.toLowerCase();
   return {
     ...prior,
     employeeId: slots.employee.person?.id ?? (named && !slots.employee.person ? null : prior.employeeId),
-    employeeName: slots.employee.person ? displayName(slots.employee.person) : named ?? prior.employeeName,
+    employeeName: keepTyped ? named : directoryName ?? named ?? prior.employeeName,
     salonId: slots.salon.id ?? prior.salonId,
     title: slots.title ?? prior.title,
     formDate: slots.date ?? prior.formDate,
@@ -657,7 +741,7 @@ function clarificationFor(input: {
   // here replaced the card on every live replay (23 Oct 2026), including
   // turns that had already named the employee, the salon, the form, and the
   // date. Warning level, title, what happened, and which form are optional.
-  // A name that is not on the roster stays on the card with a Woven note.
+  // A name that is not on the roster stays on the card. It is not announced.
   return null;
 }
 

@@ -2,15 +2,30 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
+import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
-import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
-import { findManualSection, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
-import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
-import { extractJobTitle } from "@/lib/forms/proposal";
+import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
+import {
+  payrollAmountFromConversation,
+  payrollAnswerForAmount,
+  payrollDeductAmount,
+  statedPayrollDeduct,
+} from "@/lib/forms/payroll-deduct";
+import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
+
+import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import {
+  citeAttendanceForTardiness,
+  formatPolicyCitation,
+  sectionsWithNameAndPage,
+  withoutTardinessBoxLabel,
+} from "@/lib/forms/required-policy-citation";
 
 import { accountManualSections } from "./account-manual-sections";
 import type { ConversationFormState } from "./form-state";
@@ -24,7 +39,8 @@ import type { AskResponse } from "./types";
  * A missing employee used to replace the whole answer with "who is this for?",
  * and a missing salon replaced it with "which salon?". The date, the title,
  * the payroll amount and the policy were already in the message. They stay
- * on the card. A name Woven does not have stays too, with one sentence.
+ * on the card. A close Woven spelling stays typed, with a short note under
+ * the card. A name nobody in Woven is close to gets no note.
  */
 
 const CATEGORIES = new Set<KnowledgeCategory>([
@@ -48,14 +64,21 @@ export function enrichFormCard(input: {
   readonly today: string;
   readonly people: readonly GroundedPerson[];
   readonly saved: ConversationFormState | null;
+  /**
+   * Callers still pass this. The note under the card stays on later turns;
+   * it is not a question, so it is not suppressed.
+   */
+  readonly wovenNoteShown?: boolean;
 }): AskResponse {
   const proposal = input.response.formProposal;
   if (!proposal) return input.response;
 
   const blob = [input.question, input.saved?.incident ?? ""].filter(Boolean).join("\n");
   const said = input.said?.trim() ? input.said : blob;
-  const statedName = statedEmployee(blob) ?? input.saved?.employeeName ?? null;
-  const employeeName = preferRosterName(proposal.employeeName ?? statedName, said, input.people);
+  const proposed = proposal.employeeName ? stripFieldLabels(proposal.employeeName) : null;
+  const savedName = input.saved?.employeeName ? stripFieldLabels(input.saved.employeeName) : null;
+  const statedName = statedEmployee(said) ?? savedName;
+  const employeeName = preferRosterName(proposed ?? statedName, said, input.people);
   const title = statedTitle(blob, input.saved?.title ?? null) ?? proposal.employeeRole;
   const spoken = withoutStateSentences(input.question);
   const groundedOn = incidentMarkedIn(input.question, input.today);
@@ -72,7 +95,7 @@ export function enrichFormCard(input: {
     (namedSalon.length === 1 ? namedSalon[0]! : null) ??
     input.saved?.salonId ??
     (namedSalon.length === 0 && askedHere.length === 0 ? primarySalon(employeeName, input.people) : null);
-  const amount = payrollDeductAmount(blob) ?? (input.saved?.payrollAmount ? `$${input.saved.payrollAmount}` : null);
+  const amount = cardPayrollAmount(input, blob);
   const payrollDeduct = proposal.payrollDeduct ?? (amount || input.saved?.payrollDeduct === "yes" ? "yes" : input.saved?.payrollDeduct ?? null);
   const warningLevel = proposal.warningLevel ?? input.saved?.warningLevel ?? null;
 
@@ -83,6 +106,7 @@ export function enrichFormCard(input: {
     formDate,
     payrollDeduct,
     warningLevel,
+    ...(payrollAmountFieldEnabled() ? { payrollDeductAmount: amount } : {}),
   };
   if (locationId && next.locationId !== locationId) next = settleLocation(next, locationId);
   else if (next.employeeName && next.locationId && next.status !== "ready") next = settleLocation(next, next.locationId);
@@ -96,6 +120,10 @@ export function enrichFormCard(input: {
   const lines = fieldLines({ proposal: next, followUps, policy, amount, statedTitle: title });
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
+  }
+  if (typedNameProceedsEnabled() && input.people.length > 0) {
+    const note = closeMatchNote(next.employeeName, input.people);
+    if ((next.wovenCloseMatch ?? null) !== note) next = { ...next, wovenCloseMatch: note };
   }
   content = rosterOnce(content, next.employeeName, input.people);
 
@@ -140,14 +168,46 @@ export function attachFormTurnSources(input: {
   readonly documentTitle: string;
   readonly documentCategory?: string | null;
   readonly modelHeading?: string | null;
+  readonly attendanceCitation?: boolean;
+  readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
   const found = formTurnCitations(input);
   const citations = input.citations.length > 0 ? [...input.citations] : found;
   let content = input.content;
-  for (const section of sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes))) {
-    const line = formatManualCitation(section.heading, section.page > 0 ? section.page : null);
-    if (!content.toLowerCase().includes(section.heading.toLowerCase())) content = content ? `${content}\n\n${line}` : line;
+  let sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes));
+  sections = citeAttendanceForTardiness({
+    enabled: input.attendanceCitation === true,
+    notes: input.notes,
+    chunks: input.chunks,
+    sections,
+  });
+  if (input.pageRequired) {
+    const reading = readCaPolicy(input.notes);
+    const keys =
+      statedOffenseKeys(reading, input.notes) ?? describedAttendanceKeys(input.notes) ?? [];
+    for (const section of sectionsWithNameAndPage({
+      enabled: true,
+      notes: input.notes,
+      chunks: input.chunks,
+      offenseKeys: keys,
+    })) {
+      if (!sections.some((seen) => headingKey(seen.heading) === headingKey(section.heading))) sections.push(section);
+    }
   }
+  const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
+  for (const section of sections) {
+    const line =
+      section.page > 0 ? formatPolicyCitation(section.heading, section.page) : formatManualCitation(section.heading, null);
+    const hasHeading = content.toLowerCase().includes(section.heading.toLowerCase());
+    const pageMissing =
+      section.page > 0 && !new RegExp(String.raw`(?:\bp\.?\s*|page\s+)${section.page}\b`, "i").test(content);
+    if (hasHeading && !(mustCitePage && pageMissing)) continue;
+    content = content ? `${content}\n\n${line}` : line;
+  }
+  content = withoutTardinessBoxLabel(
+    content,
+    input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
+  );
   return { content, citations };
 }
 
@@ -164,13 +224,18 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
   );
   if (described) {
     const key = described.heading.toLowerCase();
-    return [described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)];
+    return citedPolicies([described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)]);
   }
-  if (fromAccount.length > 0) return fromAccount;
+  if (fromAccount.length > 0) return citedPolicies(fromAccount);
   const heading = modelHeading ?? statedManualHeading(notes);
   if (!heading) return [];
   const section = findManualSection(chunks, [heading]);
-  return section ? [section] : [];
+  return section ? citedPolicies([section]) : [];
+}
+
+/** A sheet the manual does not title as a policy — the retirement "Warning" — is not cited. */
+function citedPolicies(sections: readonly ManualSection[]): ManualSection[] {
+  return sections.filter((section) => headingKey(section.heading) !== "warning");
 }
 
 /**
@@ -225,14 +290,22 @@ function preferRosterName(name: string | null, text: string, people: readonly Gr
 }
 
 function statedEmployee(text: string): string | null {
+  const labelled = nameAfterNameLabel(text);
+  if (labelled) return labelled;
   const marked = /The employee is ([^.\n]+)\./i.exec(text)?.[1]?.trim();
-  if (marked && !isDocumentish(marked)) return marked;
-  return nameAroundTitle(text);
+  if (marked && !isDocumentish(marked)) {
+    const cleaned = stripFieldLabels(marked);
+    if (cleaned) return cleaned;
+  }
+  const around = nameAroundTitle(text);
+  return around ? stripFieldLabels(around) : null;
 }
 
 function statedTitle(text: string, saved: string | null): string | null {
+  const labelled = titleAfterJobTitleLabel(text);
+  if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
-  if (marked) return marked;
+  if (marked && !isFieldLabelWord(marked)) return marked;
   if (saved && text.toLowerCase().includes(saved.toLowerCase())) return saved;
   return extractJobTitle(text);
 }
@@ -338,9 +411,15 @@ function nameAroundTitle(text: string): string | null {
   for (let start = 0; start < tokens.length; start += 1) {
     for (let len = 1; len <= 5 && start + len <= tokens.length; len += 1) {
       const window = tokens.slice(start, start + len).join(" ");
-      if (!extractJobTitle(window)) continue;
+      const titled = extractJobTitle(window);
+      if (!titled) continue;
       const shorter = len > 1 ? tokens.slice(start, start + len - 1).join(" ") : "";
       if (shorter && extractJobTitle(shorter)) continue;
+      // "for Jane Store tanning consultant" contains the title. The name is
+      // the words next to the title, so a longer window with the same title
+      // is not a second reading.
+      const withoutFirst = len > 1 ? tokens.slice(start + 1, start + len).join(" ") : "";
+      if (withoutFirst && extractJobTitle(withoutFirst) === titled) continue;
       const after = takeName(tokens.slice(start + len));
       if (after.length >= 2) return after.join(" ");
       const before = takeName([...tokens.slice(0, start)].reverse()).reverse();
@@ -350,15 +429,28 @@ function nameAroundTitle(text: string): string | null {
   return null;
 }
 
+/**
+ * Up to two words of a name. A stop word ends the scan, so the words after
+ * "at" are not a second person. A leading "Job title" is skipped when a
+ * full name follows it. Store or Salon as one of the two words is the surname.
+ */
 function takeName(tokens: readonly string[]): string[] {
-  const words: string[] = [];
+  const gathered: string[] = [];
   for (const word of tokens) {
-    if (words.length === 2) break;
-    if (!/^[A-Za-z][A-Za-z'’-]+$/.test(word) || word.length < 2) break;
+    if (!/^[A-Za-z][A-Za-z'’-]+$/.test(word) || word.length < 2) {
+      if (gathered.length > 0) break;
+      continue;
+    }
     if (NOT_A_TYPED_NAME.has(word.toLowerCase())) break;
-    words.push(word);
+    gathered.push(word);
+    if (gathered.length >= 6) break;
   }
-  return words;
+  let start = 0;
+  while (start < gathered.length && isFieldLabelWord(gathered[start]!)) start += 1;
+  const rest = gathered.slice(start);
+  if (rest.length >= 2) return rest.slice(0, 2);
+  if (gathered.length >= 2 && gathered.some((word) => !isFieldLabelWord(word))) return gathered.slice(0, 2);
+  return [];
 }
 
 function isDocumentish(name: string): boolean {
@@ -400,6 +492,37 @@ function leadFor(proposal: ChatFormProposal): string {
   return `Here is what I would put on a **${proposal.templateName}**${who}.`;
 }
 
+/**
+ * The figure on the card. With the amount field on, only a manager-stated
+ * figure or one already stored for this conversation. A policy $25 is neither.
+ */
+function cardPayrollAmount(
+  input: {
+    readonly question: string;
+    readonly said?: string;
+    readonly saved: ConversationFormState | null;
+    readonly response: AskResponse;
+  },
+  blob: string,
+): string | null {
+  if (!payrollAmountFieldEnabled()) {
+    return payrollDeductAmount(blob) ?? (input.saved?.payrollAmount ? `$${input.saved.payrollAmount}` : null);
+  }
+  const proposal = input.response.formProposal;
+  const said = [input.said, input.question].filter((line) => line && line.trim()).join("\n");
+  const answer =
+    proposal?.payrollDeduct ??
+    input.saved?.payrollDeduct ??
+    payrollAnswerForAmount(said || blob) ??
+    statedPayrollDeduct(blob);
+  return (
+    payrollAmountFromConversation([{ role: "user", content: said || blob }], { payrollAnswer: answer }) ??
+    input.saved?.payrollDeductAmount ??
+    proposal?.payrollDeductAmount ??
+    null
+  );
+}
+
 function fieldLines(input: {
   proposal: ChatFormProposal;
   followUps: readonly string[];
@@ -418,18 +541,28 @@ function fieldLines(input: {
   return lines;
 }
 
+/** The under-card note, or null when nobody in Woven is close. */
+function closeMatchNote(name: string | null, people: readonly GroundedPerson[]): string | null {
+  if (!name || people.length === 0) return null;
+  const match = matchEmployeeName(name, people);
+  if (match.kind !== "confirm") return null;
+  const names = match.candidates
+    .map((candidate) => candidate.name)
+    .filter((candidate) => candidate.toLowerCase() !== name.toLowerCase());
+  if (names.length === 0) return null;
+  return inlineCloseMatch(name, names) || null;
+}
+
 function rosterOnce(content: string, name: string | null, people: readonly GroundedPerson[]): string {
+  if (typedNameProceedsEnabled()) return content;
   if (!name || people.length === 0) return content;
   if (/couldn'?t find|didn'?t find|not in the woven roster/i.test(content)) return content;
   const match = matchEmployeeName(name, people);
-  if (match.kind !== "none") {
-    if (match.kind === "confirm" && match.candidates.length === 1 && match.candidates[0]!.name.toLowerCase() !== name.toLowerCase()) {
-      const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
-      if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
-    }
-    return content;
-  }
-  return `I couldn't find **${name}** in the Woven roster.\n\n${content}`;
+  if (match.kind !== "confirm" || match.candidates.length !== 1) return content;
+  if (match.candidates[0]!.name.toLowerCase() === name.toLowerCase()) return content;
+  const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
+  if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
+  return content;
 }
 
 function alreadySaid(content: string, line: string): boolean {

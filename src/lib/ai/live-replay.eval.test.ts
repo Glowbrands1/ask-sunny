@@ -396,6 +396,7 @@ describe("replay state, dedupe, reviews, and the two-sentence plan", () => {
       incident: null,
       incidentType: null,
       payrollAmount: null,
+      payrollDeductAmount: null,
     });
     expect(next).toContain("The employee is Marissa Lempka.");
     expect(next).toContain("Warning level: verbal.");

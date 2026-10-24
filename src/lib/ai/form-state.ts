@@ -1,3 +1,4 @@
+import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 
@@ -25,6 +26,17 @@ export interface ConversationFormState {
   readonly incidentType: string | null;
   /** A payroll figure this conversation already grounded, or null. */
   readonly payrollAmount: string | null;
+  /**
+   * Payroll deduction amount, the manager's figure. Kept across a redraft.
+   * Not the intent slot above, and not a figure read out of a policy.
+   */
+  readonly payrollDeductAmount: string | null;
+  /**
+   * A yes/no the next turn resolves in code, before the model sees it.
+   * Absent when nothing is waiting. "Yes" does not change a name that was
+   * not offered this way.
+   */
+  readonly pendingConfirmation?: { readonly typed: string; readonly candidate: string } | null;
 }
 
 export const EMPTY_FORM_STATE: ConversationFormState = {
@@ -42,6 +54,8 @@ export const EMPTY_FORM_STATE: ConversationFormState = {
   incident: null,
   incidentType: null,
   payrollAmount: null,
+  payrollDeductAmount: null,
+  pendingConfirmation: null,
 };
 
 /**
@@ -73,6 +87,9 @@ export function stateSentences(state: ConversationFormState): string[] {
   }
   if (state.incidentType) lines.push(`Incident: ${state.incidentType}.`);
   if (state.payrollAmount) lines.push(`Payroll amount: ${state.payrollAmount}.`);
+  if (payrollAmountFieldEnabled() && state.payrollDeductAmount) {
+    lines.push(`Payroll deduction amount: ${state.payrollDeductAmount}.`);
+  }
   return lines;
 }
 
@@ -116,6 +133,8 @@ export function captureFormState(
     incident: incident || prior.incident,
     incidentType: prior.incidentType,
     payrollAmount: prior.payrollAmount,
+    payrollDeductAmount: input.proposal?.payrollDeductAmount ?? prior.payrollDeductAmount,
+    pendingConfirmation: prior.pendingConfirmation ?? null,
   };
 }
 
@@ -139,7 +158,17 @@ export function parseFormState(value: unknown): ConversationFormState | null {
     incident: textOrNull(row.incident),
     incidentType: textOrNull(row.incidentType),
     payrollAmount: textOrNull(row.payrollAmount),
+    payrollDeductAmount: textOrNull(row.payrollDeductAmount),
+    pendingConfirmation: pendingOrNull(row.pendingConfirmation),
   };
+}
+
+function pendingOrNull(value: unknown): { typed: string; candidate: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as { typed?: unknown; candidate?: unknown };
+  const typed = textOrNull(row.typed);
+  const candidate = textOrNull(row.candidate);
+  return typed && candidate ? { typed, candidate } : null;
 }
 
 function textOrNull(value: unknown): string | null {

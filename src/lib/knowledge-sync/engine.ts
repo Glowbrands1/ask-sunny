@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { planHashDedupe } from "./edition-dedupe";
 import { manifestKey, reconcile } from "./reconcile";
 import { SinkError, type DescribeItem, type KnowledgeSink, type KnowledgeSyncStore } from "./ports";
 import {
@@ -119,7 +120,13 @@ function emptyTotals(): SyncReport["totals"] {
   };
 }
 
-export function sha256Hex(bytes: Uint8Array): string {
+/** The woven knowledge sync's own switch. Off, a superseded row is not a blocklist. */
+export function wovenKnowledgeSyncEnabled(): boolean {
+  const raw = (process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
@@ -342,6 +349,59 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
       });
     }
     /*
+     * ---- same file, older edition ----
+     * Items that share a file hash keep the newest Woven updated date. The
+     * others are superseded and are not ingested again on a later run.
+     */
+    if ((options.mode === "sync" || options.mode === "continue") && deps.sink.supersedeEdition) {
+      const plans = planHashDedupe(
+        [...merged.values()].map((item) => ({
+          id: item.knowledgeDocumentId ?? "",
+          contentHash: item.contentHash,
+          sourceUpdatedAt: item.sourceUpdatedAt,
+          superseded: item.reason === "superseded_duplicate" || item.reason === "superseded_blocklist",
+        })),
+      );
+      const byDocument = new Map(
+        [...merged.values()].filter((item) => item.knowledgeDocumentId).map((item) => [item.knowledgeDocumentId!, item]),
+      );
+      const changed: ManifestItem[] = [];
+      let supersededCount = 0;
+      for (const plan of plans) {
+        for (const documentId of plan.supersede) {
+          try {
+            await deps.sink.supersedeEdition(documentId, plan.keepId);
+          } catch {
+            report.attention.push({
+              code: "edition_not_superseded",
+              message: "An older edition of a file could not be marked superseded. It was left as it was.",
+            });
+            continue;
+          }
+          supersededCount += 1;
+          const item = byDocument.get(documentId);
+          if (!item) continue;
+          const next: ManifestItem = {
+            ...item,
+            inAskSunny: false,
+            pendingAction: "none",
+            reason: "superseded_duplicate",
+          };
+          merged.set(manifestKey(next), next);
+          changed.push(next);
+        }
+      }
+      if (changed.length > 0) await store.saveItems(changed);
+      if (supersededCount > 0) {
+        report.attention.push({
+          code: "editions_superseded",
+          message: `${supersededCount} older edition${supersededCount === 1 ? "" : "s"} of a file already in Ask Sunny ${supersededCount === 1 ? "was" : "were"} left superseded.`,
+          count: supersededCount,
+        });
+      }
+    }
+
+    /*
      * ---- duplicates ----
      * Hand uploads that a CURRENT synced document replaces are superseded.
      * Only after a full sync whose every listing was read and whose planned
@@ -431,6 +491,22 @@ interface Applied {
 }
 
 async function applyItem(deps: EngineDeps, item: ManifestItem, nowIso: () => string): Promise<Applied> {
+  if (item.reason === "superseded_duplicate") {
+    return {
+      item: {
+        ...item,
+        inAskSunny: false,
+        pendingAction: "none",
+        lastError: null,
+        errorCategory: null,
+        retryCount: 0,
+        nextRetryAt: null,
+      },
+      action: "skip",
+      metadataOnly: false,
+    };
+  }
+
   if (item.pendingAction === "retire") {
     if (item.knowledgeDocumentId && item.inAskSunny) await deps.sink.retire(item.knowledgeDocumentId);
     return {
@@ -467,6 +543,28 @@ async function applyItem(deps: EngineDeps, item: ManifestItem, nowIso: () => str
   });
   const hash = sha256Hex(fetched.bytes);
   const metadata = deps.describe(current);
+
+  if (wovenKnowledgeSyncEnabled() && deps.sink.supersededBlocked) {
+    const blocked = await deps.sink.supersededBlocked(current.knowledgeDocumentId!, hash);
+    if (blocked) {
+      return {
+        item: {
+          ...current,
+          state: "EXCLUDED",
+          reason: "superseded_blocklist",
+          contentHash: hash,
+          inAskSunny: false,
+          pendingAction: "none",
+          lastError: null,
+          errorCategory: null,
+          retryCount: 0,
+          nextRetryAt: null,
+        },
+        action: "skip",
+        metadataOnly: false,
+      };
+    }
+  }
 
   let action: SyncEvent["action"];
   let metadataOnly = false;

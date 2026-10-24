@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
-import { actionPlanSentencesEnabled, draftMergeEnabled, policyCitationEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  actionPlanSentencesEnabled,
+  attendancePolicyCitationEnabled,
+  draftMergeEnabled,
+  payrollAmountFieldEnabled,
+  policyCitationEnabled,
+  policyPageRequiredEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -116,6 +123,7 @@ import {
   groundMissedEvent,
   MISSED_EVENT_OFFENSE,
   missedEventPhrase,
+  describedAttendanceKeys,
   readCaPolicy,
   statedOffenseKeys,
   withConductOffense,
@@ -129,8 +137,13 @@ import {
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
 import {
+  PAYROLL_AMOUNT_KEY,
+  PAYROLL_AMOUNT_STATED_KEYS,
+} from "@/lib/forms/payroll-amount-field";
+import {
   PAYROLL_DEDUCT_KEY,
   isPayrollDeductAnswer,
+  payrollAmountFromConversation,
   payrollDeductAmount,
 } from "@/lib/forms/payroll-deduct";
 import {
@@ -141,6 +154,11 @@ import {
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import {
+  citeAttendanceForTardiness,
+  policyFieldsWithCitation,
+  sectionsWithNameAndPage,
+} from "@/lib/forms/required-policy-citation";
 import { retainFilledFields } from "@/lib/forms/draft-merge";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
@@ -298,6 +316,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * change to forms nobody asked about.
      */
     const changeKind = employmentChangeKind(loaded.instance.templateKey);
+    /*
+     * THE AMOUNT THE MANAGER STATED, onto the blank Payroll deduction amount
+     * line. Only when that line is on, payroll is already Yes, and these notes
+     * state a figure. A quoted policy amount is not written. An empty line
+     * stays empty. See `payrollAmountFromConversation`.
+     */
+    if (payrollAmountFieldEnabled()) {
+      const payrollAnswer =
+        (loaded.values ?? [])
+          .find((row) => row.fieldKey === PAYROLL_DEDUCT_KEY)
+          ?.checked.find(isPayrollDeductAnswer) ?? null;
+      const amount = payrollAmountFromConversation([{ role: "user", content: notes }], {
+        payrollAnswer,
+      });
+      if (amount) {
+        await applyStatedFacts(
+          id,
+          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+        );
+      }
+    }
     const statedFacts = changeKind
       ? await applyStatedFacts(
           id,
@@ -1782,8 +1823,42 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             : null,
         })
       : { values: planned.values, provenance: {} as Record<string, Record<string, unknown>> };
+    const attendanceOn = attendancePolicyCitationEnabled();
+    const pageOn = policyPageRequiredEnabled();
+    const citedValues =
+      (attendanceOn || pageOn) && manual.ok
+        ? policyFieldsWithCitation({
+            attendance: attendanceOn,
+            pageRequired: pageOn,
+            values: cited.values,
+            sections: (() => {
+              const reading = readCaPolicy(notes);
+              const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
+              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
+              const withAttendance = citeAttendanceForTardiness({
+                enabled: attendanceOn,
+                notes,
+                chunks: manual.chunks,
+                sections: resolved,
+              });
+              if (!pageOn) return withAttendance;
+              const required = sectionsWithNameAndPage({
+                enabled: true,
+                notes,
+                chunks: manual.chunks,
+                offenseKeys: keys,
+              });
+              return [
+                ...withAttendance,
+                ...required.filter(
+                  (section) => !withAttendance.some((seen) => seen.heading.toLowerCase() === section.heading.toLowerCase()),
+                ),
+              ];
+            })(),
+          })
+        : cited.values;
     const draftedPayload = {
-      values: Object.fromEntries(Object.entries(cited.values).filter(([key]) => !keeps(key))),
+      values: Object.fromEntries(Object.entries(citedValues).filter(([key]) => !keeps(key))),
       checked: Object.fromEntries(
         Object.entries(validated.checked).filter(
           ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),
@@ -1804,6 +1879,30 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       actor.id,
       { ...planned.provenance, ...cited.provenance },
     );
+
+    /*
+     * A redraft writes the assistant's fields and leaves every other key. The
+     * amount is not one of those fields, and a blank write must not be how it
+     * disappears. Put the manager's figure back when payroll is still Yes:
+     * the one in these notes, or the one already on the form. Never the
+     * policy's $25. chat_form_state carries the same figure onto the next card.
+     */
+    if (payrollAmountFieldEnabled() && payrollAnswer === "yes") {
+      const held =
+        (loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value?.trim() || null;
+      const statedNow = payrollAmountFromConversation([{ role: "user", content: notes }], {
+        payrollAnswer: "yes",
+      });
+      const keep = statedNow ?? held;
+      if (keep) {
+        await applyStatedFacts(
+          id,
+          { values: { [PAYROLL_AMOUNT_KEY]: keep }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+        );
+      }
+    }
 
     return NextResponse.json({
       values: guarded.accepted.values,

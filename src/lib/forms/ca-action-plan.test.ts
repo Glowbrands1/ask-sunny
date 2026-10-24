@@ -315,4 +315,42 @@ describe("planPayrollAmount — whose amount the plan states", () => {
     expect(planPayrollAmount({ answer: "no", stated: null, quotedPolicy: QUOTED })).toEqual({ amount: null });
     expect(planPayrollAmount({ answer: "yes", stated: null, quotedPolicy: null })).toEqual({ amount: null });
   });
+
+  it("does not take $25 from the policy text when only the manager's amount is allowed", () => {
+    process.env.MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED = "1";
+    try {
+      expect(planPayrollAmount({ answer: "yes", stated: "$10", quotedPolicy: QUOTED })).toEqual({
+        amount: "$10",
+        amountFrom: "manager",
+      });
+      expect(planPayrollAmount({ answer: "yes", stated: null, quotedPolicy: QUOTED })).toEqual({ amount: null });
+    } finally {
+      delete process.env.MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED;
+    }
+  });
+});
+
+describe("the payroll sentence stays off the action_plan field when the two-sentence flag is on", () => {
+  const yes = { answer: "yes" as const, amount: "$25" };
+
+  it("is the review sentence and the closing, and self-check accepts nothing else", async () => {
+    const { reviewOutgoing } = await import("@/lib/ai/self-check");
+    const three = correctiveActionPlan({ citedPolicies: ["Late Opening"], employeeName: "S.", payroll: yes });
+    expect(three).toMatch(/\$25 will be deducted/);
+    expect(reviewOutgoing({ content: three, employeeName: "S.", actionPlan: three, chunks: [], roster: [] }).map((failure) => failure.kind)).toEqual([
+      "action_plan",
+    ]);
+
+    process.env.ACTION_PLAN_SENTENCES_ENABLED = "1";
+    try {
+      const two = correctiveActionPlan({ citedPolicies: ["Late Opening"], employeeName: "S.", payroll: yes });
+      expect(two).toBe(
+        `Management will review the Late Opening policy with S. ${CLOSING}`,
+      );
+      expect(two).not.toMatch(/payroll deduction|deducted|\$25/i);
+      expect(reviewOutgoing({ content: two, employeeName: "S.", actionPlan: two, chunks: [], roster: [] })).toEqual([]);
+    } finally {
+      delete process.env.ACTION_PLAN_SENTENCES_ENABLED;
+    }
+  });
 });

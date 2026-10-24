@@ -87,6 +87,7 @@ const correct = (question: string) =>
   });
 
 beforeEach(() => {
+  delete process.env.PAYROLL_AMOUNT_FIELD_ENABLED;
   state.templateKey = "position-transfer";
   state.status = "draft";
   state.authorized = true;
@@ -394,6 +395,47 @@ describe("the Corrective Action Form's payroll-deduct answer", () => {
     expect(state.savedTo).toEqual([REVISION_ID]);
     expect(state.saved).toEqual([{ values: {}, checked: { payroll_deduct: ["no"] } }]);
     expect(response!.formOpened?.instanceId).toBe(REVISION_ID);
+  });
+
+  it("asks for the amount once when payroll is Yes and no figure was given", async () => {
+    process.env.PAYROLL_AMOUNT_FIELD_ENABLED = "1";
+    const first = await correctActiveForm({
+      request: new Request("http://localhost/api/chat"),
+      instanceId: "11111111-1111-1111-1111-111111111111",
+      question: "change payroll deduct to yes",
+      today: "2026-09-28",
+      history: [],
+    });
+    expect(first?.content).toContain("Is payroll deduct applicable? → Yes.");
+    expect(first?.content).toContain("One more question: **Payroll deduction amount**?");
+    expect(state.saved[0]?.values.payroll_deduct_amount).toBeUndefined();
+
+    state.saved = [];
+    const second = await correctActiveForm({
+      request: new Request("http://localhost/api/chat"),
+      instanceId: "11111111-1111-1111-1111-111111111111",
+      question: "change payroll deduct to yes",
+      today: "2026-09-28",
+      history: [{ role: "assistant", content: first!.content }],
+    });
+    expect(second?.content).not.toContain("One more question: **Payroll deduction amount**?");
+    delete process.env.PAYROLL_AMOUNT_FIELD_ENABLED;
+  });
+
+  it("fills a stated amount and does not ask, and does not take a policy $25", async () => {
+    process.env.PAYROLL_AMOUNT_FIELD_ENABLED = "1";
+    const stated = await correct("change the payroll deduction to $40");
+    expect(state.saved[0]?.values.payroll_deduct_amount).toBe("$40");
+    expect(stated?.content).not.toContain("One more question: **Payroll deduction amount**?");
+    expect(stated?.content).not.toContain("$25");
+
+    state.saved = [];
+    const quoted = await correct(
+      "change payroll deduct to yes. The employee will reimburse The Company $25.00 via payroll deduction.",
+    );
+    expect(quoted?.content).toContain("One more question: **Payroll deduction amount**?");
+    expect(state.saved[0]?.values.payroll_deduct_amount).toBeUndefined();
+    delete process.env.PAYROLL_AMOUNT_FIELD_ENABLED;
   });
 
   it("never writes a payroll answer onto a form that does not ask the question", async () => {

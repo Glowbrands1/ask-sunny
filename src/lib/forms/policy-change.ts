@@ -99,6 +99,9 @@ const NOT_A_SECTION = new Set([
   "core values",
   "text",
   "document body",
+  // The retirement "Warning" sheet is not a policy. "Verbal warning" names a
+  // level on the form, and citing that sheet turned it into Warning Policy p.36.
+  "warning",
 ]);
 
 /** A short heading must be a whole phrase of the request, never part of a word. */

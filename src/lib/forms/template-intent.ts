@@ -163,6 +163,8 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
       "stc exit",
       "exit form",
       "exit forms",
+      "exit plan",
+      "exit plans",
       "exit paperwork",
       "exit document",
       "resignation form",
@@ -1421,7 +1423,7 @@ const POLITE_REQUEST =
 /* A level followed by its noun ("a written CA") is read by the corrective-action rules, not here. */
 const LEVEL_FOLLOW = String.raw`(?=\s*(?:$|[.,;:!—–-]|for\b|on\b|about\b|because|regarding|over\b|this\b|today|please|pls|and\b|since|due|after|then\b|is\s+(?:fine|enough|ok)))`;
 const LEVEL_AS_DOCUMENT = new RegExp(
-  String.raw`\b(?:(?:issue|issuing|give|giving)\s+(?:[a-z'’-]+\s+){0,2}?|(?:put\s+(?:[a-z'’-]+\s+){1,3}?on|start|do|need|needs|want|document|doc|file|log|(?:i|we)'?d\s+like|(?:i|we)\s+would\s+like|write\s+(?:her|him|them)\s+up\s+with)\s+(?:her\s+|him\s+|them\s+)?)an?\s+(?:final\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}|\b(?:just|only)\s+(?:a\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}`,
+  String.raw`\b(?:(?:issue|issuing|give|giving)\s+(?:[a-z'’-]+\s+){0,2}?|(?:put\s+(?:[a-z'’-]+\s+){1,3}?on|start|do|need|needs|want|document|doc|file|log|(?:i|we)'?d\s+like|(?:i|we)\s+would\s+like|write\s+(?:her|him|them)\s+up\s+with)\s+(?:her\s+|him\s+|them\s+)?)(?:an?\s+)?(?:final\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}|\b(?:just|only)\s+(?:a\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}`,
 );
 
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;

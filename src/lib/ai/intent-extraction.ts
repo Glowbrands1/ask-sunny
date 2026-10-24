@@ -11,6 +11,7 @@ import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 import { callClaudeTool } from "./call-claude";
 import type { ChatActor } from "./form-proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
+import { updateChatTrace } from "./chat-trace-store";
 import { stateSentences } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import {
@@ -87,6 +88,18 @@ export async function applyIntentExtraction(input: {
       ),
     });
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
+    updateChatTrace({
+      slots: {
+        employeeName: decision.state.employeeName,
+        salonId: decision.state.salonId,
+        formDate: decision.state.formDate,
+        title: decision.state.title,
+        policyHeading: decision.state.policyHeading,
+        policyPage: decision.state.policyPage,
+        templateKey: decision.state.templateKey,
+        pendingConfirmation: decision.state.pendingConfirmation ?? null,
+      },
+    });
     // A form turn keeps its card. A date, a salon, or a warning question used
     // to come back instead of the proposal, so the live replay showed no card.
     // The proposal asks what is still genuinely open and still carries the card.
@@ -154,7 +167,17 @@ function asPerson(fact: DirectoryFact): GroundedPerson {
   };
 }
 
+const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number> }>>();
+
 async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
+  const cached = manualIndexCache.get(scopeId);
+  if (cached) return cached;
+  const pending = loadManualIndexOnce(scopeId);
+  manualIndexCache.set(scopeId, pending);
+  return pending;
+}
+
+async function loadManualIndexOnce(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
   try {
     const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
     if (!manual.ok) return { headings: [], pages: {} };

@@ -38,6 +38,9 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { TEMPLATE_SEEDS } = await import("./library");
+const { DPOA_DATABASE_REVISION, PAYROLL_AMOUNT_LABEL, withoutPayrollAmountField } = await import(
+  "./payroll-amount-field"
+);
 
 function reset() {
   store.form_templates = [];
@@ -469,8 +472,16 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
     const result = await ensureTemplateLibrary("system");
 
     expect(result.revised).toEqual(["dpoa"]);
-    expect(currentVersionOf("dpoa")).toMatchObject({ version: 2, status: "published", seed_revision: 6 });
-    expect(currentVersionOf("dpoa")?.document).toEqual(caSeed.document);
+    // The seed is revision 7. The database write stays revision 6, without
+    // Payroll deduction amount, until Pau approves a publish.
+    expect(caSeed.revision).toBe(7);
+    expect(currentVersionOf("dpoa")).toMatchObject({
+      version: 2,
+      status: "published",
+      seed_revision: DPOA_DATABASE_REVISION,
+    });
+    expect(currentVersionOf("dpoa")?.document).toEqual(withoutPayrollAmountField(caSeed.document));
+    expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(PAYROLL_AMOUNT_LABEL);
     expect(JSON.stringify(currentVersionOf("dpoa")?.document)).toContain("may result in additional corrective action");
     expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(OLD_CLOSING);
     const archived = versionsOf("dpoa").find((row) => row.id === originalId);
@@ -479,6 +490,16 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
 
     // Idempotent: a second run publishes nothing.
     expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
+  });
+
+  it("does not publish revision 7 over a library already at 6 or at the live v7", async () => {
+    await ensureTemplateLibrary("system");
+    for (const row of versionsOf("dpoa")) row.seed_revision = 6;
+    expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
+
+    for (const row of versionsOf("dpoa")) row.seed_revision = 7;
+    expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
+    expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(PAYROLL_AMOUNT_LABEL);
   });
 });
 

@@ -2,7 +2,7 @@ import "server-only";
 
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { IngestionError } from "@/lib/ingestion/errors";
-import { retireDocument, supersedeDocument, updateDocumentMetadata } from "@/lib/ingestion/lifecycle";
+import { retireDocument, supersedeDocument, supersedeSyncedEdition, updateDocumentMetadata } from "@/lib/ingestion/lifecycle";
 import { ingestDocument } from "@/lib/ingestion/pipeline";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { KnowledgeCategory } from "@/types";
@@ -112,6 +112,28 @@ export function createSupabaseKnowledgeSink(source: SourceSystem): KnowledgeSink
         superseded,
         held: plan.held.map((h) => ({ uploadTitle: h.uploadTitle, candidateTitles: h.candidates.map((c) => c.title), reason: h.reason })),
       };
+    },
+
+    async supersededBlocked(documentId, contentHash) {
+      const admin = getSupabaseAdmin();
+      const own = await admin.from("knowledge_documents").select("status").eq("id", documentId).maybeSingle();
+      if (own.error) throw new SinkError("library_unavailable", "The knowledge library could not be read.");
+      const status = (own.data as { status?: string } | null)?.status;
+      if (status === "superseded") return true;
+      if (status) return false;
+      const hash = contentHash.trim();
+      if (!hash) return false;
+      const match = await admin.from("knowledge_documents").select("id").eq("status", "superseded").eq("content_hash", hash).limit(1);
+      if (match.error) throw new SinkError("library_unavailable", "The knowledge library could not be read.");
+      return (match.data ?? []).length > 0;
+    },
+
+    async supersedeEdition(documentId, supersededBy) {
+      try {
+        await supersedeSyncedEdition({ documentId, scopeId, supersededBy });
+      } catch (error) {
+        throw asSinkError(error, "supersede_failed");
+      }
     },
 
     async countManualTitleMatches(titles) {

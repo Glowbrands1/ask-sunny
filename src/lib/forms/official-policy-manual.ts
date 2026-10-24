@@ -61,6 +61,7 @@
  * one, because it looks checked.
  */
 
+import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { headingOf, isPageFooter } from "@/lib/ingestion/extract/pdf-sections";
 
 /* ------------------------------------------------------------- identity --- */
@@ -508,7 +509,11 @@ function sheetHeadingsOf(content: string): string[] {
  * Opening policy" against the manual as it is, rather than against a list kept
  * here. See `policy-change.ts`.
  */
+const headingCache = new WeakMap<readonly ManualChunk[], string[]>();
+
 export function manualSectionHeadings(chunks: readonly ManualChunk[]): string[] {
+  const cached = headingCache.get(chunks);
+  if (cached) return cached;
   const seen = new Map<string, string>();
   const add = (heading: string | null | undefined) => {
     const text = (heading ?? "").trim();
@@ -523,7 +528,9 @@ export function manualSectionHeadings(chunks: readonly ManualChunk[]): string[] 
     for (const heading of sheetHeadingsOf(chunk.content)) add(heading);
     add(pageHeadingOf(chunk.content)?.heading);
   }
-  return [...seen.values()];
+  const headings = [...seen.values()];
+  headingCache.set(chunks, headings);
+  return headings;
 }
 
 /** Loosened for matching: case, punctuation and spacing drift are absorbed. */
@@ -615,16 +622,38 @@ function escapeForRegExp(value: string): string {
  * 1-based, as a reader counts.
  */
 function citedPageOfChunk(chunk: ManualChunk): number | null {
-  return chunk.printedPage ?? chunk.page;
+  if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
+  if (printedPageCitationEnabled()) return null;
+  return chunk.page;
 }
+
+const sectionCache = new WeakMap<readonly ManualChunk[], Map<string, ManualSection | null>>();
 
 export function findManualSection(
   chunks: readonly ManualChunk[],
   headings: readonly string[],
   readsContentsPage: boolean = OFFICIAL_POLICY_MANUAL.readsContentsPage,
 ): ManualSection | null {
-  const wanted = headings.map(headingKey).filter((key) => key !== "");
-  if (wanted.length === 0) return null;
+  const named = headings.map((heading) => heading.trim()).filter((heading) => headingKey(heading) !== "");
+  if (named.length === 0) return null;
+  const cacheKey = `${readsContentsPage ? 1 : 0}:${named.map(headingKey).join("\0")}`;
+  let byHeading = sectionCache.get(chunks);
+  if (!byHeading) {
+    byHeading = new Map();
+    sectionCache.set(chunks, byHeading);
+  }
+  if (byHeading.has(cacheKey)) return byHeading.get(cacheKey) ?? null;
+  const found = findManualSectionUncached(chunks, named, readsContentsPage);
+  byHeading.set(cacheKey, found);
+  return found;
+}
+
+function findManualSectionUncached(
+  chunks: readonly ManualChunk[],
+  headings: readonly string[],
+  readsContentsPage: boolean,
+): ManualSection | null {
+  const wanted = headings.map(headingKey);
 
   const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
 
@@ -889,7 +918,7 @@ const DESCRIBED_SECTIONS: readonly {
   {
     offenseKey: "tardiness",
     describes:
-      /\b(?:late[- ]open(?:ing|ed)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
+      /\b(?:open(?:ed|ing)\s+late|late[- ]open(?:ing|ed|er)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
     headings: ["Late Opening"],
   },
   /*

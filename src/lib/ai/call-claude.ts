@@ -6,6 +6,8 @@ import { getAnthropicClient } from "./anthropic";
 import { AiError } from "./errors";
 import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
+import { modelRequestOptions, modelUnavailable } from "./model-retry";
+import { cachedSystem, cachedUserContent } from "./prompt-cache";
 
 /**
  * ============================================================================
@@ -102,6 +104,103 @@ export interface CallClaudeInput {
   readonly priorSummary?: string | null;
   readonly question: string;
   readonly maxTokens: number;
+  /**
+   * The pinned policy-manual block, cached on its own when prompt caching
+   * is on. Omitted, it stays inside `grounding` and the request is unchanged.
+   */
+  readonly manualBlock?: string | null;
+}
+
+export interface CollectedModelResult {
+  readonly stopReason: string | null;
+  readonly text: string;
+  readonly usage: unknown;
+  /** Null when the SDK returned a finished message instead of a text stream. */
+  readonly firstTokenMs: number | null;
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
+
+function textFromContent(content: readonly { type?: string; text?: string }[]): string {
+  return content
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text ?? "")
+    .join("\n")
+    .trim();
+}
+
+/** Keep a number already seen when a later usage event leaves that field empty. */
+function mergeUsage(previous: unknown, next: unknown): unknown {
+  if (typeof next !== "object" || next === null) return previous;
+  if (typeof previous !== "object" || previous === null) return next;
+  const merged: Record<string, unknown> = { ...(previous as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(next as Record<string, unknown>)) {
+    if (value === null || value === undefined) continue;
+    const prior = merged[key];
+    if (
+      key === "output_tokens_details" &&
+      typeof value === "object" &&
+      typeof prior === "object" &&
+      prior !== null
+    ) {
+      merged[key] = { ...(prior as Record<string, unknown>), ...(value as Record<string, unknown>) };
+      continue;
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
+
+/**
+ * A streamed reply records the wait until the first text delta. A finished
+ * Message — what the tests return — has no delta, so first-token time stays
+ * empty rather than being filled with the whole-call latency.
+ */
+export async function collectModelResult(response: unknown, started: number): Promise<CollectedModelResult> {
+  if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
+    const message = response as {
+      stop_reason?: string | null;
+      content?: readonly { type?: string; text?: string }[];
+      usage?: unknown;
+    };
+    return {
+      stopReason: message.stop_reason ?? null,
+      text: textFromContent(message.content ?? []),
+      usage: message.usage ?? null,
+      firstTokenMs: null,
+    };
+  }
+
+  if (!isAsyncIterable(response)) {
+    return { stopReason: null, text: "", usage: null, firstTokenMs: null };
+  }
+
+  let text = "";
+  let stopReason: string | null = null;
+  let usage: unknown = null;
+  let firstTokenMs: number | null = null;
+  for await (const event of response) {
+    if (typeof event !== "object" || event === null || !("type" in event)) continue;
+    const typed = event as {
+      type?: string;
+      message?: { usage?: unknown };
+      delta?: { type?: string; text?: string; stop_reason?: string | null };
+      usage?: unknown;
+    };
+    if (typed.type === "message_start") {
+      usage = mergeUsage(usage, typed.message?.usage);
+    } else if (typed.type === "content_block_delta" && typed.delta?.type === "text_delta") {
+      const delta = typed.delta.text ?? "";
+      if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
+      text += delta;
+    } else if (typed.type === "message_delta") {
+      if (typeof typed.delta?.stop_reason === "string") stopReason = typed.delta.stop_reason;
+      usage = mergeUsage(usage, typed.usage);
+    }
+  }
+  return { stopReason, text: text.trim(), usage, firstTokenMs };
 }
 
 export async function callClaude(input: CallClaudeInput): Promise<string> {
@@ -130,40 +229,53 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
   while (history.length > 0 && history[0]!.role === "assistant") history.shift();
 
   const started = Date.now();
+  const userText = [
+    input.grounding,
+    ...(input.reportData ? [input.reportData] : []),
+    ...(input.employeeData ? [input.employeeData] : []),
+    ...(input.personMemory ? [input.personMemory] : []),
+    ...(input.formsLibrary ? [input.formsLibrary] : []),
+    ...(input.formRecords ? [input.formRecords] : []),
+    `QUESTION\n\n${input.question}`,
+  ].join("\n\n");
+  const params = {
+    model: CLAUDE_MODEL,
+    max_tokens: input.maxTokens,
+    thinking: { type: "adaptive" as const },
+    output_config: { effort: CLAUDE_EFFORT },
+    // Static rules take cache_control { type: "ephemeral" }. The tail after
+    // ---DYNAMIC--- (name, salon, today) is not cached.
+    system: cachedSystem(input.system),
+    messages: [
+      ...history,
+      {
+        role: "user" as const,
+        // Every context block and then the question, in that order: the
+        // question last is what keeps a long briefing from burying it.
+        // The manual block is its own cached part only when that flag is on.
+        content: cachedUserContent(userText, input.manualBlock),
+      },
+    ],
+  };
   try {
-    const response = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: input.maxTokens,
-      thinking: { type: "adaptive" },
-      output_config: { effort: CLAUDE_EFFORT },
-      system: input.system,
-      messages: [
-        ...history,
-        {
-          role: "user",
-          // Every context block and then the question, in that order: the
-          // question last is what keeps a long briefing from burying it.
-          content: [
-            input.grounding,
-            ...(input.reportData ? [input.reportData] : []),
-            ...(input.employeeData ? [input.employeeData] : []),
-            ...(input.personMemory ? [input.personMemory] : []),
-            ...(input.formsLibrary ? [input.formsLibrary] : []),
-            ...(input.formRecords ? [input.formRecords] : []),
-            `QUESTION\n\n${input.question}`,
-          ].join("\n\n"),
-        },
-      ],
-    });
+    const options = modelRequestOptions();
+    // Stream so the first text delta can be timed. A caller that returns a
+    // finished message is still accepted, with first_token_ms left empty.
+    const streamed = { ...params, stream: true as const };
+    const created = options
+      ? await client.messages.create(streamed, options)
+      : await client.messages.create(streamed);
+    const response = await collectModelResult(created, started);
 
     const noted = {
       model: CLAUDE_MODEL,
       maxTokens: input.maxTokens,
-      stopReason: response.stop_reason ?? null,
+      stopReason: response.stopReason,
       latencyMs: Date.now() - started,
+      firstTokenMs: response.firstTokenMs,
       usage: response.usage,
     };
-    if (response.stop_reason === "refusal") {
+    if (response.stopReason === "refusal") {
       noteModelCall({ ...noted, subtype: "refused" });
       throw new AiError(
         "refused",
@@ -172,19 +284,13 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       );
     }
 
-    const text = response.content
-      .filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-
-    if (!text) {
+    if (!response.text) {
       noteModelCall({ ...noted, subtype: "empty_answer" });
       throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
     }
 
     noteModelCall(noted);
-    return text;
+    return response.text;
   } catch (error) {
     if (error instanceof AiError) throw error;
     if (error instanceof MissingConfigurationError) {
@@ -198,14 +304,11 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       maxTokens: input.maxTokens,
       stopReason: null,
       latencyMs: Date.now() - started,
+      firstTokenMs: null,
       usage: null,
       error,
     });
-    throw new AiError(
-      "model_failed",
-      "Sunny could not reach the language model. No answer was generated.",
-      502,
-    );
+    throw modelUnavailable(error);
   }
 }
 
@@ -233,28 +336,32 @@ export async function callClaudeTool(input: {
   const client = getAnthropicClient();
   const messages = input.messages.filter((message) => message.content.trim() !== "");
   try {
-    const response = await client.messages.create({
+    const toolParams = {
       model: input.model,
       max_tokens: input.maxTokens,
-      system: input.system,
+      system: cachedSystem(input.system),
       tools: [
         {
           name: input.tool.name,
           description: input.tool.description,
           input_schema: {
-            type: "object",
+            type: "object" as const,
             properties: input.tool.input_schema.properties ?? {},
             required: input.tool.input_schema.required ? [...input.tool.input_schema.required] : undefined,
             additionalProperties: input.tool.input_schema.additionalProperties,
           },
         },
       ],
-      tool_choice: { type: "tool", name: input.tool.name },
+      tool_choice: { type: "tool" as const, name: input.tool.name },
       messages: messages.map((message) => ({
         role: message.role,
         content: message.content,
       })),
-    });
+    };
+    const options = modelRequestOptions();
+    const response = options
+      ? await client.messages.create(toolParams, options)
+      : await client.messages.create(toolParams);
 
     const block = response.content.find((item) => item.type === "tool_use");
     if (!block || block.type !== "tool_use") {
@@ -268,10 +375,6 @@ export async function callClaudeTool(input: {
   } catch (error) {
     if (error instanceof AiError) throw error;
     if (error instanceof MissingConfigurationError) throw error;
-    throw new AiError(
-      "model_failed",
-      "Sunny could not reach the language model. No answer was generated.",
-      502,
-    );
+    throw modelUnavailable(error);
   }
 }

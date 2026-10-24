@@ -580,13 +580,24 @@ describe("QA 3 — location, title and dates", () => {
   });
 
   it("a person called Lawrence is not the Lawrence salon", async () => {
-    const proposals = await load([exitForm()]);
-    const response = await proposals.proposeFormForTurn(
-      turn("exit form for Lawrence Smith, he quit on the spot", { scope: GLOBAL }),
-    );
-    expect(response!.formProposal!.employeeName).toBe("Lawrence Smith");
-    expect(response!.formProposal!.locationId).toBeNull();
-    expect(response!.formProposal!.locationResolution).toBe("not_applicable");
+    const previous = process.env.GLOBAL_SALON_ASK_ENABLED;
+    process.env.GLOBAL_SALON_ASK_ENABLED = "1";
+    try {
+      const proposals = await load([exitForm()]);
+      const response = await proposals.proposeFormForTurn(
+        turn("exit form for Lawrence Smith, he quit on the spot", { scope: GLOBAL }),
+      );
+      expect(response!.formProposal!.employeeName).toBe("Lawrence Smith");
+      // Lawrence is a person. The salon is asked once and the draft is not blocked. KS Lawrence is not filled in.
+      expect(response!.formProposal!.locationId).toBeNull();
+      expect(response!.formProposal!.locationResolution).toBe("needs_selection");
+      expect(response!.formProposal!.status).toBe("ready");
+      expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+      expect(response!.content.match(/which salon is this about/gi)).toHaveLength(1);
+    } finally {
+      if (previous === undefined) delete process.env.GLOBAL_SALON_ASK_ENABLED;
+      else process.env.GLOBAL_SALON_ASK_ENABLED = previous;
+    }
   });
 
   it("an owner who names a roster salon gets it", async () => {

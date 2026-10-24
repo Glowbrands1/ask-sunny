@@ -16,7 +16,24 @@ import {
   policyCitationEnabled,
   reportBreakdownEnabled,
   secondFormEnabled,
+  citationVerifyEnabled,
+  conversationProposalDedupeEnabled,
+  attendancePolicyCitationEnabled,
+  currentManualScopeEnabled,
+  modelRetryEnabled,
+  promptCacheEnabled,
+  policyPageRequiredEnabled,
+  requiredFieldCheckEnabled,
   selfCheckEnabled,
+  typedNameProceedsEnabled,
+  unifiedAuthorityOrderEnabled,
+  managerPayrollAmountOnlyEnabled,
+  manualSectionDedupeEnabled,
+  payrollAmountFieldEnabled,
+  codeSlotsEnabled,
+  globalSalonAskEnabled,
+  policyGateNonblockingEnabled,
+  printedPageCitationEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -30,6 +47,11 @@ import { flaggedCitationWrite } from "./policy-citation-fields";
  * Pau's modules are untouched. The existing chat and form suites are run
  * in a child process with every new flag forced off; their expectations
  * are main's, and a failure here is a behavior change that leaked through.
+ * The child is the `flags-off-parity` Vitest project, which starts only
+ * after the unit project finishes, and it stays on `--project unit` so it
+ * does not start another copy of itself. `--maxWorkers=2` keeps that
+ * second copy from running about 188 files at once, which was pushing
+ * two 5s tests just over their limit.
  */
 
 const NEW_FLAGS = [
@@ -47,6 +69,24 @@ const NEW_FLAGS = [
   "INTENT_EXTRACTION_ENABLED",
   "FEWSHOT_EXAMPLES_ENABLED",
   "SELF_CHECK_ENABLED",
+  "PROMPT_CACHE_ENABLED",
+  "MODEL_RETRY_ENABLED",
+  "REQUIRED_FIELD_CHECK_ENABLED",
+  "CONVERSATION_PROPOSAL_DEDUPE_ENABLED",
+  "CITATION_VERIFY_ENABLED",
+  "CURRENT_MANUAL_SCOPE_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED",
+  "ATTENDANCE_POLICY_CITATION_ENABLED",
+  "POLICY_PAGE_REQUIRED_ENABLED",
+  "UNIFIED_AUTHORITY_ORDER_ENABLED",
+  "MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED",
+  "POLICY_GATE_NONBLOCKING_ENABLED",
+  "NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED",
+  "MANUAL_SECTION_DEDUPE_ENABLED",
+  "PRINTED_PAGE_CITATION_ENABLED",
+  "PAYROLL_AMOUNT_FIELD_ENABLED",
+  "CODE_SLOTS_ENABLED",
+  "GLOBAL_SALON_ASK_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -131,6 +171,23 @@ describe("new flags default off and wrappers are inert", () => {
     expect(intentExtractionEnabled()).toBe(false);
     expect(fewShotExamplesEnabled()).toBe(false);
     expect(selfCheckEnabled()).toBe(false);
+    expect(promptCacheEnabled()).toBe(false);
+    expect(modelRetryEnabled()).toBe(false);
+    expect(requiredFieldCheckEnabled()).toBe(false);
+    expect(conversationProposalDedupeEnabled()).toBe(false);
+    expect(citationVerifyEnabled()).toBe(false);
+    expect(currentManualScopeEnabled()).toBe(false);
+    expect(typedNameProceedsEnabled()).toBe(false);
+    expect(attendancePolicyCitationEnabled()).toBe(false);
+    expect(policyPageRequiredEnabled()).toBe(false);
+    expect(unifiedAuthorityOrderEnabled()).toBe(false);
+    expect(managerPayrollAmountOnlyEnabled()).toBe(false);
+    expect(policyGateNonblockingEnabled()).toBe(false);
+    expect(manualSectionDedupeEnabled()).toBe(false);
+    expect(printedPageCitationEnabled()).toBe(false);
+    expect(payrollAmountFieldEnabled()).toBe(false);
+    expect(codeSlotsEnabled()).toBe(false);
+    expect(globalSalonAskEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -166,8 +223,16 @@ describe("new flags default off and wrappers are inert", () => {
     const uiBase = uiDiffBase();
     if (uiBase) {
       // Test files may change an expectation when Pau changes the wording.
-      // Component, style, and page files stay untouched.
-      expect(diff(uiBase, [...UI_PATHS, ":(exclude)**/*.test.tsx", ":(exclude)**/*.dom.test.tsx"])).toBe("");
+      // Component, style, and page files stay untouched, except the chat
+      // bubble: Pau asked for the close-match note under the card.
+      expect(
+        diff(uiBase, [
+          ...UI_PATHS,
+          ":(exclude)**/*.test.tsx",
+          ":(exclude)**/*.dom.test.tsx",
+          ":(exclude)src/features/chat/message-bubble.tsx",
+        ]),
+      ).toBe("");
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",
@@ -199,6 +264,9 @@ describe("existing chat and form suites with every new flag off", () => {
         [
           "node_modules/vitest/vitest.mjs",
           "run",
+          "--project",
+          "unit",
+          "--maxWorkers=2",
           "--exclude",
           "src/lib/ai/flags-off-parity.test.ts",
           "src/lib/ai",

@@ -1,3 +1,5 @@
+import { policyGateNonblockingEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fieldsForVariant, type FormDocument } from "./document";
 
 /**
@@ -44,6 +46,11 @@ import { fieldsForVariant, type FormDocument } from "./document";
  *
  * ABSENT IS UNVERIFIED. A blank field and a hand-typed one are both unresolved
  * here; `filled` is reported so a caller can word the difference.
+ *
+ * When `POLICY_GATE_NONBLOCKING_ENABLED` is on, a blank field is left off
+ * this list. Direct policy stays empty, the card still shows, and finalize
+ * is not held for a policy the manual did not match. A value somebody typed
+ * that was never verified is still on the list.
  */
 
 /** The stored shape both the server and the browser hold a value in. */
@@ -73,7 +80,7 @@ export function unverifiedPolicyFields(
 ): UnverifiedPolicyField[] {
   const rows = new Map(values.map((row) => [row.fieldKey, row]));
 
-  return fieldsForVariant(document, variantKey)
+  const unresolved = fieldsForVariant(document, variantKey)
     .filter((field) => field.policyGrounded)
     .filter((field) => rows.get(field.key)?.provenance?.verified !== true)
     .map((field) => ({
@@ -81,6 +88,8 @@ export function unverifiedPolicyFields(
       label: field.label,
       filled: (rows.get(field.key)?.value ?? "").trim() !== "",
     }));
+  if (!policyGateNonblockingEnabled()) return unresolved;
+  return unresolved.filter((field) => field.filled);
 }
 
 /**

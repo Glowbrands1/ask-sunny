@@ -60,6 +60,7 @@ export const STANDARDS_OF_CONDUCT = "standards_of_conduct";
 export type CaPolicyName =
   | "standards_of_conduct"
   | "attendance"
+  | "late_opening"
   | "under_performance"
   | "dress_code"
   | "company_policies";
@@ -68,6 +69,7 @@ export type CaPolicyName =
 export const CA_POLICY_LABEL: Record<CaPolicyName, string> = {
   standards_of_conduct: "Standards of Conduct",
   attendance: "Attendance",
+  late_opening: "Late Opening",
   under_performance: "Under Performance",
   dress_code: "Dress Code",
   company_policies: "Violation of Company Policies",
@@ -136,7 +138,7 @@ const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
   {
     topic: "task",
     pattern: new RegExp(
-      String.raw`\b${FAILED}\s+(?:\S+\s+){0,2}?(?:complete|completed|finish|finished|do|done|turn in|turned in|submit|submitted)\b[^.;!?\n]{0,40}?\b${TASK_NOUN}|\b(?:incomplete|unfinished|uncompleted|left undone|left unfinished)\s+(?:\S+\s+){0,2}?${TASK_NOUN}|\b(?:(?:blew|blown|blow(?:s|ing)?)\s+off|skip(?:ped|ping|s)?|ignor(?:ed|es|ing))\s+(?:\S+\s+){0,2}?${TASK_NOUN}\b(?!\s+(?:sessions?|class(?:es)?|meetings?))|\b${TASK_NOUN}\s+(?:\S+\s+){0,3}?(?:incomplete|unfinished|not (?:completed|finished|done))\b`,
+      String.raw`\b${FAILED}\s+(?:\S+\s+){0,2}?(?:complete|completed|finish|finished|do|done|turn in|turned in|submit|submitted)\b[^.;!?\n]{0,40}?\b${TASK_NOUN}|\b(?:incomplete|unfinished|uncompleted|left undone|left unfinished)\s+(?:\S+\s+){0,2}?${TASK_NOUN}|\b(?:(?:blew|blown|blow(?:s|ing)?)\s+off|skip(?:ped|ping|s)?|ignor(?:ed|es|ing))\s+(?:\S+\s+){0,2}?${TASK_NOUN}\b(?!\s+(?:sessions?|class(?:es)?|meetings?))|\b${TASK_NOUN}\s+(?:\S+\s+){0,3}?(?:incomplete|unfinished|not (?:completed|finished|done))\b|\bpolicy acknowledgements?\b`,
     ),
   },
   {
@@ -228,8 +230,20 @@ function missedEventIn(sentences: readonly string[]): string | null {
 const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean }[] = [
   { name: "standards_of_conduct", pattern: /\b(?:standards? of conduct|code of conduct)\b/, alwaysAPolicy: true },
   { name: "under_performance", pattern: /\b(?:under[- ]?performance|underperforming)\b/, alwaysAPolicy: false },
+  /*
+   * LATE OPENING IS ITS OWN POLICY. "late opening" and "opened late" are the
+   * manual's Late Opening section, not the Attendance section. A late arrival
+   * ("she was late") is not this name.
+   */
+  {
+    name: "late_opening",
+    pattern: /\blate[- ]open(?:ing|ed|er)?\b|\bopen(?:ed|ing)\s+late\b/,
+    alwaysAPolicy: true,
+  },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
+  /* "wore leggings" names the dress code when the manager does not say those words. */
+  { name: "dress_code", pattern: /\bwore\s+leggings\b/, alwaysAPolicy: true },
   { name: "company_policies", pattern: /\bviolation of company polic(?:y|ies)\b/, alwaysAPolicy: true },
 ];
 const POLICY_FRAME =
@@ -362,6 +376,9 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
     }
+    case "late_opening":
+      /* Late Opening is cited under the Tardiness box. It is not its own checkbox. */
+      return ["tardiness"];
     default:
       return [reading.stated];
   }
@@ -412,6 +429,7 @@ const TOPIC_WORDS: Record<ConductTopic, string> = {
 
 const ALTERNATIVE_WORDS: Record<CaPolicyReading["alternatives"][number], string> = {
   attendance: "**Attendance**, if it comes down to being late or absent",
+  late_opening: "**Late Opening**, if it is about opening the salon late",
   under_performance:
     "**Under Performance**, if it is about results against a target (the manual gives that no policy section; it is usually coached first)",
   dress_code: "**Dress Code**",
@@ -546,7 +564,7 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   if (reading.suggestion && reading.source === "stated") {
     return "**Policy:** Standards of Conduct, as you said. I'll quote that section from the current policy manual on the draft.";
   }
-  if (reading.stated === "attendance" || reading.stated === "dress_code") {
+  if (reading.stated === "attendance" || reading.stated === "dress_code" || reading.stated === "late_opening") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. I'll quote that section from the current policy manual on the draft.`;
   }
   if (reading.stated === "under_performance" || reading.stated === "company_policies") {
