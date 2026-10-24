@@ -36,6 +36,7 @@ import {
   fullManualContextEnabled,
   formFullRemapEnabled,
   chatTraceRawAnswerEnabled,
+  intentPayrollManagerOnlyEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
@@ -95,6 +96,7 @@ const NEW_FLAGS = [
   "FULL_MANUAL_CONTEXT_ENABLED",
   "FORM_FULL_REMAP_ENABLED",
   "CHAT_TRACE_RAW_ANSWER_ENABLED",
+  "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -200,6 +202,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(fullManualContextEnabled()).toBe(false);
     expect(formFullRemapEnabled()).toBe(false);
     expect(chatTraceRawAnswerEnabled()).toBe(false);
+    expect(intentPayrollManagerOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

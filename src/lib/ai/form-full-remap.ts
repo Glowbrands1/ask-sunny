@@ -605,6 +605,8 @@ function phraseOffense(clause: string): string | null {
   let text = clause.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ");
   text = text.replace(/(?<![\d-])\d{1,2}-\d{1,2}(?!-\d)(?!\s*(?:min|mins|minutes|hrs|hours|hr)\b)/g, " ");
   text = text.replace(/\s+/g, " ").trim().replace(/^[,\s]+|[,\s.]+$/g, "");
+  // "register short $40 on 10-20" leaves "on" behind once the date is lifted.
+  text = text.replace(/\s+(?:on|at)$/i, "");
   if (!text || text.length > 80) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
   const title = titleAfterJobTitleLabel(text) ?? extractJobTitle(text) ?? teamMemberTitle(text);
@@ -626,6 +628,16 @@ function phraseOffense(clause: string): string | null {
   return text;
 }
 
+const PAYROLL_ANSWER_ONLY =
+  /^(?:(?:yes|no|yeah|nope|y|n)\b[\s,.!-]*)?payroll(?:\s+|-)deduct(?:ion|ed|s)?(?:\s+(?:of\s+)?\$?\d{1,6}(?:\.\d{1,2})?)?(?:\s+(?:applies|applicable|apply|is\s+applicable|does\s+not\s+apply|doesn'?t\s+apply|not\s+applicable|n\/?a|yes|no))?[\s.!]*$/i;
+
+const STATE_NAMES =
+  "alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming";
+const STATE_ONLY = new RegExp(
+  `^(?:A[LKZR]|C[AOT]|DE|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY]|${STATE_NAMES})\\.?$`,
+  "i",
+);
+
 function slotClause(clause: string): boolean {
   const text = clause.trim();
   if (/^(?:verbal|written|yes|no|yeah|nope)[.!]?\s*$/i.test(text)) return true;
@@ -640,6 +652,13 @@ function slotClause(clause: string): boolean {
   if (/^\s*coached on\b/i.test(text)) return true;
   if (/\bprior\s*=/i.test(text)) return true;
   if (/\bno payroll\b/i.test(text) && text.split(/\s+/).length <= 6) return true;
+  // "payroll deduct $40 applies" and "yes payroll deduct" answer the payroll
+  // question. Read as the incident, they replaced "register short $40". Only
+  // a clause that is nothing but that answer: "falsified payroll deduct
+  // paperwork" and "payroll deduct for missing cash $40" are offenses (QA).
+  if (PAYROLL_ANSWER_ONLY.test(text)) return true;
+  // "at Kearney, NE": a clause that is only the salon's state is not what happened.
+  if (STATE_ONLY.test(text)) return true;
   if (/\buse\s+.+\bas the (?:location|salon|store)\b/i.test(text)) return true;
   return false;
 }
