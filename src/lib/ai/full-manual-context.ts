@@ -863,20 +863,63 @@ function wordsOf(text: string): string {
  * responsible for" (Lost and Found) and "must be clean and" (every brand's
  * shirt rule) do not say which page a sentence restates.
  */
+const passageWords = new Map<string, string[]>();
+
+/** A passage's words, read once per passage text. */
+function wordsList(text: string): string[] {
+  const cached = passageWords.get(text);
+  if (cached) return cached;
+  const words = wordsOf(text).split(" ").filter(Boolean);
+  if (passageWords.size > 5000) passageWords.clear();
+  passageWords.set(text, words);
+  return words;
+}
+
+/** Whether a shared run of words is a phrase that says which page it came from. */
+function restates(slice: readonly string[]): boolean {
+  if (slice.join(" ").length < 16) return false;
+  const distinctive = slice.filter((word) => word.length >= 5 && !OVERLAP_STOP.has(word));
+  return distinctive.length >= 2 || (slice.length >= 5 && distinctive.length >= 1);
+}
+
 function restatedPhraseLength(answer: string, passage: string): number {
-  const hay = ` ${wordsOf(answer)} `;
-  const words = wordsOf(passage).split(" ").filter(Boolean);
-  const max = Math.min(14, words.length);
-  for (let size = max; size >= 4; size -= 1) {
-    for (let index = 0; index <= words.length - size; index += 1) {
-      const slice = words.slice(index, index + size);
-      const phrase = slice.join(" ");
-      if (phrase.length < 16 || !hay.includes(` ${phrase} `)) continue;
-      const distinctive = slice.filter((word) => word.length >= 5 && !OVERLAP_STOP.has(word));
-      if (distinctive.length >= 2 || (size >= 5 && distinctive.length >= 1)) return size;
+  const said = wordsList(answer);
+  const words = wordsList(passage);
+  if (said.length < 4 || words.length < 4) return 0;
+  const starts = new Map<string, number[]>();
+  for (let at = 0; at + 4 <= said.length; at += 1) {
+    const key = said.slice(at, at + 4).join(" ");
+    const list = starts.get(key);
+    if (list) list.push(at);
+    else starts.set(key, [at]);
+  }
+  let best = 0;
+  for (let index = 0; index + 4 <= words.length; index += 1) {
+    const hits = starts.get(words.slice(index, index + 4).join(" "));
+    if (!hits) continue;
+    for (const from of hits) {
+      let run = 4;
+      while (index + run < words.length && from + run < said.length && words[index + run] === said[from + run]) run += 1;
+      /*
+       * Every window inside a shared run is shared too. Take the longest
+       * window (at most 14 words) that names its page.
+       */
+      for (let size = Math.min(14, run); size > best && size >= 4; size -= 1) {
+        let found = false;
+        for (let offset = 0; offset + size <= run; offset += 1) {
+          if (restates(words.slice(index + offset, index + offset + size))) {
+            found = true;
+            break;
+          }
+        }
+        if (found) {
+          best = size;
+          break;
+        }
+      }
     }
   }
-  return 0;
+  return best;
 }
 
 function overlapScore(answer: string, passage: string): number {

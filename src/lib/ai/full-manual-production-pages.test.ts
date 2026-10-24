@@ -3,15 +3,15 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import rows from "@/test/fixtures/jba-manual-production-chunks-sunny.json";
+import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
 
 import { applyFullManualAnswer, choosePolicyManuals, type FullManualDocument } from "./full-manual-context";
 
 /**
- * Production rows of the JBA Policy Manual (chunks 44-64, 133-141, 151-152)
- * read through the loader's own row mapping, and replies production saved on
- * 24 Oct 2026.
+ * The whole production JBA Policy Manual (151 rows, identical in both apps'
+ * databases) read through the loader's own row mapping, and replies
+ * production saved on 24 Oct 2026.
  *
  * Printed pages are the uploaded PDF's (2025-JBA-Policy-Manual-Edited-5-2025,
  * printed page = PDF sheet - 1), which the manual's contents page and footers
@@ -24,7 +24,7 @@ import { applyFullManualAnswer, choosePolicyManuals, type FullManualDocument } f
 
 function manual(): FullManualDocument {
   return {
-    id: rows.document_id,
+    id: rows.document_ids["ask-sunny"],
     title: rows.title,
     category: "policies_compliance",
     chunks: (rows.chunks as ChunkRow[]).map(manualChunkFromRow),
@@ -205,5 +205,26 @@ describe("labels", () => {
     expect(out.content).toContain("see the DM manual p.6.");
     expect(pagesIn(out.content).has(99)).toBe(false);
     expect(pagesIn(out.content).has(6)).toBe(false);
+  });
+});
+
+/**
+ * QA, 24 Oct 2026: against the whole manual, each reply cites only the pages
+ * that print what it says, in the text and in Sources. PTO is 41 and 42,
+ * with 40 (unpaid suspension) and 33 (the 30-hour rule) where the reply
+ * restates them, and 47 for the bereavement-days sentence.
+ */
+describe("live replies against the whole manual", () => {
+  const cases = [
+    ["conv_mvmnwgmq2y3usjb", [15, 16, 17]],
+    ["conv_mvmnvara2iixygm", [33, 40, 41, 42, 47]],
+    ["conv_mvmtp0qe2pc7mzf", [15, 16, 17]],
+  ] as const;
+
+  it.each(cases)("%s cites only pages %j, in the text and in Sources", (conversationId, allowed) => {
+    const out = cite(liveReply(conversationId));
+    for (const page of pagesIn(out.content)) expect(allowed).toContain(page);
+    for (const citation of out.citations) expect(allowed).toContain(Number(citation.locator.replace("Page ", "")));
+    expect(pagesIn(out.content).size).toBeGreaterThan(0);
   });
 });
