@@ -28,6 +28,8 @@ migration, and no merge. Each flag defaults off.
 - `PAYROLL_EXPLICIT_DEDUCT_ENABLED`: "$40 short" is not a payroll deduction Yes. An explicit deduction ask stays Yes and keeps its amount.
 - `CITATION_APPEND_ONLY_ENABLED`: a policy citation is appended only to a field that already has text, including the older citation path that runs with `POLICY_PAGE_REQUIRED` off.
 - `INCIDENT_DATE_ON_FORM_ENABLED`: the form date is the incident date the manager gave ("on the 20th", "yesterday", "on 10-20"), not the day the form is created.
+- `TYPED_NAME_PROCEEDS_ENABLED` (already default off): a typed name one roster spelling away ("Test Employe" beside "Test Employee") stays as typed. The card note is `Woven has Test Employee`. The reply does not ask "Did you mean". One close person, same as Bubbles `TYPED_NAME_ENABLED`. Bubbles was not attached, so this was not ported as a pull request. Two close people stay on Sunny's existing note, because the priority replay forbids the "Did you mean" question while this flag is on.
+- `ACTION_PLAN_AFTER_INCIDENT_ENABLED`: a corrective action with a name and no incident still asks what happened, and does not write "Management will review…" until the details are given. Off, that plan line is still written on the first turn.
 
 ## 24 Oct 2026: manual heading scan, W-2 note, PTO accrual — Sunny-only
 

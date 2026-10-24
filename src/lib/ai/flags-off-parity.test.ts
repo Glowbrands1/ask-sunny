@@ -43,6 +43,7 @@ import {
   citationAppendOnlyEnabled,
   incidentDateOnFormEnabled,
   formFullRemapEnabled,
+  actionPlanAfterIncidentEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -103,6 +104,7 @@ const NEW_FLAGS = [
   "CITATION_APPEND_ONLY_ENABLED",
   "INCIDENT_DATE_ON_FORM_ENABLED",
   "FORM_FULL_REMAP",
+  "ACTION_PLAN_AFTER_INCIDENT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -212,6 +214,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(citationAppendOnlyEnabled()).toBe(false);
     expect(incidentDateOnFormEnabled()).toBe(false);
     expect(formFullRemapEnabled()).toBe(false);
+    expect(actionPlanAfterIncidentEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

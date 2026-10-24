@@ -13,6 +13,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import {
+  actionPlanAfterIncidentEnabled,
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
   globalSalonAskEnabled,
@@ -164,7 +165,10 @@ export function holdFilledSlots(input: {
   }
 
   const citations = (input.response.citations ?? []).filter((citation) => !isWarningCitation(citation));
-  if (actionPlanSentencesEnabled() && next.templateKey === "dpoa" && next.employeeName) {
+  // A name with no account still asks what happened. The review sentence is
+  // not written until that account exists, and only when the flag is on.
+  const planWaits = actionPlanAfterIncidentEnabled() && next.awaitingIncident;
+  if (actionPlanSentencesEnabled() && next.templateKey === "dpoa" && next.employeeName && !planWaits) {
     content = withActionPlan(content, next, citations);
   }
   if (codeSlotsEnabled()) {

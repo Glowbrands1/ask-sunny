@@ -425,6 +425,16 @@ export function formFullRemapEnabled(): boolean {
   return envFlag("FORM_FULL_REMAP");
 }
 
+/**
+ * The two-sentence action plan waits until the manager has said what
+ * happened. A name-only corrective action still asks for the incident and
+ * does not invent "Management will review…".
+ * Off, that plan line is still written on the first turn.
+ */
+export function actionPlanAfterIncidentEnabled(): boolean {
+  return envFlag("ACTION_PLAN_AFTER_INCIDENT_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
