@@ -9,7 +9,10 @@ alter table public.chat_traces
 comment on column public.chat_traces.slots is
   'Form slots after this turn: employee, salon, date, policy, template, pending confirmation. Empty when the turn did not settle a form.';
 
-create or replace view public.chat_traces_live as
+-- Production chat_traces_live already has security_invoker. A replace
+-- without WITH clears it.
+create or replace view public.chat_traces_live
+with (security_invoker = true) as
   select
     created_at,
     conversation_id,
@@ -37,4 +40,5 @@ comment on view public.chat_traces_live is
   'A short reading of chat_traces for the Supabase table editor and SQL editor.';
 
 revoke all on public.chat_traces_live from public, anon, authenticated;
+revoke all on public.chat_traces_live from service_role;
 grant select on public.chat_traces_live to service_role;
