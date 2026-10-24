@@ -101,3 +101,22 @@ export function cachedUserContent(text: string, manual: string | null | undefine
     { type: "text", text },
   ];
 }
+
+/**
+ * The full policy manual as the first system block.
+ *
+ * `cache_control` ends the cached prefix at this block, so the manager's
+ * name and the question that follow do not change the cache key. An empty
+ * manual leaves `system` as the caller built it, including a plain string
+ * when prompt caching itself is off.
+ */
+export function systemWithCachedManual(
+  system: string | CachedTextBlock[],
+  manual: string | null | undefined,
+): string | CachedTextBlock[] {
+  const block = manual?.trim() ?? "";
+  if (!block) return system;
+  const cached: CachedTextBlock = { type: "text", text: block, cache_control: CACHE_CONTROL };
+  if (typeof system === "string") return [cached, { type: "text", text: system }];
+  return [cached, ...system];
+}

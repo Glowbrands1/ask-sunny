@@ -1,4 +1,4 @@
-import { updateChatTrace } from "./chat-trace-store";
+import { chatRequestReceivedAt, updateChatTrace } from "./chat-trace-store";
 
 /**
  * What an Anthropic failure was, recorded for chat_traces.
@@ -32,6 +32,11 @@ export interface ModelCallSnapshot {
   readonly cacheReadInputTokens: number | null;
   /** Milliseconds until the first text token. Null when the call was not streamed. */
   readonly firstTokenMs: number | null;
+  /**
+   * Milliseconds from request receipt until this call finished (the last
+   * token). `latencyMs` stays the model call alone.
+   */
+  readonly e2eLatencyMs: number | null;
   readonly errorSubtype: ErrorSubtype | null;
   readonly errorClass: string | null;
   readonly errorStatus: number | null;
@@ -92,6 +97,7 @@ export function noteModelCall(input: {
       cacheCreationInputTokens: readUsageNumber(input.usage, "cache_creation_input_tokens"),
       cacheReadInputTokens: readUsageNumber(input.usage, "cache_read_input_tokens"),
       firstTokenMs: input.firstTokenMs ?? null,
+      e2eLatencyMs: Math.max(0, Date.now() - chatRequestReceivedAt()),
       errorSubtype,
       errorClass: discarded?.errorClass ?? (errorSubtype ? "AiError" : null),
       errorStatus: discarded?.errorStatus ?? null,

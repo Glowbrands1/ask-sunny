@@ -26,6 +26,7 @@ import {
   selfCheckEnabled,
   slotRetentionEnabled,
   manualTopicPinEnabled,
+  fullManualContextEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -108,6 +109,13 @@ import { rewriteToManualTerms } from "./query-rewrite-claude";
 import { guardReply } from "./self-check-run";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { groundingWithoutCachedManual } from "./prompt-cache";
+import {
+  applyFullManualAnswer,
+  FULL_MANUAL_GROUNDING_NOTE,
+  isPolicyAnswerQuestion,
+  type AssembledManual,
+} from "./full-manual-context";
+import { loadFullManualContext } from "./full-manual-load";
 import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
 import { updateChatTrace } from "./chat-trace-store";
@@ -994,7 +1002,16 @@ async function answerQuestionUntraced(
       })
     : Promise.resolve(null);
 
+  const policyAnswer =
+    fullManualContextEnabled() && isPolicyAnswerQuestion(request.question, heard?.intent ?? null);
+  const fullManualPromise = policyAnswer
+    ? loadFullManualContext({ scopeId: request.scopeId, question: request.question })
+    : null;
+  if (policyAnswer) updateChatTrace({ intent: "policy" });
+
   let rows: MatchedChunkRow[];
+  let fullManualBlock: string | null = null;
+  let fullManuals: readonly AssembledManual[] = [];
   const followedUp = retrievalQueryFor({
     question: request.question,
     history: request.history,
@@ -1027,64 +1044,80 @@ async function answerQuestionUntraced(
    */
   const scopeManual = currentManualScopeEnabled() || manualSectionDedupeEnabled();
   const fetchLimit = manualScopeFetchLimit(matchLimit, scopeManual);
-  try {
-    rows = retrievalRecallEnabled()
-      ? await matchRecallKnowledge({
-          query: searched,
-          scopeId: request.scopeId,
-          limit: fetchLimit,
-          question: request.question,
-        })
-      : hybridSearchEnabled()
-        ? await matchHybridKnowledge({
+  if (fullManualPromise) {
+    const loadedManual = await fullManualPromise;
+    if (loadedManual.ok) {
+      fullManualBlock = loadedManual.block;
+      fullManuals = loadedManual.manuals;
+    }
+  }
+  if (fullManualBlock) {
+    /*
+     * The whole manual is in the prompt. Retrieved excerpts are not the
+     * policy source. A missing or oversized manual leaves fullManualBlock
+     * empty and falls through to the search below.
+     */
+    rows = [];
+  } else {
+    try {
+      rows = retrievalRecallEnabled()
+        ? await matchRecallKnowledge({
             query: searched,
             scopeId: request.scopeId,
             limit: fetchLimit,
+            question: request.question,
           })
-        : await knowledge.match({
-          /*
-           * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
-           * with what it points at — see `retrieval-query.ts`. Every other turn is
-           * searched on its own words, exactly as before. Hybrid search and the
-           * Haiku rewrite run only when their flags are on.
-           */
-          query: searched,
-          scopeId: request.scopeId,
-          /*
-           * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
-           * manual in the corpus on its own topics, and `assembleGrounding` drops
-           * it from the retrieved half once it is pinned; at the ordinary `topK`
-           * that would leave no evidence at all for policy to outrank it with.
-           */
-          limit: fetchLimit,
-        });
-  } catch (error) {
-    if (error instanceof MissingConfigurationError) {
-      throw new AiError("not_configured", error.message, 503, error.missing);
+        : hybridSearchEnabled()
+          ? await matchHybridKnowledge({
+              query: searched,
+              scopeId: request.scopeId,
+              limit: fetchLimit,
+            })
+          : await knowledge.match({
+            /*
+             * A FOLLOW-UP THAT ONLY POINTS BACK ("the policy is correct") is searched
+             * with what it points at — see `retrieval-query.ts`. Every other turn is
+             * searched on its own words, exactly as before. Hybrid search and the
+             * Haiku rewrite run only when their flags are on.
+             */
+            query: searched,
+            scopeId: request.scopeId,
+            /*
+             * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
+             * manual in the corpus on its own topics, and `assembleGrounding` drops
+             * it from the retrieved half once it is pinned; at the ordinary `topK`
+             * that would leave no evidence at all for policy to outrank it with.
+             */
+            limit: fetchLimit,
+          });
+    } catch (error) {
+      if (error instanceof MissingConfigurationError) {
+        throw new AiError("not_configured", error.message, 503, error.missing);
+      }
+      throw new AiError(
+        "retrieval_failed",
+        "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
+        502,
+      );
     }
-    throw new AiError(
-      "retrieval_failed",
-      "The company knowledge base could not be searched, so no answer was produced. Nothing was answered from memory.",
-      502,
+    if (scopeManual) {
+      rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
+    }
+    rows = orderPolicyRetrieval(
+      rows,
+      request.question,
+      isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
     );
+    updateChatTrace({
+      retrievalCount: rows.length,
+      retrieved: rows.slice(0, 20).map((row) => ({
+        id: row.chunk_id,
+        title: row.document_title,
+        section: row.section,
+        score: row.similarity,
+      })),
+    });
   }
-  if (scopeManual) {
-    rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
-  }
-  rows = orderPolicyRetrieval(
-    rows,
-    request.question,
-    isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
-  );
-  updateChatTrace({
-    retrievalCount: rows.length,
-    retrieved: rows.slice(0, 20).map((row) => ({
-      id: row.chunk_id,
-      title: row.document_title,
-      section: row.section,
-      score: row.similarity,
-    })),
-  });
 
   const roleResult = await rolePromise;
   const dailyStatsResult = await dailyStatsPromise;
@@ -1309,7 +1342,7 @@ async function answerQuestionUntraced(
     salonNoun: ACTIVE_BRAND.vocabulary.salonNoun,
     context: request.context,
     mode: request.mode,
-    hasContext: grounding.length > 0,
+    hasContext: grounding.length > 0 || fullManualBlock !== null,
     hasReportData: (briefing?.present.length ?? 0) > 0,
     hasFrameworkGrounding: employeeFrameworkIncluded,
     unifiedAuthority: unifiedAuthorityOrderEnabled(),
@@ -1371,7 +1404,13 @@ async function answerQuestionUntraced(
     briefedFamilies: families,
   });
   const pinnedPolicy = await citedManualGrounding(request, knowledge);
-  const joinedGrounding = [buildGroundingBlock(grounding), pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
+  const knowledgeGrounding =
+    grounding.length > 0
+      ? buildGroundingBlock(grounding)
+      : fullManualBlock
+        ? FULL_MANUAL_GROUNDING_NOTE
+        : buildGroundingBlock(grounding);
+  const joinedGrounding = [knowledgeGrounding, pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
   const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
   const groundingText = groundingWithoutCachedManual(joinedGrounding, manualBlock);
   const reportText = briefing?.text ?? null;
@@ -1401,12 +1440,17 @@ async function answerQuestionUntraced(
     question: request.question,
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
     manualBlock,
+    fullManualBlock,
   });
 
   /* ----------------------------------------------------------- citations -- */
   // Only the markers the model actually used become source cards, and each one
   // resolves to the row at that position — retrieved data, not model output.
-  const markers = extractUsedMarkers(answer, grounding.map((chunk) => chunk.marker));
+  const checked = policyAnswer
+    ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: grounding.length })
+    : null;
+  const spoken = checked?.content ?? answer;
+  const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
   const citations: SourceCitation[] = markers
     .map((marker) => used[marker - 1])
     .filter((row): row is MatchedChunkRow => Boolean(row))
@@ -1437,9 +1481,9 @@ async function answerQuestionUntraced(
   });
 
   return {
-    content: suggested ? `${stripMarkers(answer)}\n\n${suggested.lead}` : stripMarkers(answer),
+    content: suggested ? `${stripMarkers(spoken)}\n\n${suggested.lead}` : stripMarkers(spoken),
     formSelection: suggested?.selection,
-    citations,
+    citations: [...(checked?.citations ?? []), ...citations],
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance
@@ -1460,7 +1504,7 @@ async function answerQuestionUntraced(
        * `grounded` would put a confident banner over an answer whose whole
        * content is "I do not have that delivery".
        */
-      grounding.length === 0 && (briefing?.present.length ?? 0) === 0 && formRecords === null
+      grounding.length === 0 && !fullManualBlock && (briefing?.present.length ?? 0) === 0 && formRecords === null
         ? "insufficient"
         : "grounded",
     // Video matching is a separate concern and still runs on the client's

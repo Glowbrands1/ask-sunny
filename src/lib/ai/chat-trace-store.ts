@@ -37,6 +37,24 @@ export interface ChatTraceDraft {
 
 const storage = new AsyncLocalStorage<ChatTraceDraft>();
 
+/** When POST /api/chat received the request. Separate from the model-call clock. */
+const requestClock = new AsyncLocalStorage<number>();
+
+export function enterChatRequestClock(at = Date.now()): void {
+  requestClock.enterWith(at);
+}
+
+export function runWithRequestClock<T>(fn: () => Promise<T>, at = Date.now()): Promise<T> {
+  return requestClock.run(at, fn);
+}
+
+/** Request receipt, then the trace start, then now. */
+export function chatRequestReceivedAt(): number {
+  const marked = requestClock.getStore();
+  if (typeof marked === "number") return marked;
+  return chatTraceDraft()?.startedAt ?? Date.now();
+}
+
 export function runChatTrace<T>(draft: ChatTraceDraft, fn: () => Promise<T>): Promise<T> {
   return storage.run(draft, fn);
 }

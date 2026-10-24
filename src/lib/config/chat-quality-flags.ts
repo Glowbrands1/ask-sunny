@@ -364,6 +364,15 @@ export function manualTopicPinEnabled(): boolean {
   return envFlag("MANUAL_TOPIC_PIN_ENABLED");
 }
 
+/**
+ * Put the whole current policy manual in the prompt for a policy question,
+ * cached with Anthropic's ephemeral cache. Off, the answer still comes from
+ * the retrieved chunks.
+ */
+export function fullManualContextEnabled(): boolean {
+  return envFlag("FULL_MANUAL_CONTEXT_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
