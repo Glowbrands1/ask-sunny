@@ -1355,7 +1355,8 @@ describe("priority replay with the quality flags on", () => {
       );
     }
     if (!current.pass) throw new Error(current.failure ?? `${item.id} failed`);
-  });
+    // Both revisions share this test. Each one is gated at 20s, and the default 5s trips when the suite is loaded.
+  }, 60_000);
 });
 
 describe("priority replay with the flags off is no worse than the baseline", () => {
