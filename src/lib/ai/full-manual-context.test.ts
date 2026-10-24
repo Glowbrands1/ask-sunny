@@ -250,14 +250,28 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(occurrences(result.block, NOTICE)).toBe(1);
 
     const checked = applyFullManualAnswer({
-      content: "See Table of Contents, JBA Policy Manual p.6. Paid time Off (PTO), JBA Policy Manual p.6.",
+      content: [
+        `Paid time off accrues each pay period. ${BLACKOUT}`,
+        "Paid time Off (PTO), JBA Policy Manual p.42 and p.6 [p.42][p.6][S9][S11].",
+        "See the DM manual p.6 and the Salon Director manual pp.3-5.",
+        "See Table of Contents, JBA Policy Manual p.6.",
+      ].join(" "),
       manuals: result.manuals,
       sourceCount: 0,
     });
-    expect(checked.content).not.toContain("Table of Contents");
-    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.42");
+    expect(checked.content).toContain(BLACKOUT);
+    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.42 [p.42]");
     expect(checked.content).not.toContain("p.6");
-    expect(checked.citations.map((citation) => citation.locator)).toEqual(["Page 42"]);
+    expect(checked.content).not.toContain("[S");
+    expect(checked.content).not.toMatch(/DM manual|Salon Director|Table of Contents/i);
+    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.42]"]);
+    expect(checked.citations).toEqual([
+      expect.objectContaining({
+        documentTitle: "JBA Policy Manual",
+        excerpt: "Paid time Off (PTO)",
+        locator: "Page 42",
+      }),
+    ]);
   });
 
   it("conv_mvmjfgcv573j1oz cites Cell Phone/Smart Watch on the printed page", () => {
@@ -288,12 +302,24 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(result.block).toContain("## Cell Phone/Smart Watch Policy");
     expect(result.block).toContain("Phones stay off the sales floor during a shift.");
     const checked = applyFullManualAnswer({
-      content: "Cell Phone/Smart Watch Policy, JBA Policy Manual p.20.",
+      content:
+        "Phones stay off the sales floor during a shift. Cell Phone/Smart Watch Policy, JBA Policy Manual p.20 [p.20][S9]. See the DM manual p.6.",
       manuals: result.manuals,
       sourceCount: 0,
     });
-    expect(checked.content).toContain("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19");
+    expect(checked.content).toContain("Phones stay off the sales floor during a shift.");
+    expect(checked.content).toContain("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19 [p.19]");
     expect(checked.content).not.toContain("p.20");
+    expect(checked.content).not.toContain("[S");
+    expect(checked.content).not.toMatch(/DM manual/i);
+    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.19]"]);
+    expect(checked.citations).toEqual([
+      expect.objectContaining({
+        documentTitle: "JBA Policy Manual",
+        excerpt: "Cell Phone/Smart Watch Policy",
+        locator: "Page 19",
+      }),
+    ]);
   });
 
   it("conv_mvmjfwnx8psm0nx rebuilds Tattoos and Jewelry without a repeated or broken line", () => {
@@ -317,6 +343,63 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(occurrences(result.block, "No facial piercings.")).toBe(1);
     expect(occurrences(result.block, "Visible tattoos must be covered on the arms.")).toBe(1);
     expect(result.block).not.toContain("Visible tattoos\n");
+  });
+
+  it("conv_mvmjfwnx8psm0nx cites Tattoos and Jewelry on printed page 16, Sun Tan City only", () => {
+    const result = choosePolicyManuals("What is the dress code for tattoos and jewelry?", [
+      manual("JBA Policy Manual Edited 5.2025", [
+        chunk(60, 17, "Dress Code for The Company", `A neat appearance is required.\n\n${TATTOOS}`, 16),
+        chunk(61, 17, "Tattoos", `${TATTOOS}\n\n${JEWELRY}`, 16),
+        chunk(62, 17, "Jewelry/Accessories", `${JEWELRY}\n\nNo facial piercings.`, 16),
+        chunk(63, 17, "Buff City Soap", "Buff apron rule.", 16),
+        chunk(64, 17, "Crunch Fitness Specific Dress Code", "Crunch-only shirt rule.", 16),
+        chunk(65, 17, "Sun Tan City", "Wear the salon uniform shirt.", 16),
+        chunk(66, 6, null, "Tattoos ................................................................ 16", 5),
+      ]),
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.block).toContain("[p.16]");
+    expect(result.block).not.toContain("[p.17]");
+    expect(result.block).toContain("## Tattoos");
+    expect(result.block).toContain("## Jewelry/Accessories");
+    expect(result.block).toContain("## Sun Tan City");
+    expect(result.block).toContain("Wear the salon uniform shirt.");
+    expect(occurrences(result.block, TATTOOS)).toBe(1);
+    expect(occurrences(result.block, JEWELRY)).toBe(1);
+    expect(result.block).not.toMatch(/buff|crunch|table of contents/i);
+    expect(result.block).not.toContain("Tattoos ................................................................ 16");
+
+    const checked = applyFullManualAnswer({
+      content: [
+        `${TATTOOS} Tattoos, JBA Policy Manual p.17 [p.17].`,
+        `${JEWELRY} Jewelry/Accessories, JBA Policy Manual p.17 [S11].`,
+        "See Buff City Soap p.16 and the Crunch policy manual p.16.",
+        "Salon Director manual pp.3-5.",
+      ].join(" "),
+      manuals: result.manuals,
+      sourceCount: 0,
+    });
+    expect(checked.content).toContain(TATTOOS);
+    expect(checked.content).toContain(JEWELRY);
+    expect(checked.content).toContain("Tattoos, JBA Policy Manual p.16 [p.16]");
+    expect(checked.content).toContain("Jewelry/Accessories, JBA Policy Manual p.16 [p.16]");
+    expect(checked.content).not.toContain("p.17");
+    expect(checked.content).not.toContain("[S");
+    expect(checked.content).not.toMatch(/Buff|Crunch|Salon Director/i);
+    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.16]", "[p.16]"]);
+    expect(checked.citations).toEqual([
+      expect.objectContaining({
+        documentTitle: "JBA Policy Manual",
+        excerpt: "Tattoos",
+        locator: "Page 16",
+      }),
+      expect.objectContaining({
+        documentTitle: "JBA Policy Manual",
+        excerpt: "Jewelry/Accessories",
+        locator: "Page 16",
+      }),
+    ]);
   });
 
   it("does not shift a cover sheet that has no printed page", () => {

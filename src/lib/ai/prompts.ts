@@ -525,6 +525,12 @@ export function buildSystemPrompt(input: {
    * UNIFIED_AUTHORITY_ORDER_ENABLED is on.
    */
   unifiedAuthority?: boolean;
+  /**
+   * The whole JBA Policy Manual is in the prompt. Omitted or false leaves
+   * the [S#] citation rule unchanged. Set only when FULL_MANUAL_CONTEXT_ENABLED
+   * is on and that manual loaded.
+   */
+  citeManualPages?: boolean;
 }): string {
   if (revision === "last-known-good") return buildLastKnownGoodSystemPrompt(input);
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
@@ -560,8 +566,15 @@ export function buildSystemPrompt(input: {
    *
    * So the kinds are numbered from the blocks present: 2, 3 or 4.
    */
+  const citeManualPages = input.citeManualPages === true;
+  const companyKnowledge = citeManualPages
+    ? "Company knowledge — anything drawn from the JBA Policy Manual for Sun Tan City in the prompt. Mark every policy statement with the printed page already on that text, like [p.19]. Put the marker at the end of the sentence it supports."
+    : "Company knowledge — anything drawn from the provided sources. Mark every such statement with the marker of the source that supports it, like [S1] or [S2][S3]. Put the marker at the end of the sentence it supports.";
+  const markerRule = citeManualPages
+    ? "- Mark a policy with the printed page from that manual, like [p.19]. Use only a page printed in the manual. Do not use an [S#] marker. Do not cite a DM manual, a Salon Director manual, Buff City Soap, or Crunch."
+    : "- Never use a marker for a source that is not listed below. Only the markers listed are valid.";
   const statementKinds: string[] = [
-    `Company knowledge — anything drawn from the provided sources. Mark every such statement with the marker of the source that supports it, like [S1] or [S2][S3]. Put the marker at the end of the sentence it supports.`,
+    companyKnowledge,
     `General management guidance — your own judgement about how to handle a conversation, structure a plan, or approach a person. Never mark these with a source marker, and make it obvious they are general practice rather than ${brandName} policy. A phrase like "as a general approach" is enough.`,
   ];
 
@@ -712,7 +725,7 @@ export function buildSystemPrompt(input: {
    */
   if (!promptCacheEnabled()) {
     // MAIN_PROMPT_RETURN
-    return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
+    const body = `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
 
@@ -741,6 +754,12 @@ Direct, warm, practical. Write the way a good regional manager talks: plain sent
 
 ${SUNNY_VOICE}`;
     // END_MAIN_PROMPT_RETURN
+    return citeManualPages
+      ? body.replace(
+          "- Never use a marker for a source that is not listed below. Only the markers listed are valid.",
+          markerRule,
+        )
+      : body;
   }
 
   const reportBullet = hasReportData
@@ -791,7 +810,7 @@ ${taxonomy}
 RULES YOU DO NOT BREAK
 
 - Never state a ${brandName} policy, number, deadline, threshold or entitlement that is not in the provided sources. If a manager needs a specific figure and it is not there, say so.
-- Never use a marker for a source that is not listed below. Only the markers listed are valid.
+${markerRule}
 - Never invent a document title, a page number, a section name or a policy name. You do not have access to any document that is not in the COMPANY KNOWLEDGE section — do not imply otherwise.
 - Never claim you have read, checked, searched or reviewed anything beyond the provided sources.
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
