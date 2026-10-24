@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { JBA_MANUAL_CHUNKS, JBA_MANUAL_DOCUMENT } from "./__fixtures__/jba-policy-manual";
 
@@ -298,9 +298,78 @@ describe("3. the attendance question is answered from the manual's Attendance se
   });
 });
 
-/* ======================================================= 4. degrading */
+describe("4. time off, sick days, W-2 and direct deposit pin the manual when the flag is on", () => {
+  const previous = process.env.MANUAL_TOPIC_PIN_ENABLED;
 
-describe("4. a manual that cannot be read leaves ordinary retrieval standing", () => {
+  beforeEach(() => {
+    process.env.MANUAL_TOPIC_PIN_ENABLED = "1";
+    state.retrieved = [
+      coachingGuideHit("guide-time", "Page 4", "Request time off in myGlow.", 0.91),
+    ];
+  });
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.MANUAL_TOPIC_PIN_ENABLED;
+    else process.env.MANUAL_TOPIC_PIN_ENABLED = previous;
+  });
+
+  it("puts Schedule Requests and PTO ahead of the guide for How do I request time off?", async () => {
+    await ask("How do I request time off?");
+
+    const lines = sourceLines();
+    expect(lines[0]).toContain("Page 37 — Schedule Requests/General availability Changes");
+    expect(lines.some((line) => line.includes("Page 41 — Salary Administration"))).toBe(true);
+    expect(lines.at(-1)).toContain("Sun Tan City Salon Coaching Guide");
+    expect(system()).not.toContain("SECTIONS READ FOR THIS QUESTION");
+    expect(state.manualCalls).toBe(1);
+  });
+
+  it("pins the W-2 chunk for How do I get my W-2?", async () => {
+    await ask("How do I get my W-2?");
+
+    expect(sourceLines()[0]).toContain("Page 36 — Liquidating 401K");
+    expect(sourceLines().some((line) => line.includes("Sun Tan City Salon Coaching Guide"))).toBe(true);
+  });
+
+  it("pins Pay Periods for How do I update my direct deposit?", async () => {
+    await ask("How do I update my direct deposit?");
+
+    expect(sourceLines()[0]).toContain("Page 38 — Pay Periods");
+  });
+
+  it("pins the same PTO sections for How many sick days do I get?", async () => {
+    await ask("How many sick days do I get?");
+
+    const lines = sourceLines();
+    expect(lines[0]).toContain("Page 37 — Schedule Requests/General availability Changes");
+    expect(lines.some((line) => line.includes("Page 41 — Salary Administration"))).toBe(true);
+  });
+
+  it("leaves ordinary retrieval standing when the manual cannot be read", async () => {
+    state.manual = { ok: false, reason: "The official policy manual could not be looked up." };
+
+    await ask("How do I request time off?");
+
+    expect(state.manualCalls).toBe(1);
+    expect(sourceLines()).toEqual(["S1 Sun Tan City Salon Coaching Guide — Page 4"]);
+  });
+});
+
+describe("5. the same questions do not pin anything while the flag is off", () => {
+  it("does not read the manual for How do I request time off?", async () => {
+    delete process.env.MANUAL_TOPIC_PIN_ENABLED;
+    state.retrieved = [
+      coachingGuideHit("guide-time", "Page 4", "Request time off in myGlow.", 0.91),
+    ];
+
+    await ask("How do I request time off?");
+
+    expect(state.manualCalls).toBe(0);
+    expect(sourceLines()).toEqual(["S1 Sun Tan City Salon Coaching Guide — Page 4"]);
+  });
+});
+
+describe("6. a manual that cannot be read leaves ordinary retrieval standing", () => {
   it("adds nothing and claims nothing", async () => {
     state.retrieved = OVERVIEW_RETRIEVAL;
     state.manual = { ok: false, reason: "The official policy manual could not be looked up." };

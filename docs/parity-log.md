@@ -1,5 +1,19 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: pin time off, W-2 and direct deposit by manual heading — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No model call, no
+migration, and no merge.
+
+- `MANUAL_TOPIC_PIN_ENABLED` defaults off. Off, a question is searched and
+  ordered as it is today: the topic map is not added to the corrective-action
+  synonyms. On, time off, request off, sick days, W-2 and direct deposit pin
+  the official manual's PTO, Usage, Schedule Requests, Accessing W-2's and
+  Pay Periods sections by heading. The Schedule Requests heading is read
+  from the chunk's own lines, including the chunk labelled Time Records.
+  Other retrieved chunks stay.
+
 ## 24 Oct 2026: prompt reorder stays behind the cache flag — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
