@@ -189,3 +189,13 @@ export function fewShotExamplesEnabled(): boolean {
 export function selfCheckEnabled(): boolean {
   return envFlag("SELF_CHECK_ENABLED");
 }
+
+/**
+ * When Woven publishes a revised document, keep the newest edition and
+ * leave older editions out of search. Identical sections from two current
+ * copies collapse to one citation. Off, a sync still indexes every current
+ * Woven copy, including an older edition of the same document.
+ */
+export function editionSupersessionEnabled(): boolean {
+  return envFlag("EDITION_SUPERSESSION_ENABLED");
+}

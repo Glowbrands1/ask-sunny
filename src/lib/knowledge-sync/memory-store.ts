@@ -170,6 +170,9 @@ export interface MemoryDocument extends SinkMetadata {
   bytes: Uint8Array;
   version: number;
   retired: boolean;
+  /** Set when a newer edition replaced this one. The bytes stay. */
+  superseded: boolean;
+  supersededBy: string | null;
   source: "woven" | "upload";
 }
 
@@ -200,6 +203,8 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
       bytes: document.bytes,
       version: existing ? existing.version + 1 : 1,
       retired: false,
+      superseded: false,
+      supersededBy: null,
       source: "woven",
     });
     return { reusedExistingEmbeddings: false };
@@ -218,6 +223,22 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
     if (doc) doc.retired = true;
   }
 
+  async supersedeEditions(plan: { documentId: string; supersededBy: string }[]): Promise<{ superseded: number }> {
+    let superseded = 0;
+    for (const row of plan) {
+      if (row.documentId === row.supersededBy) continue;
+      const successor = this.documents.get(row.supersededBy);
+      if (!successor || successor.retired || successor.superseded) continue;
+      const doc = this.documents.get(row.documentId);
+      if (!doc || doc.retired) continue;
+      if (doc.superseded && doc.supersededBy === row.supersededBy) continue;
+      doc.superseded = true;
+      doc.supersededBy = row.supersededBy;
+      superseded += 1;
+    }
+    return { superseded };
+  }
+
   async countManualTitleMatches(titles: string[]): Promise<number> {
     const manual = new Set(
       [...this.documents.values()].filter((d) => d.source === "upload").map((d) => d.title.trim().toLowerCase()),
@@ -227,6 +248,6 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
 
   /** Documents a signed-in user could currently find. */
   searchable(): MemoryDocument[] {
-    return [...this.documents.values()].filter((d) => !d.retired);
+    return [...this.documents.values()].filter((d) => !d.retired && !d.superseded);
   }
 }

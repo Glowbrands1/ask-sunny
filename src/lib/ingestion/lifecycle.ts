@@ -423,6 +423,46 @@ export async function supersedeDocument(input: { documentId: string; scopeId: st
 }
 
 /**
+ * An older Woven edition of a document the newest edition replaces.
+ *
+ * Kept — row, chunks, and file — and named against its successor. Not limited
+ * to hand uploads: the successor is another Woven document. A successor that
+ * is not indexed yet is left alone, so a failed ingest of the new copy does
+ * not hide the old one. Nothing is deleted.
+ */
+export async function supersedeEdition(input: { documentId: string; scopeId: string; supersededBy: string }): Promise<boolean> {
+  if (input.documentId === input.supersededBy) return false;
+  const admin = getSupabaseAdmin();
+  const { data: successor, error: readError } = await admin
+    .from("knowledge_documents")
+    .select("id, status, indexed")
+    .eq("id", input.supersededBy)
+    .eq("knowledge_scope_id", input.scopeId)
+    .maybeSingle();
+  if (readError) {
+    throw new IngestionError("persistence_failed", `The current edition could not be read: ${readError.message}`, 502);
+  }
+  const current = successor as { status?: string; indexed?: boolean } | null;
+  if (!current || current.status !== "indexed" || current.indexed !== true) return false;
+  const { data, error } = await admin
+    .from("knowledge_documents")
+    .update({
+      status: "superseded",
+      indexed: false,
+      superseded_by: input.supersededBy,
+      superseded_at: new Date().toISOString(),
+    })
+    .eq("id", input.documentId)
+    .eq("knowledge_scope_id", input.scopeId)
+    .neq("status", "retired")
+    .select("id");
+  if (error) {
+    throw new IngestionError("persistence_failed", `The older edition could not be marked superseded: ${error.message}`, 502);
+  }
+  return ((data ?? []) as unknown[]).length > 0;
+}
+
+/**
  * Changes a document's title, description, category and tags only — no
  * extraction, no embedding. For a source item whose bytes are unchanged but
  * whose name or details changed.

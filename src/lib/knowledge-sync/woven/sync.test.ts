@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_AUTOMATIC_RETRIES, knowledgeDocumentIdFor, type RunOutcome } from "../engine";
 import { MemoryKnowledgeSink, MemoryKnowledgeSyncStore } from "../memory-store";
@@ -15,7 +15,7 @@ import type { WovenKnowledgeConfig } from "./config";
 import { WovenKnowledgeConnector } from "./connector";
 import { WovenTeamClient } from "./http";
 import { decideScheduledWork, nextAutomaticSyncAt, readOnlySink, runScheduledWovenKnowledgeTick, runWovenKnowledgeSync, testWovenConnection, type WovenRunOutcome } from "./sync";
-import { COMPANY, FakeWoven, PASSWORD, USERNAME, noSleep, uuid } from "./test-support";
+import { COMPANY, FakeWoven, LIVE_STATUS, PASSWORD, USERNAME, noSleep, uuid } from "./test-support";
 
 const CONFIG: WovenKnowledgeConfig = {
   enabled: true,
@@ -741,5 +741,98 @@ describe("the Production gate", () => {
     expect((await readWovenKnowledgeStatus({ config: { ...CONFIG, previewTestModeAllowed: false }, store: missing })).previewTestMode).toBe(false);
     const h = new Harness();
     expect((await readWovenKnowledgeStatus({ config: { ...CONFIG, previewTestModeAllowed: true }, store: h.store })).previewTestMode).toBe(false);
+  });
+});
+
+const OLDER_MANUAL = "2024 JBA Policy Manual Master - Edited 10-2024";
+const CURRENT_MANUAL = "JBA Policy Manual Edited 5.2025";
+const ACK_MANUAL = "2025 JBA Policy Manual Master - Edited 5-2025 with acknowledgement";
+
+function addManualEditions(h: Harness) {
+  const older = uuid(451);
+  const current = uuid(452);
+  const acknowledged = uuid(453);
+  const row = (id: string, title: string, updated: string) => ({
+    EntityID: id,
+    Column1: "PDF",
+    Column2: title,
+    Column3: LIVE_STATUS("Published"),
+    Column4: "Public",
+    Column5: "<span>2 MB</span>",
+    Column6: updated,
+    Column7: "",
+    Column8: "JB & Associates",
+  });
+  h.fake.state.fileLibrary.push(
+    row(older, OLDER_MANUAL, "10/1/2024"),
+    row(current, CURRENT_MANUAL, "5/13/2025"),
+    row(acknowledged, ACK_MANUAL, "5/20/2025"),
+  );
+  h.fake.state.fileLibraryFiles[older] = { bytes: "%PDF-1.4 old manual", fileName: "2024-JBA-Policy-Manual.pdf" };
+  h.fake.state.fileLibraryFiles[current] = { bytes: "%PDF-1.4 current manual", fileName: "JBA-Policy-Manual-Edited-5.2025.pdf" };
+  h.fake.state.fileLibraryFiles[acknowledged] = { bytes: "%PDF-1.4 acknowledged manual", fileName: "2025-JBA-Policy-Manual-Master.pdf" };
+  return { older, current, acknowledged };
+}
+
+function titled(h: Harness, title: string) {
+  return [...h.sink.documents.values()].filter((doc) => doc.title === title);
+}
+
+describe("newest Woven edition", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("indexes both May 2025 copies and does not index the 2024 edition", async () => {
+    vi.stubEnv("EDITION_SUPERSESSION_ENABLED", "on");
+    const h = new Harness();
+    const ids = addManualEditions(h);
+    await h.initial();
+
+    expect(titled(h, CURRENT_MANUAL)).toHaveLength(1);
+    expect(titled(h, ACK_MANUAL)).toHaveLength(1);
+    expect(titled(h, OLDER_MANUAL)).toHaveLength(0);
+    expect(h.item(`file_library\u0000${ids.older}\u0000file`)).toMatchObject({
+      reason: "older_edition",
+      inAskSunny: false,
+      pendingAction: "none",
+    });
+
+    const olderRow = h.fake.state.fileLibrary.find((row) => row.EntityID === ids.older)!;
+    olderRow.Column6 = "11/2/2024";
+    h.fake.state.fileLibraryFiles[ids.older]!.bytes = "%PDF-1.4 old manual changed";
+    await h.run("sync");
+    expect(titled(h, OLDER_MANUAL)).toHaveLength(0);
+    expect(h.sink.searchable().some((doc) => doc.title === OLDER_MANUAL)).toBe(false);
+  });
+
+  it("does not re-activate an older edition that was already indexed", async () => {
+    const h = new Harness();
+    const ids = addManualEditions(h);
+    await h.initial();
+    const olderId = h.item(`file_library\u0000${ids.older}\u0000file`).knowledgeDocumentId!;
+    const currentId = h.item(`file_library\u0000${ids.current}\u0000file`).knowledgeDocumentId!;
+    const acknowledgedId = h.item(`file_library\u0000${ids.acknowledged}\u0000file`).knowledgeDocumentId!;
+    const before = h.sink.documents.get(olderId)!;
+    expect(before.version).toBe(1);
+    expect(h.sink.searchable().map((doc) => doc.id)).toContain(olderId);
+
+    vi.stubEnv("EDITION_SUPERSESSION_ENABLED", "on");
+    const olderRow = h.fake.state.fileLibrary.find((row) => row.EntityID === ids.older)!;
+    olderRow.Column6 = "11/2/2024";
+    h.fake.state.fileLibraryFiles[ids.older]!.bytes = "%PDF-1.4 old manual changed";
+    const outcome = await h.run("sync");
+    const after = h.sink.documents.get(olderId)!;
+    expect(after.version).toBe(1);
+    expect(after.bytes).toEqual(before.bytes);
+    expect(after.superseded).toBe(true);
+    expect([currentId, acknowledgedId]).toContain(after.supersededBy);
+    expect(h.sink.searchable().map((doc) => doc.id)).not.toContain(olderId);
+    expect(report(outcome).attention).toEqual(expect.arrayContaining([expect.objectContaining({ code: "editions_superseded", count: 1 })]));
+
+    olderRow.Column6 = "12/1/2024";
+    await h.run("sync");
+    expect(h.sink.documents.get(olderId)!.version).toBe(1);
+    expect(h.sink.documents.get(olderId)!.superseded).toBe(true);
   });
 });

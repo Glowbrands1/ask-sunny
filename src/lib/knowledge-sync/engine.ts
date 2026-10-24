@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { editionSupersessionEnabled } from "@/lib/config/chat-quality-flags";
+import { holdOlderEditions, type EditionSupersession } from "./edition";
 import { manifestKey, reconcile } from "./reconcile";
 import { SinkError, type DescribeItem, type KnowledgeSink, type KnowledgeSyncStore } from "./ports";
 import {
@@ -234,6 +236,7 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
     const manifest = await store.loadManifest(source);
     const decisions = new Map((await store.loadDecisions(source)).map((d) => [d.audienceKey, d]));
     const merged = new Map(manifest.map((item) => [manifestKey(item), item]));
+    let editionPlan: EditionSupersession[] = [];
 
     /* ---- scan ---- */
     let listingFailures = 0;
@@ -297,8 +300,21 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
         return finish(status, null, null);
       }
 
+      if (editionSupersessionEnabled()) {
+        const held = holdOlderEditions([...merged.values()], knowledgeDocumentIdFor);
+        editionPlan = held.plan;
+        for (const item of held.items) merged.set(manifestKey(item), item);
+      }
+
       /* The scan is saved before any work starts, so a crash mid-apply resumes from it. */
-      await store.saveItems(scan.items);
+      await store.saveItems(editionSupersessionEnabled() ? [...merged.values()] : scan.items);
+    }
+
+    if (options.mode === "continue" && editionSupersessionEnabled()) {
+      const held = holdOlderEditions([...merged.values()], knowledgeDocumentIdFor);
+      editionPlan = held.plan;
+      for (const item of held.items) merged.set(manifestKey(item), item);
+      await store.saveItems([...merged.values()]);
     }
 
     /* ---- apply ---- */
@@ -372,6 +388,37 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
         }
       } catch {
         report.attention.push({ code: "duplicates_not_checked", message: "Uploaded copies of Woven documents could not be checked this time. Nothing was changed." });
+      }
+    }
+
+    /*
+     * Older editions of one Woven document. Only after the newest copy has
+     * been indexed, and only when the flag is on (the plan is empty otherwise).
+     * Rows and chunks are kept.
+     */
+    if (
+      options.mode === "sync" &&
+      editionPlan.length > 0 &&
+      listingFailures === 0 &&
+      !sessionLost &&
+      report.totals.deferred === 0 &&
+      deps.sink.supersedeEditions
+    ) {
+      try {
+        const outcome = await deps.sink.supersedeEditions(editionPlan);
+        if (outcome.superseded > 0) {
+          const n = outcome.superseded;
+          report.attention.push({
+            code: "editions_superseded",
+            message: `${n} older edition${n === 1 ? " was" : "s were"} replaced by the newest Woven copy and no longer answer questions. Nothing was deleted.`,
+            count: n,
+          });
+        }
+      } catch {
+        report.attention.push({
+          code: "editions_not_checked",
+          message: "Older editions of Woven documents could not be updated this time. Nothing was changed.",
+        });
       }
     }
 

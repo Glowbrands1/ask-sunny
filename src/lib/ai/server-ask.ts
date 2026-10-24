@@ -8,6 +8,7 @@ import {
   fieldAccuracyEnabled,
   fewShotExamplesEnabled,
   formToolsEnabled,
+  editionSupersessionEnabled,
   hybridSearchEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
@@ -47,6 +48,7 @@ import { isFormRecordsQuestion, loadFormRecords } from "@/lib/forms/chat-form-re
 import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
+import { dedupeIdenticalSections } from "@/lib/knowledge-sync/edition";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -1011,6 +1013,7 @@ async function answerQuestionUntraced(
       502,
     );
   }
+  if (editionSupersessionEnabled()) rows = dedupeIdenticalSections(rows);
   updateChatTrace({
     retrievalCount: rows.length,
     retrieved: rows.slice(0, 20).map((row) => ({

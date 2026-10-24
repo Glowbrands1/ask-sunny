@@ -5,6 +5,29 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: the newest Woven edition is the one that answers
+
+When `EDITION_SUPERSESSION_ENABLED` is on and Woven publishes a revised
+document, the sync marks the older edition `status = superseded`,
+`indexed = false`, and `superseded_by` the newest document. The row, its
+chunks, and its file stay. A later sync does not ingest that older edition
+again while a newer one in the same family is current. The family is the
+title and file name with the edition date and words such as edited, master,
+and acknowledgement removed. The date is the month and year in that name, or
+Woven's updated time when the name has none. Two editions from the same
+month and year both stay indexed. Retrieval then keeps one copy of a section
+whose text is the same, so the citation does not flip between them. Off, sync
+and retrieval are unchanged.
+
+Search already requires `indexed = true` and `status = 'indexed'`
+(`match_knowledge_chunks`, `match_knowledge_chunks_hybrid`,
+`match_knowledge_sections_fuzzy`). A superseded row cannot be indexed, so
+its chunks are not candidates. No new migration. No rows are deleted.
+
+Sibling app: not ported in this session. The Bubbles agent is applying the
+same rule. Bubbles has a single 2025 manual, so it has no second copy to
+dedupe. Do not copy document titles or ids.
+
 ## 23 Oct 2026: hybrid rank was burying the nearest chunk (Sunny only)
 
 With both retrieval flags on, reciprocal-rank fusion let an OR keyword hit

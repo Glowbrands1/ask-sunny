@@ -1,6 +1,8 @@
 import "server-only";
 
+import { editionSupersessionEnabled } from "@/lib/config/chat-quality-flags";
 import { EMBEDDING_DIMENSIONS, RETRIEVAL } from "@/lib/config/models";
+import { dedupeIdenticalSections } from "@/lib/knowledge-sync/edition";
 import { getEmbeddingProvider } from "@/lib/embeddings";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { KnowledgeDocument, SearchResult, SourceCitation } from "@/types";
@@ -176,7 +178,8 @@ export class SupabaseKnowledgeProvider implements KnowledgeProvider {
       throw new Error(`Knowledge retrieval failed: ${error.message}`);
     }
 
-    this.lastRows = (data ?? []) as MatchedChunkRow[];
+    const rows = (data ?? []) as MatchedChunkRow[];
+    this.lastRows = editionSupersessionEnabled() ? dedupeIdenticalSections(rows) : rows;
     return this.lastRows;
   }
 
