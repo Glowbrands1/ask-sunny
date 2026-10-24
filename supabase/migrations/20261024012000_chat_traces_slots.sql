@@ -40,4 +40,5 @@ comment on view public.chat_traces_live is
   'A short reading of chat_traces for the Supabase table editor and SQL editor.';
 
 revoke all on public.chat_traces_live from public, anon, authenticated;
+revoke all on public.chat_traces_live from service_role;
 grant select on public.chat_traces_live to service_role;

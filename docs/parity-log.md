@@ -42,7 +42,8 @@ title stays **JBA Policy Manual**. No production migration apply and no merge.
   cache columns are listed after `slots`. Both unapplied replaces, slots
   and cache, set `security_invoker = true`, because a replace without WITH
   clears the option production already has. There is still no row filter.
-  Grants stay service_role select, revoked from anon and authenticated.
+  Grants stay service_role select. Both replaces revoke all from
+  service_role before that grant, and revoke anon and authenticated.
   Production recorded `chat_traces` as version `20261024004307`, so these
   files are applied with `apply_migration`, not `db push`.
 

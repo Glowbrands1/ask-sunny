@@ -56,7 +56,12 @@ describe("chat_traces migration", () => {
     expect(statements).toMatch(/create or replace view public\.chat_traces_live/i);
     expect(statements).toMatch(/with \(security_invoker = true\)/i);
     expect(SLOTS_SQL).toMatch(/create or replace view public\.chat_traces_live\s+with \(security_invoker = true\)/i);
-    expect(statements).toMatch(/grant select on public\.chat_traces_live to service_role/i);
+    expect(statements).toMatch(
+      /revoke all on public\.chat_traces_live from service_role;\s*grant select on public\.chat_traces_live to service_role/i,
+    );
+    expect(SLOTS_SQL).toMatch(
+      /revoke all on public\.chat_traces_live from service_role;\s*grant select on public\.chat_traces_live to service_role/i,
+    );
     const view = statements.slice(statements.toLowerCase().indexOf("create or replace view"));
     const latency = view.indexOf("latency_ms");
     const errorSubtype = view.indexOf("error_subtype");
@@ -141,12 +146,16 @@ describe("chat_traces migration", () => {
         console.log(`${label} reloptions: ${reloptions ? reloptions.join(", ") : "(none)"}`);
         console.log(`${label} grants: ${grantText}`);
         expect(reloptions?.some((option) => option === "security_invoker=true")).toBe(true);
-        expect(grants.rows.some((row) => row.grantee === "service_role" && row.privilege_type === "SELECT")).toBe(true);
+        const servicePrivileges = grants.rows
+          .filter((row) => row.grantee === "service_role")
+          .map((row) => row.privilege_type);
+        expect(servicePrivileges).toEqual(["SELECT"]);
         expect(grants.rows.some((row) => row.grantee === "anon" || row.grantee === "authenticated")).toBe(false);
       };
 
       await describeView("after 001100 -> slots -> cache");
 
+      await harness.db.exec("grant all on public.chat_traces_live to service_role");
       const again = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
       await harness.db.exec(again);
       const repeated = await harness.db.query<{ column_name: string }>(
