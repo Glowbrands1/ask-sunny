@@ -173,6 +173,46 @@ describe("the sync cycle", () => {
     expect(new TextDecoder().decode(body.bytes)).toBe("Attendance Policy\n\nArrive on time.\n\nCall the salon if you will be late.\n");
   });
 
+  it("keeps the newest edition of a shared file and does not bring the older one back", async () => {
+    const h = new Harness();
+    const duplicateId = uuid(203);
+    h.fake.state.handbooks.push({
+      id: duplicateId,
+      name: "JBA Policy Manual Edited 5.2025",
+      status: "Published",
+      audience: "Public",
+      updated: "5/1/2025",
+      updatedOn: "2025-05-01T00:00:00",
+      currentVersionId: uuid(2103),
+      draftVersionId: null,
+      fileName: "JBA-Policy-Manual-Edited-5.2025.pdf",
+      bytes: "%PDF handbook v1",
+    });
+    await h.initial();
+    const kept = h.item(HANDBOOK);
+    const duplicate = h.item(`handbook\u0000${duplicateId}\u0000current-version`);
+    expect(kept.contentHash).toBe(duplicate.contentHash);
+    expect(kept.sourceUpdatedAt! > duplicate.sourceUpdatedAt!).toBe(true);
+    expect(kept.inAskSunny).toBe(true);
+    expect(duplicate).toMatchObject({ inAskSunny: false, reason: "superseded_duplicate", pendingAction: "none" });
+    expect(h.sink.documents.get(duplicate.knowledgeDocumentId!)).toMatchObject({
+      superseded: true,
+      supersededBy: kept.knowledgeDocumentId,
+    });
+    expect(h.sink.searchable().some((doc) => doc.id === duplicate.knowledgeDocumentId)).toBe(false);
+
+    const ingested = h.sink.ingestCalls;
+    const again = report(await h.run("sync"));
+    expect(h.sink.ingestCalls).toBe(ingested);
+    expect(h.item(`handbook\u0000${duplicateId}\u0000current-version`)).toMatchObject({
+      inAskSunny: false,
+      reason: "superseded_duplicate",
+      pendingAction: "none",
+    });
+    expect(h.sink.documents.get(duplicate.knowledgeDocumentId!)?.superseded).toBe(true);
+    expect(again.attention.map((item) => item.code)).toContain("editions_superseded");
+  });
+
   it("a second run with nothing changed downloads and re-indexes nothing", async () => {
     const h = new Harness();
     await h.initial();

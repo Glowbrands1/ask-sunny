@@ -1,5 +1,17 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: Woven edition dedupe — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production sync
+and no merge.
+
+- A Woven sync groups items by file hash. The newest Woven updated date
+  stays indexed. The others are marked superseded and the next scan does
+  not ingest them. A document that is already superseded is not chosen,
+  even when its date is later. `5c626f3c` stays superseded beside the kept
+  manual `ce6b00f1`. Nothing here runs a sync against production.
+
 ## 24 Oct 2026: Name labels and a trailing Job — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

@@ -103,6 +103,18 @@ export async function ingestDocument(input: IngestInput): Promise<IngestResult> 
   const existing = input.documentId
     ? await findById(input.scopeId, input.documentId)
     : await findByTitle(input.scopeId, title, input.source ?? "upload");
+  /*
+   * A superseded copy stays superseded. Re-ingesting it would clear
+   * `superseded_by` and set `indexed`, which puts the older edition of a
+   * shared file back into search.
+   */
+  if (existing?.status === "superseded") {
+    throw new IngestionError(
+      "persistence_failed",
+      "This copy was superseded by a newer edition of the same file, so the sync does not bring it back.",
+      409,
+    );
+  }
   const version = existing ? existing.version + 1 : 1;
   const previousVersions = existing
     ? [

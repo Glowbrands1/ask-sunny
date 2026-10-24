@@ -1,5 +1,5 @@
 import { manifestKey } from "./reconcile";
-import type { ClaimResult, KnowledgeSink, KnowledgeSyncStore, RunRecord, SinkDocument, SinkMetadata } from "./ports";
+import { SinkError, type ClaimResult, type KnowledgeSink, type KnowledgeSyncStore, type RunRecord, type SinkDocument, type SinkMetadata } from "./ports";
 import { AUTOMATIC_SYNC_INTERVAL_DAYS } from "./types";
 import type { AudienceDecision, InventoryItem, ManifestItem, SourceSystem, SyncEvent, SyncSettings } from "./types";
 
@@ -170,6 +170,9 @@ export interface MemoryDocument extends SinkMetadata {
   bytes: Uint8Array;
   version: number;
   retired: boolean;
+  /** An older edition of a file another document already holds. Not searchable. */
+  superseded: boolean;
+  supersededBy: string | null;
   source: "woven" | "upload";
 }
 
@@ -189,6 +192,9 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
       throw error;
     }
     const existing = this.documents.get(document.documentId);
+    if (existing?.superseded) {
+      throw new SinkError("superseded_edition", "This copy was superseded by a newer edition of the same file, so the sync does not bring it back.", false);
+    }
     this.documents.set(document.documentId, {
       id: document.documentId,
       title: document.title,
@@ -200,6 +206,8 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
       bytes: document.bytes,
       version: existing ? existing.version + 1 : 1,
       retired: false,
+      superseded: false,
+      supersededBy: null,
       source: "woven",
     });
     return { reusedExistingEmbeddings: false };
@@ -218,6 +226,14 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
     if (doc) doc.retired = true;
   }
 
+  async supersedeEdition(documentId: string, supersededBy: string): Promise<void> {
+    if (documentId === supersededBy) return;
+    const doc = this.documents.get(documentId);
+    if (!doc) return;
+    doc.superseded = true;
+    doc.supersededBy = supersededBy;
+  }
+
   async countManualTitleMatches(titles: string[]): Promise<number> {
     const manual = new Set(
       [...this.documents.values()].filter((d) => d.source === "upload").map((d) => d.title.trim().toLowerCase()),
@@ -227,6 +243,6 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
 
   /** Documents a signed-in user could currently find. */
   searchable(): MemoryDocument[] {
-    return [...this.documents.values()].filter((d) => !d.retired);
+    return [...this.documents.values()].filter((d) => !d.retired && !d.superseded);
   }
 }

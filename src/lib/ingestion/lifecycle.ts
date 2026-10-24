@@ -423,6 +423,23 @@ export async function supersedeDocument(input: { documentId: string; scopeId: st
 }
 
 /**
+ * A synced document that is an older edition of the same file. Kept, named
+ * against the edition that stays, and never retrieved. A row that is already
+ * superseded stays superseded — this does not bring it back.
+ */
+export async function supersedeSyncedEdition(input: { documentId: string; scopeId: string; supersededBy: string }): Promise<void> {
+  if (input.documentId === input.supersededBy) return;
+  const { error } = await getSupabaseAdmin()
+    .from("knowledge_documents")
+    .update({ status: "superseded", indexed: false, superseded_by: input.supersededBy, superseded_at: new Date().toISOString() })
+    .eq("id", input.documentId)
+    .eq("knowledge_scope_id", input.scopeId);
+  if (error) {
+    throw new IngestionError("persistence_failed", `The older edition could not be marked superseded: ${error.message}`, 502);
+  }
+}
+
+/**
  * Changes a document's title, description, category and tags only — no
  * extraction, no embedding. For a source item whose bytes are unchanged but
  * whose name or details changed.
