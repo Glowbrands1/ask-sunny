@@ -139,6 +139,9 @@ export function renderScoreboardRound(round: ReplayRound): string {
   lines.push(`- flag set: \`${round.flags.join(", ")}\``);
   lines.push(`- runs: ${round.runs}`);
   lines.push(`- latency gate: ${round.latencyGateMs} ms`);
+  lines.push(
+    "- numbers: case milliseconds are measured on the mocked reply. The structural round uses CPU time scaled to the reference loop. Cache token counts are a local estimate, not Anthropic usage.",
+  );
   if (round.promptAb) {
     lines.push(`- last-known-good prompt commit: \`${round.promptAb.lastKnownGoodCommit}\``);
     lines.push(`- last-known-good prompts.ts sha256: \`${round.promptAb.lastKnownGoodFileHash}\``);
@@ -351,6 +354,35 @@ export function renderRulebookScoreboard(input: {
   return lines.join("\n");
 }
 
+/**
+ * Wall-clock of a fixed loop on the machine where the 250ms slack was chosen.
+ * A slower runner measures a larger loop and the case times are scaled back
+ * by that ratio, so the gate does not flake when the CPU is slower.
+ */
+export const REFERENCE_CALIBRATION_MS = 20.577;
+
+/** Same loop the reference constant was measured with. */
+export function calibrationLoopMs(): number {
+  const start = process.hrtime.bigint();
+  let n = 0;
+  for (let i = 0; i < 20_000_000; i += 1) n = (n + (i % 97)) | 0;
+  if (n === -2) return 0;
+  return Number(process.hrtime.bigint() - start) / 1e6;
+}
+
+export function medianNumber(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length === 0) return 0;
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/** Map a measured millisecond onto the reference machine. */
+export function scaleMeasuredMs(ms: number, unitMs: number, referenceMs = REFERENCE_CALIBRATION_MS): number {
+  if (!(unitMs > 0) || !(referenceMs > 0)) return ms;
+  return Math.round((ms * referenceMs) / unitMs);
+}
+
 /** A later round may take up to 25% longer than the previous round. Faster is fine. */
 export const ROUND_LATENCY_RATIO = 1.25;
 /**
@@ -421,7 +453,7 @@ export function renderFixRound(input: {
   const lines = [
     `## ${input.title}`,
     "",
-    `One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is ${runsTogetherPhrase(input.runs)}. It regresses when it is more than 25% slower than flags off and also more than 250ms slower.`,
+    `One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is measured CPU time of ${runsTogetherPhrase(input.runs)}, scaled to the reference loop so a slower machine does not change the gate. It regresses when it is more than 25% slower than flags off and also more than 250ms slower. The reply model is mocked.`,
     "",
     `- commit: \`${input.commit}\``,
     `- harness: ${input.harness}`,
@@ -467,7 +499,7 @@ export function renderPromptCacheScoreboard(input: {
   return [
     "## Prompt cache",
     "",
-    "Standing sentences are unchanged. The cached prefix does not include the manager, the salon, today's date, an open form, form records, person memory, recalled memory, prior coaching, a pinned framework, a matched manual section, or few-shot examples. Those follow `---DYNAMIC---`. The built replay prompt differs from last-known-good because those blocks moved. `call-claude.ts` puts `cache_control: { type: \"ephemeral\" }` on the static block only. The reply model is mocked, so the token counts are the local replay's cache log, not Anthropic usage, and the latency is time-to-first-token for the whole prompt (OLD) against the dynamic tail (NEW).",
+    "Mocked, not measured from Anthropic. PROMPT_CACHE_ENABLED is off in this replay, so the built prompt matches main and does not contain a `---DYNAMIC---` marker. The lines below are the local estimator in prompt-cache.ts (characters divided by 4), not usage.cache_creation_input_tokens from a live call. The first-token figures are that same local stand-in. When the flag is on, the marker splits the prompt and per-request data stays after it.",
     "",
     `- 1st call usage.cache_creation_input_tokens: ${input.creationTokens}`,
     `- later calls with usage.cache_read_input_tokens > 0: ${input.laterReads}`,

@@ -17,7 +17,10 @@ import { setSystemPromptRevision, type SystemPromptRevision } from "./prompts";
 import {
   REPLAY_LATENCY_GATE_MS,
   REPLAY_RUNS,
+  calibrationLoopMs,
   casesWhereOldPromptScoresBetter,
+  medianNumber,
+  scaleMeasuredMs,
   judgeReplayCard,
   judgeFixRound,
   judgeRulebookRuns,
@@ -1954,7 +1957,7 @@ function structuralSpec(item: ReplayCase): RulebookSpec {
 async function structuralRuns(item: ReplayCase, suffix: string): Promise<{ ms: number; runs: RulebookSnapshotRun[] }> {
   stateBag.forms.clear();
   const runs: RulebookSnapshotRun[] = [];
-  const started = Date.now();
+  const cpu = process.cpuUsage();
   for (let run = 0; run < RUNS; run += 1) {
     rulebookCapture.run = null;
     rulebookCapture.on = true;
@@ -1963,7 +1966,8 @@ async function structuralRuns(item: ReplayCase, suffix: string): Promise<{ ms: n
     runs.push(rulebookCapture.run);
     rulebookCapture.on = false;
   }
-  return { ms: Date.now() - started, runs };
+  const spent = process.cpuUsage(cpu);
+  return { ms: (spent.user + spent.system) / 1000, runs };
 }
 
 describe("round 1 structural name, slot, and salon", () => {
@@ -1973,6 +1977,7 @@ describe("round 1 structural name, slot, and salon", () => {
   });
 
   it("keeps self-check off and is accepted only when the gate holds", async () => {
+    const unit = medianNumber([calibrationLoopMs(), calibrationLoopMs(), calibrationLoopMs()]);
     const rows: FixRoundRow[] = [];
     for (const item of CASES) {
       setFlags(false);
@@ -1997,8 +2002,8 @@ describe("round 1 structural name, slot, and salon", () => {
         id: item.id,
         beforePass: beforeMisses.length === 0,
         afterPass: afterMisses.length === 0,
-        beforeMs: before.ms,
-        afterMs: after.ms,
+        beforeMs: scaleMeasuredMs(before.ms, unit),
+        afterMs: scaleMeasuredMs(after.ms, unit),
         beforeMisses,
         afterMisses,
         leaked: afterMisses.includes("leaked"),

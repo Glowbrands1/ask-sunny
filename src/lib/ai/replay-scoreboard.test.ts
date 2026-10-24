@@ -10,8 +10,10 @@ import {
   judgeFixRound,
   judgeRulebookRun,
   judgeRulebookRuns,
+  REFERENCE_CALIBRATION_MS,
   latencyOverGate,
   latencyRegressed,
+  scaleMeasuredMs,
   renderRulebookScoreboard,
   renderScoreboard,
   rulebookVerdict,
@@ -140,6 +142,20 @@ describe("replay card criteria", () => {
       expect(round1).toContain("broken 0, latency 0, leaked 0");
       expect(round1).not.toMatch(/SELF_CHECK_ENABLED=(1|true|on|yes)/);
     }
+  });
+
+  it("keeps the latency gate when a slower machine stretches both sides", () => {
+    const before = 32;
+    const after = 151;
+    expect(latencyRegressed(before, after, 1.25, 250)).toBe(false);
+    const slowBefore = before * 4;
+    const slowAfter = after * 4;
+    expect(latencyRegressed(slowBefore, slowAfter, 1.25, 250)).toBe(true);
+    const unit = REFERENCE_CALIBRATION_MS * 4;
+    expect(
+      latencyRegressed(scaleMeasuredMs(slowBefore, unit), scaleMeasuredMs(slowAfter, unit), 1.25, 250),
+    ).toBe(false);
+    expect(scaleMeasuredMs(slowAfter, unit) - scaleMeasuredMs(slowBefore, unit)).toBe(after - before);
   });
 
   it("names a case only when the old prompt passes and the current prompt fails", () => {

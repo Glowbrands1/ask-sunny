@@ -46,6 +46,8 @@ export function cacheReadSamples(samples: readonly UsageTiming[]): UsageTiming[]
 }
 
 function promptPair(): { legacy: string; current: string } {
+  const previous = process.env.PROMPT_CACHE_ENABLED;
+  process.env.PROMPT_CACHE_ENABLED = "1";
   const current = buildSystemPrompt({
     assistantName: "Sunny",
     brandName: "Sun Tan City",
@@ -54,6 +56,8 @@ function promptPair(): { legacy: string; current: string } {
     mode: "standard",
     hasContext: true,
   });
+  if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+  else process.env.PROMPT_CACHE_ENABLED = previous;
   const parts = splitSystemPrompt(current);
   if (!parts.dynamicTail) throw new Error("the system prompt has no dynamic tail");
   const breakAt = parts.staticBlock.indexOf("\n");

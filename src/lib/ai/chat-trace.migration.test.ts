@@ -2,10 +2,22 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { redactTraceText } from "./chat-trace";
+import { redactTraceText, traceInsertWarning } from "./chat-trace";
 
 const SQL = readFileSync("supabase/migrations/20261023001100_chat_traces.sql", "utf8");
 const CACHE_SQL = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
+
+describe("chat trace insert", () => {
+  it("warns when the cache columns are missing", () => {
+    const warning = traceInsertWarning({
+      message: 'column "cache_creation_input_tokens" of relation "chat_traces" does not exist',
+      code: "42703",
+    });
+    expect(warning).toContain("cache columns are missing");
+    expect(warning).toContain("20261024020000_chat_traces_cache.sql");
+    expect(warning).not.toContain("sk-ant-");
+  });
+});
 
 describe("chat_traces migration", () => {
   it("only adds a table and a view", () => {

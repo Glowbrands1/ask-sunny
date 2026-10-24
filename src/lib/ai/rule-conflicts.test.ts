@@ -187,22 +187,32 @@ describe("one order of authority", () => {
   });
 
   it("keeps the pre-edit prompt when the replay asks for the last known good", () => {
+    const previous = process.env.PROMPT_CACHE_ENABLED;
+    delete process.env.PROMPT_CACHE_ENABLED;
     const currentOff = buildSystemPrompt(PROMPT);
-    const marker = "---DYNAMIC---";
-    // The frozen prompt is the layout from before per-request blocks moved
-    // below the marker. It still ignores the unified-authority edit. The
-    // current prompt is that same wording with the framework below the marker.
+    // Cache off is main's order: the framework sits above TONE and the marker is absent.
+    expect(currentOff).not.toContain("---DYNAMIC---");
+    expect(currentOff.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeLessThan(currentOff.indexOf("\nTONE\n"));
     setSystemPromptRevision("last-known-good");
     try {
       const frozen = buildSystemPrompt(PROMPT);
       expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).toBe(frozen);
       expect(frozen).toContain("2. Current employee performance data.");
-      expect(frozen.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeLessThan(frozen.indexOf(marker));
+      expect(frozen.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeLessThan(frozen.indexOf("---DYNAMIC---"));
       expect(frozen).not.toBe(currentOff);
     } finally {
       setSystemPromptRevision("current");
+      if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+      else process.env.PROMPT_CACHE_ENABLED = previous;
     }
-    expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).not.toBe(currentOff);
-    expect(currentOff.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeGreaterThan(currentOff.indexOf(marker));
+    process.env.PROMPT_CACHE_ENABLED = "1";
+    try {
+      const cached = buildSystemPrompt(PROMPT);
+      expect(cached.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeGreaterThan(cached.indexOf("---DYNAMIC---"));
+      expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).not.toBe(cached);
+    } finally {
+      if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+      else process.env.PROMPT_CACHE_ENABLED = previous;
+    }
   });
 });

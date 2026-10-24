@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { REPORTS } from "@/features/reports/reports-routes";
@@ -26,36 +29,87 @@ function chunk(marker: number, title: string): GroundingChunk {
   };
 }
 
+function templateBody(source: string, from: string): string {
+  const start = source.indexOf(from);
+  const open = source.indexOf("`", start);
+  const close = source.indexOf("${SUNNY_VOICE}`", open);
+  return source.slice(open + 1, close + "${SUNNY_VOICE}".length);
+}
+
 describe("buildSystemPrompt", () => {
   it("names the assistant, the manager and the location", () => {
-    const prompt = buildSystemPrompt({
-      assistantName: "Sunny",
-      brandName: "Sun Tan City",
-      salonNoun: "salon",
-      context: CONTEXT,
-      mode: "standard",
-      hasContext: true,
-    });
+    const previous = process.env.PROMPT_CACHE_ENABLED;
+    delete process.env.PROMPT_CACHE_ENABLED;
+    try {
+      const prompt = buildSystemPrompt({
+        assistantName: "Sunny",
+        brandName: "Sun Tan City",
+        salonNoun: "salon",
+        context: CONTEXT,
+        mode: "standard",
+        hasContext: true,
+      });
 
-    expect(prompt).toContain("You are Sunny");
-    expect(prompt).toContain("Dana Reyes");
-    expect(prompt).toContain("MO Kansas City Wornall");
-    expect(prompt).toContain("2026-08-29");
-    const [rules, tail] = prompt.split("---DYNAMIC---");
-    expect(rules).not.toContain("Dana Reyes");
-    expect(rules).not.toContain("MO Kansas City Wornall");
-    expect(rules).not.toContain("2026-08-29");
-    expect(tail).toContain("You are talking to Dana Reyes, who runs MO Kansas City Wornall. Today is 2026-08-29.");
+      expect(prompt).toContain("You are Sunny");
+      expect(prompt).toContain("Dana Reyes");
+      expect(prompt).toContain("MO Kansas City Wornall");
+      expect(prompt).toContain("2026-08-29");
+      expect(prompt).not.toContain("---DYNAMIC---");
+      expect(prompt.startsWith("You are Sunny, the internal assistant for Sun Tan City managers. You are talking to Dana Reyes, who runs MO Kansas City Wornall. Today is 2026-08-29.")).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+      else process.env.PROMPT_CACHE_ENABLED = previous;
+    }
+  });
+
+  it("is byte-identical to main when prompt cache is off", () => {
+    const previous = process.env.PROMPT_CACHE_ENABLED;
+    delete process.env.PROMPT_CACHE_ENABLED;
+    try {
+      const main = execFileSync("git", ["show", "b9ae362fd80e1fc492c4326f80834cf105ef19b8:src/lib/ai/prompts.ts"], {
+        encoding: "utf8",
+      });
+      const current = readFileSync("src/lib/ai/prompts.ts", "utf8");
+      const mainBody = templateBody(main, "return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to");
+      const offBody = templateBody(current, "// MAIN_PROMPT_RETURN");
+      expect(offBody).toBe(mainBody);
+
+      const prompt = buildSystemPrompt({
+        assistantName: "Sunny",
+        brandName: "Sun Tan City",
+        salonNoun: "salon",
+        context: { userName: "SENTINEL_USER", locationName: "SENTINEL_SALON", todayIso: "2099-01-02" },
+        mode: "quick",
+        hasContext: false,
+        hasReportData: false,
+        hasFormRecords: true,
+        canViewReports: false,
+      });
+      expect(prompt).not.toContain("---DYNAMIC---");
+      expect(prompt.indexOf("You are talking to SENTINEL_USER")).toBeLessThan(prompt.indexOf("HOW YOU ANSWER"));
+      expect(prompt.indexOf("FORMS ALREADY ON FILE")).toBeLessThan(prompt.indexOf("\nTONE\n"));
+      expect(prompt.indexOf("REPORTS & ANALYTICS")).toBeLessThan(prompt.indexOf("\nTONE\n"));
+      expect(prompt.indexOf("no company documents matched")).toBeLessThan(prompt.indexOf("\nTONE\n"));
+      expect(prompt.indexOf("Answer in two or three sentences.")).toBeLessThan(prompt.indexOf("HOW SUNNY SOUNDS"));
+    } finally {
+      if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+      else process.env.PROMPT_CACHE_ENABLED = previous;
+    }
   });
 
   it("keeps per-request data out of the cached prefix", () => {
+    const previous = process.env.PROMPT_CACHE_ENABLED;
+    process.env.PROMPT_CACHE_ENABLED = "1";
+    try {
     const prompt = buildSystemPrompt({
       assistantName: "Sunny",
       brandName: "Sun Tan City",
       salonNoun: "salon",
       context: { userName: "SENTINEL_USER", locationName: "SENTINEL_SALON", todayIso: "2099-01-02" },
-      mode: "standard",
-      hasContext: true,
+      mode: "quick",
+      hasContext: false,
+      hasReportData: true,
+      canViewReports: false,
       hasFormRecords: true,
       hasPersonMemory: true,
       hasFrameworkGrounding: true,
@@ -95,6 +149,20 @@ describe("buildSystemPrompt", () => {
     ]) {
       expect(cached, section).not.toContain(section);
       expect(tail, section).toContain(section);
+    }
+    for (const toggle of [
+      "Never state a figure about tanning",
+      "no company documents matched",
+      "Answer in two or three sentences.",
+      "This person's account cannot open the Reports & Analytics",
+      "A FORM IS OPEN IN THIS CONVERSATION",
+    ]) {
+      expect(cached, toggle).not.toContain(toggle);
+      expect(tail, toggle).toContain(toggle);
+    }
+    } finally {
+      if (previous === undefined) delete process.env.PROMPT_CACHE_ENABLED;
+      else process.env.PROMPT_CACHE_ENABLED = previous;
     }
   });
 

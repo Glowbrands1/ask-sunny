@@ -1,5 +1,17 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: prompt reorder stays behind the cache flag — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production
+migration apply and no merge.
+
+- With `PROMPT_CACHE_ENABLED` off, `buildSystemPrompt` is main's prompt:
+  the manager line stays in the opening sentence, the data sections stay
+  before TONE, and `---DYNAMIC---` is not sent. The reorder and the marker
+  run only when that flag is on. A missing `chat_traces` cache column logs
+  a warning instead of dropping the insert with no record.
+
 ## 24 Oct 2026: cache columns and the dynamic prompt tail — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

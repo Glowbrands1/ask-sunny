@@ -1,4 +1,5 @@
 import { REPORTS } from "@/features/reports/reports-routes";
+import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import { CHAT_STYLE_RULES } from "./chat-style-rules";
@@ -704,24 +705,14 @@ export function buildSystemPrompt(input: {
   const reportsGuideSection = `\n\n${buildReportsGuideSection(input.canViewReports ?? false, assistantName)}`;
 
   /*
-   * The cached prefix is the standing rules. This manager, this salon,
-   * today's date, an open form, form records, person memory, recalled
-   * memory, prior coaching, a pinned framework, a matched manual section,
-   * and few-shot examples follow the marker. Those sentences are unchanged.
+   * Flag off: the return below is main's prompt (b9ae362), including where
+   * the manager's name sits and with no cache marker. Flag on: that same
+   * wording is split. Per-request data and the toggles that change per turn
+   * follow the marker so they are not cached.
    */
-  const perRequest = [
-    input.openForm ? `\n\n${openFormRule(input.openForm)}` : "",
-    formRecordsSection,
-    personMemorySection,
-    employeeSection,
-    dailyStatsSection,
-    policyManualSection,
-    priorCoachingSection,
-    memorySection,
-    fewShotSection,
-  ].join("");
-
-  return `You are ${assistantName}, the internal assistant for ${brandName} managers.
+  if (!promptCacheEnabled()) {
+    // MAIN_PROMPT_RETURN
+    return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
 
@@ -742,17 +733,80 @@ ${hasEmployeeFactsBlock ? `- Never state a figure about a named person that is n
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
-${input.openForm ? "" : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`}${formsLibrarySection}${reportsGuideSection}${missingReportsSection}${styleSection}
+${input.openForm ? openFormRule(input.openForm) : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`}${formsLibrarySection}${formRecordsSection}${reportsGuideSection}${personMemorySection}${employeeSection}${dailyStatsSection}${missingReportsSection}${policyManualSection}${styleSection}${priorCoachingSection}${memorySection}${fewShotSection}
 
 ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.\n\n"}TONE
 
 Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers. ${MODE_INSTRUCTION[mode]}
 
+${SUNNY_VOICE}`;
+    // END_MAIN_PROMPT_RETURN
+  }
+
+  const reportBullet = hasReportData
+    ? "- Never state a figure about tanning, spa usage or conversion that is not written in the REPORT DATA section, and never compute a new one from it. If a manager needs a figure the reports do not carry, say which report would carry it."
+    : "- You have NO report figures for this question. Do not state a tans count, a spa session count, a conversion rate, a per-bed figure or a peer comparison from memory. If a manager asks for one, say the reports available to you do not cover it.";
+  const employeeBullet = hasEmployeeFactsBlock
+    ? `- Never state a figure about a named person that is not written in the ${EMPLOYEE_DATA_SECTION} section, and never derive one from it — no rate the section does not state, no total it does not give, no comparison it does not make. A salon-level figure is not an employee's, and dividing one by a headcount is an invention with a number attached.`
+    : "";
+  const formRule = input.openForm
+    ? openFormRule(input.openForm)
+    : `- NEVER SAY YOU ARE CREATING, HAVE CREATED, FILED OR SAVED A FORM. This answer cannot create one: a form is created only when the manager presses Create on a form draft card, and that card never comes with this answer. If a manager has just given the details for a form, say the form has not been created yet and ask them to request it by name and employee — for example "create a coaching form for Dana Moss" — so the card can appear.`;
+  const noMatch = hasContext
+    ? ""
+    : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.";
+  const tail = [
+    `You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.`,
+    reportBullet,
+    employeeBullet,
+    formRule,
+    formsLibrarySection.trim(),
+    formRecordsSection.trim(),
+    reportsGuideSection.trim(),
+    personMemorySection.trim(),
+    employeeSection.trim(),
+    dailyStatsSection.trim(),
+    missingReportsSection.trim(),
+    policyManualSection.trim(),
+    styleSection.trim(),
+    priorCoachingSection.trim(),
+    memorySection.trim(),
+    fewShotSection.trim(),
+    noMatch,
+    MODE_INSTRUCTION[mode],
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n\n");
+
+  return `You are ${assistantName}, the internal assistant for ${brandName} managers.
+
+Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
+
+HOW YOU ANSWER
+
+You answer from the sections below, and you distinguish clearly between ${NUMBER_WORD[statementKinds.length]} kinds of statement:
+
+${taxonomy}
+
+RULES YOU DO NOT BREAK
+
+- Never state a ${brandName} policy, number, deadline, threshold or entitlement that is not in the provided sources. If a manager needs a specific figure and it is not there, say so.
+- Never use a marker for a source that is not listed below. Only the markers listed are valid.
+- Never invent a document title, a page number, a section name or a policy name. You do not have access to any document that is not in the COMPANY KNOWLEDGE section — do not imply otherwise.
+- Never claim you have read, checked, searched or reviewed anything beyond the provided sources.
+- If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
+- Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
+- NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
+
+TONE
+
+Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers.
+
 ${SUNNY_VOICE}
 
 ---DYNAMIC---
 
-You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.${perRequest}`;
+${tail}`;
 }
 
 /**
