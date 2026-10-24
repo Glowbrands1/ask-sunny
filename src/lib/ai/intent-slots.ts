@@ -4,6 +4,7 @@ import {
   codeSlotsEnabled,
   intentPayrollManagerOnlyEnabled,
   managerWordsOnlyEnabled,
+  notANameGuardEnabled,
   typedNameProceedsEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
@@ -11,6 +12,7 @@ import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
+import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -213,7 +215,13 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
   const employee = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
-    : groundEmployee(codeSlotsEnabled() ? null : reading?.employee ?? null, blob, input.people, input.salons);
+    : groundEmployee(
+        codeSlotsEnabled() ? null : reading?.employee ?? null,
+        blob,
+        input.people,
+        input.salons,
+        notANameGuardEnabled() ? managerTurns(input) : null,
+      );
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
@@ -367,6 +375,19 @@ function payrollClauseAmount(input: IntentTurnInput): string | null {
   return null;
 }
 
+/**
+ * NOT_A_NAME_GUARD_ENABLED: the turns a name may come from — the manager's
+ * own, one at a time, and the stored state. The assistant's replies are not
+ * the manager's words: its "…require practice, set a follow-up…" became the
+ * employee, and a turn ending "…EFT's and spa" joined to the reply's "Here is
+ * what I would put…" read as "spa Here" (QA round 4, 24 Oct 2026).
+ */
+function managerTurns(input: IntentTurnInput): string[] {
+  const said = input.history.filter((turn) => turn.role === "user").map((turn) => turn.content);
+  const saved = input.saved ? stateSentences(input.saved).join(" ") : "";
+  return [...said, input.question, saved].filter((part) => part.trim() !== "");
+}
+
 function conversationBlob(input: IntentTurnInput): string {
   const prior = input.history.map((turn) => turn.content);
   const saved = input.saved ? stateSentences(input.saved).join(" ") : "";
@@ -378,11 +399,15 @@ function groundEmployee(
   blob: string,
   people: readonly GroundedPerson[],
   salons: readonly SalonRow[] = [],
+  manager: readonly string[] | null = null,
 ): { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null } {
   const fromText = peopleNamedIn(blob, people);
+  // The guard keeps a name the model copied from an assistant reply, or a
+  // placeholder like "blank", off the card: it must be in the manager's words.
+  if (manager && typed?.trim() && (isNotAName(typed) || !saidBy(manager, typed))) typed = null;
   const extracted = typed?.trim()
     ? []
-    : extractEmployeeNames(blob).filter(
+    : (manager ? namesInTurns(manager) : extractEmployeeNames(blob)).filter(
         (name) =>
           name.trim().split(/\s+/).length >= 2 && !isDocumentName(name) && !isRosterStateName(name),
       );
@@ -419,6 +444,23 @@ function groundEmployee(
   if (match.kind === "unchecked") return { person: null, name: probe, ambiguous: [], typed: probe };
   // Nobody on the roster is close. The name the manager typed still stands.
   return { person: null, name: probe, ambiguous: [], typed: probe };
+}
+
+/** The name is in the manager's words, outside a bulleted or priced offer list. */
+function saidBy(turns: readonly string[], name: string): boolean {
+  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return turns.some((turn) => maskNotANameText(turn).toLowerCase().replace(/\s+/g, " ").includes(needle));
+}
+
+/** Each turn read on its own, so two turns never join into one name. One spelling each. */
+function namesInTurns(turns: readonly string[]): string[] {
+  const found: string[] = [];
+  for (const turn of turns) {
+    for (const name of extractEmployeeNames(turn)) {
+      if (!found.some((kept) => kept.toLowerCase() === name.toLowerCase())) found.push(name);
+    }
+  }
+  return found;
 }
 
 /** One salon named in the account picks the one person who works there. */

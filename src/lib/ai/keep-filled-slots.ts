@@ -12,6 +12,7 @@ import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intak
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import { isNotAName } from "@/lib/forms/not-a-name";
 import {
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
@@ -299,6 +300,8 @@ function isFragment(name: string | null | undefined): boolean {
     return true;
   }
   if (readSalonMentions(text).length > 0 || readSalonMentions(`at ${text}`).length > 0) return true;
+  // NOT_A_NAME_GUARD_ENABLED: "employee name is blank" put "Blank" on the card (QA round 4).
+  if (isNotAName(text)) return true;
   return false;
 }
 
