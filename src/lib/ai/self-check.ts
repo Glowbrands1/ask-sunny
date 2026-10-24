@@ -1,17 +1,21 @@
 import { z } from "zod";
 
 import { actionPlanSentenceCount, collapseToTwoSentences } from "@/lib/forms/action-plan-sentences";
-import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { headingKey, type ManualChunk } from "@/lib/forms/official-policy-manual";
+
+import { repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
 /**
  * A last look before a form or an answer is sent.
  *
  * A cited page has to be the page on the retrieved chunk. A cited section
  * whose own text does not fit the question is dropped when the model says so
- * from that text. An action plan is two sentences. An employee on a form has
- * to be on the Woven roster. One repair may fix a failure. What is still
- * wrong is removed rather than sent.
+ * from that text. An action plan is two sentences. A name the manager typed
+ * is not checked against Woven: a missing row is not a failure and the
+ * repair model is not asked to refuse it. One repair may fix a citation or
+ * an action plan. What is still wrong is removed rather than sent. The
+ * repair model's own instructions never become the reply.
  */
 
 const CITATION = /([A-Za-z][^,\n]{1,80}?)\s*,\s*JBA Policy Manual p\.(\d+)/g;
@@ -116,11 +120,9 @@ export function reviewOutgoing(draft: OutgoingDraft): SelfCheckFailure[] {
   if (plan && actionPlanSentenceCount(plan) !== 2) {
     failures.push({ kind: "action_plan", detail: plan });
   }
-  // An empty directory is not proof the person is absent. A name the manager
-  // typed stays on the card; the proposal says once that Woven did not match.
-  if (draft.employeeName && draft.roster && draft.roster.length > 0 && !employeeOnRoster(draft.employeeName, draft.roster)) {
-    failures.push({ kind: "employee", detail: draft.employeeName });
-  }
+  // A name that is not on the Woven roster is not a failure. Refusing the
+  // form, or sending the repair model's "I cannot repair this reply", took
+  // the typed name off the card (live replay, 23 Oct 2026).
   return failures;
 }
 
@@ -140,14 +142,20 @@ export async function runSelfCheck(
   } catch {
     reviewed = { repair: null, sections: [] };
   }
-  const next = applyReview(draft, reviewed.repair, reviewed.sections);
+  const usable = reviewed.repair && !repairSpeaksAsValidator(reviewed.repair.content) ? reviewed.repair : null;
+  const next = applyReview(draft, usable, reviewed.sections);
   const remaining = reviewOutgoing({ ...draft, ...next });
-  if (remaining.length === 0) {
-    const changed =
-      next.content !== draft.content || next.employeeName !== draft.employeeName || next.actionPlan !== draft.actionPlan;
-    return { ...next, ok: true, repaired: changed };
-  }
-  return { ...fallback({ ...draft, ...next }, remaining), repaired: true };
+  const settled =
+    remaining.length === 0
+      ? {
+          ...next,
+          ok: true as const,
+          repaired:
+            usable !== null &&
+            (next.content !== draft.content || next.employeeName !== draft.employeeName || next.actionPlan !== draft.actionPlan),
+        }
+      : { ...fallback({ ...draft, ...next }, remaining), repaired: true };
+  return { ...settled, content: scrubRosterBlock(settled.content), employeeName: settled.employeeName ?? draft.employeeName };
 }
 
 export function actionPlanIn(content: string): string | null {
@@ -180,13 +188,6 @@ function fallback(draft: OutgoingDraft, failures: readonly SelfCheckFailure[]): 
     } else if (plan && content.includes(plan)) {
       content = content.replace(plan, "").replace(/\n{3,}/g, "\n\n").trim();
       actionPlan = null;
-    }
-  }
-  if (failures.some((failure) => failure.kind === "employee")) {
-    // The typed name stays. Clearing it blocked the card whenever Woven had
-    // no close match (live replay, 23 Oct 2026).
-    if (!/couldn'?t find|not in the woven roster/i.test(content) && employeeName) {
-      content = `I couldn't find **${employeeName}** in the Woven roster.\n\n${content}`.trim();
     }
   }
   return { content, employeeName, actionPlan, ok: false };
@@ -236,7 +237,8 @@ function applyReview(
 ): { content: string; employeeName: string | null; actionPlan: string | null } {
   let content = repair?.content ?? draft.content;
   let actionPlan = repair ? repair.actionPlan : draft.actionPlan;
-  const employeeName = repair ? repair.employeeName : draft.employeeName;
+  // A repair may correct a spelling. It may not clear a name the manager typed.
+  const employeeName = repair?.employeeName?.trim() ? repair.employeeName : draft.employeeName;
   for (const verdict of verdicts) {
     if (verdict.applies) continue;
     content = dropSection(content, verdict.heading, draft.chunks, verdicts);
@@ -375,9 +377,3 @@ function headingFits(wanted: string, key: string): boolean {
   return wanted === key || wanted.endsWith(` ${key}`);
 }
 
-function employeeOnRoster(name: string, roster: readonly RosterEmployee[]): boolean {
-  if (roster.length === 0) return false;
-  const match = matchEmployeeName(name, roster);
-  if (match.kind === "exact") return true;
-  return roster.some((person) => displayName(person).toLowerCase() === name.trim().toLowerCase());
-}

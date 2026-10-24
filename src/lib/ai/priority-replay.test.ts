@@ -42,6 +42,11 @@ const captured = vi.hoisted(() => ({
   memory: [] as (string | null)[],
 }));
 
+/** Live intent calls filled the salon with the Woven primary and offered the retirement "Warning" sheet. */
+const intentModel = vi.hoisted(() => ({
+  roster: [] as { name: string; primary: string | null }[],
+}));
+
 const OTHER_MESSAGES = [
   {
     conversation_id: "conv-today-lisa",
@@ -137,22 +142,13 @@ const PEOPLE: DirectoryFact[] = [
     primaryLocationName: "NE Omaha 144th and Center",
   }),
   person({
-    id: "lisa",
-    firstName: "Lisa",
-    lastName: "Smith",
-    salonIds: ["loc-0468"],
-    title: "Tanning Consultant",
-    primarySalonId: "loc-0468",
-    primaryLocationName: "KS Lawrence",
-  }),
-  person({
     id: "paisley",
     firstName: "Paisley",
     lastName: "Peklo",
-    salonIds: ["loc-0468"],
+    salonIds: ["loc-0313"],
     title: "Tanning Consultant",
-    primarySalonId: "loc-0468",
-    primaryLocationName: "KS Lawrence",
+    primarySalonId: "loc-0313",
+    primaryLocationName: "NE Omaha 132nd and Maple",
   }),
   person({
     id: "colene",
@@ -172,33 +168,15 @@ const PEOPLE: DirectoryFact[] = [
     primarySalonId: "loc-0309",
     primaryLocationName: "NE Kearney",
   }),
-  person({
-    id: "betty",
-    firstName: "Betty",
-    lastName: "Sue",
-    salonIds: [],
-    title: "Tanning Consultant",
-    primarySalonId: null,
-    primaryLocationName: null,
-  }),
-  person({
-    id: "christiana",
-    firstName: "Christiana",
-    lastName: "Headley",
-    salonIds: ["loc-0463"],
-    title: "Tanning Consultant",
-    primarySalonId: "loc-0463",
-    primaryLocationName: "KS Shawnee Mission Pkwy",
-  }),
 ];
 
 const PAISLEY_PRIOR: PriorFormOnFile = {
   instanceId: "prior-paisley",
   templateKey: "dpoa",
-  formDate: "2026-09-01",
-  line: "Written corrective action — signed 09/01/2026",
-  locationId: "loc-0468",
-  locationName: "KS Lawrence",
+  formDate: "2026-10-15",
+  line: "Verbal corrective action — signed 10/15/2026",
+  locationId: "loc-0313",
+  locationName: "NE Omaha 132nd and Maple",
 };
 
 function template(overrides: Record<string, unknown>) {
@@ -317,7 +295,39 @@ vi.mock("./call-claude", () => ({
     captured.memory.push(input.personMemory ?? null);
     return "An answer.";
   },
-  callClaudeTool: async () => null,
+  callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
+    const tool = input.tool?.name ?? "";
+    const text = JSON.stringify(input.messages ?? []);
+    if (tool === "repair_reply") {
+      const failures = /Failures:\\n([^]*?)\\n\\n/.exec(text)?.[1] ?? "";
+      if (failures && !/p\.\d+/.test(failures)) {
+        const who = failures.replace(/\\n/g, " ").trim();
+        return {
+          content: `I cannot repair this reply. '${who}' does not appear on the employee roster.`,
+          employeeName: null,
+          actionPlan: null,
+          sections: [],
+        };
+      }
+      return null;
+    }
+    if (tool !== "record_intent_slots") return null;
+    const manager = text.split("Manager:").pop() ?? text;
+    const person = intentModel.roster.find((row) => manager.toLowerCase().includes(row.name.toLowerCase()));
+    const namesSalon = /\b(omaha|lawrence|manhattan|shawnee|kearney|pacific|maple|center)\b/i.test(manager);
+    return {
+      employee: person?.name ?? null,
+      salon: person && !namesSalon ? person.primary : null,
+      title: null,
+      incidentType: null,
+      incidentDate: null,
+      payrollAmount: null,
+      warningLevel: null,
+      formType: null,
+      formTurn: false,
+      policyHeading: "Warning",
+    };
+  },
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -373,12 +383,17 @@ interface TurnCheck {
   readonly employeeNot?: readonly string[];
   readonly locationId?: string;
   readonly locationIds?: readonly string[];
-  readonly formDate?: string;
+  /** Null means the form keeps its default date. "today" is that default and is not stored. */
+  readonly formDate?: string | null;
   readonly templateKey?: string;
   readonly role?: string;
   readonly policyHeading?: string;
   readonly policyPage?: number;
   readonly datesInReply?: readonly string[];
+  readonly payroll?: "yes" | "no";
+  readonly warning?: "verbal" | "written";
+  /** The retirement "Warning" sheet is not a policy and must not be cited. */
+  readonly noWarning?: boolean;
   readonly noReask?: boolean;
   readonly noOtherChat?: boolean;
 }
@@ -420,8 +435,10 @@ const CASES: readonly ReplayCase[] = [
         role: "ASD",
         policyHeading: "Late Opening",
         policyPage: 15,
+        payroll: "yes",
         noReask: true,
         noOtherChat: true,
+        noWarning: true,
       },
     ],
     off: [
@@ -598,9 +615,15 @@ const CASES: readonly ReplayCase[] = [
         templateKey: "dpoa",
         formDate: TODAY,
         role: "Tanning Consultant",
+        payroll: "no",
+        warning: "verbal",
+        noWarning: true,
+        noReask: true,
       },
     ],
-    off: [{ from: 2, card: true, employee: "Betty Sue", templateKey: "dpoa" }],
+    // "today" is the form's default, not a stored calendar date, and the coaching
+    // dates (9/8, 9/15, 9/25) must not become the form date.
+    off: [{ from: 2, card: true, employee: "Betty Sue", templateKey: "dpoa", payroll: "no", formDate: null }],
   },
   {
     id: "s20",
@@ -610,8 +633,14 @@ const CASES: readonly ReplayCase[] = [
       "creat an exit plan for me",
       "exit form",
     ],
-    on: [{ from: 1, employeeNot: ["based", "uniform", "job title", "lisa", "lawrence"] }],
-    off: [{ from: 1, employeeNot: ["based"] }],
+    on: [
+      { from: 1, employeeNot: ["based", "uniform", "job title", "lisa", "lawrence", "me"] },
+      { from: 3, templateKey: "stc-exit" },
+    ],
+    off: [
+      { from: 1, employeeNot: ["based"] },
+      { from: 3, templateKey: "stc-exit" },
+    ],
   },
   {
     id: "s21",
@@ -627,9 +656,10 @@ const CASES: readonly ReplayCase[] = [
         card: true,
         employee: "Kennedy Morehouse",
         employeeNot: ["omaha", "center", "pacific", "based"],
-        locationIds: ["loc-0410", "loc-0314"],
+        locationId: "loc-0410",
         formDate: "2026-10-05",
         templateKey: "dpoa",
+        noWarning: true,
       },
     ],
     off: [
@@ -639,6 +669,7 @@ const CASES: readonly ReplayCase[] = [
         employee: "Kennedy Morehouse",
         templateKey: "dpoa",
         formDate: "2026-10-05",
+        locationId: "loc-0410",
       },
     ],
   },
@@ -652,6 +683,7 @@ const CASES: readonly ReplayCase[] = [
         employee: "Paisley Peklo",
         employeeNot: ["pasiley", "pasiley peklo", "based"],
         templateKey: "dpoa",
+        locationId: "loc-0313",
       },
     ],
     off: [],
@@ -815,9 +847,21 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
   }
   if (check.locationId) expect(proposal?.locationId, where).toBe(check.locationId);
   if (check.locationIds) expect(check.locationIds, where).toContain(proposal?.locationId);
-  if (check.formDate) expect(proposal?.formDate, where).toBe(check.formDate);
+  if (check.formDate !== undefined) expect(proposal?.formDate ?? null, where).toBe(check.formDate);
   if (check.templateKey) expect(proposal?.templateKey, where).toBe(check.templateKey);
   if (check.role) expect(proposal?.employeeRole, where).toBe(check.role);
+  if (check.payroll) expect(proposal?.payrollDeduct, where).toBe(check.payroll);
+  if (check.warning) expect(proposal?.warningLevel, where).toBe(check.warning);
+  if (check.locationId) {
+    expect(response.content, where).not.toMatch(/choose the salon below/i);
+  }
+  if (check.noWarning) {
+    const cited = `${response.content}\n${response.citations.map((item) => `${item.excerpt ?? ""} ${item.locator ?? ""}`).join("\n")}`;
+    expect(cited, where).not.toMatch(/\bwarning policy\b/i);
+  }
+  expect(response.content, where).not.toMatch(
+    /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|didn'?t find \*\*|employee list for your salons|not found in the roster/i,
+  );
   if (check.policyHeading && check.policyPage) {
     expect(cites(response.content, response.citations, check.policyHeading, check.policyPage), `${where} content: ${preview}`).toBe(true);
   }
@@ -841,6 +885,9 @@ async function replay(item: ReplayCase, flagsOn: boolean) {
   for (let index = 0; index < item.turns.length; index += 1) {
     const response = await ask(item.turns[index]!, history, conversationId);
     const turn = index + 1;
+    expect(response.content, `${item.id} turn ${turn}`).not.toMatch(
+      /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|didn'?t find \*\*|employee list for your salons|not found in the roster/i,
+    );
     for (const check of checks) applyCheck(item.id, turn, response, check);
     history.push({
       id: `u-${item.id}-${index}`,
@@ -862,6 +909,10 @@ async function replay(item: ReplayCase, flagsOn: boolean) {
 beforeEach(() => {
   stateBag.forms.clear();
   captured.memory.length = 0;
+  intentModel.roster = PEOPLE.map((row) => ({
+    name: `${row.firstName} ${row.lastName}`,
+    primary: row.primaryLocationName,
+  }));
 });
 
 describe("priority replay with the seven flags on", () => {

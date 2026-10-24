@@ -5,6 +5,16 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 23 Oct 2026: a name not in Woven is not a blocker (Sunny only)
+
+Live replay with the seven flags on refused forms, leaked the repair model's
+"I cannot repair this reply", and dropped slots that an earlier turn had
+already filled. A typed name stays on the card. Filled slots stay for the
+rest of the chat. The salon the manager named wins over the Woven primary.
+The retirement "Warning" sheet is not cited as a policy. "Exit plan" is the
+Resignation/Exit Form. Ask Bubbles was not attached (`permissions.push` is
+false). Port the mechanism. Do not copy salon names, people, or company wording.
+
 ## 23 Oct 2026: hybrid rank was burying the nearest chunk (Sunny only)
 
 With both retrieval flags on, reciprocal-rank fusion let an OR keyword hit

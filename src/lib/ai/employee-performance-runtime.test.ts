@@ -958,7 +958,9 @@ describe("L. the Forms and Coaching path is unaffected", () => {
 
     const answer = await ask({ question: "Create a coaching form for Sarah" });
 
-    expect(answer).toBe(state.proposal);
+    // The card keeps the name in the question. Retrieval, the role, and the model stay untouched.
+    expect(answer.content).toBe((state.proposal as { content: string }).content);
+    expect(answer.formProposal).toMatchObject({ templateKey: "coaching_form", employeeName: "Sarah" });
     expect(state.matchCalls).toBe(0);
     expect(state.roleCalls).toBe(0);
     expect(state.claudeCalls).toBe(0);

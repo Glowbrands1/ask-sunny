@@ -6,7 +6,7 @@ import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
-import { findManualSection, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
+import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
 import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
@@ -54,7 +54,7 @@ export function enrichFormCard(input: {
 
   const blob = [input.question, input.saved?.incident ?? ""].filter(Boolean).join("\n");
   const said = input.said?.trim() ? input.said : blob;
-  const statedName = statedEmployee(blob) ?? input.saved?.employeeName ?? null;
+  const statedName = statedEmployee(said) ?? input.saved?.employeeName ?? null;
   const employeeName = preferRosterName(proposal.employeeName ?? statedName, said, input.people);
   const title = statedTitle(blob, input.saved?.title ?? null) ?? proposal.employeeRole;
   const spoken = withoutStateSentences(input.question);
@@ -164,13 +164,18 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
   );
   if (described) {
     const key = described.heading.toLowerCase();
-    return [described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)];
+    return citedPolicies([described, ...fromAccount.filter((section) => section.heading.toLowerCase() !== key)]);
   }
-  if (fromAccount.length > 0) return fromAccount;
+  if (fromAccount.length > 0) return citedPolicies(fromAccount);
   const heading = modelHeading ?? statedManualHeading(notes);
   if (!heading) return [];
   const section = findManualSection(chunks, [heading]);
-  return section ? [section] : [];
+  return section ? citedPolicies([section]) : [];
+}
+
+/** A sheet the manual does not title as a policy — the retirement "Warning" — is not cited. */
+function citedPolicies(sections: readonly ManualSection[]): ManualSection[] {
+  return sections.filter((section) => headingKey(section.heading) !== "warning");
 }
 
 /**
@@ -422,14 +427,11 @@ function rosterOnce(content: string, name: string | null, people: readonly Groun
   if (!name || people.length === 0) return content;
   if (/couldn'?t find|didn'?t find|not in the woven roster/i.test(content)) return content;
   const match = matchEmployeeName(name, people);
-  if (match.kind !== "none") {
-    if (match.kind === "confirm" && match.candidates.length === 1 && match.candidates[0]!.name.toLowerCase() !== name.toLowerCase()) {
-      const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
-      if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
-    }
-    return content;
+  if (match.kind === "confirm" && match.candidates.length === 1 && match.candidates[0]!.name.toLowerCase() !== name.toLowerCase()) {
+    const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
+    if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
   }
-  return `I couldn't find **${name}** in the Woven roster.\n\n${content}`;
+  return content;
 }
 
 function alreadySaid(content: string, line: string): boolean {

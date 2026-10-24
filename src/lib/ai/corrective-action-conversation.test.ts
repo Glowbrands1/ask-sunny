@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
+import { displayTypedName } from "./roster-reply";
+
 /*
  * The first test pays for importing the whole answer path (`server-ask`), and
  * under a full parallel run that alone can pass the default five seconds.
@@ -1368,7 +1370,8 @@ describe("nothing stored by the old name breaks", () => {
  * could be created — while "Rosalyn Co" worked. Neither the casing nor a
  * missing surname decides whether the draft can be created.
  */
-// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
+// Pau, 23 Oct 2026: an all-lower or all-upper name is title-cased on the card.
+// A word that already mixes case stays as typed. The reply body keeps the spelling the form reader printed.
 describe("a Corrective Action Form for a name typed in any case", () => {
   const NAMES = [
     "Rosalyn Co",
@@ -1386,7 +1389,7 @@ describe("a Corrective Action Form for a name typed in any case", () => {
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.templateKey).toBe("dpoa");
-    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.employeeName).toBe(displayTypedName(name));
     expect(answer.formProposal!.status).toBe("ready");
     expect(answer.formProposal!.supportsInlineDraft).toBe(true);
     expect(answer.content).toMatch(/create the draft here/i);
@@ -1402,7 +1405,7 @@ describe("a Corrective Action Form for a name typed in any case", () => {
     });
 
     expect(answer.formProposal).toBeDefined();
-    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.employeeName).toBe(displayTypedName(name));
     expect(answer.formProposal!.status).toBe("ready");
     expect(answer.formProposal!.supportsInlineDraft).toBe(true);
   });
@@ -1432,7 +1435,7 @@ describe("a Corrective Action Form for a name typed in any case", () => {
  * form exactly as the bare name does, and a name whose own spelling carries an
  * apostrophe or hyphen keeps it.
  */
-// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
+// Pau, 23 Oct 2026: title case on the card for a name typed in one case. Mixed-case words stay.
 describe("a Corrective Action Form for a name wrapped in punctuation", () => {
   const CASES: [string, string][] = [
     ["(rosalyn)", "rosalyn"],
@@ -1452,7 +1455,7 @@ describe("a Corrective Action Form for a name wrapped in punctuation", () => {
     const answer = await ask(`Create a Corrective Action form for ${typed} She wore slippers today.`);
 
     expect(answer.formProposal).toBeDefined();
-    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.employeeName).toBe(displayTypedName(name));
     expect(answer.formProposal!.status).toBe("ready");
     expect(answer.formProposal!.supportsInlineDraft).toBe(true);
   });
@@ -1467,7 +1470,7 @@ describe("a Corrective Action Form for a name wrapped in punctuation", () => {
     });
 
     expect(answer.formProposal).toBeDefined();
-    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.employeeName).toBe(displayTypedName(name));
     expect(answer.formProposal!.status).toBe("ready");
     expect(answer.formProposal!.supportsInlineDraft).toBe(true);
   });
@@ -1593,7 +1596,7 @@ describe("the coaching intake answered on one line", () => {
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.templateKey).toBe("coaching");
-    expect(answer.formProposal!.employeeName).toBe(name);
+    expect(answer.formProposal!.employeeName).toBe(displayTypedName(name));
     expect(answer.formProposal!.employeeRole).toBe(title);
     expect(answer.formProposal!.status).toBe("ready");
   });
@@ -1612,7 +1615,7 @@ describe("the coaching intake answered on one line", () => {
       { role: "admin" as never, scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] } },
     );
 
-    expect(answer.formProposal?.employeeName).toBe("dana moss");
+    expect(answer.formProposal?.employeeName).toBe(displayTypedName("dana moss"));
     expect(answer.formProposal?.status).toBe("ready");
     expect(answer.formProposal?.supportsInlineDraft).toBe(true);
   });
@@ -1793,7 +1796,7 @@ describe("the payroll-deduct question on a form that does not ask it yet", () =>
  * AND the employee, with no "which form?" and no "who is this for?". One rule
  * for the whole library — see `leadingFormRequest` in `template-intent.ts`.
  */
-// QA 22 Oct 2026 decision: the manager's spelling is kept unless the directory matches exactly — typed-spelling expectations restored from main.
+// Pau, 23 Oct 2026: title case on the card. The body still quotes the spelling the reader printed.
 describe("a form's name leading the message, across the library", () => {
   it.each([
     ["CA for rosalyn co", "dpoa", "rosalyn co"],
@@ -1812,7 +1815,7 @@ describe("a form's name leading the message, across the library", () => {
     const answer = await ask(question);
 
     expect(answer.formProposal?.templateKey).toBe(key);
-    expect(answer.formProposal?.employeeName).toBe(employee);
+    expect(answer.formProposal?.employeeName).toBe(displayTypedName(employee));
     expect(answer.formProposal?.status).toBe("ready");
     expect(answer.formSelection).toBeUndefined();
     expect(answer.content).not.toMatch(/which form/i);
@@ -1822,10 +1825,10 @@ describe("a form's name leading the message, across the library", () => {
 
   it("keeps a middle name, and the details that follow it", async () => {
     const transfer = await ask("Transfer for mary anne cruz to salon 24");
-    expect(transfer.formProposal?.employeeName).toBe("mary anne cruz");
+    expect(transfer.formProposal?.employeeName).toBe(displayTypedName("mary anne cruz"));
 
     const exit = await ask("Exit for john michael doe effective october 2");
-    expect(exit.formProposal?.employeeName).toBe("john michael doe");
+    expect(exit.formProposal?.employeeName).toBe(displayTypedName("john michael doe"));
   });
 
   /*
@@ -1839,7 +1842,7 @@ describe("a form's name leading the message, across the library", () => {
     const answer = await ask(question);
 
     expect(answer.formProposal?.templateKey).toBe("dpoa");
-    expect(answer.formProposal?.employeeName).toBe("rosalyn co");
+    expect(answer.formProposal?.employeeName).toBe(displayTypedName("rosalyn co"));
     expect(answer.formProposal?.status).toBe("ready");
     expect(answer.formProposal?.formDate ?? null).toBeNull();
     expect(answer.formSelection).toBeUndefined();

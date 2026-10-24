@@ -23,8 +23,8 @@ const REPAIR_SYSTEM = `You repair one assistant reply. Call repair_reply once.
 For each cited section, read that chunk's own text and the manager's question. Set applies to false when the chunk's text limits the section to a situation the question does not describe. Omit that section from content, including a consequence stated only in that chunk. Judge only from the chunk text and the question.
 Cite a heading only when it is in the chunk list, and the page must be that chunk's page.
 An action plan, when you include one, is exactly two sentences.
-employeeName is a roster name from the list, or null.
-Do not invent a policy, a page, or a person. If a part cannot be repaired, omit it.`;
+employeeName is the name already on the reply, or a roster spelling of that same person. Never clear it because the roster has no row.
+Do not invent a policy, a page, or a person. Do not refuse the form. If a part cannot be repaired, omit that part and leave the rest of the reply.`;
 
 export async function guardReply(
   response: AskResponse,

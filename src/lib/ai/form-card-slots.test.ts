@@ -320,13 +320,13 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(card.content).toContain("9/20/2026");
     expect(card.content).toContain("$25");
     expect(card.content).toMatch(/Late Opening/);
-    expect(card.content).toContain("I couldn't find **test testy** in the Woven roster.");
-    expect(card.content.match(/couldn't find|didn't find/gi)?.length).toBe(1);
+    // A name Woven does not have stays on the card and is not reported as an error.
+    expect(card.content).not.toMatch(/couldn'?t find|didn'?t find/i);
 
     const again = enrichFormCard({ response: card, question: MANHATTAN_PROMPT, today: TODAY, people: [JORDAN], saved: resent.state });
     expect(again.formProposal?.formDate).toBe("2026-09-20");
     expect(again.formProposal?.payrollDeduct).toBe("yes");
-    expect(again.content.match(/couldn't find|didn't find/gi)?.length).toBe(1);
+    expect(again.content).not.toMatch(/couldn'?t find|didn'?t find/i);
     expect(again.content).not.toMatch(/verbal or written/i);
   });
 
@@ -405,7 +405,7 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(card.formProposal?.formDate).toBe(TODAY);
     expect(card.content).toContain("Lisa smith");
     expect(card.content).toContain("10/23/2026");
-    expect(card.content).toContain("I couldn't find **Lisa smith** in the Woven roster.");
+    expect(card.content).not.toMatch(/couldn'?t find|didn'?t find/i);
     expect(card.content).not.toMatch(/who is this/i);
 
     const suggested = enrichFormCard({

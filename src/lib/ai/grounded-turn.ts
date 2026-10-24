@@ -24,6 +24,7 @@ import { oneSalonVisibleIn } from "./proposal-question";
 import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
+import { holdFilledSlots } from "./keep-filled-slots";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
 /**
@@ -59,18 +60,25 @@ export async function deliverFormProposal(input: {
     const proposed = await input.propose(input.question);
     if (!proposed) return null;
     const decorated = await input.decorate(withVisibleSalon(proposed, input));
-    if (!cardSlotsEnabled()) return decorated;
-    const said = [
-      ...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
-      input.question,
-    ].join("\n");
-    return enrichFormCard({
-      response: decorated,
+    const enriched = !cardSlotsEnabled()
+      ? decorated
+      : enrichFormCard({
+          response: decorated,
+          question: input.question,
+          said: [
+            ...input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+            input.question,
+          ].join("\n"),
+          today: input.request.context.todayIso,
+          people: [],
+          saved: null,
+        });
+    return holdFilledSlots({
+      response: enriched,
       question: input.question,
-      said,
+      history: input.request.history,
       today: input.request.context.todayIso,
       people: [],
-      saved: null,
     });
   }
 
@@ -114,13 +122,20 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const reopened = await reopenSameIncident(dedupe, input, settled);
+  const held = holdFilledSlots({
+    response: settled,
+    question: input.question,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+    people,
+  });
+  const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
-    await writeSaved(stateOn, input, saved, settled, prep);
+    await writeSaved(stateOn, input, saved, held, prep);
     return reopened;
   }
-  await writeSaved(stateOn, input, saved, settled, prep);
-  return settled;
+  await writeSaved(stateOn, input, saved, held, prep);
+  return held;
 }
 
 function withVisibleSalon(

@@ -1344,4 +1344,15 @@ export const JBA_MANUAL_CHUNKS: readonly ManualChunk[] = [
     sections: [],
     content: "Synthetic policy wording, line 1.\nSynthetic policy wording, line 2.\nSynthetic policy wording, line 3.\nSynthetic policy wording, line 4.\nSynthetic policy wording, line 5.",
   },
+  {
+    chunkIndex: 110,
+    chunkId: "jba-110",
+    page: 37,
+    printedPage: 36,
+    locator: "Page 36 — Warning",
+    section: "Warning",
+    sections: [{ heading: "Warning", page: 36 }],
+    content:
+      "36 | P a g e\nWarning\nSynthetic retirement-account notice. This sheet is not a workplace policy and is not cited on a form.",
+  },
 ];

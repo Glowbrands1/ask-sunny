@@ -22,8 +22,8 @@ import type { GroundedPerson } from "./grounded-entities";
  *
  * The model copies what the manager said. This file decides what is real.
  * A heading that is not in the headings it was given is dropped. A person
- * who is not on the roster keeps the name the manager typed; the reply says
- * once that Woven does not have them, and the other slots stay.
+ * who is not on the roster keeps the name the manager typed. That is not an
+ * error, and the other slots stay.
  */
 
 export const INTENT_TOOL_NAME = "record_intent_slots";
@@ -260,7 +260,8 @@ function pageForHeading(heading: string | null, pages: Readonly<Record<string, n
 
 /** A retrieved heading the model named, or null when that heading was not retrieved. */
 function groundPolicy(typed: string | null, headings: readonly string[]): string | null {
-  if (!typed || headings.length === 0) return null;
+  // "Warning" is a retirement notice in the manual, not a policy heading.
+  if (!typed || headings.length === 0 || headingKey(typed) === "warning") return null;
   const exact = headings.find((heading) => headingKey(heading) === headingKey(typed));
   if (exact) return exact;
   const named = headings.filter((heading) => namesHeading(typed, heading));
@@ -353,33 +354,41 @@ function groundSalon(
   salons: readonly SalonRow[],
   person: GroundedPerson | null,
 ): { id: string | null; name: string | null; ambiguous: readonly SalonRow[] } {
-  const probed = typed?.trim() || null;
-  // A salon the manager named wins, including one this employee is not
-  // affiliated with. The affiliation list is only the guess when they
-  // named none.
-  const matched = probed ? matchSalons(probed, salons) : matchSalonsInText(blob, salons);
-  if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
-  if (matched.length > 1) {
-    // A later turn that names one salon replaces an earlier one. Two salons
-    // in the same turn stay a question.
+  // The salon the manager named wins over a model slot and over the Woven
+  // primary. "Primary salon is …" names the home salon; the other salon in
+  // that same account is where it happened.
+  const incident = salonBesidesPrimary(blob, salons);
+  if (incident) return { id: incident.id, name: incident.name, ambiguous: [] };
+  const named = matchSalonsInText(blob, salons);
+  if (named.length === 1) return { id: named[0]!.id, name: named[0]!.name, ambiguous: [] };
+  if (named.length > 1) {
     const latest = latestUniqueSalon(blob, salons);
     if (latest) return { id: latest.id, name: latest.name, ambiguous: [] };
-    return { id: null, name: null, ambiguous: matched };
+    return { id: null, name: null, ambiguous: named };
   }
-  if (person) {
-    const primary = wovenPrimary(person, salons);
-    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  const probed = typed?.trim() || null;
+  if (probed) {
+    const matched = matchSalons(probed, salons);
+    if (matched.length === 1) return { id: matched[0]!.id, name: matched[0]!.name, ambiguous: [] };
+    if (matched.length > 1) return { id: null, name: null, ambiguous: matched };
   }
-  if (person && person.salonIds.length === 1) {
+  if (!person) return { id: null, name: null, ambiguous: [] };
+  const primary = wovenPrimary(person, salons);
+  if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
+  if (person.salonIds.length === 1) {
     const only = salons.find((salon) => salon.id === person.salonIds[0]);
     if (only) return { id: only.id, name: only.name, ambiguous: [] };
     if (person.primaryLocationName) return { id: person.salonIds[0]!, name: person.primaryLocationName, ambiguous: [] };
   }
-  if (person) {
-    const primary = wovenPrimary(person, salons);
-    if (primary) return { id: primary.id, name: primary.name, ambiguous: [] };
-  }
   return { id: null, name: null, ambiguous: [] };
+}
+
+/** The salon that is not the one introduced as "primary salon is …". */
+function salonBesidesPrimary(text: string, salons: readonly SalonRow[]): SalonRow | null {
+  const stripped = text.replace(/\bprimary\s+salon\s+is\s+[^.\n]+/gi, " ");
+  if (stripped === text) return null;
+  const hits = matchSalonsInText(stripped, salons);
+  return hits.length === 1 ? hits[0]! : null;
 }
 
 function wovenPrimary(person: GroundedPerson, salons: readonly SalonRow[]): SalonRow | null {
@@ -657,7 +666,7 @@ function clarificationFor(input: {
   // here replaced the card on every live replay (23 Oct 2026), including
   // turns that had already named the employee, the salon, the form, and the
   // date. Warning level, title, what happened, and which form are optional.
-  // A name that is not on the roster stays on the card with a Woven note.
+  // A name that is not on the roster stays on the card. It is not announced.
   return null;
 }
 

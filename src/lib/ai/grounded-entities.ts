@@ -157,11 +157,6 @@ export function applyGroundedProposal(
   if (input.prep.ambiguous.length > 1 || content.startsWith("Did you mean **")) {
     content = labelDuplicateQuestion(content, input.people, input.prep.ambiguousTyped);
   }
-  if (!input.rosterEmpty && input.prep.unmatched.length > 0) {
-    const names = input.prep.unmatched.map((name) => `**${name}**`).join(" or ");
-    const sentence = `I couldn't find ${names} in the Woven roster.`;
-    if (!content.includes("couldn't find") && !content.includes("didn't find")) content = `${sentence}\n\n${content}`;
-  }
   if (!response.formProposal) return content === response.content ? response : { ...response, content };
 
   let proposal = response.formProposal;

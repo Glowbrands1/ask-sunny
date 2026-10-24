@@ -163,6 +163,8 @@ const TEMPLATE_INTENT: { key: string; matchers: string[] }[] = [
       "stc exit",
       "exit form",
       "exit forms",
+      "exit plan",
+      "exit plans",
       "exit paperwork",
       "exit document",
       "resignation form",

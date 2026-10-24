@@ -127,11 +127,33 @@ describe("self-check", () => {
     expect(actionPlanSentenceCount(THREE)).toBe(3);
   });
 
-  it("accepts a lowercase roster name and rejects a typo", () => {
+  it("never sends the repair model's refusal: I cannot repair this reply, Test Testy does not appear on the employee roster", async () => {
+    const settled = await runSelfCheck(
+      draft({
+        content: "Invented Section, JBA Policy Manual p.4. The form is for Test Testy.",
+        actionPlan: null,
+        employeeName: "Test Testy",
+        chunks: [],
+      }),
+      async () => ({
+        content: "I cannot repair this reply. 'Test Testy' does not appear on the employee roster.",
+        employeeName: null,
+        actionPlan: null,
+        sections: [],
+      }),
+    );
+    expect(settled.content).not.toMatch(/I cannot repair|does not appear on the employee roster|I cannot create this form/i);
+    expect(settled.employeeName).toBe("Test Testy");
+    expect(settled.content).toContain("Test Testy");
+  });
+
+  it("does not treat a name that is missing from Woven as a failure", () => {
+    // Pau, 23 Oct 2026: a person who is not in Woven is still the employee.
+    // The old check rejected "jorden hale" and the repair model then refused the form.
     expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "jordan hale" }))).toEqual([]);
     expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "JORDAN HALE" }))).toEqual([]);
-    const typo = reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "jorden hale" }));
-    expect(typo).toEqual([{ kind: "employee", detail: "jorden hale" }]);
+    expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "jorden hale" }))).toEqual([]);
+    expect(reviewOutgoing(draft({ content: "Ready.", actionPlan: null, chunks: [], employeeName: "Test Testy" }))).toEqual([]);
   });
 
   it("skips the employee check when the roster could not be read or came back empty", () => {
@@ -184,10 +206,10 @@ describe("self-check", () => {
     expect(calls).toBe(1);
     expect(settled.ok).toBe(false);
     expect(settled.repaired).toBe(true);
-    // The typed spelling stays on the card. The reply says Woven did not match.
+    // The typed spelling stays. A missing Woven row is not said as an error.
     expect(settled.employeeName).toBe("Jorden Hale");
     expect(settled.content).not.toContain("p.99");
-    expect(settled.content).toContain("couldn't find **Jorden Hale** in the Woven roster");
+    expect(settled.content).not.toMatch(/couldn'?t find|does not appear|I cannot repair/i);
     expect(settled.content).not.toContain("not on the form");
     expect(settled.actionPlan && actionPlanSentenceCount(settled.actionPlan)).toBe(2);
     expect(settled.content).not.toContain("written note");

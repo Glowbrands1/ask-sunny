@@ -65,6 +65,20 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdmin: () => harness.client,
 }));
 
+/*
+ * The default window ends at UTC midnight of the business date. After 8pm
+ * US Eastern the database clock is already the next UTC day, so rows written
+ * during this test fell outside the window and the counts came back as zero.
+ * Anchoring the window on the UTC date keeps those rows inside it at any hour.
+ */
+vi.mock("@/lib/business-date", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/business-date")>("@/lib/business-date");
+  return {
+    ...actual,
+    businessToday: () => new Date().toISOString().slice(0, 10),
+  };
+});
+
 /* The turn recorder's telemetry is a log line; it is not what is under test. */
 vi.mock("@/lib/analytics/telemetry", () => ({
   logTurnEvent: () => {},
