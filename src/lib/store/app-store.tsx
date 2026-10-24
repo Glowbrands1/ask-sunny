@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { sendAfterHydrateEnabled } from "@/lib/config/chat-quality-flags";
 import { isDemoMode } from "@/lib/config/runtime";
 import {
   ChatSyncFailure,
@@ -213,6 +214,40 @@ const DEMO_MODE = isDemoMode();
  */
 function signatureOf(conversation: ChatConversation): string {
   return `${conversation.updatedAt}|${conversation.messages.length}`;
+}
+
+/**
+ * An append or a patch whose conversation is no longer in state.
+ *
+ * The map below is a no-op in that case, which is how a reply disappeared
+ * after hydration replaced the list. The call is still a no-op. This only
+ * makes the drop visible. Off, nothing is logged.
+ */
+function warnDroppedConversation(action: "append" | "patch", conversationId: string): void {
+  const message = `[chat] ${action} dropped: conversation ${conversationId} is not in the store`;
+  console.warn(message);
+  console.trace(message);
+}
+
+/*
+ * One warning per drop, even when React runs the updater twice. Cleared on
+ * the next turn so a later drop of the same id is reported again.
+ *
+ * Issued from inside the updater, which is when the miss is actually known.
+ * React 19 runs that function as it flushes the update, later than the
+ * setState call returns, so a flag read immediately afterwards never sees it.
+ */
+const droppedConversationWarnings = new Set<string>();
+
+function noteDroppedConversation(action: "append" | "patch", conversationId: string): void {
+  if (!sendAfterHydrateEnabled()) return;
+  const key = `${action}:${conversationId}`;
+  if (droppedConversationWarnings.has(key)) return;
+  droppedConversationWarnings.add(key);
+  warnDroppedConversation(action, conversationId);
+  queueMicrotask(() => {
+    droppedConversationWarnings.delete(key);
+  });
 }
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
@@ -540,7 +575,25 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
       if (liveTemplates.length > 0) setTemplates(liveTemplates);
       if (liveForms.length > 0) setForms(liveForms);
-      if (liveConversations.length > 0) setConversations(liveConversations);
+      /*
+       * A question sent while `listDocuments` was still in flight is already
+       * in state. Replacing with this snapshot erases it, and the reply's
+       * append then finds no id. The same wipe is what leaves a reply that
+       * already reached the account unrendered, when the fetch below is a
+       * snapshot from before that save, and what leaves a saved question
+       * with no reply when the append lands after the replace. Off, the
+       * replace is the line it has always been. On, the snapshot is merged
+       * under whatever was created during the wait. `historicalIds` below
+       * stays primed from `liveConversations` only, so the new conversation
+       * still syncs.
+       */
+      if (liveConversations.length > 0) {
+        if (sendAfterHydrateEnabled()) {
+          setConversations((current) => mergeConversations(liveConversations, current));
+        } else {
+          setConversations(liveConversations);
+        }
+      }
       if (storedMatrix) setPermissionMatrixState(storedMatrix);
 
       /*
@@ -957,8 +1010,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    */
   const patchConversationMessage = useCallback(
     (conversationId: string, messageId: string, patch: Partial<ChatMessage>) => {
-      setConversations((current) =>
-        current.map((conversation) => {
+      setConversations((current) => {
+        if (!current.some((conversation) => conversation.id === conversationId)) {
+          noteDroppedConversation("patch", conversationId);
+        }
+        return current.map((conversation) => {
           if (conversation.id !== conversationId) return conversation;
           if (!conversation.messages.some((message) => message.id === messageId)) {
             return conversation;
@@ -970,8 +1026,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             ),
             updatedAt: activityNowIso(),
           };
-        }),
-      );
+        });
+      });
     },
     [],
   );
@@ -986,8 +1042,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const appendConversationMessages = useCallback(
     (id: string, messages: ChatMessage[]) => {
       if (messages.length === 0) return;
-      setConversations((current) =>
-        current.map((conversation) =>
+      setConversations((current) => {
+        if (!current.some((conversation) => conversation.id === id)) {
+          noteDroppedConversation("append", id);
+        }
+        return current.map((conversation) =>
           conversation.id === id
             ? {
                 ...conversation,
@@ -995,8 +1054,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
                 updatedAt: messages.at(-1)!.createdAt,
               }
             : conversation,
-        ),
-      );
+        );
+      });
     },
     [],
   );
