@@ -145,6 +145,14 @@ function plan(
   part: SourcePart,
   previous: ManifestItem | undefined,
 ): { state: SyncState; pendingAction: PendingAction; reason: string | null } {
+  /*
+   * A byte-identical older edition stays superseded. The next scan still
+   * sees it in Woven; that is not a reason to ingest it again.
+   */
+  if (previous?.reason === "superseded_duplicate") {
+    return { state: "EXCLUDED", pendingAction: "none", reason: "superseded_duplicate" };
+  }
+
   const live = previous?.inAskSunny === true;
   const retire = (state: SyncState, reason: string) => ({
     state: live ? state : state === "UNPUBLISHED" ? "EXCLUDED" : state,
@@ -340,7 +348,7 @@ export function reconcile(input: ReconcileInput): ReconcileOutput {
           syncedFingerprint: previous?.syncedFingerprint ?? null,
           contentHash: previous?.contentHash ?? null,
           knowledgeDocumentId: previous?.knowledgeDocumentId ?? null,
-          inAskSunny: previous?.inAskSunny ?? false,
+          inAskSunny: decision.reason === "superseded_duplicate" ? false : (previous?.inAskSunny ?? false),
           state: decision.state,
           previousState: previous?.state ?? null,
           pendingAction: decision.pendingAction,

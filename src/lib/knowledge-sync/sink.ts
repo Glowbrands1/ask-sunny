@@ -2,7 +2,7 @@ import "server-only";
 
 import { activeKnowledgeCorpus } from "@/lib/knowledge/corpus";
 import { IngestionError } from "@/lib/ingestion/errors";
-import { retireDocument, supersedeDocument, updateDocumentMetadata } from "@/lib/ingestion/lifecycle";
+import { retireDocument, supersedeDocument, supersedeSyncedEdition, updateDocumentMetadata } from "@/lib/ingestion/lifecycle";
 import { ingestDocument } from "@/lib/ingestion/pipeline";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import type { KnowledgeCategory } from "@/types";
@@ -112,6 +112,14 @@ export function createSupabaseKnowledgeSink(source: SourceSystem): KnowledgeSink
         superseded,
         held: plan.held.map((h) => ({ uploadTitle: h.uploadTitle, candidateTitles: h.candidates.map((c) => c.title), reason: h.reason })),
       };
+    },
+
+    async supersedeEdition(documentId, supersededBy) {
+      try {
+        await supersedeSyncedEdition({ documentId, scopeId, supersededBy });
+      } catch (error) {
+        throw asSinkError(error, "supersede_failed");
+      }
     },
 
     async countManualTitleMatches(titles) {
