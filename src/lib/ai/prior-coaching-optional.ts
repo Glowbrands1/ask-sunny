@@ -3,8 +3,9 @@
  * is on.
  *
  * A finalized Form Monitoring record is used. A manager's typed note is used
- * when no finalized record exists. Otherwise the line stays blank. A draft is
- * not evidence. Creation is not refused because the line is empty.
+ * when no finalized record exists. A denial in the same clause ("no prior
+ * coaching") is not a note. Otherwise the line stays blank. A draft is not
+ * evidence. Creation is not refused because the line is empty.
  *
  * Off, the proposal text is returned unchanged.
  */
@@ -22,12 +23,38 @@ export interface PriorCoachingRecord {
   readonly line: string;
 }
 
-const TYPED_NOTE = /\bcoached verbally in [a-z]+\b|\b(?:prior|previous) coaching\b[^.\n]*/i;
+const TYPED_NOTE =
+  /\bcoached verbally in [a-z]+\b|\b(?:prior|previous) coaching\b[^.\n]*|\bverbal warning\b[^.\n]*?\blast\s+(?:week|month|year|time)\b/i;
 
-/** The manager's own words for earlier coaching, or null when they gave none. */
+/** no / none / not / never / without / n't earlier in the same clause. */
+const NEGATION_IN_CLAUSE = /\b(?:no|none|not|never|without)\b|n['’]t/i;
+
+function clauseBefore(text: string, index: number): string {
+  const before = text.slice(0, index);
+  const start = Math.max(
+    before.lastIndexOf("."),
+    before.lastIndexOf("!"),
+    before.lastIndexOf("?"),
+    before.lastIndexOf(";"),
+    before.lastIndexOf(","),
+    before.lastIndexOf("\n"),
+  );
+  return before.slice(start + 1);
+}
+
+/**
+ * The manager's own words for earlier coaching, or null when they gave none.
+ * A match is skipped when a denial precedes it in the same clause, so
+ * "no prior coaching" is not read as a note that coaching exists.
+ */
 export function typedPriorCoachingNote(text: string): string | null {
-  const match = TYPED_NOTE.exec(text);
-  return match ? match[0].trim() : null;
+  const pattern = new RegExp(TYPED_NOTE.source, "gi");
+  for (const match of text.matchAll(pattern)) {
+    if (NEGATION_IN_CLAUSE.test(clauseBefore(text, match.index ?? 0))) continue;
+    const note = match[0].trim();
+    if (note) return note;
+  }
+  return null;
 }
 
 function withoutPriorCoachingHold(content: string): string {
