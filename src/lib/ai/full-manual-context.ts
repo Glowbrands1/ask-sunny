@@ -119,15 +119,15 @@ export function isJbaPolicyManualTitle(title: string): boolean {
 
 export const FULL_MANUAL_GROUNDING_NOTE = `COMPANY KNOWLEDGE
 
-The JBA Policy Manual for Sun Tan City is in the system prompt: shared policy and Sun Tan City sections, with [p.n] markers and section headings. Cite it as "<section name>, <manual title> p.<n>". Do not use a [S#] marker for that manual.`;
+The JBA Policy Manual for Sun Tan City is in the system prompt: shared policy and Sun Tan City sections, with [p.n] markers and section headings. End each policy statement with that [p.n] marker. Cite it as "<section name>, <manual title> p.<n> [p.n]". Do not use an [S#] marker. Do not cite a DM manual, a Salon Director manual, Buff City Soap, or Crunch.`;
 
 function instructionHeader(): string {
   return [
     "FULL POLICY MANUAL",
     "This is the JBA Policy Manual as it applies to Sun Tan City: the shared policy and the Sun Tan City sections. Answer Sun Tan City policy questions from this text.",
-    'Cite each policy in this exact shape: "<section name>, <manual title> p.<n>".',
+    'Cite each policy in this exact shape: "<section name>, <manual title> p.<n> [p.n]".',
     "The section name is a heading printed below. The page is the [p.n] marker on that same text. The manual title is the cite-as name under that manual.",
-    "Do not invent a section or a page. Do not write a [S#] marker for this manual.",
+    "Do not invent a section or a page. Do not use an [S#] marker. Do not cite a manager manual or a section written for another brand.",
   ].join("\n");
 }
 
@@ -614,8 +614,12 @@ export function validateManualCitations(
   const titles = [...new Set(manuals.flatMap((manual) => [manual.title, manual.displayTitle]))]
     .filter((title) => title.trim().length > 0)
     .sort((a, b) => b.length - a.length);
+  /*
+   * The heading is the current sentence only. A wider capture would replace
+   * the policy prose in front of the citation, including a blackout date.
+   */
   const pattern = new RegExp(
-    `([^,\\n]{2,160}?),\\s+(${titles.map(escapeRegExp).join("|")})\\s+p\\.(\\d{1,4})\\b`,
+    `(?<=^|[.!?\\n]\\s|\\n)([^,\\n.!?]{2,160}?),\\s+(${titles.map(escapeRegExp).join("|")})\\s+p\\.(\\d{1,4})\\b`,
     "gi",
   );
   const citations: SourceCitation[] = [];
@@ -631,22 +635,165 @@ export function validateManualCitations(
       : (pagesForHeading(manual, heading)[0] ?? null);
     if (located === null) return "";
     const name = heading;
-    const line = `${name}, ${manual.displayTitle} p.${located}`;
+    const line = `${name}, ${manual.displayTitle} p.${located} [p.${located}]`;
     const key = `${manual.id}\0${headingKey(name)}\0${located}`;
     if (!seen.has(key)) {
       seen.add(key);
-      citations.push({
-        documentId: manual.id,
-        documentTitle: manual.displayTitle,
-        locator: `Page ${located}`,
-        category: categoryOf(manual.category),
-        excerpt: line,
-        relevance: 1,
-      });
+      citations.push(citationFor(manual, name, located));
     }
     return line;
   });
   return { content: tidy(next), citations };
+}
+
+const FOREIGN_MANUAL =
+  /\b(?:(?:the|a)\s+)?(?:(?:stc\s+)?dm(?:\s+training)?(?:\s+manual)?|salon director(?:'s)?(?:\s+manual)?|buff city(?:\s+soap)?(?:\s+policy manual)?|crunch(?:\s+fitness)?(?:\s+policy manual)?)\b[^.]{0,80}?\bpp?\.\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?/gi;
+
+/**
+ * A page citation of a manager manual or another brand.
+ *
+ * A clause that cites the JBA Policy Manual stays, including a Sun Tan City
+ * rule that also names Crunch. "DM manual p.6" and "Salon Director pp.3-5"
+ * do not. The period in "p.6" is not a sentence boundary.
+ */
+function dropForeignManualCitations(content: string): string {
+  const next = content.replace(FOREIGN_MANUAL, (match, offset: number) => {
+    const sentenceStart = Math.max(
+      content.lastIndexOf(".", offset),
+      content.lastIndexOf("!", offset),
+      content.lastIndexOf("?", offset),
+      content.lastIndexOf("\n", offset),
+    );
+    const clause = content.slice(sentenceStart + 1, offset + match.length);
+    /*
+     * "Buff City Soap, JBA Policy Manual p.16" still names this manual, so
+     * the page check below can keep or drop it. A previous sentence that
+     * cited the manual does not protect "DM manual p.6".
+     */
+    if (/\bjba policy manual\b/i.test(clause) || /\b(?:sun tan city|\bstc\b)\b/i.test(clause)) return match;
+    return "";
+  });
+  return next
+    .replace(/\b(?:also\s+)?see\s+the(?:\s+and\s+the)?\s*(?=[.,]|$)/gi, "")
+    .replace(/\s+\band\b\s*(?=[.,]|$)/gi, "");
+}
+
+function citationFor(manual: AssembledManual, heading: string, page: number): SourceCitation {
+  return {
+    documentId: manual.id,
+    documentTitle: manual.displayTitle,
+    locator: `Page ${page}`,
+    category: categoryOf(manual.category),
+    excerpt: heading,
+    relevance: 1,
+  };
+}
+
+function pageExists(manuals: readonly AssembledManual[], page: number): AssembledManual | undefined {
+  return manuals.find((manual) => manual.pages.some((entry) => entry.page === page));
+}
+
+/**
+ * The heading named closest to the end of `before`.
+ *
+ * The words have to be the heading itself, not a piece of a longer word.
+ * The later heading wins when the window still holds the previous citation.
+ */
+function headingNear(before: string, manuals: readonly AssembledManual[]): { manual: AssembledManual; heading: string } | null {
+  const key = headingKey(before.slice(-200));
+  let best: { manual: AssembledManual; heading: string; index: number; length: number } | null = null;
+  for (const manual of manuals) {
+    for (const heading of knownHeadings(manual)) {
+      const headingId = headingKey(heading);
+      if (headingId.length < 3) continue;
+      const index = key.lastIndexOf(headingId);
+      if (index < 0) continue;
+      if (index > 0 && key[index - 1] !== " ") continue;
+      const end = index + headingId.length;
+      if (end < key.length && key[end] !== " ") continue;
+      if (!best || index > best.index || (index === best.index && headingId.length > best.length)) {
+        best = { manual, heading, index, length: headingId.length };
+      }
+    }
+  }
+  return best ? { manual: best.manual, heading: best.heading } : null;
+}
+
+/**
+ * `[p.n]` stays when that printed page is in the manual. A heading named
+ * beside a different number is moved to the page that heading is on.
+ */
+function resolveMarkerPage(before: string, page: number, manuals: readonly AssembledManual[]): number | null {
+  const near = headingNear(before, manuals);
+  if (near) {
+    const pages = pagesForHeading(near.manual, near.heading);
+    if (pages.includes(page)) return page;
+    if (pages[0]) return pages[0];
+  }
+  return pageExists(manuals, page) ? page : null;
+}
+
+/**
+ * Sources in the order the inline `[p.n]` markers appear.
+ *
+ * The excerpt is the section. The locator is the printed page. A marker
+ * the manual does not contain is removed, so the list and the prose name
+ * the same pages.
+ */
+/**
+ * A prose page that no inline `[p.n]` names.
+ *
+ * The marker is the source of truth. "p.6" left over from a contents line,
+ * or "pp.3-5", is not a source once the marker is gone.
+ */
+function dropUncitedPageMentions(content: string): string {
+  const cited = new Set<number>();
+  for (const match of content.matchAll(/\[p\.(\d{1,4})\]/g)) cited.add(Number(match[1]));
+  const next = content.replace(
+    /\bpp?\.\s*(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?/gi,
+    (full, startRaw: string, endRaw: string | undefined, offset: number) => {
+      if (offset > 0 && content[offset - 1] === "[") return full;
+      const start = Number(startRaw);
+      const end = endRaw === undefined ? start : Number(endRaw);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || end < start || end - start > 30) return "";
+      for (let page = start; page <= end; page += 1) {
+        if (!cited.has(page)) return "";
+      }
+      return full;
+    },
+  );
+  return tidy(next.replace(/\s+\b(?:and|or)\b(?=\s*(?:\[p\.|[.,;:]|$))/gi, "")).replace(
+    /(\[p\.(\d{1,4})\])(?:\s*\[p\.\2\])+/g,
+    "$1",
+  );
+}
+
+function alignCitationsToMarkers(
+  content: string,
+  manuals: readonly AssembledManual[],
+): { readonly content: string; readonly citations: readonly SourceCitation[] } {
+  const retargeted = content.replace(/\[p\.(\d{1,4})\]/g, (full, raw: string, offset: number) => {
+    const page = Number(raw);
+    const resolved = resolveMarkerPage(content.slice(0, offset), page, manuals);
+    return resolved === null ? "" : `[p.${resolved}]`;
+  });
+  const collapsed = dropUncitedPageMentions(tidy(retargeted.replace(/(\[p\.(\d{1,4})\])(?:\s*\[p\.\2\])+/g, "$1")));
+  const citations: SourceCitation[] = [];
+  const seen = new Set<string>();
+  for (const match of collapsed.matchAll(/\[p\.(\d{1,4})\]/g)) {
+    const page = Number(match[1]);
+    const manual = pageExists(manuals, page);
+    if (!manual || match.index === undefined) continue;
+    const near = headingNear(collapsed.slice(0, match.index), manuals);
+    const onPage = near && pagesForHeading(near.manual, near.heading).includes(page) ? near.heading : null;
+    const heading = onPage ?? manual.pages.find((entry) => entry.page === page)?.headings[0] ?? null;
+    if (!heading) continue;
+    const key = `${manual.id}\0${headingKey(heading)}\0${page}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    citations.push(citationFor(manual, heading, page));
+  }
+  return { content: collapsed, citations };
 }
 
 export function applyFullManualAnswer(input: {
@@ -654,6 +801,14 @@ export function applyFullManualAnswer(input: {
   readonly manuals: readonly AssembledManual[];
   readonly sourceCount: number;
 }): { readonly content: string; readonly citations: readonly SourceCitation[] } {
-  const marked = dropUnknownSourceMarkers(input.content, input.sourceCount);
-  return validateManualCitations(marked, input.manuals);
+  if (input.manuals.length === 0) {
+    return { content: dropUnknownSourceMarkers(input.content, input.sourceCount), citations: [] };
+  }
+  /*
+   * [S#] counts retrieved chunks. This answer's sources are printed pages,
+   * so a marker such as [S9] or [S11] cannot point at one of them.
+   */
+  const withoutMarkers = input.content.replace(/\[S\d{1,2}\]/g, "");
+  const validated = validateManualCitations(dropForeignManualCitations(withoutMarkers), input.manuals);
+  return alignCitationsToMarkers(validated.content, input.manuals);
 }

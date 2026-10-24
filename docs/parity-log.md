@@ -1,5 +1,21 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: inline printed-page citations — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No ingest change
+and no merge. `FULL_MANUAL_CONTEXT_ENABLED` still defaults off. Off, the
+prompt, retrieval, and `[S#]` sources are unchanged.
+
+- A policy answer cites `<section>, <manual title> p.<n> [p.n]`. The
+  Sources row uses that section as the excerpt and `Page n` as the locator.
+- After the answer, a page or an `[S#]` marker that is not in the loaded
+  manual is removed. A heading cited on the wrong page is moved to the
+  printed page that heading is on. A DM manual, a Salon Director manual,
+  Buff City Soap, and Crunch are not sources.
+- With the manual loaded, topic pins and retrieved chunks are not added
+  back as `[S#]` policy sources.
+
 ## 24 Oct 2026: contents pages, printed pages, chunk overlap — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
