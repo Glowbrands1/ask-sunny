@@ -5,6 +5,7 @@ import { salonById } from "@/data/salons";
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import { errorResponse } from "@/lib/api/respond";
 import {
+  conversationDraftReuseEnabled,
   conversationProposalDedupeEnabled,
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/forms/corrective-action-intake";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
+import { findConversationDraft, lastManagerTurnId, noteConversationDraft } from "@/lib/forms/conversation-draft";
 import { findConversationProposalDraft } from "@/lib/forms/conversation-proposal-draft";
 import { isProposalId } from "@/lib/forms/proposal-id";
 import {
@@ -234,6 +236,30 @@ export async function POST(request: Request) {
     const locationId = location.kind === "authorized" ? location.locationId : null;
 
     /*
+     * ONE DRAFT PER FORM IN THIS CHAT (CONVERSATION_DRAFT_REUSE_ENABLED). A new
+     * card for the same form and employee opens the draft this chat already
+     * made, unless the manager asked for another document since. Before the
+     * any-chat check below, which one earlier "another" switches off for the
+     * rest of the chat. See `conversation-draft.ts`.
+     */
+    const draftChat =
+      body.source === "ask_sunny" && conversationDraftReuseEnabled()
+        ? conversationKeyOf({ conversationId: body.conversationId, conversation: body.conversation })
+        : null;
+    const chatTurns = draftChat ? parseHistory(body.conversation) : [];
+    if (draftChat) {
+      // A guard that cannot read is no guard: the create goes ahead as before.
+      const same = await findConversationDraft({
+        createdBy: actor.id,
+        templateKey: body.templateKey,
+        employeeName: body.employeeName.trim().slice(0, 120),
+        conversationKey: draftChat,
+        turns: chatTurns,
+      }).catch(() => null);
+      if (same) return NextResponse.json({ instance: same, reused: true });
+    }
+
+    /*
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
      * account of what happened still creates.
@@ -344,6 +370,9 @@ export async function POST(request: Request) {
     });
     /* A concurrent press of the same card: its row, as it already is. See `cardInstanceId`. */
     if (instance.reused) return NextResponse.json({ instance, reused: true });
+    if (draftChat) {
+      await noteConversationDraft(String(instance.id), draftChat, lastManagerTurnId(chatTurns)).catch(() => undefined);
+    }
 
     /*
      * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
