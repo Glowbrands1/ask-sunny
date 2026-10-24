@@ -144,6 +144,71 @@ describe("form full remap", () => {
     expect(quoted.response.content).toContain("**Payroll deduction amount?**");
   });
 
+  /**
+   * Ask Bubbles conv_mvmo0x2t25sybdx, with a Sun Tan City salon: What happened
+   * read "payroll deduct $40 applies", then "yes payroll deduct". A payroll
+   * answer replaced the incident.
+   */
+  it("keeps the register shortage as what happened through the payroll answers", () => {
+    const first = "CA for Test Employee at Kearney, register short $40 on 10-20, payroll deduct $40 applies";
+    const turns = [first, "verbal", "yes payroll deduct"];
+    let history: { role: string; content: string }[] = [];
+    let saved: ReturnType<typeof groundFormSlots>["slots"] | null = null;
+    for (const question of turns) {
+      const { slots, response } = groundFormSlots({
+        raw: raw({ observation: "Register was short $40.", warningLevel: null, payrollDeduct: null }),
+        history,
+        question,
+        today: TODAY,
+        people: [],
+        saved,
+      });
+      expect(slots.observation, question).toBe("register short $40");
+      expect(response.content, question).toContain("**What happened:** register short $40");
+      expect(response.content, question).not.toMatch(/What happened:\*\* (?:yes )?payroll/i);
+      expect(slots.payrollDeduct, question).toBe("yes");
+      expect(slots.payrollAmount, question).toBe("$40");
+      history = [...history, { role: "user", content: question }, { role: "assistant", content: response.content }];
+      saved = slots;
+    }
+  });
+
+  /**
+   * QA on PR 100 (24 Oct 2026), in the manager's form of words: a clause that
+   * mentions payroll deduct but is not a payroll answer is the offense, and a
+   * clause that is only the salon's state is not what happened.
+   */
+  it.each([
+    ["CA for Test Employee at Kearney, NE, falsified payroll deduct paperwork on 10-20", "falsified payroll deduct paperwork"],
+    ["CA for Test Employee at Kearney, NE, payroll deduct for missing cash $40 on 10-20", "payroll deduct for missing cash $40"],
+  ])("keeps the offense in %j", (question, offense) => {
+    const { slots, response } = groundFormSlots({
+      raw: raw({ observation: "Model summary.", warningLevel: null, payrollDeduct: null }),
+      history: [],
+      question,
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(slots.observation).toBe(offense);
+    expect(response.content).toContain(`**What happened:** ${offense}`);
+    expect(response.content).not.toMatch(/What happened:\*\* NE\b/);
+  });
+
+  it("does not take the salon's state as what happened", () => {
+    const { slots, response } = groundFormSlots({
+      raw: raw({ observation: "Refused to sign the payroll deduct form.", warningLevel: null, payrollDeduct: null }),
+      history: [],
+      question: "CA for Test Employee at Kearney, NE, she refused to sign the payroll deduct form on 10-20",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(slots.observation).not.toBe("NE");
+    expect(slots.observation).toBe("Refused to sign the payroll deduct form.");
+    expect(response.content).not.toMatch(/What happened:\*\* NE\b/);
+  });
+
   it("overwrites the salon and does not restart", () => {
     const first = "corrective action for Test Employee at Kearney. She left the register drawer open on October 20.";
     const { slots, response } = groundFormSlots({
