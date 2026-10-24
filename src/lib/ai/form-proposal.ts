@@ -12,6 +12,7 @@ import {
   tidyTypedName,
   type ManagerContext,
 } from "@/lib/forms/proposal";
+import { askGlobalNonAdminForSalon } from "@/lib/forms/global-salon-ask";
 import { keptFormHistory } from "./form-history";
 import {
   detectTemplateIntent,
@@ -889,7 +890,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
       : undefined,
     dateQuestion,
   ].filter((note): note is string => Boolean(note));
-  return turn([content, ...notes].join("\n\n"), proposal);
+  return askGlobalNonAdminForSalon(turn([content, ...notes].join("\n\n"), proposal), input.actor);
 }
 
 /**

@@ -669,6 +669,27 @@ describe("P4-RC. a global actor can create a coaching form", () => {
     expect(response!.content).not.toMatch(/Create a Form/);
     expect(response!.content).not.toMatch(/nothing has been created/i);
   });
+
+  it("asks a global district manager for the salon once and still builds the card", async () => {
+    const { proposals } = await load([template(), dpoa()]);
+    const response = await proposals.proposeFormForTurn(
+      turn("Build me a coaching form for Sarah Test for that.", {
+        role: "district_manager",
+        scope: GLOBAL,
+      }),
+    );
+
+    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+    expect(response!.formProposal!.templateName).toBe("Coaching Form");
+    expect(response!.formProposal!.status).toBe("needs_location");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(false);
+    expect(response!.formProposal!.locationId).toBeNull();
+    expect(response!.formProposal!.locationResolution).toBe("needs_selection");
+    expect(response!.formProposal!.authorizedLocationIds.length).toBeGreaterThan(1);
+    expect(response!.content).toMatch(/which salon is this about/i);
+    expect(response!.content).not.toMatch(/won't name one/i);
+    expect(response!.content.match(/which salon is this about/gi)).toHaveLength(1);
+  });
 });
 
 /**

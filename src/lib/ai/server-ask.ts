@@ -54,6 +54,7 @@ import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
 import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
+import { expandPolicyQuery, isCaOrPolicyQuestion, orderPolicyRetrieval } from "@/lib/knowledge/policy-retrieval";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -984,8 +985,9 @@ async function answerQuestionUntraced(
         scopeId: request.scopeId,
       })
     : followedUp;
+  const searched = expandPolicyQuery(query);
   updateChatTrace({
-    rewrittenQuery: query === request.question ? null : query,
+    rewrittenQuery: searched === request.question ? null : searched,
     retrievalCount: null,
   });
   const matchLimit =
@@ -1002,13 +1004,13 @@ async function answerQuestionUntraced(
   try {
     rows = retrievalRecallEnabled()
       ? await matchRecallKnowledge({
-          query,
+          query: searched,
           scopeId: request.scopeId,
           limit: fetchLimit,
         })
       : hybridSearchEnabled()
         ? await matchHybridKnowledge({
-            query,
+            query: searched,
             scopeId: request.scopeId,
             limit: fetchLimit,
           })
@@ -1019,7 +1021,7 @@ async function answerQuestionUntraced(
            * searched on its own words, exactly as before. Hybrid search and the
            * Haiku rewrite run only when their flags are on.
            */
-          query,
+          query: searched,
           scopeId: request.scopeId,
           /*
            * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
@@ -1042,6 +1044,11 @@ async function answerQuestionUntraced(
   if (scopeManual) {
     rows = scopeToCurrentManual(rows, { limit: matchLimit, dedupeBySection: manualSectionDedupeEnabled() });
   }
+  rows = orderPolicyRetrieval(
+    rows,
+    request.question,
+    isCaOrPolicyQuestion(request.question) ? matchLimit : rows.length,
+  );
   updateChatTrace({
     retrievalCount: rows.length,
     retrieved: rows.slice(0, 20).map((row) => ({

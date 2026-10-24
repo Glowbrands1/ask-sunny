@@ -174,7 +174,7 @@ function scopeSentence(visibility: AccessScope): string {
 }
 
 const RECORDS_RULES =
-  "These are records of forms that exist, read from Form Monitoring for this user. Never mark them with a source marker. Only the form name, employee, salon, dates and status are shown — you have NOT seen what any form says, so never describe or guess its contents, reasons or wording. A draft is not a completed coaching. Tell the manager they can open any of these in Forms → Form Monitoring.";
+  "These are records of forms that exist, read from Form Monitoring for this user. Never mark them with a source marker. Only the form name, employee, salon, dates and status are shown — you have NOT seen what any form says, so never describe or guess its contents, reasons or wording. A draft is not previous coaching and is not listed here unless the manager asked for drafts. Tell the manager they can open any of these in Forms → Form Monitoring.";
 
 export function renderFormRecordsBlock(input: {
   visibility: AccessScope;
@@ -285,10 +285,16 @@ export async function loadFormRecords(input: {
       words = candidateNameWords(nameSource);
     }
 
+    const askedForDrafts = /\b(?:drafts?|drafted|unfinished)\b/i.test(input.question);
+    const withoutDrafts = (rows: InstanceRow[]) =>
+      askedForDrafts ? rows : rows.filter((row) => row.status !== "draft");
+
     if (words.length > 0) {
-      const rows = visibleInstances(
-        formsActor,
-        await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
+      const rows = withoutDrafts(
+        visibleInstances(
+          formsActor,
+          await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
+        ),
       );
       const matches = matchRowsToQuestion(rows, words);
       if (matches.named.length > 0 || matches.possible.length > 0) {
@@ -296,7 +302,7 @@ export async function loadFormRecords(input: {
       }
     }
 
-    const recent = visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter));
+    const recent = withoutDrafts(visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter)));
     /*
      * A question that names somebody nobody on file matches is reported as
      * "no form names them" — with the recent list left out, so the model
