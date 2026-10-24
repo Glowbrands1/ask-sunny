@@ -4,10 +4,11 @@ import { codeSlotsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-qu
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { stripFieldLabels } from "@/lib/forms/name-words";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
-import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
+import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
@@ -344,7 +345,8 @@ function groundEmployee(
         (name) =>
           name.trim().split(/\s+/).length >= 2 && !isDocumentName(name) && !isRosterStateName(name),
       );
-  const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
+  const rawProbe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
+  const probe = rawProbe ? stripFieldLabels(rawProbe) : null;
   if (!probe) {
     if (fromText.length > 1) {
       const toldApart = personAtNamedSalon(fromText, blob, salons);
@@ -504,6 +506,8 @@ function groundTitle(
   // The title reader is most-specific first. A roster title contained in a
   // longer one ("salon director" inside "assistant salon director") is not
   // what the manager stated.
+  const labelled = titleAfterJobTitleLabel(blob);
+  if (labelled) return extractJobTitle(labelled) ?? labelled;
   const stated = extractJobTitle(blob);
   if (stated) return stated;
   if (person?.title) return person.title;

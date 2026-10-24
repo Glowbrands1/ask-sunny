@@ -6,7 +6,7 @@ import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/confi
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
-import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import { isFieldLabelWord, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
 import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
 import {
@@ -15,7 +15,7 @@ import {
   payrollDeductAmount,
   statedPayrollDeduct,
 } from "@/lib/forms/payroll-deduct";
-import { extractJobTitle } from "@/lib/forms/proposal";
+import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
@@ -75,8 +75,10 @@ export function enrichFormCard(input: {
 
   const blob = [input.question, input.saved?.incident ?? ""].filter(Boolean).join("\n");
   const said = input.said?.trim() ? input.said : blob;
-  const statedName = statedEmployee(said) ?? input.saved?.employeeName ?? null;
-  const employeeName = preferRosterName(proposal.employeeName ?? statedName, said, input.people);
+  const proposed = proposal.employeeName ? stripFieldLabels(proposal.employeeName) : null;
+  const savedName = input.saved?.employeeName ? stripFieldLabels(input.saved.employeeName) : null;
+  const statedName = statedEmployee(said) ?? savedName;
+  const employeeName = preferRosterName(proposed ?? statedName, said, input.people);
   const title = statedTitle(blob, input.saved?.title ?? null) ?? proposal.employeeRole;
   const spoken = withoutStateSentences(input.question);
   const groundedOn = incidentMarkedIn(input.question, input.today);
@@ -289,13 +291,19 @@ function preferRosterName(name: string | null, text: string, people: readonly Gr
 
 function statedEmployee(text: string): string | null {
   const marked = /The employee is ([^.\n]+)\./i.exec(text)?.[1]?.trim();
-  if (marked && !isDocumentish(marked)) return marked;
-  return nameAroundTitle(text);
+  if (marked && !isDocumentish(marked)) {
+    const cleaned = stripFieldLabels(marked);
+    if (cleaned) return cleaned;
+  }
+  const around = nameAroundTitle(text);
+  return around ? stripFieldLabels(around) : null;
 }
 
 function statedTitle(text: string, saved: string | null): string | null {
+  const labelled = titleAfterJobTitleLabel(text);
+  if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
-  if (marked) return marked;
+  if (marked && !isFieldLabelWord(marked)) return marked;
   if (saved && text.toLowerCase().includes(saved.toLowerCase())) return saved;
   return extractJobTitle(text);
 }
@@ -417,7 +425,15 @@ function takeName(tokens: readonly string[]): string[] {
   const words: string[] = [];
   for (const word of tokens) {
     if (words.length === 2) break;
-    if (!/^[A-Za-z][A-Za-z'’-]+$/.test(word) || word.length < 2) break;
+    if (!/^[A-Za-z][A-Za-z'’-]+$/.test(word) || word.length < 2) {
+      if (words.length > 0) break;
+      continue;
+    }
+    // "Job title" sits between the person and the role. Skip the label, keep the person.
+    if (isFieldLabelWord(word)) {
+      if (words.length > 0) break;
+      continue;
+    }
     if (NOT_A_TYPED_NAME.has(word.toLowerCase())) break;
     words.push(word);
   }

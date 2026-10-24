@@ -555,4 +555,38 @@ describe("live form cards, 23 Oct 2026", () => {
       delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
     }
   });
+
+  it("puts the words after job title on the title, never on the employee", () => {
+    const s8 = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "stc-exit",
+        templateName: "Exit Form",
+        employeeName: "Job title",
+        employeeRole: "Job title",
+      })),
+      question: "christiana headley, tanning consultant at shawnee",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(s8.formProposal?.employeeName).toBe("christiana headley");
+    expect(s8.formProposal?.employeeName?.toLowerCase()).not.toBe("job title");
+    expect(s8.formProposal?.employeeRole).toBe("Tanning Consultant");
+
+    const s17 = enrichFormCard({
+      response: answer("An answer.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        employeeName: "Marissa Lempka Job",
+        employeeRole: null,
+      })),
+      question: "Marissa Lempka Job title: Tanning Consultant",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(s17.formProposal?.employeeName).toBe("Marissa Lempka");
+    expect(s17.formProposal?.employeeName).not.toBe("Marissa Lempka Job");
+    expect(s17.formProposal?.employeeRole).toBe("Tanning Consultant");
+  });
 });
