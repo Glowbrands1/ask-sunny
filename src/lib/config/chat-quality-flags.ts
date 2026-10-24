@@ -348,9 +348,17 @@ export function globalSalonAskEnabled(): boolean {
 }
 
 /**
- * Time off, sick days, W-2 and direct deposit pin the JBA sections that
- * answer them, read from the official manual by heading. Off, retrieval
- * is unchanged: those sections stay wherever vector search ranked them.
+ * Time off, sick days, W-2 and direct deposit.
+ *
+ * On, a chat question pins those JBA sections by heading. A policy question
+ * whose top results contain no current JBA Policy Manual chunk continues
+ * into the heading scan instead of stopping at the similarity floor. A
+ * pinned topic that did not name the manual still gets the manual note, so
+ * the answer is not "I don't have that" while the section is in the sources.
+ * A form or a corrective action does not take these pins.
+ *
+ * Off, retrieval is unchanged: those sections stay wherever vector search
+ * ranked them, and a score at the floor still returns immediately.
  */
 export function manualTopicPinEnabled(): boolean {
   return envFlag("MANUAL_TOPIC_PIN_ENABLED");

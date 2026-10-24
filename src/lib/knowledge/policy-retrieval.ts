@@ -1,3 +1,7 @@
+import {
+  buildPolicyManualNote,
+  type PolicyManualCoverage,
+} from "@/lib/ai/policy-manual-coverage";
 import { headingOf } from "@/lib/ingestion/extract/pdf-sections";
 import {
   headingKey,
@@ -5,7 +9,7 @@ import {
   type ManualChunk,
 } from "@/lib/forms/official-policy-manual";
 
-import { sectionTitleMatches } from "./hybrid-rank";
+import { isPolicyTypeQuestion, sectionTitleMatches } from "./hybrid-rank";
 import { scopeToCurrentManual } from "./current-manual-scope";
 import type { MatchedChunkRow } from "./mappers";
 
@@ -98,6 +102,10 @@ export function expandPolicyQuery(text: string): string {
  * Chunk 121 is labelled "Time Records" and still prints
  * "Schedule Requests/General availability Changes". The heading is matched
  * on that line, not only on the section label.
+ *
+ * Chunk 137 opens "Eligibility" and "Provisions" under PTO. Those are the
+ * accrual rules ("after 90 days", the hour tiers). Treating them as a new
+ * section used to stop the pin before 137 and 138.
  */
 const MANUAL_TOPIC_PINS: readonly { readonly pattern: RegExp; readonly sections: readonly string[] }[] = [
   {
@@ -105,6 +113,8 @@ const MANUAL_TOPIC_PINS: readonly { readonly pattern: RegExp; readonly sections:
       /\b(?:time[\s-]*off|request(?:ing|ed|s)?[\s-]+off|sick\s+days?|paid\s+time\s+off|pto|vacations?)\b/i,
     sections: [
       "Paid time Off (PTO)",
+      "Eligibility",
+      "Provisions",
       "Usage",
       "PTO Usage",
       "Schedule Requests/General availability Changes",
@@ -136,6 +146,22 @@ export function manualTopicSections(text: string): string[] {
     }
   }
   return found;
+}
+
+/**
+ * Headings to pin on a chat turn.
+ *
+ * A form, or a corrective action, already cites the manual on the form
+ * path. "Paycheck" inside a write-up is not a request for Pay Periods.
+ * The flag stays at the caller. This returns an empty list for those turns
+ * whether or not the caller noticed.
+ */
+export function manualTopicSectionsForTurn(input: {
+  readonly question: string;
+  readonly formOrCorrectiveAction?: boolean;
+}): string[] {
+  if (input.formOrCorrectiveAction || isCorrectiveActionQuestion(input.question)) return [];
+  return manualTopicSections(input.question);
 }
 
 function matchesTopicHeading(key: string, wanted: ReadonlySet<string>): boolean {
@@ -205,22 +231,85 @@ function topicRow(
   };
 }
 
+export interface PinnedTopicSection {
+  /** The heading as the manual prints it. */
+  readonly heading: string;
+  /** The page the manual prints. Never zero. */
+  readonly page: number;
+}
+
+export interface PinnedManualTopic {
+  readonly rows: MatchedChunkRow[];
+  readonly sections: readonly PinnedTopicSection[];
+}
+
+function positivePage(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return Math.trunc(value);
+}
+
+function pageFromLocator(locator: string | undefined): number | null {
+  if (!locator) return null;
+  const match = /\bpage\s+(\d{1,3})\b/i.exec(locator);
+  return match ? positivePage(Number(match[1])) : null;
+}
+
+function pageAtEnd(line: string): number | null {
+  const match = /(?:^|\s)(\d{1,3})\s*$/.exec(line.trim());
+  return match ? positivePage(Number(match[1])) : null;
+}
+
 /**
- * The manual chunks for a mapped topic, in manual order.
+ * The printed page for one pinned heading.
+ *
+ * The heading's own metadata wins, then a page number on that heading's
+ * line, then the chunk's printed page, its locator, and the PDF sheet.
+ * A zero is not a page.
+ */
+function citedHeading(chunk: ManualChunk, canonical: string): PinnedTopicSection | null {
+  const wanted = new Set([headingKey(canonical)]);
+  for (const entry of chunk.sections ?? []) {
+    if (!matchesTopicHeading(headingKey(entry.heading), wanted)) continue;
+    const page = positivePage(entry.page);
+    if (page) return { heading: entry.heading, page };
+  }
+  for (const line of chunk.content.split("\n")) {
+    if (/\.{4,}/.test(line)) continue;
+    const printed = headingOf(line);
+    if (!matchesTopicHeading(headingKey(printed ?? line), wanted)) continue;
+    const page =
+      pageAtEnd(line) ??
+      positivePage(chunk.printedPage) ??
+      pageFromLocator(chunk.locator) ??
+      positivePage(chunk.page);
+    if (!page) continue;
+    const label = (printed ?? canonical).replace(/\s+\d{1,3}$/, "").trim();
+    return { heading: label || canonical, page };
+  }
+  const page = positivePage(chunk.printedPage) ?? pageFromLocator(chunk.locator) ?? positivePage(chunk.page);
+  if (!page) return null;
+  return { heading: canonical, page };
+}
+
+/**
+ * The manual chunks for a mapped topic, in manual order, and the headings
+ * those chunks print.
  *
  * Empty when the question maps to nothing, or when this manual does not
  * print the heading. A contents page is never a section. A chunk labelled
  * "Time Records" is included when its own lines print Schedule Requests.
+ * Eligibility and Provisions are included with PTO, and the accrual chunk
+ * that follows them is kept with that heading.
  */
-export function pinManualTopicRows(input: {
+export function pinManualTopic(input: {
   readonly question: string;
   readonly documentId: string;
   readonly documentTitle: string;
   readonly documentCategory?: string;
   readonly chunks: readonly ManualChunk[];
-}): MatchedChunkRow[] {
+}): PinnedManualTopic {
   const sections = manualTopicSections(input.question);
-  if (sections.length === 0 || input.chunks.length === 0) return [];
+  if (sections.length === 0 || input.chunks.length === 0) return { rows: [], sections: [] };
   const wanted = new Set(sections.map((section) => headingKey(section)));
   const document = {
     id: input.documentId,
@@ -230,6 +319,8 @@ export function pinManualTopicRows(input: {
   const ordered = [...input.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
   const picked: ManualChunk[] = [];
   const seen = new Set<number>();
+  const noted: PinnedTopicSection[] = [];
+  const notedKeys = new Set<string>();
 
   const take = (chunk: ManualChunk) => {
     if (seen.has(chunk.chunkIndex) || picked.length >= MAX_TOPIC_CHUNKS) return;
@@ -238,10 +329,23 @@ export function pinManualTopicRows(input: {
     picked.push(chunk);
   };
 
+  const remember = (chunk: ManualChunk) => {
+    for (const canonical of sections) {
+      const key = headingKey(canonical);
+      if (notedKeys.has(key)) continue;
+      if (!topicHeadingKeys(chunk).some((item) => matchesTopicHeading(item, new Set([key])))) continue;
+      const cited = citedHeading(chunk, canonical);
+      if (!cited) continue;
+      notedKeys.add(key);
+      noted.push(cited);
+    }
+  };
+
   for (let index = 0; index < ordered.length; index += 1) {
     const chunk = ordered[index]!;
     if (!chunkPrintsTopic(chunk, wanted)) continue;
     take(chunk);
+    remember(chunk);
     let extra = 0;
     for (let next = index + 1; next < ordered.length && extra < MAX_TOPIC_CONTINUATION; next += 1) {
       const following = ordered[next]!;
@@ -253,13 +357,75 @@ export function pinManualTopicRows(input: {
     }
   }
 
-  return picked
-    .map((chunk) => topicRow(document, chunk))
-    .filter((row): row is MatchedChunkRow => row !== null);
+  return {
+    rows: picked
+      .map((chunk) => topicRow(document, chunk))
+      .filter((row): row is MatchedChunkRow => row !== null),
+    sections: noted,
+  };
+}
+
+export function pinManualTopicRows(input: {
+  readonly question: string;
+  readonly documentId: string;
+  readonly documentTitle: string;
+  readonly documentCategory?: string;
+  readonly chunks: readonly ManualChunk[];
+}): MatchedChunkRow[] {
+  return pinManualTopic(input).rows;
+}
+
+/**
+ * The note that stops "I don't have that" when a topic section was pinned
+ * and the question did not name the manual.
+ *
+ * The same wording a named-manual question already gets. Empty when no
+ * pinned row landed in the answer, or when no heading had a real page.
+ */
+export function topicPinPolicyNote(input: {
+  readonly documentTitle: string;
+  readonly pin: PinnedManualTopic;
+  readonly used: readonly MatchedChunkRow[];
+}): string | null {
+  if (input.pin.rows.length === 0 || input.pin.sections.length === 0) return null;
+  const ids = new Set(input.pin.rows.map((row) => row.chunk_id));
+  const markers = input.used.flatMap((row, index) => (ids.has(row.chunk_id) ? [index + 1] : []));
+  const coverage: PolicyManualCoverage = {
+    kind: "sections",
+    documentTitle: input.documentTitle,
+    rows: input.pin.rows,
+    sections: input.pin.sections,
+  };
+  return buildPolicyManualNote(coverage, markers);
 }
 
 function isJbaManual(row: Pick<MatchedChunkRow, "document_title">): boolean {
   return /\bjba policy manual\b/i.test(row.document_title);
+}
+
+/**
+ * Whether the heading scan should run even though a neighbour already
+ * cleared the similarity floor.
+ *
+ * Only a policy question, and only when none of the rows already in the
+ * window is the current JBA Policy Manual. A state notice filed under
+ * policies_compliance is not that manual. The caller checks the flag
+ * first and does not call this when the flag is off.
+ */
+export function shouldScanManualHeadings(input: {
+  readonly query: string;
+  readonly question?: string | null;
+  readonly rows: readonly Pick<MatchedChunkRow, "document_title">[];
+}): boolean {
+  const texts = [input.question, input.query].filter(
+    (text): text is string => typeof text === "string" && text.trim().length > 0,
+  );
+  const wantsManual = texts.some(
+    (text) =>
+      isCaOrPolicyQuestion(text) || isPolicyTypeQuestion(text) || manualTopicSections(text).length > 0,
+  );
+  if (!wantsManual) return false;
+  return !input.rows.some((row) => isJbaManual(row));
 }
 
 function contentKey(row: MatchedChunkRow): string {

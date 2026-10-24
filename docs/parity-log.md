@@ -1,5 +1,23 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: manual heading scan, W-2 note, PTO accrual — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No model call, no
+migration, and no merge. The heading pin itself landed in #162.
+
+- `MANUAL_TOPIC_PIN_ENABLED` stays off by default. Off, a score at the
+  similarity floor still returns immediately, and no topic note is added.
+- On, a policy question whose top results contain no current JBA Policy
+  Manual chunk falls through that return into the heading scan. A window
+  that already holds the manual does not scan.
+- On, a pinned time off, W-2 or direct deposit section gets the same
+  manual note a question that names the manual already gets, so the
+  answer is not "I don't have that" while the section is in the sources.
+- Time off, sick and PTO also pin Eligibility and Provisions. The accrual
+  chunk that follows those headings is kept. A form or a corrective
+  action does not take these pins.
+
 ## 24 Oct 2026: pin time off, W-2 and direct deposit by manual heading — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
