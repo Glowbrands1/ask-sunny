@@ -876,3 +876,22 @@ no form. The baseline card there was the live reply. The harness does not
 invent a coaching form from a complaint.
 
 Sibling app: not ported. Same reason as the form-card note above.
+
+## 24 Oct 2026: remap incident (from Ask Bubbles prod, FORM_FULL_REMAP on)
+
+Ask Bubbles built What happened from what was left of the request ("create a
+corrective action form for"), lost "previous coaching: …", read "10-1" out of
+"10-15-26", and cited no policy on a remap card. Sunny's `form-full-remap.ts`
+is the same code and gets the same fix behind `REMAP_INCIDENT_FIX_ENABLED`
+(the date regex is an unflagged bug fix in both apps).
+
+Sunny's live path (intent extraction) had the same failures in its own
+readers: the Observation of Offense copied the request and the prior-action
+list, the Standards of Conduct the account points at was not cited, "empire,
+sd" became Salon Director, and "prior = manual ack 9/01" was not a prior
+action and became the form date. Those fixes, behind the same flag, are in
+`keep-filled-slots.ts`, `form-card-slots.ts`, `intent-extraction.ts` and one
+line of `intent-slots.ts`. They stay Sunny-only: Ask Bubbles has no
+`keep-filled-slots.ts` or `form-card-slots.ts`, and its live form path is the
+remap path, which is fixed there. Tests: `src/lib/ai/remap-incident-oct24.test.ts`
+in both apps.

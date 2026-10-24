@@ -1,7 +1,7 @@
 import "server-only";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { formFullRemapEnabled } from "@/lib/config/chat-quality-flags";
+import { formFullRemapEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { listIncidentDates } from "@/lib/forms/form-date-answer";
@@ -13,6 +13,20 @@ import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
+import {
+  isRequestLeftover,
+  mergePriorActions,
+  namedPolicy,
+  priorListActions,
+  remapCitations,
+  remapManualHeadings,
+  remapManualSections,
+  remapPolicyLine,
+  requestIncident,
+  withoutPriorList,
+  withoutStateCodes,
+  type RemapManual,
+} from "./remap-incident";
 import type { ChatFormProposal } from "@/types";
 
 import { callClaudeTool } from "./call-claude";
@@ -106,7 +120,10 @@ export function groundFormSlots(input: {
   readonly continueTemplateKey?: string | null;
   /** Slots already kept for this conversation. A null read must not erase them. */
   readonly saved?: Partial<FormRemapSlots> | null;
+  /** The JBA Policy Manual, read only with REMAP_INCIDENT_FIX_ENABLED on. */
+  readonly manual?: RemapManual | null;
 }): { slots: FormRemapSlots; response: AskResponse } {
+  const fixed = remapIncidentFixEnabled();
   const conversation = turnsWithQuestion(input.history, input.question);
   const users = conversation.filter((turn) => turn.role === "user").map((turn) => turn.content);
   const said = users.join("\n");
@@ -116,17 +133,22 @@ export function groundFormSlots(input: {
     (isTemplate(input.continueTemplateKey) ? input.continueTemplateKey : null) ??
     (isTemplate(raw.templateKey) ? raw.templateKey : null);
   const employeeName = groundedName(raw.employeeName, users);
-  const jobTitle = groundedTitle(users);
+  const jobTitle = groundedTitle(fixed ? users.map(withoutStateCodes) : users);
   const store = groundedStore(said);
   const incidentDateIso = groundedDate(said, input.today);
   const warningLevel = explicitWarning(users);
   const payrollDeduct = payrollDeductFromConversation(conversation);
   const payrollAmount = payrollDeduct === "yes" ? managerPayrollAmount(said) : null;
-  const policySection = groundedPolicy(said);
-  const observation = statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said);
-  const priorActions = statedPrior(said);
+  const named = fixed ? namedPolicy(withoutPriorList(said)) : null;
+  const policySection = fixed ? named : groundedPolicy(said);
+  const observation = fixed
+    ? (requestIncident({ text: said, employeeName, slotClause }) ??
+      (isRequestLeftover(raw.observation, employeeName) ? null : acceptSummary(raw.observation, said)))
+    : (statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said));
+  const priorActions = fixed ? mergePriorActions(statedPrior(said), priorListActions(said)) : statedPrior(said);
   const incidentTime = statedTime(said);
-  const actionPlan = acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
+  const plan = acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
+  const actionPlan = fixed && isRequestLeftover(plan, employeeName) ? null : plan;
   const closeMatchNote = employeeName ? closeNote(employeeName, input.people) : null;
 
   const read: FormRemapSlots = {
@@ -146,14 +168,25 @@ export function groundFormSlots(input: {
     actionPlan,
     closeMatchNote,
   };
-  const slots = finishSlots(mergeSlots(read, input.saved ?? null), said);
+  const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName) : (input.saved ?? null);
+  let slots = finishSlots(mergeSlots(read, saved), said);
+  const sections =
+    fixed && input.manual
+      ? remapManualSections({
+          said,
+          chunks: input.manual.chunks,
+          incident: slots.observation,
+          modelHeading: raw.policySection,
+        })
+      : [];
+  if (fixed) slots = { ...slots, policySection: named ?? sections[0]?.heading ?? null };
 
   const assistants = conversation.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
   const questions = questionsFor(slots, assistants);
-  const content = renderReply(slots, questions);
+  const content = renderReply(slots, questions, fixed ? { policyLine: remapPolicyLine(named, sections) } : null);
   const response: AskResponse = {
     content,
-    citations: [],
+    citations: fixed && input.manual ? remapCitations(input.manual, sections) : [],
     recommendedVideoIds: [],
     ...(slots.templateKey ? { formProposal: proposalFor(slots) } : {}),
   };
@@ -185,22 +218,33 @@ export async function remapFormTurn(
     readonly people: readonly RosterEmployee[];
     readonly continueTemplateKey?: string | null;
     readonly saved?: Partial<FormRemapSlots> | null;
+    /** Read only with REMAP_INCIDENT_FIX_ENABLED on. A failed read cites nothing. */
+    readonly policyManual?: () => Promise<RemapManual | null>;
   },
   call: FormRemapCaller = defaultCall,
 ): Promise<AskResponse | null> {
   if (!formFullRemapEnabled()) return null;
   const started = Date.now();
+  let manual: RemapManual | null = null;
+  if (remapIncidentFixEnabled() && input.policyManual) {
+    try {
+      manual = await input.policyManual();
+    } catch {
+      manual = null;
+    }
+  }
+  const headings = manual ? remapManualHeadings(manual.chunks) : [];
   let result: FormRemapCallerResult;
   try {
     result = await call({
       model: CLAUDE_HAIKU_MODEL,
-      system: SYSTEM,
-      user: conversationText(input.history, input.question, input.today),
+      system: headings.length > 0 ? `${SYSTEM}\n${SYSTEM_POLICY_HEADING}` : SYSTEM,
+      user: headingsBlock(headings) + conversationText(input.history, input.question, input.today),
     });
   } catch {
     return null;
   }
-  const grounded = groundFormSlots({ ...input, raw: result.raw, saved: input.saved ?? null });
+  const grounded = groundFormSlots({ ...input, raw: result.raw, saved: input.saved ?? null, manual });
   noteExtraction({
     model: result.model,
     inputTokens: result.inputTokens,
@@ -261,6 +305,13 @@ async function defaultCall(input: { model: string; system: string; user: string 
   return { raw, model: input.model, inputTokens: null, outputTokens: null };
 }
 
+const SYSTEM_POLICY_HEADING =
+  "policySection is the one heading from the manual list in the message that the incident is about, or null when none fits. Copy the heading exactly. Do not invent one.";
+
+function headingsBlock(headings: readonly string[]): string {
+  return headings.length > 0 ? `Manual headings:\n${headings.map((heading) => `- ${heading}`).join("\n")}\n\n` : "";
+}
+
 function conversationText(history: readonly Turn[], question: string, today: string): string {
   const turns = [...history, { role: "user", content: question }]
     .filter((turn) => turn.content.trim() !== "")
@@ -289,6 +340,7 @@ interface RawSlots {
   readonly employeeName: string | null;
   readonly observation: string | null;
   readonly actionPlan: string | null;
+  readonly policySection: string | null;
 }
 
 function parseRaw(input: unknown): RawSlots {
@@ -298,6 +350,7 @@ function parseRaw(input: unknown): RawSlots {
     employeeName: str(record.employeeName),
     observation: str(record.observation),
     actionPlan: str(record.actionPlan),
+    policySection: str(record.policySection),
   };
 }
 
@@ -463,7 +516,7 @@ function dashedMonthDay(text: string, today: string): string | null {
   const year = Number(/^(\d{4})-/.exec(today)?.[1]);
   if (!Number.isFinite(year)) return null;
   let found: string | null = null;
-  for (const match of text.matchAll(/(?<![\d-])(\d{1,2})-(\d{1,2})(?!-\d)/g)) {
+  for (const match of text.matchAll(/(?<![\d-])(\d{1,2})-(\d{1,2})(?![\d-])/g)) {
     const index = match.index ?? 0;
     const after = text.slice(index + match[0].length, index + match[0].length + 16);
     if (/^\s*(?:min|mins|minutes|hrs|hours|hr)\b/i.test(after)) continue;
@@ -602,8 +655,10 @@ function stripSlots(clause: string, employeeName: string | null): string {
 }
 
 function phraseOffense(clause: string): string | null {
-  let text = clause.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ");
-  text = text.replace(/(?<![\d-])\d{1,2}-\d{1,2}(?!-\d)(?!\s*(?:min|mins|minutes|hrs|hours|hr)\b)/g, " ");
+  // A whole date first: "10-1" inside "10-15-26" is not a date of its own.
+  let text = clause.replace(/(?<![\d/-])\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?![\d/-])/g, " ");
+  text = text.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ");
+  text = text.replace(/(?<![\d-])\d{1,2}-\d{1,2}(?![\d-])(?!\s*(?:min|mins|minutes|hrs|hours|hr)\b)/g, " ");
   text = text.replace(/\s+/g, " ").trim().replace(/^[,\s]+|[,\s.]+$/g, "");
   // "register short $40 on 10-20" leaves "on" behind once the date is lifted.
   text = text.replace(/\s+(?:on|at)$/i, "");
@@ -704,6 +759,17 @@ const SLOT_KEYS = [
   "closeMatchNote",
 ] as const satisfies readonly (keyof FormRemapSlots)[];
 
+/** A saved What happened or action plan that was only the request is not kept. */
+function withoutLeftovers(saved: Partial<FormRemapSlots> | null, employeeName: string | null): Partial<FormRemapSlots> | null {
+  if (!saved) return saved;
+  const name = employeeName ?? saved.employeeName ?? null;
+  return {
+    ...saved,
+    observation: isRequestLeftover(saved.observation, name) ? null : saved.observation,
+    actionPlan: isRequestLeftover(saved.actionPlan, name) ? null : saved.actionPlan,
+  };
+}
+
 /** A later value replaces the same field. A blank read leaves the saved one. */
 function mergeSlots(next: FormRemapSlots, saved: Partial<FormRemapSlots> | null): FormRemapSlots {
   if (!saved) return next;
@@ -742,7 +808,11 @@ function questionsFor(slots: FormRemapSlots, assistants: readonly string[]): str
     .filter((question) => !assistants.some((message) => message.includes(question)));
 }
 
-function renderReply(slots: FormRemapSlots, questions: readonly string[]): string {
+function renderReply(
+  slots: FormRemapSlots,
+  questions: readonly string[],
+  fixed: { readonly policyLine: string | null } | null = null,
+): string {
   const lines: string[] = [];
   if (slots.templateKey) {
     const name = TEMPLATE_SEEDS.find((seed) => seed.key === slots.templateKey)?.name ?? "form";
@@ -755,8 +825,13 @@ function renderReply(slots: FormRemapSlots, questions: readonly string[]): strin
   if (slots.incidentTime) lines.push(`**Time:** ${slots.incidentTime}`);
   if (slots.observation) lines.push(`**What happened:** ${slots.observation}`);
   // The card is the one prior-action line. Repeating it in the reply painted
-  // the acknowledgement twice on the turn that first stated it.
-  if (slots.policySection) lines.push(`**Policy:** ${slots.policySection}, as you said`);
+  // the acknowledgement twice on the turn that first stated it. With the fix
+  // flag the reply lists it once on every turn, as the intent path does
+  // (Ask Bubbles conv_mvmz9j6n2jyzl4o lost it from the reply after turn 2).
+  if (fixed && slots.priorActions) lines.push(`**Prior actions:** ${slots.priorActions.split("\n").join("; ")}`);
+  if (fixed) {
+    if (fixed.policyLine) lines.push(fixed.policyLine);
+  } else if (slots.policySection) lines.push(`**Policy:** ${slots.policySection}, as you said`);
   if (slots.warningLevel) {
     const label = slots.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning";
     lines.push(`**Type of warning:** ${label}, as you said`);

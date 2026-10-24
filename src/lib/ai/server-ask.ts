@@ -28,6 +28,7 @@ import {
   manualTopicPinEnabled,
   fullManualContextEnabled,
   formFullRemapEnabled,
+  remapIncidentFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -36,6 +37,7 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { priorShorthand } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
@@ -617,6 +619,18 @@ async function answerQuestionUntraced(
         continueTemplateKey: request.continueProposalTemplateKey ?? null,
         people,
         saved,
+        // Read only with REMAP_INCIDENT_FIX_ENABLED on, so the card cites the section and page.
+        policyManual: async () => {
+          const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+          return manual.ok
+            ? {
+                documentId: manual.documentId,
+                documentTitle: manual.documentTitle,
+                documentCategory: manual.documentCategory ?? null,
+                chunks: manual.chunks,
+              }
+            : null;
+        },
       });
       if (remapped) return remapped;
     }
@@ -626,10 +640,10 @@ async function answerQuestionUntraced(
     const proposal = await deliverFormProposal({
       request,
       actor,
-      question: prepareProposalQuestion(questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request)),
+      question: withPriorShorthand(prepareProposalQuestion(questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request))),
       decorate: decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
-      history: request.history,
+      history: withPriorShorthandTurns(request.history),
       question,
       questionMessageId: request.questionMessageId,
       actor,
@@ -1664,6 +1678,16 @@ function proposalQuestion(lead: string | null, question: string, original: strin
   const split = lead.indexOf(". ");
   const prefix = split > 0 ? lead.slice(0, split) : "";
   return prefix ? `${prefix}. ${question}` : lead;
+}
+
+/** REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" reads as a prior action, not the form's date. */
+function withPriorShorthand(question: string): string {
+  return remapIncidentFixEnabled() ? priorShorthand(question) : question;
+}
+
+function withPriorShorthandTurns<T extends { role: string; content: string }>(history: readonly T[]): T[] {
+  if (!remapIncidentFixEnabled()) return history as T[];
+  return history.map((turn) => (turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn));
 }
 
 function questionForProposal(question: string, request: AskRequest): string {

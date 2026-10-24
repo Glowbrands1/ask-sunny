@@ -394,6 +394,19 @@ export function managerWordsOnlyEnabled(): boolean {
 }
 
 /**
+ * The remap path's What happened, prior actions and policy, read from the
+ * manager's words and the manual. The request ("create a corrective action
+ * form for …") is not the incident and not the action plan. "previous
+ * coaching: …" is the prior-action list. A policy is "as you said" only
+ * when the manager named it; otherwise the manual section and printed page
+ * the account resolves are cited on the card. Off, the remap reads these
+ * fields as before.
+ */
+export function remapIncidentFixEnabled(): boolean {
+  return envFlag("REMAP_INCIDENT_FIX_ENABLED");
+}
+
+/**
  * The intent read takes a payroll amount and the Yes/No only from the
  * manager's own turns. A figure the assistant quoted from policy ("reimburse
  * the company $25 via payroll deduction") is not an amount, and "verbal, no

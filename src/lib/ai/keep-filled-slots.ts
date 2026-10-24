@@ -19,6 +19,7 @@ import {
   groundedEntitiesEnabled,
   intentExtractionEnabled,
   managerWordsOnlyEnabled,
+  remapIncidentFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -26,6 +27,8 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutAppLines } from "./app-sentences";
 import type { GroundedPerson } from "./grounded-entities";
+import { accountSentences, priorShorthand, withoutPriorList, withoutStateCodes } from "./remap-incident";
+import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
 /**
@@ -79,9 +82,12 @@ export function holdFilledSlots(input: {
   }
   const slotsOn = intentExtractionEnabled() || groundedEntitiesEnabled();
   const spokenRole = slotsOn ? spokenDirectoryTitle(turns.join("\n"), input.people, employeeName) : null;
+  // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
+  const fixed = remapIncidentFixEnabled();
+  const titleOf = (text: string) => extractJobTitle(fixed ? withoutStateCodes(text) : text);
   const employeeRole =
-    extractJobTitle(input.question) ||
-    extractJobTitle(turns.join("\n")) ||
+    titleOf(input.question) ||
+    titleOf(turns.join("\n")) ||
     spokenRole ||
     proposal.employeeRole ||
     previous?.employeeRole ||
@@ -91,9 +97,11 @@ export function holdFilledSlots(input: {
   let locationId = keptSalon(turns, proposal.locationId, previous?.locationId ?? null, employeeName, input.people);
   if (slotsOn && place.kind === "one") locationId = place.salon.id;
   if (slotsOn && place.kind === "unknown" && !namedSalon) locationId = null;
+  // "prior = manual ack 9/01" dates the prior step, not this form.
+  const dateQuestion = fixed ? withoutPriorList(input.question) : input.question;
   const formDate = codeSlotsEnabled()
-    ? explicitIncidentIso(input.question, input.today) ?? previous?.formDate ?? proposal.formDate ?? null
-    : keptDate(input.question, input.today, proposal.formDate ?? null, previous?.formDate ?? null);
+    ? explicitIncidentIso(dateQuestion, input.today) ?? previous?.formDate ?? proposal.formDate ?? null
+    : keptDate(dateQuestion, input.today, proposal.formDate ?? null, previous?.formDate ?? null);
   const payrollDeduct = keptPayroll(
     turns,
     proposal.payrollDeduct ?? null,
@@ -105,6 +113,7 @@ export function holdFilledSlots(input: {
   let next: ChatFormProposal = proposal;
   if (employeeName !== proposal.employeeName) next = { ...next, employeeName };
   if (employeeRole && employeeRole !== next.employeeRole) next = { ...next, employeeRole };
+  if (fixed && next.employeeRole && stateCodeTitle(turns.join("\n"), next.employeeRole)) next = { ...next, employeeRole: null };
   if (slotsOn && place.kind === "unknown" && !locationId) {
     const offered = directorySalonIds(employeeName, input.people);
     const ids = offered.length > 0 ? offered : next.authorizedLocationIds;
@@ -154,7 +163,8 @@ export function holdFilledSlots(input: {
   content = dropBlockedQuestions(content, next);
   content = keepPolicyLines(content, previousContent(input.history, proposal.templateKey));
   if (slotsOn) {
-    content = withObservation(content, turns, next.employeeName);
+    content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
+    if (fixed && next.templateKey === "dpoa") content = withPriorActions(content, turns, input.today);
     if (next.locationResolution === "needs_selection" && !next.locationId) {
       const asked = salonAlreadyAsked(input.history);
       // The global question already named every salon. A later turn does not
@@ -520,6 +530,48 @@ function onlySaysWhereTheyWork(sentence: string, ignore: readonly string[]): boo
     .map((word) => (nameWords.has(word) ? "she" : word));
   const collapsed = rest.filter((word, index) => !(word === "she" && rest[index - 1] === "she")).join(" ");
   return WHERE_THEY_WORK.test(collapsed);
+}
+
+/**
+ * REMAP_INCIDENT_FIX_ENABLED: the prior actions the manager stated earlier in
+ * the chat stay in the reply on a later turn (Ask Bubbles conv_mvmz9j6n2jyzl4o
+ * lost "manual acknowledgement 9/01" from the reply after turn 2).
+ */
+function withPriorActions(content: string, turns: readonly string[], today: string): string {
+  if (/\*\*Prior actions:\*\*/i.test(content)) return content;
+  const lines = statedPriorActions(priorShorthand(turns.join("\n")), today);
+  if (lines.length === 0) return content;
+  const cleaned = content
+    .split("\n")
+    .filter((line) => !/^You'll set any prior coaching or corrective action on the form\b/.test(line.trim()))
+    .map((line) =>
+      line.replace(
+        /^You'll set the verbal\/written warning level and any prior coaching or corrective action on the form — I won't guess at them\.$/,
+        "You'll set the verbal/written warning level on the form — I won't guess at it.",
+      ),
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return `${cleaned}\n\n**Prior actions:** ${lines.join("; ")}`;
+}
+
+/** The title was read only from a state code after a place ("empire, sd"). */
+function stateCodeTitle(text: string, role: string): boolean {
+  return extractJobTitle(text) === role && !extractJobTitle(withoutStateCodes(text));
+}
+
+/**
+ * REMAP_INCIDENT_FIX_ENABLED: the account without the request, the employee,
+ * the salon, the slot answers or the prior-action list (Ask Bubbles prod,
+ * 24 Oct 2026: "create a corrective action form for" was What happened).
+ */
+function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
+  const sentences = accountSentences(turns, employeeName).filter(
+    (sentence) => !content.toLowerCase().includes(sentence.toLowerCase()),
+  );
+  if (sentences.length === 0) return content;
+  return `${content}\n\n**Observation of Offense:** ${sentences.join(". ")}`.trim();
 }
 
 /** The global salon question is once per conversation. A later turn does not ask it again. */

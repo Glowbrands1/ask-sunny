@@ -5,6 +5,7 @@ import {
   intentPayrollManagerOnlyEnabled,
   managerWordsOnlyEnabled,
   typedNameProceedsEnabled,
+  remapIncidentFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -30,6 +31,7 @@ import {
   type ConversationFormState,
 } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
+import { withoutStateCodes } from "./remap-incident";
 
 /**
  * Slots read off one turn, then kept only when the roster, the salon list,
@@ -218,7 +220,9 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
-  const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person, employee.name ?? employee.typed);
+  // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
+  const titleText = remapIncidentFixEnabled() ? withoutStateCodes(userText) : userText;
+  const title = groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
   const date = codeSlotsEnabled()
