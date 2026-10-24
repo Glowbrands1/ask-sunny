@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   codeSlotsEnabled,
+  formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
   managerWordsOnlyEnabled,
   typedNameProceedsEnabled,
@@ -201,7 +202,10 @@ function settleYesNo(question: string, saved: ConversationFormState): Conversati
 }
 
 export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
-  const saved = input.saved ?? EMPTY_FORM_STATE;
+  const choiceStated = formChoiceStatedEnabled();
+  const saved = choiceStated
+    ? withoutDisciplineProcedure(input.saved ?? EMPTY_FORM_STATE)
+    : (input.saved ?? EMPTY_FORM_STATE);
   if (codeSlotsEnabled()) {
     const settled = settleYesNo(input.question, saved);
     if (settled) {
@@ -219,7 +223,8 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person, employee.name ?? employee.typed);
-  const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
+  const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings);
+  const incidentType = choiceStated && isDisciplineProcedure(groundedIncident) ? null : groundedIncident;
   const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
   const date = codeSlotsEnabled()
     ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
@@ -235,8 +240,11 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
       : (payrollClauseAmount(input) ??
         (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
-  const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
-  const modelPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
+  const formType = choiceStated
+    ? groundStatedForm(choice?.form ?? null, managerTurns(input), input.templates)
+    : groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
+  const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
+  const modelPolicy = choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy;
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
@@ -336,6 +344,78 @@ function groundPolicy(typed: string | null, headings: readonly string[]): string
   if (exact) return exact;
   const named = headings.filter((heading) => namesHeading(typed, heading));
   return named.length === 1 ? named[0]! : null;
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. "Disciplinary Action" is the manual's discipline
+ * procedure itself, never the policy an offense broke. Accepting it for
+ * "performance concern" or "missing the woven deadline" wrote "Policy
+ * reference: Disciplinary Action" onto the turn: its alias picked the
+ * Corrective Action Form over the Coaching Form the manager asked for, and
+ * the card cited page 14 while the reply named Standards of Conduct (QA,
+ * 24 Oct 2026).
+ */
+function isDisciplineProcedure(heading: string | null | undefined): boolean {
+  return Boolean(heading) && /^disciplinary actions?(?: policy)?$/.test(headingKey(heading!));
+}
+
+function withoutDisciplineProcedure(state: ConversationFormState): ConversationFormState {
+  const policy = isDisciplineProcedure(state.policyHeading);
+  const incident = isDisciplineProcedure(state.incidentType);
+  if (!policy && !incident) return state;
+  return {
+    ...state,
+    policyHeading: policy ? null : state.policyHeading,
+    policyPage: policy ? null : state.policyPage,
+    incidentType: incident ? null : state.incidentType,
+  };
+}
+
+/** The manager's own turns, oldest first, this one last. */
+function managerTurns(input: IntentTurnInput): string[] {
+  return [...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.question].filter(
+    (part) => part.trim() !== "",
+  );
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. The form the manager named, newest turn first.
+ *
+ * Read from their own words only. The assistant's "**Corrective Action
+ * Form**", the stored state's sentences and the model's formType (which
+ * copies either) never choose it: "Create a coaching form for a performance
+ * concern" stayed a Corrective Action for every later turn because the blob
+ * held the assistant's reply (QA, 24 Oct 2026). A turn that names no form
+ * ("Create a form from this conversation") looks further back; a turn that
+ * names one replaces the stored form. Nothing named leaves the stored form.
+ */
+function groundStatedForm(
+  chosen: string | null,
+  turns: readonly string[],
+  templates: readonly TemplateRow[],
+): { key: string | null; ambiguous: readonly TemplateRow[] } {
+  const picked = chosen ? matchTemplates(chosen, templates) : [];
+  if (picked.length === 1) return { key: picked[0]!.key, ambiguous: [] };
+  for (let at = turns.length - 1; at >= 0; at -= 1) {
+    const key = formNamedIn(turns[at]!, templates);
+    if (key) return { key, ambiguous: [] };
+  }
+  return { key: null, ambiguous: [] };
+}
+
+function formNamedIn(text: string, templates: readonly TemplateRow[]): string | null {
+  const intent = detectTemplateIntent(text);
+  const named = publishedKey(intent, templates);
+  if (named) return named;
+  // "create a CA", "create a Verbal CA for …": a corrective action asked for
+  // in this turn is the Corrective Action Form, as the proposal reads it.
+  if (intent.kind === "corrective_action" && intent.requestedCreation) {
+    return templates.some((template) => template.key === "dpoa") ? "dpoa" : null;
+  }
+  if (intent.kind !== "none") return null;
+  const lower = text.toLowerCase();
+  const byName = templates.filter((template) => lower.includes(template.name.toLowerCase()));
+  return byName.length === 1 ? byName[0]!.key : null;
 }
 
 function parseReading(raw: unknown): IntentSlotReading | null {

@@ -23,6 +23,8 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
+import { formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
 // From its own module: importing it from the intake closed a cycle that broke a production build (see `warning-level.ts`).
@@ -1252,6 +1254,19 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
 const DECLINES_FORM =
   /\b(?:(?:don'?t|do\s+not|doesn'?t|does\s+not|didn'?t)\s+(?:want|need)|not\s+(?:ready\s+for|looking\s+for)|no\s+need\s+for)\s+(?:(?:a|an|the|any)\s+)?(?:actual\s+|real\s+|official\s+)?(?:[a-z-]+\s+){0,2}?(?:form|forms|document|paperwork|write[- ]?up)\b|\bno\s+(?:actual\s+)?(?:form|forms|paperwork)\b|\bnot\s+(?:a|an)\s+(?:actual\s+)?form\b|\b(?:never\s*mind|forget)\s+(?:the|this|that)\s+form\b|\b(?:form|forms|paperwork)\s+not\s+yet\b/;
 
+/**
+ * FORM_CHOICE_STATED_ENABLED. "Policy reference: Disciplinary Action, JBA
+ * Policy Manual p.14." is the stored policy written ahead of the turn, not a
+ * form the manager asked for. Its "disciplinary action" is a Corrective Action
+ * alias, and it beat "Create a coaching form" on the list's order (QA, 24 Oct
+ * 2026). The line is read for its policy elsewhere; here it names no form.
+ */
+const POLICY_REFERENCE_LINE = /\bPolicy reference:[^\n]*?JBA Policy Manual(?:\s+p\.\s*\d+)?\.?/gi;
+
+function withoutPolicyReference(text: string): string {
+  return text.replace(POLICY_REFERENCE_LINE, " ");
+}
+
 function declinesForm(q: string): boolean {
   return DECLINES_FORM.test(q);
 }
@@ -1428,7 +1443,8 @@ const LEVEL_AS_DOCUMENT = new RegExp(
 
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
 
-export function detectTemplateIntent(question: string): TemplateIntent {
+export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
+  const question = formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion;
   const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   /*
