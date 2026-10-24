@@ -1,21 +1,21 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
-## 24 Oct 2026: the app's own lines are not the manager's words — Sunny-only
+## 24 Oct 2026: the app's own lines are not the manager's words — ported to Ask Bubbles
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation
 and grounded entities write lines such as "Job title: CA. It happened at KS
 Lawrence." onto the question. On, the card's Job title reads each of those
 sentences alone (no more "CA. It happened"), the Observation of Offense skips
 lines made only of those sentences and a sentence that only says where the
-employee works, and the intent reader no longer keeps a model title that is
-the form ("CA") or the employee's own name ("test").
+employee works, and the intent reader keeps a model title only when it is a
+known title or a short noun phrase the manager typed: not the form ("CA"),
+the employee's own name ("test"), a clause ("test was late opening salon"),
+or letters inside another word ("HR"). "ass't salon director" reads ASD, and
+a pasted policy is not read for the title.
 
-**Sibling app: not needed.** Ask Bubbles writes the same lines, but its label
-reader (`titleFollowingJobTitleLabel`) stops at the first period, its intent
-`groundTitle` keeps only a roster title, and its card has no Observation built
-from the turns (`keep-filled-slots.ts` does not exist there). Bubbles
-production has no `employeeRole` containing "happened" and no card observation
-opening with "It happened at" (45 days, 189 proposals).
+**Sibling app: ported** on Ask Bubbles branch
+`claude/new-session-vowi84-it-happened`, through its live form-full-remap path
+and its intent path.
 
 ## 24 Oct 2026: a manual citation marks the page the sentence restates — ported from Ask Bubbles
 
