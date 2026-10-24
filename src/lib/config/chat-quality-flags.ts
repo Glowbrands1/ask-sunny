@@ -382,6 +382,16 @@ export function formFullRemapEnabled(): boolean {
   return envFlag("FORM_FULL_REMAP_ENABLED");
 }
 
+/**
+ * When the form extraction cannot read this conversation's own turns (no
+ * signed-in account, no conversation id, or the store read fails), it reads
+ * only the current question. Off, it reads the history the browser sent,
+ * which can hold a turn from a different chat.
+ */
+export function formRemapStrictScopeEnabled(): boolean {
+  return envFlag("FORM_REMAP_STRICT_SCOPE_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
