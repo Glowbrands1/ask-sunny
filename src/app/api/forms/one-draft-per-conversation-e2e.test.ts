@@ -136,7 +136,22 @@ const { createInlineForm } = await import("@/features/chat/create-inline-form");
 const instancesRoute = await import("./instances/route");
 const draftRoute = await import("./instances/[id]/draft/route");
 
+/** The view's join, which the fake does not model — see `corrective-action-dm-feedback-e2e.test.ts`. */
+function joinOverview() {
+  for (const row of store.form_instances ?? []) {
+    const template = store.form_templates!.find((entry) => entry.id === row.template_id);
+    const version = store.form_template_versions.find((entry) => entry.id === row.template_version_id);
+    Object.assign(row, {
+      template_key: template?.key,
+      template_name: template?.name,
+      layout_family: template?.layout_family,
+      template_version: version?.version,
+    });
+  }
+}
+
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
+  joinOverview();
   const request = new Request(`https://app.test${url}`, init);
   const draft = /^\/api\/forms\/instances\/([^/]+)\/draft$/.exec(url);
   const response = draft
@@ -145,6 +160,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
       ? await instancesRoute.POST(request)
       : null;
   if (!response) throw new Error(`no route for ${url}`);
+  joinOverview();
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   return body;
@@ -152,12 +168,30 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 
 let sequence = 0;
 
+/** Every stored field of one form, in a stable order, to compare before and after. */
+function fieldsOf(instanceId: string): string {
+  return JSON.stringify(
+    (store.form_instance_values ?? [])
+      .filter((row) => row.instance_id === instanceId)
+      .map((row) => [row.field_key, row.value ?? null, row.checked ?? []])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  );
+}
+
+function field(instanceId: string, key: string) {
+  return (store.form_instance_values ?? []).find((row) => row.instance_id === instanceId && row.field_key === key);
+}
+
 /**
  * The chat as the manager ran it. `press` lists the turns (0-based) whose card
  * the manager pressed Create on. Each press sends the conversation as the
  * browser holds it, and the card then shows the form it opened.
  */
-async function chat(turns: readonly string[], press: readonly number[]) {
+async function chat(
+  turns: readonly string[],
+  press: readonly number[],
+  afterPress?: (turn: number, instanceId: string) => void,
+) {
   const messages: ChatMessage[] = [];
   const opened: { turn: number; instanceId: string; reused: boolean }[] = [];
   let open: string | undefined;
@@ -192,6 +226,7 @@ async function chat(turns: readonly string[], press: readonly number[]) {
     const result = await createInlineForm({ proposal: response!.formProposal!, messages, call, onCreated: () => {} });
     (answer as { formInstanceRef?: unknown }).formInstanceRef = result.reference;
     opened.push({ turn: index, instanceId: result.reference.instanceId, reused: Boolean(result.reused) });
+    afterPress?.(index, result.reference.instanceId);
   }
   return { opened, drafts: () => (store.form_instances ?? []).filter((row) => row.status === "draft") };
 }
@@ -289,6 +324,43 @@ describe("one draft per form in a conversation (flag on)", () => {
     expect(drafts()).toHaveLength(2);
     expect(opened[1]!.instanceId).not.toBe(opened[0]!.instanceId);
     expect(opened[1]!.reused).toBe(false);
+  });
+
+  it('"prior verbal 9-1-26, no payroll" said between the cards goes onto the reused draft, nothing else changes (QA, 24 Oct 2026)', async () => {
+    let before = "";
+    const { opened, drafts } = await chat(
+      [
+        "create a corrective action form for Tess Varga for missing the 10-15-26 woven deadline",
+        "prior verbal 9-1-26, no payroll",
+        "create the CA",
+      ],
+      [0, 2],
+      (turn, id) => {
+        if (turn === 0) before = fieldsOf(id);
+      },
+    );
+    expect(drafts()).toHaveLength(1);
+    expect(opened[1]!.instanceId).toBe(opened[0]!.instanceId);
+    const id = opened[0]!.instanceId;
+    expect(String(field(id, "prior_actions")?.value ?? "")).toContain("09/01/2026");
+    expect(field(id, "payroll_deduct")?.checked).toEqual(["no"]);
+    // Every other field is as the first press left it.
+    const others = (json: string) =>
+      (JSON.parse(json) as [string, unknown, unknown][]).filter(([key]) => key !== "prior_actions" && key !== "payroll_deduct");
+    expect(others(fieldsOf(id))).toEqual(others(before));
+  });
+
+  it("pressing again with nothing new said leaves the draft exactly as it was", async () => {
+    let before = "";
+    const { opened } = await chat(
+      ["create a corrective action form for Tess Varga for missing the 10-15-26 woven deadline", "create the CA"],
+      [0, 1],
+      (turn, id) => {
+        if (turn === 0) before = fieldsOf(id);
+      },
+    );
+    expect(opened[1]!.instanceId).toBe(opened[0]!.instanceId);
+    expect(fieldsOf(opened[0]!.instanceId)).toBe(before);
   });
 
   it("a card for another employee in the same chat is its own draft", async () => {

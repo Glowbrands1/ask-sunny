@@ -19,13 +19,20 @@ import {
 } from "@/lib/forms/corrective-action-intake";
 import { isIsoCalendarDate } from "@/lib/forms/form-date-answer";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
-import { findConversationDraft, lastManagerTurnId, noteConversationDraft } from "@/lib/forms/conversation-draft";
+import {
+  applyTurnsSinceDraft,
+  findConversationDraft,
+  lastManagerTurnId,
+  noteConversationDraft,
+} from "@/lib/forms/conversation-draft";
+import { businessToday } from "@/lib/business-date";
 import { findConversationProposalDraft } from "@/lib/forms/conversation-proposal-draft";
 import { isProposalId } from "@/lib/forms/proposal-id";
 import {
   applyStatedFacts,
   createInstance,
   findRecentAssistantDraft,
+  loadInstance,
   deleteDemoInstances,
   findDemoInstances,
   InstanceProtectedError,
@@ -236,6 +243,71 @@ export async function POST(request: Request) {
     const locationId = location.kind === "authorized" ? location.locationId : null;
 
     /*
+     * THE ANSWERS THIS CARD CARRIES, as the manager's own statements. On a new
+     * draft they fill it; on a reused one (`applyStatedFacts` fills only what
+     * is blank) they never replace a value already there.
+     */
+    const card = body;
+    async function applyCardFacts(instanceId: string): Promise<void> {
+      /*
+       * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
+       *
+       * Written as the manager's own statement — the path the employment change
+       * forms use for their stated facts — and only where the pinned version
+       * has the group: `applyStatedFacts` validates the key and the option
+       * against it, and a version without the question (or any other template)
+       * gets nothing. No answer sent means nothing written; it is never
+       * defaulted. See `lib/forms/payroll-deduct.ts`.
+       */
+      if (isPayrollDeductAnswer(card.payrollDeduct)) {
+        await applyStatedFacts(
+          instanceId,
+          { values: {}, checked: payrollDeductChecked(card.payrollDeduct) },
+          actor.id,
+          PAYROLL_DEDUCT_STATED_KEYS,
+        );
+      }
+
+      /*
+       * PAYROLL DEDUCTION AMOUNT, FROM THE MANAGER'S OWN WORDS.
+       *
+       * Written only when the amount field is on, payroll is Yes, and the
+       * conversation states a figure. The body may carry the same figure; it is
+       * not the source. A policy quotation is not a figure. No figure means the
+       * line stays blank, and the form is still created.
+       */
+      if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && Array.isArray(card.conversation)) {
+        const turns = parseHistory(card.conversation);
+        const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
+        if (amount) {
+          await applyStatedFacts(
+            instanceId,
+            { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
+            actor.id,
+            PAYROLL_AMOUNT_STATED_KEYS,
+          );
+        }
+      }
+
+      /*
+       * THE TYPE OF WARNING, AS THE MANAGER STATED IT FOR THIS FORM IN CHAT —
+       * "create verbal CA for …". The same path as the payroll answer: their own
+       * statement, only a verbal or written level, and only where the pinned
+       * version offers it (`applyStatedFacts` validates the option). Nothing sent
+       * means nothing written; it is never defaulted. The draft leaves it as it
+       * is. See `statedWarningLevel` in `lib/forms/corrective-action-intake.ts`.
+       */
+      if (isStatedWarningLevel(card.warningLevel)) {
+        await applyStatedFacts(
+          instanceId,
+          { values: {}, checked: { [WARNING_TYPE_KEY]: [card.warningLevel] } },
+          actor.id,
+          WARNING_LEVEL_STATED_KEYS,
+        );
+      }
+    }
+
+    /*
      * ONE DRAFT PER FORM IN THIS CHAT (CONVERSATION_DRAFT_REUSE_ENABLED). A new
      * card for the same form and employee opens the draft this chat already
      * made, unless the manager asked for another document since. Before the
@@ -256,7 +328,22 @@ export async function POST(request: Request) {
         conversationKey: draftChat,
         turns: chatTurns,
       }).catch(() => null);
-      if (same) return NextResponse.json({ instance: same, reused: true });
+      if (same) {
+        /*
+         * The facts said since that draft was made, then this card's own
+         * stated answers where the draft is still blank — never over a value.
+         */
+        await applyTurnsSinceDraft({
+          request,
+          instanceId: String(same.instance.id),
+          turns: chatTurns,
+          lastTurnId: same.lastTurnId,
+          today: businessToday(),
+        }).catch(() => undefined);
+        await applyCardFacts(String(same.instance.id)).catch(() => undefined);
+        const updated = await loadInstance(String(same.instance.id)).catch(() => null);
+        return NextResponse.json({ instance: updated?.instance ?? same.instance, reused: true });
+      }
     }
 
     /*
@@ -374,62 +461,7 @@ export async function POST(request: Request) {
       await noteConversationDraft(String(instance.id), draftChat, lastManagerTurnId(chatTurns)).catch(() => undefined);
     }
 
-    /*
-     * "IS PAYROLL DEDUCT APPLICABLE?", AS THE MANAGER ANSWERED IT IN CHAT.
-     *
-     * Written as the manager's own statement — the path the employment change
-     * forms use for their stated facts — and only where the pinned version
-     * has the group: `applyStatedFacts` validates the key and the option
-     * against it, and a version without the question (or any other template)
-     * gets nothing. No answer sent means nothing written; it is never
-     * defaulted. See `lib/forms/payroll-deduct.ts`.
-     */
-    if (isPayrollDeductAnswer(body.payrollDeduct)) {
-      await applyStatedFacts(
-        String(instance.id),
-        { values: {}, checked: payrollDeductChecked(body.payrollDeduct) },
-        actor.id,
-        PAYROLL_DEDUCT_STATED_KEYS,
-      );
-    }
-
-    /*
-     * PAYROLL DEDUCTION AMOUNT, FROM THE MANAGER'S OWN WORDS.
-     *
-     * Written only when the amount field is on, payroll is Yes, and the
-     * conversation states a figure. The body may carry the same figure; it is
-     * not the source. A policy quotation is not a figure. No figure means the
-     * line stays blank, and the form is still created.
-     */
-    if (payrollAmountFieldEnabled() && body.payrollDeduct === "yes" && Array.isArray(body.conversation)) {
-      const turns = parseHistory(body.conversation);
-      const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
-      if (amount) {
-        await applyStatedFacts(
-          String(instance.id),
-          { values: { [PAYROLL_AMOUNT_KEY]: amount }, checked: {} },
-          actor.id,
-          PAYROLL_AMOUNT_STATED_KEYS,
-        );
-      }
-    }
-
-    /*
-     * THE TYPE OF WARNING, AS THE MANAGER STATED IT FOR THIS FORM IN CHAT —
-     * "create verbal CA for …". The same path as the payroll answer: their own
-     * statement, only a verbal or written level, and only where the pinned
-     * version offers it (`applyStatedFacts` validates the option). Nothing sent
-     * means nothing written; it is never defaulted. The draft leaves it as it
-     * is. See `statedWarningLevel` in `lib/forms/corrective-action-intake.ts`.
-     */
-    if (isStatedWarningLevel(body.warningLevel)) {
-      await applyStatedFacts(
-        String(instance.id),
-        { values: {}, checked: { [WARNING_TYPE_KEY]: [body.warningLevel] } },
-        actor.id,
-        WARNING_LEVEL_STATED_KEYS,
-      );
-    }
+    await applyCardFacts(String(instance.id));
 
     return NextResponse.json({ instance });
   } catch (error) {

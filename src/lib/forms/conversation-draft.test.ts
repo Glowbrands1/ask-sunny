@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { lastManagerTurnId, pickConversationDraft, separateAskedSince, type ConversationDraftRow } from "./conversation-draft";
+import { clausesOf, lastManagerTurnId, withLevelNoun, pickConversationDraft, separateAskedSince, type ConversationDraftRow } from "./conversation-draft";
 
 /*
  * conv_mvh1ho2p2xddypx (20 Oct 2026), the manager's turns with a synthetic
@@ -47,6 +47,7 @@ describe("separateAskedSince", () => {
     expect(separateAskedSince([...TURNS, { id: "m6", role: "user", content: "one more CA for her, dress code" }], "m5")).toBe(true);
     // Saying "also" about this form's facts is not a new document.
     expect(separateAskedSince([...TURNS, { id: "m6", role: "user", content: "she was also late on 10-19" }], "m5")).toBe(false);
+    expect(separateAskedSince([...TURNS, { id: "m6", role: "user", content: "she also left the form unsigned" }], "m5")).toBe(false);
   });
 
   it("a draft that recorded no turn is judged on every turn", () => {
@@ -84,5 +85,22 @@ describe("lastManagerTurnId", () => {
     expect(lastManagerTurnId(TURNS)).toBe("m5");
     expect(lastManagerTurnId(TURNS.slice(0, 2))).toBe("m1");
     expect(lastManagerTurnId([{ role: "user", content: "no id" }])).toBeNull();
+  });
+});
+
+describe("clausesOf", () => {
+  it("splits a turn that lists several facts, and leaves one fact whole", () => {
+    expect(clausesOf("prior verbal 9-1-26, no payroll")).toEqual(["prior verbal 9-1-26", "no payroll"]);
+    expect(clausesOf("change the date to Oct 22, 2026")).toEqual([]);
+    expect(clausesOf("no payroll")).toEqual([]);
+  });
+});
+
+describe("withLevelNoun", () => {
+  it('reads "prior verbal 9-1-26" as the verbal warning it names, and leaves the rest alone', () => {
+    expect(withLevelNoun("prior verbal 9-1-26")).toBe("prior verbal warning 9-1-26");
+    expect(withLevelNoun("previous written on 8/3/26")).toBe("previous written warning on 8/3/26");
+    expect(withLevelNoun("prior verbal ca 9-1-26")).toBe("prior verbal ca 9-1-26");
+    expect(withLevelNoun("this is a verbal")).toBe("this is a verbal");
   });
 });
