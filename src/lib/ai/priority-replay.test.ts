@@ -8,7 +8,8 @@ import { JBA_MANUAL_CHUNKS, JBA_MANUAL_DOCUMENT } from "@/lib/ai/__fixtures__/jb
 import type { AccessScope, ChatMessage } from "@/types";
 
 /**
- * The 14 priority chats, word for word, through `answerQuestion`.
+ * The priority chats, word for word, through `answerQuestion`.
+ * b9–b12 are the 24 Oct 2026 Bubbles low-rated turns.
  *
  * Turns are the user messages in the verbatim replay script (replay_set.json).
  * The roster is the people those chats name. A case runs twice: the seven
@@ -168,7 +169,21 @@ const PEOPLE: DirectoryFact[] = [
     primarySalonId: "loc-0309",
     primaryLocationName: "NE Kearney",
   }),
+  // Sadie is on the directory. Testy Testerson and Test Employee are not.
+  person({
+    id: "sadie",
+    firstName: "Sadie",
+    lastName: "Hoffart",
+    salonIds: ["loc-0901", "loc-0902"],
+    title: "Team Member Part Time",
+    primarySalonId: "loc-0901",
+    primaryLocationName: "SD Sioux Falls 41st St",
+  }),
 ];
+
+/** Test-only stores. Empire is not one of them: an unknown name has to ask. */
+const SIOUX_FALLS = ["loc-0901", "loc-0902"] as const;
+const WEST_DODGE = "loc-0903";
 
 const PAISLEY_PRIOR: PriorFormOnFile = {
   instanceId: "prior-paisley",
@@ -225,6 +240,23 @@ const LIBRARY = [
     displayOrder: 15,
   }),
 ];
+
+vi.mock("@/data/salons", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/data/salons")>();
+  const district = actual.PRODUCTION_SALONS[0]!;
+  const extra = [
+    { ...district, id: "loc-0901", salonNumber: "0901", name: "SD Sioux Falls 41st St", state: "SD" },
+    { ...district, id: "loc-0902", salonNumber: "0902", name: "SD Sioux Falls Western Ave", state: "SD" },
+    { ...district, id: "loc-0903", salonNumber: "0903", name: "NE West Dodge Rd", state: "NE" },
+  ];
+  const PRODUCTION_SALONS = [...actual.PRODUCTION_SALONS, ...extra];
+  return {
+    ...actual,
+    PRODUCTION_SALONS,
+    salonById: (id: string) => PRODUCTION_SALONS.find((entry) => entry.id === id),
+    salonByNumber: (salonNumber: string) => PRODUCTION_SALONS.find((entry) => entry.salonNumber === salonNumber),
+  };
+});
 
 vi.mock("@/lib/config/server-env", () => ({
   liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }),
@@ -396,6 +428,17 @@ interface TurnCheck {
   readonly noWarning?: boolean;
   readonly noReask?: boolean;
   readonly noOtherChat?: boolean;
+  /** The incident the manager already gave, present on the card's reply. */
+  readonly offense?: string;
+  /** Pau's two-sentence action plan, and not a third payroll sentence. */
+  readonly actionPlan?: boolean;
+  /** Do not tell the manager the incident they just gave is missing. */
+  readonly noIncidentGap?: boolean;
+  /** An unknown store stays unset and the reply names these roster salons. */
+  readonly salonAsk?: readonly string[];
+  /** A title the manager did not state and the directory does not hold. */
+  readonly roleNot?: readonly string[];
+  readonly contentNot?: readonly string[];
 }
 
 interface ReplayCase {
@@ -781,6 +824,135 @@ const CASES: readonly ReplayCase[] = [
       },
     ],
   },
+  {
+    id: "b9",
+    turns: [
+      "create a written corrective action for Team Member, Test Employee. Test was assigned to complete policy acknowledgements in woven by 10-15-26 and failed to meet the deadline. Previous coaching was a Verbal CA 10-1-26. Payroll deduct is not applicable.",
+      "name is Test Employee",
+      "this is a violation under Standards of Conduct",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Test Employee",
+        employeeNot: ["ne", "jba manual", "verbal", "standards"],
+        templateKey: "dpoa",
+        warning: "written",
+        payroll: "no",
+        role: "Team Member",
+        formDate: "2026-10-15",
+        noReask: true,
+        noIncidentGap: true,
+        offense: "policy acknowledgement",
+        actionPlan: true,
+      },
+      {
+        from: 3,
+        policyHeading: "Standards of Conduct",
+        policyPage: 12,
+        noReask: true,
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "b10",
+    turns: [
+      "create a verbal CA for team member Testy Testerson at Dodge, NE. location. On 10-16-26 Testy was not properly measuring and weighing product. payroll deduct is not applicable",
+      "employee name is Testy Testerson",
+      "cite standards of conduct as policy violated",
+      "show draft",
+      "violation is that on 10-16-26 Testy was not measuring and weighing product",
+      "show draft with edits",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Testy Testerson",
+        employeeNot: ["ne", "dodge", "jba manual"],
+        locationId: WEST_DODGE,
+        formDate: "2026-10-16",
+        templateKey: "dpoa",
+        role: "Team Member",
+        warning: "verbal",
+        payroll: "no",
+        noReask: true,
+        noIncidentGap: true,
+        offense: "measuring and weighing",
+        actionPlan: true,
+      },
+      {
+        from: 3,
+        policyHeading: "Standards of Conduct",
+        policyPage: 12,
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "b11",
+    turns: [
+      "write a verbal CA for Team Member, Testy Testerson at Dodge, NE. On 10-20-26 Testy was late for shift and did not call supervisor as outlined in attendance policy. payroll deduct is not applicable. previous coaching is JBA Manual 1-1-25",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Testy Testerson",
+        employeeNot: ["ne", "jba manual", "manual", "dodge"],
+        locationId: WEST_DODGE,
+        formDate: "2026-10-20",
+        templateKey: "dpoa",
+        role: "Team Member",
+        warning: "verbal",
+        payroll: "no",
+        noReask: true,
+        noIncidentGap: true,
+        offense: "late",
+        actionPlan: true,
+        policyHeading: "Attendance",
+        policyPage: 14,
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "b12",
+    turns: [
+      "do verbal for team member sadie hoffart at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 sadie was not scheduled to work and came into the store to show her team her new puppy. Sadie was in the store 45 min",
+      "jba manual 11-1-25",
+      "cite pets in workplace",
+      "cite animals in the workplace policy",
+      "store location is empire, sd. create corrective action",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Sadie Hoffart",
+        employeeNot: ["empire", "workplace", "jba manual", "store director", "salon director"],
+        templateKey: "dpoa",
+        role: "Team Member Part Time",
+        warning: "verbal",
+        payroll: "no",
+        formDate: "2026-10-22",
+        noIncidentGap: true,
+        offense: "puppy",
+        actionPlan: true,
+        salonAsk: ["SD Sioux Falls 41st St", "SD Sioux Falls Western Ave"],
+        roleNot: ["Store Director", "Salon Director"],
+        contentNot: ["Store Director", "who is this", "you described her as", "you called her a"],
+      },
+      {
+        from: 4,
+        policyHeading: "Animals in the Workplace",
+        policyPage: 30,
+      },
+    ],
+    off: [],
+  },
 ];
 
 function setFlags(on: boolean) {
@@ -871,6 +1043,35 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
     }
   }
   if (check.noReask) expect(response.content, where).not.toMatch(/who is this|which employee|which salon is this about|which of them/i);
+  if (check.noIncidentGap) expect(response.content, where).not.toMatch(/haven't told me what happened/i);
+  if (check.offense) {
+    expect(response.content.toLowerCase(), `${where} content: ${preview}`).toContain(check.offense.toLowerCase());
+  }
+  if (check.actionPlan) {
+    const plan = response.content.match(/Management will review\b[^]*?Future policy violations may result in additional corrective action[^.\n]*\./i)?.[0] ?? "";
+    expect(plan, `${where} content: ${preview}`).not.toBe("");
+    const sentences = plan.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.trim());
+    expect(sentences, where).toHaveLength(2);
+  }
+  if (check.salonAsk) {
+    expect(proposal?.locationId ?? null, where).toBeNull();
+    const place = `${proposal?.locationName ?? ""} ${proposal?.namedLocationOutOfScope ?? ""}`;
+    expect(place, where).not.toMatch(/workplace|empire/i);
+    for (const salon of check.salonAsk) {
+      expect(response.content, `${where} missing ${salon}`).toContain(salon);
+    }
+    expect(proposal?.authorizedLocationIds ?? [], where).toEqual(expect.arrayContaining([...SIOUX_FALLS]));
+  }
+  if (check.roleNot) {
+    for (const title of check.roleNot) {
+      expect(proposal?.employeeRole ?? "", where).not.toBe(title);
+    }
+  }
+  if (check.contentNot) {
+    for (const phrase of check.contentNot) {
+      expect(response.content.toLowerCase(), where).not.toContain(phrase.toLowerCase());
+    }
+  }
   if (check.noOtherChat) {
     expect(response.content, where).not.toMatch(/earlier today|other tab|you and I talked through this/i);
     for (const block of captured.memory) expect(block ?? "", where).not.toMatch(/other tab/i);

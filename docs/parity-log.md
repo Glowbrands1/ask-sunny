@@ -5,6 +5,34 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: four low-rated Bubbles chats (b9–b12) — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy people, store
+names, or company wording. Salon ↔ store. The manual title stays **JBA
+Policy Manual**.
+
+What Bubbles must port, behind the same default-off flags (no new flag, no
+phrase list, no UI change):
+
+- A prior verbal or written step is history. Both words in one account do
+  not ask "which warning level" and do not block the card. "do verbal" is a
+  verbal corrective action, not a coaching question.
+- A roster state abbreviation ("NE") and a name made only of the manual
+  title's own words ("JBA Manual") are never offered as the employee.
+- A comma plus a roster state ("empire, sd") is that state, not a job title.
+- "at Dodge, NE" / "location is Empire, SD" is a place plus a roster state.
+  One store in that state whose name contains the place words is that store.
+  None is unknown: ask, and list the employee's real stores. Do not file the
+  Woven primary, and do not treat a policy phrase ("workplace policy") as a
+  store.
+- The title they started is filled from the directory when that person's
+  title starts with those words. A person who is not in the directory keeps
+  only the words they said, not the rest of someone else's title.
+- The turn that already describes what happened is the offense on the card.
+  With the action-plan flag on, the card carries the two-sentence plan
+  (review the cited section, then the required closing). A named manual
+  heading, including Animals in the Workplace, is cited with its page.
+
 ## 23 Oct 2026: a name not in Woven is not a blocker (Sunny only)
 
 Live replay with the seven flags on refused forms, leaked the repair model's

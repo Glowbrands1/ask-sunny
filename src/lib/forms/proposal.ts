@@ -4,6 +4,9 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
+import { groundedEntitiesEnabled, intentExtractionEnabled } from "@/lib/config/chat-quality-flags";
+import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
+
 import { extractFormDate } from "./form-date-answer";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD, lowercaseMonths } from "./name-words";
@@ -164,6 +167,13 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
     const ends = WRAPPER_AFTER.test(opened) || stem !== null;
     const word = stem ?? unwrapped;
     const lower = word.toLowerCase();
+    // "Test Employee." — the surname is a form word and the sentence ends on it.
+    // "ima employee, tan consultant" is a role after the name, so the comma does not count.
+    const formWordAsSurname =
+      parts.length > 0 &&
+      /[.!?]/.test(raw) &&
+      isFormVocabulary(lower) &&
+      (groundedEntitiesEnabled() || intentExtractionEnabled());
     const usable =
       TYPED_NAME_WORD.test(word) &&
       // The first part is a real word; a trailing initial ("C") may follow it.
@@ -173,7 +183,7 @@ function readTypedName(words: readonly string[], whole: boolean): string | null 
       (!NOT_A_TYPED_NAME.has(lower) || willAsFirstName(lower, parts.length, words, whole)) &&
       !NOT_A_NAME.has(lower) &&
       !COUNTS_PEOPLE.has(lower) &&
-      !isFormVocabulary(lower);
+      (!isFormVocabulary(lower) || formWordAsSurname);
     if (!usable) {
       if (whole) return null;
       break;
@@ -1359,9 +1369,16 @@ function formSubjectNames(text: string): string[] {
     `\\b(?:${FORM_NAME_PATTERN}|c\\.a\\.?|ca|${FORM_NOUNS})\\s+(for|about|regarding|on)\\s+(?=\\S)`,
     "gi",
   );
+  const slotsOn = groundedEntitiesEnabled() || intentExtractionEnabled();
   for (const match of text.matchAll(FORM_THEN_PERSON)) {
     // Everything after the preposition; "for the manager jane doe" — the role describes the subject (`withoutSubjectLead`).
-    const after = withoutSubjectLead(text.slice((match.index ?? 0) + match[0].length).trim().split(/\s+/));
+    // "for Team Member, Test Employee" — the comma is punctuation, the role still leads.
+    const rawAfter = text.slice((match.index ?? 0) + match[0].length).trim();
+    const softened =
+      slotsOn && new RegExp(`^(?:${SUBJECT_LEAD})\\s*,\\s+`, "i").test(rawAfter)
+        ? rawAfter.replace(",", " ")
+        : rawAfter;
+    const after = withoutSubjectLead(softened.split(/\s+/));
     /*
      * "COACHING ABOUT OPENING THE SALON LATE" IS A TOPIC. Found in production
      * QA: "about" + a word ending "-ing" put "opening" on the form in place of
@@ -1544,7 +1561,9 @@ export function employeeState(context: ManagerContext): EmployeeState {
         else if (pending.length === 0) pending = null;
       }
     }
-    const names = reading.names.filter((name) => !excluded.some((not) => samePerson(not, name)));
+    const names = peopleNamed(
+      reading.names.filter((name) => !excluded.some((not) => samePerson(not, name))),
+    );
     if (names.length === 0) continue;
 
     if (names.length === 1) {
@@ -1755,10 +1774,33 @@ export const JOB_TITLES: { pattern: RegExp; title: string }[] = [
  * most specific one wins rather than whichever came first in the sentence.
  */
 export function extractJobTitle(text: string): string | null {
+  const states = new Set(PRODUCTION_SALONS.map((salon) => salon.state.toLowerCase()));
   for (const entry of JOB_TITLES) {
-    if (entry.pattern.test(text)) return entry.title;
+    const match = new RegExp(entry.pattern.source, entry.pattern.flags).exec(text);
+    if (!match) continue;
+    const word = match[0].toLowerCase();
+    // A roster state is also the abbreviation for Salon Director. "empire, sd"
+    // and "at SD Sioux Falls" name the state, not the job.
+    if (states.has(word) && stateNamesAPlace(text, match.index ?? 0, match[0].length, word)) continue;
+    return entry.title;
   }
   return null;
+}
+
+function stateNamesAPlace(text: string, index: number, length: number, state: string): boolean {
+  if (/,\s*$/.test(text.slice(Math.max(0, index - 3), index))) return true;
+  const rest = text.slice(index + length).replace(/^\s+/, "").toLowerCase();
+  return PRODUCTION_SALONS.some((salon) => {
+    if (salon.state.toLowerCase() !== state) return false;
+    const local = salon.name.slice(salon.state.length).trim().toLowerCase();
+    return local.length > 0 && rest.startsWith(local);
+  });
+}
+
+/** A roster state or the manual's title is not an employee. Off, the names stay. */
+function peopleNamed(names: readonly string[]): string[] {
+  if (!groundedEntitiesEnabled() && !intentExtractionEnabled()) return [...names];
+  return names.filter((name) => !isRosterStateName(name) && !isDocumentName(name));
 }
 
 /**

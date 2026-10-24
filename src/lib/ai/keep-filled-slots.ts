@@ -1,3 +1,4 @@
+import { salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates } from "@/lib/forms/form-date-answer";
 import { matchEmployeeName } from "@/lib/forms/employee-match";
@@ -7,7 +8,15 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
+import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import {
+  actionPlanSentencesEnabled,
+  groundedEntitiesEnabled,
+  intentExtractionEnabled,
+} from "@/lib/config/chat-quality-flags";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import type { GroundedPerson } from "./grounded-entities";
@@ -47,13 +56,20 @@ export function holdFilledSlots(input: {
   ].filter((turn) => turn.trim());
   const previous = previousProposal(input.history, proposal.templateKey);
   const employeeName = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people);
+  const slotsOn = intentExtractionEnabled() || groundedEntitiesEnabled();
+  const spokenRole = slotsOn ? spokenDirectoryTitle(turns.join("\n"), input.people, employeeName) : null;
   const employeeRole =
     extractJobTitle(input.question) ||
+    extractJobTitle(turns.join("\n")) ||
+    spokenRole ||
     proposal.employeeRole ||
     previous?.employeeRole ||
-    extractJobTitle(turns.join("\n")) ||
     null;
-  const locationId = keptSalon(turns, proposal.locationId, previous?.locationId ?? null, employeeName, input.people);
+  const place = readPlaceState(turns.join("\n"));
+  const namedSalon = turns.some((turn) => salonIds(turn).length > 0);
+  let locationId = keptSalon(turns, proposal.locationId, previous?.locationId ?? null, employeeName, input.people);
+  if (slotsOn && place.kind === "one") locationId = place.salon.id;
+  if (slotsOn && place.kind === "unknown" && !namedSalon) locationId = null;
   const formDate = keptDate(input.question, input.today, proposal.formDate ?? null, previous?.formDate ?? null);
   const payrollDeduct = keptPayroll(
     turns,
@@ -66,11 +82,27 @@ export function holdFilledSlots(input: {
   let next: ChatFormProposal = proposal;
   if (employeeName !== proposal.employeeName) next = { ...next, employeeName };
   if (employeeRole && employeeRole !== next.employeeRole) next = { ...next, employeeRole };
-  if (locationId && locationId !== next.locationId) {
+  if (slotsOn && place.kind === "unknown" && !locationId) {
+    const offered = directorySalonIds(employeeName, input.people);
+    const ids = offered.length > 0 ? offered : next.authorizedLocationIds;
+    if (ids.length > 0) {
+      next = {
+        ...next,
+        locationId: null,
+        locationName: null,
+        namedLocationOutOfScope: null,
+        locationResolution: "needs_selection",
+        authorizedLocationIds: [...ids],
+        status: next.employeeName ? "needs_location" : next.status,
+        supportsInlineDraft: false,
+      };
+    }
+  } else if (locationId && locationId !== next.locationId) {
     next = {
       ...next,
       locationId,
       locationResolution: "resolved",
+      status: next.employeeName ? "ready" : next.status,
     };
   }
   if (formDate && formDate !== next.formDate) next = { ...next, formDate };
@@ -90,8 +122,17 @@ export function holdFilledSlots(input: {
   }
   content = dropBlockedQuestions(content, next);
   content = keepPolicyLines(content, previousContent(input.history, proposal.templateKey));
+  if (slotsOn) {
+    content = withObservation(content, turns, next.employeeName);
+    if (next.locationResolution === "needs_selection" && !next.locationId) {
+      content = withSalonChoices(content, next.authorizedLocationIds);
+    }
+  }
 
   const citations = (input.response.citations ?? []).filter((citation) => !isWarningCitation(citation));
+  if (actionPlanSentencesEnabled() && next.templateKey === "dpoa" && next.employeeName) {
+    content = withActionPlan(content, next, citations);
+  }
   const same =
     content === input.response.content &&
     next === proposal &&
@@ -340,4 +381,92 @@ function keepPolicyLines(content: string, previous: string): string {
     .filter((line) => /JBA Policy Manual/i.test(line) && !/\bwarning policy\b/i.test(line));
   if (lines.length === 0) return content;
   return `${content}\n\n${lines.join("\n")}`.trim();
+}
+
+/**
+ * A directory title the manager started. Their words are a prefix of that
+ * title. The person's own title is used whole when it starts with those
+ * words. Someone who is not on the roster keeps only the words they said.
+ */
+function spokenDirectoryTitle(
+  text: string,
+  people: readonly GroundedPerson[],
+  employeeName: string | null,
+): string | null {
+  if (!employeeName) return null;
+  const titles = [
+    ...new Set(people.map((person) => person.title?.trim()).filter((title): title is string => Boolean(title))),
+  ];
+  let best: { prefix: string; words: number } | null = null;
+  for (const title of titles) {
+    const words = title.split(/\s+/).filter(Boolean);
+    for (let length = words.length; length >= 2; length -= 1) {
+      const prefix = words.slice(0, length).join(" ");
+      const pattern = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      if (!pattern.test(text)) continue;
+      if (!best || length > best.words) best = { prefix, words: length };
+      break;
+    }
+  }
+  if (!best) return null;
+  const person = personByName(employeeName, people);
+  if (!person) return best.prefix;
+  const own = person.title?.trim() ?? "";
+  return own.toLowerCase().startsWith(best.prefix.toLowerCase()) ? own : null;
+}
+
+function personByName(name: string, people: readonly GroundedPerson[]): GroundedPerson | null {
+  const match = matchEmployeeName(name, people);
+  if (match.kind !== "exact") return null;
+  return people.find((person) => person.id === match.employee.id) ?? null;
+}
+
+function directorySalonIds(name: string | null, people: readonly GroundedPerson[]): string[] {
+  if (!name) return [];
+  const person = personByName(name, people);
+  return person ? [...person.salonIds] : [];
+}
+
+/** The account already given, copied onto the card so the offense is not asked again. */
+function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
+  const ignore = employeeName ? [employeeName] : [];
+  const sentences: string[] = [];
+  for (const turn of turns) {
+    for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
+      const sentence = part.trim();
+      if (sentence.length < 12) continue;
+      if (!describesMoreThanTheRequest(sentence, { ignore })) continue;
+      if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
+      if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
+      sentences.push(sentence);
+    }
+  }
+  if (sentences.length === 0) return content;
+  return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
+}
+
+/** The real salons, named, when the place they typed is not one of them. */
+function withSalonChoices(content: string, ids: readonly string[]): string {
+  const names = ids.map((id) => salonById(id)?.name).filter((name): name is string => Boolean(name));
+  if (names.length === 0 || names.every((name) => content.includes(name))) return content;
+  const lines = names.map((name, index) => `${index + 1}. **${name}**`);
+  const ask = /which salon/i.test(content) ? lines.join("\n") : `Which salon is this about?\n${lines.join("\n")}`;
+  return `${content}\n\n${ask}`.trim();
+}
+
+function withActionPlan(content: string, proposal: ChatFormProposal, citations: readonly SourceCitation[]): string {
+  if (/Management will review\b/i.test(content)) return content;
+  const citedPolicies = [
+    ...new Set(
+      citations
+        .map((citation) => citation.excerpt.split(".")[0]?.trim() ?? "")
+        .filter((heading) => heading.length > 2 && !/^warning$/i.test(heading)),
+    ),
+  ];
+  const plan = twoSentenceActionPlan({
+    citedPolicies,
+    employeeName: proposal.employeeName,
+    payroll: { answer: proposal.payrollDeduct ?? null, amount: null },
+  });
+  return `${content}\n\n**Action Plan:** ${plan}`.trim();
 }

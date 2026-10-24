@@ -3,7 +3,10 @@ import { z } from "zod";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
+import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -288,7 +291,10 @@ function groundEmployee(
   const fromText = peopleNamedIn(blob, people);
   const extracted = typed?.trim()
     ? []
-    : extractEmployeeNames(blob).filter((name) => name.trim().split(/\s+/).length >= 2);
+    : extractEmployeeNames(blob).filter(
+        (name) =>
+          name.trim().split(/\s+/).length >= 2 && !isDocumentName(name) && !isRosterStateName(name),
+      );
   const probe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
   if (!probe) {
     if (fromText.length > 1) {
@@ -354,6 +360,11 @@ function groundSalon(
   salons: readonly SalonRow[],
   person: GroundedPerson | null,
 ): { id: string | null; name: string | null; ambiguous: readonly SalonRow[] } {
+  // "at Dodge, NE" is the one salon in that state whose name contains the
+  // place. A place in a roster state that matches none is unknown: do not
+  // fall through to the Woven primary.
+  const place = readPlaceState(blob);
+  if (place.kind === "one") return { id: place.salon.id, name: place.salon.name, ambiguous: [] };
   // The salon the manager named wins over a model slot and over the Woven
   // primary. "Primary salon is …" names the home salon; the other salon in
   // that same account is where it happened.
@@ -366,6 +377,8 @@ function groundSalon(
     if (latest) return { id: latest.id, name: latest.name, ambiguous: [] };
     return { id: null, name: null, ambiguous: named };
   }
+  // The model slot and the Woven primary are not a store the manager named.
+  if (place.kind === "unknown") return { id: null, name: null, ambiguous: [] };
   const probed = typed?.trim() || null;
   if (probed) {
     const matched = matchSalons(probed, salons);
@@ -557,14 +570,16 @@ function groundWarning(
   typed: "verbal" | "written" | null,
   blob: string,
 ): { value: "verbal" | "written" | null; ambiguous: boolean } {
+  // A prior "Verbal CA" beside the level being issued is history. Both words
+  // in the account are not a question, and the card is not held for one.
+  const turns = blob.split("\n").map((line) => line.trim()).filter(Boolean);
+  const stated = warningLevelFromTurns(turns);
+  if (stated) return { value: stated, ambiguous: false };
+  if (typed === "verbal" || typed === "written") return { value: typed, ambiguous: false };
   const verbal = /\bverbal\b/i.test(blob);
   const written = /\bwritten\b/i.test(blob);
-  if (verbal && written) {
-    if (typed === "verbal" || typed === "written") return { value: typed, ambiguous: false };
-    return { value: null, ambiguous: true };
-  }
-  if (verbal) return { value: "verbal", ambiguous: false };
-  if (written) return { value: "written", ambiguous: false };
+  if (verbal && !written) return { value: "verbal", ambiguous: false };
+  if (written && !verbal) return { value: "written", ambiguous: false };
   return { value: null, ambiguous: false };
 }
 
