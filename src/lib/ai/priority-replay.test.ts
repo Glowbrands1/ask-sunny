@@ -17,8 +17,10 @@ import {
   REPLAY_RUNS,
   casesWhereOldPromptScoresBetter,
   judgeReplayCard,
+  judgeFixRound,
   judgeRulebookRuns,
   latencyOverGate,
+  renderFixRound,
   renderRulebookScoreboard,
   renderScoreboardRound,
   rulebookCasesWorse,
@@ -26,6 +28,7 @@ import {
   type ReplayCardCriteria,
   type ReplayCaseResult,
   type ReplayRound,
+  type FixRoundRow,
   type RulebookRun,
   type RulebookScoreRow,
   type RulebookSpec,
@@ -69,6 +72,40 @@ const FLAGS = [
   "PAYROLL_AMOUNT_FIELD_ENABLED",
   "CODE_SLOTS_ENABLED",
 ] as const;
+
+/** Round 1. Name, slot, and salon only. SELF_CHECK stays off. */
+const ROUND1_FLAGS = [
+  "INTENT_EXTRACTION_ENABLED",
+  "GROUNDED_ENTITIES_ENABLED",
+  "DRAFT_MERGE_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED",
+  "CODE_SLOTS_ENABLED",
+] as const;
+
+/** Round 3, current prompt, 3 runs together. The latency cap is 25% over these. */
+const PREVIOUS_ROUND_MS: Record<string, number> = {
+  s4: 3059,
+  s9: 485,
+  s11: 452,
+  s5: 439,
+  s27: 630,
+  s28: 117,
+  s29: 66,
+  s17: 360,
+  s20: 334,
+  s21: 398,
+  s25: 146,
+  s8: 1056,
+  s12: 151,
+  s16: 178,
+  b9: 345,
+  b10: 603,
+  b11: 87,
+  b12: 762,
+  n1: 212,
+  n2: 49,
+  n3: 69,
+};
 
 const TODAY = "2026-10-23";
 
@@ -1080,6 +1117,16 @@ function setFlags(on: boolean) {
   }
 }
 
+function setRound1Flags() {
+  setFlags(false);
+  for (const name of ROUND1_FLAGS) process.env[name] = "1";
+  delete process.env.SELF_CHECK_ENABLED;
+  selectPromptRevision("current");
+  captured.recordSystems = false;
+  recordHarness.on = false;
+  rulebookCapture.on = false;
+}
+
 const RUNS = REPLAY_RUNS;
 const recordHarness = { on: true };
 /** prompts.ts at 417e80c, the commit before the unified-authority prompt edit. */
@@ -1294,18 +1341,46 @@ function guardNamedTurn(item: ReplayCase, turn: number, response: Awaited<Return
   }
 }
 
-async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptRevision = "current") {
+async function replay(
+  item: ReplayCase,
+  flagsOn: boolean,
+  variant: SystemPromptRevision = "current",
+  quiet = false,
+  suffix = "",
+) {
   captured.memory.length = 0;
   rulebookCapture.run = null;
   const history: ChatMessage[] = [];
   const turnContents: string[] = [];
-  const conversationId = flagsOn ? `conv-${item.id}-on-${variant}` : `conv-${item.id}-off`;
+  const conversationId = suffix
+    ? `conv-${item.id}${suffix}`
+    : flagsOn
+      ? `conv-${item.id}-on-${variant}`
+      : `conv-${item.id}-off`;
   const checks = flagsOn ? item.on : item.off;
   let last: Awaited<ReturnType<typeof ask>> | null = null;
   for (let index = 0; index < item.turns.length; index += 1) {
     const response = await ask(item.turns[index]!, history, conversationId);
     last = response;
     const turn = index + 1;
+    if (quiet) {
+      turnContents.push(response.content);
+      history.push({
+        id: `u-${item.id}-${index}`,
+        role: "user",
+        content: item.turns[index]!,
+        createdAt: "2026-10-23T15:00:00Z",
+      });
+      history.push({
+        id: `a-${item.id}-${index}`,
+        role: "assistant",
+        content: response.content,
+        createdAt: "2026-10-23T15:01:00Z",
+        ...(response.formProposal ? { formProposal: response.formProposal } : {}),
+        ...(response.formSelection ? { formSelection: response.formSelection } : {}),
+      });
+      continue;
+    }
     expect(response.content, `${item.id} turn ${turn}`).not.toMatch(
       /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|didn'?t find \*\*|employee list for your salons|not found in the roster/i,
     );
@@ -1555,6 +1630,97 @@ function renderFlagAblation(effects: readonly FlagEffect[]): string {
   return lines.join("\n");
 }
 
+let round1Markdown = "";
+
+function structuralSpec(item: ReplayCase): RulebookSpec {
+  const criteria = criteriaWrittenBeforeRun(item.id);
+  return {
+    employee: criteria.employee,
+    salon: criteria.salon,
+    cardExpected: Boolean(criteria.employee || criteria.salon || criteria.date),
+    date: criteria.date,
+    policy: null,
+    expectPlan: false,
+    amount: null,
+  };
+}
+
+async function structuralRuns(item: ReplayCase, suffix: string): Promise<{ ms: number; runs: RulebookSnapshotRun[] }> {
+  stateBag.forms.clear();
+  const runs: RulebookSnapshotRun[] = [];
+  const started = Date.now();
+  for (let run = 0; run < RUNS; run += 1) {
+    rulebookCapture.run = null;
+    rulebookCapture.on = true;
+    await replay(item, true, "current", true, suffix);
+    if (!rulebookCapture.run) throw new Error(`${item.id} produced no card snapshot`);
+    runs.push(rulebookCapture.run);
+    rulebookCapture.on = false;
+  }
+  return { ms: Date.now() - started, runs };
+}
+
+describe("round 1 structural name, slot, and salon", () => {
+  afterAll(() => {
+    recordHarness.on = true;
+    rulebookCapture.on = false;
+  });
+
+  it("keeps self-check off and is accepted only when the gate holds", async () => {
+    const rows: FixRoundRow[] = [];
+    for (const item of CASES) {
+      setFlags(false);
+      const before = await structuralRuns(item, `-r1off-${item.id}`);
+      setRound1Flags();
+      expect(process.env.SELF_CHECK_ENABLED, "SELF_CHECK stays off").toBeUndefined();
+      const after = await structuralRuns(item, `-r1-${item.id}`);
+      const spec = structuralSpec(item);
+      const beforeMisses = judgeRulebookRuns(
+        spec,
+        before.runs.map((run) => toRulebookRun(item, run)),
+        before.ms,
+      ).filter((rule) => rule !== "latency");
+      const afterMisses = judgeRulebookRuns(
+        spec,
+        after.runs.map((run) => toRulebookRun(item, run)),
+        after.ms,
+      ).filter((rule) => rule !== "latency");
+      rows.push({
+        id: item.id,
+        beforePass: beforeMisses.length === 0,
+        afterPass: afterMisses.length === 0,
+        beforeMs: Math.max(PREVIOUS_ROUND_MS[item.id] ?? before.ms, flagsOnResults.find((row) => row.id === item.id)?.ms ?? 0),
+        afterMs: after.ms,
+        beforeMisses,
+        afterMisses,
+        leaked: afterMisses.includes("leaked"),
+      });
+    }
+    const decision = judgeFixRound(rows);
+    let commit = "unknown";
+    try {
+      commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    } catch {
+      commit = "unknown";
+    }
+    round1Markdown = renderFixRound({
+      title: "Round 1 — structural name, slot, and salon",
+      commit,
+      flags: ROUND1_FLAGS,
+      selfCheck: "off",
+      runs: RUNS,
+      rows,
+      decision,
+    });
+    console.log(round1Markdown);
+    if (!decision.accepted) {
+      throw new Error(
+        `Round 1 rejected. fixed=${decision.fixed.join(",") || "none"} broken=${decision.broken.join(",") || "none"} latency=${decision.latency.join(",") || "none"} leaked=${decision.leaked.join(",") || "none"}`,
+      );
+    }
+  }, 120_000);
+});
+
 function rulebookSpec(item: ReplayCase): RulebookSpec {
   const criteria = criteriaWrittenBeforeRun(item.id);
   const dpoa = item.on.some((check) => check.templateKey === "dpoa");
@@ -1702,7 +1868,7 @@ afterAll(() => {
     const index = existing.indexOf(marker);
     const withoutRound = index === -1 ? existing.trimEnd() : existing.slice(0, index).trimEnd();
     const ablation = flagEffects.length === 0 ? "" : renderFlagAblation(flagEffects);
-    const next = [withoutRound, section, ablation, rulebook.markdown].filter((part) => part.trim()).join("\n\n");
+    const next = [withoutRound, section, ablation, rulebook.markdown, round1Markdown].filter((part) => part.trim()).join("\n\n");
     writeFileSync("docs/scoreboard.md", `${next.trim()}\n`);
   }
   if (worse.length > 0) {

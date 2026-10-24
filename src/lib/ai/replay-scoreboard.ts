@@ -340,3 +340,107 @@ export function renderRulebookScoreboard(input: {
   lines.push("");
   return lines.join("\n");
 }
+
+/** A later round may take up to 25% longer than the previous round. Faster is fine. */
+export const ROUND_LATENCY_RATIO = 1.25;
+/**
+ * Short cases move by this much when the rest of the suite is on the same
+ * machine. A regression has to clear both the ratio and this slack.
+ */
+export const ROUND_LATENCY_SLACK_MS = 250;
+
+export function latencyRegressed(
+  previousMs: number,
+  nextMs: number,
+  ratio = ROUND_LATENCY_RATIO,
+  slackMs = 0,
+): boolean {
+  return nextMs > previousMs * ratio && nextMs > previousMs + slackMs;
+}
+
+export interface FixRoundRow {
+  readonly id: string;
+  readonly beforePass: boolean;
+  readonly afterPass: boolean;
+  readonly beforeMs: number;
+  readonly afterMs: number;
+  readonly beforeMisses: readonly string[];
+  readonly afterMisses: readonly string[];
+  readonly leaked: boolean;
+}
+
+export interface FixRoundDecision {
+  readonly fixed: readonly string[];
+  readonly broken: readonly string[];
+  readonly stillOpen: readonly string[];
+  readonly latency: readonly string[];
+  readonly leaked: readonly string[];
+  readonly accepted: boolean;
+}
+
+/**
+ * Accepted when at least one case that failed now passes, none that passed
+ * now fail, latency is within 25% of the previous round, and nothing leaks.
+ */
+export function judgeFixRound(rows: readonly FixRoundRow[], slackMs = ROUND_LATENCY_SLACK_MS): FixRoundDecision {
+  const fixed = rows.filter((row) => !row.beforePass && row.afterPass).map((row) => row.id);
+  const broken = rows.filter((row) => row.beforePass && !row.afterPass).map((row) => row.id);
+  const stillOpen = rows.filter((row) => !row.beforePass && !row.afterPass).map((row) => row.id);
+  const latency = rows.filter((row) => latencyRegressed(row.beforeMs, row.afterMs, ROUND_LATENCY_RATIO, slackMs)).map((row) => row.id);
+  const leaked = rows.filter((row) => row.leaked).map((row) => row.id);
+  return {
+    fixed,
+    broken,
+    stillOpen,
+    latency,
+    leaked,
+    accepted: fixed.length >= 1 && broken.length === 0 && latency.length === 0 && leaked.length === 0,
+  };
+}
+
+export function renderFixRound(input: {
+  readonly title: string;
+  readonly commit: string;
+  readonly flags: readonly string[];
+  readonly selfCheck: "off";
+  readonly runs: number;
+  readonly rows: readonly FixRoundRow[];
+  readonly decision: FixRoundDecision;
+}): string {
+  const lines = [
+    `## ${input.title}`,
+    "",
+    "One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the 3 runs together. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.",
+    "",
+    `- commit: \`${input.commit}\``,
+    `- flag set: \`${input.flags.join(", ")}\``,
+    "- SELF_CHECK: off",
+    `- runs: ${input.runs}`,
+    `- accepted: ${input.decision.accepted ? "yes" : "no"}`,
+    "",
+    "| Case | Before | After | Latency | Round |",
+    "| --- | --- | --- | --- | --- |",
+  ];
+  const fixed = new Set(input.decision.fixed);
+  const broken = new Set(input.decision.broken);
+  const slow = new Set(input.decision.latency);
+  const leaked = new Set(input.decision.leaked);
+  for (const row of input.rows) {
+    const marks = [
+      fixed.has(row.id) ? "fixed" : "",
+      broken.has(row.id) ? "broken" : "",
+      slow.has(row.id) ? "slow" : "",
+      leaked.has(row.id) ? "leak" : "",
+    ].filter(Boolean);
+    const round = marks.length > 0 ? marks.join(", ") : row.beforePass ? "held" : "open";
+    lines.push(
+      `| ${row.id} | ${missCell(row.beforeMisses)} | ${missCell(row.afterMisses)} | ${row.afterMs}ms vs ${row.beforeMs}ms | ${round} |`,
+    );
+  }
+  lines.push("");
+  lines.push(
+    `Gate: fixed ${input.decision.fixed.length} (${input.decision.fixed.join(", ") || "none"}), broken ${input.decision.broken.length}, latency ${input.decision.latency.length}, leaked ${input.decision.leaked.length}.`,
+  );
+  lines.push("");
+  return lines.join("\n");
+}

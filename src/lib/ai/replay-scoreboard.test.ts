@@ -7,9 +7,11 @@ import {
   REPLAY_LATENCY_GATE_MS,
   casesWhereOldPromptScoresBetter,
   judgeReplayCard,
+  judgeFixRound,
   judgeRulebookRun,
   judgeRulebookRuns,
   latencyOverGate,
+  latencyRegressed,
   renderRulebookScoreboard,
   renderScoreboard,
   rulebookVerdict,
@@ -117,6 +119,13 @@ describe("replay card criteria", () => {
       expect(board).toContain("b9ae362fd80e1fc492c4326f80834cf105ef19b8");
       expect(board).toContain("Totals:");
       expect(board).toMatch(/worse 0\./);
+    }
+    if (board.includes("## Round 1 — structural name, slot, and salon")) {
+      const round1 = board.slice(board.indexOf("## Round 1 — structural name, slot, and salon"));
+      expect(round1).toContain("SELF_CHECK: off");
+      expect(round1).toContain("- accepted: yes");
+      expect(round1).toContain("broken 0, latency 0, leaked 0");
+      expect(round1).not.toContain("SELF_CHECK_ENABLED");
     }
   });
 
@@ -226,5 +235,29 @@ describe("rulebook old against new", () => {
     expect(board).toContain("Totals: better 1, same 1, worse 0.");
     expect(board).not.toContain("FAIL");
     expect(board).toContain("salon does not gate the card");
+  });
+});
+
+describe("fix round gate", () => {
+  it("accepts a round that fixes a case, breaks none, stays inside 25%, and does not leak", () => {
+    expect(latencyRegressed(100, 125)).toBe(false);
+    expect(latencyRegressed(100, 126)).toBe(true);
+    expect(latencyRegressed(100, 200, 1.25, 250)).toBe(false);
+    expect(latencyRegressed(400, 900, 1.25, 250)).toBe(true);
+    const decision = judgeFixRound([
+      { id: "s11", beforePass: false, afterPass: true, beforeMs: 452, afterMs: 400, beforeMisses: ["employee"], afterMisses: [], leaked: false },
+      { id: "s21", beforePass: true, afterPass: true, beforeMs: 398, afterMs: 490, beforeMisses: [], afterMisses: [], leaked: false },
+    ]);
+    expect(decision.accepted).toBe(true);
+    expect(decision.fixed).toEqual(["s11"]);
+    expect(decision.broken).toEqual([]);
+  });
+
+  it("rejects a break, a slow case, a leak, or a round that fixes nothing", () => {
+    const row = { beforeMs: 100, afterMs: 100, beforeMisses: [] as string[], afterMisses: [] as string[], leaked: false };
+    expect(judgeFixRound([{ ...row, id: "s21", beforePass: true, afterPass: false, afterMisses: ["salon"] }]).accepted).toBe(false);
+    expect(judgeFixRound([{ ...row, id: "s4", beforePass: false, afterPass: true, beforeMs: 400, afterMs: 900 }]).latency).toEqual(["s4"]);
+    expect(judgeFixRound([{ ...row, id: "s8", beforePass: false, afterPass: true, leaked: true }]).accepted).toBe(false);
+    expect(judgeFixRound([{ ...row, id: "s20", beforePass: true, afterPass: true }]).accepted).toBe(false);
   });
 });

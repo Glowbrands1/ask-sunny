@@ -5,6 +5,19 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Round 1 structural name, slot, and salon — Sunny-only
+
+Ask Bubbles was not attached. No new chat mechanism in this round: the
+name, slot, and salon behaviour is the flagged code already on this stack.
+SELF_CHECK stays off. Nothing was published. The manual title stays
+**JBA Policy Manual**. Port is not needed until a later change touches the
+chat or form seam.
+
+- The replay's round 1 flag set is intent extraction, grounded entities,
+  draft merge, typed name proceeds, and code slots. A round is kept only
+  when it fixes at least one failing case, breaks none, stays within 25%
+  of the previous round's latency, and leaks no internal text.
+
 ## 24 Oct 2026: Rulebook score, main against this branch — Sunny-only
 
 Ask Bubbles was not attached. No chat mechanism changed in this step, and
