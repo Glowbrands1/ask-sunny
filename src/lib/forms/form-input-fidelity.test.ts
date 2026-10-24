@@ -74,6 +74,7 @@ function payroll(text: string) {
 
 afterEach(() => {
   for (const name of FLAGS) delete process.env[name];
+  delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
 });
 
 describe("warning level is only what the manager stated", () => {
@@ -126,6 +127,117 @@ describe("cash drawer and a store are not employee names", () => {
     expect(extractEmployeeNames("create a corrective action for Lawrence")).toEqual([]);
     expect(extractEmployeeNames("coaching form for lawrence smith").join(" ").toLowerCase()).toContain("lawrence smith");
     expect(extractEmployeeNames("the employee is Pat Kearney")).toEqual(["Pat Kearney"]);
+  });
+});
+
+/**
+ * s11 replay. "lawrence" in "for lawrence location …" is KS Lawrence.
+ * With the replay's typed-name reader on, a store beside a person becomes
+ * the question "Test Employee or lawrence?".
+ */
+const S11 = [
+  "create coaching form for employee test testy who is a tanning consultant at manhattan. on 9-29-26 test was out of dress code",
+  "employee name is colene schildt",
+  "create coaching form for colene schildt",
+  "sunny created a coaching form for an employee who was not in dress code and reflected it as underperformance and should be retraining",
+  "create a coaching form for lawrence location tanning consultant, colene schildt, who was talking on her cell phone for 25 minutes on 9-29-26 when customers were waiting to check in",
+  "salon location is lawrence, ks",
+  "Create a Coaching Form from this conversation.",
+];
+
+const STORE_OR_PERSON = "create a coaching form for Test Employee, and lawrence";
+
+const COACHING = HR_TEMPLATE_SEEDS.filter((seed) => seed.key === "coaching").map((seed) => ({
+  id: "tpl-coaching",
+  key: seed.key,
+  name: seed.name,
+  shortName: seed.shortName,
+  description: seed.description,
+  category: seed.category,
+  layoutFamily: seed.layoutFamily,
+  requiredPermission: seed.requiredPermission,
+  active: true,
+  displayOrder: seed.displayOrder,
+  currentVersion: { id: "v-coaching", status: "published", document: seed.document, variants: seed.variants },
+  draftVersion: null,
+  versionCount: 1,
+  activeAsset: null,
+  assetCount: 0,
+}));
+
+function s11Context() {
+  const prior = S11.slice(0, -1).map((content, index) => ({
+    id: `s11-${index}`,
+    role: "user" as const,
+    content,
+  }));
+  return managerContext(prior, { id: "s11-last", content: S11[S11.length - 1]! });
+}
+
+describe("a salon is not an employee candidate", () => {
+  it("takes lawrence as the employee on the s11 turns, and asks Test Employee or lawrence, while the flag is off", async () => {
+    expect(extractEmployeeNames(S11[4]!).map((name) => name.toLowerCase())).toEqual(["lawrence"]);
+    expect(resolveEmployee(s11Context())).toEqual({ kind: "resolved", employeeName: "lawrence" });
+
+    process.env.TYPED_NAME_PROCEEDS_ENABLED = "on";
+    expect(resolveEmployee(managerContext([], { id: "m", content: STORE_OR_PERSON }))).toEqual({
+      kind: "ambiguous",
+      candidates: ["Test Employee", "lawrence"],
+    });
+    const { proposeFormForTurn } = await import("@/lib/ai/form-proposal");
+    const asked = await proposeFormForTurn({
+      history: [],
+      question: STORE_OR_PERSON,
+      questionMessageId: "store-or-person",
+      actor: { role: "salon_director", scope: ONE },
+      summaries: COACHING as never,
+      today: TODAY,
+    });
+    expect(asked?.content).toContain("**Test Employee** or **lawrence**?");
+  });
+
+  it("never offers KS Lawrence as the employee, including beside Test Employee", async () => {
+    flag("PERSON_NAME_ONLY_ENABLED", true);
+    process.env.TYPED_NAME_PROCEEDS_ENABLED = "on";
+
+    expect(extractEmployeeNames(S11[4]!)).toEqual([]);
+    expect(resolveEmployee(s11Context())).toEqual({ kind: "resolved", employeeName: "colene schildt" });
+    expect(extractEmployeeNames("coaching form for lawrence")).toEqual([]);
+    expect(extractEmployeeNames("coaching form for lawrence smith").join(" ").toLowerCase()).toContain("lawrence smith");
+    expect(extractEmployeeNames("the employee is Pat Kearney")).toEqual(["Pat Kearney"]);
+
+    const { proposeFormForTurn } = await import("@/lib/ai/form-proposal");
+    const asked = await proposeFormForTurn({
+      history: [],
+      question: STORE_OR_PERSON,
+      questionMessageId: "store-or-person-on",
+      actor: { role: "salon_director", scope: ONE },
+      summaries: COACHING as never,
+      today: TODAY,
+    });
+    expect(asked?.formProposal?.employeeName).toBe("Test Employee");
+    expect(asked?.content).not.toContain("or **lawrence**");
+    expect(asked?.content).not.toMatch(/Test Employee or lawrence/i);
+
+    const prior = S11.slice(0, -1).map((content, index) => ({
+      id: `s11-${index}`,
+      role: "user" as const,
+      content,
+    }));
+    const card = await proposeFormForTurn({
+      history: prior,
+      question: S11[S11.length - 1]!,
+      questionMessageId: "s11-last",
+      actor: {
+        role: "salon_director",
+        scope: { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] },
+      },
+      summaries: COACHING as never,
+      today: TODAY,
+    });
+    expect(card?.formProposal?.employeeName?.toLowerCase()).toBe("colene schildt");
+    expect(card?.content).not.toContain("or **lawrence**");
+    expect(card?.content).not.toMatch(/Test Employee or lawrence/i);
   });
 });
 

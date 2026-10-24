@@ -1438,9 +1438,11 @@ const TITLE_MODIFIER =
   /^(?:salon|district|regional|area|store|general|assistant|shift|training|operations|tanning|spa|senior|junior|head|key)$/i;
 
 /**
- * "Cash drawer" is a thing. "Lawrence" on its own is a store. Neither is
- * somebody the form is for. A real surname that is also a store
- * ("Lawrence Smith", "Pat Kearney") stays. Off, both stay candidates.
+ * "Cash drawer" is a thing. "Lawrence" on its own is a store (KS Lawrence).
+ * Neither is somebody the form is for. The s11 replay's name reader asks
+ * "Test Employee or lawrence?" when the store is the other candidate; this
+ * drops the store so that question is not asked. A real surname that is also
+ * a store ("Lawrence Smith", "Pat Kearney") stays. Off, both stay candidates.
  */
 const NOT_A_PERSON_WORD = new Set([
   "cash",
