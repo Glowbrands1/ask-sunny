@@ -41,6 +41,11 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Dana Reyes");
     expect(prompt).toContain("MO Kansas City Wornall");
     expect(prompt).toContain("2026-08-29");
+    const [rules, tail] = prompt.split("---DYNAMIC---");
+    expect(rules).not.toContain("Dana Reyes");
+    expect(rules).not.toContain("MO Kansas City Wornall");
+    expect(rules).not.toContain("2026-08-29");
+    expect(tail).toContain("You are talking to Dana Reyes, who runs MO Kansas City Wornall. Today is 2026-08-29.");
   });
 
   it("forbids fabricating policy, documents and citations", () => {

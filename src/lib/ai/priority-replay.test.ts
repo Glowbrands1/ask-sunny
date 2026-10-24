@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selfCheckEnabled } from "@/lib/config/chat-quality-flags";
+import { firstTokenLatencyMs, promptCacheCalls } from "./prompt-cache";
 import { CLAUDE_MODEL } from "@/lib/config/models";
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
@@ -22,6 +23,7 @@ import {
   judgeRulebookRuns,
   latencyOverGate,
   renderFixRound,
+  renderPromptCacheScoreboard,
   renderRulebookScoreboard,
   renderScoreboardRound,
   rulebookCasesWorse,
@@ -2015,6 +2017,21 @@ afterAll(() => {
   if (flagEffects.length > 0) console.log(renderFlagAblation(flagEffects));
   const rulebook = scoreRulebook(commit);
   console.log(rulebook.markdown);
+  const cacheCalls = promptCacheCalls(currentSystems);
+  const firstCache = cacheCalls[0];
+  const laterReads = cacheCalls.slice(1).filter((call) => call.cache_read_input_tokens > 0).length;
+  const cacheSample = currentSystems.find((system) => system.includes("---DYNAMIC---")) ?? "";
+  const tokenLatency = cacheSample ? firstTokenLatencyMs(cacheSample) : { oldMs: 0, newMs: 0 };
+  const cacheMarkdown = renderPromptCacheScoreboard({
+    creationTokens: firstCache?.cache_creation_input_tokens ?? 0,
+    laterReads,
+    oldMs: tokenLatency.oldMs,
+    newMs: tokenLatency.newMs,
+  });
+  console.log(cacheMarkdown);
+  if ((firstCache?.cache_creation_input_tokens ?? 0) <= 0 || laterReads <= 0) {
+    throw new Error(`Prompt cache log is missing a creation or a later read. ${cacheMarkdown}`);
+  }
   if (process.env.REPLAY_RECORD_SCOREBOARD === "1") {
     const existing = readFileSync("docs/scoreboard.md", "utf8");
     const section = renderScoreboardRound(round);
@@ -2022,7 +2039,7 @@ afterAll(() => {
     const index = existing.indexOf(marker);
     const withoutRound = index === -1 ? existing.trimEnd() : existing.slice(0, index).trimEnd();
     const ablation = flagEffects.length === 0 ? "" : renderFlagAblation(flagEffects);
-    const next = [withoutRound, section, ablation, rulebook.markdown, round1Markdown].filter((part) => part.trim()).join("\n\n");
+    const next = [withoutRound, section, ablation, rulebook.markdown, round1Markdown, cacheMarkdown].filter((part) => part.trim()).join("\n\n");
     writeFileSync("docs/scoreboard.md", `${next.trim()}\n`);
   }
   if (worse.length > 0) {

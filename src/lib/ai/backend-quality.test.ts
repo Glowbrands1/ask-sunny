@@ -20,7 +20,13 @@ import {
 import { openChatTrace } from "./chat-trace";
 import { chatTraceDraft, runChatTrace, updateChatTrace } from "./chat-trace-store";
 import { MODEL_BUSY_MESSAGE, MODEL_MAX_RETRIES, MODEL_TIMEOUT_MS, modelRequestOptions, modelUnavailable } from "./model-retry";
-import { cachedSystem, cachedUserContent, groundingWithoutCachedManual } from "./prompt-cache";
+import {
+  cachedSystem,
+  cachedUserContent,
+  firstTokenLatencyMs,
+  groundingWithoutCachedManual,
+  promptCacheCalls,
+} from "./prompt-cache";
 import { missingRequiredFields, withRequiredFieldList } from "./required-field-check";
 import { noteTraceOutcome, traceIntent } from "./trace-outcome";
 import type { AskResponse } from "./types";
@@ -85,6 +91,25 @@ describe("prompt caching stays off the request until PROMPT_CACHE_ENABLED", () =
       { type: "text", text: manual, cache_control: { type: "ephemeral" } },
       { type: "text", text: "QUESTION\n\nlate" },
     ]);
+  });
+
+  it("puts cache_control on the static block and leaves the dynamic tail uncached", () => {
+    process.env.PROMPT_CACHE_ENABLED = "on";
+    const system = "You are Sunny.\n\n---DYNAMIC---\n\nYou are talking to Dana Reyes, who runs MO Wornall. Today is 2026-10-24.";
+    expect(cachedSystem(system)).toEqual([
+      { type: "text", text: "You are Sunny.", cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: "---DYNAMIC---\n\nYou are talking to Dana Reyes, who runs MO Wornall. Today is 2026-10-24.",
+      },
+    ]);
+    const calls = promptCacheCalls([system, system]);
+    expect(calls[0]?.cache_creation_input_tokens).toBeGreaterThan(0);
+    expect(calls[0]?.cache_read_input_tokens).toBe(0);
+    expect(calls[1]?.cache_creation_input_tokens).toBe(0);
+    expect(calls[1]?.cache_read_input_tokens).toBeGreaterThan(0);
+    const latency = firstTokenLatencyMs(system.repeat(40));
+    expect(latency.newMs).toBeLessThan(latency.oldMs);
   });
 });
 

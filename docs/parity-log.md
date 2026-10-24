@@ -1,5 +1,17 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: prompt cache split — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production writes
+and no merge.
+
+- `buildSystemPrompt` keeps sections 1–11 as the static block. The manager's
+  name, salon, and today follow `---DYNAMIC---`, in the same sentences.
+  `PROMPT_CACHE_ENABLED` puts `cache_control: { type: "ephemeral" }` on the
+  static block only. Off, the request is still one string. The local replay
+  logs cache creation on the first call and a cache read on later calls.
+
 ## 24 Oct 2026: leading Location is not part of the name — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

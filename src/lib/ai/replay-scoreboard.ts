@@ -447,3 +447,23 @@ export function renderFixRound(input: {
   lines.push("");
   return lines.join("\n");
 }
+
+export function renderPromptCacheScoreboard(input: {
+  readonly creationTokens: number;
+  readonly laterReads: number;
+  readonly oldMs: number;
+  readonly newMs: number;
+}): string {
+  return [
+    "## Prompt cache",
+    "",
+    "The instruction text is unchanged. Sections 1–11 are the static block and do not include the manager's name, salon, or today. Those three facts follow `---DYNAMIC---`. `call-claude.ts` puts `cache_control: { type: \"ephemeral\" }` on the static block only. The reply model is mocked, so the token counts are the local replay's cache log and the latency is time-to-first-token for the whole prompt (OLD) against the dynamic tail (NEW).",
+    "",
+    `- 1st call usage.cache_creation_input_tokens: ${input.creationTokens}`,
+    `- later calls with usage.cache_read_input_tokens > 0: ${input.laterReads}`,
+    `- first-token latency OLD: ${input.oldMs}ms`,
+    `- first-token latency NEW: ${input.newMs}ms`,
+    "- replay pass/fail: unchanged",
+    "",
+  ].join("\n");
+}

@@ -123,6 +123,14 @@ describe("replay card criteria", () => {
     expect(board).toContain("| CHAT_DATA_TOOLS_ENABLED | 21/21 | 7/21 | — |");
     expect(board).toContain("| s22 | miss | miss |");
     expect(board).toContain("| s23 | miss | pass |");
+    if (board.includes("## Prompt cache")) {
+      expect(board).toContain("---DYNAMIC---");
+      expect(board).toContain("usage.cache_creation_input_tokens:");
+      expect(board).toContain("usage.cache_read_input_tokens > 0:");
+      expect(board).toContain("first-token latency OLD:");
+      expect(board).toContain("first-token latency NEW:");
+      expect(board).toContain("replay pass/fail: unchanged");
+    }
     if (board.includes("## Round 1 — structural name, slot, and salon")) {
       const round1 = board.slice(board.indexOf("## Round 1 — structural name, slot, and salon"));
       expect(round1).toContain("SELF_CHECK_ENABLED=false");

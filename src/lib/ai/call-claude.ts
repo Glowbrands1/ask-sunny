@@ -151,6 +151,8 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     max_tokens: input.maxTokens,
     thinking: { type: "adaptive" as const },
     output_config: { effort: CLAUDE_EFFORT },
+    // Static rules take cache_control { type: "ephemeral" }. The tail after
+    // ---DYNAMIC--- (name, salon, today) is not cached.
     system: cachedSystem(input.system),
     messages: [
       ...history,
