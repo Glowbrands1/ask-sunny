@@ -104,6 +104,8 @@ import {
   settledNameQuestions,
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
+import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
 import {
@@ -1017,6 +1019,13 @@ async function checkTypedEmployee(
   }
 
   const names = result.candidates.map((candidate) => candidate.name);
+  if (typedNameProceedsEnabled()) {
+    const kept = tidyTypedName(typed.employeeName);
+    return {
+      resolution: { kind: "resolved", employeeName: kept },
+      note: inlineCloseMatch(kept, names),
+    };
+  }
   return {
     resolution: { kind: "ambiguous", candidates: names },
     question: nameConfirmationQuestion(typed.employeeName, names),

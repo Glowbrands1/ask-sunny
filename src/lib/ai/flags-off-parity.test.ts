@@ -18,11 +18,15 @@ import {
   secondFormEnabled,
   citationVerifyEnabled,
   conversationProposalDedupeEnabled,
+  attendancePolicyCitationEnabled,
   currentManualScopeEnabled,
   modelRetryEnabled,
   promptCacheEnabled,
+  policyPageRequiredEnabled,
   requiredFieldCheckEnabled,
   selfCheckEnabled,
+  typedNameProceedsEnabled,
+  unifiedAuthorityOrderEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -59,6 +63,10 @@ const NEW_FLAGS = [
   "CONVERSATION_PROPOSAL_DEDUPE_ENABLED",
   "CITATION_VERIFY_ENABLED",
   "CURRENT_MANUAL_SCOPE_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED",
+  "ATTENDANCE_POLICY_CITATION_ENABLED",
+  "POLICY_PAGE_REQUIRED_ENABLED",
+  "UNIFIED_AUTHORITY_ORDER_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -149,6 +157,10 @@ describe("new flags default off and wrappers are inert", () => {
     expect(conversationProposalDedupeEnabled()).toBe(false);
     expect(citationVerifyEnabled()).toBe(false);
     expect(currentManualScopeEnabled()).toBe(false);
+    expect(typedNameProceedsEnabled()).toBe(false);
+    expect(attendancePolicyCitationEnabled()).toBe(false);
+    expect(policyPageRequiredEnabled()).toBe(false);
+    expect(unifiedAuthorityOrderEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

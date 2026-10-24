@@ -5,6 +5,28 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: prompt rule conflicts — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. Every flag
+defaults off.
+
+- `TYPED_NAME_PROCEEDS_ENABLED` — a name that is not an exact roster match
+  stays as typed. "Did you mean" and "Who is this for?" do not hold the
+  card. A close roster match may be offered in the same reply. Two people
+  the manager actually named are still a real "Which of them".
+- `ATTENDANCE_POLICY_CITATION_ENABLED` — tardiness cites Attendance by name
+  and page. A late opening still cites Late Opening. The ticked
+  "Tardiness/Leaving Early" box is not the citation.
+- `POLICY_PAGE_REQUIRED_ENABLED` — a form that resolves a manual section
+  cites that section's name and page on Direct policy, or on the coaching
+  or follow-up narrative. A page the manual did not print is not invented.
+- `ACTION_PLAN_SENTENCES_ENABLED` — already the two-sentence plan. A payroll
+  Yes stays on its own field, including when a plan is rebuilt on a newer
+  template version.
+- `UNIFIED_AUTHORITY_ORDER_ENABLED` — the employee-performance block and the
+  daily-stats block share one order of authority. Off, each list stays.
+
 ## 24 Oct 2026: Late Opening, and the current manual at retrieval — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.

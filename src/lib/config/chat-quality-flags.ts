@@ -240,3 +240,37 @@ export function citationVerifyEnabled(): boolean {
 export function currentManualScopeEnabled(): boolean {
   return envFlag("CURRENT_MANUAL_SCOPE_ENABLED");
 }
+
+/**
+ * A name that is not in the roster stays as typed. "Did you mean" and
+ * "Who is this for?" do not block the form. A close roster match may be
+ * offered in the same reply. Off, a close match is still a question that
+ * holds the card.
+ */
+export function typedNameProceedsEnabled(): boolean {
+  return envFlag("TYPED_NAME_PROCEEDS_ENABLED");
+}
+
+/**
+ * Tardiness cites the Attendance policy by name and page. Off, the ticked
+ * box label is what Policy Violated carries.
+ */
+export function attendancePolicyCitationEnabled(): boolean {
+  return envFlag("ATTENDANCE_POLICY_CITATION_ENABLED");
+}
+
+/**
+ * A form that resolves a manual section cites that section's name and page.
+ * Off, a citation can be only the offense box.
+ */
+export function policyPageRequiredEnabled(): boolean {
+  return envFlag("POLICY_PAGE_REQUIRED_ENABLED");
+}
+
+/**
+ * The employee-performance and daily-stats prompts share one order of
+ * authority. Off, each block keeps its own list.
+ */
+export function unifiedAuthorityOrderEnabled(): boolean {
+  return envFlag("UNIFIED_AUTHORITY_ORDER_ENABLED");
+}

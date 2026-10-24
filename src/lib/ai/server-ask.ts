@@ -19,6 +19,9 @@ import {
   retrievalRecallEnabled,
   promptCacheEnabled,
   currentManualScopeEnabled,
+  attendancePolicyCitationEnabled,
+  policyPageRequiredEnabled,
+  unifiedAuthorityOrderEnabled,
   selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -410,7 +413,12 @@ async function answerQuestionUntraced(
     // citation has its own flag. Intent extraction and grounded entities are
     // the flags that were on for the live replay, and a card from that path
     // still has to name the section and page.
-    const citeOn = policyCitationEnabled() || intentExtractionEnabled() || groundedEntitiesEnabled();
+    const citeOn =
+      policyCitationEnabled() ||
+      intentExtractionEnabled() ||
+      groundedEntitiesEnabled() ||
+      attendancePolicyCitationEnabled() ||
+      policyPageRequiredEnabled();
     if (!coachingOn && !recallOn && !citeOn) return response;
     const turns = [
       ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
@@ -440,6 +448,8 @@ async function answerQuestionUntraced(
             documentTitle: manual.documentTitle,
             documentCategory: manual.documentCategory,
             modelHeading: statedManualHeading(notes),
+            attendanceCitation: attendancePolicyCitationEnabled(),
+            pageRequired: policyPageRequiredEnabled(),
           });
           content = attached.content;
           citations = attached.citations;
@@ -1239,6 +1249,7 @@ async function answerQuestionUntraced(
     hasContext: grounding.length > 0,
     hasReportData: (briefing?.present.length ?? 0) > 0,
     hasFrameworkGrounding: employeeFrameworkIncluded,
+    unifiedAuthority: unifiedAuthorityOrderEnabled(),
     hasEmployeeFactsBlock: Boolean(employeeFacts?.block),
     hasDailyStatsFramework: dailyStatsIncluded,
     /*

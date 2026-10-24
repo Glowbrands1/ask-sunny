@@ -1,4 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
 import {
   displayName,
@@ -154,7 +155,10 @@ export function applyGroundedProposal(
   },
 ): AskResponse {
   let content = response.content;
-  if (input.prep.ambiguous.length > 1 || content.startsWith("Did you mean **")) {
+  if (
+    !typedNameProceedsEnabled() &&
+    (input.prep.ambiguous.length > 1 || content.startsWith("Did you mean **"))
+  ) {
     content = labelDuplicateQuestion(content, input.people, input.prep.ambiguousTyped);
   }
   if (!response.formProposal) return content === response.content ? response : { ...response, content };
@@ -224,6 +228,9 @@ function gateMentions(
     if (match.kind === "exact") {
       rosterIds = [match.employee.id];
       if (match.name !== name) next = replacePhrase(next, name, match.name);
+      continue;
+    }
+    if (match.kind === "confirm" && typedNameProceedsEnabled()) {
       continue;
     }
     if (match.kind === "confirm" && match.candidates.length === 1) {

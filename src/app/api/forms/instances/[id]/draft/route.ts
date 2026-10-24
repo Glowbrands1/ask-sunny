@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
-import { actionPlanSentencesEnabled, draftMergeEnabled, policyCitationEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  actionPlanSentencesEnabled,
+  attendancePolicyCitationEnabled,
+  draftMergeEnabled,
+  policyCitationEnabled,
+  policyPageRequiredEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -116,6 +122,7 @@ import {
   groundMissedEvent,
   MISSED_EVENT_OFFENSE,
   missedEventPhrase,
+  describedAttendanceKeys,
   readCaPolicy,
   statedOffenseKeys,
   withConductOffense,
@@ -141,6 +148,11 @@ import {
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import {
+  citeAttendanceForTardiness,
+  policyFieldsWithCitation,
+  sectionsWithNameAndPage,
+} from "@/lib/forms/required-policy-citation";
 import { retainFilledFields } from "@/lib/forms/draft-merge";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
@@ -1782,8 +1794,42 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             : null,
         })
       : { values: planned.values, provenance: {} as Record<string, Record<string, unknown>> };
+    const attendanceOn = attendancePolicyCitationEnabled();
+    const pageOn = policyPageRequiredEnabled();
+    const citedValues =
+      (attendanceOn || pageOn) && manual.ok
+        ? policyFieldsWithCitation({
+            attendance: attendanceOn,
+            pageRequired: pageOn,
+            values: cited.values,
+            sections: (() => {
+              const reading = readCaPolicy(notes);
+              const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
+              const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
+              const withAttendance = citeAttendanceForTardiness({
+                enabled: attendanceOn,
+                notes,
+                chunks: manual.chunks,
+                sections: resolved,
+              });
+              if (!pageOn) return withAttendance;
+              const required = sectionsWithNameAndPage({
+                enabled: true,
+                notes,
+                chunks: manual.chunks,
+                offenseKeys: keys,
+              });
+              return [
+                ...withAttendance,
+                ...required.filter(
+                  (section) => !withAttendance.some((seen) => seen.heading.toLowerCase() === section.heading.toLowerCase()),
+                ),
+              ];
+            })(),
+          })
+        : cited.values;
     const draftedPayload = {
-      values: Object.fromEntries(Object.entries(cited.values).filter(([key]) => !keeps(key))),
+      values: Object.fromEntries(Object.entries(citedValues).filter(([key]) => !keeps(key))),
       checked: Object.fromEntries(
         Object.entries(validated.checked).filter(
           ([key]) => !keeps(key) && !(statedWarning && key === WARNING_TYPE_KEY),

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import { actionPlanSentencesEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { isProposalId } from "./proposal-id";
@@ -35,6 +36,7 @@ import {
   legacyPriorActions,
 } from "./prior-actions";
 import { applyRequiredClosings } from "./required-closing";
+import { collapseToTwoSentences } from "./action-plan-sentences";
 import { isIsoCalendarDate } from "./form-date-answer";
 import { refreshedActionPlan } from "./ca-action-plan";
 import { getCurrentVersion, getVersion, type TemplateVersionRow } from "./repository";
@@ -1210,10 +1212,12 @@ export async function reviseInstance(
           provenance: row.provenance,
         })),
       });
-    const planRow = plan ? rows.find((row) => row.field_key === plan.key) : undefined;
-    if (plan && planRow) {
-      planRow.value = plan.value;
-      planRow.provenance = plan.provenance;
+    const twoSentencePlan =
+      plan && actionPlanSentencesEnabled() ? { ...plan, value: collapseToTwoSentences(plan.value) } : plan;
+    const planRow = twoSentencePlan ? rows.find((row) => row.field_key === twoSentencePlan.key) : undefined;
+    if (twoSentencePlan && planRow) {
+      planRow.value = twoSentencePlan.value;
+      planRow.provenance = twoSentencePlan.provenance;
     }
   }
 
