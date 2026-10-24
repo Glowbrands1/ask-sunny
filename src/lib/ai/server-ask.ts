@@ -255,6 +255,24 @@ export async function answerQuestion(
   return guardReply(response, { request, actor });
 }
 
+/** A manager manual or another brand. Not a Sun Tan City policy source. */
+const OTHER_MANUAL_TITLE =
+  /\b(?:dm(?:\s+training)?\s+manuals?|salon director(?:'s)?\s+manuals?|buff city(?:\s+soap)?|crunch(?:\s+fitness)?)\b/i;
+
+/**
+ * Framework text that rode along with a policy answer.
+ *
+ * The policy citation is the printed page in the full manual. These notes
+ * stay available for a coaching step, without an [S#] marker and without
+ * being described as the only company document.
+ */
+function frameworkAside(chunks: readonly GroundingChunk[]): string {
+  const kept = chunks.filter((chunk) => !OTHER_MANUAL_TITLE.test(chunk.documentTitle));
+  if (kept.length === 0) return "";
+  const rendered = kept.map((chunk) => `${chunk.documentTitle}\n${chunk.content}`).join("\n\n");
+  return `COACHING FRAMEWORK\n\nThis is not the policy manual. Do not cite it with a page or an [S#] marker.\n\n${rendered}`;
+}
+
 async function answerQuestionUntraced(
   request: AskRequest,
   actor: ChatActor,
@@ -1240,9 +1258,13 @@ async function answerQuestionUntraced(
        * rows are left alone, because they can only add sections to the ones
        * pinned here. A topic pin is the same kind of row. It is not added to
        * roleDocumentIds, so the rest of the manual can still be retrieved.
+       *
+       * The full manual is already the policy source. Pinning the same
+       * sections again would put them back as [S#] chunks, including a
+       * manager manual when retrieval is what filled the window.
        */
-      ...topicRows,
-      ...(manualCoverage?.rows ?? []),
+      ...(fullManualBlock ? [] : topicRows),
+      ...(fullManualBlock ? [] : (manualCoverage?.rows ?? [])),
     ],
     retrieved: rows,
     roleDocumentIds: [
@@ -1370,7 +1392,8 @@ async function answerQuestionUntraced(
     hasFormRecords: formRecords !== null,
     /* Read from whether the block exists, like the forms library above. */
     hasPersonMemory: personMemory !== null,
-    policyManualNote,
+    policyManualNote: fullManualBlock ? null : policyManualNote,
+    citeManualPages: fullManualBlock !== null,
     /* Read from the instance by the route, never from the body. */
     openForm: request.openForm ?? null,
     /*
@@ -1403,13 +1426,15 @@ async function answerQuestionUntraced(
     scope: actor.scope,
     briefedFamilies: families,
   });
-  const pinnedPolicy = await citedManualGrounding(request, knowledge);
-  const knowledgeGrounding =
-    grounding.length > 0
-      ? buildGroundingBlock(grounding)
-      : fullManualBlock
-        ? FULL_MANUAL_GROUNDING_NOTE
-        : buildGroundingBlock(grounding);
+  const pinnedPolicy = fullManualBlock ? null : await citedManualGrounding(request, knowledge);
+  /*
+   * Retrieved rows are [S#] sources. With the manual loaded, those markers
+   * are not the policy citation, and a manager manual that retrieval pinned
+   * must not be described as the only company document.
+   */
+  const knowledgeGrounding = fullManualBlock
+    ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
+    : buildGroundingBlock(grounding);
   const joinedGrounding = [knowledgeGrounding, pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
   const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
   const groundingText = groundingWithoutCachedManual(joinedGrounding, manualBlock);
@@ -1446,12 +1471,13 @@ async function answerQuestionUntraced(
   /* ----------------------------------------------------------- citations -- */
   // Only the markers the model actually used become source cards, and each one
   // resolves to the row at that position — retrieved data, not model output.
-  const checked = policyAnswer
-    ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: grounding.length })
-    : null;
+  const checked =
+    policyAnswer && fullManuals.length > 0
+      ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
+      : null;
   const spoken = checked?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
-  const citations: SourceCitation[] = markers
+  const retrievedCitations: SourceCitation[] = markers
     .map((marker) => used[marker - 1])
     .filter((row): row is MatchedChunkRow => Boolean(row))
     .map(rowToCitation);
@@ -1483,7 +1509,7 @@ async function answerQuestionUntraced(
   return {
     content: suggested ? `${stripMarkers(spoken)}\n\n${suggested.lead}` : stripMarkers(spoken),
     formSelection: suggested?.selection,
-    citations: [...(checked?.citations ?? []), ...citations],
+    citations: checked ? [...checked.citations] : retrievedCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance

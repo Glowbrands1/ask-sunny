@@ -1,5 +1,32 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: inline printed-page citations — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No ingest change
+and no merge. `FULL_MANUAL_CONTEXT_ENABLED` still defaults off. Off, the
+prompt, retrieval, and `[S#]` sources are unchanged.
+
+- A policy answer cites `<section>, <manual title> p.<n> [p.n]`. The
+  Sources row uses that section as the excerpt and `Page n` as the locator.
+  The printed footer (`41 | P a g e`) wins over `metadata.printedPage`
+  when that field still holds the PDF sheet. PTO prints 41. Shared dress
+  code prints 15, and Jewelry/Accessories and Tattoos print 16. Sun Tan
+  City's own Shirts, Pants, and Tanning print 17 and a Sunny answer must
+  cite that page for them. Cell Phone/Smart Watch prints 19. Crunch and
+  Buff City Soap sections are not cited. Crunch Shirts and Pants print
+  16, so a p.17 cite of them is dropped.
+- Rewriting that citation inserts the section heading as the label and
+  keeps the sentence in front of it. Neither side is trimmed.
+  `Director. (Eligibility` stays whole, including a heading glued on
+  (`DirEligibility`).
+- After the answer, a page or an `[S#]` marker that is not in the loaded
+  manual is removed. A heading cited on the wrong page is moved to the
+  printed page that heading is on. A DM manual, a Salon Director manual,
+  Buff City Soap, and Crunch are not sources.
+- With the manual loaded, topic pins and retrieved chunks are not added
+  back as `[S#]` policy sources.
+
 ## 24 Oct 2026: contents pages, printed pages, chunk overlap — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company
@@ -9,11 +36,12 @@ and no merge. `FULL_MANUAL_CONTEXT_ENABLED` still defaults off.
 - PDF sheets 3–6 (`section` "Table of Contents", then a null section)
   stay out of the cached manual block, so a contents line cannot be
   cited. Reference List on sheet 7, which prints 6, stays.
-- `[p.n]` and the citation page are the printed page:
-  `metadata.printedPage`, else the `N | P a g e` footer on that sheet,
-  else the PDF sheet. In the stored manual the numbered sheets print
-  one less than the sheet (Cell Phone/Smart Watch is sheet 20 and
-  prints 19). The cover has no printed page and is not shifted.
+- `[p.n]` and the citation page are the printed page: the `N | P a g e`
+  footer on that sheet, else `metadata.printedPage`, else the PDF sheet.
+  The footer wins when `metadata.printedPage` still holds the PDF sheet
+  (PTO is sheet 42 and prints 41; dress code is sheet 16 and prints 15).
+  Cell Phone/Smart Watch is sheet 20 and prints 19. The cover has no
+  printed page and is not shifted.
 - Consecutive chunks are joined in `chunk_index` order after the
   leading overlap is removed, so a section is not repeated or cut at
   the chunk boundary.
