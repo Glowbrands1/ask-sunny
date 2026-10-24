@@ -7,6 +7,7 @@ import { FileStack, History, PanelRightClose, PanelRightOpen, Plus, X } from "lu
 import { Button } from "@/components/ui/button";
 import { SOURCE_PROMISE } from "@/data/answer-modes";
 import { aiProviderStatus, getAIProvider } from "@/lib/ai";
+import { sendAfterHydrateEnabled } from "@/lib/config/chat-quality-flags";
 import { quickQuestionsFor } from "@/lib/ai/quick-questions";
 import { FORM_CREATION_PERMISSIONS } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
@@ -95,6 +96,12 @@ export function ChatScreen() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const seededQuery = useRef(false);
   const adoptedConversation = useRef(false);
+  /*
+   * A typed send that arrived before hydration finished. Fired once the store
+   * is ready, the same way the ?q= effect below fires. The composer is left
+   * alone while it waits: disabling the field would be a visible change.
+   */
+  const queuedSend = useRef<{ text: string; fromPicker?: boolean } | null>(null);
 
   /**
    * ==========================================================================
@@ -216,6 +223,17 @@ export function ChatScreen() {
        * flight" as the same outcome — see `chooseSuggestedForm`.
        */
       if (!text || busy) return false;
+
+      /*
+       * NOT BEFORE THE STORED HISTORY HAS LOADED. The ?q= effect already
+       * waits. A typed send did not, so a question asked while documents
+       * were still loading was created and then erased. Off, this is
+       * skipped and the turn goes out exactly as it does today.
+       */
+      if (sendAfterHydrateEnabled() && !storeReady) {
+        queuedSend.current = { text, fromPicker: options.fromPicker };
+        return true;
+      }
 
       /*
        * NOTHING IS CHECKED HERE BUT THE TEXT AND THE IN-FLIGHT TURN.
@@ -415,8 +433,26 @@ export function ChatScreen() {
       addConversation,
       appendConversationMessages,
       reportContext,
+      storeReady,
     ],
   );
+
+  /*
+   * The queued typed send, once hydration has finished. Scheduled rather
+   * than called inline, for the same reason as the ?q= effect: the first
+   * update happens in a callback, not in the effect body.
+   */
+  useEffect(() => {
+    if (!sendAfterHydrateEnabled()) return;
+    if (!storeReady) return;
+    const queued = queuedSend.current;
+    if (!queued) return;
+    const timer = window.setTimeout(() => {
+      queuedSend.current = null;
+      void send(queued.text, { fromPicker: queued.fromPicker });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [storeReady, send]);
 
   /**
    * Accept ?c= — a conversation that was STARTED INLINE on the Overview, or the

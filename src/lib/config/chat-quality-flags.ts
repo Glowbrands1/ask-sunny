@@ -355,3 +355,28 @@ export function globalSalonAskEnabled(): boolean {
 export function manualTopicPinEnabled(): boolean {
   return envFlag("MANUAL_TOPIC_PIN_ENABLED");
 }
+
+function flagOn(value: string | undefined): boolean {
+  if (typeof value !== "string") return false;
+  return ON.has(value.trim().toLowerCase());
+}
+
+/**
+ * A typed question waits until stored history has loaded, and a conversation
+ * created during that wait is kept.
+ *
+ * Off (the default) leaves hydration and send exactly as they are.
+ *
+ * The chat screen and the store are client components. Next inlines a
+ * statically written `process.env.NEXT_PUBLIC_*` name into that bundle and
+ * does not expose any other name there, so the browser reads
+ * `NEXT_PUBLIC_SEND_AFTER_HYDRATE_ENABLED` that way. The server and the
+ * tests read `SEND_AFTER_HYDRATE_ENABLED`. Either spelling turns it on.
+ */
+export function sendAfterHydrateEnabled(): boolean {
+  return (
+    envFlag("SEND_AFTER_HYDRATE_ENABLED") ||
+    envFlag("NEXT_PUBLIC_SEND_AFTER_HYDRATE_ENABLED") ||
+    flagOn(process.env.NEXT_PUBLIC_SEND_AFTER_HYDRATE_ENABLED)
+  );
+}
