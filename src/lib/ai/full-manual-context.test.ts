@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { fullManualContextEnabled } from "@/lib/config/chat-quality-flags";
 
+import { JBA_MANUAL_CHUNKS } from "./__fixtures__/jba-policy-manual";
 import { noteModelCall } from "./model-failure";
 import { runChatTrace, runWithRequestClock, type ChatTraceDraft } from "./chat-trace-store";
 import { systemWithCachedManual } from "./prompt-cache";
@@ -42,8 +43,13 @@ function chunk(
   page: number | null,
   section: string | null,
   content: string,
+  printedPage?: number | null,
 ): FullManualDocument["chunks"][number] {
-  return { chunkIndex, page, section, content };
+  return { chunkIndex, page, printedPage: printedPage ?? null, section, content };
+}
+
+function occurrences(text: string, needle: string): number {
+  return needle ? text.split(needle).length - 1 : 0;
 }
 
 const JBA = manual("JBA Policy Manual Edited 5.2025", [
@@ -169,8 +175,10 @@ describe("full manual assembly", () => {
     expect(result.block).toContain("Park in the employee lot.");
     expect(result.block).toContain("Company dress code applies at every salon.");
     expect(result.block).toContain("STC name tag is required.");
-    expect(result.block).toContain("Attendance ................................................................ 14");
-    expect(result.block).toContain("Sun Tan City .......................................................................... 17");
+    expect(result.block).not.toContain("Table of Contents");
+    expect(result.block).not.toContain("Attendance ................................................................ 14");
+    expect(result.block).not.toContain("Sun Tan City .......................................................................... 17");
+    expect(result.block).not.toContain("[p.3]");
     expect(result.block).not.toMatch(/crunch|buff/i);
     expect(result.block).not.toContain("JBA Office");
     expect(result.block).not.toContain("Office staff wear business casual.");
@@ -183,6 +191,145 @@ describe("full manual assembly", () => {
     });
     expect(checked.content).not.toContain("Buff");
     expect(checked.content).toContain("Sun Tan City, JBA Policy Manual p.17");
+  });
+});
+
+describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () => {
+  const BLACKOUT = "Blackout dates are the week of Thanksgiving and the week of Christmas.";
+  const NOTICE = "A request needs two weeks of notice.";
+  const TATTOOS = "Tattoos must be covered while on the clock.";
+  const JEWELRY = "Jewelry is limited to a wedding band and stud earrings.";
+
+  it("conv_mvmjem0c2wzftv2 leaves the table of contents out and cites PTO on printed page 42", () => {
+    const result = choosePolicyManuals("What is the PTO policy?", [
+      manual("JBA Policy Manual Edited 5.2025", [
+        chunk(
+          2,
+          3,
+          "Table of Contents",
+          "Table of Contents\nPaid time Off (PTO) .............................................................................. 42",
+          2,
+        ),
+        chunk(
+          8,
+          6,
+          null,
+          "Paid time Off (PTO) ................................................................................ 42\nHoliday Benefits .................................................................................... 43",
+          5,
+        ),
+        chunk(17, 7, "Reference List", "6 | P a g e\nReference List\nThe leadership roster is printed here.", 6),
+        chunk(
+          136,
+          43,
+          "Paid time Off (PTO)",
+          `42 | P a g e\nPaid time Off (PTO)\nPaid time off accrues each pay period. ${BLACKOUT}`,
+          42,
+        ),
+        chunk(
+          137,
+          43,
+          "Paid time Off (PTO)",
+          `Paid time off accrues each pay period. ${BLACKOUT}\n\n${NOTICE}`,
+          42,
+        ),
+      ]),
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.block).not.toContain("Table of Contents");
+    expect(result.block).not.toContain("Holiday Benefits");
+    expect(result.block).not.toContain("[p.43]");
+    expect(result.block).not.toContain("[p.5]");
+    expect(result.block).not.toContain("P a g e");
+    expect(result.block).toContain("[p.42]");
+    expect(result.block).toContain("## Paid time Off (PTO)");
+    expect(result.block).toContain("## Reference List");
+    expect(result.block).toContain("[p.6]");
+    expect(result.block.indexOf("[p.6]")).toBeLessThan(result.block.indexOf("## Reference List"));
+    expect(occurrences(result.block, BLACKOUT)).toBe(1);
+    expect(occurrences(result.block, NOTICE)).toBe(1);
+
+    const checked = applyFullManualAnswer({
+      content: "See Table of Contents, JBA Policy Manual p.6. Paid time Off (PTO), JBA Policy Manual p.6.",
+      manuals: result.manuals,
+      sourceCount: 0,
+    });
+    expect(checked.content).not.toContain("Table of Contents");
+    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.42");
+    expect(checked.content).not.toContain("p.6");
+    expect(checked.citations.map((citation) => citation.locator)).toEqual(["Page 42"]);
+  });
+
+  it("conv_mvmjfgcv573j1oz cites Cell Phone/Smart Watch on the printed page", () => {
+    const paired = JBA_MANUAL_CHUNKS.filter((item) => item.page != null && item.printedPage != null);
+    expect(paired.length).toBeGreaterThanOrEqual(109);
+    expect(new Set(paired.map((item) => (item.page ?? 0) - (item.printedPage ?? 0)))).toEqual(new Set([1]));
+    const cover = JBA_MANUAL_CHUNKS.filter((item) => item.page === 1);
+    expect(cover.length).toBeGreaterThan(0);
+    expect(cover.every((item) => item.printedPage == null)).toBe(true);
+    const phone = JBA_MANUAL_CHUNKS.find((item) => item.section === "Cell Phone/Smart Watch Policy");
+    const sibling = JBA_MANUAL_CHUNKS.find((item) => item.chunkIndex === 42);
+    expect(phone).toMatchObject({ chunkIndex: 43, page: 20, printedPage: 19 });
+    expect(sibling).toMatchObject({ page: 20, printedPage: 19 });
+    expect(sibling?.content.startsWith("19 | P a g e")).toBe(true);
+    expect(phone?.content.includes("P a g e")).toBe(false);
+
+    const result = choosePolicyManuals("What is the cell phone policy?", [
+      manual("JBA Policy Manual Edited 5.2025", [
+        chunk(42, 20, "Discounting", "19 | P a g e\nAsk a manager before a discount."),
+        chunk(43, 20, "Cell Phone/Smart Watch Policy", "Phones stay off the sales floor during a shift."),
+      ]),
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.block).toContain("[p.19]");
+    expect(result.block).not.toContain("[p.20]");
+    expect(result.block).not.toContain("P a g e");
+    expect(result.block).toContain("## Cell Phone/Smart Watch Policy");
+    expect(result.block).toContain("Phones stay off the sales floor during a shift.");
+    const checked = applyFullManualAnswer({
+      content: "Cell Phone/Smart Watch Policy, JBA Policy Manual p.20.",
+      manuals: result.manuals,
+      sourceCount: 0,
+    });
+    expect(checked.content).toContain("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19");
+    expect(checked.content).not.toContain("p.20");
+  });
+
+  it("conv_mvmjfwnx8psm0nx rebuilds Tattoos and Jewelry without a repeated or broken line", () => {
+    const result = choosePolicyManuals("What is the dress code?", [
+      manual("JBA Policy Manual Edited 5.2025", [
+        chunk(60, 16, "Dress Code for The Company", `A neat appearance is required.\n\n${TATTOOS}`, 15),
+        chunk(61, 16, "Tattoos", `${TATTOOS}\n\n${JEWELRY}`, 15),
+        chunk(62, 16, "Jewelry", `${JEWELRY}\n\nNo facial piercings.`, 15),
+        chunk(63, 16, "Tattoos", "Visible tattoos", 15),
+        chunk(64, 16, "Tattoos", "must be covered on the arms.", 15),
+      ]),
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.block).toContain("[p.15]");
+    expect(result.block).not.toContain("[p.16]");
+    expect(result.block).toContain("## Tattoos");
+    expect(result.block).toContain("## Jewelry");
+    expect(occurrences(result.block, TATTOOS)).toBe(1);
+    expect(occurrences(result.block, JEWELRY)).toBe(1);
+    expect(occurrences(result.block, "No facial piercings.")).toBe(1);
+    expect(occurrences(result.block, "Visible tattoos must be covered on the arms.")).toBe(1);
+    expect(result.block).not.toContain("Visible tattoos\n");
+  });
+
+  it("does not shift a cover sheet that has no printed page", () => {
+    const assembled = assembleManual(
+      manual("JBA Policy Manual Edited 5.2025", [
+        chunk(0, 1, null, "Cover sheet."),
+        chunk(1, 1, null, "1 | P a g e\nOpening line."),
+      ]),
+    );
+    expect(assembled.text).toContain("[p.1]");
+    expect(assembled.text).not.toContain("[p.0]");
+    expect(assembled.text).not.toContain("P a g e");
+    expect(assembled.text.indexOf("Cover sheet.")).toBeLessThan(assembled.text.indexOf("Opening line."));
   });
 });
 

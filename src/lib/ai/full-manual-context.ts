@@ -1,7 +1,7 @@
 import { headingKey, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
 import { manualEditionYear } from "@/lib/knowledge/current-manual-scope";
 import { isPolicyTypeQuestion } from "@/lib/knowledge/hybrid-rank";
-import { headingOf } from "@/lib/ingestion/extract/pdf-sections";
+import { headingOf, isPageFooter, printedPageOf } from "@/lib/ingestion/extract/pdf-sections";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 /**
@@ -25,6 +25,13 @@ export function estimateTokens(text: string): number {
 export interface FullManualChunk {
   readonly chunkIndex: number;
   readonly page: number | null;
+  /**
+   * The page number the sheet prints, when ingestion stored one.
+   *
+   * `page` is the PDF sheet. This manual's numbered sheets print one less
+   * than that (sheet 20 prints 19). The cover has no printed number.
+   */
+  readonly printedPage?: number | null;
   readonly section: string | null;
   readonly content: string;
 }
@@ -128,9 +135,158 @@ function blockFor(manuals: readonly AssembledManual[]): string {
   return [instructionHeader(), "", ...manuals.map((manual) => manual.text)].join("\n\n");
 }
 
-function pageOf(page: number | null): number | null {
+function pageOf(page: number | null | undefined): number | null {
   if (typeof page !== "number" || !Number.isInteger(page) || page <= 0) return null;
   return page;
+}
+
+/**
+ * PDF sheets 3–6 are the table of contents. The first chunk is labelled
+ * "Table of Contents"; the following chunks on those sheets have a null
+ * section and dot leaders. Reference List starts on sheet 7 and prints 6.
+ */
+const CONTENTS_PDF_FIRST = 3;
+const CONTENTS_PDF_LAST = 6;
+/** Shortest repeated tail the chunker can carry into the next chunk. */
+const OVERLAP_MIN_CHARS = 24;
+/** One long sentence can exceed the 48-token overlap budget. */
+const OVERLAP_WINDOW_CHARS = 4_000;
+
+function isContentsHeading(section: string | null): boolean {
+  return headingKey(section ?? "") === "table of contents";
+}
+
+function footerPage(content: string): number | null {
+  for (const line of content.split("\n")) {
+    const printed = printedPageOf(line);
+    if (printed !== null) return printed;
+  }
+  return null;
+}
+
+function withoutPageFurniture(content: string): string {
+  return content
+    .split("\n")
+    .filter((line) => !isPageFooter(line))
+    .join("\n");
+}
+
+/**
+ * Printed page for each PDF sheet.
+ *
+ * A sheet's footer often sits on a different chunk than the section it
+ * numbers. The first positive `printedPage` or footer on that sheet wins.
+ * A sheet with neither keeps its PDF page, so the cover is not shifted.
+ */
+function printedPageByPdfSheet(chunks: readonly FullManualChunk[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const chunk of chunks) {
+    const pdf = pageOf(chunk.page);
+    if (pdf === null || map.has(pdf)) continue;
+    const printed = pageOf(chunk.printedPage) ?? footerPage(chunk.content);
+    if (printed !== null) map.set(pdf, printed);
+  }
+  return map;
+}
+
+function citedPageFor(chunk: FullManualChunk, bySheet: Map<number, number>): number | null {
+  const own = pageOf(chunk.printedPage) ?? footerPage(chunk.content);
+  if (own !== null) return own;
+  const pdf = pageOf(chunk.page);
+  if (pdf === null) return null;
+  return bySheet.get(pdf) ?? pdf;
+}
+
+/** Drop contents sheets so a heading in the contents cannot be cited. */
+function omitContentsChunks(chunks: readonly FullManualChunk[]): FullManualChunk[] {
+  let inside = false;
+  const kept: FullManualChunk[] = [];
+  for (const chunk of chunks) {
+    const section = (chunk.section ?? "").trim();
+    if (isContentsHeading(section)) {
+      inside = true;
+      continue;
+    }
+    if (section) inside = false;
+    const pdf = pageOf(chunk.page);
+    const onContentsSheet = pdf !== null && pdf >= CONTENTS_PDF_FIRST && pdf <= CONTENTS_PDF_LAST;
+    const untitled = section.length === 0;
+    if (onContentsSheet && untitled && (inside || CONTENTS_LEADER.test(chunk.content))) continue;
+    kept.push(chunk);
+  }
+  return kept;
+}
+
+function prefixFunction(text: string): number[] {
+  const pi = new Array<number>(text.length).fill(0);
+  let length = 0;
+  for (let index = 1; index < text.length; index += 1) {
+    while (length > 0 && text[index] !== text[length]) length = pi[length - 1] ?? 0;
+    if (text[index] === text[length]) length += 1;
+    pi[index] = length;
+  }
+  return pi;
+}
+
+/**
+ * How many leading characters of `next` repeat a suffix of `previous`.
+ *
+ * Ingest prepends the previous piece's trailing sentences (`previous\n\n`
+ * plus the new piece) and does not cross a page. The longest match is that
+ * carried tail. A shorter accident stays put.
+ */
+function overlapLength(previous: string, next: string): number {
+  const haystack = previous.slice(-OVERLAP_WINDOW_CHARS);
+  const needle = next.slice(0, Math.min(next.length, OVERLAP_WINDOW_CHARS));
+  if (needle.length < OVERLAP_MIN_CHARS || haystack.length < OVERLAP_MIN_CHARS) return 0;
+  const pi = prefixFunction(needle);
+  let length = 0;
+  for (let index = 0; index < haystack.length; index += 1) {
+    while (length > 0 && haystack[index] !== needle[length]) length = pi[length - 1] ?? 0;
+    if (haystack[index] === needle[length]) length += 1;
+    if (length === needle.length && index < haystack.length - 1) length = pi[length - 1] ?? 0;
+  }
+  return length >= OVERLAP_MIN_CHARS ? length : 0;
+}
+
+function withoutLeadingOverlap(previous: string, next: string): string {
+  const cut = overlapLength(previous.trimEnd(), next);
+  if (cut === 0) return next.trim();
+  return next.slice(cut).replace(/^\s+/, "");
+}
+
+function endsSentence(text: string): boolean {
+  return /[.!?]["')\]]*$/.test(text);
+}
+
+/** A chunk boundary is not a sentence boundary. Join a wrapped line with a space. */
+function joinSectionText(previous: string, next: string): string {
+  const left = previous.replace(/\s+$/, "");
+  const right = next.replace(/^\s+/, "");
+  if (!left) return right;
+  if (!right) return left;
+  if (!endsSentence(left) && /^[a-z]/.test(right)) return `${left} ${right}`;
+  return `${left}\n\n${right}`;
+}
+
+/**
+ * Contents out, printed page chosen, overlap removed. Chunk order is unchanged.
+ * `printedPage` on the result is the page a citation may use.
+ */
+function prepareManualChunks(chunks: readonly FullManualChunk[]): FullManualChunk[] {
+  const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+  const bySheet = printedPageByPdfSheet(ordered);
+  const stripped: FullManualChunk[] = [];
+  let previous = "";
+  for (const chunk of omitContentsChunks(ordered)) {
+    const content = withoutLeadingOverlap(previous, withoutPageFurniture(chunk.content));
+    const section = (chunk.section ?? "").trim();
+    const prior = (stripped[stripped.length - 1]?.section ?? "").trim();
+    if (!content.trim() && (!section || headingKey(section) === headingKey(prior))) continue;
+    stripped.push({ ...chunk, printedPage: citedPageFor(chunk, bySheet), content });
+    if (content.trim()) previous = content;
+  }
+  return stripped;
 }
 
 type BrandScope = "shared" | "stc" | "excluded";
@@ -189,6 +345,7 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
       kept.push({
         chunkIndex: chunk.chunkIndex + piece * 1e-6,
         page: chunk.page,
+        printedPage: chunk.printedPage,
         section: blockSection,
         content,
       });
@@ -219,37 +376,52 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
   return kept;
 }
 
-/** Chunks in chunk_index order, with [p.n] from the page column and real section headings. */
+/**
+ * Chunks in chunk_index order. [p.n] is the printed page (the PDF sheet when
+ * the sheet has no footer). The table of contents is already gone, and a
+ * chunk's leading overlap is not repeated.
+ */
 export function assembleManual(doc: FullManualDocument): AssembledManual {
-  const chunks = sunTanCityChunks(doc.chunks);
+  const chunks = sunTanCityChunks(prepareManualChunks(doc.chunks));
   const pageMap = new Map<number, { headings: string[]; texts: string[] }>();
   const displayTitle = manualDisplayTitle(doc.title);
   const parts: string[] = [`# ${doc.title}`, `Cite as: ${displayTitle}`];
   let lastPage: number | null = null;
   let lastSection = "";
+  let body = "";
+
+  const flushBody = () => {
+    if (!body.trim()) return;
+    parts.push(body.trim());
+    body = "";
+  };
 
   for (const chunk of chunks) {
-    const page = pageOf(chunk.page);
-    if (page !== null && page !== lastPage) {
+    const page = pageOf(chunk.printedPage);
+    const section = (chunk.section ?? "").trim();
+    const pageChanged = page !== lastPage;
+    const sectionChanged = section.length > 0 && headingKey(section) !== headingKey(lastSection);
+    if (pageChanged || sectionChanged) flushBody();
+    if (page !== null && pageChanged) {
       parts.push(`[p.${page}]`);
       lastPage = page;
     }
-    const section = (chunk.section ?? "").trim();
-    if (section && headingKey(section) !== headingKey(lastSection)) {
+    if (sectionChanged) {
       parts.push(`## ${section}`);
       lastSection = section;
     }
-    const body = chunk.content.trim();
-    if (body) parts.push(body);
+    const next = chunk.content.trim();
+    if (next) body = joinSectionText(body, next);
     if (page === null) continue;
     const entry = pageMap.get(page) ?? { headings: [], texts: [] };
     if (section && !entry.headings.some((heading) => headingKey(heading) === headingKey(section))) {
       entry.headings.push(section);
     }
     if (section) entry.texts.push(section);
-    if (body) entry.texts.push(body);
+    if (next) entry.texts.push(next);
     pageMap.set(page, entry);
   }
+  flushBody();
 
   const pages = [...pageMap.entries()]
     .sort((a, b) => a[0] - b[0])
