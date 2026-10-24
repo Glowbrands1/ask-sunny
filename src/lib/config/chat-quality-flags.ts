@@ -404,6 +404,16 @@ export function intentPayrollManagerOnlyEnabled(): boolean {
   return envFlag("INTENT_PAYROLL_MANAGER_ONLY_ENABLED");
 }
 
+/**
+ * One draft per form in a conversation. A new card for the same form and
+ * employee in the same chat opens the draft this chat already made, unless a
+ * manager turn since that draft asked for another document. Off, every new
+ * card creates as it does today.
+ */
+export function conversationDraftReuseEnabled(): boolean {
+  return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
