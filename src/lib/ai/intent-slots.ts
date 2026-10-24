@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-import { codeSlotsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { codeSlotsEnabled, formInputFidelityEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  askedForIncidentDate,
+  askedOnlyForJobTitle,
+  isBareWeekdayReply,
+  isNonTitleFollowUp,
+  resolveStatedFormDate,
+} from "@/lib/forms/form-input-fidelity";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
@@ -11,6 +18,7 @@ import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { payrollDeductReply } from "@/lib/forms/payroll-deduct";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -212,12 +220,27 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
-  const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person);
+  let title = groundTitle(reading?.title ?? null, userText, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
-  const date = codeSlotsEnabled()
+  let date = codeSlotsEnabled()
     ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
     : groundedDate;
+  if (formInputFidelityEnabled() && !codeSlotsEnabled()) {
+    const assistant = [...input.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+    // The model copies a one-word reply into title because that word is the
+    // message. It belongs on the question just asked, or on no field.
+    if (title && isNonTitleFollowUp(title) && !askedOnlyForJobTitle(assistant)) {
+      title = extractJobTitle(userText);
+    }
+    if (date.iso === null && date.ambiguous.length === 0) {
+      const resolved = resolveStatedFormDate(input.question, input.today);
+      const bareDay = isBareWeekdayReply(input.question);
+      if (resolved && (!bareDay || askedForIncidentDate(assistant)) && !askedOnlyForJobTitle(assistant)) {
+        date = { iso: resolved, ambiguous: [] };
+      }
+    }
+  }
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
@@ -260,6 +283,11 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     const named = employeeNamedOnPurpose(input.question, prior, input.people, salonNames);
     const employeeName = named ?? prior ?? cleanPersonName(state.employeeName, salonNames);
     if (employeeName !== state.employeeName) state = { ...state, employeeName };
+  }
+  if (formInputFidelityEnabled() && !codeSlotsEnabled()) {
+    const assistant = [...input.history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+    const payroll = payrollDeductReply(input.question, assistant);
+    if (payroll) state = { ...state, payrollDeduct: payroll };
   }
 
   const clarification = clarificationFor({

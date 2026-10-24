@@ -2,7 +2,8 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
-import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formInputFidelityEnabled, payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { isNonTitleFollowUp, resolveStatedFormDate } from "@/lib/forms/form-input-fidelity";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -306,7 +307,9 @@ function statedTitle(text: string, saved: string | null): string | null {
   if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
   if (marked && !isFieldLabelWord(marked)) return marked;
-  if (saved && text.toLowerCase().includes(saved.toLowerCase())) return saved;
+  if (saved && text.toLowerCase().includes(saved.toLowerCase())) {
+    if (!formInputFidelityEnabled() || !isNonTitleFollowUp(saved)) return saved;
+  }
   return extractJobTitle(text);
 }
 
@@ -318,6 +321,10 @@ function statedDate(text: string, question: string, today: string): string | nul
   }
   const incidents = [...new Set(listIncidentDates(text, today).map((item) => item.iso))];
   if (incidents.length === 1) return incidents[0]!;
+  if (formInputFidelityEnabled() && incidents.length === 0) {
+    const resolved = resolveStatedFormDate(text, today);
+    if (resolved) return resolved;
+  }
   return dateSaidAsToday(text, question, today);
 }
 
