@@ -23,15 +23,16 @@ export interface PriorCoachingRecord {
   readonly line: string;
 }
 
-const TYPED_NOTE =
-  /\bcoached verbally in [a-z]+\b|\b(?:prior|previous) coaching\b[^.\n]*|\bverbal warning\b[^.\n]*?\blast\s+(?:week|month|year|time)\b/i;
+const TYPED_NOTE = /\bcoached verbally in [a-z]+\b|\b(?:prior|previous) coaching\b[^.\n?]*/i;
 
-/** no / none / not / never / without / n't earlier in the same clause. */
-const NEGATION_IN_CLAUSE = /\b(?:no|none|not|never|without)\b|n['’]t/i;
+/** A denial governs the coaching phrase only from the few words just before it. */
+const NEGATION_WORD = /^(?:no|none|not|never|without)$|n['’]t$/i;
+const FUNCTION_WORD =
+  /^(?:a|an|the|of|any|some|her|his|their|our|my|your|this|that|these|those|had|has|have|been|was|were|to|for|on|in|with|and|or)$/i;
 
 function clauseBefore(text: string, index: number): string {
   const before = text.slice(0, index);
-  const start = Math.max(
+  let start = Math.max(
     before.lastIndexOf("."),
     before.lastIndexOf("!"),
     before.lastIndexOf("?"),
@@ -39,20 +40,40 @@ function clauseBefore(text: string, index: number): string {
     before.lastIndexOf(","),
     before.lastIndexOf("\n"),
   );
+  const butAt = before.toLowerCase().lastIndexOf(" but ");
+  if (butAt !== -1) {
+    const afterBut = butAt + " but ".length - 1;
+    if (afterBut > start) start = afterBut;
+  }
   return before.slice(start + 1);
+}
+
+function negationGovernsPhrase(clause: string): boolean {
+  const words = clause.trim().split(/\s+/).filter(Boolean).slice(-4);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const word = words[i].replace(/^[^A-Za-z'’]+|[^A-Za-z'’]+$/g, "");
+    if (!word) continue;
+    if (NEGATION_WORD.test(word)) return true;
+    if (FUNCTION_WORD.test(word)) continue;
+    return false;
+  }
+  return false;
 }
 
 /**
  * The manager's own words for earlier coaching, or null when they gave none.
- * A match is skipped when a denial precedes it in the same clause, so
- * "no prior coaching" is not read as a note that coaching exists.
+ * A denial counts only when it governs this phrase — a few words before it,
+ * and not across "but". A question ("prior coaching?") is not a note.
  */
 export function typedPriorCoachingNote(text: string): string | null {
   const pattern = new RegExp(TYPED_NOTE.source, "gi");
   for (const match of text.matchAll(pattern)) {
-    if (NEGATION_IN_CLAUSE.test(clauseBefore(text, match.index ?? 0))) continue;
+    const index = match.index ?? 0;
     const note = match[0].trim();
-    if (note) return note;
+    if (!note) continue;
+    if (/^\s*\?/.test(text.slice(index + match[0].length))) continue;
+    if (negationGovernsPhrase(clauseBefore(text, index))) continue;
+    return note;
   }
   return null;
 }
