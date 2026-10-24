@@ -476,6 +476,7 @@ describe("4. the offense box decides which section", () => {
     "Wren was scheduled to open the salon at 9:30 and did not arrive until 11:23",
     "she was the opener today and came in late",
     "late opening on 10/16",
+    "opened late",
     "she didn't open the store until 10",
   ])("cites Late Opening, then Attendance, for a tardy opener: %s", (notes) => {
     const sections = manualSectionsFor({

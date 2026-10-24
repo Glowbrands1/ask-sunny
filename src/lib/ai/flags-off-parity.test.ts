@@ -16,6 +16,12 @@ import {
   policyCitationEnabled,
   reportBreakdownEnabled,
   secondFormEnabled,
+  citationVerifyEnabled,
+  conversationProposalDedupeEnabled,
+  currentManualScopeEnabled,
+  modelRetryEnabled,
+  promptCacheEnabled,
+  requiredFieldCheckEnabled,
   selfCheckEnabled,
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -47,6 +53,12 @@ const NEW_FLAGS = [
   "INTENT_EXTRACTION_ENABLED",
   "FEWSHOT_EXAMPLES_ENABLED",
   "SELF_CHECK_ENABLED",
+  "PROMPT_CACHE_ENABLED",
+  "MODEL_RETRY_ENABLED",
+  "REQUIRED_FIELD_CHECK_ENABLED",
+  "CONVERSATION_PROPOSAL_DEDUPE_ENABLED",
+  "CITATION_VERIFY_ENABLED",
+  "CURRENT_MANUAL_SCOPE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -131,6 +143,12 @@ describe("new flags default off and wrappers are inert", () => {
     expect(intentExtractionEnabled()).toBe(false);
     expect(fewShotExamplesEnabled()).toBe(false);
     expect(selfCheckEnabled()).toBe(false);
+    expect(promptCacheEnabled()).toBe(false);
+    expect(modelRetryEnabled()).toBe(false);
+    expect(requiredFieldCheckEnabled()).toBe(false);
+    expect(conversationProposalDedupeEnabled()).toBe(false);
+    expect(citationVerifyEnabled()).toBe(false);
+    expect(currentManualScopeEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

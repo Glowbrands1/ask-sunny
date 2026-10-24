@@ -889,7 +889,7 @@ const DESCRIBED_SECTIONS: readonly {
   {
     offenseKey: "tardiness",
     describes:
-      /\b(?:late[- ]open(?:ing|ed)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
+      /\b(?:open(?:ed|ing)\s+late|late[- ]open(?:ing|ed|er)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
     headings: ["Late Opening"],
   },
   /*

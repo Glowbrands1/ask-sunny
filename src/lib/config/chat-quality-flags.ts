@@ -189,3 +189,54 @@ export function fewShotExamplesEnabled(): boolean {
 export function selfCheckEnabled(): boolean {
   return envFlag("SELF_CHECK_ENABLED");
 }
+
+/**
+ * Cache the static system prompt and the policy-manual block.
+ * Off, both are sent exactly as they are today.
+ */
+export function promptCacheEnabled(): boolean {
+  return envFlag("PROMPT_CACHE_ENABLED");
+}
+
+/**
+ * A 45 second model timeout, two retries, and a plain message when the
+ * model is overloaded. Off, the client keeps the SDK defaults and the
+ * existing failure text.
+ */
+export function modelRetryEnabled(): boolean {
+  return envFlag("MODEL_RETRY_ENABLED");
+}
+
+/**
+ * The reply lists template fields the proposal has not filled yet.
+ * Off, the reply is unchanged. A typed name fills Employee Name; not
+ * being in Woven is not a missing field.
+ */
+export function requiredFieldCheckEnabled(): boolean {
+  return envFlag("REQUIRED_FIELD_CHECK_ENABLED");
+}
+
+/**
+ * A second create of the same conversation and proposal returns the draft.
+ * Off, a repeated card is still matched the way it is today.
+ */
+export function conversationProposalDedupeEnabled(): boolean {
+  return envFlag("CONVERSATION_PROPOSAL_DEDUPE_ENABLED");
+}
+
+/**
+ * Drop a JBA Policy Manual citation whose heading or page is not in the
+ * current manual chunks. Off, citations are left as they were written.
+ */
+export function citationVerifyEnabled(): boolean {
+  return envFlag("CITATION_VERIFY_ENABLED");
+}
+
+/**
+ * After a match, keep the current JBA Policy Manual edition and collapse
+ * identical sections. Off, the rows the database returned are used as they
+ * are. The 0.78 similarity floor is unchanged.
+ */
+export function currentManualScopeEnabled(): boolean {
+  return envFlag("CURRENT_MANUAL_SCOPE_ENABLED");
+}

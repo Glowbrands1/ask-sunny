@@ -383,3 +383,48 @@ describe("a missed meeting reads as Attendance", () => {
     },
   );
 });
+
+describe("the phrases that named no policy", () => {
+  it.each(["late opening", "opened late"])("reads %j as Late Opening under tardiness", (text) => {
+    const reading = readCaPolicy(text);
+    expect(reading.stated).toBe("late_opening");
+    expect(statedOffenseKeys(reading, text)).toEqual(["tardiness"]);
+    const line = caPolicyProposalLine(reading);
+    expect(line).toContain("Late Opening");
+    expect(line).not.toContain("Attendance");
+  });
+
+  it("keeps Late Opening when the manager sets attendance aside", () => {
+    const text = "the policy violated is late opening, not attendance";
+    expect(readCaPolicy(text).stated).toBe("late_opening");
+    expect(statedOffenseKeys(readCaPolicy(text), text)).toEqual(["tardiness"]);
+  });
+
+  it("leaves a late arrival unnamed as Late Opening", () => {
+    expect(readCaPolicy("she was late").stated).toBeNull();
+    expect(readCaPolicy("not late opening").stated).toBeNull();
+  });
+
+  it("reads policy acknowledgement as unfinished required work", () => {
+    const reading = readCaPolicy("policy acknowledgement");
+    expect(reading.stated).toBeNull();
+    expect(reading.topics).toEqual(["task"]);
+    expect(reading.suggestion).toBe("standards_of_conduct");
+    expect(reading.source).toBe("incident");
+    expect(readCaPolicy("policy acknowledgements").topics).toEqual(["task"]);
+  });
+
+  it("reads wore leggings as the dress code", () => {
+    const text = "wore leggings";
+    const reading = readCaPolicy(text);
+    expect(reading.stated).toBe("dress_code");
+    expect(statedOffenseKeys(reading, text)).toEqual(["dress_code"]);
+    expect(caPolicyProposalLine(reading)).toContain("Dress Code");
+  });
+
+  it("still reads wore jeans against dress code as the dress code", () => {
+    expect(
+      readCaPolicy("Remy Calder, written warning, wore jeans on 10/19/26 against dress code, no payroll deduction").stated,
+    ).toBe("dress_code");
+  });
+});
