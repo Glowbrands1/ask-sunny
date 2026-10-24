@@ -27,7 +27,9 @@ comment on column public.chat_traces.cache_read_input_tokens is
 comment on column public.chat_traces.first_token_ms is
   'Milliseconds from the request until the first text token. Null when the call was not streamed.';
 
-create or replace view public.chat_traces_live as
+-- A replace without WITH clears security_invoker, which production already set.
+create or replace view public.chat_traces_live
+with (security_invoker = true) as
   select
     created_at,
     conversation_id,

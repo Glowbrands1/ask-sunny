@@ -7,6 +7,7 @@ import { createMigratedTestDatabase } from "@/test/pglite-knowledge-db";
 import { redactTraceText, traceInsertWarning } from "./chat-trace";
 
 const SQL = readFileSync("supabase/migrations/20261023001100_chat_traces.sql", "utf8");
+const SLOTS_SQL = readFileSync("supabase/migrations/20261024012000_chat_traces_slots.sql", "utf8");
 const CACHE_SQL = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
 
 describe("chat trace insert", () => {
@@ -53,6 +54,8 @@ describe("chat_traces migration", () => {
     expect(statements).not.toMatch(/not null/i);
     expect(statements).not.toMatch(/drop (table|column|function|index)/i);
     expect(statements).toMatch(/create or replace view public\.chat_traces_live/i);
+    expect(statements).toMatch(/with \(security_invoker = true\)/i);
+    expect(SLOTS_SQL).toMatch(/create or replace view public\.chat_traces_live\s+with \(security_invoker = true\)/i);
     expect(statements).toMatch(/grant select on public\.chat_traces_live to service_role/i);
     const view = statements.slice(statements.toLowerCase().indexOf("create or replace view"));
     const latency = view.indexOf("latency_ms");
@@ -120,16 +123,29 @@ describe("chat_traces migration", () => {
       expect(names.indexOf("first_token_ms")).toBe(names.indexOf("slots") + 3);
       expect(names.indexOf("error_subtype")).toBe(names.indexOf("latency_ms") + 1);
 
-      const grants = await harness.db.query<{ grantee: string; privilege_type: string }>(
-        `select grantee, privilege_type
-           from information_schema.role_table_grants
-          where table_schema = 'public' and table_name = 'chat_traces_live'`,
-      );
-      console.log(
-        `chat_traces_live grants: ${grants.rows.map((row) => `${row.grantee}=${row.privilege_type}`).join(", ") || "(none)"}`,
-      );
-      expect(grants.rows.some((row) => row.grantee === "service_role" && row.privilege_type === "SELECT")).toBe(true);
-      expect(grants.rows.some((row) => row.grantee === "anon" || row.grantee === "authenticated")).toBe(false);
+      const describeView = async (label: string) => {
+        const grants = await harness.db.query<{ grantee: string; privilege_type: string }>(
+          `select grantee, privilege_type
+             from information_schema.role_table_grants
+            where table_schema = 'public' and table_name = 'chat_traces_live'
+            order by grantee, privilege_type`,
+        );
+        const options = await harness.db.query<{ reloptions: string[] | null }>(
+          `select c.reloptions
+             from pg_class c
+             join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'public' and c.relname = 'chat_traces_live'`,
+        );
+        const reloptions = options.rows[0]?.reloptions ?? null;
+        const grantText = grants.rows.map((row) => `${row.grantee}=${row.privilege_type}`).join(", ") || "(none)";
+        console.log(`${label} reloptions: ${reloptions ? reloptions.join(", ") : "(none)"}`);
+        console.log(`${label} grants: ${grantText}`);
+        expect(reloptions?.some((option) => option === "security_invoker=true")).toBe(true);
+        expect(grants.rows.some((row) => row.grantee === "service_role" && row.privilege_type === "SELECT")).toBe(true);
+        expect(grants.rows.some((row) => row.grantee === "anon" || row.grantee === "authenticated")).toBe(false);
+      };
+
+      await describeView("after 001100 -> slots -> cache");
 
       const again = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
       await harness.db.exec(again);
@@ -140,7 +156,7 @@ describe("chat_traces migration", () => {
           order by ordinal_position`,
       );
       expect(repeated.rows.map((row) => row.column_name)).toEqual(names);
-      console.log("cache migration applied twice; view columns unchanged");
+      await describeView("after cache again");
     } finally {
       await harness.close();
     }
