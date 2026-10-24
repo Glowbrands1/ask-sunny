@@ -13,6 +13,12 @@ migration apply and no merge.
   return template (`b9ae362`), because CI checks out only the pull request
   tip. A missing `chat_traces` cache column logs a warning instead of
   dropping the insert with no record.
+- `f4b2616..eb18de7` touches 4 files: `docs/parity-log.md`,
+  `docs/scoreboard.md`, `src/lib/ai/prompts-main-b9ae362.template.txt`,
+  and `src/lib/ai/prompts.test.ts`.
+- The flags-off parity child is its own Vitest project and starts after
+  the unit project. It does not run a second copy of the suite beside the
+  main one. Timeouts stay at 5 seconds.
 
 ## 24 Oct 2026: cache columns and the dynamic prompt tail — Sunny-only
 

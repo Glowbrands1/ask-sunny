@@ -47,6 +47,9 @@ import { flaggedCitationWrite } from "./policy-citation-fields";
  * Pau's modules are untouched. The existing chat and form suites are run
  * in a child process with every new flag forced off; their expectations
  * are main's, and a failure here is a behavior change that leaked through.
+ * The child is the `flags-off-parity` Vitest project, which starts only
+ * after the unit project finishes, and it stays on `--project unit` so it
+ * does not start another copy of itself.
  */
 
 const NEW_FLAGS = [
@@ -259,6 +262,8 @@ describe("existing chat and form suites with every new flag off", () => {
         [
           "node_modules/vitest/vitest.mjs",
           "run",
+          "--project",
+          "unit",
           "--exclude",
           "src/lib/ai/flags-off-parity.test.ts",
           "src/lib/ai",
