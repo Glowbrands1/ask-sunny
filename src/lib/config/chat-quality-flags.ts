@@ -327,3 +327,12 @@ export function manualSectionDedupeEnabled(): boolean {
 export function printedPageCitationEnabled(): boolean {
   return envFlag("PRINTED_PAGE_CITATION_ENABLED");
 }
+
+/**
+ * Slots, the employee name, the salon, a yes/no, the date, and the printed
+ * page are decided in code. The model does not write Employee. Off, those
+ * paths stay as they are.
+ */
+export function codeSlotsEnabled(): boolean {
+  return envFlag("CODE_SLOTS_ENABLED");
+}

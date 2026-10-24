@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { codeSlotsEnabled, printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { actionPlanSentenceCount, collapseToTwoSentences } from "@/lib/forms/action-plan-sentences";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { headingKey, type ManualChunk } from "@/lib/forms/official-policy-manual";
@@ -145,6 +146,30 @@ export async function runSelfCheck(
     reviewed = { repair: null, sections: [] };
   }
   const usable = reviewed.repair && !repairSpeaksAsValidator(reviewed.repair.content) ? reviewed.repair : null;
+  if (codeSlotsEnabled()) {
+    // Repair prose is never the reply. A failed repair keeps the last good draft.
+    if (!usable) {
+      return {
+        content: scrubRosterBlock(draft.content),
+        employeeName: draft.employeeName,
+        actionPlan: draft.actionPlan,
+        ok: false,
+        repaired: false,
+      };
+    }
+    const actionPlan = usable.actionPlan && exactTwoSentencePlan(usable.actionPlan) ? usable.actionPlan : draft.actionPlan;
+    let content = draft.content;
+    if (actionPlan && draft.actionPlan && content.includes(draft.actionPlan) && actionPlan !== draft.actionPlan) {
+      content = content.replace(draft.actionPlan, actionPlan);
+    }
+    return {
+      content: scrubRosterBlock(content),
+      employeeName: draft.employeeName,
+      actionPlan,
+      ok: reviewOutgoing({ ...draft, content, actionPlan }).length === 0,
+      repaired: actionPlan !== draft.actionPlan,
+    };
+  }
   const next = applyReview(draft, usable, reviewed.sections);
   const remaining = reviewOutgoing({ ...draft, ...next });
   const settled =
@@ -370,6 +395,10 @@ function carries(chunk: ManualChunk, wanted: string): boolean {
 }
 
 function indexedPage(chunk: ManualChunk): number | null {
+  if (codeSlotsEnabled()) {
+    const mapped = printedPageForPolicy(chunk.section);
+    if (mapped) return mapped;
+  }
   if (typeof chunk.printedPage === "number" && chunk.printedPage > 0) return chunk.printedPage;
   if (printedPageCitationEnabled()) return null;
   if (typeof chunk.page === "number" && chunk.page > 0) return chunk.page;

@@ -1,8 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { CLAUDE_MODEL } from "@/lib/config/models";
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { correctiveActionDocument } from "@/lib/forms/library";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
+import { firstMessageDropped } from "./form-history";
 import type { PriorFormOnFile } from "@/lib/forms/prior-forms-lines";
 import { JBA_MANUAL_CHUNKS, JBA_MANUAL_DOCUMENT } from "@/lib/ai/__fixtures__/jba-policy-manual";
 import type { AccessScope, ChatMessage } from "@/types";
@@ -40,6 +47,7 @@ const FLAGS = [
   "MANUAL_SECTION_DEDUPE_ENABLED",
   "PRINTED_PAGE_CITATION_ENABLED",
   "PAYROLL_AMOUNT_FIELD_ENABLED",
+  "CODE_SLOTS_ENABLED",
 ] as const;
 
 const TODAY = "2026-10-23";
@@ -1046,14 +1054,46 @@ function setFlags(on: boolean) {
   }
 }
 
+const RUNS = 3;
+const harnessEvents: { caseId: string; event: string }[] = [];
+const timings: { id: string; flags: "on" | "off"; ms: number }[] = [];
+
+function cardCriteria(item: ReplayCase) {
+  const employee = item.on.find((check) => check.employee)?.employee ?? null;
+  const salon = item.on.find((check) => check.locationId)?.locationId ?? null;
+  const dated = item.on.find((check) => check.formDate !== undefined);
+  const policy = item.on.find((check) => check.policyHeading && check.policyPage);
+  return {
+    employee,
+    salon,
+    date: dated ? dated.formDate ?? null : null,
+    policy: policy ? `${policy.policyHeading} p.${policy.policyPage}` : null,
+    noBlockingQuestion: true,
+    noLeakedInternalText: true,
+  };
+}
+
+function modelPayload(history: readonly ChatMessage[]): ChatMessage[] {
+  const nonempty = history.filter((message) => message.content.trim().length > 0);
+  const bounded = nonempty.slice(-10);
+  while (bounded.length > 0 && bounded[0]!.role === "assistant") bounded.shift();
+  return bounded;
+}
+
 async function ask(question: string, history: ChatMessage[], conversationId: string) {
   const { answerQuestion } = await import("./server-ask");
-  const continuation = continuationFor(history);
+  let used = history;
+  if (firstMessageDropped(history, modelPayload(history))) {
+    harnessEvents.push({ caseId: conversationId, event: "resend-first-message" });
+    const first = history.find((message) => message.role === "user");
+    used = first ? [first, ...history.filter((message) => message.id !== first.id)] : history;
+  }
+  const continuation = continuationFor(used);
   return answerQuestion(
     {
       question,
       mode: "standard",
-      history,
+      history: used,
       scopeId: "stc-core",
       questionMessageId: `msg-${conversationId}-${history.length}`,
       conversationId,
@@ -1202,13 +1242,48 @@ beforeEach(() => {
 describe("priority replay with the quality flags on", () => {
   beforeEach(() => setFlags(true));
   it.each(CASES)("$id follows the real turns", async (item) => {
-    await replay(item, true);
+    const criteria = cardCriteria(item);
+    expect(criteria.noBlockingQuestion, `${item.id} criteria`).toBe(true);
+    expect(criteria.noLeakedInternalText, `${item.id} criteria`).toBe(true);
+    const started = Date.now();
+    for (let run = 0; run < RUNS; run += 1) await replay(item, true);
+    timings.push({ id: item.id, flags: "on", ms: Date.now() - started });
   });
 });
 
 describe("priority replay with the flags off is no worse than the baseline", () => {
   beforeEach(() => setFlags(false));
   it.each(CASES)("$id holds the baseline floor", async (item) => {
-    await replay(item, false);
+    const criteria = cardCriteria(item);
+    expect(criteria.noBlockingQuestion, `${item.id} criteria`).toBe(true);
+    const started = Date.now();
+    for (let run = 0; run < RUNS; run += 1) await replay(item, false);
+    timings.push({ id: item.id, flags: "off", ms: Date.now() - started });
   });
+});
+
+afterAll(() => {
+  const replaySet = JSON.stringify(CASES.map((item) => ({ id: item.id, turns: item.turns, criteria: cardCriteria(item) })));
+  const fixture = readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8");
+  expect(fixture, "replay_set.json").toBe(replaySet);
+  const replaySetHash = createHash("sha256").update(fixture).digest("hex");
+  const promptHash = createHash("sha256").update(readFileSync("src/lib/ai/prompts.ts")).digest("hex");
+  let commit = "unknown";
+  try {
+    commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  } catch {
+    commit = "unknown";
+  }
+  console.log(
+    JSON.stringify({
+      replaySetHash,
+      promptHash,
+      commit,
+      flags: FLAGS,
+      model: CLAUDE_MODEL,
+      runs: RUNS,
+      harnessEvents,
+      timings,
+    }),
+  );
 });

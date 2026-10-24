@@ -5,6 +5,30 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Code-owned form slots — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Do not publish templates. Do not apply the `chat_traces` migration to
+production from this change; it only adds a `slots` column.
+
+- `CODE_SLOTS_ENABLED` — the model does not write Employee. Code takes a
+  candidate span, strips salon and city tokens, field labels, and promo
+  words, then fuzzy-matches the roster. An exact row uses the directory
+  spelling. A close spelling or a person who is not on the roster stays as
+  typed. Slots already filled stay until the manager changes them. Empty
+  required slots (employee, and the date on a corrective action or coaching
+  form) get a non-blocking line. A salon never holds the card: one salon on
+  the account, or the roster match, or blank. A stored `pendingConfirmation`
+  resolves a bare yes or no before the model runs; a bare yes with nothing
+  pending leaves the slots alone. A roster-refusal reply is not shown. A
+  failed repair falls back to the last good reply and card. An incident date
+  is parsed to ISO in code and replaces the stored date only when this turn
+  states a new one. Printed pages for the cited sections are Attendance 14,
+  Late Opening 15, Dress Code 15, Cell Phone 19, Standards of Conduct 12
+  (the section runs 12–14), Animals 30. Each traced turn can store those
+  slots on `chat_traces.slots`.
+
 ## 24 Oct 2026: Payroll deduction amount — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.

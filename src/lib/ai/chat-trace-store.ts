@@ -31,6 +31,8 @@ export interface ChatTraceDraft {
   errorClass: string | null;
   errorStatus: number | null;
   succeeded: boolean | null;
+  /** Slots after this turn. Absent when the turn did not settle a form. */
+  slots?: Record<string, unknown> | null;
 }
 
 const storage = new AsyncLocalStorage<ChatTraceDraft>();

@@ -12,6 +12,7 @@ import {
   tidyTypedName,
   type ManagerContext,
 } from "@/lib/forms/proposal";
+import { keptFormHistory } from "./form-history";
 import {
   detectTemplateIntent,
   eppTemplateForRole,
@@ -1733,11 +1734,7 @@ function turnsAboutThisForm(
  * where the first turn cannot be found, the whole conversation, as before.
  */
 function formHistory(history: ProposalTurn["history"], scoped: ManagerContext): ProposalTurn["history"] {
-  const first = scoped.messages[0]?.id;
-  const at = first ? history.findIndex((message) => message.id === first) : -1;
-  if (at >= 0) return history.slice(at);
-  if (first && scoped.messages.length === 1) return history.slice(-1).filter((message) => message.role === "assistant");
-  return history;
+  return keptFormHistory(history, scoped.messages[0]?.id, scoped.messages.length);
 }
 
 /**
