@@ -58,9 +58,10 @@ import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/cur
 import {
   expandPolicyQuery,
   isCaOrPolicyQuestion,
-  manualTopicSections,
+  manualTopicSectionsForTurn,
   orderPolicyRetrieval,
-  pinManualTopicRows,
+  pinManualTopic,
+  topicPinPolicyNote,
 } from "@/lib/knowledge/policy-retrieval";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
@@ -950,7 +951,17 @@ async function answerQuestionUntraced(
    * flag is on, the same identity read a form uses pins the headings. Off,
    * this promise is still only the question that names the manual.
    */
-  const topicSections = manualTopicPinEnabled() ? manualTopicSections(request.question) : [];
+  const topicSections = manualTopicPinEnabled()
+    ? manualTopicSectionsForTurn({
+        question: request.question,
+        /*
+         * A form or a write-up cites the manual on the form path. "Paycheck"
+         * in a corrective action is not a request for Pay Periods.
+         */
+        formOrCorrectiveAction:
+          formsTurn || Boolean(request.openForm) || Boolean(request.activeFormInstanceId),
+      })
+    : [];
   const policyManualPromise =
     namesOfficialPolicyManual(request.question) || topicSections.length > 0
       ? knowledge.fetchOfficialPolicyManual(request.scopeId)
@@ -1022,6 +1033,7 @@ async function answerQuestionUntraced(
           query: searched,
           scopeId: request.scopeId,
           limit: fetchLimit,
+          question: request.question,
         })
       : hybridSearchEnabled()
         ? await matchHybridKnowledge({
@@ -1152,16 +1164,17 @@ async function answerQuestionUntraced(
           chunks: policyManual.chunks,
         })
       : null;
-  const topicRows =
+  const topicPin =
     topicSections.length > 0 && policyManual?.ok
-      ? pinManualTopicRows({
+      ? pinManualTopic({
           question: request.question,
           documentId: policyManual.documentId,
           documentTitle: policyManual.documentTitle,
           documentCategory: policyManual.documentCategory,
           chunks: policyManual.chunks,
         })
-      : [];
+      : { rows: [], sections: [] };
+  const topicRows = topicPin.rows;
 
   /*
    * One ordered set of rows: the mandatory sections first, then the evidence.
@@ -1214,12 +1227,25 @@ async function answerQuestionUntraced(
    * model how much of the manual it holds names real markers and nothing else.
    */
   const manualChunkIds = new Set((manualCoverage?.rows ?? []).map((row) => row.chunk_id));
+  /*
+   * W-2 clears retrieval (it is the nearest neighbour) and, with the flag
+   * on, is pinned here. The answer was still "I don't have that": the
+   * prompt says to refuse when the sources do not cover the question, and
+   * the note that counters that refusal was built only when the question
+   * named the manual. A pinned topic gets that same note. A question that
+   * already named the manual keeps the coverage note. Flag off, topicPin
+   * is empty and this is null, as before.
+   */
   const policyManualNote = manualCoverage
     ? buildPolicyManualNote(
         manualCoverage,
         used.flatMap((row, index) => (manualChunkIds.has(row.chunk_id) ? [index + 1] : [])),
       )
-    : null;
+    : topicPinPolicyNote({
+        documentTitle: policyManual?.ok ? policyManual.documentTitle : "",
+        pin: topicPin,
+        used,
+      });
 
   const grounding: GroundingChunk[] = used.map((row, index) => ({
     marker: index + 1,

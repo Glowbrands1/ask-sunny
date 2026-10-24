@@ -5,6 +5,7 @@ import { z } from "zod";
 import { applyRerank } from "@/lib/ai/retrieval-rerank";
 import { callClaudeTool } from "@/lib/ai/call-claude";
 import { expandGlossaryQuery } from "@/lib/ai/glossary";
+import { manualTopicPinEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 import { EMBEDDING_DIMENSIONS, RETRIEVAL } from "@/lib/config/models";
 import { getEmbeddingProvider } from "@/lib/embeddings";
@@ -12,6 +13,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { MatchedChunkRow } from "./mappers";
 import { loadHybridOrVector, type HybridRpcRow } from "./hybrid-rpc";
+import { shouldScanManualHeadings } from "./policy-retrieval";
 import { selectRecallCandidates, type RecallCandidate } from "./recall-rank";
 
 /**
@@ -101,6 +103,12 @@ export async function matchRecallKnowledge(input: {
   readonly query: string;
   readonly scopeId: string;
   readonly limit?: number;
+  /**
+   * The manager's question, before rewrite. Used only when
+   * MANUAL_TOPIC_PIN_ENABLED is on, to decide whether a high vector score
+   * should still run the heading scan. Ignored when the flag is off.
+   */
+  readonly question?: string | null;
 }): Promise<MatchedChunkRow[]> {
   const limit = input.limit ?? RETRIEVAL.topK;
   const keywordQuery = expandGlossaryQuery(input.query.trim());
@@ -131,9 +139,27 @@ export async function matchRecallKnowledge(input: {
    * answers took 12–25s and cited a different page. The fused order is the
    * answer. The fuzzy heading scan and Haiku run only when nothing cleared
    * the floor.
+   *
+   * Exception, flag on only: a policy question whose window has no current
+   * JBA Policy Manual chunk. Time off and direct deposit clear 0.78 on
+   * another document, so the heading scan never saw the manual. The flag
+   * is read first. Off, shouldScanManualHeadings is not called and these
+   * rows are the ones this branch has always returned. A window that
+   * already holds the manual does not scan: an empty Haiku pick would drop
+   * the chunk that was already there.
    */
   if (bestHybrid >= RETRIEVAL.minSimilarity) {
-    return selectRecallCandidates(hybrid, keywordQuery, { limit }).rows;
+    const early = selectRecallCandidates(hybrid, keywordQuery, { limit });
+    if (
+      !manualTopicPinEnabled() ||
+      !shouldScanManualHeadings({
+        query: keywordQuery,
+        question: input.question ?? null,
+        rows: early.rows,
+      })
+    ) {
+      return early.rows;
+    }
   }
 
   const fuzzy = await fuzzyRows(keywordQuery, input.scopeId, limit);
