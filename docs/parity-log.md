@@ -23,8 +23,8 @@ off. Do not publish templates.
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
 The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
-off. Do not publish templates. Do not apply the `chat_traces` migration to
-production from this change; it only adds a `slots` column.
+off. Do not publish templates. `chat_traces.slots` is already applied in
+production. This change does not add a migration and does not re-apply one.
 
 - `CODE_SLOTS_ENABLED` — the model does not write Employee. Code takes a
   candidate span, strips salon and city tokens, field labels, and promo
