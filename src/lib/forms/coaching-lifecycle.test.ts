@@ -357,7 +357,7 @@ describe("a new coaching form", () => {
     ]);
   });
 
-  it("B. a blank Direct policy does not block finalize when the gate is non-blocking", async () => {
+  it('feedback 10/7 and 10/20: "not letting me complete it due to policy verification"', async () => {
     process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
     try {
       const instance = await startCorrectiveForm();

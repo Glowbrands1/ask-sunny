@@ -1238,7 +1238,7 @@ describe("P4. finalizing freezes the version the SERVER holds", () => {
     expect(screen.queryByRole("dialog", { name: "Finalize this form?" })).toBeNull();
   });
 
-  it("a blank policy leaves the card up and does not open the verification dialog", async () => {
+  it('feedback 10/7 and 10/20: "not letting me complete it due to policy verification"', async () => {
     process.env.POLICY_GATE_NONBLOCKING_ENABLED = "1";
     process.env.NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED = "1";
     try {
