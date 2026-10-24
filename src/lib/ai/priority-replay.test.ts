@@ -8,6 +8,7 @@ import { CLAUDE_MODEL } from "@/lib/config/models";
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { correctiveActionDocument } from "@/lib/forms/library";
+import { payrollAmountFromConversation, payrollAnswerForAmount } from "@/lib/forms/payroll-deduct";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
 import { firstMessageDropped } from "./form-history";
 import { setSystemPromptRevision, type SystemPromptRevision } from "./prompts";
@@ -16,11 +17,18 @@ import {
   REPLAY_RUNS,
   casesWhereOldPromptScoresBetter,
   judgeReplayCard,
+  judgeRulebookRuns,
   latencyOverGate,
+  renderRulebookScoreboard,
   renderScoreboardRound,
+  rulebookCasesWorse,
+  rulebookVerdict,
   type ReplayCardCriteria,
   type ReplayCaseResult,
   type ReplayRound,
+  type RulebookRun,
+  type RulebookScoreRow,
+  type RulebookSpec,
 } from "./replay-scoreboard";
 import type { PriorFormOnFile } from "@/lib/forms/prior-forms-lines";
 import { JBA_MANUAL_CHUNKS, JBA_MANUAL_DOCUMENT } from "@/lib/ai/__fixtures__/jba-policy-manual";
@@ -1073,12 +1081,29 @@ function setFlags(on: boolean) {
 }
 
 const RUNS = REPLAY_RUNS;
+const recordHarness = { on: true };
 /** prompts.ts at 417e80c, the commit before the unified-authority prompt edit. */
 const LAST_KNOWN_GOOD_COMMIT = "417e80c12d7275681411606f87af851fb080b348";
 const harnessEvents: { caseId: string; event: string }[] = [];
 const flagsOnResults: ReplayCaseResult[] = [];
 const flagsOffResults: ReplayCaseResult[] = [];
 const lastKnownGoodResults: ReplayCaseResult[] = [];
+
+/** One flags-on run, kept so the rulebook column can be scored without a fourth pass. */
+interface RulebookSnapshotRun {
+  readonly employeeName: string | null;
+  readonly locationId: string | null;
+  readonly formDate: string | null;
+  readonly hasCard: boolean;
+  readonly payrollDeductAmount: string | null;
+  readonly contents: readonly string[];
+  readonly citations: readonly { documentTitle?: string; locator?: string; excerpt?: string }[];
+}
+
+const rulebookNew: { id: string; ms: number; runs: RulebookSnapshotRun[] }[] = [];
+const rulebookCapture = { on: false, run: null as RulebookSnapshotRun | null };
+
+const OLD_MAIN = "b9ae362fd80e1fc492c4326f80834cf105ef19b8";
 
 function selectPromptRevision(next: SystemPromptRevision) {
   captured.revision = next;
@@ -1125,7 +1150,7 @@ async function ask(question: string, history: ChatMessage[], conversationId: str
   const { answerQuestion } = await import("./server-ask");
   let used = history;
   if (firstMessageDropped(history, modelPayload(history))) {
-    harnessEvents.push({ caseId: conversationId, event: "resend-first-message" });
+    if (recordHarness.on) harnessEvents.push({ caseId: conversationId, event: "resend-first-message" });
     const first = history.find((message) => message.role === "user");
     used = first ? [first, ...history.filter((message) => message.id !== first.id)] : history;
   }
@@ -1242,9 +1267,38 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
   }
 }
 
+const NAMED_TURNS: readonly {
+  id: string;
+  turns: readonly number[];
+  employee: string;
+  /** 1-based turn the card is required. Earlier turns still keep the name when a card is already up. */
+  cardOn: number;
+  cardOff: number;
+}[] = [
+  { id: "s4", turns: [5, 9], employee: "Test Testy", cardOn: 4, cardOff: 7 },
+  { id: "s9", turns: [1], employee: "Ima", cardOn: 1, cardOff: 1 },
+  { id: "s8", turns: [6, 7], employee: "Christiana Headley", cardOn: 4, cardOff: 8 },
+];
+
+const REFUSAL =
+  /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|didn'?t find \*\*|in the Woven roster|not found in the roster/i;
+
+function guardNamedTurn(item: ReplayCase, turn: number, response: Awaited<ReturnType<typeof ask>>, flagsOn: boolean) {
+  const spec = NAMED_TURNS.find((row) => row.id === item.id && row.turns.includes(turn));
+  if (!spec) return;
+  expect(response.content, `${item.id} T${turn}`).not.toMatch(REFUSAL);
+  const name = response.formProposal?.employeeName ?? "";
+  const cardFrom = flagsOn ? spec.cardOn : spec.cardOff;
+  if (turn >= cardFrom || name) {
+    expect(name, `${item.id} T${turn}`).toMatch(new RegExp(`^${spec.employee}$`, "i"));
+  }
+}
+
 async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptRevision = "current") {
   captured.memory.length = 0;
+  rulebookCapture.run = null;
   const history: ChatMessage[] = [];
+  const turnContents: string[] = [];
   const conversationId = flagsOn ? `conv-${item.id}-on-${variant}` : `conv-${item.id}-off`;
   const checks = flagsOn ? item.on : item.off;
   let last: Awaited<ReturnType<typeof ask>> | null = null;
@@ -1264,6 +1318,8 @@ async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptR
       }
     }
     for (const check of checks) applyCheck(item.id, turn, response, check);
+    guardNamedTurn(item, turn, response, flagsOn);
+    turnContents.push(response.content);
     history.push({
       id: `u-${item.id}-${index}`,
       role: "user",
@@ -1278,6 +1334,21 @@ async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptR
       ...(response.formProposal ? { formProposal: response.formProposal } : {}),
       ...(response.formSelection ? { formSelection: response.formSelection } : {}),
     });
+  }
+  if (rulebookCapture.on && last) {
+    rulebookCapture.run = {
+      employeeName: last.formProposal?.employeeName ?? null,
+      locationId: last.formProposal?.locationId ?? null,
+      formDate: last.formProposal?.formDate ?? null,
+      hasCard: Boolean(last.formProposal),
+      payrollDeductAmount: last.formProposal?.payrollDeductAmount ?? null,
+      contents: turnContents,
+      citations: last.citations.map((item) => ({
+        documentTitle: item.documentTitle,
+        locator: item.locator,
+        excerpt: item.excerpt,
+      })),
+    };
   }
   return last;
 }
@@ -1323,16 +1394,27 @@ function cardFailures(item: ReplayCase, last: Awaited<ReturnType<typeof ask>> | 
 async function runFlagsOn(item: ReplayCase, variant: SystemPromptRevision, bucket: ReplayCaseResult[]) {
   selectPromptRevision(variant);
   stateBag.forms.clear();
+  const scoring = variant === "current";
+  rulebookCapture.on = scoring;
+  const runs: RulebookSnapshotRun[] = [];
+  let scoredMs = 0;
   const started = Date.now();
   let failure: string | undefined;
   try {
     for (let run = 0; run < RUNS; run += 1) {
+      const runStarted = Date.now();
       const last = await replay(item, true, variant);
+      if (scoring) {
+        scoredMs += Date.now() - runStarted;
+        if (rulebookCapture.run) runs.push(rulebookCapture.run);
+      }
       expect(cardFailures(item, last), `${item.id} ${variant} card`).toEqual([]);
     }
   } catch (error) {
     failure = error instanceof Error ? error.message : String(error);
   }
+  rulebookCapture.on = false;
+  if (scoring) rulebookNew.push({ id: item.id, ms: scoredMs, runs });
   return recordCase(bucket, item.id, started, failure);
 }
 
@@ -1379,6 +1461,174 @@ describe("priority replay with the flags off is no worse than the baseline", () 
     if (!result.pass) throw new Error(result.failure ?? `${item.id} failed`);
   });
 });
+
+interface FlagEffect {
+  readonly flag: string;
+  readonly floorPass: number;
+  readonly cardPass: number;
+  readonly broken: readonly string[];
+  readonly cardFailures: readonly string[];
+}
+
+const flagEffects: FlagEffect[] = [];
+
+function setOnlyFlag(flag: (typeof FLAGS)[number]) {
+  setFlags(false);
+  process.env[flag] = "1";
+  selectPromptRevision("current");
+  captured.recordSystems = false;
+  recordHarness.on = false;
+}
+
+describe("one quality flag at a time", () => {
+  afterAll(() => {
+    recordHarness.on = true;
+  });
+  it.each(FLAGS)("%s", async (flag) => {
+    setOnlyFlag(flag);
+    const broken: string[] = [];
+    const cardFailures: string[] = [];
+    let floorPass = 0;
+    let cardPass = 0;
+    for (const item of CASES) {
+      stateBag.forms.clear();
+      let floorDetail: string | undefined;
+      let last: Awaited<ReturnType<typeof replay>> = null;
+      try {
+        last = await replay(item, false);
+      } catch (error) {
+        floorDetail = error instanceof Error ? error.message : String(error);
+      }
+      if (floorDetail) broken.push(`${item.id}: ${floorDetail.replace(/\s+/g, " ").slice(0, 160)}`);
+      else floorPass += 1;
+      const criteria = criteriaWrittenBeforeRun(item.id);
+      const policyName = criteria.policy?.replace(/ p\.\d+$/, "") ?? "";
+      const policyPage = Number(criteria.policy?.match(/p\.(\d+)$/)?.[1] ?? "0");
+      const failures = judgeReplayCard({
+        criteria,
+        employeeName: last?.formProposal?.employeeName ?? null,
+        locationId: last?.formProposal?.locationId ?? null,
+        formDate: last?.formProposal?.formDate ?? null,
+        content: last?.content ?? "",
+        policySatisfied: criteria.policy ? cites(last?.content ?? "", last?.citations ?? [], policyName, policyPage) : true,
+      });
+      if (failures.length === 0) cardPass += 1;
+      else cardFailures.push(`${item.id}: ${failures.join("; ")}`);
+    }
+    flagEffects.push({ flag, floorPass, cardPass, broken, cardFailures });
+  }, 60_000);
+});
+
+function renderFlagAblation(effects: readonly FlagEffect[]): string {
+  const lines = [
+    "## Flag ablation — one flag at a time",
+    "",
+    "Each row turns one quality flag on and leaves the others off. The reply model is mocked, so each case runs once. Floor is the flags-off checks. Card is the written card criteria. A flag is safe when every case holds the floor.",
+    "",
+    "| Flag | Floor | Card criteria | Breaks the floor | Card still open |",
+    "| --- | --- | --- | --- | --- |",
+  ];
+  for (const effect of effects) {
+    const broken = effect.broken.length === 0 ? "—" : effect.broken.map((row) => row.split(":")[0]).join(", ");
+    const open = effect.cardFailures.map((row) => row.split(":")[0]).join(", ") || "—";
+    lines.push(`| ${effect.flag} | ${effect.floorPass}/${CASES.length} | ${effect.cardPass}/${CASES.length} | ${broken} | ${open} |`);
+  }
+  lines.push("");
+  const dateOnly = (effect: FlagEffect) =>
+    effect.broken.length > 0 && effect.broken.every((row) => row.includes("to be null"));
+  const safe = effects.filter((effect) => effect.broken.length === 0 || dateOnly(effect));
+  const unsafe = effects.filter((effect) => effect.broken.length > 0 && !dateOnly(effect));
+  const ordered = [...safe].sort((a, b) => b.cardPass - a.cardPass || a.flag.localeCompare(b.flag));
+  lines.push("Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all 21.");
+  lines.push("");
+  ordered.forEach((effect, index) => {
+    const note = dateOnly(effect) ? " — stores s17's date" : "";
+    lines.push(`${index + 1}. \`${effect.flag}\` — card ${effect.cardPass}/${CASES.length}${note}`);
+  });
+  if (unsafe.length > 0) {
+    lines.push("");
+    lines.push("These miss the floor for another reason:");
+    lines.push("");
+    for (const effect of unsafe) lines.push(`- \`${effect.flag}\`: ${effect.broken.join(" | ")}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function rulebookSpec(item: ReplayCase): RulebookSpec {
+  const criteria = criteriaWrittenBeforeRun(item.id);
+  const dpoa = item.on.some((check) => check.templateKey === "dpoa");
+  const cardExpected = Boolean(criteria.employee || criteria.salon || criteria.date || criteria.policy);
+  const amount = dpoa
+    ? {
+        expect: payrollAmountFromConversation(
+          item.turns.map((content) => ({ role: "user" as const, content })),
+          { payrollAnswer: payrollAnswerForAmount(item.turns.join("\n")) },
+        ),
+      }
+    : null;
+  return {
+    employee: criteria.employee,
+    salon: criteria.salon,
+    cardExpected,
+    date: criteria.date,
+    policy: criteria.policy,
+    expectPlan: dpoa && Boolean(criteria.policy),
+    amount,
+  };
+}
+
+function toRulebookRun(item: ReplayCase, snap: RulebookSnapshotRun): RulebookRun {
+  const criteria = criteriaWrittenBeforeRun(item.id);
+  const policyName = criteria.policy?.replace(/ p\.\d+$/, "") ?? "";
+  const policyPage = Number(criteria.policy?.match(/p\.(\d+)$/)?.[1] ?? "0");
+  const cardText = snap.contents[snap.contents.length - 1] ?? "";
+  return {
+    employeeName: snap.employeeName,
+    locationId: snap.locationId,
+    formDate: snap.formDate,
+    hasCard: snap.hasCard,
+    speech: snap.contents.join("\n"),
+    cardText,
+    policySatisfied: criteria.policy ? cites(cardText, snap.citations, policyName, policyPage) : true,
+    payrollDeductAmount: snap.payrollDeductAmount,
+  };
+}
+
+function loadOldColumn(): { commit: string; cases: { id: string; ms: number; runs: RulebookSnapshotRun[] }[] } {
+  const raw = JSON.parse(readFileSync("src/lib/ai/__fixtures__/rulebook-old-main.json", "utf8")) as {
+    commit: string;
+    cases: { id: string; ms: number; runs: RulebookSnapshotRun[] }[];
+  };
+  if (raw.commit !== OLD_MAIN) throw new Error(`rulebook OLD column is ${raw.commit}, expected ${OLD_MAIN}`);
+  return raw;
+}
+
+function scoreRulebook(commit: string): { markdown: string; worse: string[] } {
+  const old = loadOldColumn();
+  const rows: RulebookScoreRow[] = CASES.map((item) => {
+    const spec = rulebookSpec(item);
+    const prior = old.cases.find((row) => row.id === item.id);
+    const next = rulebookNew.find((row) => row.id === item.id);
+    if (!prior || prior.runs.length !== RUNS) throw new Error(`${item.id} OLD column is missing a run`);
+    if (!next || next.runs.length !== RUNS) throw new Error(`${item.id} NEW column is missing a run`);
+    const oldMisses = judgeRulebookRuns(
+      spec,
+      prior.runs.map((run) => toRulebookRun(item, run)),
+      prior.ms,
+    );
+    const newMisses = judgeRulebookRuns(
+      spec,
+      next.runs.map((run) => toRulebookRun(item, run)),
+      next.ms,
+    );
+    return { id: item.id, oldMisses, newMisses, verdict: rulebookVerdict(oldMisses, newMisses) };
+  });
+  return {
+    markdown: renderRulebookScoreboard({ oldCommit: OLD_MAIN, newCommit: commit, runs: RUNS, rows }),
+    worse: rulebookCasesWorse(rows),
+  };
+}
 
 afterAll(() => {
   const replaySet = JSON.stringify(CASES.map((item) => ({ id: item.id, turns: item.turns, criteria: cardCriteria(item) })));
@@ -1442,15 +1692,25 @@ afterAll(() => {
   console.log(
     `prompt A/B differ=${round.promptAb?.promptsDiffer} revert=${round.promptAb?.revert}\ncurrent ${round.promptAb?.currentBuiltHash}\nlast-known-good ${round.promptAb?.lastKnownGoodBuiltHash}\nfile ${round.promptAb?.lastKnownGoodFileHash}\n${scoreLine}`,
   );
+  if (flagEffects.length > 0) console.log(renderFlagAblation(flagEffects));
+  const rulebook = scoreRulebook(commit);
+  console.log(rulebook.markdown);
   if (process.env.REPLAY_RECORD_SCOREBOARD === "1") {
     const existing = readFileSync("docs/scoreboard.md", "utf8");
     const section = renderScoreboardRound(round);
     const marker = `## ${round.title}`;
     const index = existing.indexOf(marker);
-    const next = index === -1 ? `${existing.trimEnd()}\n\n${section}\n` : `${existing.slice(0, index).trimEnd()}\n\n${section}\n`;
-    writeFileSync("docs/scoreboard.md", next);
+    const withoutRound = index === -1 ? existing.trimEnd() : existing.slice(0, index).trimEnd();
+    const ablation = flagEffects.length === 0 ? "" : renderFlagAblation(flagEffects);
+    const next = [withoutRound, section, ablation, rulebook.markdown].filter((part) => part.trim()).join("\n\n");
+    writeFileSync("docs/scoreboard.md", `${next.trim()}\n`);
   }
   if (worse.length > 0) {
     throw new Error(`last-known-good prompt scores better on ${worse.join(", ")}. Revert those prompt sections and keep the code fixes.`);
+  }
+  if (rulebook.worse.length > 0) {
+    throw new Error(
+      `Rulebook: NEW is worse than main on ${rulebook.worse.join(", ")}. Fix those cases before this pull request is ready.`,
+    );
   }
 });
