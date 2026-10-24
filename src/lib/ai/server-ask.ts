@@ -25,6 +25,7 @@ import {
   unifiedAuthorityOrderEnabled,
   selfCheckEnabled,
   slotRetentionEnabled,
+  manualTopicPinEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -54,7 +55,13 @@ import { priorFormsReadingForChat } from "@/lib/forms/prior-forms";
 import { applyOptionalPriorCoaching } from "./prior-coaching-optional";
 import { withMappedPolicy } from "./violation-policy";
 import { manualScopeFetchLimit, scopeToCurrentManual } from "@/lib/knowledge/current-manual-scope";
-import { expandPolicyQuery, isCaOrPolicyQuestion, orderPolicyRetrieval } from "@/lib/knowledge/policy-retrieval";
+import {
+  expandPolicyQuery,
+  isCaOrPolicyQuestion,
+  manualTopicSections,
+  orderPolicyRetrieval,
+  pinManualTopicRows,
+} from "@/lib/knowledge/policy-retrieval";
 import { matchHybridKnowledge } from "@/lib/knowledge/hybrid-match";
 import { matchRecallKnowledge } from "@/lib/knowledge/recall-match";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
@@ -937,9 +944,17 @@ async function answerQuestionUntraced(
    * adds no note — the prompt never claims a table of contents it was not given. `fetchOfficialPolicyManual` returns a
    * reason rather than throwing, so there is nothing here to catch.
    */
-  const policyManualPromise = namesOfficialPolicyManual(request.question)
-    ? knowledge.fetchOfficialPolicyManual(request.scopeId)
-    : Promise.resolve(null);
+  /*
+   * TIME OFF, SICK DAYS, W-2, DIRECT DEPOSIT. The hybrid shortlist is the
+   * top 20 vector neighbours, and those JBA sections rank past it. When the
+   * flag is on, the same identity read a form uses pins the headings. Off,
+   * this promise is still only the question that names the manual.
+   */
+  const topicSections = manualTopicPinEnabled() ? manualTopicSections(request.question) : [];
+  const policyManualPromise =
+    namesOfficialPolicyManual(request.question) || topicSections.length > 0
+      ? knowledge.fetchOfficialPolicyManual(request.scopeId)
+      : Promise.resolve(null);
 
   /*
    * The employee-level facts the framework is meant to reason OVER. Today no
@@ -1127,15 +1142,26 @@ async function answerQuestionUntraced(
     : null;
 
   /* The manual's rows this question needs, or null when it named no manual. */
-  const manualCoverage = policyManual?.ok
-    ? selectPolicyManualCoverage({
-        question: request.question,
-        documentId: policyManual.documentId,
-        documentTitle: policyManual.documentTitle,
-        documentCategory: policyManual.documentCategory,
-        chunks: policyManual.chunks,
-      })
-    : null;
+  const manualCoverage =
+    policyManual?.ok && namesOfficialPolicyManual(request.question)
+      ? selectPolicyManualCoverage({
+          question: request.question,
+          documentId: policyManual.documentId,
+          documentTitle: policyManual.documentTitle,
+          documentCategory: policyManual.documentCategory,
+          chunks: policyManual.chunks,
+        })
+      : null;
+  const topicRows =
+    topicSections.length > 0 && policyManual?.ok
+      ? pinManualTopicRows({
+          question: request.question,
+          documentId: policyManual.documentId,
+          documentTitle: policyManual.documentTitle,
+          documentCategory: policyManual.documentCategory,
+          chunks: policyManual.chunks,
+        })
+      : [];
 
   /*
    * One ordered set of rows: the mandatory sections first, then the evidence.
@@ -1166,8 +1192,10 @@ async function answerQuestionUntraced(
       /*
        * THE MANUAL AFTER THE FRAMEWORKS, and NOT a role document: its retrieved
        * rows are left alone, because they can only add sections to the ones
-       * pinned here.
+       * pinned here. A topic pin is the same kind of row. It is not added to
+       * roleDocumentIds, so the rest of the manual can still be retrieved.
        */
+      ...topicRows,
       ...(manualCoverage?.rows ?? []),
     ],
     retrieved: rows,

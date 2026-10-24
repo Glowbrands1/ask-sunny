@@ -346,3 +346,12 @@ export function codeSlotsEnabled(): boolean {
 export function globalSalonAskEnabled(): boolean {
   return envFlag("GLOBAL_SALON_ASK_ENABLED");
 }
+
+/**
+ * Time off, sick days, W-2 and direct deposit pin the JBA sections that
+ * answer them, read from the official manual by heading. Off, retrieval
+ * is unchanged: those sections stay wherever vector search ranked them.
+ */
+export function manualTopicPinEnabled(): boolean {
+  return envFlag("MANUAL_TOPIC_PIN_ENABLED");
+}
