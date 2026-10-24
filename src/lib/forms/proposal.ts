@@ -4,10 +4,15 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { groundedEntitiesEnabled, intentExtractionEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  groundedEntitiesEnabled,
+  intentExtractionEnabled,
+  personNameOnlyEnabled,
+  typedNameProceedsEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
-import { extractFormDate } from "./form-date-answer";
+import { incidentDateOnForm } from "./form-date-answer";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD, isFieldLabelWord, lowercaseMonths, stripFieldLabels } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
@@ -1281,6 +1286,7 @@ function settle(strong: string[], weak: string[], text: string, subjects: readon
     .map((name) => stripFieldLabels(name))
     .filter((name): name is string => Boolean(name))
     .filter((name) => !isJobTitlePhrase(name))
+    .filter((name) => !isNotAPersonCandidate(name))
     .filter((name) => !negated.some((not) => samePerson(not, name)));
   const explicit =
     names.length > 0 && (correction || names.some((name) => given.some((named) => samePerson(named, name))));
@@ -1430,6 +1436,30 @@ function formSubjectNames(text: string): string[] {
 const TITLE_HEAD = /^(?:managers?|directors?|consultants?|supervisors?|leads?|trainers?|coordinators?|specialists?)$/i;
 const TITLE_MODIFIER =
   /^(?:salon|district|regional|area|store|general|assistant|shift|training|operations|tanning|spa|senior|junior|head|key)$/i;
+
+/**
+ * "Cash drawer" is a thing. "Lawrence" on its own is a store. Neither is
+ * somebody the form is for. A real surname that is also a store
+ * ("Lawrence Smith", "Pat Kearney") stays. Off, both stay candidates.
+ */
+const NOT_A_PERSON_WORD = new Set([
+  "cash",
+  "drawer",
+  "drawers",
+  "register",
+  "registers",
+  "shortage",
+  "shortages",
+  "till",
+  "tills",
+]);
+
+function isNotAPersonCandidate(name: string): boolean {
+  if (!personNameOnlyEnabled()) return false;
+  const words = name.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length > 0 && words.every((word) => NOT_A_PERSON_WORD.has(word))) return true;
+  return PLACE_REPLY_KEYS.has(storeNameKey(name));
+}
 
 function isJobTitlePhrase(candidate: string): boolean {
   if (JOB_TITLES.some((entry) => entry.pattern.test(candidate) && candidate.replace(entry.pattern, "").trim() === "")) {
@@ -1904,7 +1934,7 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
     formDate:
       input.formDateFromConversation === false
         ? null
-        : extractFormDate(input.context.text, input.today ?? businessToday()),
+        : incidentDateOnForm(input.context.text, input.today ?? businessToday()),
     locationId,
     /*
      * NO DISPLAY NAME. There is no salon roster to resolve one from an id, and

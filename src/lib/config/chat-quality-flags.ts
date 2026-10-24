@@ -363,3 +363,55 @@ export function globalSalonAskEnabled(): boolean {
 export function manualTopicPinEnabled(): boolean {
   return envFlag("MANUAL_TOPIC_PIN_ENABLED");
 }
+
+/**
+ * "write up" and "written up" are the form, not a Written Warning.
+ * Off, a labelled "written up" is still read as the written level.
+ */
+export function warningLevelExplicitEnabled(): boolean {
+  return envFlag("WARNING_LEVEL_EXPLICIT_ENABLED");
+}
+
+/**
+ * "as you said" only when the manager named the policy. An inferred
+ * one ("wore leggings", "opened late") reads as that policy.
+ * Off, those lines still say "as you said".
+ */
+export function policyReadsAsEnabled(): boolean {
+  return envFlag("POLICY_READS_AS_ENABLED");
+}
+
+/**
+ * "cash drawer" and a store name ("Lawrence") are not employee
+ * candidates. Off, a capitalised pair is still a candidate.
+ */
+export function personNameOnlyEnabled(): boolean {
+  return envFlag("PERSON_NAME_ONLY_ENABLED");
+}
+
+/**
+ * A register short is not a payroll deduction Yes. Yes is an explicit
+ * deduction ask, and an amount given with that ask is kept.
+ * Off, the existing Yes/No reader is unchanged.
+ */
+export function payrollExplicitDeductEnabled(): boolean {
+  return envFlag("PAYROLL_EXPLICIT_DEDUCT_ENABLED");
+}
+
+/**
+ * A policy citation is appended only to a field that already has text.
+ * Off, an empty Observation, coaching, or policy field can still be
+ * replaced by the citation.
+ */
+export function citationAppendOnlyEnabled(): boolean {
+  return envFlag("CITATION_APPEND_ONLY_ENABLED");
+}
+
+/**
+ * The form's date is the incident date the manager gave, including a
+ * day the calendar reader skips ("on the 20th", "yesterday", "on 10-20").
+ * Off, a skipped day still leaves the form dated the day it is created.
+ */
+export function incidentDateOnFormEnabled(): boolean {
+  return envFlag("INCIDENT_DATE_ON_FORM_ENABLED");
+}

@@ -1,5 +1,18 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: form input fidelity — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No model call, no
+migration, and no merge. Each flag defaults off.
+
+- `WARNING_LEVEL_EXPLICIT_ENABLED`: "write up" and "written up" are not a Written Warning.
+- `POLICY_READS_AS_ENABLED`: "as you said" only when the manager named the policy; otherwise "reads as".
+- `PERSON_NAME_ONLY_ENABLED`: "cash drawer" and a store name such as Lawrence are not employee candidates.
+- `PAYROLL_EXPLICIT_DEDUCT_ENABLED`: "$40 short" is not a payroll deduction Yes. An explicit deduction ask stays Yes and keeps its amount.
+- `CITATION_APPEND_ONLY_ENABLED`: a policy citation is appended only to a field that already has text, including the older citation path that runs with `POLICY_PAGE_REQUIRED` off.
+- `INCIDENT_DATE_ON_FORM_ENABLED`: the form date is the incident date the manager gave ("on the 20th", "yesterday", "on 10-20"), not the day the form is created.
+
 ## 24 Oct 2026: manual heading scan, W-2 note, PTO accrual — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

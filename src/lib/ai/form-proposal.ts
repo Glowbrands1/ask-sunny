@@ -72,6 +72,7 @@ import {
   PAYROLL_DEDUCT_KEY,
   PAYROLL_DEDUCT_LABEL,
   payrollAmountFromConversation,
+  payrollAskAmount,
   payrollDeductFromConversation,
   payrollYesAmount,
   payrollDeductUnclear,
@@ -99,7 +100,7 @@ import {
 } from "@/lib/forms/employment-change";
 import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
-import { correctedDates, correctedFormDate, extractFormDate, priorSteps } from "@/lib/forms/form-date-answer";
+import { correctedDates, correctedFormDate, incidentDateOnForm, priorSteps } from "@/lib/forms/form-date-answer";
 import { answersDateQuestion, dateAnswerTurns, decideFormDate, incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { endsIntake } from "@/lib/forms/proposal-continuation";
@@ -113,7 +114,7 @@ import {
   settledNameQuestions,
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
-import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { payrollAmountFieldEnabled, payrollExplicitDeductEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
@@ -759,7 +760,7 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
       correctedFormDate(
         scoped.messages.map((message) => message.content),
         input.today ?? businessToday(),
-      ) ?? extractFormDate(scoped.text, input.today ?? businessToday());
+      ) ?? incidentDateOnForm(scoped.text, input.today ?? businessToday());
   }
 
   /*
@@ -783,13 +784,17 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
      * "payroll deduct yes $25" is that Yes. The Yes/No reader stops at "yes"
      * when a figure follows it; the amount line still takes both.
      */
+    const payrollManager = payrollTurns
+      .filter((turn) => turn.role === "user")
+      .map((turn) => turn.content)
+      .join("\n");
+    if (payrollExplicitDeductEnabled() && proposal.payrollDeduct === "yes") {
+      const kept = payrollAskAmount(payrollManager);
+      if (kept) proposal.payrollDeductAmount = kept;
+    }
     if (payrollAmountFieldEnabled()) {
       if (proposal.payrollDeduct == null) {
-        const manager = payrollTurns
-          .filter((turn) => turn.role === "user")
-          .map((turn) => turn.content)
-          .join("\n");
-        if (payrollYesAmount(manager)) proposal.payrollDeduct = "yes";
+        if (payrollYesAmount(payrollManager)) proposal.payrollDeduct = "yes";
       }
       const amount = payrollAmountFromConversation(payrollTurns, {
         payrollAnswer: proposal.payrollDeduct ?? null,
@@ -1516,7 +1521,7 @@ function statesOpenCorrectiveActionFact(input: ProposalTurn, continued: string):
     statedPayrollDeduct(question) !== null ||
     statedWarningLevel(question) !== null ||
     namesCaPolicy(question) ||
-    extractFormDate(question, today) !== null
+    incidentDateOnForm(question, today) !== null
   );
 }
 
@@ -1569,7 +1574,7 @@ function continuesIntake(continued: string, input: ProposalTurn): boolean {
   if (isQuestion(question)) return false;
   return (
     describesIncident(question) ||
-    extractFormDate(question, input.today ?? businessToday()) !== null ||
+    incidentDateOnForm(question, input.today ?? businessToday()) !== null ||
     ONLY_A_DAY.test(question) ||
     TOPIC_STATEMENT.test(question) ||
     CARRIES_ON.test(question) ||
@@ -2542,7 +2547,11 @@ function correctiveActionReady(
    * A figure they already gave is read back. A policy quotation is not one.
    * Asked once: a later turn that still has no figure does not ask again.
    */
-  if (payrollAmountFieldEnabled() && asksPayroll && proposal.payrollDeduct === "yes") {
+  if (
+    (payrollAmountFieldEnabled() || (payrollExplicitDeductEnabled() && proposal.payrollDeductAmount)) &&
+    asksPayroll &&
+    proposal.payrollDeduct === "yes"
+  ) {
     if (proposal.payrollDeductAmount) {
       lines.push(
         "",

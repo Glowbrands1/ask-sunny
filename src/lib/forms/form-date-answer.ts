@@ -1,3 +1,6 @@
+import { incidentDateOnFormEnabled } from "@/lib/config/chat-quality-flags";
+import { shiftDays, weekdayOf } from "@/lib/business-date";
+
 /**
  * ============================================================================
  * THE DATE A MANAGER TYPED, AS THE FORM'S DATE
@@ -21,9 +24,11 @@
  * Date field stays editable, so a manager writing in January about December 30
  * corrects one field rather than being stopped for a year nobody types.
  *
- * "today", "yesterday" and weekdays are deliberately NOT resolved here. "Today"
- * is already what `form_date` defaults to, and the rest were never turned into a
- * calendar date before either.
+ * "today", "yesterday" and weekdays are deliberately NOT resolved by
+ * `extractFormDate`. "Today" is already what `form_date` defaults to.
+ * `incidentDateOnForm` reads a skipped incident day ("on the 20th",
+ * "yesterday", "on 10-20", "last Tuesday") only when
+ * `INCIDENT_DATE_ON_FORM_ENABLED` is on. Off, those stay undated.
  */
 
 const MONTHS: Record<string, number> = {
@@ -563,6 +568,79 @@ export function datesInText(text: string, today: string): DateInText[] {
  */
 export function extractFormDate(text: string, today: string): string | null {
   return listIncidentDates(text, today)[0]?.iso ?? null;
+}
+
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/**
+ * One incident day the calendar reader skips, or null.
+ *
+ * "on the 20th", "yesterday", "on 10-20" and "last Tuesday" are a date the
+ * manager gave. Two different ones are not a guess. "today" stays the day
+ * the form is created, which is what a missing form date already means.
+ */
+function skippedIncidentDate(text: string, today: string): string | null {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  const found: string[] = [];
+  const keep = (iso: string | null) => {
+    if (iso && iso <= today) found.push(iso);
+  };
+
+  if (/\byesterday\b/i.test(text)) keep(shiftDays(today, -1));
+
+  for (const match of text.matchAll(/\b(?:on|dated)\s+(\d{1,2})-(\d{1,2})(?!\d|-)/gi)) {
+    keep(calendarIso(year, Number(match[1]), Number(match[2])));
+  }
+
+  const dayThenMonth = new RegExp(
+    String.raw`\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(${MONTH_NAME})\b`,
+    "gi",
+  );
+  for (const match of text.matchAll(dayThenMonth)) {
+    const named = MONTHS[match[2]!.toLowerCase()];
+    if (named !== undefined) keep(calendarIso(year, named, Number(match[1])));
+  }
+
+  if (!new RegExp(MONTH_NAME, "i").test(text)) {
+    const ordinals = [...text.matchAll(/\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b/gi)];
+    if (ordinals.length === 1) {
+      const day = Number(ordinals[0]![1]);
+      let iso = calendarIso(year, month, day);
+      if (iso && iso > today) {
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const prevYear = month === 1 ? year - 1 : year;
+        iso = calendarIso(prevYear, prevMonth, day);
+      }
+      keep(iso);
+    }
+  }
+
+  const relative = /\b(?:last|on)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.exec(text);
+  if (relative) {
+    const target = WEEKDAYS.indexOf(relative[1]!.toLowerCase());
+    const back = (weekdayOf(today) - target + 7) % 7 || 7;
+    keep(shiftDays(today, -back));
+  }
+
+  const unique = [...new Set(found)];
+  return unique.length === 1 ? unique[0]! : null;
+}
+
+/**
+ * The form's date from the manager's words.
+ *
+ * The calendar reader wins. When `INCIDENT_DATE_ON_FORM_ENABLED` is on and
+ * that reader found nothing, a single skipped incident day is used instead
+ * of leaving the form dated the day it is created. Off, this is
+ * `extractFormDate`.
+ */
+export function incidentDateOnForm(text: string, today: string): string | null {
+  const known = extractFormDate(text, today);
+  if (known) return known;
+  if (!incidentDateOnFormEnabled()) return null;
+  return skippedIncidentDate(text, today);
 }
 
 /**

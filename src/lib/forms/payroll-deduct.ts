@@ -1,3 +1,5 @@
+import { payrollExplicitDeductEnabled } from "@/lib/config/chat-quality-flags";
+
 import {
   DENIAL,
   normalizePayrollWording as normalize,
@@ -212,6 +214,18 @@ export function payrollDeductFromConversation(
     if (turn.role !== "user") continue;
 
     const stated = readPayrollDeduct(turn.content);
+    /*
+     * "$40 short" is the drawer, not a deduction. An explicit ask still
+     * counts, including "payroll deduct yes $40", which the Yes reader
+     * stops before the figure. Off, both stay as the reader left them.
+     */
+    if (
+      payrollExplicitDeductEnabled() &&
+      stated === "yes" &&
+      shortageWithoutDeductAsk(turn.content)
+    ) {
+      continue;
+    }
     if (stated === "unclear") {
       /*
        * A later turn about the deduction that cannot be read safely ("we're
@@ -224,6 +238,10 @@ export function payrollDeductFromConversation(
     }
     if (stated) {
       answer = stated;
+      continue;
+    }
+    if (payrollExplicitDeductEnabled() && amountBesidePayrollYes(turn.content)) {
+      answer = "yes";
       continue;
     }
 
@@ -370,6 +388,32 @@ export function payrollDeductAmount(text: string): string | null {
  */
 export function payrollYesAmount(text: string): string | null {
   return amountBesidePayrollYes(text);
+}
+
+/** A dollar figure beside "short" with no deduction asked for. */
+function shortageWithoutDeductAsk(text: string): boolean {
+  if (!/(?:\$\s?\d[\d,]*(?:\.\d{1,2})?\s+short\b|\bshort\s+\$\s?\d)/i.test(text)) return false;
+  return !explicitDeductAsk(text);
+}
+
+function explicitDeductAsk(text: string): boolean {
+  return /\b(?:payroll\s+)?deduct|\bdock\b|\btake\b[^.\n]{0,40}\bout of\b/i.test(text);
+}
+
+/**
+ * The amount on an explicit deduction ask.
+ *
+ * "payroll deduct yes $40" and "deduct the $40 shortage" keep $40.
+ * "$40 short" on its own is not an amount to deduct.
+ */
+export function payrollAskAmount(text: string): string | null {
+  const known = payrollDeductAmount(text) ?? amountBesidePayrollYes(text);
+  if (known) return known;
+  if (!explicitDeductAsk(text)) return null;
+  const after = /\b(?:payroll\s+)?deduct(?:ion|ed|ing)?\b[^$\n]{0,40}(\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i.exec(text);
+  const before = /(\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)\b[^.\n]{0,40}\bdeducted\b/i.exec(text);
+  const written = (after?.[1] ?? before?.[1])?.replace(/\s+/g, "") ?? null;
+  return written && !isZero(written) ? written : null;
 }
 
 /**
