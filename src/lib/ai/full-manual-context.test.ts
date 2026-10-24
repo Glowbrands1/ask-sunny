@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fullManualContextEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JBA_MANUAL_CHUNKS } from "./__fixtures__/jba-policy-manual";
+import { collectModelResult } from "./call-claude";
 import { noteModelCall } from "./model-failure";
 import { runChatTrace, runWithRequestClock, type ChatTraceDraft } from "./chat-trace-store";
 import { systemWithCachedManual } from "./prompt-cache";
@@ -50,6 +51,24 @@ function chunk(
 
 function occurrences(text: string, needle: string): number {
   return needle ? text.split(needle).length - 1 : 0;
+}
+
+/** Every page named in the answer or its Sources rows, so a stray page fails the check. */
+function pagesIn(checked: {
+  readonly content: string;
+  readonly citations: readonly { readonly locator: string }[];
+}): number[] {
+  const pages = new Set<number>();
+  for (const match of checked.content.matchAll(/\bpp?\.\s*(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?/gi)) {
+    const start = Number(match[1]);
+    const end = match[2] === undefined ? start : Number(match[2]);
+    const last = Number.isInteger(end) && end >= start && end - start <= 30 ? end : start;
+    for (let page = start; page <= last; page += 1) pages.add(page);
+  }
+  for (const citation of checked.citations) {
+    for (const match of citation.locator.matchAll(/\b(\d{1,4})\b/g)) pages.add(Number(match[1]));
+  }
+  return [...pages].sort((a, b) => a - b);
 }
 
 const JBA = manual("JBA Policy Manual Edited 5.2025", [
@@ -200,7 +219,7 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
   const TATTOOS = "Tattoos must be covered while on the clock.";
   const JEWELRY = "Jewelry is limited to a wedding band and stud earrings.";
 
-  it("conv_mvmjem0c2wzftv2 leaves the table of contents out and cites PTO on printed page 42", () => {
+  it("conv_mvmjem0c2wzftv2 leaves the table of contents out and cites PTO on printed page 41", () => {
     const result = choosePolicyManuals("What is the PTO policy?", [
       manual("JBA Policy Manual Edited 5.2025", [
         chunk(
@@ -220,14 +239,14 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
         chunk(17, 7, "Reference List", "6 | P a g e\nReference List\nThe leadership roster is printed here.", 6),
         chunk(
           136,
-          43,
+          42,
           "Paid time Off (PTO)",
-          `42 | P a g e\nPaid time Off (PTO)\nPaid time off accrues each pay period. ${BLACKOUT}`,
+          `41 | P a g e\nPaid time Off (PTO)\nPaid time off accrues each pay period. ${BLACKOUT}`,
           42,
         ),
         chunk(
           137,
-          43,
+          42,
           "Paid time Off (PTO)",
           `Paid time off accrues each pay period. ${BLACKOUT}\n\n${NOTICE}`,
           42,
@@ -238,10 +257,11 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     if (!result.ok) return;
     expect(result.block).not.toContain("Table of Contents");
     expect(result.block).not.toContain("Holiday Benefits");
+    expect(result.block).not.toContain("[p.42]");
     expect(result.block).not.toContain("[p.43]");
     expect(result.block).not.toContain("[p.5]");
     expect(result.block).not.toContain("P a g e");
-    expect(result.block).toContain("[p.42]");
+    expect(result.block).toContain("[p.41]");
     expect(result.block).toContain("## Paid time Off (PTO)");
     expect(result.block).toContain("## Reference List");
     expect(result.block).toContain("[p.6]");
@@ -260,16 +280,18 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
       sourceCount: 0,
     });
     expect(checked.content).toContain(BLACKOUT);
-    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.42 [p.42]");
+    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.41 [p.41]");
+    expect(checked.content).not.toContain("p.42");
     expect(checked.content).not.toContain("p.6");
     expect(checked.content).not.toContain("[S");
     expect(checked.content).not.toMatch(/DM manual|Salon Director|Table of Contents/i);
-    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.42]"]);
+    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.41]"]);
+    expect(pagesIn(checked)).toEqual([41]);
     expect(checked.citations).toEqual([
       expect.objectContaining({
         documentTitle: "JBA Policy Manual",
         excerpt: "Paid time Off (PTO)",
-        locator: "Page 42",
+        locator: "Page 41",
       }),
     ]);
   });
@@ -290,8 +312,8 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
 
     const result = choosePolicyManuals("What is the cell phone policy?", [
       manual("JBA Policy Manual Edited 5.2025", [
-        chunk(42, 20, "Discounting", "19 | P a g e\nAsk a manager before a discount."),
-        chunk(43, 20, "Cell Phone/Smart Watch Policy", "Phones stay off the sales floor during a shift."),
+        chunk(42, 20, "Discounting", "19 | P a g e\nAsk a manager before a discount.", 20),
+        chunk(43, 20, "Cell Phone/Smart Watch Policy", "Phones stay off the sales floor during a shift.", 20),
       ]),
     ]);
     expect(result.ok).toBe(true);
@@ -313,6 +335,7 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(checked.content).not.toContain("[S");
     expect(checked.content).not.toMatch(/DM manual/i);
     expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.19]"]);
+    expect(pagesIn(checked)).toEqual([19]);
     expect(checked.citations).toEqual([
       expect.objectContaining({
         documentTitle: "JBA Policy Manual",
@@ -345,26 +368,87 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(result.block).not.toContain("Visible tattoos\n");
   });
 
-  it("conv_mvmjfwnx8psm0nx cites Tattoos and Jewelry on printed page 16, Sun Tan City only", () => {
+  it("conv_mvmjfwnx8psm0nx cites shared dress code on pages 15 and 16, and Sun Tan City items on page 17", () => {
+    const stored = (heading: string) =>
+      JBA_MANUAL_CHUNKS.find(
+        (item) =>
+          item.section === heading || (item.sections ?? []).some((section) => section.heading === heading),
+      );
+    const shoes = stored("Shoes");
+    const tattoos = stored("Tattoos");
+    const jewelry = stored("Jewelry/Accessories");
+    const tanning = stored("Tanning");
+    const sunTan = stored("Sun Tan City");
+    const stcShirts = stored("Shirts");
+    const stcPants = stored("Pants");
+    expect(shoes).toMatchObject({ printedPage: 15, page: 16 });
+    expect(tattoos).toMatchObject({ printedPage: 16, page: 17 });
+    expect(jewelry).toMatchObject({ printedPage: 16, page: 17 });
+    expect(sunTan).toMatchObject({ printedPage: 17, page: 18 });
+    expect(stcShirts).toMatchObject({ printedPage: 17, page: 18 });
+    expect(stcPants).toMatchObject({ printedPage: 17, page: 18 });
+    expect(tanning).toMatchObject({ printedPage: 17, page: 18 });
+    expect(sunTan?.content).toContain("Sun Tan City:");
+    expect(sunTan?.content).toContain("\nShirts\n");
+    expect(stcPants?.content).toContain("Pants");
+    expect(tanning?.content).toContain("Tanning");
+    expect((shoes?.sections ?? []).some((section) => section.heading === "Shoes" && section.page === 15)).toBe(true);
+    expect((tattoos?.sections ?? []).some((section) => section.heading === "Tattoos" && section.page === 16)).toBe(
+      true,
+    );
+    expect(
+      (jewelry?.sections ?? []).some((section) => section.heading === "Jewelry/Accessories" && section.page === 16),
+    ).toBe(true);
+    expect((sunTan?.sections ?? []).some((section) => section.heading === "Shirts" && section.page === 17)).toBe(true);
+    expect((stcPants?.sections ?? []).some((section) => section.heading === "Pants" && section.page === 17)).toBe(
+      true,
+    );
+    expect((tanning?.sections ?? []).some((section) => section.heading === "Tanning" && section.page === 17)).toBe(
+      true,
+    );
+
     const result = choosePolicyManuals("What is the dress code for tattoos and jewelry?", [
       manual("JBA Policy Manual Edited 5.2025", [
-        chunk(60, 17, "Dress Code for The Company", `A neat appearance is required.\n\n${TATTOOS}`, 16),
-        chunk(61, 17, "Tattoos", `${TATTOOS}\n\n${JEWELRY}`, 16),
-        chunk(62, 17, "Jewelry/Accessories", `${JEWELRY}\n\nNo facial piercings.`, 16),
-        chunk(63, 17, "Buff City Soap", "Buff apron rule.", 16),
-        chunk(64, 17, "Crunch Fitness Specific Dress Code", "Crunch-only shirt rule.", 16),
-        chunk(65, 17, "Sun Tan City", "Wear the salon uniform shirt.", 16),
-        chunk(66, 6, null, "Tattoos ................................................................ 16", 5),
+        chunk(60, 16, "Dress Code for The Company", "15 | P a g e\nA neat appearance is required.", 16),
+        chunk(61, 16, "All Locations Dress Code", "Every salon follows the company dress code.", 16),
+        chunk(62, 16, "Name tags", "A name tag is worn on the shirt.", 16),
+        chunk(63, 16, "Shoes", "No sandals, crocs.", 16),
+        chunk(64, 16, "Belts", "A belt is worn with pants.", 16),
+        chunk(65, 16, "Hair", "Hair is tied back.", 16),
+        chunk(66, 16, "Facial Hair", "Facial hair is neatly trimmed.", 16),
+        chunk(67, 16, "Make-up", "Make-up is simple.", 16),
+        chunk(68, 17, "Jewelry/Accessories", `16 | P a g e\n${JEWELRY}`, 17),
+        chunk(69, 17, "Tattoos", TATTOOS, 17),
+        chunk(70, 17, "Crunch Fitness Specific Dress Code", "Crunch-only shirt rule.", 17),
+        chunk(71, 17, "Shirts", "Crunch shirt color.", 17),
+        chunk(72, 17, "Pants", "Crunch pants color.", 17),
+        chunk(73, 17, "Buff City Soap", "Buff apron rule.", 17),
+        chunk(74, 17, "Shirts", "Buff shirt color.", 17),
+        chunk(75, 18, "Sun Tan City", "17 | P a g e\nWear the salon uniform shirt.", 18),
+        chunk(76, 18, "Shirts", "Sun Tan City shirt is the salon uniform.", 18),
+        chunk(77, 18, "Pants", "Black pants.", 18),
+        chunk(78, 18, "Tanning", "Staff may tan.", 18),
+        chunk(79, 6, null, "Tattoos ................................................................ 16", 5),
       ]),
     ]);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    expect(result.block).toContain("[p.15]");
     expect(result.block).toContain("[p.16]");
-    expect(result.block).not.toContain("[p.17]");
+    expect(result.block).toContain("[p.17]");
+    expect(result.block).not.toContain("[p.18]");
+    expect(result.block).toContain("## Shoes");
+    expect(result.block).toContain("## Name tags");
     expect(result.block).toContain("## Tattoos");
     expect(result.block).toContain("## Jewelry/Accessories");
     expect(result.block).toContain("## Sun Tan City");
-    expect(result.block).toContain("Wear the salon uniform shirt.");
+    expect(result.block).toContain("## Shirts");
+    expect(result.block).toContain("## Pants");
+    expect(result.block).toContain("## Tanning");
+    expect(result.block).toContain("Sun Tan City shirt is the salon uniform.");
+    expect(result.block).toContain("Black pants.");
+    expect(result.block).toContain("Staff may tan.");
+    expect(result.block).toContain("No sandals, crocs.");
     expect(occurrences(result.block, TATTOOS)).toBe(1);
     expect(occurrences(result.block, JEWELRY)).toBe(1);
     expect(result.block).not.toMatch(/buff|crunch|table of contents/i);
@@ -372,33 +456,54 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
 
     const checked = applyFullManualAnswer({
       content: [
+        "No sandals, crocs. Shoes, JBA Policy Manual p.16 [p.16].",
         `${TATTOOS} Tattoos, JBA Policy Manual p.17 [p.17].`,
         `${JEWELRY} Jewelry/Accessories, JBA Policy Manual p.17 [S11].`,
+        "Name tags are worn on the shirt. Name tags, JBA Policy Manual p.20.",
+        "Sun Tan City shirts are the salon uniform. Shirts, JBA Policy Manual p.16.",
+        "Pants are black. Pants, JBA Policy Manual p.18.",
+        "Tanning is offered to staff. Tanning, JBA Policy Manual p.18.",
+        "Crunch Shirts, JBA Policy Manual p.17.",
+        "Crunch Pants, JBA Policy Manual p.17.",
         "See Buff City Soap p.16 and the Crunch policy manual p.16.",
+        "Crunch Fitness Specific Dress Code, JBA Policy Manual p.16.",
         "Salon Director manual pp.3-5.",
       ].join(" "),
       manuals: result.manuals,
       sourceCount: 0,
     });
+    expect(checked.content).toContain("No sandals, crocs.");
+    expect(checked.content).toContain("Name tags are worn on the shirt.");
+    expect(checked.content).toContain("Sun Tan City shirts are the salon uniform.");
+    expect(checked.content).toContain("Pants are black.");
+    expect(checked.content).toContain("Tanning is offered to staff.");
     expect(checked.content).toContain(TATTOOS);
     expect(checked.content).toContain(JEWELRY);
+    expect(checked.content).toContain("Shoes, JBA Policy Manual p.15 [p.15]");
+    expect(checked.content).toContain("Name tags, JBA Policy Manual p.15 [p.15]");
     expect(checked.content).toContain("Tattoos, JBA Policy Manual p.16 [p.16]");
     expect(checked.content).toContain("Jewelry/Accessories, JBA Policy Manual p.16 [p.16]");
-    expect(checked.content).not.toContain("p.17");
+    expect(checked.content).toContain("Shirts, JBA Policy Manual p.17 [p.17]");
+    expect(checked.content).toContain("Pants, JBA Policy Manual p.17 [p.17]");
+    expect(checked.content).toContain("Tanning, JBA Policy Manual p.17 [p.17]");
+    expect(checked.content).not.toContain("p.18");
+    expect(checked.content).not.toContain("p.20");
     expect(checked.content).not.toContain("[S");
     expect(checked.content).not.toMatch(/Buff|Crunch|Salon Director/i);
-    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.16]", "[p.16]"]);
+    expect(pagesIn(checked)).toEqual([15, 16, 17]);
+    expect(checked.content).toMatch(/p\.15\b/);
+    expect(checked.content).toMatch(/p\.16\b/);
+    expect(checked.content).toMatch(/p\.17\b/);
+    const page17 = checked.citations.filter((citation) => citation.locator === "Page 17");
+    expect(page17.map((citation) => citation.excerpt)).toEqual(["Shirts", "Pants", "Tanning"]);
     expect(checked.citations).toEqual([
-      expect.objectContaining({
-        documentTitle: "JBA Policy Manual",
-        excerpt: "Tattoos",
-        locator: "Page 16",
-      }),
-      expect.objectContaining({
-        documentTitle: "JBA Policy Manual",
-        excerpt: "Jewelry/Accessories",
-        locator: "Page 16",
-      }),
+      expect.objectContaining({ excerpt: "Shoes", locator: "Page 15" }),
+      expect.objectContaining({ excerpt: "Tattoos", locator: "Page 16" }),
+      expect.objectContaining({ excerpt: "Jewelry/Accessories", locator: "Page 16" }),
+      expect.objectContaining({ excerpt: "Name tags", locator: "Page 15" }),
+      expect.objectContaining({ excerpt: "Shirts", locator: "Page 17" }),
+      expect.objectContaining({ excerpt: "Pants", locator: "Page 17" }),
+      expect.objectContaining({ excerpt: "Tanning", locator: "Page 17" }),
     ]);
   });
 
@@ -417,6 +522,137 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
 });
 
 describe("citation validation", () => {
+  it("keeps the full sentence and the full source label on the three live citation strings", async () => {
+    const live = [
+      {
+        sentence: "Tattoos — large",
+        label: "Tattoos, JBA Policy Manual p.16",
+        raw: "Tattoos — large,Tattoos, JBA Policy Manual p.16)",
+        page: 16,
+      },
+      {
+        sentence: "No sandals, crocs",
+        label: "Shoes, JBA Policy Manual p.15",
+        raw: "No sandals, crocs,Shoes, JBA Policy Manual p.15)",
+        page: 15,
+      },
+      {
+        sentence: "full-time Assistant Salon Dir",
+        label: "Eligibility, JBA Policy Manual p.41",
+        raw: "full-time Assistant Salon DirEligibility, JBA Policy Manual p.41)",
+        page: 41,
+      },
+    ] as const;
+    const result = choosePolicyManuals("What do the tattoos, shoes, and eligibility rules say?", [
+      manual("JBA Policy Manual Edited 5.2025", [
+        chunk(1, 16, "Shoes", "15 | P a g e\nNo sandals, crocs.", 16),
+        chunk(2, 17, "Tattoos", "16 | P a g e\nTattoos — large designs stay covered.", 17),
+        chunk(3, 42, "Eligibility", "41 | P a g e\nA full-time Assistant Salon Director may use paid time off.", 42),
+      ]),
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.manuals[0]?.pages.map((page) => page.page)).toEqual([15, 16, 41]);
+
+    const kept = (raw: string, page: number) => {
+      expect(raw.endsWith(`p.${page})`)).toBe(true);
+      return `${raw.slice(0, -1)} [p.${page}])`;
+    };
+
+    const checked = applyFullManualAnswer({
+      content: live.map((item) => item.raw).join("\n"),
+      manuals: result.manuals,
+      sourceCount: 0,
+    });
+    for (const item of live) {
+      const intact = kept(item.raw, item.page);
+      expect(checked.content).toContain(intact);
+      expect(checked.content).toContain(item.sentence);
+      expect(checked.content).toContain(item.label);
+      expect(intact.startsWith(item.sentence)).toBe(true);
+      expect(intact).toContain(item.label);
+
+      const streamed = await collectModelResult(
+        {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: "content_block_delta",
+              delta: { type: "text_delta", text: item.raw.slice(0, item.sentence.length) },
+            };
+            yield {
+              type: "content_block_delta",
+              delta: { type: "text_delta", text: item.raw.slice(item.sentence.length) },
+            };
+            yield { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } };
+          },
+        },
+        Date.now(),
+      );
+      expect(streamed.text).toBe(item.raw);
+      const fromStream = applyFullManualAnswer({
+        content: streamed.text,
+        manuals: result.manuals,
+        sourceCount: 0,
+      });
+      expect(fromStream.content).toContain(intact);
+      expect(fromStream.content).toContain(item.sentence);
+      expect(fromStream.content).toContain(item.label);
+      expect(pagesIn(fromStream)).toEqual([item.page]);
+    }
+    expect(pagesIn(checked)).toEqual([15, 16, 41]);
+    expect(checked.citations).toEqual([
+      expect.objectContaining({ excerpt: "Tattoos", locator: "Page 16" }),
+      expect.objectContaining({ excerpt: "Shoes", locator: "Page 15" }),
+      expect.objectContaining({ excerpt: "Eligibility", locator: "Page 41" }),
+    ]);
+
+    const written = [
+      {
+        sentence: "Tattoos — large designs stay covered.",
+        label: "Tattoos, JBA Policy Manual p.16",
+        raw: "Tattoos — large designs stay covered. (Tattoos, JBA Policy Manual p.16)",
+        page: 16,
+      },
+      {
+        sentence: "No sandals, crocs.",
+        label: "Shoes, JBA Policy Manual p.15",
+        raw: "No sandals, crocs. (Shoes, JBA Policy Manual p.15)",
+        page: 15,
+      },
+      {
+        sentence: "full-time Assistant Salon Director.",
+        label: "Eligibility, JBA Policy Manual p.41",
+        raw: "full-time Assistant Salon Director. (Eligibility, JBA Policy Manual p.41)",
+        page: 41,
+      },
+    ] as const;
+    for (const item of written) {
+      const streamed = await collectModelResult(
+        {
+          async *[Symbol.asyncIterator]() {
+            const splitAt = item.raw.indexOf(`(${item.label.split(",")[0]}`);
+            yield { type: "content_block_delta", delta: { type: "text_delta", text: item.raw.slice(0, splitAt) } };
+            yield { type: "content_block_delta", delta: { type: "text_delta", text: item.raw.slice(splitAt) } };
+            yield { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } };
+          },
+        },
+        Date.now(),
+      );
+      expect(streamed.text).toBe(item.raw);
+      const fromStream = applyFullManualAnswer({
+        content: streamed.text,
+        manuals: result.manuals,
+        sourceCount: 0,
+      });
+      const intact = `${item.sentence} (${item.label} [p.${item.page}]`;
+      expect(fromStream.content).toContain(intact);
+      expect(fromStream.content).toContain(item.sentence);
+      expect(fromStream.content).toContain(item.label);
+      expect(pagesIn(fromStream)).toEqual([item.page]);
+    }
+  });
+
+
   it("keeps a real page, fixes a heading that is on another page, and drops an invented one", () => {
     const result = choosePolicyManuals("What is the attendance policy?", [JBA]);
     expect(result.ok).toBe(true);

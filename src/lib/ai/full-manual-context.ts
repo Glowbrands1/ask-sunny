@@ -174,27 +174,35 @@ function withoutPageFurniture(content: string): string {
 /**
  * Printed page for each PDF sheet.
  *
- * A sheet's footer often sits on a different chunk than the section it
- * numbers. The first positive `printedPage` or footer on that sheet wins.
- * A sheet with neither keeps its PDF page, so the cover is not shifted.
+ * The footer (`41 | P a g e`) is the page a reader can check. It wins over
+ * `metadata.printedPage` when that field still holds the PDF sheet (sheet
+ * 42 prints 41). A sheet with neither keeps its PDF page, so the cover is
+ * not shifted. The footer often sits on a different chunk than the section.
  */
 function printedPageByPdfSheet(chunks: readonly FullManualChunk[]): Map<number, number> {
   const map = new Map<number, number>();
   for (const chunk of chunks) {
     const pdf = pageOf(chunk.page);
     if (pdf === null || map.has(pdf)) continue;
-    const printed = pageOf(chunk.printedPage) ?? footerPage(chunk.content);
+    const printed = footerPage(chunk.content);
+    if (printed !== null) map.set(pdf, printed);
+  }
+  for (const chunk of chunks) {
+    const pdf = pageOf(chunk.page);
+    if (pdf === null || map.has(pdf)) continue;
+    const printed = pageOf(chunk.printedPage);
     if (printed !== null) map.set(pdf, printed);
   }
   return map;
 }
 
 function citedPageFor(chunk: FullManualChunk, bySheet: Map<number, number>): number | null {
-  const own = pageOf(chunk.printedPage) ?? footerPage(chunk.content);
-  if (own !== null) return own;
   const pdf = pageOf(chunk.page);
-  if (pdf === null) return null;
-  return bySheet.get(pdf) ?? pdf;
+  if (pdf !== null) {
+    const printed = bySheet.get(pdf);
+    if (printed !== undefined) return printed;
+  }
+  return footerPage(chunk.content) ?? pageOf(chunk.printedPage) ?? pdf;
 }
 
 /** Drop contents sheets so a heading in the contents cannot be cited. */
@@ -516,6 +524,34 @@ function cleanHeading(raw: string): string {
   return tail.replace(/^(?:see|also|and|the|per|under|in)\s+/i, "").trim();
 }
 
+/**
+ * The sentence plus the source label.
+ *
+ * The label is the manual's own heading (Tattoos, Shoes, Eligibility). That
+ * heading is written at the end of the capture and nowhere earlier is cut:
+ * "Director. (Eligibility" keeps "Director. (", and "DirEligibility" keeps
+ * "Dir". A shorter name that expands ("Dress Code") is replaced only at the
+ * end, so the sentence in front of it stays.
+ */
+function citationLine(headingRaw: string, name: string, title: string, page: number): string {
+  const label = `${name}, ${title} p.${page} [p.${page}]`;
+  const atEnd = new RegExp(`${escapeRegExp(name)}\\s*$`, "i").exec(headingRaw);
+  if (atEnd?.index !== undefined) return `${headingRaw.slice(0, atEnd.index)}${label}`;
+  const quote = cleanHeading(headingRaw);
+  const quoted = quote ? new RegExp(`${escapeRegExp(quote)}\\s*$`, "i").exec(headingRaw) : null;
+  const quotedKey = headingKey(quote);
+  const nameKey = headingKey(name);
+  if (
+    quoted?.index !== undefined &&
+    quotedKey.length > 0 &&
+    (quoted.index > 0 || nameKey.startsWith(quotedKey))
+  ) {
+    return `${headingRaw.slice(0, quoted.index)}${label}`;
+  }
+  const sentence = headingRaw.trim();
+  return sentence ? `${sentence} ${label}` : label;
+}
+
 function aligns(quote: string, sheet: string): boolean {
   if (!quote || !sheet) return false;
   if (quote === sheet) return true;
@@ -551,13 +587,28 @@ function headingFromQuote(manual: AssembledManual, raw: string): string | null {
   return null;
 }
 
+function headingListed(entry: ManualPage, heading: string): boolean {
+  const key = headingKey(heading);
+  if (!key) return false;
+  return entry.headings.some((item) => {
+    const listed = headingKey(item);
+    return listed === key || aligns(key, listed) || aligns(listed, key);
+  });
+}
+
+/**
+ * The heading's own page.
+ *
+ * A section list wins. Body text is used only when no page lists the heading,
+ * so the word "pants" inside the Belts rule is not the Pants section.
+ */
 function headingOnPage(manual: AssembledManual, heading: string, page: number): boolean {
   const entry = manual.pages.find((item) => item.page === page);
   if (!entry) return false;
+  if (headingListed(entry, heading)) return true;
+  if (manual.pages.some((item) => headingListed(item, heading))) return false;
   const key = headingKey(heading);
-  if (!key) return false;
-  if (entry.headings.some((item) => aligns(key, headingKey(item)) || aligns(headingKey(item), key))) return true;
-  return headingKey(entry.text).includes(key);
+  return key.length > 0 && headingKey(entry.text).includes(key);
 }
 
 function pagesForHeading(manual: AssembledManual, heading: string): number[] {
@@ -615,11 +666,12 @@ export function validateManualCitations(
     .filter((title) => title.trim().length > 0)
     .sort((a, b) => b.length - a.length);
   /*
-   * The heading is the current sentence only. A wider capture would replace
-   * the policy prose in front of the citation, including a blackout date.
+   * The comma before the manual title is the citation. The words in front
+   * of the heading stay: replacing the whole capture trimmed "Director"
+   * down to "Dir" and "large." into the label.
    */
   const pattern = new RegExp(
-    `(?<=^|[.!?\\n]\\s|\\n)([^,\\n.!?]{2,160}?),\\s+(${titles.map(escapeRegExp).join("|")})\\s+p\\.(\\d{1,4})\\b`,
+    `([^,\\n]{2,160}?),\\s+(${titles.map(escapeRegExp).join("|")})\\s+p\\.(\\d{1,4})\\b`,
     "gi",
   );
   const citations: SourceCitation[] = [];
@@ -628,18 +680,23 @@ export function validateManualCitations(
     const manual = manualForTitle(manuals, titleRaw);
     const citedPage = Number(pageRaw);
     if (!manual || !Number.isInteger(citedPage)) return "";
+    /*
+     * "Crunch Shirts" is not the Sun Tan City Shirts heading. Crunch and
+     * Buff sections print on page 16 and are not a Sunny source, so a
+     * p.17 cite of them is dropped rather than retargeted.
+     */
+    if (namesExcludedBrand(headingRaw)) return "";
     const heading = headingFromQuote(manual, headingRaw);
     if (!heading) return "";
     const located = headingOnPage(manual, heading, citedPage)
       ? citedPage
       : (pagesForHeading(manual, heading)[0] ?? null);
     if (located === null) return "";
-    const name = heading;
-    const line = `${name}, ${manual.displayTitle} p.${located} [p.${located}]`;
-    const key = `${manual.id}\0${headingKey(name)}\0${located}`;
+    const line = citationLine(headingRaw, heading, manual.displayTitle, located);
+    const key = `${manual.id}\0${headingKey(heading)}\0${located}`;
     if (!seen.has(key)) {
       seen.add(key);
-      citations.push(citationFor(manual, name, located));
+      citations.push(citationFor(manual, heading, located));
     }
     return line;
   });
@@ -694,13 +751,23 @@ function pageExists(manuals: readonly AssembledManual[], page: number): Assemble
 }
 
 /**
+ * Drop a trailing ", JBA Policy Manual p.41" so the heading sits at the end
+ * of the window. The label is not part of the section name.
+ */
+function beforeCitationLabel(before: string): string {
+  return before.replace(/,\s+[^,\n]*\bmanual\b[^,\n]*\s+p\.\d{1,4}\s*$/i, "");
+}
+
+/**
  * The heading named closest to the end of `before`.
  *
  * The words have to be the heading itself, not a piece of a longer word.
- * The later heading wins when the window still holds the previous citation.
+ * A heading glued on, as in "DirEligibility", still counts when it finishes
+ * the window. The later heading wins when the window still holds the
+ * previous citation.
  */
 function headingNear(before: string, manuals: readonly AssembledManual[]): { manual: AssembledManual; heading: string } | null {
-  const key = headingKey(before.slice(-200));
+  const key = headingKey(beforeCitationLabel(before).slice(-200));
   let best: { manual: AssembledManual; heading: string; index: number; length: number } | null = null;
   for (const manual of manuals) {
     for (const heading of knownHeadings(manual)) {
@@ -708,9 +775,15 @@ function headingNear(before: string, manuals: readonly AssembledManual[]): { man
       if (headingId.length < 3) continue;
       const index = key.lastIndexOf(headingId);
       if (index < 0) continue;
-      if (index > 0 && key[index - 1] !== " ") continue;
       const end = index + headingId.length;
-      if (end < key.length && key[end] !== " ") continue;
+      const boundaryBefore = index === 0 || key[index - 1] === " ";
+      const boundaryAfter = end === key.length || key[end] === " ";
+      /*
+       * "DirEligibility" still names Eligibility. The heading has to finish
+       * the window, so a shorter word inside another word does not.
+       */
+      if (!boundaryAfter) continue;
+      if (!boundaryBefore && end !== key.length) continue;
       if (!best || index > best.index || (index === best.index && headingId.length > best.length)) {
         best = { manual, heading, index, length: headingId.length };
       }
