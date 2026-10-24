@@ -1,4 +1,4 @@
-import { isFieldLabelWord, nameAfterNameLabel, NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
+import { isFieldLabelWord, nameAfterNameLabel, NOT_A_NAME, NOT_A_TYPED_NAME, stripFieldLabels } from "./name-words";
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
 import { extractEmployeeNames } from "./proposal";
 
@@ -75,7 +75,9 @@ export function stripNonNameTokens(span: string, salonNames: readonly string[]):
   text = text.replace(/\bat\s+[A-Za-z][A-Za-z'’.-]*(?:\s+[A-Za-z][A-Za-z'’.-]*){0,2}/gi, " ");
   const words = text.split(/[^A-Za-z'’-]+/).filter(Boolean).filter((word) => {
     const key = word.toLowerCase();
-    if (isFieldLabelWord(word) || LABEL.has(key) || PROMO.has(key) || places.has(key)) return false;
+    // A label word stays in the span. "Jane Store" is a name. The span is
+    // rejected below only when every remaining word is the label itself.
+    if (!isFieldLabelWord(word) && (LABEL.has(key) || PROMO.has(key) || places.has(key))) return false;
     if (NOT_A_NAME.has(key) || NOT_A_TYPED_NAME.has(key)) return false;
     // "ima employee, tan consultant" — a lower-case employee is the role.
     // "Test Employee" keeps the capitalised surname.
@@ -83,7 +85,7 @@ export function stripNonNameTokens(span: string, salonNames: readonly string[]):
     return true;
   });
   if (words.length === 0 || words.length > 4) return null;
-  return words.join(" ");
+  return stripFieldLabels(words.join(" "));
 }
 
 function nameIs(text: string): string | null {

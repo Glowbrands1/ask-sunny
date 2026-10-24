@@ -283,6 +283,15 @@ function withoutTrailingJobOrTitle(words: readonly string[]): string[] {
   return head;
 }
 
+/**
+ * True when the candidate is the label and nothing else.
+ * "Job title" and "Store" are labels. "Jane Store" is a name.
+ */
+export function isOnlyFieldLabel(name: string): boolean {
+  const words = nameWords(name);
+  return words.length > 0 && words.every((word) => isFieldLabelWord(word));
+}
+
 /** The name with a trailing Job or Title removed. A label alone is not a name. */
 export function stripFieldLabels(name: string): string | null {
   const source = readNameFieldValue(name) ?? name;

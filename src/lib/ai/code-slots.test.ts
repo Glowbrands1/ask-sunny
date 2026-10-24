@@ -156,6 +156,42 @@ describe("code slots", () => {
     expect(saved.title).toBe("Tanning Consultant");
   });
 
+  it("replay: Jane Store keeps the surname, and a label alone does not replace it", () => {
+    process.env.CODE_SLOTS_ENABLED = "1";
+    const turns = [
+      "create a corrective action for Jane Store, tanning consultant at shawnee",
+      "Store",
+      "Salon",
+      "Job title",
+      "Create a form from this conversation.",
+    ];
+    let saved = EMPTY_FORM_STATE;
+    for (const question of turns) {
+      const decision = decideIntentTurn({
+        ...turn(question, saved),
+        people: [],
+        raw: {
+          employee: question === "Store" || question === "Salon" ? question : "Job title",
+          salon: null,
+          title: null,
+          incidentType: null,
+          incidentDate: null,
+          payrollAmount: null,
+          warningLevel: null,
+          formType: "corrective action",
+          formTurn: true,
+          policyHeading: null,
+        },
+      });
+      expect(decision.state.employeeName).toBe("Jane Store");
+      expect(decision.state.employeeName).not.toBe("Store");
+      expect(decision.state.employeeName).not.toBe("Salon");
+      expect(decision.state.employeeName).not.toBe("Job title");
+      saved = decision.state;
+    }
+    expect(saved.title).toBe("Tanning Consultant");
+  });
+
   it("does not show repair output", async () => {
     process.env.CODE_SLOTS_ENABLED = "1";
     const draft: OutgoingDraft = {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { extractEmployeeNames, titleAfterJobTitleLabel } from "./proposal";
-import { employeeNamedOnPurpose, rosterValidatedName } from "./roster-validated-name";
-import { isFieldLabelWord, nameAfterNameLabel, stripFieldLabels } from "./name-words";
+import { employeeNamedOnPurpose, rosterValidatedName, stripNonNameTokens } from "./roster-validated-name";
+import { isFieldLabelWord, isOnlyFieldLabel, nameAfterNameLabel, stripFieldLabels } from "./name-words";
 
 const ROSTER = [
   { id: "christiana", firstName: "Christiana", lastName: "Headley", preferredFirstName: null, salonIds: ["loc-0463"] },
@@ -38,6 +38,23 @@ describe("field label words", () => {
     expect(stripFieldLabels("Marissa Job")).toBe("Marissa Job");
     expect(stripFieldLabels("Jane Store")).toBe("Jane Store");
     expect(stripFieldLabels("Jane Salon")).toBe("Jane Salon");
+    expect(isOnlyFieldLabel("Job title")).toBe(true);
+    expect(isOnlyFieldLabel("Store")).toBe(true);
+    expect(isOnlyFieldLabel("Salon")).toBe(true);
+    expect(isOnlyFieldLabel("Jane Store")).toBe(false);
+    expect(isOnlyFieldLabel("Jane Salon")).toBe(false);
+    expect(stripFieldLabels("Store")).toBeNull();
+    expect(stripFieldLabels("Salon")).toBeNull();
+    expect(stripNonNameTokens("Jane Store", SALONS)).toBe("Jane Store");
+    expect(stripNonNameTokens("Jane Salon", SALONS)).toBe("Jane Salon");
+    expect(stripNonNameTokens("Job title", SALONS)).toBeNull();
+    expect(stripNonNameTokens("Store", SALONS)).toBeNull();
+    expect(rosterValidatedName("create a corrective action for Jane Store, tanning consultant", [], SALONS)).toBe(
+      "Jane Store",
+    );
+    expect(rosterValidatedName("create a corrective action for Jane Salon, tanning consultant", [], SALONS)).toBe(
+      "Jane Salon",
+    );
     expect(extractEmployeeNames("Marissa Lempka Job title: Tanning Consultant")).toContain("Marissa Lempka");
     expect(extractEmployeeNames("Marissa Lempka Job title: Tanning Consultant")).not.toContain("Marissa Lempka Job");
     expect(extractEmployeeNames("The employee is Marissa Lempka. Job title: Tanning Consultant.")).not.toContain("Job title");

@@ -411,9 +411,15 @@ function nameAroundTitle(text: string): string | null {
   for (let start = 0; start < tokens.length; start += 1) {
     for (let len = 1; len <= 5 && start + len <= tokens.length; len += 1) {
       const window = tokens.slice(start, start + len).join(" ");
-      if (!extractJobTitle(window)) continue;
+      const titled = extractJobTitle(window);
+      if (!titled) continue;
       const shorter = len > 1 ? tokens.slice(start, start + len - 1).join(" ") : "";
       if (shorter && extractJobTitle(shorter)) continue;
+      // "for Jane Store tanning consultant" contains the title. The name is
+      // the words next to the title, so a longer window with the same title
+      // is not a second reading.
+      const withoutFirst = len > 1 ? tokens.slice(start + 1, start + len).join(" ") : "";
+      if (withoutFirst && extractJobTitle(withoutFirst) === titled) continue;
       const after = takeName(tokens.slice(start + len));
       if (after.length >= 2) return after.join(" ");
       const before = takeName([...tokens.slice(0, start)].reverse()).reverse();
@@ -423,23 +429,28 @@ function nameAroundTitle(text: string): string | null {
   return null;
 }
 
+/**
+ * Up to two words of a name. A stop word ends the scan, so the words after
+ * "at" are not a second person. A leading "Job title" is skipped when a
+ * full name follows it. Store or Salon as one of the two words is the surname.
+ */
 function takeName(tokens: readonly string[]): string[] {
-  const words: string[] = [];
+  const gathered: string[] = [];
   for (const word of tokens) {
-    if (words.length === 2) break;
     if (!/^[A-Za-z][A-Za-z'’-]+$/.test(word) || word.length < 2) {
-      if (words.length > 0) break;
-      continue;
-    }
-    // "Job title" sits between the person and the role. Skip the label, keep the person.
-    if (isFieldLabelWord(word)) {
-      if (words.length > 0) break;
+      if (gathered.length > 0) break;
       continue;
     }
     if (NOT_A_TYPED_NAME.has(word.toLowerCase())) break;
-    words.push(word);
+    gathered.push(word);
+    if (gathered.length >= 6) break;
   }
-  return words;
+  let start = 0;
+  while (start < gathered.length && isFieldLabelWord(gathered[start]!)) start += 1;
+  const rest = gathered.slice(start);
+  if (rest.length >= 2) return rest.slice(0, 2);
+  if (gathered.length >= 2 && gathered.some((word) => !isFieldLabelWord(word))) return gathered.slice(0, 2);
+  return [];
 }
 
 function isDocumentish(name: string): boolean {
