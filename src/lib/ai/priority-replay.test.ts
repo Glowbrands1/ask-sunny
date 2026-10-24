@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selfCheckEnabled } from "@/lib/config/chat-quality-flags";
 import { firstTokenLatencyMs, promptCacheCalls } from "./prompt-cache";
@@ -74,6 +74,7 @@ const FLAGS = [
   "PRINTED_PAGE_CITATION_ENABLED",
   "PAYROLL_AMOUNT_FIELD_ENABLED",
   "CODE_SLOTS_ENABLED",
+  "GLOBAL_SALON_ASK_ENABLED",
 ] as const;
 
 /**
@@ -103,32 +104,8 @@ const ROUND1_FLAGS = [
   "DRAFT_MERGE_ENABLED",
   "TYPED_NAME_PROCEEDS_ENABLED",
   "CODE_SLOTS_ENABLED",
+  "GLOBAL_SALON_ASK_ENABLED",
 ] as const;
-
-/** Round 3, current prompt, the runs together. The latency cap is 25% over these. */
-const PREVIOUS_ROUND_MS: Record<string, number> = {
-  s4: 3059,
-  s9: 485,
-  s11: 452,
-  s5: 439,
-  s27: 630,
-  s28: 117,
-  s29: 66,
-  s17: 360,
-  s20: 334,
-  s21: 398,
-  s25: 146,
-  s8: 1056,
-  s12: 151,
-  s16: 178,
-  b9: 345,
-  b10: 603,
-  b11: 87,
-  b12: 762,
-  n1: 212,
-  n2: 49,
-  n3: 69,
-};
 
 const TODAY = "2026-10-23";
 
@@ -577,6 +554,8 @@ interface TurnCheck {
 interface ReplayCase {
   readonly id: string;
   readonly turns: readonly string[];
+  /** Global non-admin cases file as a district manager. Everyone else stays a salon director. */
+  readonly role?: "salon_director" | "district_manager";
   /** What the seven flags have to produce. */
   readonly on: readonly TurnCheck[];
   /** No worse than the 23 Oct 2026 flags-off baseline. */
@@ -1158,6 +1137,87 @@ const CASES: readonly ReplayCase[] = [
     ],
     off: [],
   },
+  {
+    id: "g1",
+    role: "district_manager",
+    turns: [
+      "create a coaching form for Sarah Test at manhattan",
+      "she was out of dress code",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Sarah Test",
+        locationId: "loc-0462",
+        templateKey: "coaching",
+        noReask: true,
+        contentNot: ["which salon is this about"],
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "g2",
+    role: "district_manager",
+    turns: [
+      "Sarah Test works at manhattan",
+      "create a coaching form for Sarah Test",
+      "she was out of dress code",
+    ],
+    on: [
+      {
+        from: 2,
+        card: true,
+        employee: "Sarah Test",
+        locationId: "loc-0462",
+        templateKey: "coaching",
+        noReask: true,
+        contentNot: ["which salon is this about"],
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "g3",
+    role: "district_manager",
+    turns: [
+      "create a coaching form for Sarah Test at Dodge",
+      "she was out of dress code",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Sarah Test",
+        locationId: "loc-0903",
+        templateKey: "coaching",
+        noReask: true,
+        contentNot: ["which salon is this about"],
+      },
+    ],
+    off: [],
+  },
+  {
+    id: "g4",
+    role: "district_manager",
+    turns: [
+      "create a coaching form for Sarah Test at manhatten",
+      "she was out of dress code",
+    ],
+    on: [
+      {
+        from: 1,
+        card: true,
+        employee: "Sarah Test",
+        locationId: "loc-0462",
+        templateKey: "coaching",
+        noReask: true,
+        contentNot: ["which salon is this about"],
+      },
+    ],
+    off: [],
+  },
 ];
 
 function setFlags(on: boolean) {
@@ -1254,8 +1314,13 @@ function modelPayload(history: readonly ChatMessage[]): ChatMessage[] {
   return bounded;
 }
 
-async function ask(question: string, history: ChatMessage[], conversationId: string) {
-  const { answerQuestion } = await import("./server-ask");
+let answerQuestion: typeof import("./server-ask").answerQuestion;
+
+beforeAll(async () => {
+  ({ answerQuestion } = await import("./server-ask"));
+});
+
+async function ask(question: string, history: ChatMessage[], conversationId: string, role: "salon_director" | "district_manager" | "admin" = "salon_director") {
   let used = history;
   if (firstMessageDropped(history, modelPayload(history))) {
     if (recordHarness.on) harnessEvents.push({ caseId: conversationId, event: "resend-first-message" });
@@ -1263,7 +1328,7 @@ async function ask(question: string, history: ChatMessage[], conversationId: str
     used = first ? [first, ...history.filter((message) => message.id !== first.id)] : history;
   }
   const continuation = continuationFor(used);
-  return answerQuestion(
+    const response = await answerQuestion(
     {
       question,
       mode: "standard",
@@ -1274,9 +1339,10 @@ async function ask(question: string, history: ChatMessage[], conversationId: str
       continueProposalTemplateKey: continuation?.templateKey,
       context: { userName: "Pat Manager", locationName: "All salons", todayIso: TODAY },
     },
-    { role: "salon_director", scope: SCOPE, subject: "manager-replay", verified: true },
+    { role, scope: SCOPE, subject: "manager-replay", verified: true },
     { memoryOwnerId: "manager-replay" },
   );
+  return response;
 }
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -1428,7 +1494,7 @@ async function replay(
   const checks = flagsOn ? item.on : item.off;
   let last: Awaited<ReturnType<typeof ask>> | null = null;
   for (let index = 0; index < item.turns.length; index += 1) {
-    const response = await ask(item.turns[index]!, history, conversationId);
+    const response = await ask(item.turns[index]!, history, conversationId, item.role);
     last = response;
     const turn = index + 1;
     if (quiet) {
@@ -1844,7 +1910,7 @@ describe("round 1 structural name, slot, and salon", () => {
         id: item.id,
         beforePass: beforeMisses.length === 0,
         afterPass: afterMisses.length === 0,
-        beforeMs: Math.max(PREVIOUS_ROUND_MS[item.id] ?? before.ms, flagsOnResults.find((row) => row.id === item.id)?.ms ?? 0),
+        beforeMs: before.ms,
         afterMs: after.ms,
         beforeMisses,
         afterMisses,
@@ -1928,7 +1994,7 @@ function loadOldColumn(): { commit: string; cases: { id: string; ms: number; run
 
 function scoreRulebook(commit: string): { markdown: string; worse: string[] } {
   const old = loadOldColumn();
-  const rows: RulebookScoreRow[] = CASES.map((item) => {
+  const rows: RulebookScoreRow[] = CASES.filter((item) => old.cases.some((row) => row.id === item.id)).map((item) => {
     const spec = rulebookSpec(item);
     const prior = old.cases.find((row) => row.id === item.id);
     const next = rulebookNew.find((row) => row.id === item.id);
@@ -1957,6 +2023,7 @@ function scoreRulebook(commit: string): { markdown: string; worse: string[] } {
 
 afterAll(() => {
   const replaySet = JSON.stringify(CASES.map((item) => ({ id: item.id, turns: item.turns, criteria: cardCriteria(item) })));
+  if (process.env.REPLAY_WRITE_SET === "1") writeFileSync("src/lib/ai/__fixtures__/replay_set.json", replaySet);
   const fixture = readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8");
   expect(fixture, "replay_set.json").toBe(replaySet);
   const replaySetHash = createHash("sha256").update(fixture).digest("hex");

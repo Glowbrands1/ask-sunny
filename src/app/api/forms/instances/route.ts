@@ -32,7 +32,6 @@ import {
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
-import { globalNonAdminNeedsSalon } from "@/lib/forms/global-salon-ask";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
@@ -258,12 +257,11 @@ export async function POST(request: Request) {
       if (open) return NextResponse.json({ instance: open, reused: true });
     }
 
-    if (location.kind === "no_location" && globalNonAdminNeedsSalon(actor.role, actor.scope)) {
-      return NextResponse.json(
-        { error: "Say which salon this form is about before creating it." },
-        { status: 400 },
-      );
-    }
+    /*
+     * A global non-admin may create the draft with no salon. When
+     * GLOBAL_SALON_ASK_ENABLED is on, chat asks which salon once and does
+     * not block this create. Pau approved that on 24 Oct 2026.
+     */
 
     /* See `resolveLocationName`. */
     const locationName = resolveLocationName(locationId, body.locationName ?? null);

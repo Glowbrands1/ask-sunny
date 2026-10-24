@@ -213,6 +213,63 @@ describe("the sync cycle", () => {
     expect(again.attention.map((item) => item.code)).toContain("editions_superseded");
   });
 
+  it("does not re-index a superseded document id while the woven guard is on", async () => {
+    const previous = process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED;
+    process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED = "1";
+    try {
+      const h = new Harness();
+      await h.initial();
+      const id = h.item(HANDBOOK).knowledgeDocumentId!;
+      await h.sink.supersedeEdition(id, "admin-manual");
+      Object.assign(h.fake.state.handbooks[0]!, { currentVersionId: uuid(2109), updatedOn: "2026-11-01T00:00:00", bytes: "%PDF handbook brought back" });
+      const ingested = h.sink.ingestCalls;
+      await h.run("sync");
+      expect(h.sink.ingestCalls).toBe(ingested);
+      expect(h.sink.documents.get(id)).toMatchObject({ superseded: true });
+      expect(h.sink.searchable().some((doc) => doc.id === id)).toBe(false);
+      expect(h.item(HANDBOOK)).toMatchObject({ inAskSunny: false, reason: "superseded_blocklist", pendingAction: "none" });
+    } finally {
+      if (previous === undefined) delete process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED;
+      else process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED = previous;
+    }
+  });
+
+  it("does not ingest a new woven record whose file hash is already superseded", async () => {
+    const previous = process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED;
+    process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED = "1";
+    try {
+      const h = new Harness();
+      await h.initial();
+      const kept = h.item(HANDBOOK);
+      await h.sink.supersedeEdition(kept.knowledgeDocumentId!, "admin-manual");
+      const refiledId = uuid(299);
+      h.fake.state.handbooks.push({
+        id: refiledId,
+        name: "JBA Policy Manual refiled",
+        status: "Published",
+        audience: "Public",
+        updated: "1/1/2024",
+        updatedOn: "2024-01-01T00:00:00",
+        currentVersionId: uuid(2199),
+        draftVersionId: null,
+        fileName: "JBA-Policy-Manual-refiled.pdf",
+        bytes: "%PDF handbook v1",
+      });
+      const ingested = h.sink.ingestCalls;
+      await h.run("sync");
+      const refiled = h.item(`handbook\u0000${refiledId}\u0000current-version`);
+      expect(h.sink.ingestCalls).toBe(ingested);
+      expect(refiled.knowledgeDocumentId).toBeTruthy();
+      expect(h.sink.documents.has(refiled.knowledgeDocumentId!)).toBe(false);
+      expect(refiled.inAskSunny).toBe(false);
+      expect(refiled.pendingAction).toBe("none");
+      expect(["superseded_blocklist", "superseded_duplicate"]).toContain(refiled.reason);
+    } finally {
+      if (previous === undefined) delete process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED;
+      else process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED = previous;
+    }
+  });
+
   it("a second run with nothing changed downloads and re-indexes nothing", async () => {
     const h = new Harness();
     await h.initial();

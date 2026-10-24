@@ -336,3 +336,13 @@ export function printedPageCitationEnabled(): boolean {
 export function codeSlotsEnabled(): boolean {
   return envFlag("CODE_SLOTS_ENABLED");
 }
+
+/**
+ * A global non-admin is asked which salon once. The draft is still built.
+ * A salon they already named — this turn, an earlier turn, a short name, or
+ * a one-character typo — is filled in and the question is not asked.
+ * Off, a global account files with no salon, as it does today.
+ */
+export function globalSalonAskEnabled(): boolean {
+  return envFlag("GLOBAL_SALON_ASK_ENABLED");
+}

@@ -167,7 +167,17 @@ function asPerson(fact: DirectoryFact): GroundedPerson {
   };
 }
 
+const manualIndexCache = new Map<string, Promise<{ headings: string[]; pages: Record<string, number> }>>();
+
 async function loadManualIndex(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
+  const cached = manualIndexCache.get(scopeId);
+  if (cached) return cached;
+  const pending = loadManualIndexOnce(scopeId);
+  manualIndexCache.set(scopeId, pending);
+  return pending;
+}
+
+async function loadManualIndexOnce(scopeId: string): Promise<{ headings: string[]; pages: Record<string, number> }> {
   try {
     const manual = await new SupabaseKnowledgeProvider().fetchOfficialPolicyManual(scopeId);
     if (!manual.ok) return { headings: [], pages: {} };

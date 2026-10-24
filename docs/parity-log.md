@@ -1,5 +1,21 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: superseded blocklist and global salon ask — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No production sync
+and no merge.
+
+- While `WOVEN_KNOWLEDGE_SYNC_ENABLED` is on, a knowledge document that is
+  already superseded is not re-indexed, by its document id or by the same
+  file hash on a new Woven record. Off, the sync does not consult that
+  blocklist. Supersession is still only an admin or manual action, or a
+  newer edition of the same record. No new table.
+- `GLOBAL_SALON_ASK_ENABLED` asks a global non-admin which salon once and
+  still builds the draft. A salon named in the same message, an earlier
+  turn, a short name, or a one-character typo is filled in and not asked.
+  Off, the draft is not blocked and the question is not added.
+
 ## 24 Oct 2026: replay each case once — Sunny-only
 
 Ask Bubbles was not attached. The local scoreboard harness now runs each

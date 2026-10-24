@@ -670,7 +670,7 @@ describe("P4-RC. a global actor can create a coaching form", () => {
     expect(response!.content).not.toMatch(/nothing has been created/i);
   });
 
-  it("asks a global district manager for the salon once and still builds the card", async () => {
+  it("does not ask or block a global district manager while the salon flag is off", async () => {
     const { proposals } = await load([template(), dpoa()]);
     const response = await proposals.proposeFormForTurn(
       turn("Build me a coaching form for Sarah Test for that.", {
@@ -679,16 +679,38 @@ describe("P4-RC. a global actor can create a coaching form", () => {
       }),
     );
 
-    expect(response!.formProposal!.employeeName).toBe("Sarah Test");
-    expect(response!.formProposal!.templateName).toBe("Coaching Form");
-    expect(response!.formProposal!.status).toBe("needs_location");
-    expect(response!.formProposal!.supportsInlineDraft).toBe(false);
-    expect(response!.formProposal!.locationId).toBeNull();
-    expect(response!.formProposal!.locationResolution).toBe("needs_selection");
-    expect(response!.formProposal!.authorizedLocationIds.length).toBeGreaterThan(1);
-    expect(response!.content).toMatch(/which salon is this about/i);
-    expect(response!.content).not.toMatch(/won't name one/i);
-    expect(response!.content.match(/which salon is this about/gi)).toHaveLength(1);
+    expect(response!.formProposal!.status).toBe("ready");
+    expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+    expect(response!.formProposal!.locationResolution).toBe("not_applicable");
+    expect(response!.content).not.toMatch(/which salon is this about/i);
+  });
+
+  it("asks a global district manager for the salon once and still builds the draft", async () => {
+    const previous = process.env.GLOBAL_SALON_ASK_ENABLED;
+    process.env.GLOBAL_SALON_ASK_ENABLED = "1";
+    try {
+      const { proposals } = await load([template(), dpoa()]);
+      const response = await proposals.proposeFormForTurn(
+        turn("Build me a coaching form for Sarah Test for that.", {
+          role: "district_manager",
+          scope: GLOBAL,
+        }),
+      );
+
+      expect(response!.formProposal!.employeeName).toBe("Sarah Test");
+      expect(response!.formProposal!.templateName).toBe("Coaching Form");
+      expect(response!.formProposal!.status).toBe("ready");
+      expect(response!.formProposal!.supportsInlineDraft).toBe(true);
+      expect(response!.formProposal!.locationId).toBeNull();
+      expect(response!.formProposal!.locationResolution).toBe("needs_selection");
+      expect(response!.formProposal!.authorizedLocationIds.length).toBeGreaterThan(1);
+      expect(response!.content).toMatch(/which salon is this about/i);
+      expect(response!.content).not.toMatch(/won't name one/i);
+      expect(response!.content.match(/which salon is this about/gi)).toHaveLength(1);
+    } finally {
+      if (previous === undefined) delete process.env.GLOBAL_SALON_ASK_ENABLED;
+      else process.env.GLOBAL_SALON_ASK_ENABLED = previous;
+    }
   });
 });
 

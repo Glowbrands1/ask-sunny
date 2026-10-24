@@ -890,7 +890,11 @@ async function proposeTemplate(input: ProposalTurn, match: TemplateSummary): Pro
       : undefined,
     dateQuestion,
   ].filter((note): note is string => Boolean(note));
-  return askGlobalNonAdminForSalon(turn([content, ...notes].join("\n\n"), proposal), input.actor);
+  const managerText = [
+    ...input.history.filter((message) => message.role === "user").map((message) => message.content),
+    input.question,
+  ].join("\n");
+  return askGlobalNonAdminForSalon(turn([content, ...notes].join("\n\n"), proposal), input.actor, managerText);
 }
 
 /**

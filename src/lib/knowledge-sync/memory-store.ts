@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { manifestKey } from "./reconcile";
 import { SinkError, type ClaimResult, type KnowledgeSink, type KnowledgeSyncStore, type RunRecord, type SinkDocument, type SinkMetadata } from "./ports";
 import { AUTOMATIC_SYNC_INTERVAL_DAYS } from "./types";
@@ -173,6 +175,8 @@ export interface MemoryDocument extends SinkMetadata {
   /** An older edition of a file another document already holds. Not searchable. */
   superseded: boolean;
   supersededBy: string | null;
+  /** SHA-256 of the file bytes. The blocklist matches a re-filed copy by this. */
+  contentHash: string | null;
   source: "woven" | "upload";
 }
 
@@ -208,6 +212,7 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
       retired: false,
       superseded: false,
       supersededBy: null,
+      contentHash: createHash("sha256").update(document.bytes).digest("hex"),
       source: "woven",
     });
     return { reusedExistingEmbeddings: false };
@@ -224,6 +229,15 @@ export class MemoryKnowledgeSink implements KnowledgeSink {
     this.retireCalls += 1;
     const doc = this.documents.get(documentId);
     if (doc) doc.retired = true;
+  }
+
+  async supersededBlocked(documentId: string, contentHash: string): Promise<boolean> {
+    const own = this.documents.get(documentId);
+    if (own?.superseded) return true;
+    if (own && !own.superseded) return false;
+    const hash = contentHash.trim();
+    if (!hash) return false;
+    return [...this.documents.values()].some((doc) => doc.superseded && doc.contentHash === hash);
   }
 
   async supersedeEdition(documentId: string, supersededBy: string): Promise<void> {

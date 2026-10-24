@@ -404,15 +404,43 @@ export function mayDescribeSection(text: string): boolean {
  * exactly one heading of the manual answers, and only a section the manual
  * titles a Policy.
  */
+const describedResultCache = new WeakMap<readonly ManualChunk[], Map<string, NamedManualSection | null>>();
+
 export function describedManualSection(input: {
   readonly text: string;
   readonly chunks: readonly ManualChunk[] | null;
 }): NamedManualSection | null {
+  const chunks = input.chunks;
+  if (!chunks || chunks.length === 0) return null;
+  let byText = describedResultCache.get(chunks);
+  if (!byText) {
+    byText = new Map();
+    describedResultCache.set(chunks, byText);
+  }
+  const text = input.text ?? "";
+  const cached = byText.get(text);
+  if (cached !== undefined) return cached;
   const found = describedHeadings(input);
   /* One heading of the whole manual, and one the manual calls a policy. */
-  if (!found || found.size !== 1) return null;
+  if (!found || found.size !== 1) {
+    byText.set(text, null);
+    return null;
+  }
   const [heading, phrase] = [...found.entries()][0]!;
-  return citable(input.chunks!, heading, phrase);
+  const section = citable(chunks, heading, phrase);
+  byText.set(text, section);
+  return section;
+}
+
+const candidateCache = new WeakMap<readonly string[], Candidate[]>();
+
+function cachedCandidates(chunks: readonly ManualChunk[]): Candidate[] {
+  const headings = manualSectionHeadings(chunks);
+  const cached = candidateCache.get(headings);
+  if (cached) return cached;
+  const built = candidatesOf(headings);
+  candidateCache.set(headings, built);
+  return built;
 }
 
 /** Every heading the account describes, by its distinctive words — or null where something else decides the policy. */
@@ -424,7 +452,7 @@ function describedHeadings(input: {
   const text = input.text ?? "";
   if (!mayDescribeSection(text)) return null;
 
-  const candidates = candidatesOf(manualSectionHeadings(input.chunks));
+  const candidates = cachedCandidates(input.chunks);
   const found = new Map<string, string>();
   for (const sentence of text.matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0]) || RULE.test(sentence[0])) continue;

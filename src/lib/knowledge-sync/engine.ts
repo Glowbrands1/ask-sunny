@@ -120,7 +120,13 @@ function emptyTotals(): SyncReport["totals"] {
   };
 }
 
-export function sha256Hex(bytes: Uint8Array): string {
+/** The woven knowledge sync's own switch. Off, a superseded row is not a blocklist. */
+export function wovenKnowledgeSyncEnabled(): boolean {
+  const raw = (process.env.WOVEN_KNOWLEDGE_SYNC_ENABLED ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
@@ -353,7 +359,7 @@ export async function runKnowledgeSync(deps: EngineDeps, options: RunOptions): P
           id: item.knowledgeDocumentId ?? "",
           contentHash: item.contentHash,
           sourceUpdatedAt: item.sourceUpdatedAt,
-          superseded: item.reason === "superseded_duplicate",
+          superseded: item.reason === "superseded_duplicate" || item.reason === "superseded_blocklist",
         })),
       );
       const byDocument = new Map(
@@ -537,6 +543,28 @@ async function applyItem(deps: EngineDeps, item: ManifestItem, nowIso: () => str
   });
   const hash = sha256Hex(fetched.bytes);
   const metadata = deps.describe(current);
+
+  if (wovenKnowledgeSyncEnabled() && deps.sink.supersededBlocked) {
+    const blocked = await deps.sink.supersededBlocked(current.knowledgeDocumentId!, hash);
+    if (blocked) {
+      return {
+        item: {
+          ...current,
+          state: "EXCLUDED",
+          reason: "superseded_blocklist",
+          contentHash: hash,
+          inAskSunny: false,
+          pendingAction: "none",
+          lastError: null,
+          errorCategory: null,
+          retryCount: 0,
+          nextRetryAt: null,
+        },
+        action: "skip",
+        metadataOnly: false,
+      };
+    }
+  }
 
   let action: SyncEvent["action"];
   let metadataOnly = false;

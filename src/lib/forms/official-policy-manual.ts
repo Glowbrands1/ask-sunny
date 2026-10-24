@@ -509,7 +509,11 @@ function sheetHeadingsOf(content: string): string[] {
  * Opening policy" against the manual as it is, rather than against a list kept
  * here. See `policy-change.ts`.
  */
+const headingCache = new WeakMap<readonly ManualChunk[], string[]>();
+
 export function manualSectionHeadings(chunks: readonly ManualChunk[]): string[] {
+  const cached = headingCache.get(chunks);
+  if (cached) return cached;
   const seen = new Map<string, string>();
   const add = (heading: string | null | undefined) => {
     const text = (heading ?? "").trim();
@@ -524,7 +528,9 @@ export function manualSectionHeadings(chunks: readonly ManualChunk[]): string[] 
     for (const heading of sheetHeadingsOf(chunk.content)) add(heading);
     add(pageHeadingOf(chunk.content)?.heading);
   }
-  return [...seen.values()];
+  const headings = [...seen.values()];
+  headingCache.set(chunks, headings);
+  return headings;
 }
 
 /** Loosened for matching: case, punctuation and spacing drift are absorbed. */
@@ -621,13 +627,33 @@ function citedPageOfChunk(chunk: ManualChunk): number | null {
   return chunk.page;
 }
 
+const sectionCache = new WeakMap<readonly ManualChunk[], Map<string, ManualSection | null>>();
+
 export function findManualSection(
   chunks: readonly ManualChunk[],
   headings: readonly string[],
   readsContentsPage: boolean = OFFICIAL_POLICY_MANUAL.readsContentsPage,
 ): ManualSection | null {
-  const wanted = headings.map(headingKey).filter((key) => key !== "");
-  if (wanted.length === 0) return null;
+  const named = headings.map((heading) => heading.trim()).filter((heading) => headingKey(heading) !== "");
+  if (named.length === 0) return null;
+  const cacheKey = `${readsContentsPage ? 1 : 0}:${named.map(headingKey).join("\0")}`;
+  let byHeading = sectionCache.get(chunks);
+  if (!byHeading) {
+    byHeading = new Map();
+    sectionCache.set(chunks, byHeading);
+  }
+  if (byHeading.has(cacheKey)) return byHeading.get(cacheKey) ?? null;
+  const found = findManualSectionUncached(chunks, named, readsContentsPage);
+  byHeading.set(cacheKey, found);
+  return found;
+}
+
+function findManualSectionUncached(
+  chunks: readonly ManualChunk[],
+  headings: readonly string[],
+  readsContentsPage: boolean,
+): ManualSection | null {
+  const wanted = headings.map(headingKey);
 
   const ordered = [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
 

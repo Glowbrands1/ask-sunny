@@ -55,6 +55,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    setupFiles: ["./src/test/restore-env.ts"],
+    pool: "forks",
+    isolate: true,
     // `.test.tsx` is included so component behaviour can be tested by rendering
     // and clicking. A source scan cannot see that a Radix `asChild` trigger has
     // stopped forwarding its props — the markup still looks correct and the

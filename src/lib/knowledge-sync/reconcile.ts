@@ -149,8 +149,8 @@ function plan(
    * A byte-identical older edition stays superseded. The next scan still
    * sees it in Woven; that is not a reason to ingest it again.
    */
-  if (previous?.reason === "superseded_duplicate") {
-    return { state: "EXCLUDED", pendingAction: "none", reason: "superseded_duplicate" };
+  if (previous?.reason === "superseded_duplicate" || previous?.reason === "superseded_blocklist") {
+    return { state: "EXCLUDED", pendingAction: "none", reason: previous.reason };
   }
 
   const live = previous?.inAskSunny === true;

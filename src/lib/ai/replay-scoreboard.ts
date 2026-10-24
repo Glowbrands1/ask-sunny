@@ -421,7 +421,7 @@ export function renderFixRound(input: {
   const lines = [
     `## ${input.title}`,
     "",
-    `One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is ${runsTogetherPhrase(input.runs)}. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.`,
+    `One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is ${runsTogetherPhrase(input.runs)}. It regresses when it is more than 25% slower than flags off and also more than 250ms slower.`,
     "",
     `- commit: \`${input.commit}\``,
     `- harness: ${input.harness}`,

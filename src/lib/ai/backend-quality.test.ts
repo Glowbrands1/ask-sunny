@@ -34,7 +34,13 @@ import type { AskResponse } from "./types";
 const SAVED = { ...process.env };
 
 afterEach(() => {
-  process.env = { ...SAVED };
+  for (const key of Object.keys(process.env)) {
+    if (!(key in SAVED)) delete process.env[key];
+  }
+  for (const [key, value] of Object.entries(SAVED)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 function proposal(partial: Partial<ChatFormProposal>): ChatFormProposal {
