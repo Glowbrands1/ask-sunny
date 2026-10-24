@@ -414,6 +414,17 @@ export function conversationDraftReuseEnabled(): boolean {
   return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
 }
 
+/**
+ * "Delete that draft" deletes the draft on screen where the manager may
+ * delete forms (the forms API's own rule), and says truthfully who can where
+ * they may not; "same incident", answering "is this the same incident as the
+ * <form> for <name>?", opens that form instead of asking for a phrase to type
+ * (QA F8, 21–22 Oct 2026). Off, both turns are answered as before.
+ */
+export function draftActionsEnabled(): boolean {
+  return envFlag("DRAFT_ACTIONS_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

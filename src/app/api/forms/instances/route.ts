@@ -7,6 +7,7 @@ import { errorResponse } from "@/lib/api/respond";
 import {
   conversationDraftReuseEnabled,
   conversationProposalDedupeEnabled,
+  draftActionsEnabled,
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -40,6 +41,7 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
@@ -351,7 +353,13 @@ export async function POST(request: Request) {
      * reopened instead of filing another one. A different date or a different
      * account of what happened still creates.
      */
-    if (body.source === "ask_sunny" && !historyWantsSeparateDocument(body.conversation)) {
+    /*
+     * "DIFFERENT INCIDENT", answering whether this is the same incident as the
+     * form on file (QA F8): a new form, so no open draft is reopened in its
+     * place. DRAFT_ACTIONS_ENABLED only.
+     */
+    const newIncident = draftActionsEnabled() && historySaysDifferentIncident(body.conversation);
+    if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
       const incidentText = turns
         .filter((turn) => turn.role === "user")
@@ -419,6 +427,7 @@ export async function POST(request: Request) {
     if (
       draftDedupeEnabled() &&
       body.source === "ask_sunny" &&
+      !newIncident &&
       !historyWantsSeparateDocument(body.conversation)
     ) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
