@@ -414,6 +414,19 @@ export function conversationDraftReuseEnabled(): boolean {
   return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
 }
 
+/**
+ * A request to start a corrective action ("create a Verbal CA for …", "I need
+ * a CA for someone opening the salon late") is the Corrective Action Form
+ * when the intent read has no model reading. The template reader calls that
+ * request the progression, and the intent slots used to keep no form for it,
+ * so the next answer ("verbal", "no payroll") was not a form turn (QA F4,
+ * 24 Oct 2026). A metric with no behaviour stays the progression, as in the
+ * form proposal. Off, the form slot is left as before.
+ */
+export function caTemplateMapEnabled(): boolean {
+  return envFlag("CA_TEMPLATE_MAP_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
