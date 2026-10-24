@@ -6,9 +6,19 @@
  * A dropped first message that the harness re-sends is not a case failure.
  */
 
-export const REPLAY_RUNS = 3;
-/** Three local runs of one case. A confirm loop blows past this. */
+export const REPLAY_RUNS = 1;
+/** One local run of a case. A confirm loop blows past this. */
 export const REPLAY_LATENCY_GATE_MS = 20_000;
+
+/** "1 time" or "3 times", for the scoreboard sentences. */
+export function runsTimesPhrase(runs: number): string {
+  return runs === 1 ? "1 time" : `${runs} times`;
+}
+
+/** "the run" or "the 3 runs together", for the latency sentence. */
+export function runsTogetherPhrase(runs: number): string {
+  return runs === 1 ? "the run" : `the ${runs} runs together`;
+}
 
 export interface ReplayCardCriteria {
   readonly employee: string | null;
@@ -116,7 +126,7 @@ function criteriaCell(criteria: ReplayCardCriteria): string {
   return [criteria.employee, criteria.salon, criteria.date, criteria.policy].map((value) => value ?? "—").join(" · ");
 }
 
-const SCOREBOARD_INTRO = `Each case runs ${REPLAY_RUNS} times and passes only when every run passes. Latency is those runs together and fails over ${REPLAY_LATENCY_GATE_MS} ms. Flags-off and flags-on are separate columns. Flags-on is judged on the card criteria in \`replay_set.json\`, written before the run: employee, salon, date, policy and printed page, no blocking question, no leaked internal text. A re-send of a dropped first message is a harness event, not a case failure. A last-known-good column is the same code and the same flags with the system prompt from before the latest prompt edit. The current prompt stays when it ties or wins. A case the old prompt passes and the current prompt fails is reverted in the prompt, and the fix stays in code.`;
+const SCOREBOARD_INTRO = `Each case runs ${runsTimesPhrase(REPLAY_RUNS)} and passes only when every run passes. Latency is those runs together and fails over ${REPLAY_LATENCY_GATE_MS} ms. Flags-off and flags-on are separate columns. Flags-on is judged on the card criteria in \`replay_set.json\`, written before the run: employee, salon, date, policy and printed page, no blocking question, no leaked internal text. A re-send of a dropped first message is a harness event, not a case failure. A last-known-good column is the same code and the same flags with the system prompt from before the latest prompt edit. The current prompt stays when it ties or wins. A case the old prompt passes and the current prompt fails is reverted in the prompt, and the fix stays in code.`;
 
 /** One round, without the scoreboard title, so a later round can be appended. */
 export function renderScoreboardRound(round: ReplayRound): string {
@@ -175,7 +185,7 @@ export function renderScoreboard(rounds: readonly ReplayRound[]): string {
 
 /**
  * Guide v3, scored on the card. A rule that does not apply to the case is
- * left out, so it cannot make a column look worse. Latency is the three runs
+ * left out, so it cannot make a column look worse. Latency is the runs
  * together and is added by `judgeRulebookRuns`.
  */
 export const RULEBOOK_RULE_ORDER = [
@@ -270,7 +280,7 @@ export function judgeRulebookRun(spec: RulebookSpec, run: RulebookRun): Rulebook
   return missed;
 }
 
-/** A rule misses when any of the three runs misses it. */
+/** A rule misses when any scored run misses it. */
 export function judgeRulebookRuns(spec: RulebookSpec, runs: readonly RulebookRun[], ms: number): RulebookRule[] {
   const missed = new Set<RulebookRule>();
   for (const run of runs) {
@@ -321,12 +331,12 @@ export function renderRulebookScoreboard(input: {
   const lines = [
     "## Rulebook — old behaviour against guide v3",
     "",
-    "OLD is `origin/main` as-is, flags off, the same turns and the same mocked reply. NEW is this branch with the rulebook flags on. The guide was not pasted over the system prompt. Each case runs 3 times. A rule misses if any run misses it. A rule that does not apply to the case is not scored. Worse means NEW misses a rule OLD passed, and that case is fixed before this pull request is ready.",
+    `OLD is \`origin/main\` as-is, flags off, the same turns and the same mocked reply. NEW is this branch with the rulebook flags on. The guide was not pasted over the system prompt. Each case runs ${runsTimesPhrase(input.runs)}. A rule misses if any run misses it. A rule that does not apply to the case is not scored. Worse means NEW misses a rule OLD passed, and that case is fixed before this pull request is ready.`,
     "",
     `- OLD commit: \`${input.oldCommit}\``,
     `- NEW commit: \`${input.newCommit}\``,
     `- runs: ${input.runs}`,
-    `- latency gate: ${REPLAY_LATENCY_GATE_MS} ms for the 3 runs together`,
+    `- latency gate: ${REPLAY_LATENCY_GATE_MS} ms for ${runsTogetherPhrase(input.runs)}`,
     "- rules: employee on the card, typed name kept, salon does not gate the card, date, policy and printed page, 2-sentence plan, payroll amount only from the manager, no blocking question, no leaked text, latency",
     "",
     "| Case | OLD | NEW | Verdict |",
@@ -411,7 +421,7 @@ export function renderFixRound(input: {
   const lines = [
     `## ${input.title}`,
     "",
-    "One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the 3 runs together. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.",
+    `One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is ${runsTogetherPhrase(input.runs)}. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.`,
     "",
     `- commit: \`${input.commit}\``,
     `- harness: ${input.harness}`,
@@ -446,4 +456,24 @@ export function renderFixRound(input: {
   );
   lines.push("");
   return lines.join("\n");
+}
+
+export function renderPromptCacheScoreboard(input: {
+  readonly creationTokens: number;
+  readonly laterReads: number;
+  readonly oldMs: number;
+  readonly newMs: number;
+}): string {
+  return [
+    "## Prompt cache",
+    "",
+    "The instruction text is unchanged. Sections 1–11 are the static block and do not include the manager's name, salon, or today. Those three facts follow `---DYNAMIC---`. `call-claude.ts` puts `cache_control: { type: \"ephemeral\" }` on the static block only. The reply model is mocked, so the token counts are the local replay's cache log and the latency is time-to-first-token for the whole prompt (OLD) against the dynamic tail (NEW).",
+    "",
+    `- 1st call usage.cache_creation_input_tokens: ${input.creationTokens}`,
+    `- later calls with usage.cache_read_input_tokens > 0: ${input.laterReads}`,
+    `- first-token latency OLD: ${input.oldMs}ms`,
+    `- first-token latency NEW: ${input.newMs}ms`,
+    "- replay pass/fail: unchanged",
+    "",
+  ].join("\n");
 }

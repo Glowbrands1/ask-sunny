@@ -703,7 +703,12 @@ export function buildSystemPrompt(input: {
 
   const reportsGuideSection = `\n\n${buildReportsGuideSection(input.canViewReports ?? false, assistantName)}`;
 
-  return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.
+  /*
+   * Sections 1–11 are the rules. They do not name this manager, this salon,
+   * or today's date, so that prefix can be cached. Those three facts follow
+   * the marker, in the same sentences as before.
+   */
+  return `You are ${assistantName}, the internal assistant for ${brandName} managers.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
 
@@ -730,7 +735,11 @@ ${hasContext ? "" : "IMPORTANT: no company documents matched this question. You 
 
 Direct, warm, practical. Write the way a good regional manager talks: plain sentences, no corporate padding, no filler openers. ${MODE_INSTRUCTION[mode]}
 
-${SUNNY_VOICE}`;
+${SUNNY_VOICE}
+
+---DYNAMIC---
+
+You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.`;
 }
 
 /**
