@@ -1,5 +1,18 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: a policy quote is not the manager's payroll answer — ported from Ask Bubbles
+
+`INTENT_PAYROLL_MANAGER_ONLY_ENABLED` is new and stays off. With it on,
+the intent read takes the payroll amount and the Yes/No from the manager's
+turns only. In Ask Bubbles (conv_mvmf4x1i2qxha7u) the manager said "verbal,
+no payroll", but the saved state had payroll amount 25 and Yes, taken from
+the assistant's quote of the Late Opening policy. This app's `mergeSlots`
+had the same rule. "no payroll" now saves No with no amount.
+
+**Sibling app: ported from** Glowbrands1/Ask-bubbles#101 (d2ac87a). The
+test keeps the manager's words and uses this app's salon and Form
+Monitoring names.
+
 ## 24 Oct 2026: one extraction fills the form — ported from Ask Bubbles
 
 `FORM_FULL_REMAP_ENABLED` stays off. On, each turn reads every user message
