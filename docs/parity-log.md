@@ -894,3 +894,16 @@ document is skipped. `employment-change.ts` kept a labelled location as
 typed, so "per the new salon policy" printed "Policy" as the new salon; on,
 a labelled value naming a document is not a location. No store wording was
 copied. Test: `src/lib/forms/place-span-guard.test.ts`.
+
+## 24 Oct 2026: "location st joe" names the salon (QA Round 4)
+
+Same flag, `PLACE_SPAN_GUARD_ENABLED`. In conv_mvmw4hwq292a6vq, "name is
+test testyone, location st joe, …" came after "salon is wornall", and the
+card stayed on Wornall. The roster reader (`salon-mention.ts`, protected)
+counts a short name only behind a place cue, and a field label was not one.
+On, `salon-cue.ts` reads "location / salon / store <name>" as "at <name>"
+(the roster reader's other rules still apply), and the salon the newest
+manager turn names replaces the saved one on the intent slots and the card.
+Ported to Ask Bubbles' store reader on the form remap path in the same
+session (its "location kearney" / "store kearney" kept the earlier store).
+Test: `src/lib/forms/salon-label-cue.test.ts`.

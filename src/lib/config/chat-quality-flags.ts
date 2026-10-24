@@ -422,7 +422,9 @@ export function conversationDraftReuseEnabled(): boolean {
  * animals in the workplace policy" followed by "at Kearney, NE" is not read
  * as a place called "the workplace policy at Kearney"; and a labelled
  * current or new location that names a document ("per the new salon
- * policy") is not kept as the salon.
+ * policy") is not kept as the salon. Also on, a field label is a place cue
+ * and the newest turn's salon replaces the saved one: "location st joe"
+ * after "salon is wornall" is St Joseph (QA Round 4).
  */
 export function placeSpanGuardEnabled(): boolean {
   return envFlag("PLACE_SPAN_GUARD_ENABLED");

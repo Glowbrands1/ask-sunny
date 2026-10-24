@@ -11,6 +11,7 @@ import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
+import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import {
   actionPlanSentencesEnabled,
@@ -19,6 +20,7 @@ import {
   groundedEntitiesEnabled,
   intentExtractionEnabled,
   managerWordsOnlyEnabled,
+  placeSpanGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -303,6 +305,8 @@ function isFragment(name: string | null | undefined): boolean {
 }
 
 function salonIds(text: string): string[] {
+  // PLACE_SPAN_GUARD_ENABLED: "location st joe" names St Joseph (`salon-cue.ts`).
+  if (placeSpanGuardEnabled()) return labelledSalonIds(text);
   const visible = text.replace(/[.!]+/g, " ; ").replace(/[\n\r]+/g, " ; ");
   const fromVisible = [...new Set(readSalonMentions(visible).flatMap((mention) => mention.salonIds))];
   if (fromVisible.length > 0) return fromVisible;
