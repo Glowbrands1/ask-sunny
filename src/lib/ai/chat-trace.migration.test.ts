@@ -9,8 +9,18 @@ import { redactTraceText, traceInsertWarning } from "./chat-trace";
 const SQL = readFileSync("supabase/migrations/20261023001100_chat_traces.sql", "utf8");
 const SLOTS_SQL = readFileSync("supabase/migrations/20261024012000_chat_traces_slots.sql", "utf8");
 const CACHE_SQL = readFileSync("supabase/migrations/20261024020000_chat_traces_cache.sql", "utf8");
+const E2E_SQL = readFileSync("supabase/migrations/20261024160000_chat_traces_e2e_latency.sql", "utf8");
 
 describe("chat trace insert", () => {
+  it("warns when the end-to-end latency column is missing", () => {
+    const warning = traceInsertWarning({
+      message: 'column "e2e_latency_ms" of relation "chat_traces" does not exist',
+      code: "42703",
+    });
+    expect(warning).toContain("end-to-end latency column is missing");
+    expect(warning).toContain("20261024160000_chat_traces_e2e_latency.sql");
+  });
+
   it("warns when the cache columns are missing", () => {
     const warning = traceInsertWarning({
       message: 'column "cache_creation_input_tokens" of relation "chat_traces" does not exist',
@@ -75,6 +85,22 @@ describe("chat_traces migration", () => {
     expect(created).toBeGreaterThan(slots);
     expect(read).toBeGreaterThan(created);
     expect(firstToken).toBeGreaterThan(read);
+  });
+
+  it("appends e2e_latency_ms after the cache columns", () => {
+    const statements = E2E_SQL.split("\n")
+      .filter((line) => !line.trim().startsWith("--"))
+      .join("\n");
+    expect(statements).toMatch(/add column if not exists e2e_latency_ms integer/i);
+    expect(statements).not.toMatch(/not null/i);
+    expect(statements).not.toMatch(/drop (table|column|function|index)/i);
+    expect(statements).toMatch(/with \(security_invoker = true\)/i);
+    const view = statements.slice(statements.toLowerCase().indexOf("create or replace view"));
+    const firstToken = view.indexOf("first_token_ms");
+    const e2e = view.indexOf("e2e_latency_ms");
+    const errorSubtype = view.indexOf("error_subtype");
+    expect(e2e).toBeGreaterThan(firstToken);
+    expect(firstToken).toBeGreaterThan(errorSubtype);
   });
 
   it("rejects a view that inserts the cache columns before error_subtype", async () => {
@@ -166,6 +192,32 @@ describe("chat_traces migration", () => {
       );
       expect(repeated.rows.map((row) => row.column_name)).toEqual(names);
       await describeView("after cache again");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("appplies e2e_latency_ms after the cache columns on Postgres", async () => {
+    const harness = await createMigratedTestDatabase(
+      [
+        "20261023001100_chat_traces",
+        "20261024012000_chat_traces_slots",
+        "20261024020000_chat_traces_cache",
+        "20261024160000_chat_traces_e2e_latency",
+      ],
+      { platform: "create extension if not exists pgcrypto with schema extensions;" },
+    );
+    try {
+      const columns = await harness.db.query<{ column_name: string }>(
+        `select column_name
+           from information_schema.columns
+          where table_schema = 'public' and table_name = 'chat_traces_live'
+          order by ordinal_position`,
+      );
+      const names = columns.rows.map((row) => row.column_name);
+      expect(names.at(-1)).toBe("e2e_latency_ms");
+      expect(names.at(-2)).toBe("first_token_ms");
+      expect(names.indexOf("error_subtype")).toBe(names.indexOf("latency_ms") + 1);
     } finally {
       await harness.close();
     }

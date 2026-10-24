@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import { secondFormEnabled } from "@/lib/config/chat-quality-flags";
@@ -57,6 +58,7 @@ const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: Request) {
+  enterChatRequestClock();
   try {
     assertLiveMode();
     assertNoConfigurationProblems();

@@ -1,5 +1,27 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: full manual in the policy prompt — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No ingest change
+and no merge.
+
+- `FULL_MANUAL_CONTEXT_ENABLED` defaults off. Off, a policy question is
+  still answered from retrieved chunks.
+- On, a policy question loads the current JBA Policy Manual (`status`
+  indexed, `superseded_by` null) and sends it as a cached system block.
+  Ask Sunny is Sun Tan City only. The block keeps shared JBA policy and
+  Sun Tan City sections. Buff City Soap, Crunch, the JBA office, and any
+  other brand's policy manual stay out. A missing or oversized manual
+  keeps retrieval.
+- Citations are `<section>, <manual title> p.<n>`. A page or heading that
+  is not in that manual is dropped or corrected. A source marker past the
+  sources in hand, such as [S11] when eight sources were retrieved, is
+  removed.
+- `chat_traces.e2e_latency_ms` is request received until the last token.
+  `latency_ms` stays the model call. `cache_read_input_tokens` is the
+  existing column.
+
 ## 24 Oct 2026: manual heading scan, W-2 note, PTO accrual — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

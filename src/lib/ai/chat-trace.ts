@@ -86,6 +86,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       cache_creation_input_tokens: model?.cacheCreationInputTokens ?? null,
       cache_read_input_tokens: model?.cacheReadInputTokens ?? null,
       first_token_ms: model?.firstTokenMs ?? null,
+      e2e_latency_ms: model?.e2eLatencyMs ?? null,
       latency_ms: model?.latencyMs ?? Date.now() - draft.startedAt,
       error_subtype: draft.errorSubtype,
       error_class: draft.errorClass,
@@ -113,6 +114,9 @@ export function traceInsertWarning(error: unknown): string {
       : error && typeof error === "object" && "message" in error && typeof error.message === "string"
         ? error.message
         : String(error);
+  if (/e2e_latency_ms/i.test(message)) {
+    return `chat_traces insert skipped: the end-to-end latency column is missing. Apply supabase/migrations/20261024160000_chat_traces_e2e_latency.sql before CHAT_TRACE_ENABLED. ${message}`;
+  }
   const missingCacheColumns = /cache_creation_input_tokens|cache_read_input_tokens|first_token_ms/i.test(message);
   if (missingCacheColumns) {
     return `chat_traces insert skipped: the cache columns are missing. Apply supabase/migrations/20261024020000_chat_traces_cache.sql before CHAT_TRACE_ENABLED. ${message}`;

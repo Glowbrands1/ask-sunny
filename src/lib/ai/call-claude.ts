@@ -7,7 +7,7 @@ import { AiError } from "./errors";
 import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
 import { modelRequestOptions, modelUnavailable } from "./model-retry";
-import { cachedSystem, cachedUserContent } from "./prompt-cache";
+import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
 
 /**
  * ============================================================================
@@ -109,6 +109,11 @@ export interface CallClaudeInput {
    * is on. Omitted, it stays inside `grounding` and the request is unchanged.
    */
   readonly manualBlock?: string | null;
+  /**
+   * The whole policy manual, sent as its own cached system block. Omitted,
+   * the system prompt is exactly what `cachedSystem` already returns.
+   */
+  readonly fullManualBlock?: string | null;
 }
 
 export interface CollectedModelResult {
@@ -244,8 +249,9 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     thinking: { type: "adaptive" as const },
     output_config: { effort: CLAUDE_EFFORT },
     // Static rules take cache_control { type: "ephemeral" }. The tail after
-    // ---DYNAMIC--- (name, salon, today) is not cached.
-    system: cachedSystem(input.system),
+    // ---DYNAMIC--- (name, salon, today) is not cached. A full manual, when
+    // the caller passed one, is its own cached block ahead of that prompt.
+    system: systemWithCachedManual(cachedSystem(input.system), input.fullManualBlock),
     messages: [
       ...history,
       {
