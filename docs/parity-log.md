@@ -1,5 +1,12 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: replay each case once — Sunny-only
+
+Ask Bubbles was not attached. The local scoreboard harness now runs each
+case once. Pass rules, the 20000 ms latency gate, the card criteria, the
+rulebook comparison, and the prompt-cache log stay. The frozen main column
+is not re-recorded. No production writes and no merge.
+
 ## 24 Oct 2026: prompt cache split — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

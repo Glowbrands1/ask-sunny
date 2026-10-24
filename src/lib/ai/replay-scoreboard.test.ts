@@ -243,8 +243,19 @@ describe("rulebook old against new", () => {
         { id: "s20", oldMisses: [], newMisses: [], verdict: "same" },
       ],
     });
+    expect(board).toContain("Each case runs 3 times.");
+    expect(board).toContain("20000 ms for the 3 runs together");
     expect(board).toContain("| n2 | amount | pass | better |");
     expect(board).toContain("| s20 | pass | pass | same |");
+    const once = renderRulebookScoreboard({
+      oldCommit: "b9ae362fd80e1fc492c4326f80834cf105ef19b8",
+      newCommit: "ac804b960940ac642edca27629df9de0f4e51d88",
+      runs: 1,
+      rows: [{ id: "s20", oldMisses: [], newMisses: [], verdict: "same" }],
+    });
+    expect(once).toContain("Each case runs 1 time.");
+    expect(once).toContain("- runs: 1");
+    expect(once).toContain("20000 ms for the run");
     expect(board).toContain("Totals: better 1, same 1, worse 0.");
     expect(board).not.toContain("FAIL");
     expect(board).toContain("salon does not gate the card");

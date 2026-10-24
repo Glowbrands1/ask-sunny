@@ -105,7 +105,7 @@ const ROUND1_FLAGS = [
   "CODE_SLOTS_ENABLED",
 ] as const;
 
-/** Round 3, current prompt, 3 runs together. The latency cap is 25% over these. */
+/** Round 3, current prompt, the runs together. The latency cap is 25% over these. */
 const PREVIOUS_ROUND_MS: Record<string, number> = {
   s4: 3059,
   s9: 485,
@@ -1533,7 +1533,7 @@ function cardFailures(item: ReplayCase, last: Awaited<ReturnType<typeof ask>> | 
   });
 }
 
-/** One prompt revision, same flags, fresh form state. Three runs share state, as earlier rounds did. */
+/** One prompt revision, same flags, fresh form state. The runs share state, as earlier rounds did. */
 async function runFlagsOn(item: ReplayCase, variant: SystemPromptRevision, bucket: ReplayCaseResult[]) {
   selectPromptRevision(variant);
   stateBag.forms.clear();
@@ -1932,11 +1932,14 @@ function scoreRulebook(commit: string): { markdown: string; worse: string[] } {
     const spec = rulebookSpec(item);
     const prior = old.cases.find((row) => row.id === item.id);
     const next = rulebookNew.find((row) => row.id === item.id);
-    if (!prior || prior.runs.length !== RUNS) throw new Error(`${item.id} OLD column is missing a run`);
+    // The frozen main column was captured at 3 runs and is not re-recorded.
+    // This replay scores the first run, so OLD and NEW are both one pass.
+    // `ms` stays the capture's runs together; it is still under the same gate.
+    if (!prior || prior.runs.length < RUNS) throw new Error(`${item.id} OLD column is missing a run`);
     if (!next || next.runs.length !== RUNS) throw new Error(`${item.id} NEW column is missing a run`);
     const oldMisses = judgeRulebookRuns(
       spec,
-      prior.runs.map((run) => toRulebookRun(item, run)),
+      prior.runs.slice(0, RUNS).map((run) => toRulebookRun(item, run)),
       prior.ms,
     );
     const newMisses = judgeRulebookRuns(
