@@ -456,7 +456,9 @@ describe("live form cards, 23 Oct 2026", () => {
         today: TODAY,
       });
       expect(missing?.formProposal?.employeeName).toMatch(/jane doe/i);
-      expect(missing?.content ?? "").not.toMatch(/didn't find|didn’t find|employee list for your salons/i);
+      expect(missing?.formProposal?.wovenCloseMatch ?? null).toBeNull();
+      expect(missing?.content ?? "").not.toMatch(/didn't find|didn’t find|employee list for your salons|Woven has/i);
+      expect(first?.content ?? "").not.toMatch(/Woven has/);
     } finally {
       delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
     }
@@ -526,10 +528,8 @@ describe("live form cards, 23 Oct 2026", () => {
         saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
       });
       expect(noted.formProposal?.employeeName).toBe("Lisa smith");
-      expect(noted.content).toContain(
-        "Woven has **Lisa Smyth** — say so if that's who you mean. Carry on; do not wait.",
-      );
-      expect(noted.content).not.toMatch(/did you mean|who is this|want to be sure/i);
+      expect(noted.formProposal?.wovenCloseMatch).toBe("Woven has Lisa Smyth");
+      expect(noted.content).not.toMatch(/Woven has|did you mean|say so if|who is this|want to be sure/i);
       const later = enrichFormCard({
         response: { ...asked, content: "Here is the card for Lisa smith." },
         question: LISA_PROMPT,
@@ -539,7 +539,18 @@ describe("live form cards, 23 Oct 2026", () => {
         wovenNoteShown: true,
       });
       expect(later.formProposal?.employeeName).toBe("Lisa smith");
-      expect(later.content).not.toMatch(/Woven has \*\*|did you mean/i);
+      expect(later.formProposal?.wovenCloseMatch).toBe("Woven has Lisa Smyth");
+      expect(later.content).not.toMatch(/Woven has|did you mean/i);
+      const nobody = enrichFormCard({
+        response: asked,
+        question: LISA_PROMPT,
+        today: TODAY,
+        people: [JORDAN],
+        saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
+      });
+      expect(nobody.formProposal?.employeeName).toBe("Lisa smith");
+      expect(nobody.formProposal?.wovenCloseMatch ?? null).toBeNull();
+      expect(nobody.content).not.toMatch(/Woven has|didn'?t find/i);
     } finally {
       delete process.env.TYPED_NAME_PROCEEDS_ENABLED;
     }

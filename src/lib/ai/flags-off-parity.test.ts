@@ -215,8 +215,16 @@ describe("new flags default off and wrappers are inert", () => {
     const uiBase = uiDiffBase();
     if (uiBase) {
       // Test files may change an expectation when Pau changes the wording.
-      // Component, style, and page files stay untouched.
-      expect(diff(uiBase, [...UI_PATHS, ":(exclude)**/*.test.tsx", ":(exclude)**/*.dom.test.tsx"])).toBe("");
+      // Component, style, and page files stay untouched, except the chat
+      // bubble: Pau asked for the close-match note under the card.
+      expect(
+        diff(uiBase, [
+          ...UI_PATHS,
+          ":(exclude)**/*.test.tsx",
+          ":(exclude)**/*.dom.test.tsx",
+          ":(exclude)src/features/chat/message-bubble.tsx",
+        ]),
+      ).toBe("");
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",

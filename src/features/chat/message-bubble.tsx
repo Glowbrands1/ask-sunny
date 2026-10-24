@@ -564,27 +564,38 @@ function FormProposalCard({
     }
   }
 
+  const closeMatch = proposal.wovenCloseMatch?.trim() || null;
+  const closeMatchNote = closeMatch ? (
+    <p data-testid="woven-close-match" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+      {closeMatch}
+    </p>
+  ) : null;
+
   const reference = instanceRef ?? created;
   if (reference) {
     return (
-      <InlineForm
-        reference={reference}
-        prefill={prefill}
-        onStartAnother={onStartAnother}
-        /*
-          "Edit as new draft" on a finalized form: the card now points at the
-          new draft, persisted on this message the same way the created form
-          was, so a refresh reopens the draft rather than the frozen original.
-        */
-        onReplaced={(next) => {
-          setCreated(next);
-          onCreated(next);
-        }}
-      />
+      <>
+        <InlineForm
+          reference={reference}
+          prefill={prefill}
+          onStartAnother={onStartAnother}
+          /*
+            "Edit as new draft" on a finalized form: the card now points at the
+            new draft, persisted on this message the same way the created form
+            was, so a refresh reopens the draft rather than the frozen original.
+          */
+          onReplaced={(next) => {
+            setCreated(next);
+            onCreated(next);
+          }}
+        />
+        {closeMatchNote}
+      </>
     );
   }
 
   return (
+    <>
     <div className="mt-4 min-w-0 rounded-[var(--radius-md)] border border-border bg-surface-muted px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-surface text-muted-foreground">
@@ -691,6 +702,8 @@ function FormProposalCard({
         </div>
       ) : null}
     </div>
+    {closeMatchNote}
+    </>
   );
 }
 

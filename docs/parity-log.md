@@ -5,6 +5,20 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Close-match note under the card — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. The flag defaults
+off. Do not publish templates.
+
+- `TYPED_NAME_PROCEEDS_ENABLED` — when a typed name is close to a different
+  Woven employee, the card is built in that same turn with the typed spelling.
+  A short note sits under the card: "Woven has Jane Doe". Several close people
+  read "Woven has Pat Rivera or Pat Jones". The note is not a question and
+  does not hold the card. There is no note when nobody is close, and no
+  "I didn't find…" line. Off, a close match is still "Did you mean …?" and
+  that question holds the card.
+
 ## 24 Oct 2026: Code-owned form slots — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
@@ -70,10 +84,10 @@ attached.
   `NEXT_PUBLIC_POLICY_GATE_NONBLOCKING_ENABLED`) — a blank Direct policy
   stays blank and does not hold the card or finalize. A policy value
   somebody typed that was never verified still asks for an acknowledgement.
-- `TYPED_NAME_PROCEEDS_ENABLED` — the close-match line is "Woven has **Jane
-  Doe** — say so if that's who you mean. Carry on; do not wait." The card
-  uses the typed name in that same reply. The note is not asked again. A
-  name that is not in Woven is not mentioned.
+- `TYPED_NAME_PROCEEDS_ENABLED` — see the close-match note at the top of
+  this log. The card uses the typed name in that same reply. The note under
+  the card is "Woven has Jane Doe", not a question. A name that is not close
+  to anyone in Woven gets no note.
 - `MANUAL_SECTION_DEDUPE_ENABLED` — retrieval keeps one current-year chunk
   per section heading (nearest match). The three indexed 2025 copies
   (ce6b00f1, 5c626f3c, 94d9810f) are the test fixture, not a keep-list.
@@ -89,7 +103,7 @@ defaults off.
 
 - `TYPED_NAME_PROCEEDS_ENABLED` — a name that is not an exact roster match
   stays as typed. "Did you mean" and "Who is this for?" do not hold the
-  card. A close roster match may be offered in the same reply. Two people
+  card. A close roster match is the short note under the card. Two people
   the manager actually named are still a real "Which of them".
 - `ATTENDANCE_POLICY_CITATION_ENABLED` — tardiness cites Attendance by name
   and page. A late opening still cites Late Opening. The ticked

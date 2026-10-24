@@ -281,3 +281,35 @@ describe("a card from before a correction offers nothing", () => {
     expect([...container.querySelectorAll("button")].some((button) => /Create draft/.test(button.textContent ?? ""))).toBe(true);
   });
 });
+
+describe("a close Woven name is a note under the card", () => {
+  it("shows Woven has Jane Doe under the card, and nowhere in the reply", () => {
+    const { container } = bubble({
+      content: "Here is the Coaching Form for Jane Do.",
+      formProposal: proposal({
+        employeeName: "Jane Do",
+        locationId: "loc-0314",
+        wovenCloseMatch: "Woven has Jane Doe",
+      }),
+    });
+    const card = container.querySelector("dl")!.parentElement!;
+    const note = container.querySelector("[data-testid='woven-close-match']");
+    expect(note).not.toBeNull();
+    expect(note!.textContent).toBe("Woven has Jane Doe");
+    expect(note!.textContent).not.toContain("?");
+    expect(card.compareDocumentPosition(note!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(card.contains(note)).toBe(false);
+    expect(card.textContent).toContain("Jane Do");
+    note!.remove();
+    expect(container.textContent).not.toContain("Woven has");
+    expect(container.textContent).toContain("Here is the Coaching Form for Jane Do.");
+  });
+
+  it("shows no note when there is no close match", () => {
+    const { container } = bubble({
+      formProposal: proposal({ employeeName: "Jane Doe", locationId: "loc-0314" }),
+    });
+    expect(container.querySelector("[data-testid='woven-close-match']")).toBeNull();
+    expect(container.textContent).not.toContain("Woven has");
+  });
+});

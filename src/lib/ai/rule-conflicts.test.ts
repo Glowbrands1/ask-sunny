@@ -35,20 +35,22 @@ const PROMPT = {
 describe("an unverified name is used as typed", () => {
   it("offers one close roster match without making it a gate", () => {
     const note = inlineCloseMatch("Colene Shildt", ["Colene Schildt"]);
-    expect(note).toBe(
-      "Woven has **Colene Schildt** — say so if that's who you mean. Carry on; do not wait.",
-    );
+    expect(note).toBe("Woven has Colene Schildt");
     expect(blocksOnNameQuestion(note)).toBe(false);
-    expect(note).not.toMatch(/did you mean|I'll keep/i);
+    expect(note).not.toMatch(/did you mean|I'll keep|\?/);
+    expect(inlineCloseMatch("Jane Doe", [])).toBe("");
   });
 
   it("offers several close matches in the same reply, and not again later", () => {
     const note = inlineCloseMatch("Pat", ["Pat Rivera", "Pat Jones"]);
-    expect(note).toBe(
-      "Woven has **Pat Rivera** or **Pat Jones** — say so if that's who you mean. Carry on; do not wait.",
-    );
-    expect(note).not.toMatch(/reply with the number|did you mean/i);
+    expect(note).toBe("Woven has Pat Rivera or Pat Jones");
+    expect(note).not.toMatch(/reply with the number|did you mean|\?/);
     expect(wovenNoteAlreadyShown([{ content: note }])).toBe(true);
+    expect(
+      wovenNoteAlreadyShown([
+        { content: "Woven has **Jane Doe** — say so if that's who you mean. Carry on; do not wait." },
+      ]),
+    ).toBe(true);
     expect(wovenNoteAlreadyShown([{ content: "coaching form for Pat" }])).toBe(false);
   });
 

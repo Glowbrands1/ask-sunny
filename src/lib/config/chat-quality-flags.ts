@@ -243,10 +243,10 @@ export function currentManualScopeEnabled(): boolean {
 
 /**
  * A name that is not in the roster stays as typed. "Who is this for?" does
- * not block the form. A close roster match is one note — "Woven has **Jane
- * Doe** — say so if that's who you mean. Carry on; do not wait." — shown
- * once, in the same reply as the card. Off, a close match is still a
- * question that holds the card.
+ * not block the form. A close roster match is one note under the card —
+ * "Woven has Jane Doe" — in the same turn. It is not a question and it does
+ * not hold the card. No note when nothing is close. Off, a close match is
+ * still a question that holds the card.
  */
 export function typedNameProceedsEnabled(): boolean {
   return envFlag("TYPED_NAME_PROCEEDS_ENABLED");

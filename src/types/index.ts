@@ -612,6 +612,14 @@ export interface ChatFormProposal {
   /** Null until the manager names one. Never inferred from an assistant turn. */
   employeeName: string | null;
   /**
+   * A close Woven employee for the name the manager typed.
+   *
+   * Shown under the card as "Woven has Jane Doe". The card still uses the
+   * typed spelling. Absent when the flag is off, the name is exact, or
+   * nobody in Woven is close. Never a question and never a reason to wait.
+   */
+  wovenCloseMatch?: string | null;
+  /**
    * The employee's job title, where the MANAGER stated it.
    *
    * "Jessica is an SDIT at Lincoln South" says it; nothing else does. It is

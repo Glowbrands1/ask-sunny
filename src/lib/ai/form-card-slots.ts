@@ -39,7 +39,8 @@ import type { AskResponse } from "./types";
  * A missing employee used to replace the whole answer with "who is this for?",
  * and a missing salon replaced it with "which salon?". The date, the title,
  * the payroll amount and the policy were already in the message. They stay
- * on the card. A name Woven does not have stays too, with one sentence.
+ * on the card. A close Woven spelling stays typed, with a short note under
+ * the card. A name nobody in Woven is close to gets no note.
  */
 
 const CATEGORIES = new Set<KnowledgeCategory>([
@@ -63,7 +64,10 @@ export function enrichFormCard(input: {
   readonly today: string;
   readonly people: readonly GroundedPerson[];
   readonly saved: ConversationFormState | null;
-  /** The close-match note was already in an earlier reply. */
+  /**
+   * Callers still pass this. The note under the card stays on later turns;
+   * it is not a question, so it is not suppressed.
+   */
   readonly wovenNoteShown?: boolean;
 }): AskResponse {
   const proposal = input.response.formProposal;
@@ -115,7 +119,11 @@ export function enrichFormCard(input: {
   for (const line of lines) {
     if (!alreadySaid(content, line)) content = content ? `${content}\n\n${line}` : line;
   }
-  content = rosterOnce(content, next.employeeName, input.people, input.wovenNoteShown === true);
+  if (typedNameProceedsEnabled() && input.people.length > 0) {
+    const note = closeMatchNote(next.employeeName, input.people);
+    if ((next.wovenCloseMatch ?? null) !== note) next = { ...next, wovenCloseMatch: note };
+  }
+  content = rosterOnce(content, next.employeeName, input.people);
 
   return content === input.response.content && next === proposal
     ? input.response
@@ -504,21 +512,25 @@ function fieldLines(input: {
   return lines;
 }
 
-function rosterOnce(
-  content: string,
-  name: string | null,
-  people: readonly GroundedPerson[],
-  wovenNoteShown: boolean,
-): string {
+/** The under-card note, or null when nobody in Woven is close. */
+function closeMatchNote(name: string | null, people: readonly GroundedPerson[]): string | null {
+  if (!name || people.length === 0) return null;
+  const match = matchEmployeeName(name, people);
+  if (match.kind !== "confirm") return null;
+  const names = match.candidates
+    .map((candidate) => candidate.name)
+    .filter((candidate) => candidate.toLowerCase() !== name.toLowerCase());
+  if (names.length === 0) return null;
+  return inlineCloseMatch(name, names) || null;
+}
+
+function rosterOnce(content: string, name: string | null, people: readonly GroundedPerson[]): string {
+  if (typedNameProceedsEnabled()) return content;
   if (!name || people.length === 0) return content;
   if (/couldn'?t find|didn'?t find|not in the woven roster/i.test(content)) return content;
   const match = matchEmployeeName(name, people);
   if (match.kind !== "confirm" || match.candidates.length !== 1) return content;
   if (match.candidates[0]!.name.toLowerCase() === name.toLowerCase()) return content;
-  if (typedNameProceedsEnabled()) {
-    if (wovenNoteShown || /Woven has \*\*/.test(content)) return content;
-    return `${inlineCloseMatch(name, [match.candidates[0]!.name])}\n\n${content}`;
-  }
   const suggestion = `Did you mean **${match.candidates[0]!.name}**? I'll keep **${name}** on the form unless you say otherwise.`;
   if (!content.includes("Did you mean")) return `${suggestion}\n\n${content}`;
   return content;
