@@ -1,5 +1,39 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: a manual citation marks the page the sentence restates — ported from Ask Bubbles
+
+`FULL_MANUAL_CONTEXT_ENABLED` stays off. The loader reads
+`metadata.sections`, so each heading in a chunk takes the page ingestion
+recorded for it: Facial Hair and Make-up 16, Point of Sale and Alarm
+Passwords 20 (the uploaded PDF). The answer pass reads one sentence or
+bullet at a time. It removes every `[p.N]` and writes back only the page
+whose text the sentence restates; a model page stays when its text still
+matches. In a "<section>, JBA Policy Manual p.N" label only the page
+number changes, to the page that section is printed on, with one marker
+after it. A section on several pages keeps the model's page when it is one
+of them. An unknown section, another manual's page, a Buff City Soap or
+Crunch sentence, and "see page 99" stay as written with no marker. No other
+word, line break or bullet changes. This replaces f44631a's rewrite, which
+cut words at commas.
+
+**Sibling app: ported from** Glowbrands1/Ask-bubbles#101 (6ed0630, the
+per-sentence marker pass). Sunny's label rule has no Bubbles counterpart,
+because Bubbles' model writes `[p.N]` only. No Buff City Soap wording was
+copied.
+
+## 24 Oct 2026: a policy quote is not the manager's payroll answer — ported from Ask Bubbles
+
+`INTENT_PAYROLL_MANAGER_ONLY_ENABLED` is new and stays off. With it on,
+the intent read takes the payroll amount and the Yes/No from the manager's
+turns only. In Ask Bubbles (conv_mvmf4x1i2qxha7u) the manager said "verbal,
+no payroll", but the saved state had payroll amount 25 and Yes, taken from
+the assistant's quote of the Late Opening policy. This app's `mergeSlots`
+had the same rule. "no payroll" now saves No with no amount.
+
+**Sibling app: ported from** Glowbrands1/Ask-bubbles#101 (d2ac87a). The
+test keeps the manager's words and uses this app's salon and Form
+Monitoring names.
+
 ## 24 Oct 2026: one extraction fills the form — ported from Ask Bubbles
 
 `FORM_FULL_REMAP_ENABLED` stays off. On, each turn reads every user message
