@@ -99,6 +99,24 @@ describe("INTENT_PAYROLL_MANAGER_ONLY_ENABLED", () => {
     expect(state.payrollAmount).toBe("25");
   });
 
+  it("does not take a shortage amount as a payroll deduction (QA, 24 Oct 2026)", () => {
+    vi.stubEnv("INTENT_PAYROLL_MANAGER_ONLY_ENABLED", "true");
+    const state = decideIntentTurn({
+      question: "CA for Testy Testerson at North Salon, register short $40 on 10-21, verbal",
+      history: [],
+      today: "2026-10-24",
+      saved: null,
+      raw: null,
+      people: [],
+      salons: SALONS,
+      headings: HEADINGS,
+      templates: TEMPLATES,
+      formInProgress: false,
+    }).state;
+    expect(state.payrollDeduct).toBeNull();
+    expect(state.payrollAmount).toBeNull();
+  });
+
   it("off, reads the assistant's $25 as before (the Ask Bubbles state on 24 Oct)", () => {
     const state = replay();
     expect(state.payrollAmount).toBe("25");
