@@ -8,6 +8,11 @@ import { EMPLOYMENT_CHANGE_TEMPLATE_SEEDS } from "./employment-change-library";
 import { EXIT_TEMPLATE_SEEDS } from "./exit-library";
 import { HIRING_TEMPLATE_SEEDS } from "./hiring-library";
 import {
+  PAYROLL_AMOUNT_HELP,
+  PAYROLL_AMOUNT_KEY,
+  PAYROLL_AMOUNT_LABEL,
+} from "./payroll-amount-field";
+import {
   PAYROLL_DEDUCT_KEY,
   PAYROLL_DEDUCT_LABEL,
   PAYROLL_DEDUCT_OPTIONS,
@@ -614,6 +619,17 @@ export function correctiveActionDocument(): FormDocument {
         responsibility: "manager",
         columns: 2,
         single: true,
+      },
+      {
+        /*
+         * PAYROLL DEDUCTION AMOUNT — revision 7, the live library's revision.
+         * The figure the manager gives. Blank until then. Not published by
+         * ensureTemplateLibrary; that waits for Pau. See payroll-amount-field.ts.
+         */
+        kind: "field",
+        field: field(PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_LABEL, "manager", "text", {
+          help: PAYROLL_AMOUNT_HELP,
+        }),
       },
 
       { kind: "section", label: "Acknowledgement of Receipt of Warning" },
@@ -1703,9 +1719,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 6,
+    revision: 7,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Revision 7 matches the live library and adds \"Payroll deduction amount\" immediately after the Yes / No. The figure is the manager's and is never taken from the policy. ensureTemplateLibrary does not publish revision 7; the database stays on revision 6 until Pau approves a publish. Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

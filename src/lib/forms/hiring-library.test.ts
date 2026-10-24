@@ -233,9 +233,11 @@ describe("the Coaching Form matches 01. Coaching Form.docx", () => {
      * Revision 5 (HR feedback, 3 Oct 2026) replaces the two previous-action
      * lines with one list and gives the Action Plan its required closing.
      * Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action
-     * Plan two sentences and its closing "may result in".
+     * Plan two sentences and its closing "may result in". Revision 7 matches
+     * the live library and adds Payroll deduction amount. That revision is
+     * not published until Pau approves it.
      */
-    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(6);
+    expect(TEMPLATE_SEEDS.find((seed) => seed.key === "dpoa")?.revision).toBe(7);
   });
 });
 

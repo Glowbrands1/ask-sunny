@@ -22,7 +22,12 @@ import { authorizeInstance } from "./instance-scope";
 import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
 
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
-import { PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_LABEL } from "./payroll-amount-field";
+import {
+  PAYROLL_AMOUNT_KEY,
+  PAYROLL_AMOUNT_LABEL,
+  payrollAmountAlreadyAsked,
+  payrollAmountPrompt,
+} from "./payroll-amount-field";
 import {
   PAYROLL_DEDUCT_KEY,
   payrollAmountFromConversation,
@@ -450,6 +455,14 @@ export async function correctActiveForm(input: {
     );
   }
   if (whichDate) lines.push("", whichDate);
+  const existingAmount = (loaded.values.find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value ?? "").trim();
+  const amountQuestion = payrollAmountPrompt({
+    payroll,
+    amount: statedAmount ?? (existingAmount || null),
+    alreadyAsked: payrollAmountAlreadyAsked(input.history ?? []),
+    onForm: fieldsForVariant(document, variantKey).some((field) => field.key === PAYROLL_AMOUNT_KEY),
+  });
+  if (amountQuestion) lines.push("", amountQuestion);
 
   return { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: written } };
 }

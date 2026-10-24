@@ -563,8 +563,9 @@ describe("the rest of the library is where it was", () => {
   it("moves no other template's revision", () => {
     const expected: Record<string, number> = {
       coaching: 2,
-      // Revision 6: the Action Plan as two sentences (District Manager feedback, 21 Oct 2026).
-      dpoa: 6,
+      // Revision 7 matches the live library and adds Payroll deduction amount.
+      // ensureTemplateLibrary does not publish it.
+      dpoa: 7,
       "policy-review": 2,
       "follow-up-coaching": 2,
       "sdit-epp": 3,

@@ -2,14 +2,19 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
-import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
 import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
-import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
+import {
+  payrollAmountFromConversation,
+  payrollAnswerForAmount,
+  payrollDeductAmount,
+  statedPayrollDeduct,
+} from "@/lib/forms/payroll-deduct";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
@@ -84,7 +89,7 @@ export function enrichFormCard(input: {
     (namedSalon.length === 1 ? namedSalon[0]! : null) ??
     input.saved?.salonId ??
     (namedSalon.length === 0 && askedHere.length === 0 ? primarySalon(employeeName, input.people) : null);
-  const amount = payrollDeductAmount(blob) ?? (input.saved?.payrollAmount ? `$${input.saved.payrollAmount}` : null);
+  const amount = cardPayrollAmount(input, blob);
   const payrollDeduct = proposal.payrollDeduct ?? (amount || input.saved?.payrollDeduct === "yes" ? "yes" : input.saved?.payrollDeduct ?? null);
   const warningLevel = proposal.warningLevel ?? input.saved?.warningLevel ?? null;
 
@@ -95,6 +100,7 @@ export function enrichFormCard(input: {
     formDate,
     payrollDeduct,
     warningLevel,
+    ...(payrollAmountFieldEnabled() ? { payrollDeductAmount: amount } : {}),
   };
   if (locationId && next.locationId !== locationId) next = settleLocation(next, locationId);
   else if (next.employeeName && next.locationId && next.status !== "ready") next = settleLocation(next, next.locationId);
@@ -447,6 +453,37 @@ function withoutBlocking(content: string, proposal: ChatFormProposal): string {
 function leadFor(proposal: ChatFormProposal): string {
   const who = proposal.employeeName ? ` for **${proposal.employeeName}**` : "";
   return `Here is what I would put on a **${proposal.templateName}**${who}.`;
+}
+
+/**
+ * The figure on the card. With the amount field on, only a manager-stated
+ * figure or one already stored for this conversation. A policy $25 is neither.
+ */
+function cardPayrollAmount(
+  input: {
+    readonly question: string;
+    readonly said?: string;
+    readonly saved: ConversationFormState | null;
+    readonly response: AskResponse;
+  },
+  blob: string,
+): string | null {
+  if (!payrollAmountFieldEnabled()) {
+    return payrollDeductAmount(blob) ?? (input.saved?.payrollAmount ? `$${input.saved.payrollAmount}` : null);
+  }
+  const proposal = input.response.formProposal;
+  const said = [input.said, input.question].filter((line) => line && line.trim()).join("\n");
+  const answer =
+    proposal?.payrollDeduct ??
+    input.saved?.payrollDeduct ??
+    payrollAnswerForAmount(said || blob) ??
+    statedPayrollDeduct(blob);
+  return (
+    payrollAmountFromConversation([{ role: "user", content: said || blob }], { payrollAnswer: answer }) ??
+    input.saved?.payrollDeductAmount ??
+    proposal?.payrollDeductAmount ??
+    null
+  );
 }
 
 function fieldLines(input: {

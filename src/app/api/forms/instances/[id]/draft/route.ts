@@ -1880,6 +1880,30 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       { ...planned.provenance, ...cited.provenance },
     );
 
+    /*
+     * A redraft writes the assistant's fields and leaves every other key. The
+     * amount is not one of those fields, and a blank write must not be how it
+     * disappears. Put the manager's figure back when payroll is still Yes:
+     * the one in these notes, or the one already on the form. Never the
+     * policy's $25. chat_form_state carries the same figure onto the next card.
+     */
+    if (payrollAmountFieldEnabled() && payrollAnswer === "yes") {
+      const held =
+        (loaded.values ?? []).find((row) => row.fieldKey === PAYROLL_AMOUNT_KEY)?.value?.trim() || null;
+      const statedNow = payrollAmountFromConversation([{ role: "user", content: notes }], {
+        payrollAnswer: "yes",
+      });
+      const keep = statedNow ?? held;
+      if (keep) {
+        await applyStatedFacts(
+          id,
+          { values: { [PAYROLL_AMOUNT_KEY]: keep }, checked: {} },
+          actor.id,
+          PAYROLL_AMOUNT_STATED_KEYS,
+        );
+      }
+    }
+
     return NextResponse.json({
       values: guarded.accepted.values,
       checked: guarded.accepted.checked,

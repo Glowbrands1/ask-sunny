@@ -138,8 +138,11 @@ const { TemplateSyncReport } = await import("@/features/forms/template-sync-repo
 const PRODUCTION = { VERCEL: "1", VERCEL_ENV: "production", NODE_ENV: "production" };
 const PREVIEW = { VERCEL: "1", VERCEL_ENV: "preview", NODE_ENV: "production" };
 
-/** Three templates this database holds an older revision of. */
-const REISSUED = TEMPLATE_SEEDS.slice(0, 3).map((seed) => seed.key);
+/**
+ * Three templates this database holds an older revision of.
+ * dpoa is not among them: revision 7 is in the seed and is not published.
+ */
+const REISSUED = ["coaching", "policy-review", "sdit-epp"];
 /** The one whose publish is made to fail. */
 const FAULTY = REISSUED[0]!;
 

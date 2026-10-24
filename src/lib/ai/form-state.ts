@@ -1,3 +1,4 @@
+import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
 import { rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 
@@ -25,6 +26,11 @@ export interface ConversationFormState {
   readonly incidentType: string | null;
   /** A payroll figure this conversation already grounded, or null. */
   readonly payrollAmount: string | null;
+  /**
+   * Payroll deduction amount, the manager's figure. Kept across a redraft.
+   * Not the intent slot above, and not a figure read out of a policy.
+   */
+  readonly payrollDeductAmount: string | null;
 }
 
 export const EMPTY_FORM_STATE: ConversationFormState = {
@@ -42,6 +48,7 @@ export const EMPTY_FORM_STATE: ConversationFormState = {
   incident: null,
   incidentType: null,
   payrollAmount: null,
+  payrollDeductAmount: null,
 };
 
 /**
@@ -73,6 +80,9 @@ export function stateSentences(state: ConversationFormState): string[] {
   }
   if (state.incidentType) lines.push(`Incident: ${state.incidentType}.`);
   if (state.payrollAmount) lines.push(`Payroll amount: ${state.payrollAmount}.`);
+  if (payrollAmountFieldEnabled() && state.payrollDeductAmount) {
+    lines.push(`Payroll deduction amount: ${state.payrollDeductAmount}.`);
+  }
   return lines;
 }
 
@@ -116,6 +126,7 @@ export function captureFormState(
     incident: incident || prior.incident,
     incidentType: prior.incidentType,
     payrollAmount: prior.payrollAmount,
+    payrollDeductAmount: input.proposal?.payrollDeductAmount ?? prior.payrollDeductAmount,
   };
 }
 
@@ -139,6 +150,7 @@ export function parseFormState(value: unknown): ConversationFormState | null {
     incident: textOrNull(row.incident),
     incidentType: textOrNull(row.incidentType),
     payrollAmount: textOrNull(row.payrollAmount),
+    payrollDeductAmount: textOrNull(row.payrollDeductAmount),
   };
 }
 

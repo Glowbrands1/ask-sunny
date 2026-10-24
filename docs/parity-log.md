@@ -18,9 +18,13 @@ field is superseded for this line only.
   or a figure on that same Yes, or a bare figure answering the question).
   Late Opening's "$25.00 via payroll deduction" does not fill it. The line
   stays blank when payroll is not Yes. When payroll is Yes and no figure was
-  given, the chat asks once and does not ask again. The card and finalize
-  are not held for it. Off, the document, the ask, and the PDF do not
-  include the line.
+  given, the chat asks once (including a chat correction) and does not ask
+  again. The card and finalize are not held for it. The figure is kept on
+  `chat_form_state` and through a redraft merge. It is not a sentence in the
+  Action Plan. Off, the document, the ask, and the PDF do not include the
+  line. The dpoa seed is revision 7, matching the live library, and
+  `ensureTemplateLibrary` still writes revision 6 without this line until
+  Pau approves a publish. Do not publish the template to the database.
 
 ## 24 Oct 2026: guide code check — port the mechanism
 
