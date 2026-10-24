@@ -188,13 +188,21 @@ describe("one order of authority", () => {
 
   it("keeps the pre-edit prompt when the replay asks for the last known good", () => {
     const currentOff = buildSystemPrompt(PROMPT);
+    const marker = "---DYNAMIC---";
+    // The frozen prompt is the layout from before per-request blocks moved
+    // below the marker. It still ignores the unified-authority edit. The
+    // current prompt is that same wording with the framework below the marker.
     setSystemPromptRevision("last-known-good");
     try {
-      expect(buildSystemPrompt(PROMPT)).toBe(currentOff);
-      expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).toBe(currentOff);
+      const frozen = buildSystemPrompt(PROMPT);
+      expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).toBe(frozen);
+      expect(frozen).toContain("2. Current employee performance data.");
+      expect(frozen.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeLessThan(frozen.indexOf(marker));
+      expect(frozen).not.toBe(currentOff);
     } finally {
       setSystemPromptRevision("current");
     }
     expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).not.toBe(currentOff);
+    expect(currentOff.indexOf("EMPLOYEE PERFORMANCE — HOW TO USE THE FRAMEWORK")).toBeGreaterThan(currentOff.indexOf(marker));
   });
 });
