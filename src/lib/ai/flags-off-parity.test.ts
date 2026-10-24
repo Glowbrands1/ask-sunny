@@ -49,7 +49,9 @@ import { flaggedCitationWrite } from "./policy-citation-fields";
  * are main's, and a failure here is a behavior change that leaked through.
  * The child is the `flags-off-parity` Vitest project, which starts only
  * after the unit project finishes, and it stays on `--project unit` so it
- * does not start another copy of itself.
+ * does not start another copy of itself. `--maxWorkers=2` keeps that
+ * second copy from running about 188 files at once, which was pushing
+ * two 5s tests just over their limit.
  */
 
 const NEW_FLAGS = [
@@ -264,6 +266,7 @@ describe("existing chat and form suites with every new flag off", () => {
           "run",
           "--project",
           "unit",
+          "--maxWorkers=2",
           "--exclude",
           "src/lib/ai/flags-off-parity.test.ts",
           "src/lib/ai",

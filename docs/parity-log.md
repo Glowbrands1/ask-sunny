@@ -18,7 +18,8 @@ migration apply and no merge.
   and `src/lib/ai/prompts.test.ts`.
 - The flags-off parity child is its own Vitest project and starts after
   the unit project. It does not run a second copy of the suite beside the
-  main one. Timeouts stay at 5 seconds.
+  main one. That child passes `--maxWorkers=2` so it does not run the
+  chat and form files at full concurrency. Timeouts stay at 5 seconds.
 
 ## 24 Oct 2026: cache columns and the dynamic prompt tail — Sunny-only
 

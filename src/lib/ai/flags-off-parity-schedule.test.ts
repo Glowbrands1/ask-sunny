@@ -22,8 +22,9 @@ describe("flags-off parity runs after the rest of the suite", () => {
     expect(config.slice(parity)).toContain('include: ["src/lib/ai/flags-off-parity.test.ts"]');
   });
 
-  it("tells the nested Vitest to stay on the unit project", () => {
+  it("tells the nested Vitest to stay on the unit project with two workers", () => {
     expect(child).toContain('"--project"');
     expect(child).toContain('"unit"');
+    expect(child).toContain('"--maxWorkers=2"');
   });
 });
