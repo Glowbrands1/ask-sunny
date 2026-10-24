@@ -96,7 +96,7 @@ Harness events (not case failures):
 
 - replay_set.json sha256: `2f05db5d08424743a1be74caf8265ed3decfac28fdbda5bcf3c4259282daa611`
 - prompts.ts sha256: `e7f952b0f922eebbf1b74cc11d747e758a2ece4139b3940d2fadb40e12f3dc75`
-- commit: `493d47218afdc32cb63b174232580e29d3a70bbc`
+- commit: `25939d561632b41d75e3f1f34e798577714f620b`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED`
 - runs: 3
@@ -110,27 +110,27 @@ Harness events (not case failures):
 
 | Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |
 | --- | --- | --- | --- | --- |
-| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 219ms | PASS 3069ms | PASS 1129ms |
-| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 130ms | PASS 478ms | PASS 474ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 96ms | PASS 467ms | PASS 494ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 59ms | PASS 423ms | PASS 416ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 216ms | PASS 628ms | PASS 626ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 35ms | PASS 139ms | PASS 140ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 19ms | PASS 65ms | PASS 63ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 63ms | PASS 358ms | PASS 355ms |
-| s20 | — · — · — · — | PASS 37ms | PASS 337ms | PASS 315ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 123ms | PASS 405ms | PASS 399ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 31ms | PASS 141ms | PASS 140ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 113ms | PASS 1057ms | PASS 1035ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 23ms | PASS 148ms | PASS 145ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 18ms | PASS 178ms | PASS 171ms |
-| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 47ms | PASS 342ms | PASS 339ms |
-| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 139ms | PASS 594ms | PASS 591ms |
-| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 86ms | PASS 84ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 99ms | PASS 777ms | PASS 762ms |
-| n1 | Test Employee · loc-0462 · — · — | PASS 27ms | PASS 209ms | PASS 207ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 49ms | PASS 48ms |
-| n3 | TT · — · 2026-10-23 · — | PASS 7ms | PASS 67ms | PASS 67ms |
+| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 220ms | PASS 3526ms | PASS 1282ms |
+| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 128ms | PASS 526ms | PASS 533ms |
+| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 93ms | PASS 485ms | PASS 464ms |
+| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 58ms | PASS 469ms | PASS 461ms |
+| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 264ms | PASS 681ms | PASS 677ms |
+| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 44ms | PASS 129ms | PASS 128ms |
+| s29 | Erin Nelson · loc-0313 · — · — | PASS 25ms | PASS 70ms | PASS 66ms |
+| s17 | Betty Sue · — · 2026-10-23 · — | PASS 82ms | PASS 366ms | PASS 361ms |
+| s20 | — · — · — · — | PASS 32ms | PASS 342ms | PASS 324ms |
+| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 116ms | PASS 417ms | PASS 409ms |
+| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 34ms | PASS 150ms | PASS 144ms |
+| s8 | Christiana Headley · loc-0463 · — · — | PASS 107ms | PASS 1085ms | PASS 1056ms |
+| s12 | Colene Schildt · loc-0462 · — · — | PASS 24ms | PASS 153ms | PASS 151ms |
+| s16 | Kayla Koehn · loc-0309 · — · — | PASS 18ms | PASS 183ms | PASS 175ms |
+| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 45ms | PASS 351ms | PASS 348ms |
+| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 126ms | PASS 609ms | PASS 603ms |
+| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 91ms | PASS 85ms |
+| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 99ms | PASS 793ms | PASS 799ms |
+| n1 | Test Employee · loc-0462 · — · — | PASS 28ms | PASS 215ms | PASS 221ms |
+| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 51ms | PASS 48ms |
+| n3 | TT · — · 2026-10-23 · — | PASS 6ms | PASS 74ms | PASS 68ms |
 
 Harness events (not case failures):
 
@@ -146,3 +146,45 @@ Harness events (not case failures):
 - conv-s11-off: resend-first-message × 3
 - conv-s27-off: resend-first-message × 3
 - conv-s8-off: resend-first-message × 12
+
+## Flag ablation — one flag at a time
+
+Each row turns one quality flag on and leaves the others off. The reply model is mocked, so each case runs once. Floor is the flags-off checks. Card is the written card criteria. A flag is safe when every case holds the floor.
+
+| Flag | Floor | Card criteria | Breaks the floor | Card still open |
+| --- | --- | --- | --- | --- |
+| INTENT_EXTRACTION_ENABLED | 20/21 | 18/21 | s17 | s17, s25, n2 |
+| FEWSHOT_EXAMPLES_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| SELF_CHECK_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| QUERY_REWRITE_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| GROUNDED_ENTITIES_ENABLED | 20/21 | 14/21 | s17 | s9, s17, s25, b9, b10, b12, n2 |
+| DRAFT_MERGE_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| ACTION_PLAN_SENTENCES_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| TYPED_NAME_PROCEEDS_ENABLED | 21/21 | 6/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, s25, b9, b10, b11, b12, n2, n3 |
+| ATTENDANCE_POLICY_CITATION_ENABLED | 21/21 | 12/21 | — | s9, s5, s28, s29, s17, b10, b11, n2, n3 |
+| POLICY_PAGE_REQUIRED_ENABLED | 21/21 | 12/21 | — | s9, s5, s28, s29, s17, b10, b11, n2, n3 |
+| MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| POLICY_GATE_NONBLOCKING_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| MANUAL_SECTION_DEDUPE_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| PRINTED_PAGE_CITATION_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| PAYROLL_AMOUNT_FIELD_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| CODE_SLOTS_ENABLED | 20/21 | 7/21 | s17 | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+
+Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all 21.
+
+1. `INTENT_EXTRACTION_ENABLED` — card 18/21 — stores s17's date
+2. `GROUNDED_ENTITIES_ENABLED` — card 14/21 — stores s17's date
+3. `ATTENDANCE_POLICY_CITATION_ENABLED` — card 12/21
+4. `POLICY_PAGE_REQUIRED_ENABLED` — card 12/21
+5. `ACTION_PLAN_SENTENCES_ENABLED` — card 7/21
+6. `CODE_SLOTS_ENABLED` — card 7/21 — stores s17's date
+7. `DRAFT_MERGE_ENABLED` — card 7/21
+8. `FEWSHOT_EXAMPLES_ENABLED` — card 7/21
+9. `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — card 7/21
+10. `MANUAL_SECTION_DEDUPE_ENABLED` — card 7/21
+11. `PAYROLL_AMOUNT_FIELD_ENABLED` — card 7/21
+12. `POLICY_GATE_NONBLOCKING_ENABLED` — card 7/21
+13. `PRINTED_PAGE_CITATION_ENABLED` — card 7/21
+14. `QUERY_REWRITE_ENABLED` — card 7/21
+15. `SELF_CHECK_ENABLED` — card 7/21
+16. `TYPED_NAME_PROCEEDS_ENABLED` — card 6/21
