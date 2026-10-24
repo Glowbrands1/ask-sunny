@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CLAUDE_MODEL } from "@/lib/config/models";
 
@@ -10,12 +10,14 @@ import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { correctiveActionDocument } from "@/lib/forms/library";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
 import { firstMessageDropped } from "./form-history";
+import { setSystemPromptRevision, type SystemPromptRevision } from "./prompts";
 import {
   REPLAY_LATENCY_GATE_MS,
   REPLAY_RUNS,
+  casesWhereOldPromptScoresBetter,
   judgeReplayCard,
   latencyOverGate,
-  renderScoreboard,
+  renderScoreboardRound,
   type ReplayCardCriteria,
   type ReplayCaseResult,
   type ReplayRound,
@@ -70,6 +72,9 @@ const stateBag = vi.hoisted(() => ({
 
 const captured = vi.hoisted(() => ({
   memory: [] as (string | null)[],
+  systems: [] as { revision: string; system: string }[],
+  recordSystems: false,
+  revision: "current" as "current" | "last-known-good",
 }));
 
 /** Live intent calls filled the salon with the Woven primary and offered the retirement "Warning" sheet. */
@@ -352,8 +357,11 @@ vi.mock("@/lib/reporting/read/employee-facts", () => ({
 }));
 
 vi.mock("./call-claude", () => ({
-  callClaude: async (input: { personMemory?: string | null }) => {
+  callClaude: async (input: { personMemory?: string | null; system?: string }) => {
     captured.memory.push(input.personMemory ?? null);
+    if (captured.recordSystems) {
+      captured.systems.push({ revision: captured.revision, system: input.system ?? "" });
+    }
     return "An answer.";
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
@@ -1065,9 +1073,17 @@ function setFlags(on: boolean) {
 }
 
 const RUNS = REPLAY_RUNS;
+/** prompts.ts at 417e80c, the commit before the unified-authority prompt edit. */
+const LAST_KNOWN_GOOD_COMMIT = "417e80c12d7275681411606f87af851fb080b348";
 const harnessEvents: { caseId: string; event: string }[] = [];
 const flagsOnResults: ReplayCaseResult[] = [];
 const flagsOffResults: ReplayCaseResult[] = [];
+const lastKnownGoodResults: ReplayCaseResult[] = [];
+
+function selectPromptRevision(next: SystemPromptRevision) {
+  captured.revision = next;
+  setSystemPromptRevision(next);
+}
 
 const writtenCriteria = JSON.parse(readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8")) as {
   id: string;
@@ -1226,10 +1242,10 @@ function applyCheck(itemId: string, turn: number, response: Awaited<ReturnType<t
   }
 }
 
-async function replay(item: ReplayCase, flagsOn: boolean) {
+async function replay(item: ReplayCase, flagsOn: boolean, variant: SystemPromptRevision = "current") {
   captured.memory.length = 0;
   const history: ChatMessage[] = [];
-  const conversationId = `conv-${item.id}-${flagsOn ? "on" : "off"}`;
+  const conversationId = flagsOn ? `conv-${item.id}-on-${variant}` : `conv-${item.id}-off`;
   const checks = flagsOn ? item.on : item.off;
   let last: Awaited<ReturnType<typeof ask>> | null = null;
   for (let index = 0; index < item.turns.length; index += 1) {
@@ -1289,39 +1305,65 @@ function recordCase(bucket: ReplayCaseResult[], id: string, started: number, fai
   return result;
 }
 
+function cardFailures(item: ReplayCase, last: Awaited<ReturnType<typeof ask>> | null): string[] {
+  const criteria = criteriaWrittenBeforeRun(item.id);
+  const policyName = criteria.policy?.replace(/ p\.\d+$/, "") ?? "";
+  const policyPage = Number(criteria.policy?.match(/p\.(\d+)$/)?.[1] ?? "0");
+  return judgeReplayCard({
+    criteria,
+    employeeName: last?.formProposal?.employeeName ?? null,
+    locationId: last?.formProposal?.locationId ?? null,
+    formDate: last?.formProposal?.formDate ?? null,
+    content: last?.content ?? "",
+    policySatisfied: criteria.policy ? cites(last?.content ?? "", last?.citations ?? [], policyName, policyPage) : true,
+  });
+}
+
+/** One prompt revision, same flags, fresh form state. Three runs share state, as earlier rounds did. */
+async function runFlagsOn(item: ReplayCase, variant: SystemPromptRevision, bucket: ReplayCaseResult[]) {
+  selectPromptRevision(variant);
+  stateBag.forms.clear();
+  const started = Date.now();
+  let failure: string | undefined;
+  try {
+    for (let run = 0; run < RUNS; run += 1) {
+      const last = await replay(item, true, variant);
+      expect(cardFailures(item, last), `${item.id} ${variant} card`).toEqual([]);
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+  }
+  return recordCase(bucket, item.id, started, failure);
+}
+
 describe("priority replay with the quality flags on", () => {
-  beforeEach(() => setFlags(true));
+  beforeEach(() => {
+    setFlags(true);
+    captured.recordSystems = true;
+  });
+  afterEach(() => {
+    selectPromptRevision("current");
+  });
   it.each(CASES)("$id follows the real turns", async (item) => {
     const criteria = criteriaWrittenBeforeRun(item.id);
     expect(criteria, `${item.id} criteria before the run`).toEqual(cardCriteria(item));
-    const started = Date.now();
-    let failure: string | undefined;
-    try {
-      for (let run = 0; run < RUNS; run += 1) {
-        const last = await replay(item, true);
-        const policyName = criteria.policy?.replace(/ p\.\d+$/, "") ?? "";
-        const policyPage = Number(criteria.policy?.match(/p\.(\d+)$/)?.[1] ?? "0");
-        const failures = judgeReplayCard({
-          criteria,
-          employeeName: last?.formProposal?.employeeName ?? null,
-          locationId: last?.formProposal?.locationId ?? null,
-          formDate: last?.formProposal?.formDate ?? null,
-          content: last?.content ?? "",
-          policySatisfied: criteria.policy ? cites(last?.content ?? "", last?.citations ?? [], policyName, policyPage) : true,
-        });
-        expect(failures, `${item.id} card`).toEqual([]);
-      }
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
+    const current = await runFlagsOn(item, "current", flagsOnResults);
+    const previous = await runFlagsOn(item, "last-known-good", lastKnownGoodResults);
+    if (!current.pass && previous.pass) {
+      throw new Error(
+        `${item.id}: last-known-good prompt passed and the current prompt failed (${current.failure ?? "unknown"}). Revert that prompt section and keep the code fix.`,
+      );
     }
-    const result = recordCase(flagsOnResults, item.id, started, failure);
-    if (failure) throw new Error(failure);
-    if (!result.pass) throw new Error(result.failure ?? `${item.id} failed`);
+    if (!current.pass) throw new Error(current.failure ?? `${item.id} failed`);
   });
 });
 
 describe("priority replay with the flags off is no worse than the baseline", () => {
-  beforeEach(() => setFlags(false));
+  beforeEach(() => {
+    setFlags(false);
+    captured.recordSystems = false;
+    selectPromptRevision("current");
+  });
   it.each(CASES)("$id holds the baseline floor", async (item) => {
     criteriaWrittenBeforeRun(item.id);
     const started = Date.now();
@@ -1337,33 +1379,6 @@ describe("priority replay with the flags off is no worse than the baseline", () 
   });
 });
 
-/** The 24 Oct anti-loop round, 42/42, before this scoreboard file existed. */
-const PRIOR_ROUND: ReplayRound = {
-  title: "Round 1 — code-owned slots",
-  replaySetHash: "2f05db5d08424743a1be74caf8265ed3decfac28fdbda5bcf3c4259282daa611",
-  promptHash: "68f86ab2aad33782047d57ada4b04836c1888e6e8a2d2a2487d9a00c25786dc6",
-  commit: "f4bfc6ac561094e76749f45ede4616188f20e779",
-  model: "claude-opus-5",
-  flags: FLAGS,
-  runs: 3,
-  latencyGateMs: REPLAY_LATENCY_GATE_MS,
-  criteria: writtenCriteria,
-  flagsOff: [
-    ["s4", 234], ["s9", 131], ["s11", 111], ["s5", 65], ["s27", 211], ["s28", 33], ["s29", 18],
-    ["s17", 63], ["s20", 32], ["s21", 138], ["s25", 32], ["s8", 106], ["s12", 22], ["s16", 18],
-    ["b9", 46], ["b10", 129], ["b11", 15], ["b12", 108], ["n1", 29], ["n2", 9], ["n3", 6],
-  ].map(([id, ms]) => ({ id: String(id), pass: true, ms: Number(ms) })),
-  flagsOn: [
-    ["s4", 3391], ["s9", 505], ["s11", 460], ["s5", 438], ["s27", 654], ["s28", 117], ["s29", 68],
-    ["s17", 369], ["s20", 341], ["s21", 409], ["s25", 145], ["s8", 1082], ["s12", 155], ["s16", 180],
-    ["b9", 346], ["b10", 606], ["b11", 83], ["b12", 792], ["n1", 215], ["n2", 48], ["n3", 68],
-  ].map(([id, ms]) => ({ id: String(id), pass: true, ms: Number(ms) })),
-  harnessEvents: ["s4", "s11", "s27", "s8"].flatMap((caseId) => [
-    { caseId: `${caseId} flags-on`, event: "resend-first-message" },
-    { caseId: `${caseId} flags-off`, event: "resend-first-message" },
-  ]),
-};
-
 afterAll(() => {
   const replaySet = JSON.stringify(CASES.map((item) => ({ id: item.id, turns: item.turns, criteria: cardCriteria(item) })));
   const fixture = readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8");
@@ -1376,8 +1391,23 @@ afterAll(() => {
   } catch {
     commit = "unknown";
   }
+  const currentSystems = captured.systems.filter((row) => row.revision === "current").map((row) => row.system);
+  const previousSystems = captured.systems.filter((row) => row.revision === "last-known-good").map((row) => row.system);
+  expect(currentSystems.length, "current prompt was sent").toBeGreaterThan(0);
+  expect(previousSystems.length, "last-known-good prompt was sent").toBeGreaterThan(0);
+  const currentBuilt = currentSystems.join("\n---\n");
+  const previousBuilt = previousSystems.join("\n---\n");
+  const worse = casesWhereOldPromptScoresBetter(flagsOnResults, lastKnownGoodResults);
+  let lastKnownGoodFileHash = "";
+  try {
+    lastKnownGoodFileHash = createHash("sha256")
+      .update(execFileSync("git", ["show", `${LAST_KNOWN_GOOD_COMMIT}:src/lib/ai/prompts.ts`]))
+      .digest("hex");
+  } catch {
+    lastKnownGoodFileHash = "unknown";
+  }
   const round: ReplayRound = {
-    title: "Round 2 — close-match note under the card",
+    title: "Round 3 — prompt A/B",
     replaySetHash,
     promptHash,
     commit,
@@ -1388,10 +1418,38 @@ afterAll(() => {
     criteria: writtenCriteria,
     flagsOff: flagsOffResults,
     flagsOn: flagsOnResults,
+    promptAb: {
+      lastKnownGoodCommit: LAST_KNOWN_GOOD_COMMIT,
+      lastKnownGoodFileHash,
+      currentBuiltHash: createHash("sha256").update(currentBuilt).digest("hex"),
+      lastKnownGoodBuiltHash: createHash("sha256").update(previousBuilt).digest("hex"),
+      promptsDiffer: currentBuilt !== previousBuilt,
+      revert: worse.length === 0 ? "none" : `revert prompt sections for ${worse.join(", ")} and keep the code fixes`,
+      lastKnownGood: lastKnownGoodResults,
+    },
     harnessEvents,
   };
-  console.log(JSON.stringify(round));
+  const scoreLine = round.criteria
+    .map((item) => {
+      const cell = (rows: readonly ReplayCaseResult[]) => {
+        const result = rows.find((row) => row.id === item.id);
+        return result ? `${result.pass ? "PASS" : "FAIL"} ${result.ms}ms` : "missing";
+      };
+      return `${item.id} off=${cell(flagsOffResults)} current=${cell(flagsOnResults)} last-known-good=${cell(lastKnownGoodResults)}`;
+    })
+    .join("\n");
+  console.log(
+    `prompt A/B differ=${round.promptAb?.promptsDiffer} revert=${round.promptAb?.revert}\ncurrent ${round.promptAb?.currentBuiltHash}\nlast-known-good ${round.promptAb?.lastKnownGoodBuiltHash}\nfile ${round.promptAb?.lastKnownGoodFileHash}\n${scoreLine}`,
+  );
   if (process.env.REPLAY_RECORD_SCOREBOARD === "1") {
-    writeFileSync("docs/scoreboard.md", renderScoreboard([PRIOR_ROUND, round]));
+    const existing = readFileSync("docs/scoreboard.md", "utf8");
+    const section = renderScoreboardRound(round);
+    const marker = `## ${round.title}`;
+    const index = existing.indexOf(marker);
+    const next = index === -1 ? `${existing.trimEnd()}\n\n${section}\n` : `${existing.slice(0, index).trimEnd()}\n\n${section}\n`;
+    writeFileSync("docs/scoreboard.md", next);
+  }
+  if (worse.length > 0) {
+    throw new Error(`last-known-good prompt scores better on ${worse.join(", ")}. Revert those prompt sections and keep the code fixes.`);
   }
 });

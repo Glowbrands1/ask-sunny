@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { JBA_MANUAL_CHUNKS } from "@/lib/ai/__fixtures__/jba-policy-manual";
-import { buildSystemPrompt, UNIFIED_ORDER_OF_AUTHORITY, withUnifiedAuthority, EMPLOYEE_PERFORMANCE_RULES, DAILY_STATS_SOURCE_RULES } from "@/lib/ai/prompts";
+import { buildSystemPrompt, setSystemPromptRevision, UNIFIED_ORDER_OF_AUTHORITY, withUnifiedAuthority, EMPLOYEE_PERFORMANCE_RULES, DAILY_STATS_SOURCE_RULES } from "@/lib/ai/prompts";
 import {
   actionPlanSentenceCount,
   collapseToTwoSentences,
@@ -184,5 +184,17 @@ describe("one order of authority", () => {
     expect(prompt).not.toContain("2. The current ingested report data.");
     expect(prompt).toContain("BEFORE YOU SUGGEST ANY CONSEQUENCE");
     expect(prompt).toContain("WHERE POLICY AND A FRAMEWORK CONFLICT, POLICY WINS.");
+  });
+
+  it("keeps the pre-edit prompt when the replay asks for the last known good", () => {
+    const currentOff = buildSystemPrompt(PROMPT);
+    setSystemPromptRevision("last-known-good");
+    try {
+      expect(buildSystemPrompt(PROMPT)).toBe(currentOff);
+      expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).toBe(currentOff);
+    } finally {
+      setSystemPromptRevision("current");
+    }
+    expect(buildSystemPrompt({ ...PROMPT, unifiedAuthority: true })).not.toBe(currentOff);
   });
 });
