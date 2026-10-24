@@ -20,6 +20,7 @@ vi.setConfig({ testTimeout: 20_000 });
 
 const ORIGINAL = { ...process.env };
 const QUESTION = "How do I request time off?";
+const SECOND_QUESTION = "What is the dress code?";
 const REPLY = "Request time off through the schedule.";
 
 const asked: string[] = [];
@@ -199,20 +200,31 @@ afterEach(() => {
 async function renderChat() {
   const { Providers } = await import("@/app/providers");
   const { ChatScreen } = await import("./chat-screen");
-  render(
-    <Providers
-      session={{
-        subject: "11111111-1111-4111-8111-aaaaaaaaaaaa",
-        email: "sd@example.com",
-        displayName: "Salon Director",
-        role: "salon_director",
-        scope: { level: "salon", primaryAreaId: "loc-0306", alsoCoversAreaIds: [] },
-      }}
-      productionAuth
-    >
-      <ChatScreen />
-    </Providers>,
-  );
+  function Tree({ mounted }: { mounted: boolean }) {
+    return (
+      <Providers
+        session={{
+          subject: "11111111-1111-4111-8111-aaaaaaaaaaaa",
+          email: "sd@example.com",
+          displayName: "Salon Director",
+          role: "salon_director",
+          scope: { level: "salon", primaryAreaId: "loc-0306", alsoCoversAreaIds: [] },
+        }}
+        productionAuth
+      >
+        {mounted ? <ChatScreen /> : null}
+      </Providers>
+    );
+  }
+  const view = render(<Tree mounted />);
+  return {
+    unmountScreen() {
+      view.rerender(<Tree mounted={false} />);
+    },
+    remountScreen() {
+      view.rerender(<Tree mounted />);
+    },
+  };
 }
 
 async function typeQuestion() {
@@ -284,6 +296,88 @@ describe("a question sent while the page is still loading", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /^history$/i }));
     expect(await screen.findByRole("button", { name: /^weekend coverage/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^how do i request time off\?/i })).toBeNull();
+  });
+
+  it("drops a queued question when the chat screen unmounts", async () => {
+    /*
+     * The queue is a ref on the chat screen. Unmounting throws it away.
+     * A screen that mounts again before hydration finishes does not ask
+     * the question, and the store does not write it into a conversation.
+     */
+    process.env.SEND_AFTER_HYDRATE_ENABLED = "1";
+    const chat = await renderChat();
+    await typeQuestion();
+    expect(asked).toEqual([]);
+
+    chat.unmountScreen();
+    expect(screen.queryByLabelText(/ask sunny a question/i)).toBeNull();
+
+    chat.remountScreen();
+    const field = await screen.findByLabelText(/ask sunny a question/i);
+    expect((field as HTMLTextAreaElement).value).toBe("");
+
+    await act(async () => {
+      documents.release();
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /^history$/i }));
+    expect(await screen.findByRole("button", { name: /^weekend coverage/i })).toBeTruthy();
+    expect(screen.queryByText(QUESTION)).toBeNull();
+    expect(screen.queryByText(REPLY)).toBeNull();
+    expect(asked).toEqual([]);
+    expect(saved.some((entry) => entry.messages.some((message) => message.content === QUESTION))).toBe(
+      false,
+    );
+    expect(vi.mocked(console.warn).mock.calls.flat().join(" ")).not.toContain("dropped");
+  });
+
+  it("keeps only the last question when a second send arrives while one is queued", async () => {
+    /*
+     * The queue holds one send. A second question typed before hydration
+     * finishes replaces the first. Only the last one is asked, shown, and saved.
+     */
+    process.env.SEND_AFTER_HYDRATE_ENABLED = "1";
+    await renderChat();
+    const user = userEvent.setup();
+    const field = await typeQuestion();
+    expect(asked).toEqual([]);
+    expect((field as HTMLTextAreaElement).value).toBe(QUESTION);
+
+    await user.clear(field);
+    await user.type(field, SECOND_QUESTION);
+    await user.click(screen.getByRole("button", { name: /send message/i }));
+    expect(asked).toEqual([]);
+    expect((field as HTMLTextAreaElement).value).toBe(SECOND_QUESTION);
+
+    await act(async () => {
+      documents.release();
+    });
+
+    expect((await screen.findAllByText(REPLY)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(SECOND_QUESTION).length).toBeGreaterThan(0);
+    expect(screen.queryByText(QUESTION)).toBeNull();
+    expect(asked).toEqual([SECOND_QUESTION]);
+
+    await waitFor(() => {
+      expect(
+        saved.some(
+          (entry) =>
+            entry.messages.some((message) => message.content === SECOND_QUESTION) &&
+            entry.messages.some((message) => message.content === REPLY),
+        ),
+      ).toBe(true);
+    });
+    expect(saved.some((entry) => entry.messages.some((message) => message.content === QUESTION))).toBe(
+      false,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^history$/i }));
+    expect(await screen.findByRole("button", { name: /^weekend coverage/i })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: /^what is the dress code\?/i }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^how do i request time off\?/i })).toBeNull();
   });
 });
