@@ -1,5 +1,14 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: leading Location is not part of the name — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**.
+
+- A field label in front of a real name comes off. s11 "lawrence location
+  tanning consultant, colene schildt" is Colene Schildt, not "Location
+  Colene Schildt". "Jane Store" still keeps the surname.
+
 ## 24 Oct 2026: Woven edition dedupe — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

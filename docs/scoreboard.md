@@ -96,7 +96,7 @@ Harness events (not case failures):
 
 - replay_set.json sha256: `2f05db5d08424743a1be74caf8265ed3decfac28fdbda5bcf3c4259282daa611`
 - prompts.ts sha256: `e7f952b0f922eebbf1b74cc11d747e758a2ece4139b3940d2fadb40e12f3dc75`
-- commit: `15723abd5965c1ee6d4a30b5269e67b6ad56d520`
+- commit: `4ce6d03ff2497fd4f4c9881aa610432ecb652948`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED`
 - runs: 3
@@ -110,27 +110,27 @@ Harness events (not case failures):
 
 | Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |
 | --- | --- | --- | --- | --- |
-| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 235ms | PASS 3059ms | PASS 1140ms |
-| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 126ms | PASS 485ms | PASS 480ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 92ms | PASS 452ms | PASS 444ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 58ms | PASS 439ms | PASS 407ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 204ms | PASS 630ms | PASS 623ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 32ms | PASS 117ms | PASS 115ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 17ms | PASS 66ms | PASS 67ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 61ms | PASS 360ms | PASS 356ms |
-| s20 | — · — · — · — | PASS 30ms | PASS 334ms | PASS 316ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 117ms | PASS 398ms | PASS 393ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 31ms | PASS 146ms | PASS 142ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 102ms | PASS 1056ms | PASS 1038ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 23ms | PASS 151ms | PASS 148ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 17ms | PASS 178ms | PASS 173ms |
-| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 44ms | PASS 345ms | PASS 348ms |
-| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 127ms | PASS 603ms | PASS 596ms |
-| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 87ms | PASS 83ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 98ms | PASS 762ms | PASS 757ms |
-| n1 | Test Employee · loc-0462 · — · — | PASS 26ms | PASS 212ms | PASS 205ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 49ms | PASS 49ms |
-| n3 | TT · — · 2026-10-23 · — | PASS 6ms | PASS 69ms | PASS 72ms |
+| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 209ms | PASS 3079ms | PASS 1133ms |
+| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 127ms | PASS 491ms | PASS 485ms |
+| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 96ms | PASS 459ms | PASS 442ms |
+| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 58ms | PASS 440ms | PASS 411ms |
+| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 206ms | PASS 638ms | PASS 618ms |
+| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 31ms | PASS 116ms | PASS 114ms |
+| s29 | Erin Nelson · loc-0313 · — · — | PASS 17ms | PASS 65ms | PASS 63ms |
+| s17 | Betty Sue · — · 2026-10-23 · — | PASS 59ms | PASS 354ms | PASS 350ms |
+| s20 | — · — · — · — | PASS 30ms | PASS 337ms | PASS 316ms |
+| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 114ms | PASS 404ms | PASS 503ms |
+| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 31ms | PASS 139ms | PASS 138ms |
+| s8 | Christiana Headley · loc-0463 · — · — | PASS 102ms | PASS 1071ms | PASS 1092ms |
+| s12 | Colene Schildt · loc-0462 · — · — | PASS 22ms | PASS 151ms | PASS 148ms |
+| s16 | Kayla Koehn · loc-0309 · — · — | PASS 18ms | PASS 182ms | PASS 179ms |
+| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 45ms | PASS 349ms | PASS 349ms |
+| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 121ms | PASS 604ms | PASS 589ms |
+| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 93ms | PASS 82ms |
+| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 97ms | PASS 766ms | PASS 764ms |
+| n1 | Test Employee · loc-0462 · — · — | PASS 26ms | PASS 210ms | PASS 207ms |
+| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 10ms | PASS 50ms | PASS 50ms |
+| n3 | TT · — · 2026-10-23 · — | PASS 6ms | PASS 68ms | PASS 67ms |
 
 Harness events (not case failures):
 
@@ -146,6 +146,7 @@ Harness events (not case failures):
 - conv-s11-off: resend-first-message × 3
 - conv-s27-off: resend-first-message × 3
 - conv-s8-off: resend-first-message × 12
+- conv-s4-r1off-s4: resend-first-message × 15
 
 ## Flag ablation — one flag at a time
 
@@ -206,7 +207,7 @@ s22 is miss with the flag on and miss with it off. Both turns say "change my pas
 OLD is `origin/main` as-is, flags off, the same turns and the same mocked reply. NEW is this branch with the rulebook flags on. The guide was not pasted over the system prompt. Each case runs 3 times. A rule misses if any run misses it. A rule that does not apply to the case is not scored. Worse means NEW misses a rule OLD passed, and that case is fixed before this pull request is ready.
 
 - OLD commit: `b9ae362fd80e1fc492c4326f80834cf105ef19b8`
-- NEW commit: `15723abd5965c1ee6d4a30b5269e67b6ad56d520`
+- NEW commit: `4ce6d03ff2497fd4f4c9881aa610432ecb652948`
 - runs: 3
 - latency gate: 20000 ms for the 3 runs together
 - rules: employee on the card, typed name kept, salon does not gate the card, date, policy and printed page, 2-sentence plan, payroll amount only from the manager, no blocking question, no leaked text, latency
@@ -237,11 +238,12 @@ OLD is `origin/main` as-is, flags off, the same turns and the same mocked reply.
 
 Totals: better 17, same 4, worse 0.
 
+
 ## Round 1 — structural name, slot, and salon
 
 One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the 3 runs together. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.
 
-- commit: `bd882f0430822d486f721d77f0b75a1608e6da3d`
+- commit: `4ce6d03ff2497fd4f4c9881aa610432ecb652948`
 - harness: local
 - flag set: `INTENT_EXTRACTION_ENABLED=1 GROUNDED_ENTITIES_ENABLED=1 DRAFT_MERGE_ENABLED=1 TYPED_NAME_PROCEEDS_ENABLED=1 CODE_SLOTS_ENABLED=1 SELF_CHECK_ENABLED=false`
 - SELF_CHECK_ENABLED=false
@@ -251,27 +253,26 @@ One round, one commit. SELF_CHECK stays off. Judged rules are the structural one
 
 | Case | Before | After | Latency | Round |
 | --- | --- | --- | --- | --- |
-| s4 | pass | pass | 943ms vs 3106ms | held |
-| s9 | date | pass | 520ms vs 501ms | fixed |
-| s11 | pass | pass | 456ms vs 460ms | held |
-| s5 | date | pass | 403ms vs 439ms | fixed |
-| s27 | pass | pass | 580ms vs 662ms | held |
-| s28 | salon | pass | 106ms vs 129ms | fixed |
-| s29 | salon | pass | 64ms vs 66ms | fixed |
-| s17 | date | pass | 350ms vs 377ms | fixed |
-| s20 | pass | pass | 311ms vs 339ms | held |
-| s21 | pass | pass | 382ms vs 423ms | held |
-| s25 | blocking | pass | 136ms vs 146ms | fixed |
-| s8 | blocking | pass | 1002ms vs 1079ms | fixed |
-| s12 | pass | pass | 145ms vs 153ms | held |
-| s16 | pass | pass | 170ms vs 179ms | held |
-| b9 | blocking | pass | 328ms vs 349ms | fixed |
-| b10 | employee, typed, salon, date | pass | 565ms vs 603ms | fixed |
-| b11 | employee, typed, salon | pass | 77ms vs 87ms | fixed |
-| b12 | pass | pass | 745ms vs 767ms | held |
-| n1 | pass | pass | 203ms vs 212ms | held |
-| n2 | blocking | pass | 45ms vs 49ms | fixed |
-| n3 | date | pass | 67ms vs 98ms | fixed |
+| s4 | pass | pass | 909ms vs 3079ms | held |
+| s9 | date | pass | 434ms vs 491ms | fixed |
+| s11 | pass | pass | 407ms vs 459ms | held |
+| s5 | date | pass | 389ms vs 440ms | fixed |
+| s27 | pass | pass | 563ms vs 638ms | held |
+| s28 | salon | pass | 101ms vs 117ms | fixed |
+| s29 | salon | pass | 62ms vs 66ms | fixed |
+| s17 | date | pass | 334ms vs 360ms | fixed |
+| s20 | pass | pass | 300ms vs 337ms | held |
+| s21 | pass | pass | 374ms vs 404ms | held |
+| s25 | blocking | pass | 133ms vs 146ms | fixed |
+| s8 | blocking | pass | 1013ms vs 1071ms | fixed |
+| s12 | pass | pass | 143ms vs 151ms | held |
+| s16 | pass | pass | 167ms vs 182ms | held |
+| b9 | blocking | pass | 318ms vs 349ms | fixed |
+| b10 | employee, typed, salon, date | pass | 563ms vs 604ms | fixed |
+| b11 | employee, typed, salon | pass | 74ms vs 93ms | fixed |
+| b12 | pass | pass | 720ms vs 766ms | held |
+| n1 | pass | pass | 205ms vs 212ms | held |
+| n2 | blocking | pass | 43ms vs 50ms | fixed |
+| n3 | date | pass | 63ms vs 69ms | fixed |
 
 Gate: fixed 12 (s9, s5, s28, s29, s17, s25, s8, b9, b10, b11, n2, n3), broken 0, latency 0, leaked 0.
-

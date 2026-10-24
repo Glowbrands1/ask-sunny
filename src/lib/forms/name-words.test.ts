@@ -38,6 +38,7 @@ describe("field label words", () => {
     expect(stripFieldLabels("Marissa Job")).toBe("Marissa Job");
     expect(stripFieldLabels("Jane Store")).toBe("Jane Store");
     expect(stripFieldLabels("Jane Salon")).toBe("Jane Salon");
+    expect(stripFieldLabels("Location Colene Schildt")).toBe("Colene Schildt");
     expect(isOnlyFieldLabel("Job title")).toBe(true);
     expect(isOnlyFieldLabel("Store")).toBe(true);
     expect(isOnlyFieldLabel("Salon")).toBe(true);
@@ -46,6 +47,16 @@ describe("field label words", () => {
     expect(stripFieldLabels("Store")).toBeNull();
     expect(stripFieldLabels("Salon")).toBeNull();
     expect(stripNonNameTokens("Jane Store", SALONS)).toBe("Jane Store");
+    expect(
+      stripNonNameTokens("lawrence location tanning consultant, colene schildt", ["KS Lawrence"]),
+    ).toBe("colene schildt");
+    expect(
+      rosterValidatedName(
+        "create a coaching form for lawrence location tanning consultant, colene schildt, who was talking on her cell phone for 25 minutes on 9-29-26 when customers were waiting to check in",
+        [],
+        ["KS Lawrence"],
+      ),
+    ).toBe("Colene Schildt");
     expect(stripNonNameTokens("Jane Salon", SALONS)).toBe("Jane Salon");
     expect(stripNonNameTokens("Job title", SALONS)).toBeNull();
     expect(stripNonNameTokens("Store", SALONS)).toBeNull();

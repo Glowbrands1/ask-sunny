@@ -270,6 +270,20 @@ function wordKey(word: string): string {
  * precedes it ("Marissa Lempka Job"). One given name plus Job is still a
  * full name ("Marissa Job"), so the trailing word stays.
  */
+/**
+ * A leading label in front of a real name is the field, not the person.
+ * "Location Colene Schildt" is Colene Schildt. "Jane Store" is unchanged:
+ * Store is the surname, not a label in front of the name.
+ */
+function withoutLeadingLabels(words: readonly string[]): string[] {
+  let start = 0;
+  while (start < words.length && isFieldLabelWord(words[start]!)) start += 1;
+  if (start === 0) return [...words];
+  const rest = words.slice(start);
+  if (rest.some((word) => !isFieldLabelWord(word))) return rest;
+  return [...words];
+}
+
 function withoutTrailingJobOrTitle(words: readonly string[]): string[] {
   let end = words.length;
   while (end > 2) {
@@ -292,10 +306,10 @@ export function isOnlyFieldLabel(name: string): boolean {
   return words.length > 0 && words.every((word) => isFieldLabelWord(word));
 }
 
-/** The name with a trailing Job or Title removed. A label alone is not a name. */
+/** The name with a leading field label, or a trailing Job or Title, removed. A label alone is not a name. */
 export function stripFieldLabels(name: string): string | null {
   const source = readNameFieldValue(name) ?? name;
-  const words = withoutTrailingJobOrTitle(nameWords(source));
+  const words = withoutTrailingJobOrTitle(withoutLeadingLabels(nameWords(source)));
   if (words.length === 0 || words.every((word) => isFieldLabelWord(word))) return null;
   return words.join(" ");
 }
