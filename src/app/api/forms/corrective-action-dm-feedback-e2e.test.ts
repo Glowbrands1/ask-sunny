@@ -1705,8 +1705,17 @@ describe("the production request names Marisol Quade as the recipient", () => {
   it("global scope with no directory row for the recipient: no salon is invented", async () => {
     state.role = "district_manager";
     state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
-    const { proposal } = await conversation([RECIPIENT_REPORT]);
-    expect(proposal).toMatchObject({ employeeName: "Marisol Quade", status: "ready", locationResolution: "not_applicable", locationId: null });
+    const { last, proposal } = await conversation([RECIPIENT_REPORT]);
+    // The card is built and the salon is asked once. No salon id is filled in.
+    expect(proposal).toMatchObject({
+      employeeName: "Marisol Quade",
+      status: "needs_location",
+      locationResolution: "needs_selection",
+      locationId: null,
+      supportsInlineDraft: false,
+    });
+    expect(last.content.match(/which salon is this about/gi)).toHaveLength(1);
+    expect(proposal.authorizedLocationIds.length).toBeGreaterThan(1);
   });
 });
 

@@ -42,9 +42,24 @@ export function policySectionsFor(text: string): string[] {
   return found;
 }
 
-/** A corrective action, or a question the synonym map can place in the manual. */
+/** A write-up, named as one. */
+export function isCorrectiveActionQuestion(text: string): boolean {
+  return /\b(?:corrective actions?|\bcas?\b|write[- ]?ups?)\b/i.test(text);
+}
+
+/**
+ * Stay on the manual when the manager is writing a corrective action, or
+ * when a mapped incident does not already name the manual. A question that
+ * names the JBA Policy Manual and asks what it says keeps the other documents.
+ */
+function restrictsToManual(text: string): boolean {
+  if (isCorrectiveActionQuestion(text)) return true;
+  return policySectionsFor(text).length > 0 && !/\bjba policy manual\b/i.test(text);
+}
+
+/** A corrective action, or a question the synonym map or the word "policy" can place in the manual. */
 export function isCaOrPolicyQuestion(text: string): boolean {
-  if (/\b(?:corrective actions?|\bcas?\b|write[- ]?ups?)\b/i.test(text)) return true;
+  if (isCorrectiveActionQuestion(text)) return true;
   if (policySectionsFor(text).length > 0) return true;
   return /\bpolic(?:y|ies)\b/i.test(text);
 }
@@ -101,9 +116,11 @@ function pinsSection(row: MatchedChunkRow, sections: readonly string[]): boolean
 }
 
 /**
- * For a corrective-action or policy question, the current JBA manual fills
- * the list and a mapped section leads. Identical copies are already one row.
- * Any other question only loses the duplicate copy.
+ * A corrective action, and a mapped incident that does not already name
+ * the manual, are answered from the current JBA manual: a mapped section
+ * leads, and a training manual does not take a slot. A policy question
+ * that names the manual boosts it and still keeps the other documents
+ * behind it. Any other question only loses the duplicate copy.
  */
 export function orderPolicyRetrieval(
   rows: readonly MatchedChunkRow[],
@@ -113,10 +130,12 @@ export function orderPolicyRetrieval(
   const collapsed = collapseIdenticalJbaCopies(rows);
   if (!isCaOrPolicyQuestion(question)) return collapsed.slice(0, limit);
   const manuals = collapsed.filter((row) => isJbaManual(row));
+  const others = collapsed.filter((row) => !isJbaManual(row));
   if (manuals.length === 0) return collapsed.slice(0, limit);
   const current = scopeToCurrentManual(manuals, { limit: manuals.length });
   const sections = policySectionsFor(question);
   const pinned = current.filter((row) => pinsSection(row, sections));
   const rest = current.filter((row) => !pinned.includes(row));
-  return [...pinned, ...rest].slice(0, limit);
+  const ranked = restrictsToManual(question) ? [...pinned, ...rest] : [...pinned, ...rest, ...others];
+  return ranked.slice(0, limit);
 }

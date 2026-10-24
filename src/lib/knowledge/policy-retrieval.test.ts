@@ -97,4 +97,16 @@ describe("hybrid search for the six corrective-action prompts", () => {
     expect(ordered.some((hit) => hit.chunk_id === "framework")).toBe(true);
     expect(ordered.filter((hit) => hit.section === "Late Opening")).toHaveLength(1);
   });
+
+  it("boosts the manual for a policy question and keeps the coaching guide after it", () => {
+    const rows = pool("Attendance", 14).map((candidate) => candidate.row);
+    const ordered = orderPolicyRetrieval(
+      rows,
+      "In the JBA Policy Manual Edited 5.2025, what does the attendance or tardiness policy say?",
+      rows.length,
+    );
+    expect(ordered[0]).toMatchObject({ section: "Attendance", page: 14 });
+    expect(ordered.some((hit) => hit.chunk_id === "framework")).toBe(true);
+    expect(ordered.filter((hit) => hit.section === "Attendance")).toHaveLength(1);
+  });
 });

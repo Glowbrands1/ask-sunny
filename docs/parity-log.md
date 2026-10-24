@@ -6,8 +6,9 @@ Ask Bubbles was not attached. Port the mechanism. Do not copy company
 wording. The manual title stays **JBA Policy Manual**. No production writes
 and no merge.
 
-- Corrective-action and policy questions collapse identical JBA copies at
-  query time and rank the current manual. A synonym map sends
+- Corrective-action questions collapse identical JBA copies at query time
+  and stay on the current manual. Other policy questions boost that manual
+  and keep the rest of the retrieval behind it. A synonym map sends
   insubordination and acknowledgment to Standards of Conduct, uniform,
   slippers, and leggings to Dress Code, tardy and late to shift to
   Attendance, and opened late to Late Opening. Hybrid search is tested, not
