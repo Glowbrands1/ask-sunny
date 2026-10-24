@@ -27,7 +27,7 @@ interface DocumentRow {
   version: number;
 }
 
-interface ChunkRow {
+export interface ChunkRow {
   chunk_index: number;
   page: number | null;
   section: string | null;
@@ -39,6 +39,33 @@ interface ChunkRow {
 function readPrintedPage(metadata: Record<string, unknown> | null): number | null {
   const value = metadata?.printedPage;
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** metadata.sections: the printed page recorded for each heading in the chunk. */
+function readSections(metadata: Record<string, unknown> | null): { heading: string; page: number }[] {
+  const value = metadata?.sections;
+  if (!Array.isArray(value)) return [];
+  const sections: { heading: string; page: number }[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const heading = (entry as { heading?: unknown }).heading;
+    const page = asPage((entry as { page?: unknown }).page);
+    if (typeof heading !== "string" || !heading.trim() || page === null) continue;
+    sections.push({ heading: heading.trim(), page });
+  }
+  return sections;
+}
+
+/** One stored chunk row as the full-manual prompt reads it. Tests replay production rows through this. */
+export function manualChunkFromRow(row: ChunkRow): FullManualChunk {
+  return {
+    chunkIndex: row.chunk_index,
+    page: asPage(row.page),
+    printedPage: readPrintedPage(row.metadata),
+    section: row.section,
+    content: row.content ?? "",
+    sections: readSections(row.metadata),
+  };
 }
 
 function asPage(value: unknown): number | null {
@@ -60,15 +87,7 @@ async function readChunks(documentId: string, version: number): Promise<FullManu
       .range(from, from + pageSize - 1);
     if (error) throw new Error("chunk read failed");
     const rows = (data ?? []) as ChunkRow[];
-    for (const row of rows) {
-      chunks.push({
-        chunkIndex: row.chunk_index,
-        page: asPage(row.page),
-        printedPage: readPrintedPage(row.metadata),
-        section: row.section,
-        content: row.content ?? "",
-      });
-    }
+    for (const row of rows) chunks.push(manualChunkFromRow(row));
     if (rows.length < pageSize) break;
   }
   return chunks;

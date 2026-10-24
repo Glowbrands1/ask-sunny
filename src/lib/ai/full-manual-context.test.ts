@@ -208,8 +208,12 @@ describe("full manual assembly", () => {
       manuals: result.manuals,
       sourceCount: 0,
     });
-    expect(checked.content).not.toContain("Buff");
-    expect(checked.content).toContain("Sun Tan City, JBA Policy Manual p.17");
+    // Changed on purpose (24 Oct 2026): the citation pass no longer deletes
+    // the model's words. Only [p.N]/[S#] markers and the page number inside a
+    // "<section>, JBA Policy Manual p.N" label change (QA rule, PDF pages).
+    expect(checked.content).toContain("See Buff City Soap, JBA Policy Manual p.16.");
+    expect(checked.content).not.toContain("[p.16]");
+    expect(checked.content).toContain("Sun Tan City, JBA Policy Manual p.17 [p.17]");
   });
 });
 
@@ -279,14 +283,16 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
       manuals: result.manuals,
       sourceCount: 0,
     });
-    expect(checked.content).toContain(BLACKOUT);
-    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.41 [p.41]");
+    // Changed on purpose (24 Oct 2026): the citation pass no longer deletes
+    // the model's words. Only [p.N]/[S#] markers and the page number inside a
+    // "<section>, JBA Policy Manual p.N" label change (QA rule, PDF pages).
+    expect(checked.content).toContain(BLACKOUT.slice(0, -1));
+    expect(checked.content).toContain("Paid time Off (PTO), JBA Policy Manual p.41 [p.41] and p.6.");
     expect(checked.content).not.toContain("p.42");
-    expect(checked.content).not.toContain("p.6");
     expect(checked.content).not.toContain("[S");
-    expect(checked.content).not.toMatch(/DM manual|Salon Director|Table of Contents/i);
-    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.41]"]);
-    expect(pagesIn(checked)).toEqual([41]);
+    expect(checked.content).toContain("See the DM manual p.6 and the Salon Director manual pp.3-5.");
+    expect(checked.content).toContain("See Table of Contents, JBA Policy Manual p.6.");
+    expect(new Set(checked.content.match(/\[p\.\d+\]/g))).toEqual(new Set(["[p.41]"]));
     expect(checked.citations).toEqual([
       expect.objectContaining({
         documentTitle: "JBA Policy Manual",
@@ -329,13 +335,15 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
       manuals: result.manuals,
       sourceCount: 0,
     });
-    expect(checked.content).toContain("Phones stay off the sales floor during a shift.");
+    // Changed on purpose (24 Oct 2026): the citation pass no longer deletes
+    // the model's words. Only [p.N]/[S#] markers and the page number inside a
+    // "<section>, JBA Policy Manual p.N" label change (QA rule, PDF pages).
+    expect(checked.content).toContain("Phones stay off the sales floor during a shift");
     expect(checked.content).toContain("Cell Phone/Smart Watch Policy, JBA Policy Manual p.19 [p.19]");
     expect(checked.content).not.toContain("p.20");
     expect(checked.content).not.toContain("[S");
-    expect(checked.content).not.toMatch(/DM manual/i);
-    expect(checked.content.match(/\[p\.\d+\]/g)).toEqual(["[p.19]"]);
-    expect(pagesIn(checked)).toEqual([19]);
+    expect(checked.content).toContain("See the DM manual p.6.");
+    expect(new Set(checked.content.match(/\[p\.\d+\]/g))).toEqual(new Set(["[p.19]"]));
     expect(checked.citations).toEqual([
       expect.objectContaining({
         documentTitle: "JBA Policy Manual",
@@ -477,8 +485,11 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(checked.content).toContain("Sun Tan City shirts are the salon uniform.");
     expect(checked.content).toContain("Pants are black.");
     expect(checked.content).toContain("Tanning is offered to staff.");
-    expect(checked.content).toContain(TATTOOS);
-    expect(checked.content).toContain(JEWELRY);
+    // Changed on purpose (24 Oct 2026): the citation pass no longer deletes
+    // the model's words. Only [p.N]/[S#] markers and the page number inside a
+    // "<section>, JBA Policy Manual p.N" label change (QA rule, PDF pages).
+    expect(checked.content).toContain(TATTOOS.slice(0, -1));
+    expect(checked.content).toContain(JEWELRY.slice(0, -1));
     expect(checked.content).toContain("Shoes, JBA Policy Manual p.15 [p.15]");
     expect(checked.content).toContain("Name tags, JBA Policy Manual p.15 [p.15]");
     expect(checked.content).toContain("Tattoos, JBA Policy Manual p.16 [p.16]");
@@ -489,8 +500,10 @@ describe("conv_mvmjem0c2wzftv2, conv_mvmjfgcv573j1oz, conv_mvmjfwnx8psm0nx", () 
     expect(checked.content).not.toContain("p.18");
     expect(checked.content).not.toContain("p.20");
     expect(checked.content).not.toContain("[S");
-    expect(checked.content).not.toMatch(/Buff|Crunch|Salon Director/i);
-    expect(pagesIn(checked)).toEqual([15, 16, 17]);
+    expect(checked.content).toContain(
+      "Crunch Shirts, JBA Policy Manual p.17. Crunch Pants, JBA Policy Manual p.17. See Buff City Soap p.16 and the Crunch policy manual p.16. Crunch Fitness Specific Dress Code, JBA Policy Manual p.16. Salon Director manual pp.3-5.",
+    );
+    expect(new Set(checked.content.match(/\[p\.\d+\]/g))).toEqual(new Set(["[p.15]", "[p.16]", "[p.17]"]));
     expect(checked.content).toMatch(/p\.15\b/);
     expect(checked.content).toMatch(/p\.16\b/);
     expect(checked.content).toMatch(/p\.17\b/);
@@ -666,11 +679,14 @@ describe("citation validation", () => {
       manuals: result.manuals,
       sourceCount: 0,
     });
-    expect(checked.content).toContain("Attendance, JBA Policy Manual p.19");
-    expect(checked.content).toContain("Dress Code for The Company, JBA Policy Manual p.20");
-    expect(checked.content).not.toContain("p.99");
-    expect(checked.content).not.toContain("Unicorn");
-    expect(checked.citations.map((citation) => citation.locator)).toEqual(["Page 19", "Page 20"]);
+    // Changed on purpose (24 Oct 2026): a heading the manual does not print
+    // ("Dress Code", "Unicorn Policy") leaves the label as the model wrote it,
+    // with no marker and no Sources row. Words are not renamed or deleted.
+    expect(checked.content).toContain("See Attendance, JBA Policy Manual p.19 [p.19].");
+    expect(checked.content).toContain("Dress Code, JBA Policy Manual p.99.");
+    expect(checked.content).not.toContain("[p.99]");
+    expect(checked.content).toContain("Also Unicorn Policy, JBA Policy Manual p.19.");
+    expect(checked.citations.map((citation) => citation.locator)).toEqual(["Page 19"]);
     expect(checked.citations.every((citation) => citation.documentTitle === "JBA Policy Manual")).toBe(true);
   });
 
