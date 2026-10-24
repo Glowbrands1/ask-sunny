@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,16 @@ import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { correctiveActionDocument } from "@/lib/forms/library";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
 import { firstMessageDropped } from "./form-history";
+import {
+  REPLAY_LATENCY_GATE_MS,
+  REPLAY_RUNS,
+  judgeReplayCard,
+  latencyOverGate,
+  renderScoreboard,
+  type ReplayCardCriteria,
+  type ReplayCaseResult,
+  type ReplayRound,
+} from "./replay-scoreboard";
 import type { PriorFormOnFile } from "@/lib/forms/prior-forms-lines";
 import { JBA_MANUAL_CHUNKS, JBA_MANUAL_DOCUMENT } from "@/lib/ai/__fixtures__/jba-policy-manual";
 import type { AccessScope, ChatMessage } from "@/types";
@@ -1054,9 +1064,24 @@ function setFlags(on: boolean) {
   }
 }
 
-const RUNS = 3;
+const RUNS = REPLAY_RUNS;
 const harnessEvents: { caseId: string; event: string }[] = [];
-const timings: { id: string; flags: "on" | "off"; ms: number }[] = [];
+const flagsOnResults: ReplayCaseResult[] = [];
+const flagsOffResults: ReplayCaseResult[] = [];
+
+const writtenCriteria = JSON.parse(readFileSync("src/lib/ai/__fixtures__/replay_set.json", "utf8")) as {
+  id: string;
+  criteria: ReplayCardCriteria;
+}[];
+
+function criteriaWrittenBeforeRun(id: string): ReplayCardCriteria {
+  const criteria = writtenCriteria.find((item) => item.id === id)?.criteria;
+  if (!criteria) throw new Error(`${id} has no card criteria written before the run`);
+  for (const key of ["employee", "salon", "date", "policy", "noBlockingQuestion", "noLeakedInternalText"] as const) {
+    if (!(key in criteria)) throw new Error(`${id} criteria missing ${key}`);
+  }
+  return criteria;
+}
 
 function cardCriteria(item: ReplayCase) {
   const employee = item.on.find((check) => check.employee)?.employee ?? null;
@@ -1206,12 +1231,22 @@ async function replay(item: ReplayCase, flagsOn: boolean) {
   const history: ChatMessage[] = [];
   const conversationId = `conv-${item.id}-${flagsOn ? "on" : "off"}`;
   const checks = flagsOn ? item.on : item.off;
+  let last: Awaited<ReturnType<typeof ask>> | null = null;
   for (let index = 0; index < item.turns.length; index += 1) {
     const response = await ask(item.turns[index]!, history, conversationId);
+    last = response;
     const turn = index + 1;
     expect(response.content, `${item.id} turn ${turn}`).not.toMatch(
       /I cannot repair|does not appear on the employee roster|I cannot create this form|couldn'?t find \*\*|didn'?t find \*\*|employee list for your salons|not found in the roster/i,
     );
+    if (flagsOn) {
+      expect(response.content, `${item.id} turn ${turn}`).not.toMatch(/did you mean|want to be sure before it goes on the form|reply with the number/i);
+      const note = response.formProposal?.wovenCloseMatch?.trim() ?? "";
+      if (note) {
+        expect(note, `${item.id} turn ${turn}`).toMatch(/^Woven has \S/);
+        expect(note, `${item.id} turn ${turn}`).not.toMatch(/\?/);
+      }
+    }
     for (const check of checks) applyCheck(item.id, turn, response, check);
     history.push({
       id: `u-${item.id}-${index}`,
@@ -1228,6 +1263,7 @@ async function replay(item: ReplayCase, flagsOn: boolean) {
       ...(response.formSelection ? { formSelection: response.formSelection } : {}),
     });
   }
+  return last;
 }
 
 beforeEach(() => {
@@ -1239,28 +1275,94 @@ beforeEach(() => {
   }));
 });
 
+function recordCase(bucket: ReplayCaseResult[], id: string, started: number, failure?: string): ReplayCaseResult {
+  const ms = Date.now() - started;
+  const over = !failure && latencyOverGate(ms);
+  const result: ReplayCaseResult = {
+    id,
+    pass: !failure && !over,
+    ms,
+    ...(failure ? { failure } : {}),
+    ...(over ? { failure: `latency ${ms}ms over ${REPLAY_LATENCY_GATE_MS}ms` } : {}),
+  };
+  bucket.push(result);
+  return result;
+}
+
 describe("priority replay with the quality flags on", () => {
   beforeEach(() => setFlags(true));
   it.each(CASES)("$id follows the real turns", async (item) => {
-    const criteria = cardCriteria(item);
-    expect(criteria.noBlockingQuestion, `${item.id} criteria`).toBe(true);
-    expect(criteria.noLeakedInternalText, `${item.id} criteria`).toBe(true);
+    const criteria = criteriaWrittenBeforeRun(item.id);
+    expect(criteria, `${item.id} criteria before the run`).toEqual(cardCriteria(item));
     const started = Date.now();
-    for (let run = 0; run < RUNS; run += 1) await replay(item, true);
-    timings.push({ id: item.id, flags: "on", ms: Date.now() - started });
+    let failure: string | undefined;
+    try {
+      for (let run = 0; run < RUNS; run += 1) {
+        const last = await replay(item, true);
+        const policyName = criteria.policy?.replace(/ p\.\d+$/, "") ?? "";
+        const policyPage = Number(criteria.policy?.match(/p\.(\d+)$/)?.[1] ?? "0");
+        const failures = judgeReplayCard({
+          criteria,
+          employeeName: last?.formProposal?.employeeName ?? null,
+          locationId: last?.formProposal?.locationId ?? null,
+          formDate: last?.formProposal?.formDate ?? null,
+          content: last?.content ?? "",
+          policySatisfied: criteria.policy ? cites(last?.content ?? "", last?.citations ?? [], policyName, policyPage) : true,
+        });
+        expect(failures, `${item.id} card`).toEqual([]);
+      }
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    const result = recordCase(flagsOnResults, item.id, started, failure);
+    if (failure) throw new Error(failure);
+    if (!result.pass) throw new Error(result.failure ?? `${item.id} failed`);
   });
 });
 
 describe("priority replay with the flags off is no worse than the baseline", () => {
   beforeEach(() => setFlags(false));
   it.each(CASES)("$id holds the baseline floor", async (item) => {
-    const criteria = cardCriteria(item);
-    expect(criteria.noBlockingQuestion, `${item.id} criteria`).toBe(true);
+    criteriaWrittenBeforeRun(item.id);
     const started = Date.now();
-    for (let run = 0; run < RUNS; run += 1) await replay(item, false);
-    timings.push({ id: item.id, flags: "off", ms: Date.now() - started });
+    let failure: string | undefined;
+    try {
+      for (let run = 0; run < RUNS; run += 1) await replay(item, false);
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    const result = recordCase(flagsOffResults, item.id, started, failure);
+    if (failure) throw new Error(failure);
+    if (!result.pass) throw new Error(result.failure ?? `${item.id} failed`);
   });
 });
+
+/** The 24 Oct anti-loop round, 42/42, before this scoreboard file existed. */
+const PRIOR_ROUND: ReplayRound = {
+  title: "Round 1 — code-owned slots",
+  replaySetHash: "2f05db5d08424743a1be74caf8265ed3decfac28fdbda5bcf3c4259282daa611",
+  promptHash: "68f86ab2aad33782047d57ada4b04836c1888e6e8a2d2a2487d9a00c25786dc6",
+  commit: "f4bfc6ac561094e76749f45ede4616188f20e779",
+  model: "claude-opus-5",
+  flags: FLAGS,
+  runs: 3,
+  latencyGateMs: REPLAY_LATENCY_GATE_MS,
+  criteria: writtenCriteria,
+  flagsOff: [
+    ["s4", 234], ["s9", 131], ["s11", 111], ["s5", 65], ["s27", 211], ["s28", 33], ["s29", 18],
+    ["s17", 63], ["s20", 32], ["s21", 138], ["s25", 32], ["s8", 106], ["s12", 22], ["s16", 18],
+    ["b9", 46], ["b10", 129], ["b11", 15], ["b12", 108], ["n1", 29], ["n2", 9], ["n3", 6],
+  ].map(([id, ms]) => ({ id: String(id), pass: true, ms: Number(ms) })),
+  flagsOn: [
+    ["s4", 3391], ["s9", 505], ["s11", 460], ["s5", 438], ["s27", 654], ["s28", 117], ["s29", 68],
+    ["s17", 369], ["s20", 341], ["s21", 409], ["s25", 145], ["s8", 1082], ["s12", 155], ["s16", 180],
+    ["b9", 346], ["b10", 606], ["b11", 83], ["b12", 792], ["n1", 215], ["n2", 48], ["n3", 68],
+  ].map(([id, ms]) => ({ id: String(id), pass: true, ms: Number(ms) })),
+  harnessEvents: ["s4", "s11", "s27", "s8"].flatMap((caseId) => [
+    { caseId: `${caseId} flags-on`, event: "resend-first-message" },
+    { caseId: `${caseId} flags-off`, event: "resend-first-message" },
+  ]),
+};
 
 afterAll(() => {
   const replaySet = JSON.stringify(CASES.map((item) => ({ id: item.id, turns: item.turns, criteria: cardCriteria(item) })));
@@ -1274,16 +1376,22 @@ afterAll(() => {
   } catch {
     commit = "unknown";
   }
-  console.log(
-    JSON.stringify({
-      replaySetHash,
-      promptHash,
-      commit,
-      flags: FLAGS,
-      model: CLAUDE_MODEL,
-      runs: RUNS,
-      harnessEvents,
-      timings,
-    }),
-  );
+  const round: ReplayRound = {
+    title: "Round 2 — close-match note under the card",
+    replaySetHash,
+    promptHash,
+    commit,
+    model: CLAUDE_MODEL,
+    flags: FLAGS,
+    runs: RUNS,
+    latencyGateMs: REPLAY_LATENCY_GATE_MS,
+    criteria: writtenCriteria,
+    flagsOff: flagsOffResults,
+    flagsOn: flagsOnResults,
+    harnessEvents,
+  };
+  console.log(JSON.stringify(round));
+  if (process.env.REPLAY_RECORD_SCOREBOARD === "1") {
+    writeFileSync("docs/scoreboard.md", renderScoreboard([PRIOR_ROUND, round]));
+  }
 });
