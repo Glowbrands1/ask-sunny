@@ -1,5 +1,23 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: contents pages, printed pages, chunk overlap — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No ingest change
+and no merge. `FULL_MANUAL_CONTEXT_ENABLED` still defaults off.
+
+- PDF sheets 3–6 (`section` "Table of Contents", then a null section)
+  stay out of the cached manual block, so a contents line cannot be
+  cited. Reference List on sheet 7, which prints 6, stays.
+- `[p.n]` and the citation page are the printed page:
+  `metadata.printedPage`, else the `N | P a g e` footer on that sheet,
+  else the PDF sheet. In the stored manual the numbered sheets print
+  one less than the sheet (Cell Phone/Smart Watch is sheet 20 and
+  prints 19). The cover has no printed page and is not shifted.
+- Consecutive chunks are joined in `chunk_index` order after the
+  leading overlap is removed, so a section is not repeated or cut at
+  the chunk boundary.
+
 ## 24 Oct 2026: full manual in the policy prompt — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

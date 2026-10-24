@@ -32,6 +32,13 @@ interface ChunkRow {
   page: number | null;
   section: string | null;
   content: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+/** metadata.printedPage, when ingestion stored a positive whole number. */
+function readPrintedPage(metadata: Record<string, unknown> | null): number | null {
+  const value = metadata?.printedPage;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function asPage(value: unknown): number | null {
@@ -46,7 +53,7 @@ async function readChunks(documentId: string, version: number): Promise<FullManu
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await client
       .from("knowledge_chunks")
-      .select("chunk_index, page, section, content")
+      .select("chunk_index, page, section, content, metadata")
       .eq("document_id", documentId)
       .eq("version", version)
       .order("chunk_index", { ascending: true })
@@ -57,6 +64,7 @@ async function readChunks(documentId: string, version: number): Promise<FullManu
       chunks.push({
         chunkIndex: row.chunk_index,
         page: asPage(row.page),
+        printedPage: readPrintedPage(row.metadata),
         section: row.section,
         content: row.content ?? "",
       });
