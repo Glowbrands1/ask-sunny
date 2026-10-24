@@ -382,6 +382,17 @@ export function formFullRemapEnabled(): boolean {
   return envFlag("FORM_FULL_REMAP_ENABLED");
 }
 
+/**
+ * The Job title and the Observation of Offense read only the manager's own
+ * words. The lines the app writes onto the question ("Job title: CA. It
+ * happened at KS Lawrence.", "It happened on 9/28/2026.") are not read as
+ * what the manager said, and a turn that only says where the employee
+ * works is not an offense. Off, both readers are unchanged.
+ */
+export function managerWordsOnlyEnabled(): boolean {
+  return envFlag("MANAGER_WORDS_ONLY_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

@@ -18,11 +18,13 @@ import {
   globalSalonAskEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
+  managerWordsOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
+import { withoutAppLines } from "./app-sentences";
 import type { GroundedPerson } from "./grounded-entities";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
@@ -480,12 +482,14 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
 /** The account already given, copied onto the card so the offense is not asked again. */
 function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
   const ignore = employeeName ? [employeeName] : [];
+  const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
-  for (const turn of turns) {
+  for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
     for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
       const sentence = part.trim();
       if (sentence.length < 12) continue;
       if (!describesMoreThanTheRequest(sentence, { ignore })) continue;
+      if (managerOnly && onlySaysWhereTheyWork(sentence, ignore)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
       sentences.push(sentence);
@@ -493,6 +497,29 @@ function withObservation(content: string, turns: readonly string[], employeeName
   }
   if (sentences.length === 0) return content;
   return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
+}
+
+/**
+ * "She works at NE Grand Island" says where the employee works. It is the
+ * salon, not an offense. A sentence that also says what happened stays.
+ */
+const WHERE_THEY_WORK = /^(?:(?:she|he|they|[a-z'’-]+(?:\s+[a-z'’-]+)?)\s+)?(?:works|worked|is|was|is based|is assigned|is working)\s+(?:at|in|out of|from)(?:\s+the)?(?:\s+(?:salon|location|store))?$/;
+
+function onlySaysWhereTheyWork(sentence: string, ignore: readonly string[]): boolean {
+  const ids = [...new Set(readSalonMentions(sentence).flatMap((mention) => mention.salonIds))];
+  if (ids.length === 0) return false;
+  const salonWords = new Set(
+    ids.flatMap((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/)).filter(Boolean),
+  );
+  const nameWords = new Set(ignore.flatMap((name) => name.toLowerCase().split(/\s+/)).filter(Boolean));
+  const rest = sentence
+    .toLowerCase()
+    .replace(/[.!,]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word && !salonWords.has(word) && !/^\d+$/.test(word))
+    .map((word) => (nameWords.has(word) ? "she" : word));
+  const collapsed = rest.filter((word, index) => !(word === "she" && rest[index - 1] === "she")).join(" ");
+  return WHERE_THEY_WORK.test(collapsed);
 }
 
 /** The global salon question is once per conversation. A later turn does not ask it again. */

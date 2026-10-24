@@ -35,6 +35,7 @@ import {
   manualTopicPinEnabled,
   fullManualContextEnabled,
   formFullRemapEnabled,
+  managerWordsOnlyEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
@@ -93,6 +94,7 @@ const NEW_FLAGS = [
   "MANUAL_TOPIC_PIN_ENABLED",
   "FULL_MANUAL_CONTEXT_ENABLED",
   "FORM_FULL_REMAP_ENABLED",
+  "MANAGER_WORDS_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -197,6 +199,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualTopicPinEnabled()).toBe(false);
     expect(fullManualContextEnabled()).toBe(false);
     expect(formFullRemapEnabled()).toBe(false);
+    expect(managerWordsOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
