@@ -65,10 +65,13 @@ export function salonIdNamedIn(text: string): string | null {
   if (mentioned.length === 1) return mentioned[0]!;
   if (mentioned.length > 1) return null;
 
+  // A two-word name ("Lawrence Smith") is a person. Those words are not a
+  // salon nickname, so KS Lawrence is not filled in from the person's name.
+  const people = personTokens(text);
   const words = text
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 4 && !NOT_A_SALON.has(word));
+    .filter((word) => word.length >= 4 && !NOT_A_SALON.has(word) && !people.has(word));
   if (words.length === 0) return null;
 
   const nickname = uniqueSalon(PRODUCTION_SALONS.filter((salon) => words.some((word) => localTokens(salon.name).includes(word))));
@@ -131,6 +134,16 @@ export function askGlobalNonAdminForSalon(
     ? replaced
     : `${replaced.trim()}\n\n${GLOBAL_SALON_ASK}`;
   return { ...response, content, formProposal: next };
+}
+
+function personTokens(text: string): Set<string> {
+  const found = new Set<string>();
+  for (const match of text.matchAll(/\b[A-Z][a-zA-Z'’-]+(?:\s+[A-Z][a-zA-Z'’-]+)+\b/g)) {
+    for (const word of match[0].toLowerCase().split(/[^a-z0-9]+/)) {
+      if (word) found.add(word);
+    }
+  }
+  return found;
 }
 
 function localTokens(name: string): string[] {

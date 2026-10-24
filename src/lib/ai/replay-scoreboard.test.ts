@@ -120,7 +120,7 @@ describe("replay card criteria", () => {
       expect(board).toContain("Totals:");
       expect(board).toMatch(/worse 0\./);
     }
-    expect(board).toContain("| CHAT_DATA_TOOLS_ENABLED | 21/21 | 7/21 | — |");
+    expect(board).toContain("| CHAT_DATA_TOOLS_ENABLED | 25/25 | 9/25 | — |");
     expect(board).toContain("| s22 | miss | miss |");
     expect(board).toContain("| s23 | miss | pass |");
     if (board.includes("## Prompt cache")) {

@@ -1703,19 +1703,26 @@ describe("the production request names Marisol Quade as the recipient", () => {
   });
 
   it("global scope with no directory row for the recipient: no salon is invented", async () => {
-    state.role = "district_manager";
-    state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
-    const { last, proposal } = await conversation([RECIPIENT_REPORT]);
-    // The card is built and the salon is asked once. No salon id is filled in.
-    expect(proposal).toMatchObject({
-      employeeName: "Marisol Quade",
-      status: "needs_location",
-      locationResolution: "needs_selection",
-      locationId: null,
-      supportsInlineDraft: false,
-    });
-    expect(last.content.match(/which salon is this about/gi)).toHaveLength(1);
-    expect(proposal.authorizedLocationIds.length).toBeGreaterThan(1);
+    const previous = process.env.GLOBAL_SALON_ASK_ENABLED;
+    process.env.GLOBAL_SALON_ASK_ENABLED = "1";
+    try {
+      state.role = "district_manager";
+      state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+      const { last, proposal } = await conversation([RECIPIENT_REPORT]);
+      // The card is built and the salon is asked once. The draft is not blocked. No salon id is filled in.
+      expect(proposal).toMatchObject({
+        employeeName: "Marisol Quade",
+        status: "ready",
+        locationResolution: "needs_selection",
+        locationId: null,
+        supportsInlineDraft: true,
+      });
+      expect(last.content.match(/which salon is this about/gi)).toHaveLength(1);
+      expect(proposal.authorizedLocationIds.length).toBeGreaterThan(1);
+    } finally {
+      if (previous === undefined) delete process.env.GLOBAL_SALON_ASK_ENABLED;
+      else process.env.GLOBAL_SALON_ASK_ENABLED = previous;
+    }
   });
 });
 
