@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { codeSlotsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
+import { PRODUCTION_SALONS } from "@/data/salons";
+import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
@@ -170,21 +174,49 @@ export function normalizeIncidentDate(raw: string, today: string): string | null
   return calendarIso(year, month, Number(named[1]));
 }
 
+const BARE_YES_NO = /^(yes|yeah|yep|yup|no|nope)\b[.!]*$/i;
+
+/**
+ * A bare yes or no is resolved against pendingConfirmation before the model
+ * runs. With nothing pending, the stored slots stay — "Yes" does not clear
+ * the employee (s25).
+ */
+function settleYesNo(question: string, saved: ConversationFormState): ConversationFormState | null {
+  if (!BARE_YES_NO.test(question.trim()) || !saved.templateKey) return null;
+  const pending = saved.pendingConfirmation ?? null;
+  if (!pending) return { ...saved, pendingConfirmation: null };
+  const accept = /^(yes|yeah|yep|yup)\b/i.test(question.trim());
+  return {
+    ...saved,
+    employeeName: accept ? pending.candidate : pending.typed,
+    pendingConfirmation: null,
+  };
+}
+
 export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const saved = input.saved ?? EMPTY_FORM_STATE;
+  if (codeSlotsEnabled()) {
+    const settled = settleYesNo(input.question, saved);
+    if (settled) {
+      return { question: input.question, state: settled, clarification: null, formTurn: true };
+    }
+  }
   const reading = parseReading(input.raw);
   const blob = conversationBlob(input);
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
   const employee = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
-    : groundEmployee(reading?.employee ?? null, blob, input.people, input.salons);
+    : groundEmployee(codeSlotsEnabled() ? null : reading?.employee ?? null, blob, input.people, input.salons);
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
-  const date = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
+  const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
+  const date = codeSlotsEnabled()
+    ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
+    : groundedDate;
   const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
@@ -193,16 +225,25 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
   const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
-  const policyPage = modelPolicy
-    ? pageForHeading(modelPolicy, input.headingPages)
-    : saved.policyHeading
-      ? saved.policyPage
-      : pageForHeading(policyHeading, input.headingPages);
+  const policyPage = codeSlotsEnabled()
+    ? pageForHeading(policyHeading, input.headingPages) ?? saved.policyPage ?? printedPageForPolicy(policyHeading)
+    : modelPolicy
+      ? pageForHeading(modelPolicy, input.headingPages)
+      : saved.policyHeading
+        ? saved.policyPage
+        : pageForHeading(policyHeading, input.headingPages);
   const formTurn = Boolean(input.formInProgress || reading?.formTurn || formType.key || saved.templateKey);
 
-  const state = mergeSlots(saved, {
-    employee,
-    salon,
+  const salonForMerge = codeSlotsEnabled() && salon.ambiguous.length > 1
+    ? { id: salon.id, name: salon.name, ambiguous: [] as readonly SalonRow[] }
+    : salon;
+  const employeeForMerge = codeSlotsEnabled()
+    ? { ...employee, ambiguous: [] as readonly GroundedPerson[] }
+    : employee;
+
+  let state = mergeSlots(saved, {
+    employee: employeeForMerge,
+    salon: salonForMerge,
     title,
     incidentType,
     date: date.iso,
@@ -212,11 +253,18 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     policyHeading,
     policyPage,
   });
+  if (codeSlotsEnabled()) {
+    const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
+    const prior = cleanPersonName(saved.employeeName, salonNames);
+    const named = employeeNamedOnPurpose(input.question, prior, input.people, salonNames);
+    const employeeName = named ?? prior ?? cleanPersonName(state.employeeName, salonNames);
+    if (employeeName !== state.employeeName) state = { ...state, employeeName };
+  }
 
   const clarification = clarificationFor({
     formTurn,
-    employee,
-    salon,
+    employee: employeeForMerge,
+    salon: salonForMerge,
     title,
     incidentType,
     date,

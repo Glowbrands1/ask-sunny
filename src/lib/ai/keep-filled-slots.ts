@@ -1,4 +1,4 @@
-import { salonById } from "@/data/salons";
+import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates } from "@/lib/forms/form-date-answer";
 import { matchEmployeeName } from "@/lib/forms/employee-match";
@@ -14,13 +14,16 @@ import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import {
   actionPlanSentencesEnabled,
+  codeSlotsEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import type { GroundedPerson } from "./grounded-entities";
-import { displayTypedName, scrubRosterBlock } from "./roster-reply";
+import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
 /**
  * Slots the conversation already filled, put back on this turn's proposal.
@@ -55,7 +58,22 @@ export function holdFilledSlots(input: {
     input.question,
   ].filter((turn) => turn.trim());
   const previous = previousProposal(input.history, proposal.templateKey);
-  const employeeName = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people);
+  const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
+  const kept = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people);
+  let employeeName = kept;
+  if (codeSlotsEnabled()) {
+    // The model never writes Employee. Each user turn can name someone;
+    // a later turn keeps that name unless it renames them on purpose.
+    let named: string | null = null;
+    for (const turn of turns) {
+      const next = cleanPersonName(
+        employeeNamedOnPurpose(turn, named, input.people, salonNames),
+        salonNames,
+      );
+      if (next) named = next;
+    }
+    employeeName = named;
+  }
   const slotsOn = intentExtractionEnabled() || groundedEntitiesEnabled();
   const spokenRole = slotsOn ? spokenDirectoryTitle(turns.join("\n"), input.people, employeeName) : null;
   const employeeRole =
@@ -70,7 +88,9 @@ export function holdFilledSlots(input: {
   let locationId = keptSalon(turns, proposal.locationId, previous?.locationId ?? null, employeeName, input.people);
   if (slotsOn && place.kind === "one") locationId = place.salon.id;
   if (slotsOn && place.kind === "unknown" && !namedSalon) locationId = null;
-  const formDate = keptDate(input.question, input.today, proposal.formDate ?? null, previous?.formDate ?? null);
+  const formDate = codeSlotsEnabled()
+    ? explicitIncidentIso(input.question, input.today) ?? previous?.formDate ?? proposal.formDate ?? null
+    : keptDate(input.question, input.today, proposal.formDate ?? null, previous?.formDate ?? null);
   const payrollDeduct = keptPayroll(
     turns,
     proposal.payrollDeduct ?? null,
@@ -93,8 +113,9 @@ export function holdFilledSlots(input: {
         namedLocationOutOfScope: null,
         locationResolution: "needs_selection",
         authorizedLocationIds: [...ids],
-        status: next.employeeName ? "needs_location" : next.status,
-        supportsInlineDraft: false,
+        // A missing salon does not hold the card. The choices stay in the reply.
+        status: codeSlotsEnabled() && next.employeeName ? "ready" : next.employeeName ? "needs_location" : next.status,
+        supportsInlineDraft: codeSlotsEnabled() ? Boolean(next.employeeName) : false,
       };
     }
   } else if (locationId && locationId !== next.locationId) {
@@ -111,11 +132,18 @@ export function holdFilledSlots(input: {
   if (next.employeeName && next.status === "needs_employee") {
     next = {
       ...next,
-      status: next.locationId || next.locationResolution === "not_applicable" ? "ready" : "needs_location",
+      status: codeSlotsEnabled() || next.locationId || next.locationResolution === "not_applicable" ? "ready" : "needs_location",
     };
+  }
+  if (codeSlotsEnabled() && next.employeeName && next.status === "needs_location") {
+    next = { ...next, status: "ready", supportsInlineDraft: true };
   }
 
   let content = scrubRosterBlock(input.response.content);
+  if (codeSlotsEnabled() && (!content.trim() || repairSpeaksAsValidator(input.response.content))) {
+    const prior = previousContent(input.history, proposal.templateKey);
+    if (prior.trim()) content = prior;
+  }
   content = dropWarningLines(content);
   if (next.templateKey === "stc-exit" && next.employeeName) {
     content = exitContent(content, next, turns.join("\n"), input.today);
@@ -133,11 +161,27 @@ export function holdFilledSlots(input: {
   if (actionPlanSentencesEnabled() && next.templateKey === "dpoa" && next.employeeName) {
     content = withActionPlan(content, next, citations);
   }
+  if (codeSlotsEnabled()) {
+    for (const line of emptySlotQuestions(next)) {
+      if (!content.includes(line)) content = content ? `${content}\n\n${line}` : line;
+    }
+  }
   const same =
     content === input.response.content &&
     next === proposal &&
     citations.length === (input.response.citations ?? []).length;
   return same ? input.response : { ...input.response, content, formProposal: next, citations };
+}
+
+function emptySlotQuestions(proposal: ChatFormProposal): string[] {
+  if (!proposal.templateKey) return [];
+  const lines: string[] = [];
+  if (!proposal.employeeName) lines.push("Employee is still blank.");
+  // Exit paperwork keeps its dates in the narrative. formDate stays empty on
+  // purpose, so it is not a missing slot. A salon is never a gate.
+  const dated = proposal.templateKey === "dpoa" || proposal.templateKey === "coaching";
+  if (dated && !proposal.formDate) lines.push("Date is still blank.");
+  return lines;
 }
 
 function previousProposal(history: readonly HistoryTurn[], templateKey: string): ChatFormProposal | null {

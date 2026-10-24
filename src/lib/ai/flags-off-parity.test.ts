@@ -30,6 +30,7 @@ import {
   managerPayrollAmountOnlyEnabled,
   manualSectionDedupeEnabled,
   payrollAmountFieldEnabled,
+  codeSlotsEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
@@ -78,6 +79,7 @@ const NEW_FLAGS = [
   "MANUAL_SECTION_DEDUPE_ENABLED",
   "PRINTED_PAGE_CITATION_ENABLED",
   "PAYROLL_AMOUNT_FIELD_ENABLED",
+  "CODE_SLOTS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -177,6 +179,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualSectionDedupeEnabled()).toBe(false);
     expect(printedPageCitationEnabled()).toBe(false);
     expect(payrollAmountFieldEnabled()).toBe(false);
+    expect(codeSlotsEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
