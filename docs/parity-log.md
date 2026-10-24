@@ -1,5 +1,16 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: Job title is not an employee name — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. Nothing was published.
+Do not merge or deploy until Pau says otherwise.
+
+- Field labels (job title, title, position, location, salon, date) are
+  stripped from an employee-name candidate. The words after "job title" go
+  on the Job Title slot. s8 no longer stores "Job title", and a name does
+  not keep the trailing "Job" from that label.
+
 ## 24 Oct 2026: Chat data tools in the one-flag replay — Sunny-only
 
 Ask Bubbles was not attached. No chat mechanism changed. The manual title

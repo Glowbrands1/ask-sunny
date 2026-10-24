@@ -9,7 +9,7 @@ import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
 import { FORM_NAME_PATTERN, canonicalShorthand, isFormVocabulary, leadingFormRequest } from "./template-intent";
-import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD, lowercaseMonths } from "./name-words";
+import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD, isFieldLabelWord, lowercaseMonths, stripFieldLabels } from "./name-words";
 import { boundManagerTurns, type BoundedContext } from "./bounded-context";
 import {
   allowsTeamSubject,
@@ -1277,9 +1277,11 @@ function settle(strong: string[], weak: string[], text: string, subjects: readon
   const given = correction ? [...strong, ...sentenceAnswers(text)] : strong;
   const recipient = formRecipient(subjects, given, weak, text);
   const narrative = recipient ? weak.filter((name) => samePerson(name, recipient)) : weak;
-  const names = distinctNames([...given, ...narrative]).filter(
-    (name) => !negated.some((not) => samePerson(not, name)),
-  );
+  const names = distinctNames([...given, ...narrative])
+    .map((name) => stripFieldLabels(name))
+    .filter((name): name is string => Boolean(name))
+    .filter((name) => !isJobTitlePhrase(name))
+    .filter((name) => !negated.some((not) => samePerson(not, name)));
   const explicit =
     names.length > 0 && (correction || names.some((name) => given.some((named) => samePerson(named, name))));
   return { names, explicit, negated };
@@ -1775,6 +1777,28 @@ export const JOB_TITLES: { pattern: RegExp; title: string }[] = [
  * us what the subject is, and the field is editable — but the ORDER means the
  * most specific one wins rather than whichever came first in the sentence.
  */
+/**
+ * The words the manager put after the label "job title".
+ * They are the Job Title slot, never the employee.
+ */
+const LABELLED_JOB_TITLE =
+  /\bjob title\b\s*[:\-–—]?\s+([A-Za-z][A-Za-z'’.-]*(?:\s+[A-Za-z][A-Za-z'’.-]*){0,5})/i;
+
+export function titleAfterJobTitleLabel(text: string): string | null {
+  const match = LABELLED_JOB_TITLE.exec(text);
+  if (!match?.[1]) return null;
+  const words = match[1].trim().replace(/[.,;:]+$/g, "").split(/\s+/);
+  const kept: string[] = [];
+  for (const word of words) {
+    if (isFieldLabelWord(word)) break;
+    if (/^(?:at|in|on|for)$/i.test(word)) break;
+    kept.push(word);
+  }
+  const value = kept.join(" ").trim();
+  if (!value) return null;
+  return value;
+}
+
 export function extractJobTitle(text: string): string | null {
   const states = new Set(PRODUCTION_SALONS.map((salon) => salon.state.toLowerCase()));
   for (const entry of JOB_TITLES) {

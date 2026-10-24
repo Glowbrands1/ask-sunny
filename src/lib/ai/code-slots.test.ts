@@ -72,6 +72,90 @@ describe("code slots", () => {
     expect(no.state.employeeName).toBe("Pasiley Peklo");
   });
 
+  it("s8 verbatim never stores Job title as the employee", () => {
+    process.env.CODE_SLOTS_ENABLED = "1";
+    const turns = [
+      "what does policy say about pets in salon",
+      "assist with creating an exit form",
+      "christiana headley, tanning consultant at shawnee",
+      "last day worked was 9-20-26. management called her with no response on 9-27-26",
+      "its a no call no show",
+      "create exit form",
+      "Create a form from this conversation.",
+      "create exit: Christiana Headley, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
+      "Create a form from this conversation.",
+      "Create a form from this conversation.",
+    ];
+    const christiana = {
+      id: "christiana",
+      firstName: "Christiana",
+      lastName: "Headley",
+      preferredFirstName: null,
+      salonIds: ["loc-0463"],
+      title: "Tanning Consultant",
+      primaryLocationName: "KS Shawnee Mission Pkwy",
+      primarySalonId: "loc-0463",
+    };
+    let saved = EMPTY_FORM_STATE;
+    for (const question of turns) {
+      const decision = decideIntentTurn({
+        ...turn(question, saved),
+        people: [christiana],
+        raw: {
+          employee: "Job title",
+          salon: null,
+          title: null,
+          incidentType: null,
+          incidentDate: null,
+          payrollAmount: null,
+          warningLevel: null,
+          formType: "exit",
+          formTurn: true,
+          policyHeading: null,
+        },
+      });
+      expect(decision.state.employeeName?.toLowerCase() ?? "").not.toBe("job title");
+      expect(decision.state.employeeName ?? "").not.toMatch(/\bjob\b/i);
+      saved = decision.state;
+    }
+    expect(saved.employeeName).toBe("Christiana Headley");
+    expect(saved.title).toBe("Tanning Consultant");
+  });
+
+  it("s17 verbatim keeps Betty Sue and does not keep Job on the name", () => {
+    process.env.CODE_SLOTS_ENABLED = "1";
+    const turns = [
+      "Can you create me a performance CA?",
+      "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+      "Betty Sue",
+    ];
+    let saved = EMPTY_FORM_STATE;
+    for (const question of turns) {
+      const decision = decideIntentTurn({
+        ...turn(question, saved),
+        people: [],
+        raw: {
+          employee: "Marissa Lempka Job",
+          salon: null,
+          title: "Job title",
+          incidentType: null,
+          incidentDate: null,
+          payrollAmount: null,
+          warningLevel: null,
+          formType: "corrective action",
+          formTurn: true,
+          policyHeading: null,
+        },
+      });
+      expect(decision.state.employeeName ?? "").not.toBe("Job title");
+      expect(decision.state.employeeName ?? "").not.toBe("Marissa Lempka Job");
+      expect(decision.state.employeeName ?? "").not.toMatch(/\bjob\b/i);
+      saved = decision.state;
+    }
+    expect(saved.employeeName).toBe("Betty Sue");
+    expect(saved.title).toBe("Tanning Consultant");
+  });
+
   it("does not show repair output", async () => {
     process.env.CODE_SLOTS_ENABLED = "1";
     const draft: OutgoingDraft = {

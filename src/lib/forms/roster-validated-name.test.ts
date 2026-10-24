@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RosterEmployee } from "./employee-match";
 import { explicitIncidentIso } from "./explicit-incident-date";
 import { printedPageForPolicy } from "./printed-policy-pages";
+import { extractEmployeeNames, titleAfterJobTitleLabel } from "./proposal";
 import { employeeNamedOnPurpose, rosterValidatedName, stripNonNameTokens } from "./roster-validated-name";
 
 const ROSTER: RosterEmployee[] = [
@@ -19,6 +20,20 @@ describe("roster-validated name", () => {
   it("strips job title, salon, and promo tokens", () => {
     expect(stripNonNameTokens("Job title Lawrence PPTA", SALONS)).toBeNull();
     expect(stripNonNameTokens("tanning consultant at manhattan", SALONS)).toBeNull();
+    expect(stripNonNameTokens("Job title", SALONS)).toBeNull();
+    expect(stripNonNameTokens("Marissa Lempka Job", SALONS)).toBe("Marissa Lempka");
+    expect(stripNonNameTokens("position location salon date", SALONS)).toBeNull();
+  });
+
+  it("keeps the person and sends the words after job title to the title", () => {
+    expect(rosterValidatedName("Job title", [], SALONS)).toBeNull();
+    expect(rosterValidatedName("Job title: Tanning Consultant", [], SALONS)).toBeNull();
+    expect(rosterValidatedName("Marissa Lempka Job title: Tanning Consultant", [], SALONS)).toBe("Marissa Lempka");
+    expect(extractEmployeeNames("The employee is Marissa Lempka. Job title: Tanning Consultant.")).not.toContain("Job title");
+    expect(extractEmployeeNames("The employee is Marissa Lempka. Job title: Tanning Consultant.")).not.toContain("Marissa Lempka Job");
+    expect(extractEmployeeNames("Marissa Lempka Job title: Tanning Consultant")).toContain("Marissa Lempka");
+    expect(titleAfterJobTitleLabel("Job title: Tanning Consultant")).toBe("Tanning Consultant");
+    expect(titleAfterJobTitleLabel("Marissa Lempka Job title Shift Lead")).toBe("Shift Lead");
   });
 
   it("fills an exact roster name and keeps a typed miss and a person who is not on the roster", () => {

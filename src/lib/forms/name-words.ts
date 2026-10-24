@@ -207,3 +207,30 @@ export function lowercaseMonths(text: string): string {
 
 /** A word a lower-case or all-caps name can be made of: letters, ' and -. */
 export const TYPED_NAME_WORD = /^[A-Za-z][A-Za-z'’-]*$/;
+
+/**
+ * Form-field labels. They are not a person's name.
+ *
+ * "Job title" was read as the employee (s8). "Marissa Lempka Job" kept the
+ * first word of that label on the name (s17). The words after "job title"
+ * are the title, and these words come off the name.
+ */
+export const FIELD_LABEL_WORDS = new Set([
+  "job", "title", "position", "location", "salon", "salons", "date",
+]);
+
+export function isFieldLabelWord(word: string): boolean {
+  const key = word.toLowerCase().replace(/[^a-z]/g, "");
+  return key.length > 0 && FIELD_LABEL_WORDS.has(key);
+}
+
+/** The name with field labels removed. A label alone is not a name. */
+export function stripFieldLabels(name: string): string | null {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^A-Za-z]+|[^A-Za-z'’-]+$/g, ""))
+    .filter((word) => word.length > 0 && !isFieldLabelWord(word));
+  if (words.length === 0) return null;
+  return words.join(" ");
+}

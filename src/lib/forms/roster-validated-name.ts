@@ -1,4 +1,4 @@
-import { NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
+import { isFieldLabelWord, NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
 import { extractEmployeeNames } from "./proposal";
 
@@ -16,7 +16,7 @@ const PHRASES =
   /\b(?:job title|employee(?:'s)? name|tanning consultant|salon director|assistant salon manager|assistant salon director|team member(?: part time)?|primary salon|dress code)\b/gi;
 
 const LABEL = new Set([
-  "job", "title", "location", "salon", "salons", "date", "warning", "level",
+  "job", "title", "position", "location", "salon", "salons", "date", "warning", "level",
   "payroll", "policy", "observation", "form", "coaching", "corrective", "action",
   "based", "primary", "team", "member", "members", "tanning", "consultant",
   "director", "assistant", "manager", "opening", "verbal", "written", "under",
@@ -75,7 +75,7 @@ export function stripNonNameTokens(span: string, salonNames: readonly string[]):
   text = text.replace(/\bat\s+[A-Za-z][A-Za-z'’.-]*(?:\s+[A-Za-z][A-Za-z'’.-]*){0,2}/gi, " ");
   const words = text.split(/[^A-Za-z'’-]+/).filter(Boolean).filter((word) => {
     const key = word.toLowerCase();
-    if (LABEL.has(key) || PROMO.has(key) || places.has(key)) return false;
+    if (isFieldLabelWord(word) || LABEL.has(key) || PROMO.has(key) || places.has(key)) return false;
     if (NOT_A_NAME.has(key) || NOT_A_TYPED_NAME.has(key)) return false;
     // "ima employee, tan consultant" — a lower-case employee is the role.
     // "Test Employee" keeps the capitalised surname.
