@@ -65,6 +65,20 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseAdmin: () => harness.client,
 }));
 
+/*
+ * The analytics window ends at the next UTC midnight after the Eastern
+ * business date. A run after UTC midnight and before midnight in New York
+ * inserts rows that are already past that end. Pin the anchor to the UTC
+ * date so those rows stay inside the window the test just wrote.
+ */
+vi.mock("@/lib/business-date", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/business-date")>();
+  return {
+    ...actual,
+    businessToday: () => new Date().toISOString().slice(0, 10),
+  };
+});
+
 /* The turn recorder's telemetry is a log line; it is not what is under test. */
 vi.mock("@/lib/analytics/telemetry", () => ({
   logTurnEvent: () => {},
