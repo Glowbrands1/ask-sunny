@@ -34,6 +34,12 @@ export interface FullManualChunk {
   readonly printedPage?: number | null;
   readonly section: string | null;
   readonly content: string;
+  /**
+   * The printed page ingestion recorded for each heading in this chunk
+   * (`metadata.sections`). A chunk can cross a sheet: chunk 46 starts with
+   * Hair on 15 and continues with Facial Hair and Make-up on 16.
+   */
+  readonly sections?: readonly { readonly heading: string; readonly page: number }[];
 }
 
 export interface FullManualDocument {
@@ -49,6 +55,13 @@ export interface ManualPage {
   readonly text: string;
 }
 
+/** One section's text on one printed page, for matching an answer sentence to its page. */
+export interface ManualPassage {
+  readonly page: number;
+  readonly heading: string | null;
+  readonly text: string;
+}
+
 export interface AssembledManual {
   readonly id: string;
   readonly title: string;
@@ -57,6 +70,7 @@ export interface AssembledManual {
   readonly text: string;
   readonly tokens: number;
   readonly pages: readonly ManualPage[];
+  readonly passages: readonly ManualPassage[];
 }
 
 export type FullManualAssembly =
@@ -327,6 +341,22 @@ function scopeForHeading(heading: string, current: BrandScope): BrandScope {
 }
 
 /**
+ * The printed page ingestion recorded for a heading in this chunk. A page
+ * before the chunk's own printed page is not used: a chunk's text does not
+ * move back a sheet.
+ */
+function recordedHeadingPage(chunk: FullManualChunk, heading: string): number | null {
+  const key = headingKey(heading);
+  const floor = pageOf(chunk.printedPage);
+  for (const entry of chunk.sections ?? []) {
+    if (headingKey(entry.heading) !== key) continue;
+    const page = pageOf(entry.page);
+    if (page !== null && (floor === null || page >= floor)) return page;
+  }
+  return null;
+}
+
+/**
  * Shared JBA text and Sun Tan City sections, in chunk order.
  *
  * A brand heading applies until the next shared section or the other brand.
@@ -344,6 +374,7 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
     const section = (chunk.section ?? "").trim();
     if (section) carry = scopeForHeading(section, carry);
     let active: BrandScope = carry;
+    let piecePage = chunk.printedPage;
     let blockSection: string | null = active === "excluded" ? null : section || null;
     let lines: string[] = [];
 
@@ -353,7 +384,7 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
       kept.push({
         chunkIndex: chunk.chunkIndex + piece * 1e-6,
         page: chunk.page,
-        printedPage: chunk.printedPage,
+        printedPage: piecePage,
         section: blockSection,
         content,
       });
@@ -370,6 +401,7 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
         if (!same) {
           flush();
           lines = [];
+          piecePage = recordedHeadingPage(chunk, heading) ?? piecePage;
           active = next;
           blockSection = next === "excluded" ? null : heading;
           if (next !== "excluded") lines.push(line);
@@ -397,6 +429,7 @@ export function assembleManual(doc: FullManualDocument): AssembledManual {
   let lastPage: number | null = null;
   let lastSection = "";
   let body = "";
+  const passages: { page: number; heading: string | null; lines: string[] }[] = [];
 
   const flushBody = () => {
     if (!body.trim()) return;
@@ -421,6 +454,13 @@ export function assembleManual(doc: FullManualDocument): AssembledManual {
     const next = chunk.content.trim();
     if (next) body = joinSectionText(body, next);
     if (page === null) continue;
+    const passageHeading = lastSection || null;
+    const open = passages[passages.length - 1];
+    if (open && open.page === page && headingKey(open.heading ?? "") === headingKey(passageHeading ?? "")) {
+      if (next) open.lines.push(next);
+    } else if (next || passageHeading) {
+      passages.push({ page, heading: passageHeading, lines: next ? [next] : [] });
+    }
     const entry = pageMap.get(page) ?? { headings: [], texts: [] };
     if (section && !entry.headings.some((heading) => headingKey(heading) === headingKey(section))) {
       entry.headings.push(section);
@@ -447,6 +487,7 @@ export function assembleManual(doc: FullManualDocument): AssembledManual {
     text,
     tokens: estimateTokens(text),
     pages,
+    passages: passages.map((item) => ({ page: item.page, heading: item.heading, text: item.lines.join("\n") })),
   };
 }
 
@@ -703,38 +744,6 @@ export function validateManualCitations(
   return { content: tidy(next), citations };
 }
 
-const FOREIGN_MANUAL =
-  /\b(?:(?:the|a)\s+)?(?:(?:stc\s+)?dm(?:\s+training)?(?:\s+manual)?|salon director(?:'s)?(?:\s+manual)?|buff city(?:\s+soap)?(?:\s+policy manual)?|crunch(?:\s+fitness)?(?:\s+policy manual)?)\b[^.]{0,80}?\bpp?\.\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?/gi;
-
-/**
- * A page citation of a manager manual or another brand.
- *
- * A clause that cites the JBA Policy Manual stays, including a Sun Tan City
- * rule that also names Crunch. "DM manual p.6" and "Salon Director pp.3-5"
- * do not. The period in "p.6" is not a sentence boundary.
- */
-function dropForeignManualCitations(content: string): string {
-  const next = content.replace(FOREIGN_MANUAL, (match, offset: number) => {
-    const sentenceStart = Math.max(
-      content.lastIndexOf(".", offset),
-      content.lastIndexOf("!", offset),
-      content.lastIndexOf("?", offset),
-      content.lastIndexOf("\n", offset),
-    );
-    const clause = content.slice(sentenceStart + 1, offset + match.length);
-    /*
-     * "Buff City Soap, JBA Policy Manual p.16" still names this manual, so
-     * the page check below can keep or drop it. A previous sentence that
-     * cited the manual does not protect "DM manual p.6".
-     */
-    if (/\bjba policy manual\b/i.test(clause) || /\b(?:sun tan city|\bstc\b)\b/i.test(clause)) return match;
-    return "";
-  });
-  return next
-    .replace(/\b(?:also\s+)?see\s+the(?:\s+and\s+the)?\s*(?=[.,]|$)/gi, "")
-    .replace(/\s+\band\b\s*(?=[.,]|$)/gi, "");
-}
-
 function citationFor(manual: AssembledManual, heading: string, page: number): SourceCitation {
   return {
     documentId: manual.id,
@@ -746,129 +755,367 @@ function citationFor(manual: AssembledManual, heading: string, page: number): So
   };
 }
 
-function pageExists(manuals: readonly AssembledManual[], page: number): AssembledManual | undefined {
-  return manuals.find((manual) => manual.pages.some((entry) => entry.page === page));
-}
-
-/**
- * Drop a trailing ", JBA Policy Manual p.41" so the heading sits at the end
- * of the window. The label is not part of the section name.
- */
-function beforeCitationLabel(before: string): string {
-  return before.replace(/,\s+[^,\n]*\bmanual\b[^,\n]*\s+p\.\d{1,4}\s*$/i, "");
-}
-
-/**
- * The heading named closest to the end of `before`.
+/*
+ * ============================================================================
+ * PRINTED PAGES ON A FULL-MANUAL ANSWER
+ * ============================================================================
  *
- * The words have to be the heading itself, not a piece of a longer word.
- * A heading glued on, as in "DirEligibility", still counts when it finishes
- * the window. The later heading wins when the window still holds the
- * previous citation.
+ * The answer is read one sentence (or bullet line) at a time. Only [p.N]
+ * markers are removed or added, and only the page number inside a
+ * "<section>, JBA Policy Manual p.N" label may change. Every other word,
+ * line break and bullet stays as the model wrote it.
+ *
+ * 24 Oct 2026: f44631a cut words at commas ("chains, Belts, JBA Policy
+ * Manual p.15"), kept p.15 for Facial Hair and Make-up (printed 16), and
+ * cited the cover (p.1), termination payout (p.22) and bereavement (p.47)
+ * on a PTO answer.
  */
-function headingNear(before: string, manuals: readonly AssembledManual[]): { manual: AssembledManual; heading: string } | null {
-  const key = headingKey(beforeCitationLabel(before).slice(-200));
-  let best: { manual: AssembledManual; heading: string; index: number; length: number } | null = null;
-  for (const manual of manuals) {
-    for (const heading of knownHeadings(manual)) {
-      const headingId = headingKey(heading);
-      if (headingId.length < 3) continue;
-      const index = key.lastIndexOf(headingId);
-      if (index < 0) continue;
-      const end = index + headingId.length;
-      const boundaryBefore = index === 0 || key[index - 1] === " ";
-      const boundaryAfter = end === key.length || key[end] === " ";
-      /*
-       * "DirEligibility" still names Eligibility. The heading has to finish
-       * the window, so a shorter word inside another word does not.
-       */
-      if (!boundaryAfter) continue;
-      if (!boundaryBefore && end !== key.length) continue;
-      if (!best || index > best.index || (index === best.index && headingId.length > best.length)) {
-        best = { manual, heading, index, length: headingId.length };
-      }
+
+const HEADING_STOP = new Set([
+  "dress",
+  "code",
+  "specific",
+  "policy",
+  "policies",
+  "section",
+  "manual",
+  "company",
+  "locations",
+  "location",
+  "employees",
+  "employee",
+  "about",
+  "other",
+  "workplace",
+  "safety",
+  "security",
+  "customer",
+  "customers",
+  "management",
+  "holiday",
+  "holidays",
+  "benefits",
+  "records",
+  "office",
+  "corporate",
+  "acceptable",
+  "required",
+  "permitted",
+  "personal",
+  "phone",
+  "phones",
+]);
+
+const OVERLAP_STOP = new Set([
+  ...HEADING_STOP,
+  "about",
+  "after",
+  "again",
+  "also",
+  "and",
+  "are",
+  "been",
+  "being",
+  "does",
+  "each",
+  "from",
+  "have",
+  "into",
+  "more",
+  "must",
+  "only",
+  "should",
+  "some",
+  "such",
+  "than",
+  "that",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "those",
+  "under",
+  "very",
+  "what",
+  "when",
+  "where",
+  "which",
+  "while",
+  "will",
+  "with",
+  "your",
+]);
+
+function wordsOf(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * The longest phrase a sentence shares with a passage that carries two
+ * distinctive words, or one in five words or more. "employees are
+ * responsible for" (Lost and Found) and "must be clean and" (every brand's
+ * shirt rule) do not say which page a sentence restates.
+ */
+function restatedPhraseLength(answer: string, passage: string): number {
+  const hay = ` ${wordsOf(answer)} `;
+  const words = wordsOf(passage).split(" ").filter(Boolean);
+  const max = Math.min(14, words.length);
+  for (let size = max; size >= 4; size -= 1) {
+    for (let index = 0; index <= words.length - size; index += 1) {
+      const slice = words.slice(index, index + size);
+      const phrase = slice.join(" ");
+      if (phrase.length < 16 || !hay.includes(` ${phrase} `)) continue;
+      const distinctive = slice.filter((word) => word.length >= 5 && !OVERLAP_STOP.has(word));
+      if (distinctive.length >= 2 || (size >= 5 && distinctive.length >= 1)) return size;
     }
   }
-  return best ? { manual: best.manual, heading: best.heading } : null;
+  return 0;
 }
 
-/**
- * `[p.n]` stays when that printed page is in the manual. A heading named
- * beside a different number is moved to the page that heading is on.
- */
-function resolveMarkerPage(before: string, page: number, manuals: readonly AssembledManual[]): number | null {
-  const near = headingNear(before, manuals);
-  if (near) {
-    const pages = pagesForHeading(near.manual, near.heading);
-    if (pages.includes(page)) return page;
-    if (pages[0]) return pages[0];
-  }
-  return pageExists(manuals, page) ? page : null;
-}
-
-/**
- * Sources in the order the inline `[p.n]` markers appear.
- *
- * The excerpt is the section. The locator is the printed page. A marker
- * the manual does not contain is removed, so the list and the prose name
- * the same pages.
- */
-/**
- * A prose page that no inline `[p.n]` names.
- *
- * The marker is the source of truth. "p.6" left over from a contents line,
- * or "pp.3-5", is not a source once the marker is gone.
- */
-function dropUncitedPageMentions(content: string): string {
-  const cited = new Set<number>();
-  for (const match of content.matchAll(/\[p\.(\d{1,4})\]/g)) cited.add(Number(match[1]));
-  const next = content.replace(
-    /\bpp?\.\s*(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?/gi,
-    (full, startRaw: string, endRaw: string | undefined, offset: number) => {
-      if (offset > 0 && content[offset - 1] === "[") return full;
-      const start = Number(startRaw);
-      const end = endRaw === undefined ? start : Number(endRaw);
-      if (!Number.isInteger(start) || !Number.isInteger(end) || end < start || end - start > 30) return "";
-      for (let page = start; page <= end; page += 1) {
-        if (!cited.has(page)) return "";
-      }
-      return full;
-    },
-  );
-  return tidy(next.replace(/\s+\b(?:and|or)\b(?=\s*(?:\[p\.|[.,;:]|$))/gi, "")).replace(
-    /(\[p\.(\d{1,4})\])(?:\s*\[p\.\2\])+/g,
-    "$1",
-  );
-}
-
-function alignCitationsToMarkers(
-  content: string,
-  manuals: readonly AssembledManual[],
-): { readonly content: string; readonly citations: readonly SourceCitation[] } {
-  const retargeted = content.replace(/\[p\.(\d{1,4})\]/g, (full, raw: string, offset: number) => {
-    const page = Number(raw);
-    const resolved = resolveMarkerPage(content.slice(0, offset), page, manuals);
-    return resolved === null ? "" : `[p.${resolved}]`;
-  });
-  const collapsed = dropUncitedPageMentions(tidy(retargeted.replace(/(\[p\.(\d{1,4})\])(?:\s*\[p\.\2\])+/g, "$1")));
-  const citations: SourceCitation[] = [];
+function overlapScore(answer: string, passage: string): number {
+  const hay = new Set(wordsOf(answer).split(" ").filter((word) => word.length >= 5 && !OVERLAP_STOP.has(word)));
   const seen = new Set<string>();
-  for (const match of collapsed.matchAll(/\[p\.(\d{1,4})\]/g)) {
-    const page = Number(match[1]);
-    const manual = pageExists(manuals, page);
-    if (!manual || match.index === undefined) continue;
-    const near = headingNear(collapsed.slice(0, match.index), manuals);
-    const onPage = near && pagesForHeading(near.manual, near.heading).includes(page) ? near.heading : null;
-    const heading = onPage ?? manual.pages.find((entry) => entry.page === page)?.headings[0] ?? null;
-    if (!heading) continue;
-    const key = `${manual.id}\0${headingKey(heading)}\0${page}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    citations.push(citationFor(manual, heading, page));
+  let score = 0;
+  for (const word of wordsOf(passage).split(" ")) {
+    if (word.length < 5 || OVERLAP_STOP.has(word) || !hay.has(word) || seen.has(word)) continue;
+    seen.add(word);
+    score += 1;
   }
-  return { content: collapsed, citations };
+  return score;
 }
 
+interface PassageHit {
+  readonly manual: AssembledManual;
+  readonly passage: ManualPassage;
+}
+
+function passagesOf(manuals: readonly AssembledManual[]): PassageHit[] {
+  return manuals.flatMap((manual) => manual.passages.map((passage) => ({ manual, passage })));
+}
+
+/** The passages a sentence restates, by longest shared phrase. */
+function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit[] {
+  let best = 0;
+  let chosen: PassageHit[] = [];
+  for (const hit of hits) {
+    const phrase = restatedPhraseLength(text, hit.passage.text);
+    if (phrase < 4 || phrase < best) continue;
+    if (phrase > best) {
+      best = phrase;
+      chosen = [];
+    }
+    chosen.push(hit);
+  }
+  return chosen;
+}
+
+/** A model page stays only when a passage on it shares four distinctive words with the sentence. */
+function confirmedModelPages(text: string, pages: readonly number[], hits: readonly PassageHit[]): PassageHit[] {
+  const kept: PassageHit[] = [];
+  for (const page of pages) {
+    let best: PassageHit | null = null;
+    let bestScore = 0;
+    for (const hit of hits) {
+      if (hit.passage.page !== page) continue;
+      const score = overlapScore(text, hit.passage.text);
+      if (score > bestScore) {
+        best = hit;
+        bestScore = score;
+      }
+    }
+    if (best && bestScore >= 4) kept.push(best);
+  }
+  return kept;
+}
+
+/** One passage with five or more distinctive words in common, on a page no other passage ties. */
+function closestPassage(text: string, hits: readonly PassageHit[]): PassageHit[] {
+  let best: PassageHit[] = [];
+  let bestScore = 0;
+  for (const hit of hits) {
+    const score = overlapScore(text, hit.passage.text);
+    if (score < 5 || score < bestScore) continue;
+    if (score > bestScore) {
+      bestScore = score;
+      best = [];
+    }
+    best.push(hit);
+  }
+  return new Set(best.map((hit) => hit.passage.page)).size === 1 ? best.slice(0, 1) : [];
+}
+
+const PRINTED_MARKER = /[^\S\n]*\[p\.(\d{1,4})\]/gi;
+
+/** Markers out. "expense[p.15]and" keeps a space between the two words. */
+function withoutPrintedMarkers(text: string): string {
+  const bare = text.replace(/[^\S\n]*\[p\.\d{1,4}\]/gi, (full, offset: number, whole: string) =>
+    /^[\p{L}\p{N}]/u.test(whole.slice(offset + full.length)) && offset > 0 ? " " : "",
+  );
+  return /^[^\S\n]*\[p\.\d{1,4}\]/i.test(text) ? bare.trimStart() : bare;
+}
+
+/**
+ * One line cut into sentences. The text between them is kept, so joining
+ * them gives the line back. A piece that is only markers ("…p.15. [p.15]")
+ * belongs to the sentence before it.
+ */
+function stretchesOf(line: string): { text: string; gap: string }[] {
+  const parts = line.split(/((?<=[.!?])[^\S\n]+)/);
+  const stretches: { text: string; gap: string }[] = [];
+  for (let at = 0; at < parts.length; at += 2) {
+    const text = parts[at] ?? "";
+    const gap = parts[at + 1] ?? "";
+    const previous = stretches[stretches.length - 1];
+    if (previous && /^(?:\[p\.\d{1,4}\][\s)\].,;:]*)+$/i.test(text.trim())) {
+      previous.text = `${previous.text}${previous.gap}${text}`;
+      previous.gap = gap;
+      continue;
+    }
+    stretches.push({ text, gap });
+  }
+  return stretches;
+}
+
+/** Markers go before the sentence's closing punctuation, or at its end. */
+function markStretch(text: string, pages: readonly number[]): string {
+  if (pages.length === 0) return text;
+  const markers = [...pages].sort((left, right) => left - right).map((page) => `[p.${page}]`).join(" ");
+  const closing = text.match(/[.!?:;]+["'”’)*_]*$/);
+  if (closing && closing.index !== undefined && closing.index > 0) {
+    return `${text.slice(0, closing.index).trimEnd()} ${markers}${text.slice(closing.index)}`;
+  }
+  return `${text.trimEnd()} ${markers}`;
+}
+
+function escapeLabelTitle(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** A one-word heading that is only a piece of the manual's title ("Manual"). */
+function titleFragment(heading: string, manual: AssembledManual): boolean {
+  const key = headingKey(heading);
+  const title = headingKey(manual.displayTitle);
+  if (!key || !title) return false;
+  if (key === title) return true;
+  const words = key.split(" ");
+  return words.length === 1 && title.split(" ").includes(words[0] ?? "");
+}
+
+/**
+ * The heading whose whole words end `before`, longest first ("Facial Hair"
+ * over "Hair"). A heading glued onto the previous word by an earlier cut
+ * ("Salon DirEligibility") still counts when its capital shows the seam.
+ */
+function headingEnding(before: string, manual: AssembledManual): string | null {
+  const window = headingKey(before.slice(-200));
+  const raw = before.replace(/[\s"'“”(]+$/, "");
+  let best: string | null = null;
+  for (const heading of knownHeadings(manual)) {
+    if (titleFragment(heading, manual)) continue;
+    const key = headingKey(heading);
+    if (key.length < 3 || !window.endsWith(key)) continue;
+    const start = window.length - key.length;
+    if (start > 0 && window[start - 1] !== " ") {
+      const seam = raw.length - heading.length;
+      const glued =
+        seam > 0 &&
+        raw.slice(seam).toLowerCase() === heading.toLowerCase() &&
+        /[a-z]/.test(raw[seam - 1] ?? "") &&
+        /[A-Z]/.test(raw[seam] ?? "");
+      if (!glued) continue;
+    }
+    if (!best || key.length > headingKey(best).length) best = heading;
+  }
+  return best;
+}
+
+function pagesWithHeading(manual: AssembledManual, heading: string): number[] {
+  const key = headingKey(heading);
+  return manual.pages
+    .filter((entry) => entry.headings.some((item) => headingKey(item) === key))
+    .map((entry) => entry.page);
+}
+
+interface LabelHit {
+  readonly manual: AssembledManual;
+  readonly heading: string;
+  readonly page: number;
+}
+
+/**
+ * The page for a "<section>, <manual> p.N" label (QA, 24 Oct 2026):
+ * a section printed on one page takes that page; a section printed on
+ * several keeps the model's page when it is one of them, else the page whose
+ * passage the sentence restates; anything else is no page.
+ */
+function labelPage(
+  manual: AssembledManual,
+  heading: string,
+  written: number,
+  sentence: string,
+): number | null {
+  const pages = pagesWithHeading(manual, heading);
+  if (pages.length === 1) return pages[0]!;
+  if (pages.length === 0) return null;
+  if (pages.includes(written)) return written;
+  const key = headingKey(heading);
+  const own = manual.passages
+    .filter((passage) => pages.includes(passage.page) && headingKey(passage.heading ?? "") === key)
+    .map((passage) => ({ manual, passage }));
+  const restated = [...new Set(restatedPassages(sentence, own).map((hit) => hit.passage.page))];
+  return restated.length === 1 ? restated[0]! : null;
+}
+
+/**
+ * Labels in one sentence. A label's page number becomes the printed page,
+ * and one [p.N] follows it. A label with no page keeps its words and gets no
+ * marker. A sentence about Buff City Soap or Crunch is left as written.
+ */
+function markLabels(
+  sentence: string,
+  manuals: readonly AssembledManual[],
+): { readonly text: string; readonly labels: readonly LabelHit[]; readonly found: boolean } {
+  const labels: LabelHit[] = [];
+  let found = false;
+  let text = sentence;
+  for (const manual of manuals) {
+    const titles = [...new Set([manual.displayTitle, manual.title])]
+      .filter((title) => title.trim().length > 0)
+      .sort((a, b) => b.length - a.length)
+      .map(escapeLabelTitle);
+    if (titles.length === 0) continue;
+    const pattern = new RegExp(`(,\\s+(?:${titles.join("|")})\\s+p\\.)(\\d{1,4})\\b`, "gi");
+    text = text.replace(pattern, (full: string, lead: string, raw: string, offset: number, whole: string) => {
+      found = true;
+      if (namesExcludedBrand(sentence)) return full;
+      const heading = headingEnding(whole.slice(0, offset), manual);
+      if (!heading) return full;
+      const page = labelPage(manual, heading, Number(raw), sentence);
+      if (page === null) return full;
+      labels.push({ manual, heading, page });
+      return `${lead}${page} [p.${page}]`;
+    });
+  }
+  return { text, labels, found };
+}
+
+/**
+ * The model's answer with each printed page marked where the sentence states
+ * it, and a Sources row for each marked section.
+ *
+ * Only [p.N] and [S#] markers are removed or added, and only the page number
+ * inside a "<section>, JBA Policy Manual p.N" label changes. A page number
+ * anywhere else ("see page 99", a DM manual page) stays as written with no
+ * marker. A page the manual does not print, or whose text the sentence does
+ * not restate, is not marked.
+ */
 export function applyFullManualAnswer(input: {
   readonly content: string;
   readonly manuals: readonly AssembledManual[];
@@ -881,7 +1128,56 @@ export function applyFullManualAnswer(input: {
    * [S#] counts retrieved chunks. This answer's sources are printed pages,
    * so a marker such as [S9] or [S11] cannot point at one of them.
    */
-  const withoutMarkers = input.content.replace(/\[S\d{1,2}\]/g, "");
-  const validated = validateManualCitations(dropForeignManualCitations(withoutMarkers), input.manuals);
-  return alignCitationsToMarkers(validated.content, input.manuals);
+  const withoutSources = input.content.replace(/[^\S\n]*\[S\d{1,2}\]/g, "");
+  const hits = passagesOf(input.manuals);
+  const marked: { manual: AssembledManual; heading: string; page: number }[] = [];
+
+  const content = withoutSources
+    .split("\n")
+    .map((line) => {
+      const stretches = stretchesOf(line);
+      return stretches
+        .map(({ text, gap }, at) => {
+          const written = [...text.matchAll(PRINTED_MARKER)].map((match) => Number(match[1]));
+          const bare = withoutPrintedMarkers(text);
+          // A sentence that was only markers leaves nothing, not a gap.
+          if (!bare.trim()) return text.trim() ? "" : `${text}${gap}`;
+          const labelled = markLabels(bare, input.manuals);
+          for (const label of labelled.labels) marked.push(label);
+          if (labelled.found || namesExcludedBrand(bare)) return `${labelled.text}${gap}`;
+          // "…stay covered. (Tattoos, JBA Policy Manual p.16)": the label that follows carries the page.
+          const next = stretches[at + 1]?.text ?? "";
+          if (markLabels(withoutPrintedMarkers(next), input.manuals).found) return `${bare}${gap}`;
+          let restated = restatedPassages(bare, hits);
+          if (restated.length === 0) {
+            const pages = [...new Set(written)].filter((page) =>
+              input.manuals.some((manual) => manual.pages.some((entry) => entry.page === page)),
+            );
+            restated = confirmedModelPages(bare, pages, hits);
+          }
+          if (restated.length === 0) restated = closestPassage(bare, hits);
+          for (const hit of restated) {
+            const heading =
+              hit.passage.heading ??
+              hit.manual.pages.find((entry) => entry.page === hit.passage.page)?.headings[0] ??
+              null;
+            if (heading) marked.push({ manual: hit.manual, heading, page: hit.passage.page });
+          }
+          const pages = [...new Set(restated.map((hit) => hit.passage.page))];
+          return `${markStretch(bare, pages)}${gap}`;
+        })
+        .join("")
+        .replace(/[^\S\n]+$/, "");
+    })
+    .join("\n");
+
+  const citations: SourceCitation[] = [];
+  const seen = new Set<string>();
+  for (const item of marked) {
+    const key = `${item.manual.id}\0${headingKey(item.heading)}\0${item.page}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    citations.push(citationFor(item.manual, item.heading, item.page));
+  }
+  return { content, citations };
 }
