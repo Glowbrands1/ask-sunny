@@ -96,7 +96,7 @@ Harness events (not case failures):
 
 - replay_set.json sha256: `2f05db5d08424743a1be74caf8265ed3decfac28fdbda5bcf3c4259282daa611`
 - prompts.ts sha256: `e7f952b0f922eebbf1b74cc11d747e758a2ece4139b3940d2fadb40e12f3dc75`
-- commit: `25939d561632b41d75e3f1f34e798577714f620b`
+- commit: `15723abd5965c1ee6d4a30b5269e67b6ad56d520`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED`
 - runs: 3
@@ -110,27 +110,27 @@ Harness events (not case failures):
 
 | Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |
 | --- | --- | --- | --- | --- |
-| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 220ms | PASS 3526ms | PASS 1282ms |
-| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 128ms | PASS 526ms | PASS 533ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 93ms | PASS 485ms | PASS 464ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 58ms | PASS 469ms | PASS 461ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 264ms | PASS 681ms | PASS 677ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 44ms | PASS 129ms | PASS 128ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 25ms | PASS 70ms | PASS 66ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 82ms | PASS 366ms | PASS 361ms |
-| s20 | — · — · — · — | PASS 32ms | PASS 342ms | PASS 324ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 116ms | PASS 417ms | PASS 409ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 34ms | PASS 150ms | PASS 144ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 107ms | PASS 1085ms | PASS 1056ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 24ms | PASS 153ms | PASS 151ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 18ms | PASS 183ms | PASS 175ms |
-| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 45ms | PASS 351ms | PASS 348ms |
-| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 126ms | PASS 609ms | PASS 603ms |
-| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 91ms | PASS 85ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 99ms | PASS 793ms | PASS 799ms |
-| n1 | Test Employee · loc-0462 · — · — | PASS 28ms | PASS 215ms | PASS 221ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 51ms | PASS 48ms |
-| n3 | TT · — · 2026-10-23 · — | PASS 6ms | PASS 74ms | PASS 68ms |
+| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 235ms | PASS 3059ms | PASS 1140ms |
+| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 126ms | PASS 485ms | PASS 480ms |
+| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 92ms | PASS 452ms | PASS 444ms |
+| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 58ms | PASS 439ms | PASS 407ms |
+| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 204ms | PASS 630ms | PASS 623ms |
+| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 32ms | PASS 117ms | PASS 115ms |
+| s29 | Erin Nelson · loc-0313 · — · — | PASS 17ms | PASS 66ms | PASS 67ms |
+| s17 | Betty Sue · — · 2026-10-23 · — | PASS 61ms | PASS 360ms | PASS 356ms |
+| s20 | — · — · — · — | PASS 30ms | PASS 334ms | PASS 316ms |
+| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 117ms | PASS 398ms | PASS 393ms |
+| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 31ms | PASS 146ms | PASS 142ms |
+| s8 | Christiana Headley · loc-0463 · — · — | PASS 102ms | PASS 1056ms | PASS 1038ms |
+| s12 | Colene Schildt · loc-0462 · — · — | PASS 23ms | PASS 151ms | PASS 148ms |
+| s16 | Kayla Koehn · loc-0309 · — · — | PASS 17ms | PASS 178ms | PASS 173ms |
+| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 44ms | PASS 345ms | PASS 348ms |
+| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 127ms | PASS 603ms | PASS 596ms |
+| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 87ms | PASS 83ms |
+| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 98ms | PASS 762ms | PASS 757ms |
+| n1 | Test Employee · loc-0462 · — · — | PASS 26ms | PASS 212ms | PASS 205ms |
+| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 49ms | PASS 49ms |
+| n3 | TT · — · 2026-10-23 · — | PASS 6ms | PASS 69ms | PASS 72ms |
 
 Harness events (not case failures):
 
@@ -188,3 +188,40 @@ Safe order for Pau: turn these on from the top. A flag with no floor break holds
 14. `QUERY_REWRITE_ENABLED` — card 7/21
 15. `SELF_CHECK_ENABLED` — card 7/21
 16. `TYPED_NAME_PROCEEDS_ENABLED` — card 6/21
+
+
+## Rulebook — old behaviour against guide v3
+
+OLD is `origin/main` as-is, flags off, the same turns and the same mocked reply. NEW is this branch with the rulebook flags on. The guide was not pasted over the system prompt. Each case runs 3 times. A rule misses if any run misses it. A rule that does not apply to the case is not scored. Worse means NEW misses a rule OLD passed, and that case is fixed before this pull request is ready.
+
+- OLD commit: `b9ae362fd80e1fc492c4326f80834cf105ef19b8`
+- NEW commit: `15723abd5965c1ee6d4a30b5269e67b6ad56d520`
+- runs: 3
+- latency gate: 20000 ms for the 3 runs together
+- rules: employee on the card, typed name kept, salon does not gate the card, date, policy and printed page, 2-sentence plan, payroll amount only from the manager, no blocking question, no leaked text, latency
+
+| Case | OLD | NEW | Verdict |
+| --- | --- | --- | --- |
+| s4 | date, policy, plan, amount, leaked | pass | better |
+| s9 | date, policy, plan, leaked | pass | better |
+| s11 | employee, typed, policy, leaked | pass | better |
+| s5 | employee, typed, date, leaked | pass | better |
+| s27 | salon, policy, plan | pass | better |
+| s28 | salon, policy, plan | pass | better |
+| s29 | salon | pass | better |
+| s17 | date, leaked | pass | better |
+| s20 | pass | pass | same |
+| s21 | pass | pass | same |
+| s25 | employee, typed, blocking, leaked | pass | better |
+| s8 | blocking | pass | better |
+| s12 | pass | pass | same |
+| s16 | pass | pass | same |
+| b9 | employee, typed, policy, plan, blocking | pass | better |
+| b10 | employee, typed, salon, date, policy, plan, leaked | pass | better |
+| b11 | employee, typed, salon, policy, plan | pass | better |
+| b12 | date, policy, plan | pass | better |
+| n1 | employee, typed, leaked | pass | better |
+| n2 | employee, typed, policy, plan, amount, blocking, leaked | pass | better |
+| n3 | date, leaked | pass | better |
+
+Totals: better 17, same 4, worse 0.
