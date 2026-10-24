@@ -33,6 +33,16 @@ export interface ChatTraceDraft {
   succeeded: boolean | null;
   /** Slots after this turn. Absent when the turn did not settle a form. */
   slots?: Record<string, unknown> | null;
+  /**
+   * The form extraction for this turn, when FORM_FULL_REMAP_ENABLED is on.
+   * `slots` is the same record the card was filled from.
+   */
+  formExtraction?: {
+    model: string;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    slots: Record<string, unknown>;
+  } | null;
 }
 
 const storage = new AsyncLocalStorage<ChatTraceDraft>();

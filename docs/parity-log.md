@@ -1,5 +1,27 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: one extraction fills the form — ported from Ask Bubbles
+
+`FORM_FULL_REMAP_ENABLED` stays off. On, each turn reads every user message
+in this conversation only, then merges that read with the slots already
+saved for the same conversation id. A later value replaces a field. A blank
+read does not erase one. A discipline word (`verbal`, `written`, a warning)
+selects the Corrective Action Form when the manager did not name a form.
+"Create a Coaching Form" stays the Coaching Form. "CA" is the Corrective
+Action Form. A bare "10-20" is 20 October, not a time. "prior = manual ack
+9/01" is the prior action, not the form date, and that line is kept once
+even when this turn is already in the history. "at Grand Island out of dress
+code" names that salon when there is no comma before "out". A turn that only
+names the form is not the incident. The card shows the date, time, type of
+warning, prior action, payroll answer, and what happened.
+
+Sunny salons in the replay tests: NE Kearney (`loc-0309`) and NE Grand Island
+(`loc-0307`). A later salon edit in the unit test uses KS Lawrence
+(`loc-0468`).
+
+**Sibling app: already present.** Ask Bubbles PR 97, merged as `ee6b026`.
+This is that mechanism. No Buff City Soap store names were copied.
+
 ## 24 Oct 2026: inline printed-page citations — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

@@ -373,6 +373,15 @@ export function fullManualContextEnabled(): boolean {
   return envFlag("FULL_MANUAL_CONTEXT_ENABLED");
 }
 
+/**
+ * One read of the whole conversation fills the form. A field is kept only
+ * when this chat stated it. A later turn replaces that field. A blank read
+ * does not erase one. Off, the card is filled exactly as it is today.
+ */
+export function formFullRemapEnabled(): boolean {
+  return envFlag("FORM_FULL_REMAP_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

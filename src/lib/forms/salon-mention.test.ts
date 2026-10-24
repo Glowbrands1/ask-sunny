@@ -20,6 +20,11 @@ describe("a salon the manager names", () => {
     ["she works at the Lawrence salon", ["loc-0468"]],
     ["dana moss, KS Shawnee, today", ["loc-0463"]],
     ["NE Kearney", ["loc-0309"]],
+    // "out of dress code" often has no comma after the salon.
+    ["at Grand Island out of dress code", ["loc-0307"]],
+    ["Test Employee at Grand Island out of dress code 3 shifts", ["loc-0307"]],
+    ["at Kearney, out of dress code", ["loc-0309"]],
+    ["at Lawrence, payroll deduct yes $40", ["loc-0468"]],
     ["salon 0306", ["loc-0306"]],
     ["store #0306", ["loc-0306"]],
     // A Google store code where no salon number reads the same digits.
@@ -62,6 +67,7 @@ describe("ordinary prose is not a salon", () => {
     "in Pacific time she was late",
     "she clocked in at 9 Pacific time",
     "she used to work at Kearney High",
+    "she bought a shirt at the outlet",
     "she moved from Lawrence last year",
     "she parked on 27th Street",
     "the o street entrance was locked",

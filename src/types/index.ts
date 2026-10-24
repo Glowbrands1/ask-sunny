@@ -662,6 +662,21 @@ export interface ChatFormProposal {
    * `lib/forms/corrective-action-intake.ts`.
    */
   warningLevel?: "verbal" | "written" | null;
+  /**
+   * The Corrective Action Form's prior-actions line, in the manager's words
+   * ("prior = manual ack 9/01"). Optional so older proposals still read.
+   */
+  priorActions?: string | null;
+  /**
+   * A time the manager labelled ("time 10:20"). A bare "10-20" is 20 October,
+   * not a time.
+   */
+  incidentTime?: string | null;
+  /**
+   * What happened, in the manager's words. Optional so older proposals still
+   * read. The create path can file it on the observation when that field exists.
+   */
+  issue?: string | null;
   /** Null unless the authenticated scope proves exactly one salon. */
   locationId: string | null;
   /**

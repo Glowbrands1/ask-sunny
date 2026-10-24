@@ -27,6 +27,7 @@ import {
   slotRetentionEnabled,
   manualTopicPinEnabled,
   fullManualContextEnabled,
+  formFullRemapEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -34,6 +35,10 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
+import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { historyForRemap } from "./form-remap-scope";
+import { loadScopedRoster } from "@/lib/forms/employee-roster";
+import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { answersFormClarification } from "@/lib/forms/form-clarification";
 import {
   answerInventoryQuestion,
@@ -574,6 +579,47 @@ async function answerQuestionUntraced(
         spokenIntent.kind === "explicit" ? spokenIntent.templateKey : null,
     });
     if (inventoryAnswer) return inventoryAnswer;
+
+    if (
+      formFullRemapEnabled() &&
+      remapShouldRun({
+        question: request.question,
+        history: request.history,
+        formsTurn,
+      })
+    ) {
+      let history: { id?: string; role: string; content: string }[] = request.history;
+      let saved: Partial<FormRemapSlots> | null = null;
+      if (actor.subject && request.conversationId) {
+        try {
+          const scoped = await historyForRemap({
+            userId: actor.subject,
+            conversationId: request.conversationId,
+            history: request.history,
+          });
+          history = scoped.history;
+          saved = scoped.saved;
+        } catch {
+          // A store miss keeps this request's own history. It does not read another chat.
+          history = request.history;
+        }
+      }
+      let people: RosterEmployee[] = [];
+      try {
+        people = await loadScopedRoster(actor.scope);
+      } catch {
+        people = [];
+      }
+      const remapped = await remapFormTurn({
+        question: request.question,
+        history,
+        today: request.context.todayIso,
+        continueTemplateKey: request.continueProposalTemplateKey ?? null,
+        people,
+        saved,
+      });
+      if (remapped) return remapped;
+    }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
