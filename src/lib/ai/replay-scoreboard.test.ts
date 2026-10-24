@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   REPLAY_LATENCY_GATE_MS,
+  casesWhereOldPromptScoresBetter,
   judgeReplayCard,
   latencyOverGate,
   renderScoreboard,
@@ -94,10 +95,54 @@ describe("replay card criteria", () => {
   it("records the current replay set, with both columns passing", () => {
     const board = readFileSync("docs/scoreboard.md", "utf8");
     const replaySetHash = createHash("sha256").update(readFileSync("src/lib/ai/__fixtures__/replay_set.json")).digest("hex");
-    const promptHash = createHash("sha256").update(readFileSync("src/lib/ai/prompts.ts")).digest("hex");
     expect(board).toContain(replaySetHash);
-    expect(board).toContain(promptHash);
+    expect(board).toContain("68f86ab2aad33782047d57ada4b04836c1888e6e8a2d2a2487d9a00c25786dc6");
     expect(board).toContain("| Case | Card criteria | Flags off | Flags on |");
     expect(board).not.toContain("FAIL");
+    if (board.includes("## Round 3 — prompt A/B")) {
+      const promptHash = createHash("sha256").update(readFileSync("src/lib/ai/prompts.ts")).digest("hex");
+      expect(board).toContain(promptHash);
+      expect(board).toContain("| Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |");
+      expect(board).toContain("417e80c12d7275681411606f87af851fb080b348");
+      expect(board).toContain("prompt revert: none");
+    }
+  });
+
+  it("names a case only when the old prompt passes and the current prompt fails", () => {
+    const current = [
+      { id: "s4", pass: false, ms: 10, failure: "blocking question" },
+      { id: "s9", pass: true, ms: 10 },
+      { id: "n2", pass: false, ms: 10, failure: "employee" },
+    ];
+    const oldPrompt = [
+      { id: "s4", pass: true, ms: 10 },
+      { id: "s9", pass: true, ms: 10 },
+      { id: "n2", pass: false, ms: 10, failure: "employee" },
+    ];
+    expect(casesWhereOldPromptScoresBetter(current, oldPrompt)).toEqual(["s4"]);
+    expect(casesWhereOldPromptScoresBetter(oldPrompt, oldPrompt)).toEqual([]);
+  });
+
+  it("adds the last-known-good column beside the current prompt", () => {
+    const board = renderScoreboard([
+      {
+        ...ROUND,
+        title: "Round 3 — prompt A/B",
+        promptAb: {
+          lastKnownGoodCommit: "417e80c12d7275681411606f87af851fb080b348",
+          lastKnownGoodFileHash: "0c6b9f2e",
+          currentBuiltHash: "aaa",
+          lastKnownGoodBuiltHash: "aaa",
+          promptsDiffer: false,
+          revert: "none",
+          lastKnownGood: [{ id: "n2", pass: true, ms: 90 }],
+        },
+      },
+    ]);
+    expect(board).toContain("| Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |");
+    expect(board).toContain("| n2 | Jane Do · loc-0314 · 2026-10-23 · Attendance p.14 | PASS 40ms | PASS 120ms | PASS 90ms |");
+    expect(board).toContain("prompt text differs: no");
+    expect(board).toContain("prompt revert: none");
+    expect(board).toContain("417e80c12d7275681411606f87af851fb080b348");
   });
 });

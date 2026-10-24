@@ -26,6 +26,17 @@ export interface ReplayCaseResult {
   readonly failure?: string;
 }
 
+export interface PromptAb {
+  readonly lastKnownGoodCommit: string;
+  readonly lastKnownGoodFileHash: string;
+  readonly currentBuiltHash: string;
+  readonly lastKnownGoodBuiltHash: string;
+  readonly promptsDiffer: boolean;
+  /** None when the old prompt did not pass a case the current prompt failed. */
+  readonly revert: string;
+  readonly lastKnownGood: readonly ReplayCaseResult[];
+}
+
 export interface ReplayRound {
   readonly title: string;
   readonly replaySetHash: string;
@@ -38,6 +49,7 @@ export interface ReplayRound {
   readonly criteria: readonly { readonly id: string; readonly criteria: ReplayCardCriteria }[];
   readonly flagsOff: readonly ReplayCaseResult[];
   readonly flagsOn: readonly ReplayCaseResult[];
+  readonly promptAb?: PromptAb;
   readonly harnessEvents: readonly { readonly caseId: string; readonly event: string }[];
 }
 
@@ -84,6 +96,15 @@ export function judgeReplayCard(input: {
   return failures;
 }
 
+/** Cases the old prompt passed and the current prompt failed. A tie is empty. */
+export function casesWhereOldPromptScoresBetter(
+  current: readonly ReplayCaseResult[],
+  oldPrompt: readonly ReplayCaseResult[],
+): string[] {
+  const prior = new Map(oldPrompt.map((row) => [row.id, row]));
+  return current.filter((row) => prior.get(row.id)?.pass === true && row.pass === false).map((row) => row.id);
+}
+
 function cell(result: ReplayCaseResult | undefined): string {
   if (!result) return "—";
   const mark = result.pass ? "PASS" : "FAIL";
@@ -95,43 +116,59 @@ function criteriaCell(criteria: ReplayCardCriteria): string {
   return [criteria.employee, criteria.salon, criteria.date, criteria.policy].map((value) => value ?? "—").join(" · ");
 }
 
-export function renderScoreboard(rounds: readonly ReplayRound[]): string {
-  const lines = [
-    "# Replay scoreboard",
-    "",
-    `Each case runs ${REPLAY_RUNS} times and passes only when every run passes. Latency is those runs together and fails over ${REPLAY_LATENCY_GATE_MS} ms. Flags-off and flags-on are separate columns. Flags-on is judged on the card criteria in \`replay_set.json\`, written before the run: employee, salon, date, policy and printed page, no blocking question, no leaked internal text. A re-send of a dropped first message is a harness event, not a case failure.`,
-    "",
-  ];
-  for (const round of rounds) {
-    lines.push(`## ${round.title}`, "");
-    lines.push(`- replay_set.json sha256: \`${round.replaySetHash}\``);
-    lines.push(`- prompts.ts sha256: \`${round.promptHash}\``);
-    lines.push(`- commit: \`${round.commit}\``);
-    lines.push(`- model: \`${round.model}\``);
-    lines.push(`- flag set: \`${round.flags.join(", ")}\``);
-    lines.push(`- runs: ${round.runs}`);
-    lines.push(`- latency gate: ${round.latencyGateMs} ms`, "");
+const SCOREBOARD_INTRO = `Each case runs ${REPLAY_RUNS} times and passes only when every run passes. Latency is those runs together and fails over ${REPLAY_LATENCY_GATE_MS} ms. Flags-off and flags-on are separate columns. Flags-on is judged on the card criteria in \`replay_set.json\`, written before the run: employee, salon, date, policy and printed page, no blocking question, no leaked internal text. A re-send of a dropped first message is a harness event, not a case failure. A last-known-good column is the same code and the same flags with the system prompt from before the latest prompt edit. The current prompt stays when it ties or wins. A case the old prompt passes and the current prompt fails is reverted in the prompt, and the fix stays in code.`;
+
+/** One round, without the scoreboard title, so a later round can be appended. */
+export function renderScoreboardRound(round: ReplayRound): string {
+  const lines: string[] = [];
+  lines.push(`## ${round.title}`, "");
+  lines.push(`- replay_set.json sha256: \`${round.replaySetHash}\``);
+  lines.push(`- prompts.ts sha256: \`${round.promptHash}\``);
+  lines.push(`- commit: \`${round.commit}\``);
+  lines.push(`- model: \`${round.model}\``);
+  lines.push(`- flag set: \`${round.flags.join(", ")}\``);
+  lines.push(`- runs: ${round.runs}`);
+  lines.push(`- latency gate: ${round.latencyGateMs} ms`);
+  if (round.promptAb) {
+    lines.push(`- last-known-good prompt commit: \`${round.promptAb.lastKnownGoodCommit}\``);
+    lines.push(`- last-known-good prompts.ts sha256: \`${round.promptAb.lastKnownGoodFileHash}\``);
+    lines.push(`- built prompt sha256, current: \`${round.promptAb.currentBuiltHash}\``);
+    lines.push(`- built prompt sha256, last-known-good: \`${round.promptAb.lastKnownGoodBuiltHash}\``);
+    lines.push(`- prompt text differs: ${round.promptAb.promptsDiffer ? "yes" : "no"}`);
+    lines.push(`- prompt revert: ${round.promptAb.revert}`);
+  }
+  lines.push("");
+  const ab = round.promptAb ? new Map(round.promptAb.lastKnownGood.map((result) => [result.id, result])) : null;
+  if (ab) {
+    lines.push("| Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |");
+    lines.push("| --- | --- | --- | --- | --- |");
+  } else {
     lines.push("| Case | Card criteria | Flags off | Flags on |");
     lines.push("| --- | --- | --- | --- |");
-    const off = new Map(round.flagsOff.map((result) => [result.id, result]));
-    const on = new Map(round.flagsOn.map((result) => [result.id, result]));
-    for (const item of round.criteria) {
-      lines.push(`| ${item.id} | ${criteriaCell(item.criteria)} | ${cell(off.get(item.id))} | ${cell(on.get(item.id))} |`);
-    }
-    lines.push("");
-    if (round.harnessEvents.length === 0) {
-      lines.push("Harness events: none.", "");
-    } else {
-      const counts = new Map<string, number>();
-      for (const event of round.harnessEvents) {
-        const key = `${event.caseId}: ${event.event}`;
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-      lines.push("Harness events (not case failures):");
-      lines.push("");
-      for (const [key, count] of counts) lines.push(`- ${key}${count > 1 ? ` × ${count}` : ""}`);
-      lines.push("");
-    }
   }
-  return `${lines.join("\n").trim()}\n`;
+  const off = new Map(round.flagsOff.map((result) => [result.id, result]));
+  const on = new Map(round.flagsOn.map((result) => [result.id, result]));
+  for (const item of round.criteria) {
+    const cells = [item.id, criteriaCell(item.criteria), cell(off.get(item.id)), cell(on.get(item.id))];
+    if (ab) cells.push(cell(ab.get(item.id)));
+    lines.push(`| ${cells.join(" | ")} |`);
+  }
+  lines.push("");
+  if (round.harnessEvents.length === 0) {
+    lines.push("Harness events: none.");
+  } else {
+    const counts = new Map<string, number>();
+    for (const event of round.harnessEvents) {
+      const key = `${event.caseId}: ${event.event}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    lines.push("Harness events (not case failures):", "");
+    for (const [key, count] of counts) lines.push(`- ${key}${count > 1 ? ` × ${count}` : ""}`);
+  }
+  return lines.join("\n");
+}
+
+export function renderScoreboard(rounds: readonly ReplayRound[]): string {
+  const body = rounds.map((round) => renderScoreboardRound(round)).join("\n\n");
+  return `# Replay scoreboard\n\n${SCOREBOARD_INTRO}\n\n${body}\n`;
 }

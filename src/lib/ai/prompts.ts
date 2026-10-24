@@ -2,6 +2,7 @@ import { REPORTS } from "@/features/reports/reports-routes";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import { CHAT_STYLE_RULES } from "./chat-style-rules";
+import { buildLastKnownGoodSystemPrompt } from "./prompts-last-known-good";
 import { PRIOR_COACHING_OPTIONAL_RULES } from "./prior-coaching-optional";
 import type { AskContext, OpenFormSummary } from "./types";
 
@@ -347,6 +348,25 @@ ${tabs}
 - Pointing somebody to a tab is not reading it to them. Never state a figure from a tab unless it is written in the REPORT DATA section.`;
 }
 
+export type SystemPromptRevision = "current" | "last-known-good";
+
+/**
+ * Which system prompt a replay round builds.
+ *
+ * Production stays on `current`. The replay A/B sets `last-known-good` to
+ * build the prompt from 417e80c, before the unified-authority edit, with the
+ * same flags and the same code.
+ */
+let revision: SystemPromptRevision = "current";
+
+export function systemPromptRevision(): SystemPromptRevision {
+  return revision;
+}
+
+export function setSystemPromptRevision(next: SystemPromptRevision) {
+  revision = next;
+}
+
 export function buildSystemPrompt(input: {
   assistantName: string;
   brandName: string;
@@ -505,6 +525,7 @@ export function buildSystemPrompt(input: {
    */
   unifiedAuthority?: boolean;
 }): string {
+  if (revision === "last-known-good") return buildLastKnownGoodSystemPrompt(input);
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
   const hasReportData = input.hasReportData ?? false;
   const hasFrameworkGrounding = input.hasFrameworkGrounding ?? false;

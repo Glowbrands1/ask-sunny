@@ -5,6 +5,20 @@ chat, forms, Corrective Action, policy citation, access or sync is either
 ported to the sibling or listed here as staying one-sided, with the reason.
 See `CLAUDE.md`.
 
+## 24 Oct 2026: Prompt A/B on the replay — port the mechanism
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
+The manual title stays **JBA Policy Manual**. Salon ↔ store. No prompt text
+was reverted: the last-known-good system prompt is `417e80c` (before the
+unified-authority edit), and with the replay flags that section is off, so
+the built prompt matches the current one. Code fixes stay in code. Do not
+publish templates. `chat_traces.slots` is already applied in production.
+
+- The replay can build either the current system prompt or that saved
+  prompt, with the same code and the same flags. A case the old prompt
+  passes and the current prompt fails is reverted in the prompt. A tie
+  keeps the current prompt.
+
 ## 24 Oct 2026: Close-match note under the card — port the mechanism
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company wording.
