@@ -9,8 +9,10 @@ migration apply and no merge.
 - With `PROMPT_CACHE_ENABLED` off, `buildSystemPrompt` is main's prompt:
   the manager line stays in the opening sentence, the data sections stay
   before TONE, and `---DYNAMIC---` is not sent. The reorder and the marker
-  run only when that flag is on. A missing `chat_traces` cache column logs
-  a warning instead of dropping the insert with no record.
+  run only when that flag is on. The proof is a frozen copy of main's
+  return template (`b9ae362`), because CI checks out only the pull request
+  tip. A missing `chat_traces` cache column logs a warning instead of
+  dropping the insert with no record.
 
 ## 24 Oct 2026: cache columns and the dynamic prompt tail — Sunny-only
 

@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
@@ -66,11 +65,10 @@ describe("buildSystemPrompt", () => {
     const previous = process.env.PROMPT_CACHE_ENABLED;
     delete process.env.PROMPT_CACHE_ENABLED;
     try {
-      const main = execFileSync("git", ["show", "b9ae362fd80e1fc492c4326f80834cf105ef19b8:src/lib/ai/prompts.ts"], {
-        encoding: "utf8",
-      });
+      // Frozen return template from b9ae362. CI checks out only the pull
+      // request tip, so the test cannot `git show` that commit.
+      const mainBody = readFileSync("src/lib/ai/prompts-main-b9ae362.template.txt", "utf8");
       const current = readFileSync("src/lib/ai/prompts.ts", "utf8");
-      const mainBody = templateBody(main, "return `You are ${assistantName}, the internal assistant for ${brandName} managers. You are talking to");
       const offBody = templateBody(current, "// MAIN_PROMPT_RETURN");
       expect(offBody).toBe(mainBody);
 
