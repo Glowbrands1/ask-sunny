@@ -94,43 +94,47 @@ Harness events (not case failures):
 
 ## Round 3 — prompt A/B
 
-- replay_set.json sha256: `2f05db5d08424743a1be74caf8265ed3decfac28fdbda5bcf3c4259282daa611`
+- replay_set.json sha256: `f3123e6ad18c756be42180b37f19e0683a6011dfe727f1066eaa9b5bd211a07e`
 - prompts.ts sha256: `d288d4f4b72082321f11a7bdaa839bf5f8d2f4841cd2c22d3b4ddf6332033312`
-- commit: `923dcedaf1f5a75791ccee5e8eef3fdc4729911a`
+- commit: `fd43124376b5e31992910988842ae65321cba461`
 - model: `claude-opus-5`
-- flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED`
+- flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED, GLOBAL_SALON_ASK_ENABLED`
 - runs: 1
 - latency gate: 20000 ms
 - last-known-good prompt commit: `417e80c12d7275681411606f87af851fb080b348`
 - last-known-good prompts.ts sha256: `0c6b9f2efdbdc054d3f7832f5002e92c844a5b95e72622e096328ac2c2ee218d`
-- built prompt sha256, current: `b3bcd4ccc5b51b48c729b9a2350e0edf4c5866858b0fe05b47d1c7f78786e252`
-- built prompt sha256, last-known-good: `b3bcd4ccc5b51b48c729b9a2350e0edf4c5866858b0fe05b47d1c7f78786e252`
+- built prompt sha256, current: `c1edfc7f89cc1bc024af1a9342ed8f80ce2c80191065b8efef65f40d16eb029e`
+- built prompt sha256, last-known-good: `c1edfc7f89cc1bc024af1a9342ed8f80ce2c80191065b8efef65f40d16eb029e`
 - prompt text differs: no
 - prompt revert: none
 
 | Case | Card criteria | Flags off | Current prompt | Last-known-good prompt |
 | --- | --- | --- | --- | --- |
-| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 77ms | PASS 2368ms | PASS 421ms |
-| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 44ms | PASS 169ms | PASS 166ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 35ms | PASS 164ms | PASS 152ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 21ms | PASS 147ms | PASS 122ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 72ms | PASS 225ms | PASS 219ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 11ms | PASS 41ms | PASS 40ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 7ms | PASS 23ms | PASS 23ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 22ms | PASS 119ms | PASS 113ms |
-| s20 | — · — · — · — | PASS 11ms | PASS 112ms | PASS 95ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 40ms | PASS 145ms | PASS 138ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 11ms | PASS 54ms | PASS 49ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 37ms | PASS 409ms | PASS 387ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 9ms | PASS 53ms | PASS 52ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 6ms | PASS 68ms | PASS 66ms |
-| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 16ms | PASS 115ms | PASS 114ms |
-| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 44ms | PASS 213ms | PASS 212ms |
-| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 5ms | PASS 29ms | PASS 28ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 35ms | PASS 264ms | PASS 260ms |
-| n1 | Test Employee · loc-0462 · — · — | PASS 10ms | PASS 77ms | PASS 72ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 3ms | PASS 18ms | PASS 17ms |
-| n3 | TT · — · 2026-10-23 · — | PASS 2ms | PASS 22ms | PASS 22ms |
+| s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 67ms | PASS 399ms | PASS 221ms |
+| s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 43ms | PASS 76ms | PASS 71ms |
+| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 34ms | PASS 84ms | PASS 70ms |
+| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 20ms | PASS 64ms | PASS 38ms |
+| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 65ms | PASS 120ms | PASS 111ms |
+| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 11ms | PASS 22ms | PASS 19ms |
+| s29 | Erin Nelson · loc-0313 · — · — | PASS 3ms | PASS 7ms | PASS 7ms |
+| s17 | Betty Sue · — · 2026-10-23 · — | PASS 19ms | PASS 80ms | PASS 76ms |
+| s20 | — · — · — · — | PASS 10ms | PASS 63ms | PASS 46ms |
+| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 29ms | PASS 57ms | PASS 45ms |
+| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 9ms | PASS 16ms | PASS 14ms |
+| s8 | Christiana Headley · loc-0463 · — · — | PASS 35ms | PASS 185ms | PASS 170ms |
+| s12 | Colene Schildt · loc-0462 · — · — | PASS 8ms | PASS 21ms | PASS 15ms |
+| s16 | Kayla Koehn · loc-0309 · — · — | PASS 5ms | PASS 24ms | PASS 18ms |
+| b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 15ms | PASS 83ms | PASS 79ms |
+| b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 38ms | PASS 102ms | PASS 96ms |
+| b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 5ms | PASS 21ms | PASS 21ms |
+| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 28ms | PASS 168ms | PASS 156ms |
+| n1 | Test Employee · loc-0462 · — · — | PASS 9ms | PASS 27ms | PASS 21ms |
+| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 3ms | PASS 10ms | PASS 9ms |
+| n3 | TT · — · 2026-10-23 · — | PASS 2ms | PASS 10ms | PASS 10ms |
+| g1 | Sarah Test · loc-0462 · — · — | PASS 5ms | PASS 12ms | PASS 11ms |
+| g2 | Sarah Test · loc-0462 · — · — | PASS 8ms | PASS 16ms | PASS 15ms |
+| g3 | Sarah Test · loc-0903 · — · — | PASS 7ms | PASS 23ms | PASS 21ms |
+| g4 | Sarah Test · loc-0462 · — · — | PASS 6ms | PASS 21ms | PASS 21ms |
 
 Harness events (not case failures):
 
@@ -154,43 +158,45 @@ Each row turns one quality flag on and leaves the others off. The reply model is
 
 | Flag | Floor | Card criteria | Breaks the floor | Card still open |
 | --- | --- | --- | --- | --- |
-| INTENT_EXTRACTION_ENABLED | 20/21 | 18/21 | s17 | s17, s25, n2 |
-| FEWSHOT_EXAMPLES_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| SELF_CHECK_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| QUERY_REWRITE_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| GROUNDED_ENTITIES_ENABLED | 20/21 | 14/21 | s17 | s9, s17, s25, b9, b10, b12, n2 |
-| DRAFT_MERGE_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| ACTION_PLAN_SENTENCES_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| TYPED_NAME_PROCEEDS_ENABLED | 21/21 | 6/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, s25, b9, b10, b11, b12, n2, n3 |
-| ATTENDANCE_POLICY_CITATION_ENABLED | 21/21 | 12/21 | — | s9, s5, s28, s29, s17, b10, b11, n2, n3 |
-| POLICY_PAGE_REQUIRED_ENABLED | 21/21 | 12/21 | — | s9, s5, s28, s29, s17, b10, b11, n2, n3 |
-| MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| POLICY_GATE_NONBLOCKING_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| MANUAL_SECTION_DEDUPE_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| PRINTED_PAGE_CITATION_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| PAYROLL_AMOUNT_FIELD_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| CODE_SLOTS_ENABLED | 20/21 | 7/21 | s17 | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
-| CHAT_DATA_TOOLS_ENABLED | 21/21 | 7/21 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| INTENT_EXTRACTION_ENABLED | 24/25 | 21/25 | s17 | s17, s25, n2, g4 |
+| FEWSHOT_EXAMPLES_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| SELF_CHECK_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| QUERY_REWRITE_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| GROUNDED_ENTITIES_ENABLED | 24/25 | 18/25 | s17 | s9, s17, s25, b9, b10, b12, n2 |
+| DRAFT_MERGE_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| ACTION_PLAN_SENTENCES_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| TYPED_NAME_PROCEEDS_ENABLED | 25/25 | 8/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, s25, b9, b10, b11, b12, n2, n3, g3, g4 |
+| ATTENDANCE_POLICY_CITATION_ENABLED | 25/25 | 14/25 | — | s9, s5, s28, s29, s17, b10, b11, n2, n3, g3, g4 |
+| POLICY_PAGE_REQUIRED_ENABLED | 25/25 | 14/25 | — | s9, s5, s28, s29, s17, b10, b11, n2, n3, g3, g4 |
+| MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| POLICY_GATE_NONBLOCKING_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| MANUAL_SECTION_DEDUPE_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| PRINTED_PAGE_CITATION_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| PAYROLL_AMOUNT_FIELD_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| CODE_SLOTS_ENABLED | 24/25 | 9/25 | s17 | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
+| GLOBAL_SALON_ASK_ENABLED | 25/25 | 11/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3 |
+| CHAT_DATA_TOOLS_ENABLED | 25/25 | 9/25 | — | s4, s9, s11, s5, s27, s28, s29, s17, b9, b10, b11, b12, n2, n3, g3, g4 |
 
 Safe order for Pau: turn these on from the top. A flag with no floor break holds the flags-off checks on its own. A date note means the only floor miss is s17: the flag stores 2026-10-23, which the old floor leaves blank and the card criteria requires. Round 3 with every flag on passes all 21.
 
-1. `INTENT_EXTRACTION_ENABLED` — card 18/21 — stores s17's date
-2. `GROUNDED_ENTITIES_ENABLED` — card 14/21 — stores s17's date
-3. `ATTENDANCE_POLICY_CITATION_ENABLED` — card 12/21
-4. `POLICY_PAGE_REQUIRED_ENABLED` — card 12/21
-5. `ACTION_PLAN_SENTENCES_ENABLED` — card 7/21
-6. `CHAT_DATA_TOOLS_ENABLED` — card 7/21
-7. `CODE_SLOTS_ENABLED` — card 7/21 — stores s17's date
-8. `DRAFT_MERGE_ENABLED` — card 7/21
-9. `FEWSHOT_EXAMPLES_ENABLED` — card 7/21
-10. `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — card 7/21
-11. `MANUAL_SECTION_DEDUPE_ENABLED` — card 7/21
-12. `PAYROLL_AMOUNT_FIELD_ENABLED` — card 7/21
-13. `POLICY_GATE_NONBLOCKING_ENABLED` — card 7/21
-14. `PRINTED_PAGE_CITATION_ENABLED` — card 7/21
-15. `QUERY_REWRITE_ENABLED` — card 7/21
-16. `SELF_CHECK_ENABLED` — card 7/21
-17. `TYPED_NAME_PROCEEDS_ENABLED` — card 6/21
+1. `INTENT_EXTRACTION_ENABLED` — card 21/25 — stores s17's date
+2. `GROUNDED_ENTITIES_ENABLED` — card 18/25 — stores s17's date
+3. `ATTENDANCE_POLICY_CITATION_ENABLED` — card 14/25
+4. `POLICY_PAGE_REQUIRED_ENABLED` — card 14/25
+5. `GLOBAL_SALON_ASK_ENABLED` — card 11/25
+6. `ACTION_PLAN_SENTENCES_ENABLED` — card 9/25
+7. `CHAT_DATA_TOOLS_ENABLED` — card 9/25
+8. `CODE_SLOTS_ENABLED` — card 9/25 — stores s17's date
+9. `DRAFT_MERGE_ENABLED` — card 9/25
+10. `FEWSHOT_EXAMPLES_ENABLED` — card 9/25
+11. `MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED` — card 9/25
+12. `MANUAL_SECTION_DEDUPE_ENABLED` — card 9/25
+13. `PAYROLL_AMOUNT_FIELD_ENABLED` — card 9/25
+14. `POLICY_GATE_NONBLOCKING_ENABLED` — card 9/25
+15. `PRINTED_PAGE_CITATION_ENABLED` — card 9/25
+16. `QUERY_REWRITE_ENABLED` — card 9/25
+17. `SELF_CHECK_ENABLED` — card 9/25
+18. `TYPED_NAME_PROCEEDS_ENABLED` — card 8/25
 
 `CHAT_DATA_TOOLS_ENABLED` is also scored on s22 and s23. The turns are verbatim. The reply model is mocked, so a data case passes when the flag attaches the block the answer was missing. The review read in this harness is the page inventory the earlier miss named, 254 reviews. The chooser is stubbed the same way the other tools are, because the model is mocked.
 
@@ -207,7 +213,7 @@ s22 is miss with the flag on and miss with it off. Both turns say "change my pas
 OLD is `origin/main` as-is, flags off, the same turns and the same mocked reply. NEW is this branch with the rulebook flags on. The guide was not pasted over the system prompt. Each case runs 1 time. A rule misses if any run misses it. A rule that does not apply to the case is not scored. Worse means NEW misses a rule OLD passed, and that case is fixed before this pull request is ready.
 
 - OLD commit: `b9ae362fd80e1fc492c4326f80834cf105ef19b8`
-- NEW commit: `923dcedaf1f5a75791ccee5e8eef3fdc4729911a`
+- NEW commit: `fd43124376b5e31992910988842ae65321cba461`
 - runs: 1
 - latency gate: 20000 ms for the run
 - rules: employee on the card, typed name kept, salon does not gate the card, date, policy and printed page, 2-sentence plan, payroll amount only from the manager, no blocking question, no leaked text, latency
@@ -241,11 +247,11 @@ Totals: better 17, same 4, worse 0.
 
 ## Round 1 — structural name, slot, and salon
 
-One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the run. It regresses when it is more than 25% slower than the slower of the previous round and this process's flags-on run, and also more than 250ms slower.
+One round, one commit. SELF_CHECK stays off. Judged rules are the structural ones: employee on the card, typed name kept, salon does not gate the card, date slot, no blocking question, no leaked text. Before is flags off. After is this flag set. Latency is the run. It regresses when it is more than 25% slower than flags off and also more than 250ms slower.
 
-- commit: `923dcedaf1f5a75791ccee5e8eef3fdc4729911a`
+- commit: `fd43124376b5e31992910988842ae65321cba461`
 - harness: local
-- flag set: `INTENT_EXTRACTION_ENABLED=1 GROUNDED_ENTITIES_ENABLED=1 DRAFT_MERGE_ENABLED=1 TYPED_NAME_PROCEEDS_ENABLED=1 CODE_SLOTS_ENABLED=1 SELF_CHECK_ENABLED=false`
+- flag set: `INTENT_EXTRACTION_ENABLED=1 GROUNDED_ENTITIES_ENABLED=1 DRAFT_MERGE_ENABLED=1 TYPED_NAME_PROCEEDS_ENABLED=1 CODE_SLOTS_ENABLED=1 GLOBAL_SALON_ASK_ENABLED=1 SELF_CHECK_ENABLED=false`
 - SELF_CHECK_ENABLED=false
 - SELF_CHECK: off
 - runs: 1
@@ -253,29 +259,33 @@ One round, one commit. SELF_CHECK stays off. Judged rules are the structural one
 
 | Case | Before | After | Latency | Round |
 | --- | --- | --- | --- | --- |
-| s4 | pass | pass | 257ms vs 3059ms | held |
-| s9 | date | pass | 147ms vs 485ms | fixed |
-| s11 | pass | pass | 140ms vs 452ms | held |
-| s5 | date | pass | 115ms vs 439ms | fixed |
-| s27 | pass | pass | 194ms vs 630ms | held |
-| s28 | salon | pass | 35ms vs 117ms | fixed |
-| s29 | salon | pass | 21ms vs 66ms | fixed |
-| s17 | date | pass | 103ms vs 360ms | fixed |
-| s20 | pass | pass | 85ms vs 334ms | held |
-| s21 | pass | pass | 126ms vs 398ms | held |
-| s25 | blocking | pass | 46ms vs 146ms | fixed |
-| s8 | blocking | pass | 361ms vs 1056ms | fixed |
-| s12 | pass | pass | 48ms vs 151ms | held |
-| s16 | pass | pass | 61ms vs 178ms | held |
-| b9 | blocking | pass | 102ms vs 345ms | fixed |
-| b10 | employee, typed, salon, date | pass | 192ms vs 603ms | fixed |
-| b11 | employee, typed, salon | pass | 25ms vs 87ms | fixed |
-| b12 | pass | pass | 247ms vs 762ms | held |
-| n1 | pass | pass | 69ms vs 212ms | held |
-| n2 | blocking | pass | 15ms vs 49ms | fixed |
-| n3 | date | pass | 22ms vs 69ms | fixed |
+| s4 | pass | pass | 93ms vs 56ms | held |
+| s9 | date | pass | 54ms vs 40ms | fixed |
+| s11 | pass | pass | 58ms vs 28ms | held |
+| s5 | date | pass | 32ms vs 18ms | fixed |
+| s27 | pass | pass | 88ms vs 60ms | held |
+| s28 | salon | pass | 15ms vs 9ms | fixed |
+| s29 | salon | pass | 5ms vs 3ms | fixed |
+| s17 | date | pass | 69ms vs 17ms | fixed |
+| s20 | pass | pass | 41ms vs 9ms | held |
+| s21 | pass | pass | 38ms vs 24ms | held |
+| s25 | blocking | pass | 13ms vs 7ms | fixed |
+| s8 | blocking | pass | 153ms vs 31ms | fixed |
+| s12 | pass | pass | 14ms vs 7ms | held |
+| s16 | pass | pass | 17ms vs 5ms | held |
+| b9 | blocking | pass | 72ms vs 15ms | fixed |
+| b10 | employee, typed, salon, date | pass | 78ms vs 35ms | fixed |
+| b11 | employee, typed, salon | pass | 18ms vs 5ms | fixed |
+| b12 | pass | pass | 145ms vs 25ms | held |
+| n1 | pass | pass | 18ms vs 8ms | held |
+| n2 | blocking | pass | 7ms vs 3ms | fixed |
+| n3 | date | pass | 9ms vs 2ms | fixed |
+| g1 | pass | pass | 9ms vs 5ms | held |
+| g2 | pass | pass | 12ms vs 8ms | held |
+| g3 | salon | pass | 19ms vs 6ms | fixed |
+| g4 | salon | pass | 23ms vs 5ms | fixed |
 
-Gate: fixed 12 (s9, s5, s28, s29, s17, s25, s8, b9, b10, b11, n2, n3), broken 0, latency 0, leaked 0.
+Gate: fixed 14 (s9, s5, s28, s29, s17, s25, s8, b9, b10, b11, n2, n3, g3, g4), broken 0, latency 0, leaked 0.
 
 
 ## Prompt cache
@@ -283,7 +293,7 @@ Gate: fixed 12 (s9, s5, s28, s29, s17, s25, s8, b9, b10, b11, n2, n3), broken 0,
 The instruction text is unchanged. Sections 1–11 are the static block and do not include the manager's name, salon, or today. Those three facts follow `---DYNAMIC---`. `call-claude.ts` puts `cache_control: { type: "ephemeral" }` on the static block only. The reply model is mocked, so the token counts are the local replay's cache log and the latency is time-to-first-token for the whole prompt (OLD) against the dynamic tail (NEW).
 
 - 1st call usage.cache_creation_input_tokens: 2781
-- later calls with usage.cache_read_input_tokens > 0: 1
-- first-token latency OLD: 0.14ms
+- later calls with usage.cache_read_input_tokens > 0: 2
+- first-token latency OLD: 0.1ms
 - first-token latency NEW: 0.002ms
 - replay pass/fail: unchanged
