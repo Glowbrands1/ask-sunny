@@ -1,4 +1,8 @@
-import { actionPlanSentencesEnabled, managerPayrollAmountOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  actionPlanSentencesEnabled,
+  managerPayrollAmountOnlyEnabled,
+  payrollAmountFieldEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import { fieldsForVariant, type FormDocument } from "./document";
 import { employeeFirstName } from "./employee-reference";
@@ -174,6 +178,9 @@ export function planPayrollAmount(input: {
   /** Direct policy's value, only where it was quoted from the manual with verified provenance. */
   readonly quotedPolicy: string | null;
 }): { amount: string | null; amountFrom?: "manager" | "manual" } {
+  // The figure lives on Payroll deduction amount. It is not a plan sentence,
+  // and Late Opening's $25 is not copied in either.
+  if (payrollAmountFieldEnabled()) return { amount: null };
   if (input.stated) return { amount: input.stated, amountFrom: "manager" };
   if (managerPayrollAmountOnlyEnabled()) return { amount: null };
   const quoted = input.answer === "yes" ? quotedDeductionAmount(input.quotedPolicy) : null;

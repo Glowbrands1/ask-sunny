@@ -330,6 +330,72 @@ describe("live form cards, 23 Oct 2026", () => {
     expect(again.content).not.toMatch(/verbal or written/i);
   });
 
+  it("puts a stated amount on the card and does not take $25 from the policy", () => {
+    process.env.PAYROLL_AMOUNT_FIELD_ENABLED = "1";
+    const policy =
+      "The employee will reimburse The Company $25.00 via payroll deduction. payroll deduct yes";
+    const quoted = enrichFormCard({
+      response: answer("Here is the form.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        payrollDeduct: "yes",
+        status: "ready",
+      })),
+      question: policy,
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(quoted.formProposal?.payrollDeductAmount ?? null).toBeNull();
+    expect(quoted.content).not.toContain("$25");
+
+    const stated = enrichFormCard({
+      response: answer("Here is the form.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        payrollDeduct: "yes",
+        status: "ready",
+      })),
+      question: "payroll deduct yes $40",
+      today: TODAY,
+      people: [],
+      saved: null,
+    });
+    expect(stated.formProposal?.payrollDeductAmount).toBe("$40");
+
+    const carried = enrichFormCard({
+      response: answer("Redraft it.", proposal({
+        templateKey: "dpoa",
+        templateName: "Corrective Action Form",
+        payrollDeduct: "yes",
+        status: "ready",
+      })),
+      question: "redraft it",
+      today: TODAY,
+      people: [],
+      saved: {
+        employeeId: null,
+        employeeName: "Dana Moss",
+        keptTypedName: null,
+        salonId: null,
+        title: null,
+        formDate: null,
+        warningLevel: null,
+        payrollDeduct: "yes",
+        policyHeading: null,
+        policyPage: null,
+        templateKey: "dpoa",
+        incident: null,
+        incidentType: null,
+        payrollAmount: "25",
+        payrollDeductAmount: "$40",
+      },
+    });
+    expect(carried.formProposal?.payrollDeductAmount).toBe("$40");
+    expect(carried.content).not.toContain("$25");
+    delete process.env.PAYROLL_AMOUNT_FIELD_ENABLED;
+  });
+
   it("coaching for cell phone use on 9-29-26 for Colene Schildt at Lawrence", async () => {
     expect(detectTemplateIntent(COLENE_PROMPT).kind).toBe("none");
     const lead = promoteSeparateForm(COLENE_PROMPT);

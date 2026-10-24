@@ -43,7 +43,61 @@ export function payrollAmountAlreadyAsked(
   );
 }
 
+/**
+ * The live Corrective Action library is already revision 7. The seed records
+ * that, including this line. `ensureTemplateLibrary` still writes revision 6,
+ * without the line, until Pau approves a publish.
+ */
+export const DPOA_UNPUBLISHED_REVISION = 7;
+
+export const DPOA_DATABASE_REVISION = 6;
+
+export function withoutPayrollAmountField(document: FormDocument): FormDocument {
+  const present = document.blocks.some(
+    (block) => block.kind === "field" && block.field.key === PAYROLL_AMOUNT_KEY,
+  );
+  if (!present) return document;
+  return {
+    ...document,
+    blocks: document.blocks.filter(
+      (block) => !(block.kind === "field" && block.field.key === PAYROLL_AMOUNT_KEY),
+    ),
+  };
+}
+
+/**
+ * What a database write is allowed to store. Revision 7 is in the seed and is
+ * not published. Any other revision is stored as given.
+ */
+export function withholdUnpublishedDpoa<T extends { key: string; revision: number; document: FormDocument }>(
+  seed: T,
+): T {
+  if (seed.key !== "dpoa" || seed.revision !== DPOA_UNPUBLISHED_REVISION) return seed;
+  return {
+    ...seed,
+    revision: DPOA_DATABASE_REVISION,
+    document: withoutPayrollAmountField(seed.document),
+  };
+}
+
+/**
+ * Asked once when payroll is Yes, the line is on the form, and no figure is
+ * on it yet. A second turn that already heard the question gets nothing.
+ */
+export function payrollAmountPrompt(input: {
+  payroll: "yes" | "no" | null;
+  amount: string | null;
+  alreadyAsked: boolean;
+  onForm: boolean;
+}): string | null {
+  if (!payrollAmountFieldEnabled() || !input.onForm) return null;
+  if (input.payroll !== "yes" || input.amount || input.alreadyAsked) return null;
+  return PAYROLL_AMOUNT_QUESTION;
+}
+
 export function withPayrollAmountField(document: FormDocument): FormDocument {
+  // Off, a document is read as stored. The seed already has the line; a
+  // database still on revision 6 does not, and this does not add it.
   if (!payrollAmountFieldEnabled()) return document;
   const present = document.blocks.some(
     (block) => block.kind === "field" && block.field.key === PAYROLL_AMOUNT_KEY,

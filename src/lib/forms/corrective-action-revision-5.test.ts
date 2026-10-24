@@ -78,10 +78,11 @@ function revision4(): FormDocument {
 }
 
 describe("the template", () => {
-  it("is revision 6, published as a new version rather than over revision 5 or 4", () => {
-    expect(seed.revision).toBe(6);
+  it("is revision 7 in the seed, and revision 6 is still the published reading", () => {
+    expect(seed.revision).toBe(7);
     expect(seed.revisionNote).toMatch(/Revision 5/);
     expect(seed.revisionNote).toMatch(/Revision 6 \(District Manager feedback, 21 Oct 2026\)/);
+    expect(seed.revisionNote).toMatch(/does not publish revision 7/);
     expect(seed.key).toBe("dpoa");
   });
 

@@ -372,11 +372,30 @@ export function payrollYesAmount(text: string): string | null {
   return amountBesidePayrollYes(text);
 }
 
+/**
+ * Yes or No for the amount line. "payroll deduct yes $40" is a Yes the plain
+ * reader can miss, because the figure sits where it expected the sentence to end.
+ */
+export function payrollAnswerForAmount(text: string): PayrollDeductAnswer | null {
+  return statedPayrollDeduct(text) ?? (payrollYesAmount(text) ? "yes" : null);
+}
+
 function amountBesidePayrollYes(text: string): string | null {
   const match =
     /\bpayroll\s+deduct(?:ion)?\s+yes\b[^$\n]{0,40}(\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i.exec(
       text ?? "",
     );
+  if (!match) return null;
+  const amount = match[1]!.replace(/\s+/g, "");
+  return isZero(amount) ? null : amount;
+}
+
+/**
+ * "Payroll deduction amount: $40." The colon keeps this off `payrollDeductAmount`,
+ * so a carried figure is not copied into the Action Plan.
+ */
+function amountOnItsLine(text: string): string | null {
+  const match = /\bpayroll deduction amount:\s*(\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i.exec(text ?? "");
   if (!match) return null;
   const amount = match[1]!.replace(/\s+/g, "");
   return isZero(amount) ? null : amount;
@@ -414,7 +433,8 @@ export function payrollAmountFromConversation(
     .filter((turn) => turn.role === "user")
     .map((turn) => turn.content)
     .join("\n");
-  const stated = payrollDeductAmount(manager) ?? amountBesidePayrollYes(manager);
+  const stated =
+    payrollDeductAmount(manager) ?? amountBesidePayrollYes(manager) ?? amountOnItsLine(manager);
   if (stated) return stated;
 
   let lastAssistant = "";

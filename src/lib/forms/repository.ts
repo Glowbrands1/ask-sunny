@@ -18,6 +18,7 @@ import {
 } from "./document";
 import { readProposal, type FormProposal } from "./ingest/proposal";
 import { TEMPLATE_SEEDS } from "./library";
+import { withholdUnpublishedDpoa } from "./payroll-amount-field";
 import { templateSyncDecision } from "./template-sync-policy";
 
 /**
@@ -276,7 +277,10 @@ export async function ensureTemplateLibrary(
     (rows ?? []).map((row) => [String(row.key), row as Record<string, unknown>]),
   );
 
-  for (const seed of TEMPLATE_SEEDS) {
+  for (const source of TEMPLATE_SEEDS) {
+    // Revision 7 of the Corrective Action Form is the live library. It is in
+    // the seed, including Payroll deduction amount, and it is not published.
+    const seed = withholdUnpublishedDpoa(source);
     try {
       const row = known.get(seed.key);
       if (row) {

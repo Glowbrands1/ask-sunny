@@ -1,6 +1,12 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
+import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
-import { payrollDeductAmount, statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import {
+  payrollAmountFromConversation,
+  payrollAnswerForAmount,
+  payrollDeductAmount,
+  statedPayrollDeduct,
+} from "@/lib/forms/payroll-deduct";
 import { extractJobTitle, readEmployeeMentions } from "@/lib/forms/proposal";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
@@ -167,7 +173,16 @@ export function fieldLines(question: string, today: string, earlier = ""): strin
     else if (slash) lines.push(`It happened on ${slash}.`);
   }
 
-  if (!payrollDeductAmount(question)) {
+  if (payrollAmountFieldEnabled()) {
+    // The amount line, not a deduction sentence the Action Plan would copy.
+    // A policy quotation's $25 is not a figure the manager stated.
+    const known = payrollAmountFromConversation([{ role: "user", content: corpus }], {
+      payrollAnswer: payrollAnswerForAmount(corpus),
+    });
+    if (known && !/\bpayroll deduction amount:/i.test(question)) {
+      lines.push(`Payroll deduction amount: ${known}.`);
+    }
+  } else if (!payrollDeductAmount(question)) {
     const known = payrollDeductAmount(corpus);
     const missed = missedDeduction(corpus);
     const amount = known ? `$${known.replace(/^\$/, "")}` : missed;

@@ -1,8 +1,8 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { priorCoachingOptionalEnabled } from "@/lib/config/chat-quality-flags";
+import { payrollAmountFieldEnabled, priorCoachingOptionalEnabled } from "@/lib/config/chat-quality-flags";
 import { readCorrectiveActionIntake, describesIncident, type IntakeItem } from "@/lib/forms/corrective-action-intake";
 import { extractFormDate } from "@/lib/forms/form-date-answer";
-import { payrollDeductAmount } from "@/lib/forms/payroll-deduct";
+import { payrollAmountFromConversation, payrollAnswerForAmount, payrollDeductAmount } from "@/lib/forms/payroll-deduct";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct-answer";
 import { extractEmployeeNames } from "@/lib/forms/proposal";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
@@ -103,6 +103,14 @@ function uniqueRosterSalon(phrase: string): string | null {
   return hits.length === 1 ? hits[0]!.name : null;
 }
 
+/** The figure that may fill Payroll deduction amount. Policy text is not one. */
+function managerPayrollFigure(text: string): string | null {
+  if (!payrollAmountFieldEnabled()) return payrollDeductAmount(text);
+  return payrollAmountFromConversation([{ role: "user", content: text }], {
+    payrollAnswer: payrollAnswerForAmount(text),
+  });
+}
+
 function dollarsIn(text: string): string[] {
   return [...text.matchAll(/\$\s?\d+(?:,\d{3})*(?:\.\d{2})?/g)].map((match) =>
     match[0].replace(/\s+/g, ""),
@@ -126,7 +134,7 @@ export function fieldsFromManagerText(text: string, today: string): ConfirmedFor
     incidentDateIso: date ?? (useToday ? today : null),
     useToday,
     payrollDeduct: statedPayrollDeduct(text),
-    payrollAmount: payrollDeductAmount(text),
+    payrollAmount: managerPayrollFigure(text),
     warningLevel: statedWarningLevel(text),
     policySection: null,
     whatHappened: describesIncident(text) || intake.supplied.includes("what_happened"),
@@ -182,7 +190,9 @@ export function corroborateModelFields(
 
   const payrollDeduct = base.payrollDeduct ?? null;
   let payrollAmount = base.payrollAmount;
-  if (!payrollAmount && payrollDeduct === "yes" && model.payrollAmount) {
+  // The amount field takes only what the manager stated. A model figure that
+  // matches a dollar in the policy quote is not that.
+  if (!payrollAmountFieldEnabled() && !payrollAmount && payrollDeduct === "yes" && model.payrollAmount) {
     const stated = dollarsIn(text);
     const wanted = model.payrollAmount.replace(/\s+/g, "");
     if (stated.includes(wanted)) payrollAmount = wanted;
@@ -317,7 +327,13 @@ export function retentionReply(fields: ConfirmedFormFields, missing: readonly In
   else if (fields.incidentDateIso) held.push(fields.incidentDateIso);
   if (fields.warningLevel) held.push(`a ${fields.warningLevel} warning`);
   if (fields.payrollDeduct === "yes") {
-    held.push(fields.payrollAmount ? `a payroll deduction of ${fields.payrollAmount}` : "a payroll deduction");
+    held.push(
+      fields.payrollAmount && payrollAmountFieldEnabled()
+        ? `payroll deduction amount: ${fields.payrollAmount}`
+        : fields.payrollAmount
+          ? `a payroll deduction of ${fields.payrollAmount}`
+          : "a payroll deduction",
+    );
   } else if (fields.payrollDeduct === "no") {
     held.push("no payroll deduction");
   }
@@ -349,7 +365,11 @@ export function questionWithConfirmedFields(question: string, fields: ConfirmedF
   if (fields.warningLevel) lines.push(`${fields.warningLevel} warning`);
   if (fields.payrollDeduct === "yes") {
     lines.push(
-      fields.payrollAmount ? `Payroll deduction of ${fields.payrollAmount}` : "Payroll deduction yes",
+      fields.payrollAmount && payrollAmountFieldEnabled()
+        ? `Payroll deduction amount: ${fields.payrollAmount}.`
+        : fields.payrollAmount
+          ? `Payroll deduction of ${fields.payrollAmount}`
+          : "Payroll deduction yes",
     );
   } else if (fields.payrollDeduct === "no") {
     lines.push("No payroll deduction");

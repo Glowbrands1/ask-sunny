@@ -185,7 +185,10 @@ describe("ensureTemplateLibrary on Production", () => {
 
     expect(result.revised).toEqual(["dpoa"]);
     const current = await getCurrentVersion(templateId);
-    expect(current?.seedRevision).toBe(caSeed.revision);
+    // Revision 7 is in the seed and is not written. A library still on
+    // revision 4 receives revision 6, without Payroll deduction amount.
+    expect(caSeed.revision).toBe(7);
+    expect(current?.seedRevision).toBe(6);
     expect(current?.id).not.toBe(versionId);
     // The old version is archived, not replaced.
     expect(store.form_template_versions.find((row) => row.id === versionId)?.status).toBe("archived");
@@ -292,7 +295,7 @@ describe("opening Forms → Form Templates", () => {
 
     const page = await FormTemplatesPage();
 
-    expect((await getCurrentVersion(templateId))?.seedRevision).toBe(caSeed.revision);
+    expect((await getCurrentVersion(templateId))?.seedRevision).toBe(6);
     expect(textOf(page)).not.toMatch(/Template sync is off/);
   });
 });
