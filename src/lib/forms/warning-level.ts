@@ -269,6 +269,70 @@ export function levelAskedYesNo(assistant: string): StatedWarningLevel | null {
   return named.size === 1 ? [...named][0]! : null;
 }
 
+/*
+ * ============================================================================
+ * THE LEVEL CLAUSE BY CLAUSE — WHAT LEADS, WHAT IS TIED TO THIS CA, WHAT IS PAST
+ * ============================================================================
+ *
+ * QA, 24 Oct 2026 (Ask Bubbles conv_mvmo24rs2rjnl7q; the same turn replayed in
+ * Ask Sunny): "verbal, prior = manual ack 9/01, no payroll" states verbal, and
+ * "prior verbal on 9-1, this one is written" states written. The sentence
+ * reader above reads neither — the first is more than a bare level, and the
+ * second holds two — so once the word-presence fallback was gone, both were
+ * lost. Read clause by clause:
+ *
+ *   TIED TO THIS CA   "this one is written", "the CA is written", "it's a
+ *                     verbal", "make it verbal" — the current level.
+ *   PAST              a clause with prior / previous / had / already /
+ *                     coached / "prior =" … is history, and so is every bare
+ *                     level listed after it in the same sentence.
+ *   LEADING           a bare level as its own clause ("verbal, …") before
+ *                     any history is the current level.
+ *
+ * Only `managerStatedWarningLevel` reads this (WARNING_LEVEL_MANAGER_ONLY_ENABLED).
+ */
+const CLAUSE_PAST =
+  /\b(?:prior|previous(?:ly)?|had|has\s+had|already|coached|counsell?ed|before|earlier|got|received|was\s+given|were\s+given|last\s+(?:one|time|week|month|year))\b|\bprior\s*[=:]/;
+const CLAUSE_TIED =
+  /\b(?:(?:this|it|that)(?:\s+one)?|the\s+(?:ca|c\/a|form|corrective\s+action|warning)|(?:this\s+)?(?:ca|c\/a))\s+(?:is|will\s+be|should\s+be|needs\s+to\s+be)\s+(?:a\s+|an\s+)?(verbal|written)\b|\b(?:it'?s|this'?s)\s+(?:a\s+)?(verbal|written)\b|\bmake\s+(?:it|this)\s+(?:a\s+)?(verbal|written)\b/;
+const CLAUSE_ALONE =
+  /^\s*(?:a\s+)?(verbal|written)(?:\s+(?:warning|ca|c\/a|corrective\s+action|write[- ]?up))?\s*$/;
+
+function clauseStatedLevel(text: string): StatedWarningLevel | null {
+  const levels = new Set<StatedWarningLevel>();
+  for (const sentence of withoutUndecidedLevels(normalize(text)).split(/[.;!?\n]+/)) {
+    let pastOpen = false;
+    for (const clause of sentence.replace(/ - /g, " — ").split(/[,—–]/)) {
+      const tied = CLAUSE_TIED.exec(clause);
+      const past = CLAUSE_PAST.test(clause);
+      if (tied && !past) {
+        levels.add((tied[1] ?? tied[2] ?? tied[3]) as StatedWarningLevel);
+        continue;
+      }
+      if (past) {
+        pastOpen = true;
+        continue;
+      }
+      const alone = CLAUSE_ALONE.exec(clause);
+      if (alone && !pastOpen) levels.add(alone[1] as StatedWarningLevel);
+    }
+  }
+  return levels.size === 1 ? [...levels][0]! : null;
+}
+
+/**
+ * Whether a template has a Type of Warning to tick — the Corrective Action
+ * Form, published as "dpoa". A level is never carried onto any other form
+ * (live, 24 Oct 2026: "Written" rode onto a Resignation/Exit Form and a Policy
+ * Review). Read by the WARNING_LEVEL_MANAGER_ONLY_ENABLED paths.
+ */
+export function templateHasWarningLevel(
+  template: { readonly key?: string | null; readonly name?: string | null } | null | undefined,
+): boolean {
+  if (!template) return false;
+  return template.key === "dpoa" || /\bcorrective\s+action\b/i.test(template.name ?? "");
+}
+
 export interface WarningLevelTurn {
   readonly role: string;
   readonly content: string;
@@ -286,7 +350,7 @@ export function managerStatedWarningLevel(turns: readonly WarningLevelTurn[]): S
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index]!;
     if (turn.role !== "user" || typeof turn.content !== "string") continue;
-    const level = statedWarningLevel(turn.content, { undecidedStatesNothing: true });
+    const level = clauseStatedLevel(turn.content) ?? statedWarningLevel(turn.content, { undecidedStatesNothing: true });
     if (level) return level;
     const before = turns[index - 1];
     if (BARE_YES.test(turn.content) && before?.role === "assistant") {

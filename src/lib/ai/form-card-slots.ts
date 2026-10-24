@@ -2,7 +2,12 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
-import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  payrollAmountFieldEnabled,
+  typedNameProceedsEnabled,
+  warningLevelManagerOnlyEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -97,7 +102,11 @@ export function enrichFormCard(input: {
     (namedSalon.length === 0 && askedHere.length === 0 ? primarySalon(employeeName, input.people) : null);
   const amount = cardPayrollAmount(input, blob);
   const payrollDeduct = proposal.payrollDeduct ?? (amount || input.saved?.payrollDeduct === "yes" ? "yes" : input.saved?.payrollDeduct ?? null);
-  const warningLevel = proposal.warningLevel ?? input.saved?.warningLevel ?? null;
+  // WARNING_LEVEL_MANAGER_ONLY_ENABLED: only a form with a Type of Warning carries a level.
+  const warningLevel =
+    warningLevelManagerOnlyEnabled() && !templateHasWarningLevel({ key: proposal.templateKey, name: proposal.templateName })
+      ? null
+      : proposal.warningLevel ?? input.saved?.warningLevel ?? null;
 
   let next: ChatFormProposal = {
     ...proposal,

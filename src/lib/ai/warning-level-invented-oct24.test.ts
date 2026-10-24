@@ -258,6 +258,12 @@ describe('"verbal/written", "verbal or written" name the choice, not a level', (
     expect(manager("not sure if written or verbal warning yet")).toBeNull();
     expect(manager("create a written CA for Test Employee")).toBe("written");
     expect(manager("verbal. no payroll deduct.")).toBe("verbal");
+    // QA, 24 Oct 2026 (R1): a level that leads, or is tied to this CA, is current; one after "prior" is history.
+    expect(manager("verbal, prior = manual ack 9/01, no payroll")).toBe("verbal");
+    expect(manager("prior verbal on 9-1, this one is written")).toBe("written");
+    expect(manager("this is a verbal")).toBe("verbal");
+    expect(manager("she had a written CA in august")).toBeNull();
+    expect(manager("written notice attached")).toBeNull();
   });
 
   it("main's sentence reader is unchanged: it reads the same sentence as written (the replayed defect)", () => {

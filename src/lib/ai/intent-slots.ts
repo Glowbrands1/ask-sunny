@@ -17,7 +17,7 @@ import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
-import { managerStatedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -289,6 +289,19 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   if (warningManagerOnly) {
     const answered = payrollAnsweredNow(input.history, input.question);
     if (answered) state = { ...state, payrollDeduct: answered };
+    /*
+     * RE-READ EVERY TURN, AND ONLY FOR A FORM WITH A TYPE OF WARNING. QA, 24
+     * Oct 2026: a level stored once (from the assistant's own words) came back
+     * on every later turn, beat "this is a verbal", and rode onto a
+     * Resignation/Exit Form and a Policy Review. The level is what the
+     * manager's turns state now; the stored one is kept only when the history
+     * may have been cut (the route keeps the last HISTORY_CAP turns), so a
+     * level stated before that is not lost.
+     */
+    const template = input.templates.find((row) => row.key === state.templateKey) ?? null;
+    const kept = warningLevel.value ?? (input.history.length >= HISTORY_CAP ? saved.warningLevel : null);
+    const level = templateHasWarningLevel(template ?? { key: state.templateKey }) ? kept : null;
+    if (level !== state.warningLevel) state = { ...state, warningLevel: level };
   }
   if (codeSlotsEnabled()) {
     const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
@@ -319,6 +332,9 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   if (!formTurn) return { question, state, clarification: null, formTurn: false };
   return { question, state, clarification: null, formTurn: true };
 }
+
+/** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
+const HISTORY_CAP = 20;
 
 /** Another yes/no question beside the payroll one: "Did you mean **Rowan Testo**?". */
 const OTHER_YES_NO =
