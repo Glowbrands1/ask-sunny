@@ -3,6 +3,7 @@ import "server-only";
 import {
   draftDedupeEnabled,
   fieldAccuracyEnabled,
+  formFullRemapEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
@@ -24,6 +25,7 @@ import { oneSalonVisibleIn } from "./proposal-question";
 import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
+import { remapFormResponse } from "./form-full-remap";
 import { holdFilledSlots } from "./keep-filled-slots";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
@@ -74,13 +76,16 @@ export async function deliverFormProposal(input: {
           saved: null,
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
-    return holdFilledSlots({
-      response: enriched,
-      question: input.question,
-      history: input.request.history,
-      today: input.request.context.todayIso,
-      people: [],
-    });
+    return withFullRemap(
+      holdFilledSlots({
+        response: enriched,
+        question: input.question,
+        history: input.request.history,
+        today: input.request.context.todayIso,
+        people: [],
+      }),
+      input,
+    );
   }
 
   const saved = await readSaved(stateOn, input.actor.subject, input.request.conversationId);
@@ -137,7 +142,20 @@ export async function deliverFormProposal(input: {
     return reopened;
   }
   await writeSaved(stateOn, input, saved, held, prep);
-  return held;
+  return withFullRemap(held, input);
+}
+
+async function withFullRemap(
+  response: AskResponse,
+  input: { readonly request: AskRequest; readonly question: string },
+): Promise<AskResponse> {
+  if (!formFullRemapEnabled()) return response;
+  return remapFormResponse({
+    response,
+    history: input.request.history,
+    question: input.question,
+    today: input.request.context.todayIso,
+  });
 }
 
 function withVisibleSalon(

@@ -1,5 +1,21 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: full form re-map — Sunny-only
+
+Ask Bubbles was not attached. Port the mechanism. Do not copy company
+wording. The manual title stays **JBA Policy Manual**. No merge.
+
+- `FORM_FULL_REMAP` defaults off. Off, a form turn is filled exactly as it
+  is today.
+- On, each corrective-action turn runs one structured extraction over the
+  manager's own words. A field is filled only with a value they said, and
+  the quote stays on the chat trace. A later correction overwrites that
+  field. The card then asks one short question for the first required
+  field that is still blank, and it does not ask that question again.
+- The extraction call is the form turn's model row on `chat_traces`
+  (model, tokens, and slots). A missing model falls back to the same
+  quote-backed read.
+
 ## 24 Oct 2026: form input fidelity — Sunny-only
 
 Ask Bubbles was not attached. Port the mechanism. Do not copy company

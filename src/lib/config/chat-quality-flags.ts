@@ -415,3 +415,12 @@ export function citationAppendOnlyEnabled(): boolean {
 export function incidentDateOnFormEnabled(): boolean {
   return envFlag("INCIDENT_DATE_ON_FORM_ENABLED");
 }
+
+/**
+ * One structured read of the whole conversation into the corrective-action
+ * fields, then a single question for the first required field still blank.
+ * Off, the existing proposal path is unchanged.
+ */
+export function formFullRemapEnabled(): boolean {
+  return envFlag("FORM_FULL_REMAP");
+}

@@ -114,7 +114,13 @@ import {
   settledNameQuestions,
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
-import { payrollAmountFieldEnabled, payrollExplicitDeductEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  formFullRemapEnabled,
+  payrollAmountFieldEnabled,
+  payrollExplicitDeductEnabled,
+  typedNameProceedsEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { remapFormResponse } from "./form-full-remap";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
@@ -438,6 +444,18 @@ function turn(
  *          through to the ordinary grounded-answer path.
  */
 export async function proposeFormForTurn(input: ProposalTurn): Promise<AskResponse | null> {
+  const response = await proposeFormTurn(input);
+  if (!response || !formFullRemapEnabled()) return response;
+  return remapFormResponse({
+    response,
+    history: input.history,
+    question: input.question,
+    today: input.today ?? businessToday(),
+    skipModel: true,
+  });
+}
+
+async function proposeFormTurn(input: ProposalTurn): Promise<AskResponse | null> {
   const intent = intentForTurn(input);
   if (intent.kind === "none") return null;
 
