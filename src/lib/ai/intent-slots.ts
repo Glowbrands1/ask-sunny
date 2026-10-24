@@ -2,9 +2,11 @@ import { z } from "zod";
 
 import {
   codeSlotsEnabled,
+  intentPayrollManagerOnlyEnabled,
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
@@ -15,7 +17,6 @@ import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
-import { payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
 import { managerStatedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -223,7 +224,16 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   const date = codeSlotsEnabled()
     ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
     : groundedDate;
-  const payrollAmount = groundPayroll(reading?.payrollAmount ?? null, blob);
+  const managerOnly = intentPayrollManagerOnlyEnabled();
+  const payrollAnswer = managerOnly
+    ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
+    : null;
+  const payrollAmount = !managerOnly
+    ? groundPayroll(reading?.payrollAmount ?? null, blob)
+    : payrollAnswer === "no"
+      ? null
+      : (payrollClauseAmount(input) ??
+        (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
   /*
    * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
    * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
@@ -232,8 +242,8 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
    * as you said". With the flag, the level is a numbered choice the manager
    * just made, or what their own turns state — nothing else.
    */
-  const managerOnly = warningLevelManagerOnlyEnabled();
-  const warningLevel = managerOnly
+  const warningManagerOnly = warningLevelManagerOnlyEnabled();
+  const warningLevel = warningManagerOnly
     ? {
         value:
           choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
@@ -269,12 +279,14 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     incidentType,
     date: date.iso,
     payrollAmount,
+    payrollAnswer,
+    managerOnly,
     warningLevel: warningLevel.value,
     formType: formType.key,
     policyHeading,
     policyPage,
   });
-  if (managerOnly) {
+  if (warningManagerOnly) {
     const answered = payrollAnsweredNow(input.history, input.question);
     if (answered) state = { ...state, payrollDeduct: answered };
   }
@@ -381,6 +393,30 @@ function groundPolicy(typed: string | null, headings: readonly string[]): string
 function parseReading(raw: unknown): IntentSlotReading | null {
   const parsed = intentSlotSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * The manager's own words this conversation. The assistant's turns quote
+ * policy figures that the manager never stated, and the saved state may
+ * already hold one of those figures.
+ */
+function managerBlob(input: IntentTurnInput): string {
+  const said = input.history.filter((turn) => turn.role === "user").map((turn) => turn.content);
+  return [...said, input.question].filter((part) => part.trim() !== "").join("\n");
+}
+
+/**
+ * The latest amount the manager stated for the deduction itself ("payroll
+ * deduct $25", "deduct $40", "$25 will be payroll deducted"). A shortage
+ * ("register short $40") is not a deduction.
+ */
+function payrollClauseAmount(input: IntentTurnInput): string | null {
+  const said = [...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.question];
+  for (let at = said.length - 1; at >= 0; at -= 1) {
+    const stated = payrollDeductAmount(said[at] ?? "");
+    if (stated) return canonicalAmount(stated);
+  }
+  return null;
 }
 
 function conversationBlob(input: IntentTurnInput): string {
@@ -743,6 +779,10 @@ function mergeSlots(
     incidentType: string | null;
     date: string | null;
     payrollAmount: string | null;
+    /** The manager's Yes/No, when INTENT_PAYROLL_MANAGER_ONLY_ENABLED is on. */
+    payrollAnswer?: PayrollDeductAnswer | null;
+    /** INTENT_PAYROLL_MANAGER_ONLY_ENABLED: Yes/No only from the manager's answer, never from an amount alone. */
+    managerOnly?: boolean;
     warningLevel: "verbal" | "written" | null;
     formType: string | null;
     policyHeading: string | null;
@@ -761,10 +801,14 @@ function mergeSlots(
     title: slots.title ?? prior.title,
     formDate: slots.date ?? prior.formDate,
     warningLevel: slots.warningLevel ?? prior.warningLevel,
-    payrollDeduct: slots.payrollAmount ? "yes" : prior.payrollDeduct,
+    payrollDeduct: slots.managerOnly
+      ? (slots.payrollAnswer ?? prior.payrollDeduct)
+      : slots.payrollAmount
+        ? "yes"
+        : prior.payrollDeduct,
     templateKey: slots.formType ?? prior.templateKey,
     incidentType: slots.incidentType ?? prior.incidentType,
-    payrollAmount: slots.payrollAmount ?? prior.payrollAmount,
+    payrollAmount: slots.payrollAnswer === "no" ? null : slots.payrollAmount ?? prior.payrollAmount,
     policyHeading: slots.policyHeading ?? prior.policyHeading,
     policyPage: slots.policyPage ?? prior.policyPage,
   };
