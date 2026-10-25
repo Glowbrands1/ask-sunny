@@ -5,6 +5,7 @@ import {
   codeSlotsEnabled,
   formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
+  keepFormEmployeeEnabled,
   managerWordsOnlyEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
@@ -31,6 +32,7 @@ import {
   mentionsEarlierCoaching,
 } from "@/lib/forms/template-intent";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
+import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
@@ -232,7 +234,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const reading = parseReading(input.raw);
   const blob = conversationBlob(input);
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
-  const employee = choice?.person
+  const grounded = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
     : groundEmployee(
         codeSlotsEnabled() ? null : reading?.employee ?? null,
@@ -241,6 +243,13 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         input.salons,
         notANameGuardEnabled() ? managerTurns(input) : null,
       );
+  /*
+   * KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" names Test Employee
+   * (QA, 25 Oct 2026). The readers end a name at "Employee", a form word, so
+   * the slot model's "Test", or nobody, is replaced by the name as typed.
+   */
+  const typedEmployee = keepFormEmployeeEnabled() && !choice?.person ? typedEmployeeName(input.question) : null;
+  const employee = typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded;
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
@@ -398,7 +407,11 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     templates: input.templates,
   });
 
-  const question = formTurn ? questionWithState(input.question, state, input.templates) : input.question;
+  const question = formTurn
+    ? questionWithState(input.question, state, input.templates)
+    : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
+      ? `The employee is ${typedEmployee}.\n${input.question}`
+      : input.question;
   // FORM_CHOICE_STATED_ENABLED: two forms in one turn is a question, not a
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
@@ -406,6 +419,36 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   if (clarification) return { question, state, clarification, formTurn };
   if (!formTurn) return { question, state, clarification: null, formTurn: false };
   return { question, state, clarification: null, formTurn: true };
+}
+
+/**
+ * KEEP_FORM_EMPLOYEE_ENABLED. The name the manager typed ("Test Employee")
+ * stands in for a reading that is a shorter spelling of it ("Test") or
+ * nobody. A different person the reading found is kept.
+ */
+function withTypedEmployee(
+  grounded: ReturnType<typeof groundEmployee>,
+  typed: string,
+): ReturnType<typeof groundEmployee> {
+  const name = (grounded.name ?? "").trim().toLowerCase();
+  const full = typed.toLowerCase();
+  if (name === full) return grounded;
+  if (name !== "" && !full.startsWith(`${name} `)) return grounded;
+  return { person: null, name: typed, ambiguous: [], typed };
+}
+
+/**
+ * KEEP_FORM_EMPLOYEE_ENABLED. "create a written CA for …" asks for a form even
+ * when the slot model does not call it a form turn: the stored employee line
+ * goes ahead of it, as on a form turn, so the proposal reads the typed name.
+ */
+function asksForAForm(question: string): boolean {
+  const intent = detectTemplateIntent(question);
+  return (
+    intent.kind === "explicit" ||
+    intent.kind === "clarify" ||
+    (intent.kind === "corrective_action" && intent.requestedCreation)
+  );
 }
 
 /** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
