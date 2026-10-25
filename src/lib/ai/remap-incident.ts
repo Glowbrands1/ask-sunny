@@ -33,7 +33,8 @@ export interface RemapManual {
   readonly chunks: readonly ManualChunk[];
 }
 
-const FORM_WORDS = String.raw`(?:corrective\s+actions?|ca|c\/a|write-?ups?|dpoa|coaching\s+form|policy\s+review|follow-?up\s+coaching)(?:\s+forms?)?`;
+// "create a coaching document for …" asks for the form too (QA, 25 Oct 2026; the sibling app's conv_mvnt95q52gmu047).
+const FORM_WORDS = String.raw`(?:corrective\s+actions?|ca|c\/a|write-?ups?|dpoa|coaching\s+(?:form|document|doc|paperwork)|policy\s+review|follow-?up\s+coaching)(?:\s+forms?)?`;
 const LEVEL_WORDS = String.raw`(?:(?:a|an|the)\s+)?(?:new\s+)?(?:(?:verbal|written|final)\s+(?:warning\s+)?)?`;
 
 /** "create a verbal CA for", "write a CA for", "CA for" — only at the start of a clause. */
@@ -291,6 +292,8 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");
   text = text.replace(new RegExp(String.raw`\s*,?\s*(?:on|at|dated)?\s*${DATE}$`, "i"), "");
   text = text.replace(/^(?:for|about|regarding|re:?)\s+/i, "");
+  // "regarding On 10-16-26 Test Employee did not …": the date the lead-in left.
+  text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");
   // Another spelling of the person as the subject: "Test Employee spent 40 minutes …".
   text = text.replace(/^[A-Z][a-z'-]+\s+[A-Z][a-z'-]+\s+(?=[a-z])/, "");
   text = text.replace(/^(?:was|is|has been)\s+/i, "");
@@ -298,6 +301,9 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   text = text.replace(/^[,\s]+|[,\s.]+$/g, "").replace(/\s+(?:on|at)$/i, "");
   if (!text || text.length > 120) return null;
   if (/^(?:for|a|an|the|form|location|store|draft)$/i.test(text)) return null;
+  // "create a coaching document for Test Employee": a repeat request names the
+  // person, it is no new incident (QA, 25 Oct 2026, conv_mvnt95q52gmu047).
+  if ((REQUEST_LEAD.test(clause) || LEVEL_REQUEST.test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
   // "jba manual 11-1-25" answers the prior-coaching question.
   if (/^(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+ack\w*)?$/i.test(text)) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
@@ -487,9 +493,15 @@ export function accountSentences(
       const parts = sentence
         .split(",")
         .map((part) => part.trim())
+        // "$25 will be payroll deducted for late open on 10-21-26": the payroll
+        // answer, and after "for" what it is for (QA, 25 Oct 2026).
+        .map((part) => (PAYROLL_STATEMENT.test(part) ? (payrollReason(part) ?? part) : part))
         .filter((part) => part && !accountSlot(part))
-        // MANAGER_WORDS_ONLY_ENABLED: a clause that only names or places them goes (QA, 25 Oct 2026).
-        .filter((part) => !(options.managerOnly && onlyWhoOrWhere(part, employeeName)))
+        // A prior step is a prior action, never the account (QA, 25 Oct 2026).
+        .filter((part) => !isPriorStep(part))
+        // A clause that only names or places them is never the account (QA, 25
+        // Oct 2026; with MANAGER_WORDS_ONLY_ENABLED or without it).
+        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").trim(), employeeName))
         .map((part) => (options.managerOnly ? withoutPlace(part) : part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
@@ -524,13 +536,46 @@ function accountPart(part: string, employeeName: string | null): string | null {
   if (requested && /^\s*(?:so|to|with|from|because|now)\b/i.test(text)) return null;
   if (employeeName) text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
   text = text.replace(/\bat\s+[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3}/g, " ");
-  text = text.replace(/\s+/g, " ").trim().replace(/^(?:for|about|regarding|re:?)\s+/i, "").trim();
-  if (!text || /^(?:for|a|an|the|form)$/i.test(text)) return null;
+  text = text.replace(/\s+/g, " ").trim();
+  const lead = /^(?:for|about|regarding|re:?)\s+/i.test(text);
+  text = text.replace(/^(?:for|about|regarding|re:?)\s+/i, "").trim();
+  // "regarding On 10-16-26 Test Employee did not …": the date the lead-in left.
+  if (lead) text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "").trim();
+  // "… at grand island, ne. location.": the place noun left of the salon line is no account.
+  if (!text || /^(?:for|a|an|the|form|location|salon|store)$/i.test(text)) return null;
   // Only capitalized words left ("Test Employee" when the card holds "Test"): a name or a place.
   if (/^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
   const title = titleAfterJobTitleLabel(text) ?? extractJobTitle(text);
   if (title && title.toLowerCase() === text.toLowerCase()) return null;
   return text;
+}
+
+/** What a payroll answer is for: "… payroll deducted for late open on 10-21-26" is "late open on 10-21-26". */
+function payrollReason(part: string): string | null {
+  return /\bfor\s+(?!the\s+(?:amount|total)\b)(.{4,})$/i.exec(part)?.[1]?.trim() ?? null;
+}
+
+/**
+ * A step before this incident: a labelled prior ("previous coaching", "prior
+ * verbal"), a coaching she was given ("she was coached on 9-15"), or a policy
+ * manual with a date ("jba manual 1-1-26"). A coaching the manager says they
+ * held ("I verbally coached her …") is part of their account.
+ */
+function isPriorStep(part: string): boolean {
+  return (
+    /\b(?:previous|prior|past|earlier)\s+(?:coaching|corrective|cas?\b|c\/as?\b|actions?|steps?|warnings?|discipline|verbal|written)/i.test(part) ||
+    /\b(?:was|were|got|been|had\s+been)\s+(?:verbally\s+)?coached\b/i.test(part) ||
+    /\bmanual\b.*(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])/i.test(part)
+  );
+}
+
+/**
+ * The turns of the form now being written: from a later create request with
+ * its own incident. Priors belong to the request that typed them (QA, 25 Oct
+ * 2026; the sibling app's conv_mvnt9by62zckttk).
+ */
+export function currentRequestTurns(turns: readonly string[], employeeName: string | null): readonly string[] {
+  return turns.slice(currentRequestStart({ turns, employeeName, slotClause: accountSlot }));
 }
 
 /**

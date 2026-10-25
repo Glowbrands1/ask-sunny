@@ -34,7 +34,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutAppLines } from "./app-sentences";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
@@ -196,7 +196,9 @@ export function holdFilledSlots(input: {
     if (next.templateKey !== "stc-exit") {
       content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
     }
-    if (fixed && next.templateKey === "dpoa") content = withPriorActions(content, turns, input.today);
+    if (fixed && next.templateKey === "dpoa") {
+      content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
+    }
     if (next.locationResolution === "needs_selection" && !next.locationId) {
       const asked = salonAlreadyAsked(input.history);
       // The global question already named every salon. A later turn does not
