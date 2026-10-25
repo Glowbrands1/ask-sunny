@@ -2,12 +2,14 @@ import "server-only";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 import {
+  actionPlanManagerOnlyEnabled,
   formFullRemapEnabled,
   notANameGuardEnabled,
   priorActionsParseEnabled,
   remapIncidentFixEnabled,
   statedTitleWinsEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { lateOpenOn } from "@/lib/forms/late-open";
 import { withoutAttendanceForLateOpening } from "@/lib/forms/official-policy-manual";
@@ -191,7 +193,11 @@ export function groundFormSlots(input: {
   // "previous coaching …" are not a plan.
   const plan = fixed ? statedActionPlan(scoped) : acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
   // PRIOR_ACTIONS_PARSE_ENABLED: a plan that is only the history label is not a plan.
-  const actionPlan = priorActionsParseEnabled() && plan && HISTORY_LABEL_ONLY.test(plan) ? null : plan;
+  const remapPlan = priorActionsParseEnabled() && plan && HISTORY_LABEL_ONLY.test(plan) ? null : plan;
+  // Manager-only: the plan they typed, word for word, or none. Never the model's summary.
+  // With REMAP_INCIDENT_FIX_ENABLED it is read from the current request's turns only.
+  const planManagerOnly = actionPlanManagerOnlyEnabled();
+  const actionPlan = planManagerOnly ? managerTypedActionPlan(fixed ? users.slice(start) : users) : remapPlan;
   const closeMatchNote = employeeName ? closeNote(employeeName, input.people) : null;
 
   const read: FormRemapSlots = {
@@ -227,6 +233,8 @@ export function groundFormSlots(input: {
         )
       : [];
   if (fixed) slots = { ...slots, policySection: named ?? sections[0]?.heading ?? lateOpening ?? null };
+  // A saved summary from an earlier turn does not come back either.
+  if (planManagerOnly) slots = { ...slots, actionPlan };
 
   const assistants = conversation.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
   // An ambiguous "Yes" answered nothing, so the questions before it are asked again.

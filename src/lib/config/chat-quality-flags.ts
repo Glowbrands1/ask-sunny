@@ -603,6 +603,17 @@ export function statedTitleWinsEnabled(): boolean {
   return envFlag("STATED_TITLE_WINS_ENABLED");
 }
 
+/**
+ * The Corrective Action Form's Action Plan is the manager's, or blank (Pau,
+ * 25 Oct 2026). A plan they typed ("action plan: …") goes on the card and the
+ * form word for word. With none typed, nothing is written: no "Management
+ * will review …" sentence, no closing, no model summary. Off, the plan is
+ * built as it is today.
+ */
+export function actionPlanManagerOnlyEnabled(): boolean {
+  return envFlag("ACTION_PLAN_MANAGER_ONLY_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

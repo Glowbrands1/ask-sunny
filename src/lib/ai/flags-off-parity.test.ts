@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   chatMemoryEnabled,
   intentExtractionEnabled,
@@ -129,6 +130,7 @@ const NEW_FLAGS = [
   "TITLE_WHOLE_WORD_ENABLED",
   "FUTURE_INCIDENT_DATE_CONFIRM_ENABLED",
   "STATED_TITLE_WINS_ENABLED",
+  "ACTION_PLAN_MANAGER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -260,6 +262,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(titleWholeWordEnabled()).toBe(false);
     expect(futureIncidentDateConfirmEnabled()).toBe(false);
     expect(statedTitleWinsEnabled()).toBe(false);
+    expect(actionPlanManagerOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
