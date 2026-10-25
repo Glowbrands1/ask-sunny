@@ -433,7 +433,12 @@ export function conversationDraftReuseEnabled(): boolean {
  * the form?" is answered in the manager's words; the lines the app writes
  * onto the question ("The employee is test employee. It happened on
  * 10/16/2026.") are not an answer, so "create the ca" after that question is
- * not dropped from the name readers. Off, a turn is a date answer as before.
+ * not dropped from the name readers. And the name the manager typed is the
+ * employee: "for Test Employee" is Test Employee, not "Test" (QA, 25 Oct
+ * 2026; "Employee" is a form word to the name readers), with its line put
+ * ahead of a form request the slot model did not call a form turn. A
+ * lower-case "an employee" or "my employee" is still nobody's name. Off, a
+ * turn is a date answer and the name is read as before.
  */
 export function keepFormEmployeeEnabled(): boolean {
   return envFlag("KEEP_FORM_EMPLOYEE_ENABLED");
