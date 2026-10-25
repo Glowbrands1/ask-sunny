@@ -48,9 +48,14 @@ const NEW_RECORD =
  * document is a new one.
  */
 const INCIDENT_WITH_A_VERB =
-  /\bno[\s,/-]*call(?:[\s,/-]*(?:and|or|\/))?[\s,/-]*no[\s-]*shows?\b|\bno[\s-]shows?\b|\b(?:did(?:n['’]?t|\s+not)|never|doesn['’]?t|won['’]?t|failed\s+to)\s+show(?:\s+up)?\b|\bshow(?:s|ed|ing)?\s+up\b/gi;
+  /\bno[\s,/-]*call(?:[\s,/-]*(?:and|or))?[\s,/-]*no[\s-]*shows?\b|\bno[\s-]shows?\b|\b(?:did(?:n['’]?t|\s+not)|never|doesn['’]?t|won['’]?t|failed\s+to)\s+show(?:\s+up)?\b|\bshow(?:s|ed|ing)?\s+up\b/gi;
+/*
+ * Only as the request itself: at the start of the turn, or after "please",
+ * "can you", "I need you to", "let's", "I want to". "Show me the write up for
+ * …" and "bring back the write-up" name a form on file, and stay reopens.
+ */
 const ASKS_FOR_A_DOCUMENT =
-  /^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:i\s+(?:need|want)\s+(?:to\s+(?:draft|write|do)\s+)?(?:a|an)\b|draft\s+(?:a|an|up)\b|write\s+(?:up|a|an)\b|do\s+(?:a|an)\b)/i;
+  /^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+need\s+you\s+to\s+|let'?s\s+|i\s+want\s+to\s+)?(?:i\s+(?:need|want)\s+(?:to\s+(?:draft|write|do)\s+)?(?:a|an)\b|draft\s+(?:a|an|up)\b|write\s+(?:up|a|an)\b|do\s+(?:a|an)\b)/i;
 
 /** A question somebody is asking, not a request to act. "Can you …" is a request. */
 const QUESTION_OPENING =
