@@ -183,7 +183,14 @@ export function holdFilledSlots(input: {
   content = dropBlockedQuestions(content, next);
   content = keepPolicyLines(content, previousContent(input.history, proposal.templateKey));
   if (slotsOn) {
-    content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
+    /*
+     * The Resignation/Exit Form has no Observation of Offense; its Additional
+     * Details are drafted. "Create an exit form for Test Employee at Lawrence,
+     * she resigned …" was pasted under a Corrective Action heading (25 Oct 2026).
+     */
+    if (next.templateKey !== "stc-exit") {
+      content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
+    }
     if (fixed && next.templateKey === "dpoa") content = withPriorActions(content, turns, input.today);
     if (next.locationResolution === "needs_selection" && !next.locationId) {
       const asked = salonAlreadyAsked(input.history);
