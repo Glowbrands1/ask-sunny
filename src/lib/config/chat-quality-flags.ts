@@ -463,6 +463,19 @@ export function lateOpenDateEnabled(): boolean {
 }
 
 /**
+ * A request to start a corrective action ("create a Verbal CA for …", "I need
+ * a CA for someone opening the salon late") is the Corrective Action Form
+ * when the intent read has no model reading. The template reader calls that
+ * request the progression, and the intent slots used to keep no form for it,
+ * so the next answer ("verbal", "no payroll") was not a form turn (QA F4,
+ * 24 Oct 2026). A metric with no behaviour stays the progression, as in the
+ * form proposal. Off, the form slot is left as before.
+ */
+export function caTemplateMapEnabled(): boolean {
+  return envFlag("CA_TEMPLATE_MAP_ENABLED");
+}
+
+/**
  * Words that are not a person never become the employee: a placeholder
  * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
  * practice"), a product or service this business sells, a place on the

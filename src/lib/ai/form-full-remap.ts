@@ -11,6 +11,7 @@ import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { payrollDeductAmount, payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
@@ -170,12 +171,29 @@ export function remapShouldRun(input: {
   readonly history: readonly { role: string; content: string }[];
   readonly formsTurn: boolean;
 }): boolean {
+  if (asksAboutCorrectiveAction(input.question)) return false;
   if (input.formsTurn) return true;
-  if (/\?\s*$/.test(input.question.trim()) && /\b(?:what|how|when|where|who|why|can|does|do|is)\b/i.test(input.question)) {
-    return false;
-  }
+  if (asksAQuestion(input.question)) return false;
   const text = [input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content)].join("\n");
   return /\b(?:verbal|written|warning|corrective|write-?ups?|payroll|prior\s*=)\b/i.test(text);
+}
+
+function asksAQuestion(question: string): boolean {
+  return /\?\s*$/.test(question.trim()) && /\b(?:what|how|when|where|who|why|can|does|do|is)\b/i.test(question);
+}
+
+/**
+ * "what does a verbal CA mean?" names the form and asks about it. The spoken
+ * intent made it a forms turn, and the remap answered with a Corrective
+ * Action Form whose "What happened" was the question (QA F4, 24 Oct 2026;
+ * found in Ask Bubbles, where the remap is on). The template reader already
+ * says nothing is to be started, so the turn goes to the form proposal,
+ * which hands it to the knowledge base.
+ */
+function asksAboutCorrectiveAction(question: string): boolean {
+  if (!asksAQuestion(question)) return false;
+  const intent = detectTemplateIntent(question);
+  return intent.kind === "corrective_action" && !intent.requestedCreation;
 }
 
 export async function remapFormTurn(

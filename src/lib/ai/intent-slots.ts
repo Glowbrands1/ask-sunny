@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  caTemplateMapEnabled,
   codeSlotsEnabled,
   intentPayrollManagerOnlyEnabled,
   managerWordsOnlyEnabled,
@@ -20,6 +21,7 @@ import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-dat
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
+import { correctiveActionBasis } from "@/lib/forms/corrective-action-intake";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
@@ -268,6 +270,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
       ? null
       : (payrollClauseAmount(input) ??
         (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
+  const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates, {
+    question: input.question,
+    managerText: managerBlob(input),
+  });
   /*
    * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
    * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
@@ -284,7 +290,6 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         ambiguous: false,
       }
     : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
-  const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
   const modelPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
@@ -850,11 +855,14 @@ function groundForm(
   typed: string | null,
   blob: string,
   templates: readonly TemplateRow[],
+  turn?: { readonly question: string; readonly managerText: string },
 ): { key: string | null; ambiguous: readonly TemplateRow[] } {
   const probed = typed?.trim() || null;
   const fromTyped = probed ? matchTemplates(probed, templates) : [];
   if (fromTyped.length === 1) return { key: fromTyped[0]!.key, ambiguous: [] };
   if (fromTyped.length > 1) return { key: null, ambiguous: fromTyped };
+  const requested = turn && caTemplateMapEnabled() ? correctiveActionRequestKey(turn, templates) : null;
+  if (requested) return { key: requested, ambiguous: [] };
   // "CA", "coaching", and "exit" are the words managers type. The form
   // reader already maps those onto a published template. A short word is
   // not a reason to ask which form again.
@@ -865,6 +873,29 @@ function groundForm(
   if (fromText.length === 1) return { key: fromText[0]!.key, ambiguous: [] };
   if (fromText.length > 1) return { key: null, ambiguous: fromText };
   return { key: null, ambiguous: [] };
+}
+
+/** The Corrective Action Form's library key; the template reader names it the same way. */
+const CORRECTIVE_ACTION_KEY = "dpoa";
+
+/**
+ * CA_TEMPLATE_MAP_ENABLED (QA F4, 24 Oct 2026). "create a Verbal CA for …",
+ * "I need a CA for someone opening the salon late": this turn asks for a
+ * corrective action to be started. The template reader calls that the
+ * progression, and `publishedKey` keeps only a named form, so the slot stayed
+ * empty whenever the model reading was absent. The form that records it is
+ * the published Corrective Action Form. A question about corrective action
+ * starts nothing, and a metric with no behaviour is the progression, as the
+ * form proposal reads it.
+ */
+function correctiveActionRequestKey(
+  turn: { readonly question: string; readonly managerText: string },
+  templates: readonly TemplateRow[],
+): string | null {
+  const intent = detectTemplateIntent(turn.question);
+  if (intent.kind !== "corrective_action" || !intent.requestedCreation) return null;
+  if (correctiveActionBasis(turn.managerText) === "metric_only") return null;
+  return templates.some((template) => template.key === CORRECTIVE_ACTION_KEY) ? CORRECTIVE_ACTION_KEY : null;
 }
 
 function publishedKey(
