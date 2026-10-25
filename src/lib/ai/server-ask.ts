@@ -31,6 +31,7 @@ import {
   crossChatReplyGuardEnabled,
   manualNegatedListNoteEnabled,
   remapIncidentFixEnabled,
+  questionNotFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -335,9 +336,10 @@ async function answerQuestionUntraced(
    * for?". A question skips the slot reader, the remap and the proposal and is
    * answered; an inventory question is still answered from the library, and
    * an open card is left as it was. A create or edit request, however it is
-   * phrased, is not a question. See `question-not-form.ts`.
+   * phrased, is not a question. See `question-not-form.ts`. Behind
+   * QUESTION_NOT_FORM_ENABLED; off, every turn is routed as before.
    */
-  const askedQuestion = isQuestionNotForm(request.question, request.history);
+  const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
   if (intentExtractionEnabled() && !askedQuestion) {
     const prepared = await applyIntentExtraction({ request, actor });

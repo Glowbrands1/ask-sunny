@@ -131,10 +131,14 @@ function words(clause: string): number {
 /** "I explained the attendance policy", "we reviewed …": somebody did something, so it is an account. */
 const SOMEONE_DID = /^(?:i|we|she|he|they|you|it|her|his|my|our|their|this|that)\b|\b[a-z]{3,}ed\b|\b(?:covers|says|explains|reviews|discusses|goes|went)\b/i;
 
+/** "Now the policy review", "the coaching one": a form picked, not a policy looked up. */
+const NAMES_A_FORM =
+  /\b(?:policy\s+review|coaching|corrective\s+action|ca|write-?\s?ups?|exit|forms?|warning|verbal|written|card|draft)\b/i;
+
 /** A short topic lookup — a noun phrase — with no account of an incident in it. */
 function looksUp(clause: string): boolean {
   if (DIFFERENCE.test(clause)) return true;
-  if (words(clause) > 6 || ACCOUNT_VERB.test(clause) || SOMEONE_DID.test(clause)) return false;
+  if (words(clause) > 6 || ACCOUNT_VERB.test(clause) || SOMEONE_DID.test(clause) || NAMES_A_FORM.test(clause)) return false;
   return POLICY_WORD.test(clause) || FOR_EVERYONE.test(clause);
 }
 

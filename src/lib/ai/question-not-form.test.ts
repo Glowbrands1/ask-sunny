@@ -68,6 +68,8 @@ describe("a create or edit request, or a statement, stays on the form path", () 
     "Okay let's restart. Test Employee, Tanning Consultant, KS Manhattan. Not completing closing duties",
     "she violated the attendance policy",
     "I explained the attendance policy",
+    "Now the policy review",
+    "the policy review",
     "do verbal for team member Test Employee. payroll deduct does not apply. on 10-22-26 Test Employee came in to show her team her new puppy",
     "do a written for Test Employee",
     "we reviewed the cell phone policy",

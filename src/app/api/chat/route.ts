@@ -4,7 +4,7 @@ import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
-import { draftActionsEnabled, secondFormEnabled } from "@/lib/config/chat-quality-flags";
+import { draftActionsEnabled, questionNotFormEnabled, secondFormEnabled } from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -183,9 +183,9 @@ export async function POST(request: Request) {
        * A QUESTION IS ANSWERED, NEVER WRITTEN INTO THE OPEN FORM ("what policy
        * does that fall under?"). It skips the correction, policy, redraft and
        * revision paths below; the answer still knows the form is open. See
-       * `lib/ai/question-not-form.ts`.
+       * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
-      const askedQuestion = isQuestionNotForm(parsed.question, parsed.history);
+      const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
       const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,

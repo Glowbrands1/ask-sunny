@@ -42,6 +42,9 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * question), a statement field edit, the exit-form request and "create a
  * coaching document for … regarding …" still make or edit their card.
  *
+ * Behind QUESTION_NOT_FORM_ENABLED (default off): the exact turns run with it
+ * on; with it off, the last block shows the routing is what it was.
+ *
  * Every turn goes through POST /api/chat. Faked: identity, the database
  * (in memory), the directory, the models, analytics. The slot model is read
  * two ways: as a reading that names nothing, and as the reading the live
@@ -314,7 +317,10 @@ const PROFILES: readonly (readonly [string, readonly string[]])[] = [
   ["production flags + the bundle's flags", [...PRODUCTION, ...BUNDLE]],
 ];
 
-const ALL_FLAGS = [...PRODUCTION, ...BUNDLE];
+/** This fix's flag, default off. The exact-turn cases run with it on. */
+const FLAG = "QUESTION_NOT_FORM_ENABLED";
+
+const ALL_FLAGS = [...PRODUCTION, ...BUNDLE, FLAG];
 
 type Answer = {
   content: string;
@@ -444,9 +450,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function useProfile(flags: readonly string[]) {
+function useProfile(flags: readonly string[], fix = true) {
   for (const name of ALL_FLAGS) delete process.env[name];
   for (const name of flags) process.env[name] = "true";
+  if (fix) process.env[FLAG] = "true";
 }
 
 describe.each(PROFILES)("P0: a question is answered (%s)", (_label, flags) => {
@@ -608,5 +615,36 @@ describe.each(PROFILES)("P0: a question is answered (%s)", (_label, flags) => {
       const card = await thread.say("Her name is Test Employee");
       expect(card.formProposal?.templateKey).toMatch(/coaching/);
     });
+  });
+});
+
+/*
+ * QUESTION_NOT_FORM_ENABLED OFF: the routing is what production has today, so
+ * the live failures still reproduce. When this block starts failing with the
+ * flag off, the old routing changed.
+ */
+describe("QUESTION_NOT_FORM_ENABLED off: every turn is routed as before (production flags)", () => {
+  beforeEach(() => useProfile(PRODUCTION, false));
+
+  it('conv_mvnt563o2sk0vcl: still "Which form did you mean?"', async () => {
+    const thread = new Thread();
+    thread.replay("what's our policy on visible tattoos and piercings?", TATTOO_ANSWER);
+    const answer = await thread.say("how many hours is a part-time tanning consultant?");
+    expect(answer.content).toMatch(MENU);
+  });
+
+  it('conv_mvnt4hjy2ox0jlq with the live reading: still "Who is this Corrective Action Form for?"', async () => {
+    state.slotReading = "ca";
+    const thread = new Thread();
+    thread.replay("What does our policy say about attendance?", ATTENDANCE_ANSWER);
+    const answer = await thread.say("smoking policy");
+    expect(answer.content).toMatch(WHO_FOR);
+  });
+
+  it("requests make their card exactly as with the flag on", async () => {
+    const thread = new Thread();
+    thread.replay("What does our policy say about attendance?", ATTENDANCE_ANSWER);
+    const card = await thread.say("can you create a CA for Test Employee for opening the salon late on 10-20-26?");
+    expect(card.formProposal?.templateKey).toBe("dpoa");
   });
 });
