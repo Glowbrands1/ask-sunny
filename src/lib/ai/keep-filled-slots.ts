@@ -7,7 +7,7 @@ import { exitDateInWords, exitReady } from "@/lib/forms/exit-intake";
 import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
-import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -19,6 +19,7 @@ import {
   globalSalonAskEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
+  warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
   placeSpanGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -102,7 +103,16 @@ export function holdFilledSlots(input: {
     previous?.payrollDeduct ?? null,
     input.response.content,
   );
-  const warningLevel = keptWarning(turns, input.question, proposal.warningLevel ?? null, previous?.warningLevel ?? null);
+  /*
+   * WARNING_LEVEL_MANAGER_ONLY_ENABLED: no level on a form without a Type of
+   * Warning (live, 24 Oct 2026: "Written" on a Resignation/Exit Form and a
+   * Policy Review), and none read from anything but the manager's turns.
+   */
+  const warningLevel = warningLevelManagerOnlyEnabled()
+    ? templateHasWarningLevel({ key: proposal.templateKey, name: proposal.templateName })
+      ? (proposal.warningLevel ?? previous?.warningLevel ?? managerStatedWarningLevel(turns.map((content) => ({ role: "user", content }))))
+      : null
+    : keptWarning(turns, input.question, proposal.warningLevel ?? null, previous?.warningLevel ?? null);
 
   let next: ChatFormProposal = proposal;
   if (employeeName !== proposal.employeeName) next = { ...next, employeeName };
@@ -134,6 +144,7 @@ export function holdFilledSlots(input: {
   if (formDate && formDate !== next.formDate) next = { ...next, formDate };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
   if (warningLevel && warningLevel !== next.warningLevel) next = { ...next, warningLevel };
+  if (warningLevelManagerOnlyEnabled() && !warningLevel && next.warningLevel) next = { ...next, warningLevel: null };
   if (next.employeeName && next.status === "needs_employee") {
     next = {
       ...next,
