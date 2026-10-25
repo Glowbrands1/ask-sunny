@@ -360,7 +360,8 @@ export async function POST(request: Request) {
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
      * account of what happened still creates. Not after "different incident"
-     * (`newIncident`, above).
+     * (`newIncident`, above). Only the caller's own draft, at a salon they can
+     * still open — see `pickOpenIncidentDraft`.
      */
     if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
@@ -374,6 +375,7 @@ export async function POST(request: Request) {
         templateKey: body.templateKey,
         employeeName: body.employeeName.trim().slice(0, 120),
         createdBy: actor.id,
+        actor,
         locationId,
         formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null,
         incident: incidentText || null,

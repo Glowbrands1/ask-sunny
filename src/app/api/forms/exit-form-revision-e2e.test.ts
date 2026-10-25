@@ -354,4 +354,28 @@ describe("a finalized exit form, edited as a new draft", () => {
     expect(next).not.toBe(draft);
     expect(statusOf(next)).toBe("draft");
   });
+
+  /* Ported from Ask Bubbles' `findOpenRevision`: an archived draft is not the open revision. */
+  it("an archived revision draft is not reused: asking again opens a new revision", async () => {
+    const original = await finalizedExit();
+    const draft = (await act(original, { action: "revise" })).id;
+
+    // Archiving is `manage_form_records`, an administrator's permission.
+    state.role = "admin";
+    state.scope = { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
+    joinOverview();
+    const archived = await instanceRoute.PUT(
+      new Request(`https://app.test/api/forms/instances/${draft}`, { method: "PUT", body: JSON.stringify({ archived: true }) }),
+      { params: Promise.resolve({ id: draft }) },
+    );
+    expect(archived.status).toBe(200);
+    expect(store.form_instances.find((row) => row.id === draft)?.archived_at).toBeTruthy();
+
+    const next = (await act(original, { action: "revise" })).id;
+    expect(next).not.toBe(draft);
+    expect(statusOf(next)).toBe("draft");
+    expect(store.form_instances.find((row) => row.id === next)?.revises_instance_id).toBe(original);
+    // Asked again while the new one is open: the new one back, not the archived one.
+    expect((await act(original, { action: "revise" })).id).toBe(next);
+  });
 });

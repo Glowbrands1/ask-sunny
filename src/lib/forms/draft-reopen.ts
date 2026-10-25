@@ -4,6 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { trigramSimilarity } from "@/lib/ai/intake-augment";
 
+import type { FormsActor } from "./access";
+import { actorMaySeeInstance } from "./instance-scope";
 import { DUPLICATE_DRAFT_WINDOW_HOURS, loadInstance, type InstanceRow } from "./instances";
 
 /**
@@ -140,10 +142,23 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
  *
  * A new conversation used to file another draft. This returns the open one
  * so the create route can reopen it. A different form date, or a narrative
- * that is a different incident, stays a new draft. Another manager's draft
- * counts: the edit check still decides whether this caller may change it.
+ * that is a different incident, stays a new draft.
+ *
+ * ONLY THE CALLER'S OWN DRAFT, AT A SALON THEY CAN STILL SEE. Another
+ * manager's draft used to count, at any salon. When it was at a salon the
+ * caller cannot see, the card opened a form the caller's next read refused
+ * ("This form is not available… start a new conversation"), and a new chat
+ * found the same draft again (conv_mvh1m29j25aig2n). `findOpenIncidentDraft`
+ * reads only `created_by = caller` and keeps a draft only when
+ * `actorMaySeeInstance` — the rule the instance GET applies — lets them open
+ * it.
  */
 export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: ResentDraftWanted): string | null {
+  return openIncidentDraftMatches(rows, wanted)[0] ?? null;
+}
+
+/** Every draft `pickOpenIncidentDraft` would accept, newest first. */
+export function openIncidentDraftMatches(rows: readonly ResentDraftRow[], wanted: ResentDraftWanted): string[] {
   const matches = rows.filter((row) => {
     if (!sameEmployee(row.employeeName, wanted.employeeName)) return false;
     if (wanted.formDate && row.formDate && wanted.formDate !== row.formDate) return false;
@@ -154,11 +169,12 @@ export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: R
     if (!wanted.formDate && wanted.incident && row.narrative) return sameIncident(wanted.incident, row.narrative);
     return false;
   });
-  if (matches.length === 0) return null;
-  return [...matches].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]!.id;
+  return [...matches].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((row) => row.id);
 }
 
-export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<InstanceRow | null> {
+export async function findOpenIncidentDraft(
+  input: ResentDraftWanted & { readonly actor: FormsActor },
+): Promise<InstanceRow | null> {
   const supabase = getSupabaseAdmin();
   const { data: template, error: templateError } = await supabase
     .from("form_templates")
@@ -171,6 +187,7 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     .from("form_instances")
     .select("id, employee_name, location_id, created_at, form_date")
     .eq("template_id", template.id)
+    .eq("created_by", input.createdBy)
     .eq("status", "draft")
     .ilike("employee_name", input.employeeName.trim())
     .order("created_at", { ascending: false })
@@ -208,8 +225,11 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     rows = rows.map((row) => ({ ...row, narrative: narrative.get(row.id) ?? "" }));
   }
 
-  const id = pickOpenIncidentDraft(rows, input);
-  if (!id) return null;
-  const loaded = await loadInstance(id);
-  return loaded?.instance.status === "draft" ? loaded.instance : null;
+  for (const id of openIncidentDraftMatches(rows, input)) {
+    const loaded = await loadInstance(id);
+    const instance = loaded?.instance;
+    if (!instance || instance.status !== "draft" || instance.createdBy !== input.createdBy) continue;
+    if (actorMaySeeInstance(input.actor, instance)) return instance;
+  }
+  return null;
 }
