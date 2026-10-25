@@ -4486,3 +4486,15 @@ export function adviceAskNotAccountEnabled(): boolean {
 export function groupWordsNotANameEnabled(): boolean {
   return envFlag("GROUP_WORDS_NOT_A_NAME_ENABLED");
 }
+
+/**
+ * A short answer fills the slot it answers and nothing else: Employee is
+ * never a title, place, warning level or yes/no; Job title is never a place,
+ * level or yes/no; Payroll changes only when the turn says payroll or is a
+ * bare yes/no to the payroll question asked last (25 Oct 2026, Ask Sunny
+ * conv_mvoehonm2pfrkng, conv_mvofnrm5217ss9v). See `ai/bare-answer-guard.ts`.
+ * Off, the card is as before.
+ */
+export function bareAnswerBindingEnabled(): boolean {
+  return envFlag("BARE_ANSWER_BINDING_ENABLED");
+}
