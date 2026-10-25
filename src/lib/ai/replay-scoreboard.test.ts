@@ -201,7 +201,7 @@ const PLAN =
   "Management will review the Late Opening policy with Test. Future policy violations may result in additional corrective action up to and including termination of employment.";
 
 const SPEC: RulebookSpec = {
-  employee: "Colene Shildt",
+  employee: "Corena Shardt",
   salon: null,
   cardExpected: true,
   date: "2026-09-29",
@@ -212,7 +212,7 @@ const SPEC: RulebookSpec = {
 
 function run(overrides: Partial<RulebookRun> = {}): RulebookRun {
   return {
-    employeeName: "Colene Shildt",
+    employeeName: "Corena Shardt",
     locationId: null,
     formDate: "2026-09-29",
     hasCard: true,
@@ -233,7 +233,7 @@ describe("rulebook old against new", () => {
       ),
     ).toBe(false);
     expect(judgeRulebookRun(SPEC, run())).toEqual([]);
-    expect(judgeRulebookRun(SPEC, run({ employeeName: "Colene Schildt", hasCard: false, payrollDeductAmount: null }))).toEqual([
+    expect(judgeRulebookRun(SPEC, run({ employeeName: "Corena Schardt", hasCard: false, payrollDeductAmount: null }))).toEqual([
       "employee",
       "typed",
       "salon",

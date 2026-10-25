@@ -186,15 +186,15 @@ describe("recallPeople", () => {
     const today = "2026-10-23";
     conversation({
       createdAt: `${today}T15:00:00Z`,
-      turns: ["coaching for Lisa Smith at Lawrence"],
+      turns: ["coaching for Nadia Brook at Lawrence"],
     });
     conversation({
       createdAt: "2026-10-03T15:00:00Z",
-      turns: ["Lisa Smith was late last month"],
+      turns: ["Nadia Brook was late last month"],
     });
-    const block = await recall("What about Lisa Smith?", { todayIso: today });
-    expect(block).toContain("Lisa Smith was late last month");
-    expect(block).not.toContain("coaching for Lisa Smith at Lawrence");
+    const block = await recall("What about Nadia Brook?", { todayIso: today });
+    expect(block).toContain("Nadia Brook was late last month");
+    expect(block).not.toContain("coaching for Nadia Brook at Lawrence");
     expect(block).not.toContain(today);
   });
 

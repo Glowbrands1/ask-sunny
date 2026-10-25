@@ -270,8 +270,8 @@ Ask Bubbles was not attached. Port the mechanism. Do not copy company
 wording. The manual title stays **JBA Policy Manual**.
 
 - A field label in front of a real name comes off. s11 "lawrence location
-  tanning consultant, colene schildt" is Colene Schildt, not "Location
-  Colene Schildt". "Jane Store" still keeps the surname.
+  tanning consultant, corena schardt" is Corena Schardt, not "Location
+  Corena Schardt". "Jane Store" still keeps the surname.
 
 ## 24 Oct 2026: Woven edition dedupe — Sunny-only
 
@@ -295,8 +295,8 @@ and no merge.
   They reject a candidate only when the candidate is the label itself
   ("Job title", "Store"). A surname that is one of those words still passes
   ("Jane Store", "Jane Salon"). A trailing Job or Title comes off only after
-  a full name (s17 "Marissa Lempka Job"). The value after "Name:" stays the
-  name ("Name: Christiana Headley, job title tanning consultant"). s8 still
+  a full name (s17 "Larissa Venko Job"). The value after "Name:" stays the
+  name ("Name: Evangeline Pembury, job title tanning consultant"). s8 still
   does not store "Job title".
 
 ## 24 Oct 2026: validation code fixes — Sunny-only
@@ -854,7 +854,7 @@ With `INTENT_EXTRACTION_ENABLED` on, `applyIntentExtraction` returned
 level) and `answerQuestion` sent that instead of a proposal. A live replay
 of 14 chats produced no card. A name missing from Woven, and a missing
 warning level, were in that list. `CA`, `coaching`, and `exit` were not
-read as the published form. Erin Nelson's Woven primary salon was not used
+read as the published form. Elin Haskett's Woven primary salon was not used
 when she is affiliated with more than one. A salon the manager named
 outside those affiliations was dropped.
 
