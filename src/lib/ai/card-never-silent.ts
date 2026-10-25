@@ -1,0 +1,68 @@
+import { cardNeverSilentEnabled } from "@/lib/config/chat-quality-flags";
+
+import type { AskRequest, AskResponse } from "./types";
+
+/**
+ * CARD_NEVER_SILENT_ENABLED: a form turn always answers the manager.
+ *
+ * Ask Sunny conv_mvoenhk42lu3cxo, 25 Oct 2026: "i verified everythign i jsut
+ * need to finalize it", "i need to edit this can you make it to where i can
+ * edit", "can you make the form the same way again" and "Create a Corrective
+ * Action Form from this conversation." were each answered with the card
+ * reply word for word as before, so nothing the manager asked was answered.
+ *
+ * When the reply on a card turn is empty or the same as the previous reply,
+ * one line in front of it answers the turn: how to edit and finalize (press
+ * Create draft; the form opens for editing; Finalize is a button on the
+ * form), or what the card still needs. Any other reply is returned as it is.
+ * The card itself is not touched.
+ *
+ * The same file in Ask Bubbles.
+ */
+
+const FINALIZE = /\b(?:finali[sz]e|finish(?:ed)?|submit|sign(?:ed)?|verified|done|complete\s+(?:it|this|the\s+form))\b/i;
+const EDIT = /\b(?:edit(?:able)?|change|fix|update|correct|adjust)\b/i;
+const MAKE =
+  /^(?:y|yes|yeah|yep|yup|ok(?:ay)?|sure|please|go\s+ahead|do\s+it|just\s+(?:make|do|create)\s+it)\b|\b(?:make|create|generate|build|draft|do|redo)\b/i;
+
+export const CREATE_DRAFT_LINE =
+  "Press **Create draft** on the card below. The form then opens right here for editing, and **Finalize** is a button on the form once you've checked it.";
+const EDIT_LINE =
+  "To edit it, press **Create draft** on the card below. The form opens right here and every field can be changed; **Finalize** is a button on the form when you're done.";
+const UNCHANGED_LINE =
+  "Nothing on the card changed with that message. Tell me what to change, or press **Create draft** below to open the form and edit it there.";
+const NEEDS_LINE = "The card below still needs what it asks for before the draft can be created. Tell me here, and I'll fill it in.";
+
+export function withCardNeverSilent(response: AskResponse, request: AskRequest): AskResponse {
+  if (!cardNeverSilentEnabled()) return response;
+  return speakOnCardTurn({ response, question: request.question, history: request.history });
+}
+
+export function speakOnCardTurn(input: {
+  readonly response: AskResponse;
+  readonly question: string;
+  readonly history: readonly { readonly role: string; readonly content: string }[];
+}): AskResponse {
+  const proposal = input.response.formProposal;
+  if (!proposal || input.response.formOpened) return input.response;
+  const content = input.response.content ?? "";
+  const previous = [...input.history].reverse().find((turn) => turn.role === "assistant");
+  const silent = !content.trim() || (previous !== undefined && same(previous.content, content));
+  if (!silent) return input.response;
+  const line = answerLine(input.question, proposal.status === "ready" && proposal.supportsInlineDraft);
+  return { ...input.response, content: content.trim() ? `${line}\n\n${content.trim()}` : line };
+}
+
+function same(a: string, b: string): boolean {
+  const flat = (text: string) => text.replace(/\s+/g, " ").trim();
+  return flat(a) === flat(b);
+}
+
+function answerLine(question: string, canCreate: boolean): string {
+  if (!canCreate) return NEEDS_LINE;
+  const said = question.trim();
+  if (FINALIZE.test(said)) return CREATE_DRAFT_LINE;
+  if (EDIT.test(said)) return EDIT_LINE;
+  if (MAKE.test(said)) return CREATE_DRAFT_LINE;
+  return UNCHANGED_LINE;
+}
