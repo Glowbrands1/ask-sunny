@@ -344,6 +344,58 @@ const MANUAL_FAILURE = /\b(?:fail\w*|didn['’]?t|did\s+not|never|not|missed|ref
 /** "coached on 9/1" with nobody saying they held it: an earlier step. "I coached her on 10/16" is `HELD_COACHING_BEFORE`'s. */
 const COACHED_ON_BEFORE = /\bcoached\s+on\s+$/i;
 
+/*
+ * "…for being late to open on 10-20, she was coached on 9-15 for being late,
+ * no payroll" (conv_mvnoiw8n2kfbcvc, QA 25 Oct 2026). A dashed date needs a
+ * year to be read at all (`DATE_IN_TEXT`), so the coaching was no prior action
+ * and the intake's yearless reader took "on 9-15", the last one, as the
+ * incident. With the flag on, the earlier-step reader also reads a yearless
+ * "9-15" (never "10-12 hours"), and `blankYearlessStepDates` keeps such a step's
+ * date off the form. A coaching the manager says they held ("I coached her on
+ * 10-16") is `HELD_COACHING_BEFORE`'s and is left as it was.
+ */
+const YEARLESS_DASHED = /(?<![\d/.-])(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)/g;
+const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|years?|people|times|x\b|%|am\b|pm\b|dollars?)/i;
+
+/** `dates` with every yearless dashed month-day in the text added, in order (flag on only). */
+function withYearlessDates(text: string, dates: readonly DateInText[], today: string): DateInText[] {
+  const year = Number(/^(\d{4})-/.exec(today)?.[1]);
+  if (!Number.isFinite(year)) return [...dates];
+  const extra: DateInText[] = [];
+  for (const match of text.matchAll(YEARLESS_DASHED)) {
+    const index = match.index ?? 0;
+    const end = index + match[0].length;
+    if (RANGE_AFTER.test(text.slice(end, end + 12))) continue;
+    // "I coached her on 10-16": a coaching the manager held is read as it was before.
+    if (HELD_COACHING_BEFORE.test(text.slice(0, index))) continue;
+    if (dates.some((found) => index < found.end && end > found.index)) continue;
+    const iso = calendarIso(year, Number(match[1]), Number(match[2]));
+    if (iso) extra.push({ iso, index, end });
+  }
+  return extra.length === 0 ? [...dates] : [...dates, ...extra].sort((left, right) => left.index - right.index);
+}
+
+/**
+ * The text with each yearless dashed date that names an earlier step ("she
+ * was coached on 9-15") blanked to spaces, so a reader of yearless dates
+ * never takes it for the incident. Unchanged with PRIOR_ACTIONS_PARSE_ENABLED
+ * off, and a held coaching ("I coached her on 10-16") is never blanked
+ * (`withYearlessDates` leaves it out, and `manualOrCoachedDate` needs nobody to
+ * say they held it).
+ */
+export function blankYearlessStepDates(text: string, today: string): string {
+  if (!priorActionsParseEnabled() || !text) return text;
+  const read = new Set(datesInText(text, today).map((found) => found.index));
+  const steps = new Set(stepSpans(text, today).map((span) => span.index));
+  let out = text;
+  for (const found of withYearlessDates(text, [], today)) {
+    if (read.has(found.index)) continue;
+    if (!steps.has(found.index) && !manualOrCoachedDate(text.slice(0, found.index))) continue;
+    out = out.slice(0, found.index) + " ".repeat(found.end - found.index) + out.slice(found.end);
+  }
+  return out;
+}
+
 function clauseBefore(before: string): string {
   return before.slice(Math.max(before.search(/[^.;\n]*$/), 0));
 }
@@ -550,11 +602,15 @@ export function correctedDates(text: string, today: string): Map<string, string>
   return corrected;
 }
 
-function stepsAsWritten(
-  text: string,
-  today: string,
-): { iso: string; named: string; topic?: string; about?: string }[] {
-  const dates = datesInText(text, today);
+type WrittenStep = { iso: string; named: string; topic?: string; about?: string };
+
+function stepsAsWritten(text: string, today: string): WrittenStep[] {
+  return stepSpans(text, today).map((span) => span.step);
+}
+
+/** Each earlier step with the offset of its date. A yearless "9-15" is read too with the flag on. */
+function stepSpans(text: string, today: string): { step: WrittenStep; index: number }[] {
+  const dates = priorActionsParseEnabled() ? withYearlessDates(text, datesInText(text, today), today) : datesInText(text, today);
   const steps = labelledSteps(text, dates, today);
   // "jba manual 11-1-25" after "previous coaching jba manual 11-1-26": the later date is that step's (flag on only).
   const movedTo = new Map<number, DateInText>();
@@ -564,7 +620,8 @@ function stepsAsWritten(
       if (date) movedTo.set(to, date);
     }
   }
-  return dates.flatMap((found) => {
+  return dates.flatMap((found): { step: WrittenStep; index: number }[] => {
+    const at = (step: WrittenStep) => [{ step, index: found.index }];
     const before = text.slice(0, found.index);
     const about = reasonAfter(text.slice(found.end));
     const withAbout = about ? { about } : {};
@@ -572,11 +629,11 @@ function stepsAsWritten(
     const labelled = steps.get(found.index);
     if (labelled) {
       const moved = movedTo.get(found.index);
-      return [{
+      return at({
         iso: moved ? earlierYearIfAhead(moved, text, today) : earlierYearIfAhead(found, text, today),
         named: labelled.named,
         ...(labelled.topic ? { topic: labelled.topic } : withAbout),
-      }];
+      });
     }
     const match = PRIOR_STEP_BEFORE.exec(before);
     // "she was late, give her a written warning on 10/2": the cue was the incident's, the warning is this form's.
@@ -584,12 +641,12 @@ function stepsAsWritten(
       // A date ahead of today is last year's only after a verb of receiving one ("got … on 12/20" in
       // January); after a bare "was/were" it is a date still to come, and not an earlier step.
       if (found.iso > today && /^(?:was|were)\b/i.test(match[0])) return [];
-      return [{ iso: earlierYearIfAhead(found, text, today), named: match[0], ...withAbout }];
+      return at({ iso: earlierYearIfAhead(found, text, today), named: match[0], ...withAbout });
     }
     // A step that is hers already counts only on a day before today — never rolled back a year.
     const owned = OWNED_STEP_BEFORE.exec(before);
     if (owned && !ISSUES_THIS_FORM.test(owned[0]) && found.iso < today) {
-      return [{ iso: found.iso, named: owned[0], ...withAbout }];
+      return at({ iso: found.iso, named: owned[0], ...withAbout });
     }
     return [];
   });
