@@ -394,6 +394,29 @@ export function chatTraceRawAnswerEnabled(): boolean {
 }
 
 /**
+ * The warning level kept for a Corrective Action is only one the manager
+ * stated: read from their own turns, never from Ask Sunny's ("You'll set the
+ * verbal/written warning level" is not "written"), never from the slot
+ * model's guess, and a bare "Yes" only where Ask Sunny's turn just before it
+ * asked one yes/no question about that exact level. Off, the intent reading
+ * grounds the level as it does today.
+ */
+export function warningLevelManagerOnlyEnabled(): boolean {
+  return envFlag("WARNING_LEVEL_MANAGER_ONLY_ENABLED");
+}
+
+/**
+ * The Job title and the Observation of Offense read only the manager's own
+ * words. The lines the app writes onto the question ("Job title: CA. It
+ * happened at KS Lawrence.", "It happened on 9/28/2026.") are not read as
+ * what the manager said, and a turn that only says where the employee
+ * works is not an offense. Off, both readers are unchanged.
+ */
+export function managerWordsOnlyEnabled(): boolean {
+  return envFlag("MANAGER_WORDS_ONLY_ENABLED");
+}
+
+/**
  * The intent read takes a payroll amount and the Yes/No only from the
  * manager's own turns. A figure the assistant quoted from policy ("reimburse
  * the company $25 via payroll deduction") is not an amount, and "verbal, no
@@ -402,6 +425,16 @@ export function chatTraceRawAnswerEnabled(): boolean {
  */
 export function intentPayrollManagerOnlyEnabled(): boolean {
   return envFlag("INTENT_PAYROLL_MANAGER_ONLY_ENABLED");
+}
+
+/**
+ * One draft per form in a conversation. A new card for the same form and
+ * employee in the same chat opens the draft this chat already made, unless a
+ * manager turn since that draft asked for another document. Off, every new
+ * card creates as it does today.
+ */
+export function conversationDraftReuseEnabled(): boolean {
+  return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
 }
 
 function flagOn(value: string | undefined): boolean {
