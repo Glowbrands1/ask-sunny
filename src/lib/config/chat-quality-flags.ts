@@ -578,6 +578,17 @@ export function titleWholeWordEnabled(): boolean {
   return envFlag("TITLE_WHOLE_WORD_ENABLED");
 }
 
+/**
+ * A form the manager named is kept only as itself (QA, 25 Oct 2026, ported
+ * from Ask Bubbles, which ships it unflagged). A named template that is not
+ * published opens no card, and the slot model's or the saved form does not
+ * stand in for it; a named kind of form ("… interview form") keeps only a
+ * form of that kind. Off, the form is read as before.
+ */
+export function namedFormExactEnabled(): boolean {
+  return envFlag("NAMED_FORM_EXACT_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

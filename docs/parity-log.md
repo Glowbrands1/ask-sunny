@@ -934,3 +934,15 @@ manager turn names replaces the saved one on the intent slots and the card.
 Ported to Ask Bubbles' store reader on the form remap path in the same
 session (its "location kearney" / "store kearney" kept the earlier store).
 Test: `src/lib/forms/salon-label-cue.test.ts`.
+
+## 25 Oct 2026: a named form that is not published opens no card (from Ask Bubbles b2cb091)
+
+Ask Bubbles ships this unflagged; Ask Sunny ships it behind
+`NAMED_FORM_EXACT_ENABLED` (default off) for the staged rollout. On, a form
+the manager named is kept only as itself on the intent slots: a named
+template that is not published leaves the form unset (the proposal flow says
+it is not published), the slot model's or the saved form does not stand in
+for it, a named kind of form ("… interview form") keeps only a form of that
+kind, and a turn naming two forms together names either of them. Off, the
+form is read exactly as on main. Tests: `src/lib/ai/hidden-form-no-card-oct25.test.ts`,
+`src/lib/ai/form-choice-stated.test.ts`, `src/lib/ai/form-choice-stated-live-oct25.test.ts`.
