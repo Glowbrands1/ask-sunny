@@ -50,6 +50,7 @@ import {
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
+  priorActionsParseEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -116,6 +117,7 @@ const NEW_FLAGS = [
   "FORM_CHOICE_STATED_ENABLED",
   "REMAP_INCIDENT_FIX_ENABLED",
   "PLACE_SPAN_GUARD_ENABLED",
+  "PRIOR_ACTIONS_PARSE_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
 ] as const;
 
@@ -139,6 +141,15 @@ const PROTECTED = [
   "src/lib/forms/policy-citation.ts",
   "src/lib/forms/instances.ts",
 ];
+
+/*
+ * The user (Pau) approved, via QA on 25 Oct 2026, editing
+ * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
+ * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
+ * on the PROTECTED list; only the diff check leaves it out. No other
+ * protected file is excepted.
+ */
+const APPROVED_PROTECTED_EDITS = [":(exclude)src/lib/forms/form-date-answer.ts"];
 
 const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.tsx", "**/*.css"];
 
@@ -232,6 +243,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formChoiceStatedEnabled()).toBe(false);
     expect(remapIncidentFixEnabled()).toBe(false);
     expect(placeSpanGuardEnabled()).toBe(false);
+    expect(priorActionsParseEnabled()).toBe(false);
     expect(notANameGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
@@ -264,7 +276,7 @@ describe("new flags default off and wrappers are inert", () => {
   });
 
   it("does not edit Pau's modules or any UI file", () => {
-    expect(diff("HEAD", PROTECTED)).toBe("");
+    expect(diff("HEAD", [...PROTECTED, ...APPROVED_PROTECTED_EDITS])).toBe("");
     const uiBase = uiDiffBase();
     if (uiBase) {
       // Test files may change an expectation when Pau changes the wording.

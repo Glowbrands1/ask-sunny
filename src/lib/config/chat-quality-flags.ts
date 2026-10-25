@@ -518,6 +518,19 @@ export function placeSpanGuardEnabled(): boolean {
 }
 
 /**
+ * Prior actions read the way managers write them. A list after "received …
+ * coaching 9/8" keeps its later comma items that name a step; "prior verbal
+ * 9-1-26" and "Her prior coaching is her policy manual acknowledgement on
+ * 9/01" are earlier steps; a date governed by "previous / prior / coached /
+ * jba manual / policy manual acknowledgement" never dates the form; and an
+ * action plan that is only the history label is dropped. Off, the readers
+ * are unchanged.
+ */
+export function priorActionsParseEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_PARSE_ENABLED");
+}
+
+/**
  * Words that are not a person never become the employee: a placeholder
  * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
  * practice"), a product or service this business sells, a place on the
