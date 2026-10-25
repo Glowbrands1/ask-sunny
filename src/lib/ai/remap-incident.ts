@@ -307,15 +307,44 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   return text;
 }
 
-/** A summary that is only the request ("create a corrective action form for"). */
+/**
+ * "create a for for missing the …": the request with its form name lifted
+ * out (Ask Bubbles conv_mvnmf1ik2lqkfld, 25 Oct 2026). A request verb and a
+ * dangling "for" is never the incident.
+ */
+const STRIPPED_REQUEST =
+  /^(?:please\s+)?(?:create|make|start|open|file|write|draft|do|fill\s+out)\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:(?:new|verbal|written|final)\s+)*for\b/i;
+
+/** A summary that is only the request ("create a corrective action form for"), or what is left of it. */
 export function isRequestLeftover(summary: string | null | undefined, employeeName: string | null): boolean {
   if (!summary) return false;
   const text = summary.replace(/\s+/g, " ").trim();
   if (!text) return true;
-  if (/^(?:please\s+)?(?:create|make|start|open|file|write|draft|do)\b/i.test(text) && new RegExp(FORM_WORDS, "i").test(text)) {
+  // The form words as words: "ca" inside "call" or "vacation" is not a form.
+  if (
+    /^(?:please\s+)?(?:create|make|start|open|file|write|draft|do)\b/i.test(text) &&
+    new RegExp(String.raw`\b${FORM_WORDS}\b`, "i").test(text)
+  ) {
     return true;
   }
+  if (STRIPPED_REQUEST.test(text)) return true;
   return clauseOffense(text, employeeName) === null && REQUEST_LEAD.test(text);
+}
+
+/**
+ * A date cut out of a longer one the manager typed: "5-26" of "10-15-26"
+ * (Ask Bubbles conv_mvnmf1ik2lqkfld). A date the manager typed whole, or one
+ * the turns in hand do not show, is not cut.
+ */
+export function hasCutDate(value: string | null | undefined, said: string): boolean {
+  if (!value) return false;
+  for (const match of value.matchAll(new RegExp(DATE, "g"))) {
+    const date = escape(match[0]);
+    const whole = new RegExp(String.raw`(?<![\d/-])${date}(?![\d/-])`).test(said);
+    const inside = new RegExp(String.raw`[\d/-]${date}|${date}[\d/-]`).test(said);
+    if (inside && !whole) return true;
+  }
+  return false;
 }
 
 const NAMED_POLICY: Record<CaPolicyName, RegExp> = {

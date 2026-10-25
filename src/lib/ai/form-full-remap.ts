@@ -16,6 +16,7 @@ import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
 import {
   currentRequestStart,
+  hasCutDate,
   isAmbiguousAnswer,
   isEditTurn,
   isRequestLeftover,
@@ -156,7 +157,9 @@ export function groundFormSlots(input: {
   const policySection = fixed ? named : groundedPolicy(said);
   const observation = fixed
     ? (requestIncident({ text: scoped, employeeName, slotClause }) ??
-      (isRequestLeftover(raw.observation, employeeName) ? null : acceptSummary(raw.observation, scoped)))
+      (isRequestLeftover(raw.observation, employeeName) || hasCutDate(raw.observation, said)
+        ? null
+        : acceptSummary(raw.observation, scoped)))
     : (statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said));
   const priorActions = fixed ? mergePriorActions(statedPrior(said), priorListActions(said)) : statedPrior(said);
   const incidentTime = statedTime(said);
@@ -182,7 +185,7 @@ export function groundFormSlots(input: {
     actionPlan,
     closeMatchNote,
   };
-  const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName, start > 0) : (input.saved ?? null);
+  const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName, start > 0, said) : (input.saved ?? null);
   let slots = finishSlots(mergeSlots(read, saved), said);
   const sections =
     fixed && input.manual
@@ -795,7 +798,9 @@ const SLOT_KEYS = [
 
 /**
  * A saved What happened that was only the request or an edit ("change the
- * date to", "name is", "show draft") is not kept, and neither is a saved
+ * date to", "name is", "show draft"), what was left of the request ("create
+ * a for for …") or a date cut short ("5-26" of "10-15-26") is not kept, and
+ * neither is a saved
  * action plan: the plan is read from the manager's words each turn. A new
  * request drops the old form's incident and policy.
  */
@@ -803,12 +808,17 @@ function withoutLeftovers(
   saved: Partial<FormRemapSlots> | null,
   employeeName: string | null,
   newRequest: boolean,
+  said: string,
 ): Partial<FormRemapSlots> | null {
   if (!saved) return saved;
   const name = employeeName ?? saved.employeeName ?? null;
   const observation = saved.observation ?? null;
   const leftover =
-    !observation || isRequestLeftover(observation, name) || isEditTurn(observation) || /^it\s+happened\b/i.test(observation);
+    !observation ||
+    isRequestLeftover(observation, name) ||
+    hasCutDate(observation, said) ||
+    isEditTurn(observation) ||
+    /^it\s+happened\b/i.test(observation);
   return {
     ...saved,
     observation: newRequest || leftover ? null : observation,

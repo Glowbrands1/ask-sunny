@@ -692,3 +692,94 @@ describe("remap path: a bare yes after several questions (Sunny wording)", () =>
     expect(response.content).toContain("Is payroll deduct applicable?");
   });
 });
+
+/**
+ * Ask Bubbles QA B5, prod 25 Oct 2026 (conv_mvnmf1ik2lqkfld, its remap path
+ * with REMAP_INCIDENT_FIX_ENABLED off): "What happened: create a for for
+ * missing the 5-26 woven deadline" and "Action plan: Meet the woven
+ * deadline", a plan the manager never typed. The same turn in Sunny's words,
+ * through Sunny's live intent path and its remap path, with the fix flag on.
+ * The remap stand-in returns the plan the extraction returned in prod.
+ */
+const B5_SAID = "create a written CA for Test Employee at Kearney for missing the 10-15-26 woven deadline";
+const B5: readonly Turn[] = [
+  {
+    say: B5_SAID,
+    intent: { ...NAME, salon: "Kearney", incidentType: "missing the 10-15-26 woven deadline", incidentDate: "10-15-26", warningLevel: "written" },
+    remap: { ...REMAP_NAME, actionPlan: "Meet the woven deadline" },
+  },
+];
+const B5_MANGLED = /create a for|(?<![\d-])5-26|Meet the woven deadline/i;
+
+for (const path of ["intent", "remap"] as const) {
+  describe(`${path} path: Ask Bubbles QA B5, the woven deadline request in Sunny's words`, () => {
+    beforeEach(() => useFlags(path === "intent" ? [...INTENT_FLAGS, "REMAP_INCIDENT_FIX_ENABLED"] : REMAP_FLAGS));
+
+    it("What happened is the incident with its whole date, and no plan is taken from the model", async () => {
+      const response = await chat(B5);
+      expectIncident(response, /^missing the 10-15-26 woven deadline$/i);
+      expect(response.content).not.toMatch(B5_MANGLED);
+      expect(response.content).toMatch(/Written Warning, as you said/);
+      if (path === "remap") {
+        expect(response.formProposal?.formDate).toBe("2026-10-15");
+        expect(response.content).not.toMatch(/Action plan/i);
+      }
+    });
+  });
+}
+
+describe("remap path: Ask Bubbles QA B5 stored slots (Sunny wording)", () => {
+  /** The prod trace row's shape for that turn, with this app's salon. */
+  const STORED = {
+    templateKey: "dpoa",
+    employeeName: "Test Employee",
+    store: "NE Kearney",
+    locationId: KEARNEY,
+    incidentDateIso: "2026-10-15",
+    warningLevel: "written",
+    observation: "create a for for missing the 5-26 woven deadline",
+    actionPlan: "Meet the woven deadline",
+  };
+
+  it("the stored fragment and the stored plan do not ride on to the next turn", () => {
+    useFlags(REMAP_FLAGS);
+    // The next answer, with the turn that held the account not in hand.
+    const { slots, response } = groundFormSlots({
+      raw: remapRaw({ ...REMAP_NAME, actionPlan: "Meet the woven deadline" }),
+      history: [],
+      question: "Tanning Consultant",
+      today: "2026-10-25",
+      people: [],
+      saved: STORED as never,
+    });
+    expect(slots.observation).toBeNull();
+    expect(slots.actionPlan).toBeNull();
+    expect(response.content).not.toMatch(B5_MANGLED);
+    expect(response.content).toContain("What happened?");
+
+    const next = groundFormSlots({
+      raw: remapRaw({ ...REMAP_NAME, actionPlan: "Meet the woven deadline" }),
+      history: [{ role: "user", content: B5_SAID }],
+      question: "Tanning Consultant",
+      today: "2026-10-25",
+      people: [],
+      saved: STORED as never,
+    });
+    expect(next.slots.observation).toBe("missing the 10-15-26 woven deadline");
+    expect(next.slots.actionPlan).toBeNull();
+  });
+
+  it("a model summary with the date cut short is not What happened", () => {
+    useFlags(REMAP_FLAGS);
+    // "date is …" reads as a date edit, so the summary is the fallback here.
+    const { slots } = groundFormSlots({
+      raw: remapRaw({ ...REMAP_NAME, observation: "missed the 5-26 woven deadline" }),
+      history: [{ role: "user", content: "create a written CA for Test Employee" }],
+      question: "date is 10-15-26, missed the woven deadline",
+      today: "2026-10-25",
+      people: [],
+    });
+    expect(slots.observation ?? "").not.toMatch(/(?<![\d-])5-26/);
+    expect(slots.incidentDateIso).toBe("2026-10-15");
+  });
+});
