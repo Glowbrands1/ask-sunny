@@ -237,6 +237,7 @@ const STANDARDS =
   "create corrective action for test employee for violating standards of conduct policy on 10-20-26. test failed to acknowledge policies in woven by the 10-15-26 deadline.";
 const LATE_OPENING =
   "create verbal ca for test employee for opening salon late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted";
+const DRESS_CODE = "create a verbal corrective action for Test Employee, tanning consultant at lawrence for violating dress code on 10-20-26";
 const CELL_PHONE = "create a verbal corrective action form for test employee. on 10-20-26 test was talking on her cell phone for over 30 minutes";
 
 describe("QA 25 Oct 2026: the policy on the card carries its printed page (POLICY_PAGE_ON_CARD_ENABLED)", () => {
@@ -262,6 +263,15 @@ describe("QA 25 Oct 2026: the policy on the card carries its printed page (POLIC
     const card = await threeWays(PROD_FLAGS, [LATE_OPENING]);
     expect(card.off).toContain("**Policy:** Late Opening, as you said.");
     expect(card.on).toContain("**Policy:** Late Opening (JBA Policy Manual p.15), as you said.");
+    expect(card.on).not.toMatch(/p\.16\b/);
+    expect(card.on.replace(" (JBA Policy Manual p.15)", "")).toBe(card.off);
+    expect(card.off).toBe(card.unset);
+  });
+
+  it("a Dress Code CA: p.15, the page of the manual section the app cites for the box (QA follow-up)", async () => {
+    const card = await threeWays(PROD_FLAGS, [DRESS_CODE]);
+    expect(card.off).toContain("**Policy:** Dress Code, as you said.");
+    expect(card.on).toContain("**Policy:** Dress Code (JBA Policy Manual p.15), as you said.");
     expect(card.on).not.toMatch(/p\.16\b/);
     expect(card.on.replace(" (JBA Policy Manual p.15)", "")).toBe(card.off);
     expect(card.off).toBe(card.unset);

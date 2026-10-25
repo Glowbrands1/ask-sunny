@@ -1,16 +1,27 @@
-import { CA_POLICY_LABEL } from "./ca-policy";
-import { headingKey, type ManualChunk } from "./official-policy-manual";
+import { CA_POLICY_LABEL, type CaPolicyName } from "./ca-policy";
+import {
+  findManualSection,
+  headingKey,
+  OFFENSE_MANUAL_SECTIONS,
+  type ManualChunk,
+  type ManualSection,
+} from "./official-policy-manual";
 
 /**
  * POLICY_PAGE_ON_CARD_ENABLED: the printed page beside the policy on the form
  * card (QA, 25 Oct 2026: "Policy: Standards of Conduct" with no page; it is
  * p.12. Late Opening is p.15).
  *
- * The page comes from the JBA Policy Manual's own chunk metadata: the printed
- * page stored with the section heading (`metadata.sections`), never the PDF
- * sheet column. A heading the manual prints on more than one page, or with
- * no page, gets no page. A heading whose own chunk the locator says runs over
- * two printed pages ("Pages 26–27 — <heading>") is "pp.26–27".
+ * The page is the one of the section the app itself cites for that policy:
+ * `OFFENSE_MANUAL_SECTIONS` names it ("Dress Code" is the manual's "Dress Code
+ * for The Company", p.15), and `findManualSection` finds it on the sheet its
+ * heading is printed on — the same pick the draft's Direct policy line makes,
+ * so the card and the form name the same page. The page is the printed page
+ * stored with that heading in the chunk metadata, never the PDF sheet column.
+ * A policy the manual has no section for (Under Performance, Violation of
+ * Company Policies), or a section found only through the contents page, gets
+ * no page. A section whose own chunk the locator says runs over two printed
+ * pages ("Pages 26–27 — <heading>") is "pp.26–27".
  *
  * Only a line the app writes itself is changed, and only when it holds
  * exactly one of the app's own policy names (`CARD_POLICY_HEADINGS`):
@@ -31,19 +42,27 @@ export const CARD_POLICY_HEADINGS: readonly string[] = [
   ...new Set([...Object.values(CA_POLICY_LABEL), "Late Opening"]),
 ];
 
-/** "p.12", "pp.26–27", or null when the manual does not give one printed page for the heading. */
-export function printedPageLabel(heading: string, chunks: readonly ManualChunk[]): string | null {
+/** Labels whose box names no section of the manual, by design (see `OFFENSE_MANUAL_SECTIONS`). */
+const NO_SECTION: ReadonlySet<CaPolicyName> = new Set(["under_performance", "company_policies"]);
+
+/** The manual section the app cites for a policy name, or null. */
+export function citedSectionFor(heading: string, chunks: readonly ManualChunk[]): ManualSection | null {
   const key = headingKey(heading);
   if (!key) return null;
-  const labels = new Set<string>();
-  for (const chunk of chunks) {
-    for (const section of chunk.sections ?? []) {
-      if (headingKey(section.heading) !== key) continue;
-      if (!Number.isInteger(section.page) || section.page <= 0) return null;
-      labels.add(pageLabel(section.page, chunk.locator ?? null, key));
-    }
-  }
-  return labels.size === 1 ? [...labels][0]! : null;
+  const label = (Object.keys(CA_POLICY_LABEL) as CaPolicyName[]).find((name) => headingKey(CA_POLICY_LABEL[name]) === key);
+  if (label && NO_SECTION.has(label)) return null;
+  const mapped = label ? (OFFENSE_MANUAL_SECTIONS[label === "attendance" ? "tardiness" : label]?.headings ?? null) : null;
+  const section = findManualSection(chunks, mapped ?? [heading], false);
+  if (!section || section.foundBy === "contents") return null;
+  return Number.isInteger(section.page) && section.page > 0 ? section : null;
+}
+
+/** "p.12", "pp.26–27", or null when the app cites no section of the manual for the name. */
+export function printedPageLabel(heading: string, chunks: readonly ManualChunk[]): string | null {
+  const section = citedSectionFor(heading, chunks);
+  if (!section) return null;
+  const chunk = chunks.find((item) => item.chunkIndex === section.chunkIndex);
+  return pageLabel(section.page, chunk?.locator ?? null, headingKey(section.heading));
 }
 
 function pageLabel(page: number, locator: string | null, key: string): string {
@@ -54,7 +73,7 @@ function pageLabel(page: number, locator: string | null, key: string): string {
   return `p.${page}`;
 }
 
-/** "Standards of Conduct (JBA Policy Manual p.12)", or null when there is no single printed page. */
+/** "Standards of Conduct (JBA Policy Manual p.12)", or null when the app cites no section for the name. */
 export function headingWithPrintedPage(heading: string, chunks: readonly ManualChunk[]): string | null {
   const label = printedPageLabel(heading, chunks);
   return label ? `${heading} (${MANUAL} ${label})` : null;

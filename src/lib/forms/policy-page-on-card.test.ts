@@ -32,6 +32,9 @@ describe("printed page for a manual heading (production manual)", () => {
     ["Cell Phone/Smart Watch Policy", "p.19"],
     ["Attendance", "p.14"],
     ["Animals in the Workplace", "p.30"],
+    // The app's own section for the Dress Code box is "Dress Code for The Company" (OFFENSE_MANUAL_SECTIONS),
+    // printed on page 15 (chunk 44, PDF sheet 16): the page Direct policy cites on the draft.
+    ["Dress Code", "p.15"],
   ])("%s is %s, the printed page and not the PDF sheet", (heading, label) => {
     expect(printedPageLabel(heading, CHUNKS)).toBe(label);
   });
@@ -41,18 +44,19 @@ describe("printed page for a manual heading (production manual)", () => {
     expect(printedPageLabel("Employee Injury/Illness in the Workplace & Related Accommodations", CHUNKS)).toBe("pp.26–27");
   });
 
-  it("a name the manual does not print as a heading gets no page", () => {
-    expect(printedPageLabel("Dress Code", CHUNKS)).toBeNull();
+  it("a policy the manual has no section for gets no page", () => {
     expect(printedPageLabel("Violation of Company Policies", CHUNKS)).toBeNull();
     expect(printedPageLabel("Under Performance", CHUNKS)).toBeNull();
+    expect(printedPageLabel("Visitors at Work", CHUNKS)).toBeNull();
   });
 
-  it("a heading printed on two different pages, or without a page, gets no page", () => {
+  it("a heading printed twice gets the page of the occurrence the app cites; one without a page gets none", () => {
     const twice: ManualChunk[] = [
       { chunkIndex: 0, page: 4, printedPage: 3, content: "", sections: [{ heading: "Breaks", page: 3 }] },
       { chunkIndex: 1, page: 10, printedPage: 9, content: "", sections: [{ heading: "Breaks", page: 9 }] },
     ];
-    expect(printedPageLabel("Breaks", twice)).toBeNull();
+    // findManualSection takes the first sheet the heading is printed on; Direct policy cites the same one.
+    expect(printedPageLabel("Breaks", twice)).toBe("p.3");
     const none: ManualChunk[] = [{ chunkIndex: 0, page: 4, content: "", sections: [{ heading: "Breaks", page: 0 }] }];
     expect(printedPageLabel("Breaks", none)).toBeNull();
   });
@@ -92,12 +96,17 @@ describe("the card's own policy lines get the page; nothing else changes", () =>
     ).toBe("**Policy:** this reads as **Standards of Conduct** (JBA Policy Manual p.12) — a required deadline that was missed.");
   });
 
+  it("the Dress Code line gets the page of the section the app cites (QA follow-up, 25 Oct 2026)", () => {
+    expect(withPolicyPagesOnCard("**Policy:** Dress Code, as you said", CHUNKS)).toBe(
+      "**Policy:** Dress Code (JBA Policy Manual p.15), as you said",
+    );
+  });
+
   it("never alters the manager's words, a line that already has a page, or a name without one page", () => {
     const unchanged = [
       '**Policy:** "visitors at work", as you said. I\'ll look for that section in the current policy manual.',
       "**Policy:** Standards of Conduct Policy, JBA Policy Manual p.12, as you said",
       '**Policy:** "cell phone" reads as the policy manual\'s **Cell Phone/Smart Watch Policy** (page 19).',
-      "**Policy:** Dress Code, as you said",
       "**Policy:** Violation of Company Policies, as you said. The policy manual has no single section to quote for it.",
       "**Policy:** Attendance — missing the monthly meeting is an absence from a scheduled shift.",
       "**What happened:** Standards of Conduct, as you said",
