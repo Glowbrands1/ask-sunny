@@ -383,6 +383,18 @@ export function formFullRemapEnabled(): boolean {
 }
 
 /**
+ * The warning level kept for a Corrective Action is only one the manager
+ * stated: read from their own turns, never from Ask Sunny's ("You'll set the
+ * verbal/written warning level" is not "written"), never from the slot
+ * model's guess, and a bare "Yes" only where Ask Sunny's turn just before it
+ * asked one yes/no question about that exact level. Off, the intent reading
+ * grounds the level as it does today.
+ */
+export function warningLevelManagerOnlyEnabled(): boolean {
+  return envFlag("WARNING_LEVEL_MANAGER_ONLY_ENABLED");
+}
+
+/**
  * The Job title and the Observation of Offense read only the manager's own
  * words. The lines the app writes onto the question ("Job title: CA. It
  * happened at KS Lawrence.", "It happened on 9/28/2026.") are not read as
