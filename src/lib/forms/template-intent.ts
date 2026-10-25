@@ -1267,6 +1267,21 @@ function withoutPolicyReference(text: string): string {
   return text.replace(POLICY_REFERENCE_LINE, " ");
 }
 
+/**
+ * FORM_CHOICE_STATED_ENABLED. Whether the manager's own words mention coaching
+ * that already happened, or a follow-up: "follow up on her coaching", "I
+ * coached her last week", "prior coaching 9-1", "she was coached before".
+ * The Follow-Up Coaching Form is only for that. "I need to coach an employee"
+ * is a first coaching (QA, 25 Oct 2026: conv_mvnbbhdq2a8t7nk showed the
+ * follow-up card with no earlier coaching mentioned).
+ */
+const EARLIER_COACHING =
+  /\bfollow[- ]?ups?\b|\b(?:coached|re-?coach(?:ed|ing)?)\b|\b(?:prior|previous|previously|earlier|last|first|already|again|second|past)\s+(?:(?:documented|verbal)\s+)?coach(?:ing|ed)?\b|\bcoach(?:ing|ed)?\s+(?:\w+\s+){0,3}?(?:before|again|already|last\s+(?:week|month|time)|previously)\b/i;
+
+export function mentionsEarlierCoaching(text: string): boolean {
+  return EARLIER_COACHING.test(text ?? "");
+}
+
 function declinesForm(q: string): boolean {
   return DECLINES_FORM.test(q);
 }

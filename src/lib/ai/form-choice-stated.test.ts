@@ -254,6 +254,40 @@ const WOVEN_RAW = {
   policyHeading: "Disciplinary Action",
 };
 
+/* ---------------------------------------------------- conv_mvnbbhdq2a8t7nk -- */
+
+/**
+ * QA, 25 Oct 2026: three identical runs. conv_mvnbbhdq2a8t7nk showed the
+ * Follow-Up Coaching card on turns 2–5 with no earlier coaching mentioned;
+ * conv_mvnbeya221vuc5g and conv_mvnbg6l92wxhtfa gave the Coaching Form. The
+ * replies are that bad run's; the tool payload reads "follow-up-coaching",
+ * as the bad run's model did.
+ */
+const COACH_TURNS: LiveTurn[] = [
+  { question: "I need to coach an employee", raw: { formType: null, formTurn: true } },
+  { question: "Her name is Test Employee", raw: { employee: "Test Employee", formType: "follow-up-coaching", formTurn: true } },
+  { question: "She works at NE Grand Island", raw: { employee: "Test Employee", salon: "NE Grand Island", formType: "follow-up-coaching", formTurn: true } },
+  { question: "It happened on 10-21", raw: { employee: "Test Employee", incidentDate: "10-21", formType: "follow-up-coaching", formTurn: true } },
+  {
+    question: "She was on her cell phone for 30+ minutes at the front desk",
+    raw: {
+      employee: "Test Employee",
+      incidentType: "on her cell phone for 30+ minutes at the front desk",
+      formType: "follow-up-coaching",
+      formTurn: true,
+      policyHeading: "Cell Phone/Smart Watch Policy",
+    },
+  },
+];
+const FOLLOW_UP_CARD =
+  "Here is what I would put on a **Follow-Up Coaching Form**.\n\nEverything I need is here, drawn from your messages above.\n\nI have the employee and the salon. Create the draft here when you're ready, and edit it below — nothing is saved to anyone's file until you do.";
+const COACH_REPLIES = [
+  "Happy to help with that. Tell me a bit and I can shape the conversation with you:\n\n- **Who** — the employee's name.\n- **What you saw or heard** — the specific behavior or the metric signal, in plain terms.\n- **Any history** — have you coached this before, and did anything change since?\n\nThat's enough for me to help you frame the observation, the expectation, why it matters, a role play, and a follow-up plan — which is the structure a good coaching conversation follows [S6].\n\nOne thing worth naming up front: coaching is where most issues should start and usually get solved. The progression runs observation → coaching → role play → follow-up coaching before anything formal, and a metric on its own is a coaching signal, not grounds for documentation beyond that [S17].\n\nWhen you're ready for the paperwork, ask me to create a coaching form for them and the draft card will come up here.",
+  FOLLOW_UP_CARD,
+  FOLLOW_UP_CARD,
+  FOLLOW_UP_CARD,
+];
+
 describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -348,6 +382,32 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
     expect(out.sources?.content).not.toMatch(/Disciplinary Action/);
   });
 
+  it("conv_mvnbbhdq2a8t7nk: no earlier coaching mentioned is the Coaching Form, not the follow-up", async () => {
+    vi.stubEnv("FORM_CHOICE_STATED_ENABLED", "true");
+    const { keys, saved } = await replay(COACH_TURNS, COACH_REPLIES);
+    expect(keys.slice(1)).toEqual(["coaching", "coaching", "coaching", "coaching"]);
+    expect(saved?.templateKey).toBe("coaching");
+  });
+
+  it("a follow-up the manager mentions is still the Follow-Up Coaching Form", async () => {
+    vi.stubEnv("FORM_CHOICE_STATED_ENABLED", "true");
+    const named = await live({
+      history: [],
+      question: "Create a follow-up coaching form for Test Employee at NE Grand Island",
+      saved: null,
+      raw: { employee: "Test Employee", formType: "follow-up-coaching", formTurn: true },
+    });
+    expect(named.templateKey).toBe("follow-up-coaching");
+    const earlier = await replay(
+      [
+        COACH_TURNS[0]!,
+        { question: "Her name is Test Employee, I coached her on 10-1 about her phone", raw: { employee: "Test Employee", formType: "follow-up-coaching", formTurn: true } },
+      ],
+      COACH_REPLIES,
+    );
+    expect(earlier.saved?.templateKey).toBe("follow-up-coaching");
+  });
+
   it("a Policy reference line names no form", () => {
     vi.stubEnv("FORM_CHOICE_STATED_ENABLED", "true");
     expect(
@@ -371,6 +431,11 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
     it('conv_mvmyba3d2ojmzuf turned "Create a Policy Review" into a Corrective Action', async () => {
       const { keys } = await replay(POLICY_REVIEW_TURNS, [CELL_PHONE_REPLY]);
       expect(keys[1]).toBe("dpoa");
+    });
+
+    it("conv_mvnbbhdq2a8t7nk showed the Follow-Up Coaching card with no earlier coaching mentioned", async () => {
+      const { keys } = await replay(COACH_TURNS, COACH_REPLIES);
+      expect(keys.slice(1)).toEqual(["follow-up-coaching", "follow-up-coaching", "follow-up-coaching", "follow-up-coaching"]);
     });
 
     it("conv_mvmyqvkq2zwzrln cited page 14, Disciplinary Action", async () => {

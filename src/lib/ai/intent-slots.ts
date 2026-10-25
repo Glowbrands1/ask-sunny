@@ -17,7 +17,7 @@ import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-dat
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
-import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { detectTemplateIntent, mentionsEarlierCoaching } from "@/lib/forms/template-intent";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -241,7 +241,12 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
         (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
   const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = choiceStated
-    ? groundStatedForm(choice?.form ?? null, managerTurns(input), input.templates)
+    ? groundStatedForm(
+        choice?.form ?? null,
+        managerTurns(input),
+        input.templates,
+        saved.templateKey ? null : (reading?.formType ?? null),
+      )
     : groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
   const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
   const modelPolicy = choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy;
@@ -279,6 +284,7 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     policyHeading,
     policyPage,
   });
+  if (choiceStated) state = firstCoachingUnlessEarlier(state, managerTurns(input), input.templates);
   if (codeSlotsEnabled()) {
     const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
     const prior = cleanPersonName(saved.employeeName, salonNames);
@@ -387,12 +393,15 @@ function managerTurns(input: IntentTurnInput): string[] {
  * concern" stayed a Corrective Action for every later turn because the blob
  * held the assistant's reply (QA, 24 Oct 2026). A turn that names no form
  * ("Create a form from this conversation") looks further back; a turn that
- * names one replaces the stored form. Nothing named leaves the stored form.
+ * names one replaces the stored form. When no manager turn names a form, the
+ * stored form stays, and only then does the model's formType count — read as
+ * a template name, never from the blob.
  */
 function groundStatedForm(
   chosen: string | null,
   turns: readonly string[],
   templates: readonly TemplateRow[],
+  modelForm: string | null,
 ): { key: string | null; ambiguous: readonly TemplateRow[] } {
   const picked = chosen ? matchTemplates(chosen, templates) : [];
   if (picked.length === 1) return { key: picked[0]!.key, ambiguous: [] };
@@ -400,7 +409,24 @@ function groundStatedForm(
     const key = formNamedIn(turns[at]!, templates);
     if (key) return { key, ambiguous: [] };
   }
-  return { key: null, ambiguous: [] };
+  const typed = modelForm?.trim() ? matchTemplates(modelForm.trim(), templates) : [];
+  return { key: typed.length === 1 ? typed[0]!.key : null, ambiguous: [] };
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. The Follow-Up Coaching Form only when a manager
+ * turn mentions coaching that already happened or a follow-up; otherwise the
+ * Coaching Form. A stored follow-up key from an earlier turn is corrected the
+ * same way (QA, 25 Oct 2026: conv_mvnbbhdq2a8t7nk).
+ */
+function firstCoachingUnlessEarlier(
+  state: ConversationFormState,
+  turns: readonly string[],
+  templates: readonly TemplateRow[],
+): ConversationFormState {
+  if (state.templateKey !== "follow-up-coaching") return state;
+  if (turns.some((turn) => mentionsEarlierCoaching(turn))) return state;
+  return templates.some((template) => template.key === "coaching") ? { ...state, templateKey: "coaching" } : state;
 }
 
 function formNamedIn(text: string, templates: readonly TemplateRow[]): string | null {
