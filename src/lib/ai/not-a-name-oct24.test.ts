@@ -718,6 +718,26 @@ describe("QA L23: the exit form is for the person the manager typed", { timeout:
     for (const turn of turns) expect(turn.employeeName?.toLowerCase(), turn.question).toBe("avery testperson");
   });
 
+  it("a name typed before the window stays on an exit form whose cards repeat it", async () => {
+    bag.intent.latest = ["Avery Testperson"];
+    const turns = await converse([
+      "create an exit form for Avery Testperson",
+      "tanning consultant at shawnee",
+      "last day worked was 9-20-26",
+      "its a no call no show",
+      "management called her on 9-27-26 with no response",
+      "she has not returned her key",
+      "no payroll deduction",
+      "not eligible for rehire",
+      "add that she did not give notice",
+      "create exit form",
+      "Create a form from this conversation.",
+      "Create a form from this conversation.",
+      "Create a form from this conversation.",
+    ]);
+    for (const turn of turns) expect(turn.employeeName?.toLowerCase(), turn.question).toBe("avery testperson");
+  });
+
   /*
    * The 9/27 form date in production came from the intent model's
    * incidentDate ("management called her … on 9-27-26" is in the manager's

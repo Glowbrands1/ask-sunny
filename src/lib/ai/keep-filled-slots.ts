@@ -12,7 +12,7 @@ import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intak
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
-import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
+import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
@@ -232,9 +232,10 @@ function keptName(
 ): string | null {
   const question = turns[turns.length - 1] ?? "";
   // NOT_A_NAME_GUARD_ENABLED: the previous card's name does not carry forward
-  // when it came from a reply — in a reply in the window and in none of the
-  // manager's turns (QA L23: "One Tanner"). With no evidence, it stays.
-  if (previous && notANameGuardEnabled() && !typedBy(turns, previous) && inAnyTurn(replies, previous)) {
+  // when it came from a reply — a reply in the window says it other than as
+  // a card's subject, and none of the manager's turns do (QA L23: "One
+  // Tanner"). With no evidence, it stays.
+  if (previous && notANameGuardEnabled() && !typedBy(turns, previous) && saidInReply(replies, previous)) {
     previous = null;
   }
   const stated = newestName(turns);
@@ -250,11 +251,6 @@ function keptName(
   }
   if (!picked || isFragment(picked)) return !isFragment(current) ? spell(current, people) : null;
   return spell(picked, people);
-}
-
-function inAnyTurn(turns: readonly string[], name: string): boolean {
-  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
-  return turns.some((turn) => turn.toLowerCase().replace(/\s+/g, " ").includes(needle));
 }
 
 /** The name is in the manager's words, outside a bulleted or priced offer list. */

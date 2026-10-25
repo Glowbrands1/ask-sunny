@@ -13,7 +13,7 @@ import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
-import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
+import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -452,8 +452,9 @@ function payrollClauseAmount(input: IntentTurnInput): string | null {
  * heading in an assistant reply, was saved, and "The employee is One
  * Tanner." then outvoted "Test Employee" on every later turn.
  *
- * Only on evidence: the name is not a name at all ("blank"), or it is in an
- * assistant turn in the window and in none of the manager's. History is
+ * Only on evidence: the name is not a name at all ("blank"), or an
+ * assistant turn in the window says it (other than as a card's subject,
+ * `saidInReply`) and none of the manager's turns do. History is
  * capped (`HISTORY_CAP`), so a name typed long ago may be outside the window;
  * with no evidence either way the saved name stays. A roster pick (it
  * carries the directory id) is the manager's choice and stays.
@@ -463,14 +464,9 @@ function withoutUntypedSavedName(input: IntentTurnInput): IntentTurnInput {
   if (!notANameGuardEnabled() || !input.saved || !name || input.saved.employeeId) return input;
   const said = [...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.question];
   const replies = input.history.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
-  const fromReply = !saidBy(said, name) && mentions(replies, name);
+  const fromReply = !saidBy(said, name) && saidInReply(replies, name);
   if (!isNotAName(name) && !fromReply) return input;
   return { ...input, saved: { ...input.saved, employeeName: null, keptTypedName: null } };
-}
-
-function mentions(turns: readonly string[], name: string): boolean {
-  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
-  return turns.some((turn) => turn.toLowerCase().replace(/\s+/g, " ").includes(needle));
 }
 
 /**

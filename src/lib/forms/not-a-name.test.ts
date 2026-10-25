@@ -6,7 +6,7 @@ import { JBA_MANUAL_CHUNKS } from "@/lib/ai/__fixtures__/jba-policy-manual";
 
 import { manualSectionHeadings } from "./official-policy-manual";
 import { readEmployeeMentions } from "./proposal";
-import { isNotAName, maskNotANameText } from "./not-a-name";
+import { isNotAName, maskNotANameText, saidInReply } from "./not-a-name";
 
 /**
  * The readers behind QA round 4 (24 Oct 2026), with NOT_A_NAME_GUARD_ENABLED.
@@ -108,5 +108,14 @@ describe("NOT_A_NAME_GUARD_ENABLED on", () => {
 
   it("one bulleted name is still an answer", () => {
     expect(readEmployeeMentions("- Jordan Testperson").names).toEqual(["Jordan Testperson"]);
+  });
+});
+
+describe("saidInReply", () => {
+  it("finds a name a reply cites, not one a card names as its subject", () => {
+    const answer = 'Only one client per room ("One Tanner per Room", JBA Policy Manual p.50).';
+    expect(saidInReply([answer], "One Tanner")).toBe(true);
+    expect(saidInReply(["Here's what I'll fill in on the **Resignation/Exit Form** for **Avery Testperson**:\n\n- **Name:** Avery Testperson"], "Avery Testperson")).toBe(false);
+    expect(saidInReply(["Nothing about anyone here."], "Avery Testperson")).toBe(false);
   });
 });

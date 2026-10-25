@@ -219,3 +219,18 @@ export function maskNotANameText(text: string): string {
     .replace(WORD, (word) => (isStandInWord(wordsOf(word)[0] ?? "") ? "nobody" : word));
   return masked;
 }
+
+/**
+ * Whether an assistant reply says the name other than as the form's subject.
+ * A card names its employee in bold ("for **Test Employee**", "**Name:** …",
+ * "**Employee:** …") because it was saved; that echo is not where the name
+ * came from. A policy answer citing "One Tanner per Room" is.
+ */
+export function saidInReply(replies: readonly string[], name: string): boolean {
+  const needle = name.trim().replace(/\s+/g, " ");
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+");
+  const echo = new RegExp(`\\*\\*(?:(?:employee\\s+)?name|employee):\\*\\*\\s*${escaped}|\\*\\*${escaped}\\*\\*`, "gi");
+  const lower = needle.toLowerCase();
+  return replies.some((reply) => reply.replace(echo, " ").replace(/\s+/g, " ").toLowerCase().includes(lower));
+}
