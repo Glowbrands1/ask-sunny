@@ -32,7 +32,8 @@ import type { ChatFormProposal, ChatMessage } from "@/types";
  *   id ∈ retained      A turn outside the server's bounded window was never
  *                      part of the proposal and must not be part of the draft.
  *
- * One fallback, and only for a form that would otherwise be blank: when
+ * One fallback, behind NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED (default
+ * off), and only for a form that would otherwise be blank: when
  * nothing survives but the card the manager pressed Create on shows what
  * happened, the notes are that card's own lines (`draftNotesFromCard`) — the
  * facts the manager saw and confirmed by pressing Create (QA H1, 25 Oct 2026,

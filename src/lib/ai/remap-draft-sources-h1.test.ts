@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInlineForm, NO_NOTES_WARNING } from "@/features/chat/create-inline-form";
 import { draftNotesFromCard, draftNotesFromConversation } from "@/lib/forms/draft-notes";
@@ -79,7 +79,9 @@ describe("part 1 — REMAP_DRAFT_SOURCES_ENABLED: the remap card names this form
   });
 });
 
-describe("part 2 — a draft that would be blank is written from the card the manager pressed", () => {
+describe("part 2 — NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED: a draft that would be blank is written from the card", () => {
+  beforeEach(() => vi.stubEnv("NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED", "true"));
+
   const run = async (proposal: ChatFormProposal) => {
     const posted: { url: string; body: unknown }[] = [];
     const call = (async (url: string, init?: RequestInit) => {
@@ -116,5 +118,18 @@ describe("part 2 — a draft that would be blank is written from the card the ma
 
   it("the card's lines are only the fields the card shows", () => {
     expect(draftNotesFromCard({ ...remapCard, issue: "late" } as ChatFormProposal).text).toBe("");
+  });
+});
+
+describe("part 2 off: exactly today's behaviour", () => {
+  it("a remap card with What happened and no turns still warns and makes no /draft call", async () => {
+    const posted: string[] = [];
+    const call = (async (url: string) => {
+      posted.push(url);
+      return url.endsWith("/draft") ? { notice: null } : { instance: { id: "inst-1" } };
+    }) as Parameters<typeof createInlineForm>[0]["call"];
+    const result = await createInlineForm({ proposal: remapCard, messages, call, onCreated: () => undefined });
+    expect(result.draftWarning).toBe(NO_NOTES_WARNING);
+    expect(posted.some((url) => url.endsWith("/draft"))).toBe(false);
   });
 });

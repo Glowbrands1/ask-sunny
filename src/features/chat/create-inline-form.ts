@@ -3,6 +3,7 @@ import {
   draftNotesFromCard,
   draftNotesFromConversation,
 } from "@/lib/forms/draft-notes";
+import { remapDraftSourcesClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -206,12 +207,14 @@ export async function createInlineForm({
    */
   const fromTurns = draftNotesFromConversation(messages, proposal.sourceMessageIds);
   /*
-   * A FORM THAT WOULD OTHERWISE BE BLANK is drafted from the card the manager
-   * pressed Create on, when that card shows what happened (QA H1, 25 Oct
-   * 2026). Only when no turn qualified: a draft with usable turns is
-   * unchanged. See `draftNotesFromCard`.
+   * NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED: a form that would otherwise be
+   * blank is drafted from the card the manager pressed Create on, when that
+   * card shows what happened (QA H1, 25 Oct 2026). Only when no turn
+   * qualified: a draft with usable turns is unchanged. Off, as before. See
+   * `draftNotesFromCard`.
    */
-  const notes = draftNotesAreUsable(fromTurns) ? fromTurns : draftNotesFromCard(proposal);
+  const notes =
+    draftNotesAreUsable(fromTurns) || !remapDraftSourcesClientEnabled() ? fromTurns : draftNotesFromCard(proposal);
   if (!draftNotesAreUsable(notes)) {
     return { reference, draftWarning: NO_NOTES_WARNING };
   }
