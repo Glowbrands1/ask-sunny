@@ -295,6 +295,9 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         input.templates,
         saved.templateKey ? null : (reading?.formType ?? null),
         saved.templateKey,
+        // CA_TEMPLATE_MAP_ENABLED: a metric with no behaviour stays the
+        // progression here too, as in `correctiveActionRequestKey`.
+        caTemplateMapEnabled() && correctiveActionBasis(managerBlob(input)) === "metric_only",
       )
     : groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates, {
         question: input.question,
@@ -546,6 +549,7 @@ function groundStatedForm(
   templates: readonly TemplateRow[],
   modelForm: string | null,
   storedKey: string | null,
+  metricOnly = false,
 ): { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean } {
   const picked = chosen ? matchTemplates(chosen, templates) : [];
   if (picked.length === 1) return { key: picked[0]!.key, ambiguous: [] };
@@ -556,7 +560,7 @@ function groundStatedForm(
       return { key: null, ambiguous: several, together: true };
     }
     const key = formNamedIn(turns[at]!, templates);
-    if (key) return { key, ambiguous: [] };
+    if (key && !(metricOnly && key === CORRECTIVE_ACTION_KEY)) return { key, ambiguous: [] };
   }
   const typed = modelForm?.trim() ? matchTemplates(modelForm.trim(), templates) : [];
   const key = typed.length === 1 && !(typed[0]!.key === "dpoa" && coachingConversation(turns)) ? typed[0]!.key : null;

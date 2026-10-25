@@ -193,6 +193,36 @@ describe("CA_TEMPLATE_MAP_ENABLED leaves the other readings alone", () => {
   });
 });
 
+/*
+ * INTEGRATION, CA_TEMPLATE_MAP_ENABLED + FORM_CHOICE_STATED_ENABLED. With both
+ * on, the stated-form reader read "create a corrective action" as the
+ * Corrective Action Form and bypassed CA_TEMPLATE_MAP's metric-only rule. It
+ * now honours that rule; FORM_CHOICE_STATED alone is unchanged.
+ */
+describe("CA_TEMPLATE_MAP_ENABLED with FORM_CHOICE_STATED_ENABLED on too", () => {
+  beforeEach(() => {
+    vi.stubEnv("CA_TEMPLATE_MAP_ENABLED", "true");
+    vi.stubEnv("FORM_CHOICE_STATED_ENABLED", "true");
+  });
+
+  it("a metric on its own stays the progression", async () => {
+    const decision = await intentTurn("Their Club Close is low, create a corrective action");
+    expect(decision.state.templateKey).toBeNull();
+  });
+
+  it.each(ACCEPTANCE)("%s keeps the Corrective Action Form", async (question) => {
+    const { decision, proposal } = await liveTurn(question);
+    expect(decision.state.templateKey).toBe("dpoa");
+    expect(proposal?.templateKey).toBe("dpoa");
+  });
+
+  it("FORM_CHOICE_STATED alone still reads the stated Corrective Action", async () => {
+    vi.stubEnv("CA_TEMPLATE_MAP_ENABLED", "false");
+    const decision = await intentTurn("Their Club Close is low, create a corrective action");
+    expect(decision.state.templateKey).toBe("dpoa");
+  });
+});
+
 describe("the full remap (FORM_FULL_REMAP_ENABLED), as Ask Bubbles runs it", () => {
   beforeEach(() => {
     vi.stubEnv("FORM_FULL_REMAP_ENABLED", "true");
