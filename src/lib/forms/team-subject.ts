@@ -1,3 +1,5 @@
+import { cardNeverSilentEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * COACHING THAT IS FOR THE WHOLE TEAM, NOT ONE PERSON
@@ -52,9 +54,23 @@ const TEAM_PHRASES: readonly RegExp[] = [
   /\b(?:coaching|form|training)\s+(?:\w+\s+){0,3}?for\s+(?:everyone|everybody|all)\b/i,
 ];
 
+/**
+ * CARD_NEVER_SILENT_ENABLED: the chatty way of asking for the same thing (Ask
+ * Sunny conv_mvofsdg92obw8px, 25 Oct 2026): "I want a coaching form I can
+ * reuse for any team member, so please leave the employee name blank and make
+ * it generic for the whole team" got no card, while "need a coaching form for
+ * team not signing documents" did.
+ */
+const CHATTY_TEAM_PHRASES: readonly RegExp[] = [
+  /\b(?:reuse|re-use|use)\s+(?:it\s+)?(?:for|with)\s+any\s+(?:team\s+member|employee|staff\s+member|associate|team\s?mate)\b/i,
+  /\b(?:generic|general)\s+for\s+(?:the\s+|my\s+|our\s+)?(?:whole\s+|entire\s+)?(?:team|staff|crew)\b/i,
+  /\bleave\s+(?:the\s+)?(?:employee(?:'s|s)?\s+)?name\s+(?:blank|empty|off)\b/i,
+];
+
 /** Whether the manager's words make this coaching about the team. */
 export function readsAsTeamSubject(text: string): boolean {
-  return TEAM_PHRASES.some((pattern) => pattern.test(text ?? ""));
+  const phrases = cardNeverSilentEnabled() ? [...TEAM_PHRASES, ...CHATTY_TEAM_PHRASES] : TEAM_PHRASES;
+  return phrases.some((pattern) => pattern.test(text ?? ""));
 }
 
 /**
@@ -86,10 +102,14 @@ const TEAM_DESCRIPTOR_SPANS: readonly RegExp[] = [
   /\b(?:group|team|general|staff)\s+(?:training|coaching|huddle|meeting|refresher|reminder)s?\b/gi,
 ];
 
+/** CARD_NEVER_SILENT_ENABLED: "for any team member" is the team, not an employee called "any". */
+const CHATTY_TEAM_SPANS: readonly RegExp[] = [/\bany\s+(?:team\s+member|employee|staff\s+member|associate|team\s?mate)s?\b/gi];
+
 /** The sentence with every team descriptor replaced by "the team". Pure. */
 export function maskTeamSubjectPhrases(text: string): string {
   let masked = text ?? "";
-  for (const pattern of TEAM_DESCRIPTOR_SPANS) masked = masked.replace(pattern, "the team");
+  const spans = cardNeverSilentEnabled() ? [...TEAM_DESCRIPTOR_SPANS, ...CHATTY_TEAM_SPANS] : TEAM_DESCRIPTOR_SPANS;
+  for (const pattern of spans) masked = masked.replace(pattern, "the team");
   return masked;
 }
 
