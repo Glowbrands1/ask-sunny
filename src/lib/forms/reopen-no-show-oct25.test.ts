@@ -131,6 +131,23 @@ describe("REOPEN_VERB_GUARD_ENABLED on", () => {
     expect(on).toEqual(readReopenRequest(turn));
   });
 
+  it.each([
+    "I need a copy of the corrective action for Test Employee",
+    "do an edit of the CA for Test Employee",
+    "I need a copy of the write up for Test Employee",
+  ])("%s reads exactly as with the guard off (QA review: not a document request)", (turn) => {
+    const on = readReopenRequest(turn);
+    vi.stubEnv("REOPEN_VERB_GUARD_ENABLED", "");
+    expect(on).toEqual(readReopenRequest(turn));
+  });
+
+  it.each(["I need a corrective action for Test Employee", "do a verbal write up for Test Employee"])(
+    "%s is a document request",
+    (turn) => {
+      expect(readReopenRequest(turn)).toBeNull();
+    },
+  );
+
   it("a real ask to see the form still reopens when the turn also has a no-show", async () => {
     const turn = "show me the CA for Test Employee, she was a no call no show";
     expect(readReopenRequest(turn)).toEqual({ mode: "show", templateKey: "dpoa", asksChange: false });

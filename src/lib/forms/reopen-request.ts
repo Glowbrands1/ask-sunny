@@ -54,8 +54,14 @@ const INCIDENT_WITH_A_VERB =
  * "can you", "I need you to", "let's", "I want to". "Show me the write up for
  * …" and "bring back the write-up" name a form on file, and stay reopens.
  */
-const ASKS_FOR_A_DOCUMENT =
-  /^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+need\s+you\s+to\s+|let'?s\s+|i\s+want\s+to\s+)?(?:i\s+(?:need|want)\s+(?:to\s+(?:draft|write|do)\s+)?(?:a|an)\b|draft\s+(?:a|an|up)\b|write\s+(?:up|a|an)\b|do\s+(?:a|an)\b)/i;
+/* A form word, so "I need a copy of …" and "do an edit of …" stay reopens (QA review of #229). */
+const DOCUMENT_WORD = String.raw`(?:corrective\s+action|ca\b|c\/a\b|coaching|write[\s-]?up|warning|form|document|exit|transfer|demotion)`;
+const ASKS_FOR_A_DOCUMENT = new RegExp(
+  String.raw`^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+need\s+you\s+to\s+|let'?s\s+|i\s+want\s+to\s+)?` +
+    String.raw`(?:i\s+(?:need|want)\s+(?:to\s+(?:draft|write|do)\s+)?(?:a|an)\s+(?:new\s+|verbal\s+|written\s+|final\s+)?${DOCUMENT_WORD}` +
+    String.raw`|draft\s+(?:a|an|up)\b|write\s+(?:up|a|an)\b|do\s+(?:a|an)\s+(?:new\s+|verbal\s+|written\s+|final\s+)?${DOCUMENT_WORD})`,
+  "i",
+);
 
 /** A question somebody is asking, not a request to act. "Can you …" is a request. */
 const QUESTION_OPENING =
