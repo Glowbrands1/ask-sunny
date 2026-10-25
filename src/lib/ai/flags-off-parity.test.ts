@@ -68,6 +68,7 @@ import {
   namedFormExactEnabled,
   remapDraftSourcesClientEnabled,
   remapDraftSourcesEnabled,
+  policyAsYouSaidManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -154,6 +155,7 @@ const NEW_FLAGS = [
   "NAMED_FORM_EXACT_ENABLED",
   "REMAP_DRAFT_SOURCES_ENABLED",
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
+  "POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -297,6 +299,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(namedFormExactEnabled()).toBe(false);
     expect(remapDraftSourcesEnabled()).toBe(false);
     expect(remapDraftSourcesClientEnabled()).toBe(false);
+    expect(policyAsYouSaidManagerOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

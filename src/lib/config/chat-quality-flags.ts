@@ -791,3 +791,13 @@ export function chatLongMessageEnabled(): boolean {
     flagOn(process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED)
   );
 }
+
+/**
+ * "Policy: …, as you said" only for a policy the manager named (D4, QA, 25
+ * Oct 2026). The app's own "Policy reference: …, JBA Policy Manual." line,
+ * which the form state writes ahead of the turn, is not the manager's words.
+ * Off, the policy is read as before.
+ */
+export function policyAsYouSaidManagerOnlyEnabled(): boolean {
+  return envFlag("POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED");
+}
