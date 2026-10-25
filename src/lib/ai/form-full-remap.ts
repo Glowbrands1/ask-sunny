@@ -1,10 +1,11 @@
 import "server-only";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { formFullRemapEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { formFullRemapEnabled, notANameGuardEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { datesInText, listIncidentDates } from "@/lib/forms/form-date-answer";
+import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
@@ -334,8 +335,14 @@ function templateFromUser(text: string): TemplateKey | null {
 }
 
 function groundedName(proposed: string | null, turns: readonly string[]): string | null {
-  const said = turns.join("\n");
-  const latest = turns.at(-1) ?? "";
+  // NOT_A_NAME_GUARD_ENABLED: the model's name is looked for outside a
+  // bulleted or priced offer list, so an offer it copied is not found.
+  const spoken = notANameGuardEnabled() ? turns.map((turn) => maskNotANameText(turn)) : turns;
+  const said = spoken.join("\n");
+  const latest = spoken.at(-1) ?? "";
+  // NOT_A_NAME_GUARD_ENABLED: "blank", a product, a salon's city or a verb
+  // phrase is not the employee, even when the manager typed those words.
+  if (proposed && isNotAName(proposed)) proposed = null;
   if (proposed) {
     const inLatest = exactSlice(latest, proposed);
     if (inLatest) return inLatest;
@@ -344,8 +351,8 @@ function groundedName(proposed: string | null, turns: readonly string[]): string
   }
   let found: string | null = null;
   for (const turn of turns) {
-    const person = personPhrase(turn);
-    if (person) found = person;
+    const person = personPhrase(notANameGuardEnabled() ? maskNotANameText(turn) : turn);
+    if (person && !isNotAName(person)) found = person;
   }
   return found;
 }
