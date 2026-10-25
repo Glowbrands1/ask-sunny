@@ -57,3 +57,6 @@ next-env.d.ts
 # monthly figures, so they are the same class of data as the workbooks above and
 # stay out of git. Regenerate them against a local stack when a handoff needs them.
 /screenshots/
+
+# A local roster export for no-real-people.test.ts. Real names; never commit it.
+/.real-people-roster.txt
