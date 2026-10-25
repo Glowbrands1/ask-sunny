@@ -25,6 +25,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
@@ -76,15 +77,18 @@ export async function deliverFormProposal(input: {
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
-    return withTypedEmployeeOnCard(
-      holdFilledSlots({
-        response: enriched,
-        question: input.question,
-        history: input.request.history,
-        today: input.request.context.todayIso,
-        people: [],
-      }),
-      input.request.question,
+    return withEditDateRules(
+      withTypedEmployeeOnCard(
+        holdFilledSlots({
+          response: enriched,
+          question: input.question,
+          history: input.request.history,
+          today: input.request.context.todayIso,
+          people: [],
+        }),
+        input.request.question,
+      ),
+      input,
     );
   }
 
@@ -129,15 +133,18 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = withTypedEmployeeOnCard(
-    holdFilledSlots({
-      response: settled,
-      question: input.question,
-      history: input.request.history,
-      today: input.request.context.todayIso,
-      people,
-    }),
-    input.request.question,
+  const held = withEditDateRules(
+    withTypedEmployeeOnCard(
+      holdFilledSlots({
+        response: settled,
+        question: input.question,
+        history: input.request.history,
+        today: input.request.context.todayIso,
+        people,
+      }),
+      input.request.question,
+    ),
+    input,
   );
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
@@ -146,6 +153,15 @@ export async function deliverFormProposal(input: {
   }
   await writeSaved(stateOn, input, saved, held, prep);
   return held;
+}
+
+/** FORM_EDIT_DATE_RULES_ENABLED: read from the manager's own turns, not the state sentences. See `edit-date-rules.ts`. */
+function withEditDateRules(response: AskResponse, input: { readonly request: AskRequest }): AskResponse {
+  return applyEditDateRules(response, {
+    question: input.request.question,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+  });
 }
 
 function withVisibleSalon(

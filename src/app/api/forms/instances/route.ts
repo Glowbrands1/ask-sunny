@@ -6,6 +6,7 @@ import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import { errorResponse } from "@/lib/api/respond";
 import {
   conversationDraftReuseEnabled,
+  draftReuseSameChatOnlyEnabled,
   conversationProposalDedupeEnabled,
   draftActionsEnabled,
   draftDedupeEnabled,
@@ -43,6 +44,7 @@ import {
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
+import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
@@ -324,6 +326,25 @@ export async function POST(request: Request) {
      * made when both flags are on.
      */
     const newIncident = draftActionsEnabled() && historySaysDifferentIncident(body.conversation);
+    /*
+     * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED. Every lookup below that hands back
+     * an existing draft keeps only a draft this chat made (`sameChat`), the
+     * chat's own draft is not reused for a card dated differently, every new
+     * chat draft records its chat, and a reuse tells the card the draft's
+     * date (`reused`, below). See `draft-same-chat.ts`.
+     */
+    const sameChatOnly = body.source === "ask_sunny" && draftReuseSameChatOnlyEnabled();
+    const chatKey = sameChatOnly
+      ? conversationKeyOf({ conversationId: body.conversationId, conversation: body.conversation })
+      : null;
+    const sameChat: SameChat | undefined = sameChatOnly ? { conversationKey: chatKey } : undefined;
+    const cardDate = isIsoCalendarDate(body.formDate) ? body.formDate : null;
+    const reused = (instance: { formDate?: string | null }) =>
+      NextResponse.json({
+        instance,
+        reused: true,
+        ...(sameChatOnly && instance.formDate ? { reusedFrom: instance.formDate } : {}),
+      });
     const draftChat =
       body.source === "ask_sunny" && conversationDraftReuseEnabled() && !newIncident
         ? conversationKeyOf({ conversationId: body.conversationId, conversation: body.conversation })
@@ -337,6 +358,7 @@ export async function POST(request: Request) {
         employeeName: body.employeeName.trim().slice(0, 120),
         conversationKey: draftChat,
         turns: chatTurns,
+        ...(sameChatOnly && cardDate ? { formDate: cardDate } : {}),
       }).catch(() => null);
       if (same) {
         /*
@@ -352,7 +374,7 @@ export async function POST(request: Request) {
         }).catch(() => undefined);
         await applyCardFacts(String(same.instance.id)).catch(() => undefined);
         const updated = await loadInstance(String(same.instance.id)).catch(() => null);
-        return NextResponse.json({ instance: updated?.instance ?? same.instance, reused: true });
+        return reused(updated?.instance ?? same.instance);
       }
     }
 
@@ -377,8 +399,9 @@ export async function POST(request: Request) {
         locationId,
         formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null,
         incident: incidentText || null,
+        ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (open) return NextResponse.json({ instance: open, reused: true });
+      if (open) return reused(open);
     }
 
     /*
@@ -409,7 +432,7 @@ export async function POST(request: Request) {
         proposalId,
         conversationKey,
       }).catch(() => null);
-      if (existing) return NextResponse.json({ instance: existing, reused: true });
+      if (existing) return reused(existing);
     } else if (proposalId) {
       // A guard that cannot read is no guard: the create goes ahead as before.
       const existing = await findRecentAssistantDraft({
@@ -419,7 +442,7 @@ export async function POST(request: Request) {
         locationId,
         proposalId,
       }).catch(() => null);
-      if (existing) return NextResponse.json({ instance: existing, reused: true });
+      if (existing) return reused(existing);
     }
 
     /*
@@ -448,8 +471,9 @@ export async function POST(request: Request) {
         ...(incidentText
           ? { incident: incidentText, formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null }
           : {}),
+        ...(sameChat ? { sameChat } : {}),
       }).catch(() => null);
-      if (resent) return NextResponse.json({ instance: resent, reused: true });
+      if (resent) return reused(resent);
     }
 
     const instance = await createInstance({
@@ -468,9 +492,13 @@ export async function POST(request: Request) {
       ...(conversationKey ? { conversationKey } : {}),
     });
     /* A concurrent press of the same card: its row, as it already is. See `cardInstanceId`. */
-    if (instance.reused) return NextResponse.json({ instance, reused: true });
+    if (instance.reused) return reused(instance);
     if (draftChat) {
       await noteConversationDraft(String(instance.id), draftChat, lastManagerTurnId(chatTurns)).catch(() => undefined);
+    } else if (chatKey) {
+      // Same chat only: the draft records its chat even with CONVERSATION_DRAFT_REUSE_ENABLED off.
+      const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
+      await noteConversationDraft(String(instance.id), chatKey, lastManagerTurnId(turns)).catch(() => undefined);
     }
 
     await applyCardFacts(String(instance.id));

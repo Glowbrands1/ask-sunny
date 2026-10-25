@@ -433,7 +433,12 @@ describe("no question text can be persisted", () => {
     );
 
     /* The only three things allowed to receive it, all of them read-only. */
-    const READERS = ["classifyChatTurn({", "classifyTurnKind(", "requireString("];
+    /*
+     * `requireChatQuestion(` is the CHAT_LONG_MESSAGE_ENABLED validator (the
+     * 12,000-character limit): like `requireString(` it only trims, checks the
+     * length and refuses, so it is added to the read-only list on purpose.
+     */
+    const READERS = ["classifyChatTurn({", "classifyTurnKind(", "requireString(", "requireChatQuestion("];
 
     const mentions = [...route.matchAll(/[\w.]*\bbody\.question\b/g)];
     expect(mentions.length, "the question is never read at all").toBeGreaterThan(0);

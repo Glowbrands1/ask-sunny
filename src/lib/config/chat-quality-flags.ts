@@ -440,6 +440,18 @@ export function conversationDraftReuseEnabled(): boolean {
 }
 
 /**
+ * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: an open draft is reused only when this
+ * chat made it, for the same employee, form and incident or date. A card
+ * dated differently from the chat's own draft makes a new draft, and a reuse
+ * says so on the card ("Updated your open draft from <date>"). A draft from
+ * another chat is never reopened, so it is never overwritten (QA, B18–B20,
+ * 25 Oct 2026). Off, every lookup is as it was.
+ */
+export function draftReuseSameChatOnlyEnabled(): boolean {
+  return envFlag("DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED");
+}
+
+/**
  * Keep other conversations out of the reply text. The person-memory recall
  * quotes another chat only when the manager refers back to it ("again", "last
  * time", "like before", "same as …"); a name read from a turn that is only
@@ -518,6 +530,20 @@ export function placeSpanGuardEnabled(): boolean {
 }
 
 /**
+ * The salon the newest manager turn names is the card's salon, whichever turn
+ * that is. "change salon location to <place>, <state>" and then "create a
+ * Corrective Action Form for Test Employee"" kept the place the first turn
+ * named (sibling app conv_mvnsstvq2cywp78 / conv_mvnu3j932gpohx4, 25 Oct
+ * 2026). On, the intent reading looks at the manager's turns newest first and
+ * takes the first that names exactly one salon, a field label or "<place>,
+ * <state>" counting as a naming. Off, only this turn's labelled salon wins
+ * (PLACE_SPAN_GUARD_ENABLED) and the salon is grounded as before.
+ */
+export function newestPlaceTurnEnabled(): boolean {
+  return envFlag("NEWEST_PLACE_TURN_ENABLED");
+}
+
+/**
  * Prior actions read the way managers write them. A list after "received …
  * coaching 9/8" keeps its later comma items that name a step; "prior verbal
  * 9-1-26" and "Her prior coaching is her policy manual acknowledgement on
@@ -540,6 +566,20 @@ export function priorActionsParseEnabled(): boolean {
  */
 export function notANameGuardEnabled(): boolean {
   return envFlag("NOT_A_NAME_GUARD_ENABLED");
+}
+
+/**
+ * The exit form's intake reads what the manager typed (ported from the
+ * sibling app's live QA, 25 Oct 2026). A Details answer ("items returned") or
+ * the Permanent Address the manager typed is never taken for the employee;
+ * "change the reason for resignation to: …" replaces the reason; a yearless
+ * "last day 10-24" is the most recent 24 October; "gave notice 9/25 –
+ * fulfilled 10/9" fills the fulfilled date; the Permanent Address is read;
+ * and "did not call in for her last two shifts" is No Call No Show. Same
+ * name in the sibling app. Off, the exit readers read as before.
+ */
+export function exitIntakeFixEnabled(): boolean {
+  return envFlag("EXIT_INTAKE_FIX_ENABLED");
 }
 
 /**
@@ -589,6 +629,91 @@ export function actionPlanManagerOnlyEnabled(): boolean {
   return envFlag("ACTION_PLAN_MANAGER_ONLY_ENABLED");
 }
 
+/**
+ * A reformat turn keeps the sources of the answer it reformats. "Make this a
+ * downloadable document", "put that in a table", "summarize that" is searched
+ * again with the question the previous answer was written for, and those rows
+ * go first, so the reply does not "correct" claims whose sources it can no
+ * longer see (QA, conv_mufp73ez8pl7992). Removing [S#] markers also never
+ * leaves their grammar behind ("two markers, and, that"). Off, retrieval and
+ * marker stripping are as before.
+ */
+export function reformatKeepsSourcesEnabled(): boolean {
+  return envFlag("REFORMAT_KEEPS_SOURCES_ENABLED");
+}
+
+/**
+ * The coaching framework covers an issue it does not name. With the framework
+ * among the sources, the prompt tells the model to answer from its general
+ * sections (root cause, performance vs behavior, conversation structure), cite
+ * them, and say only that no section names this exact issue, instead of "the
+ * knowledge base does not have it" (QA, sibling app conv_mvb28ztb85z53mc).
+ * Off, the prompt is byte-for-byte as before.
+ */
+export function frameworkGeneralSectionsEnabled(): boolean {
+  return envFlag("FRAMEWORK_GENERAL_SECTIONS_ENABLED");
+}
+
+/**
+ * A question is answered, never routed into a form (P0, live replay 25 Oct
+ * 2026: "how many hours is a part-time tanning consultant?" came back as
+ * "Which form did you mean?", "smoking policy" as "Who is this Corrective
+ * Action Form for?"). On, a turn `question-not-form.ts` reads as a question
+ * skips the slot reader, the remap, the proposal and the open-form correction
+ * and revision paths, and is answered. Off, every turn is routed as before.
+ */
+export function questionNotFormEnabled(): boolean {
+  return envFlag("QUESTION_NOT_FORM_ENABLED");
+}
+
+/**
+ * An edit typed in chat is applied to its field or answered, and dates follow
+ * the incident (QA history replay, 25 Oct 2026). "change observation of
+ * offense to: …" replaces that line with the manager's text; "add that …"
+ * appends their clause; "clean up my grammar", "change the salon to …" and
+ * "can you edit the form I already finalized" are never appended to the
+ * Observation. "X instead of Y" names X. A prior action's date is never the
+ * form's Date or its Follow-up, Follow-up comes only from a follow-up or
+ * review phrase, and "today" dates the form today. Off, every reader is as
+ * before.
+ */
+export function formEditDateRulesEnabled(): boolean {
+  return envFlag("FORM_EDIT_DATE_RULES_ENABLED");
+}
+
+/**
+ * A follow-up that names its own documents or nouns ("The NCR and
+ * Fitzpatrick Skin Type Chart, EFT Agreements") is searched on them when the
+ * retrieval rewrite kept none of them and searched only the earlier turn's
+ * subject ("Employment Verification"). Off, the rewritten query is searched
+ * as it is. Same name in both apps. Default off.
+ */
+export function followupNewTopicRetrievalEnabled(): boolean {
+  return envFlag("FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED");
+}
+
+/**
+ * The exit form's How Employee Resigned line also reads a resignation the
+ * manager says was given verbally ("she told me verbally", "verbal notice"),
+ * as "Verbal" (Pau's decision, 25 Oct 2026). A bare "she resigned" still
+ * leaves the line blank, and "verbal warning" is never a method. Off, the
+ * methods read are exactly as before.
+ */
+export function resignMethodFollowupEnabled(): boolean {
+  return envFlag("RESIGN_METHOD_FOLLOWUP_ENABLED");
+}
+
+/**
+ * A form the manager named is kept only as itself (QA, 25 Oct 2026, ported
+ * from Ask Bubbles, which ships it unflagged). A named template that is not
+ * published opens no card, and the slot model's or the saved form does not
+ * stand in for it; a named kind of form ("… interview form") keeps only a
+ * form of that kind. Off, the form is read as before.
+ */
+export function namedFormExactEnabled(): boolean {
+  return envFlag("NAMED_FORM_EXACT_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
@@ -611,5 +736,36 @@ export function sendAfterHydrateEnabled(): boolean {
     envFlag("SEND_AFTER_HYDRATE_ENABLED") ||
     envFlag("NEXT_PUBLIC_SEND_AFTER_HYDRATE_ENABLED") ||
     flagOn(process.env.NEXT_PUBLIC_SEND_AFTER_HYDRATE_ENABLED)
+  );
+}
+
+/**
+ * The composer's reading of CHAT_LONG_MESSAGE_ENABLED. Only a statically
+ * written `process.env.NEXT_PUBLIC_*` name reaches a client bundle, so the
+ * browser reads the public twin and nothing else. Off, the composer renders
+ * and sends exactly as it did.
+ */
+export function chatLongMessageClientEnabled(): boolean {
+  const inlined = process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
+ * A chat message may be up to 12,000 characters instead of 4,000
+ * (`LONG_MESSAGE_LIMIT` in `lib/chat/message-limit.ts`). Over the limit the
+ * route returns a 400 that says how long the message is; nothing is cut.
+ * Off (the default), the route keeps the 4,000-character check and its
+ * wording exactly as they are.
+ *
+ * The composer is a client component, so the browser reads
+ * `NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED`, written out statically for Next
+ * to inline. The server reads either spelling, so a deployment that sets
+ * only the public name never shows a 12,000 limit the route refuses.
+ */
+export function chatLongMessageEnabled(): boolean {
+  return (
+    envFlag("CHAT_LONG_MESSAGE_ENABLED") ||
+    envFlag("NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED") ||
+    flagOn(process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED)
   );
 }

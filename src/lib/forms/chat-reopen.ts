@@ -10,7 +10,7 @@ import { formOpenedFor, openEditableDraft, openingLine } from "./editable-draft"
 import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { draftMergeEnabled } from "@/lib/config/chat-quality-flags";
+import { draftMergeEnabled, formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
 import { readReopenRequest } from "./reopen-request";
@@ -60,12 +60,21 @@ export async function reopenRequestedForm(input: {
    * is on screen — the proposal flow takes that turn, and no form on file is
    * revised behind it.
    */
+  /*
+   * FORM_EDIT_DATE_RULES_ENABLED: "can you edit the form I already finalized
+   * for Test Employee? change the date to 10-20-26" (QA replay S21,
+   * conv_mvnt79t822zud9j) names the form on file, not the card on screen. The
+   * card's form is the one looked up, and a finalized one opens as a revision.
+   */
+  const finalizedMeant = formEditDateRulesEnabled() && REFERS_TO_FINALIZED.test(input.question);
   if (
     input.continuingTemplateKey &&
+    !finalizedMeant &&
     (reading.templateKey === null || reading.templateKey === input.continuingTemplateKey)
   ) {
     return null;
   }
+  const templateKey = reading.templateKey ?? (finalizedMeant ? (input.continuingTemplateKey ?? null) : null);
 
   const names = extractEmployeeNames(input.question).map((name) => name.replace(/['’]s?$/, ""));
   const named = (employee: string) =>
@@ -87,7 +96,7 @@ export async function reopenRequestedForm(input: {
   }
 
   /* Otherwise the newest one on file for the named employee. */
-  if (!target && reading.templateKey) {
+  if (!target && (templateKey || finalizedMeant)) {
     let visible: InstanceRow[];
     try {
       const actor = await authorizeForms(input.request, "view_form_monitoring");
@@ -96,7 +105,8 @@ export async function reopenRequestedForm(input: {
       return null;
     }
     const candidates = visible
-      .filter((row) => row.templateKey === reading.templateKey && row.status !== "revised")
+      .filter((row) => (templateKey === null || row.templateKey === templateKey) && row.status !== "revised")
+      .filter((row) => !finalizedMeant || row.status === "finalized")
       .filter((row) => named(row.employeeName))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
     const found = candidates[0];
@@ -104,11 +114,16 @@ export async function reopenRequestedForm(input: {
       target = toTarget(found);
     } else if (names.length > 0) {
       const templateName =
-        visible.find((row) => row.templateKey === reading.templateKey)?.templateName ?? "form";
+        (templateKey ? visible.find((row) => row.templateKey === templateKey)?.templateName : null) ?? "form";
       return reply(
         `I couldn't find a ${templateName === "form" ? "form" : `**${templateName}**`} for **${names[0]}** on file that you can open. Forms already created are listed in Forms → Form Monitoring. If you need a new one, ask me to create it — for example "create a ${templateName === "form" ? "form" : templateName} for ${names[0]}".`,
       );
     }
+  }
+  if (!target && finalizedMeant) {
+    return reply(
+      "I couldn't find a finalized form on file for that employee that you can open. Name the form and the employee — for example \"edit the corrective action form for <name>\" — and I'll open a new draft of the finalized one to change; the finalized form stays on file. Forms already created are listed in Forms → Form Monitoring.",
+    );
   }
   if (!target) return null;
 
@@ -195,6 +210,9 @@ export async function reopenRequestedForm(input: {
     formOpened: formOpenedFor(draft),
   };
 }
+
+/** "the form I already finalized", "the one we submitted": a form already on file. */
+const REFERS_TO_FINALIZED = /\bfinali[sz]ed\b|\b(?:i|we)\s+(?:already\s+)?(?:submitted|filed|signed)\b/i;
 
 function toTarget(row: Pick<InstanceRow, "id" | "templateName" | "employeeName">) {
   return { id: row.id, templateName: row.templateName, employeeName: row.employeeName };

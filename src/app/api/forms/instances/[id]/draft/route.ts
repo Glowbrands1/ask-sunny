@@ -188,7 +188,7 @@ import {
  * with the prior-actions list (`prior-actions.ts`).
  */
 const PREVIOUS_ACTION_DATE_KEY = LEGACY_PREVIOUS_ACTION_DATE_KEY;
-import { EXIT_STATED_KEYS, exitDetailValues, readExitDetails } from "@/lib/forms/exit-details";
+import { exitDetailValues, exitStatedKeys, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
 import {
   correctDraftedDates,
@@ -412,7 +412,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           id,
           exitDetailValues(readExitDetails(notes, businessToday())),
           actor.id,
-          EXIT_STATED_KEYS,
+          // EXIT_INTAKE_FIX_ENABLED adds the Permanent Address the manager typed.
+          exitStatedKeys(),
         )
       : [];
 

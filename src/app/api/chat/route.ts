@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
+import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
-import { draftActionsEnabled, secondFormEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  chatLongMessageEnabled,
+  draftActionsEnabled,
+  questionNotFormEnabled,
+  secondFormEnabled,
+} from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -16,8 +22,10 @@ import {
   optionalString,
   parseHistory,
   parseJsonBody,
+  requireChatQuestion,
   requireString,
 } from "@/lib/api/validation";
+import { LONG_MESSAGE_LIMIT } from "@/lib/chat/message-limit";
 import { authorizeRequest } from "@/lib/auth/server";
 import { closeTurn, openTurn } from "@/lib/analytics/record";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
@@ -178,7 +186,14 @@ export async function POST(request: Request) {
        * turn is answered exactly as before. Imported on demand: a turn that
        * names no created form does not pay to load the forms write path.
        */
-      const correction = parsed.activeFormInstanceId
+      /*
+       * A QUESTION IS ANSWERED, NEVER WRITTEN INTO THE OPEN FORM ("what policy
+       * does that fall under?"). It skips the correction, policy, redraft and
+       * revision paths below; the answer still knows the form is open. See
+       * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
+       */
+      const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,
             instanceId: parsed.activeFormInstanceId,
@@ -194,7 +209,7 @@ export async function POST(request: Request) {
        * writes them. Null for anything else. See `lib/forms/chat-policy-change.ts`.
        */
       const policyChange =
-        !correction && parsed.activeFormInstanceId
+        !correction && !askedQuestion && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-policy-change")).changeActiveFormPolicy({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -212,7 +227,7 @@ export async function POST(request: Request) {
        * the manager needs, not one field revised in place.
        */
       const redraft =
-        !correction && !policyChange && parsed.activeFormInstanceId
+        !correction && !askedQuestion && !policyChange && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -228,7 +243,7 @@ export async function POST(request: Request) {
        */
       const separateDocument = secondFormEnabled() && wantsSeparateDocument(parsed.question);
       const revision =
-        !correction && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
+        !correction && !askedQuestion && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -342,7 +357,14 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
   const context = body.context;
 
   return {
-    question: requireString(body.question, "A question", LIMITS.question),
+    /*
+     * CHAT_LONG_MESSAGE_ENABLED raises the limit to 12,000 characters and
+     * says how long a refused message is. The text is refused, never cut.
+     * Off, the 4,000 check and its wording are what main ships.
+     */
+    question: chatLongMessageEnabled()
+      ? requireChatQuestion(body.question, LONG_MESSAGE_LIMIT)
+      : requireString(body.question, "A question", LIMITS.question),
     mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
     history: parseHistory(body.history) as ChatMessage[],
     questionMessageId: optionalString(body.questionMessageId, LIMITS.messageId) || undefined,
