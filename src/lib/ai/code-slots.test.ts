@@ -122,12 +122,12 @@ describe("code slots", () => {
     expect(saved.title).toBe("Tanning Consultant");
   });
 
-  it("s17 verbatim keeps Betty Sue and does not keep Job on the name", () => {
+  it("s17 verbatim keeps Dora Lee and does not keep Job on the name", () => {
     process.env.CODE_SLOTS_ENABLED = "1";
     const turns = [
       "Can you create me a performance CA?",
-      "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
-      "Betty Sue",
+      "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+      "Dora Lee",
     ];
     let saved = EMPTY_FORM_STATE;
     for (const question of turns) {
@@ -152,7 +152,7 @@ describe("code slots", () => {
       expect(decision.state.employeeName ?? "").not.toMatch(/\bjob\b/i);
       saved = decision.state;
     }
-    expect(saved.employeeName).toBe("Betty Sue");
+    expect(saved.employeeName).toBe("Dora Lee");
     expect(saved.title).toBe("Tanning Consultant");
   });
 

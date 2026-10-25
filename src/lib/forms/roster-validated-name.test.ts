@@ -8,7 +8,7 @@ import { employeeNamedOnPurpose, rosterValidatedName, stripNonNameTokens } from 
 
 const ROSTER: RosterEmployee[] = [
   { id: "corena", firstName: "Corena", lastName: "Schardt", preferredFirstName: null, salonIds: ["loc-0462"] },
-  { id: "lisa", firstName: "Lisa", lastName: "Smith", preferredFirstName: null, salonIds: ["loc-0468"] },
+  { id: "nadia", firstName: "Nadia", lastName: "Smith", preferredFirstName: null, salonIds: ["loc-0468"] },
   { id: "elin", firstName: "Elin", lastName: "Haskett", preferredFirstName: null, salonIds: ["loc-0313"] },
   { id: "daisley", firstName: "Daisley", lastName: "Veklo", preferredFirstName: null, salonIds: ["loc-0313"] },
   { id: "evangeline", firstName: "Evangeline", lastName: "Pembury", preferredFirstName: null, salonIds: ["loc-0463"] },
@@ -38,17 +38,17 @@ describe("roster-validated name", () => {
 
   it("fills an exact roster name and keeps a typed miss and a person who is not on the roster", () => {
     expect(rosterValidatedName("employee name is corena schardt", ROSTER, SALONS)).toBe("Corena Schardt");
-    expect(rosterValidatedName("lisa smith, tanning consultant at lawrence. use todays date", ROSTER, SALONS)).toBe("Lisa Smith");
+    expect(rosterValidatedName("nadia brook, tanning consultant at lawrence. use todays date", ROSTER, SALONS)).toBe("Nadia Brook");
     expect(
       rosterValidatedName("evangeline pembury, tanning consultant at shawnee", ROSTER, SALONS),
     ).toBe("Evangeline Pembury");
     expect(
       rosterValidatedName(
-        "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa%",
+        "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa%",
         ROSTER,
         SALONS,
       ),
-    ).toBe("Betty Sue");
+    ).toBe("Dora Lee");
     expect(rosterValidatedName("create a corrective action form for Dasiley Veklo", ROSTER, SALONS)).toBe("Dasiley Veklo");
     expect(
       rosterValidatedName(
@@ -72,10 +72,10 @@ describe("roster-validated name", () => {
     expect(rosterValidatedName("Can you create me a performance CA?", [], SALONS)).toBeNull();
     expect(rosterValidatedName("show draft", [], SALONS)).toBeNull();
     expect(
-      rosterValidatedName("The form is the Corrective Action Form.\nThe employee is Betty Sue. Job title: Tanning Consultant.", [], SALONS),
-    ).toBe("Betty Sue");
-    expect(rosterValidatedName("The form is the Coaching Form.\nThe employee is Lisa Smith. Job title: Tanning Consultant.", ROSTER, SALONS)).toBe(
-      "Lisa Smith",
+      rosterValidatedName("The form is the Corrective Action Form.\nThe employee is Dora Lee. Job title: Tanning Consultant.", [], SALONS),
+    ).toBe("Dora Lee");
+    expect(rosterValidatedName("The form is the Coaching Form.\nThe employee is Nadia Brook. Job title: Tanning Consultant.", ROSTER, SALONS)).toBe(
+      "Nadia Brook",
     );
     expect(rosterValidatedName("what does policy say about pets in salon", [], SALONS)).toBeNull();
     expect(
@@ -90,11 +90,11 @@ describe("roster-validated name", () => {
     ).toBeNull();
     expect(
       rosterValidatedName(
-        "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+        "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
         [],
         SALONS,
       ),
-    ).toBe("Betty Sue");
+    ).toBe("Dora Lee");
   });
 
   it("does not replace a stored name when the turn does not rename anyone", () => {
@@ -103,12 +103,12 @@ describe("roster-validated name", () => {
     expect(employeeNamedOnPurpose("employee name is corena schardt", "Test Testy", ROSTER, SALONS)).toBe("Corena Schardt");
     expect(
       employeeNamedOnPurpose(
-        "Betty Sue today under performance for September 270 tans below in PPTA",
+        "Dora Lee today under performance for September 270 tans below in PPTA",
         null,
         ROSTER,
         SALONS,
       ),
-    ).toBe("Betty Sue");
+    ).toBe("Dora Lee");
     expect(
       employeeNamedOnPurpose("last day worked was 9-20-26. management called her with no response on 9-27-26", "Evangeline Pembury", ROSTER, SALONS),
     ).toBeNull();
@@ -135,7 +135,7 @@ describe("explicit incident date", () => {
     expect(explicitIncidentIso("jba manual 11-1-25", "2026-10-23")).toBeNull();
     expect(
       explicitIncidentIso(
-        "Betty Sue today under performance for September 270 tans below in PPTA verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026",
+        "Dora Lee today under performance for September 270 tans below in PPTA verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026",
         "2026-10-23",
       ),
     ).toBe("2026-10-23");

@@ -25,7 +25,7 @@ const ELIN_PROMPT = "CA for Elin Haskett, she was rude to Tavaeh on 9-28-26, fol
 const MANHATTAN_PROMPT =
   "manhattan salon opened late on 9/20/26, assistant salon director test testy, CA with $25 payroll deduction";
 const CORENA_PROMPT = "coaching for cell phone use on 9-29-26 for Corena Schardt at Lawrence";
-const LISA_PROMPT = "Lisa smith, tanning consultant at lawrence, coaching form today";
+const LISA_PROMPT = "Nadia smith, tanning consultant at lawrence, coaching form today";
 
 const SALONS = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
 const TEMPLATES = [
@@ -106,8 +106,8 @@ const JORDAN = person({
 });
 
 const LISA_CLOSE = person({
-  id: "emp-lisa",
-  first: "Lisa",
+  id: "emp-nadia",
+  first: "Nadia",
   last: "Smyth",
   salonIds: ["loc-0468"],
   title: "Tanning Consultant",
@@ -464,13 +464,13 @@ describe("live form cards, 23 Oct 2026", () => {
     }
   });
 
-  it("Lisa smith, tanning consultant at lawrence, coaching form today", () => {
+  it("Nadia smith, tanning consultant at lawrence, coaching form today", () => {
     const decision = decideIntentTurn(
       turn({
         question: LISA_PROMPT,
         people: [JORDAN],
         raw: {
-          employee: "Lisa smith",
+          employee: "Nadia smith",
           salon: "lawrence",
           title: "tanning consultant",
           formType: "coaching form",
@@ -480,7 +480,7 @@ describe("live form cards, 23 Oct 2026", () => {
       }),
     );
     expect(decision.clarification ?? "").not.toMatch(/which employee|who is this/i);
-    expect(decision.state.employeeName).toBe("Lisa smith");
+    expect(decision.state.employeeName).toBe("Nadia smith");
     expect(decision.state.employeeId).toBeNull();
     expect(decision.state.salonId).toBe("loc-0468");
     expect(decision.state.formDate).toBe(TODAY);
@@ -497,11 +497,11 @@ describe("live form cards, 23 Oct 2026", () => {
       people: [JORDAN],
       saved: decision.state,
     });
-    expect(card.formProposal?.employeeName).toBe("Lisa smith");
+    expect(card.formProposal?.employeeName).toBe("Nadia smith");
     expect(card.formProposal?.employeeRole?.toLowerCase()).toContain("tanning consultant");
     expect(card.formProposal?.locationId).toBe("loc-0468");
     expect(card.formProposal?.formDate).toBe(TODAY);
-    expect(card.content).toContain("Lisa smith");
+    expect(card.content).toContain("Nadia smith");
     expect(card.content).toContain("10/23/2026");
     expect(card.content).not.toMatch(/couldn'?t find|didn'?t find/i);
     expect(card.content).not.toMatch(/who is this/i);
@@ -513,8 +513,8 @@ describe("live form cards, 23 Oct 2026", () => {
       people: [LISA_CLOSE],
       saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
     });
-    expect(suggested.formProposal?.employeeName).toBe("Lisa smith");
-    expect(suggested.content).toContain("Did you mean **Lisa Smyth**");
+    expect(suggested.formProposal?.employeeName).toBe("Nadia smith");
+    expect(suggested.content).toContain("Did you mean **Nadia Smyth**");
     expect(suggested.formProposal?.locationId).toBe("loc-0468");
     expect(suggested.formProposal?.formDate).toBe(TODAY);
 
@@ -527,19 +527,19 @@ describe("live form cards, 23 Oct 2026", () => {
         people: [LISA_CLOSE],
         saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
       });
-      expect(noted.formProposal?.employeeName).toBe("Lisa smith");
-      expect(noted.formProposal?.wovenCloseMatch).toBe("Woven has Lisa Smyth");
+      expect(noted.formProposal?.employeeName).toBe("Nadia smith");
+      expect(noted.formProposal?.wovenCloseMatch).toBe("Woven has Nadia Smyth");
       expect(noted.content).not.toMatch(/Woven has|did you mean|say so if|who is this|want to be sure/i);
       const later = enrichFormCard({
-        response: { ...asked, content: "Here is the card for Lisa smith." },
+        response: { ...asked, content: "Here is the card for Nadia smith." },
         question: LISA_PROMPT,
         today: TODAY,
         people: [LISA_CLOSE],
         saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
         wovenNoteShown: true,
       });
-      expect(later.formProposal?.employeeName).toBe("Lisa smith");
-      expect(later.formProposal?.wovenCloseMatch).toBe("Woven has Lisa Smyth");
+      expect(later.formProposal?.employeeName).toBe("Nadia smith");
+      expect(later.formProposal?.wovenCloseMatch).toBe("Woven has Nadia Smyth");
       expect(later.content).not.toMatch(/Woven has|did you mean/i);
       const nobody = enrichFormCard({
         response: asked,
@@ -548,7 +548,7 @@ describe("live form cards, 23 Oct 2026", () => {
         people: [JORDAN],
         saved: { ...EMPTY_FORM_STATE, ...decision.state } satisfies ConversationFormState,
       });
-      expect(nobody.formProposal?.employeeName).toBe("Lisa smith");
+      expect(nobody.formProposal?.employeeName).toBe("Nadia smith");
       expect(nobody.formProposal?.wovenCloseMatch ?? null).toBeNull();
       expect(nobody.content).not.toMatch(/Woven has|didn'?t find/i);
     } finally {

@@ -134,9 +134,9 @@ const intentModel = vi.hoisted(() => ({
 
 const OTHER_MESSAGES = [
   {
-    conversation_id: "conv-today-lisa",
-    client_message_id: "msg-today-lisa",
-    content: "Lisa Smith was coached at Lawrence in the other tab",
+    conversation_id: "conv-today-nadia",
+    client_message_id: "msg-today-nadia",
+    content: "Nadia Brook was coached at Lawrence in the other tab",
     created_at: "2026-10-23T14:00:00.000Z",
     position: 1,
     role: "user",
@@ -152,9 +152,9 @@ const OTHER_MESSAGES = [
     user_id: "manager-replay",
   },
   {
-    conversation_id: "conv-old-lisa",
-    client_message_id: "msg-old-lisa",
-    content: "Lisa Smith was late last month",
+    conversation_id: "conv-old-nadia",
+    client_message_id: "msg-old-nadia",
+    content: "Nadia Brook was late last month",
     created_at: "2026-10-01T14:00:00.000Z",
     position: 1,
     role: "user",
@@ -164,9 +164,9 @@ const OTHER_MESSAGES = [
 
 const OTHER_CONVERSATIONS = [
   {
-    id: "conv-today-lisa",
-    client_conversation_id: "conv-today-lisa",
-    title: "Lisa",
+    id: "conv-today-nadia",
+    client_conversation_id: "conv-today-nadia",
+    title: "Nadia",
     created_at: "2026-10-23T14:00:00.000Z",
     user_id: "manager-replay",
   },
@@ -178,9 +178,9 @@ const OTHER_CONVERSATIONS = [
     user_id: "manager-replay",
   },
   {
-    id: "conv-old-lisa",
-    client_conversation_id: "conv-old-lisa",
-    title: "Lisa last month",
+    id: "conv-old-nadia",
+    client_conversation_id: "conv-old-nadia",
+    title: "Nadia last month",
     created_at: "2026-10-01T14:00:00.000Z",
     user_id: "manager-replay",
   },
@@ -594,7 +594,7 @@ const CASES: readonly ReplayCase[] = [
         from: 4,
         card: true,
         employee: "Test Testy",
-        employeeNot: ["lawrence", "lisa", "based", "job title"],
+        employeeNot: ["lawrence", "nadia", "based", "job title"],
         locationId: "loc-0462",
         formDate: "2026-09-20",
         templateKey: "dpoa",
@@ -659,7 +659,7 @@ const CASES: readonly ReplayCase[] = [
         from: 2,
         card: true,
         employee: "Corena Schardt",
-        employeeNot: ["lawrence", "test testy", "job title", "lisa", "based"],
+        employeeNot: ["lawrence", "test testy", "job title", "nadia", "based"],
       },
       {
         from: 5,
@@ -674,18 +674,18 @@ const CASES: readonly ReplayCase[] = [
   {
     id: "s5",
     turns: [
-      "an employee (Lisa)  is talking negatively about co workers and customers. another employee, kelly, complained to salon director about Lisa",
-      "an employee (lisa)  is talking negatively about co workers and customers. another employee, kelly, complained to salon director about lisa",
-      "create coaching form for lisa, works at lawrence as a tanning consultant. use todays date",
-      "lisa smith, tanning consultant at lawrence. use todays date",
+      "an employee (Nadia)  is talking negatively about co workers and customers. another employee, kira, complained to salon director about Nadia",
+      "an employee (nadia)  is talking negatively about co workers and customers. another employee, kira, complained to salon director about nadia",
+      "create coaching form for nadia, works at lawrence as a tanning consultant. use todays date",
+      "nadia brook, tanning consultant at lawrence. use todays date",
       "Create a form from this conversation.",
     ],
     on: [
       {
         from: 4,
         card: true,
-        employee: "Lisa Smith",
-        employeeNot: ["lisa", "lawrence", "kelly", "based", "job title"],
+        employee: "Nadia Brook",
+        employeeNot: ["nadia", "lawrence", "kira", "based", "job title"],
         locationId: "loc-0468",
         formDate: TODAY,
         templateKey: "coaching",
@@ -769,14 +769,14 @@ const CASES: readonly ReplayCase[] = [
     id: "s17",
     turns: [
       "Can you create me a performance CA?",
-      "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
-      "Betty Sue",
+      "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+      "Dora Lee",
     ],
     on: [
       {
         from: 2,
         card: true,
-        employee: "Betty Sue",
+        employee: "Dora Lee",
         employeeNot: ["september", "based", "job title"],
         templateKey: "dpoa",
         formDate: TODAY,
@@ -789,7 +789,7 @@ const CASES: readonly ReplayCase[] = [
     ],
     // "today" is the form's default, not a stored calendar date, and the coaching
     // dates (9/8, 9/15, 9/25) must not become the form date.
-    off: [{ from: 2, card: true, employee: "Betty Sue", templateKey: "dpoa", payroll: "no", formDate: null }],
+    off: [{ from: 2, card: true, employee: "Dora Lee", templateKey: "dpoa", payroll: "no", formDate: null }],
   },
   {
     id: "s20",
@@ -800,7 +800,7 @@ const CASES: readonly ReplayCase[] = [
       "exit form",
     ],
     on: [
-      { from: 1, employeeNot: ["based", "uniform", "job title", "lisa", "lawrence", "me"] },
+      { from: 1, employeeNot: ["based", "uniform", "job title", "nadia", "lawrence", "me"] },
       { from: 3, templateKey: "stc-exit" },
     ],
     off: [

@@ -287,7 +287,7 @@ function categoryOf(value: string | null | undefined): KnowledgeCategory {
 
 /**
  * The person the manager named in full, when the card is holding a fragment
- * ("lisa", "lawrence") or nobody. An exact directory spelling stays. A name
+ * ("nadia", "lawrence") or nobody. An exact directory spelling stays. A name
  * the roster does not have stays as typed when the manager named nobody else.
  */
 function preferRosterName(name: string | null, text: string, people: readonly GroundedPerson[]): string | null {

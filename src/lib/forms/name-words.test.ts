@@ -71,11 +71,11 @@ describe("field label words", () => {
     expect(extractEmployeeNames("The employee is Larissa Venko. Job title: Tanning Consultant.")).not.toContain("Job title");
     expect(
       rosterValidatedName(
-        "Betty Sue today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+        "Dora Lee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
         [],
         SALONS,
       ),
-    ).toBe("Betty Sue");
+    ).toBe("Dora Lee");
   });
 
   it("keeps the value after Name: Evangeline Pembury, job title tanning consultant", () => {
