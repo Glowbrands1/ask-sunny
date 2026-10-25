@@ -6,7 +6,11 @@ import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
 import { CHAT_STYLE_RULES } from "./chat-style-rules";
 import { buildLastKnownGoodSystemPrompt } from "./prompts-last-known-good";
 import { PRIOR_COACHING_OPTIONAL_RULES } from "./prior-coaching-optional";
+import { RETRIEVED_NOT_SHARED_NOTE, RETRIEVED_NOT_SHARED_RULE } from "./sources-not-shared";
 import type { AskContext, OpenFormSummary } from "./types";
+
+/** The rule the retrieved-sources rule follows in the flag-off template. */
+const NEVER_CLAIM_RULE = "- Never claim you have read, checked, searched or reviewed anything beyond the provided sources.";
 
 /**
  * SUNNY'S PRODUCTION SYSTEM INSTRUCTION AND GROUNDING FORMAT.
@@ -777,12 +781,17 @@ Direct, warm, practical. Write the way a good regional manager talks: plain sent
 
 ${SUNNY_VOICE}`;
     // END_MAIN_PROMPT_RETURN
+    /*
+     * The retrieved-sources rule joins the template after it, so the frozen
+     * template above stays byte-identical. See `sources-not-shared.ts`.
+     */
+    const ruled = body.replace(NEVER_CLAIM_RULE, `${NEVER_CLAIM_RULE}\n${RETRIEVED_NOT_SHARED_RULE}`);
     return citeManualPages
-      ? body.replace(
+      ? ruled.replace(
           "- Never use a marker for a source that is not listed below. Only the markers listed are valid.",
           markerRule,
         )
-      : body;
+      : ruled;
   }
 
   const reportBullet = hasReportData
@@ -836,6 +845,7 @@ RULES YOU DO NOT BREAK
 ${markerRule}
 - Never invent a document title, a page number, a section name or a policy name. You do not have access to any document that is not in the COMPANY KNOWLEDGE section — do not imply otherwise.
 - Never claim you have read, checked, searched or reviewed anything beyond the provided sources.
+${RETRIEVED_NOT_SHARED_RULE}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
@@ -902,6 +912,8 @@ export function buildGroundingBlock(chunks: GroundingChunk[]): string {
     .join("\n\n---\n\n");
 
   return `COMPANY KNOWLEDGE
+
+${RETRIEVED_NOT_SHARED_NOTE}
 
 The following excerpts are the only company documents available for this question. Valid markers are ${chunks
     .map((chunk) => `[S${chunk.marker}]`)

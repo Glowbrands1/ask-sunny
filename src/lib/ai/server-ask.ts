@@ -150,6 +150,8 @@ import {
   type GroundingChunk,
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
+import { slotOnlyRetrievalTopic } from "./slot-only-turn";
+import { withoutSharedSourceClaims } from "./sources-not-shared";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -1111,7 +1113,12 @@ async function answerQuestionUntraced(
   const glossed = queryRewriteEnabled()
     ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
     : followedUp;
-  const query = queryRewriteEnabled()
+  /*
+   * A slot-only turn is already searched with the conversation's topic (see
+   * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
+   */
+  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  const query = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
         history: request.history,
@@ -1596,8 +1603,19 @@ async function answerQuestionUntraced(
     actor,
   });
 
+  /*
+   * THE BACKSTOP to the retrieved-sources rule: a reply that still calls the
+   * retrieved excerpts "the sources you shared" has that clause rewritten,
+   * unless the manager pasted something. See `sources-not-shared.ts`.
+   */
+  const prose = withoutSharedSourceClaims(stripMarkers(spoken), {
+    question: request.question,
+    history: request.history,
+    attachedDocumentIds: request.attachedDocumentIds,
+  }).content;
+
   return {
-    content: suggested ? `${stripMarkers(spoken)}\n\n${suggested.lead}` : stripMarkers(spoken),
+    content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
     formSelection: suggested?.selection,
     citations: checked ? [...checked.citations] : retrievedCitations,
     /*
