@@ -1,6 +1,6 @@
 import { GENERIC_LOCATOR } from "@/lib/knowledge/locator";
 
-import { manualDisplayTitle, type ManualChunk, type ManualSection } from "./official-policy-manual";
+import { isTableOfContents, manualDisplayTitle, type ManualChunk, type ManualSection } from "./official-policy-manual";
 
 /**
  * ============================================================================
@@ -75,10 +75,32 @@ export function sourceLine(policy: Pick<GroundedPolicy, "documentTitle" | "secti
   return `Source: ${title}${section}${page}`;
 }
 
-/** The field's value: each passage's wording, then its source. */
+/**
+ * FRONT MATTER IS NEVER A POLICY SOURCE (QA, 25 Oct 2026). A Corrective Action
+ * drafted on 24 Oct 2026 from "CA for Test Employee, register short $40 on
+ * 10-20, payroll deduct $40 applies" put the manual's contents page in Direct
+ * policy: rows of dot leaders and "Source: JBA Policy Manual — Table of
+ * Contents, p. 4". Retrieval scored the contents row "Payroll Deductions ....
+ * 39" as high as the section itself. A contents page, an index, a cover or a
+ * title page lists policies; it states none.
+ *
+ * Recognised by the section the locator names, or by the passage itself
+ * reading as a contents page (`isTableOfContents`: its title, or several rows
+ * of dot leaders), since some contents chunks carry only "Page 2".
+ */
+const FRONT_MATTER_SECTION = /^(?:table\s+of\s+contents|contents|index|cover(?:\s+page)?|title\s+page)$/i;
+
+export function isFrontMatter(passage: { readonly sectionTitle: string | null; readonly policyText?: string | null }): boolean {
+  const section = (passage.sectionTitle ?? "").replace(/\s+/g, " ").trim();
+  if (section !== "" && FRONT_MATTER_SECTION.test(section)) return true;
+  return isTableOfContents(passage.policyText ?? "");
+}
+
+/** The field's value: each passage's wording, then its source. A front-matter passage is left out. */
 export function policyFieldValue(policies: readonly GroundedPolicy[]): string | null {
   const blocks = policies
     .filter((p) => p.documentTitle.trim() !== "")
+    .filter((p) => !isFrontMatter(p))
     .map((p) => (p.policyText.trim() ? `${p.policyText.trim()}\n\n${sourceLine(p)}` : sourceLine(p)));
   return blocks.length === 0 ? null : blocks.join("\n\n");
 }

@@ -1,6 +1,6 @@
 import { checkboxGroupsForVariant, type FormDocument } from "./document";
 import { manualDisplayTitle } from "./official-policy-manual";
-import { locatorParts, passageWording, policyFieldValue } from "./policy-citation";
+import { isFrontMatter, locatorParts, passageWording, policyFieldValue } from "./policy-citation";
 import type { PolicyGrounding } from "./policy-grounding";
 
 /**
@@ -141,9 +141,18 @@ export function manualReferenceValue(
    * behaviour stands, because a deployment with no pinned manual has nothing
    * narrower to offer.
    */
-  const eligible = officialManualDocumentId
-    ? grounding.sources.filter((source) => source.documentId === officialManualDocumentId)
-    : grounding.sources;
+  /*
+   * A contents page, index or cover is never the source (see `isFrontMatter`):
+   * it is dropped before the best document and its two passages are chosen,
+   * so the next real section is cited in its place, or nothing is.
+   */
+  const passageText = (source: (typeof grounding.sources)[number]) =>
+    grounding.passages.find((p) => p.source.documentId === source.documentId && p.source.locator === source.locator)?.text ?? "";
+  const eligible = (
+    officialManualDocumentId
+      ? grounding.sources.filter((source) => source.documentId === officialManualDocumentId)
+      : grounding.sources
+  ).filter((source) => !isFrontMatter({ sectionTitle: locatorParts(source.locator).sectionTitle, policyText: passageText(source) }));
   if (eligible.length === 0) return null;
 
   const best = eligible.reduce((top, source) => (source.score > top.score ? source : top));
@@ -165,10 +174,7 @@ export function manualReferenceValue(
     .map((source) => {
       const parts = locatorParts(source.locator);
       return {
-        policyText: passageWording(
-          grounding.passages.find((p) => p.source.documentId === source.documentId && p.source.locator === source.locator)?.text ?? "",
-          parts.sectionTitle,
-        ),
+        policyText: passageWording(passageText(source), parts.sectionTitle),
         documentTitle: title,
         ...parts,
         documentId: source.documentId,
