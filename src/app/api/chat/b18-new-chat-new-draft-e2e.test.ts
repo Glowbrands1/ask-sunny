@@ -53,6 +53,9 @@ const store = {
   chat_form_incidents: [],
 } as unknown as FakeStore & Record<string, Record<string, unknown>[]>;
 
+/** Off: the stand-in extraction model leaves `observation` empty, so the card's What happened is the app's own reading. */
+const model = vi.hoisted(() => ({ observation: true }));
+
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -104,7 +107,9 @@ function slotsOf(last: string) {
     templateKey: /\b(?:ca|corrective action)\b/i.test(last) ? "dpoa" : null,
     employeeName: /test employee/i.test(last) ? "Test Employee" : /quinn ledgertest/i.test(last) ? "Quinn Ledgertest" : null,
     jobTitle: null,
-    observation: /woven/i.test(last)
+    observation: !model.observation
+      ? null
+      : /woven/i.test(last)
       ? "missing the 10-15-26 woven deadline"
       : /late to open/i.test(last)
         ? "being late to open"
@@ -347,7 +352,8 @@ const saved = new Map<string, string | undefined>();
 
 beforeEach(async () => {
   for (const key of Object.keys(store)) store[key] = [];
-  for (const name of [...PRODUCTION_FLAGS, ...DEDUPE_FLAGS, "INTENT_EXTRACTION_ENABLED"]) saved.set(name, process.env[name]);
+  model.observation = true;
+  for (const name of [...PRODUCTION_FLAGS, ...DEDUPE_FLAGS, "INTENT_EXTRACTION_ENABLED", "REMAP_INCIDENT_FIX_ENABLED"]) saved.set(name, process.env[name]);
   for (const name of PRODUCTION_FLAGS) process.env[name] = "on";
   for (const name of DEDUPE_FLAGS) delete process.env[name];
   delete process.env.INTENT_EXTRACTION_ENABLED;
@@ -461,5 +467,18 @@ describe("B18 on this app's live form path (intent extraction, full remap off)",
     const update = await say(woven.chat, "add that she was also on her phone");
     if (update.formUpdate) expect(update.formUpdate.instanceId).toBe(woven.id);
     expect(fieldsOf(late.id)).toBe(lateBefore);
+  });
+});
+
+/* With REMAP_INCIDENT_FIX_ENABLED on, as in the sibling app's test. */
+describe("the new remap card's What happened is the manager's incident (REMAP_INCIDENT_FIX_ENABLED on)", () => {
+  it("no call no show, and the Woven deadline", async () => {
+    process.env.REMAP_INCIDENT_FIX_ENABLED = "on";
+    model.observation = false;
+    const noCall = await chatThenCreate(["create a written CA for Test Employee at Kearney for a no call no show on 10-22-26"]);
+    expect(noCall.proposal.issue).toBe("no call no show");
+    const woven = await chatThenCreate([WOVEN]);
+    expect(woven.proposal.issue).toBe("missing the 10-15-26 woven deadline");
+    expect(woven.id).not.toBe(noCall.id);
   });
 });
