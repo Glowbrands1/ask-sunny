@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   claimsAnotherChat,
+  CROSS_CHAT_NEUTRAL_REPLY,
   isBareNameTurn,
   refersBack,
   withoutCrossChatClaims,
@@ -136,6 +137,22 @@ describe("refersBack and isBareNameTurn", () => {
 });
 
 /*
+ * QA, second pass on 25 Oct: two more live sentences, QA's exact wording, that
+ * the backstop KEPT after the six below were fixed. One reads the manager's
+ * earlier write-ups back to them ("your last two write-ups … were at"); the
+ * other counts them as things the manager told ("a third documented issue …
+ * that you've told me about") and carries a date this conversation never had.
+ */
+const LIVE_TWO = [
+  "Your last two write-ups for this name were at Empire, SD and Dodge, NE.",
+  "This would be a third documented issue for Test Employee that you've told me about — a verbal for the Dodge, NE attendance/no-call issue (10-20-26) and a verbal for the Empire, SD puppy visit (10-22-26).",
+];
+
+/* The manager's first turn in that live conversation, names swapped. */
+const EMPIRE_TURN =
+  "do verbal for team member Test Employee at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 Test was not scheduled to work and came into the store to show her team her new puppy. Test was in the store 45 min";
+
+/*
  * QA review, 25 Oct: the first version KEPT all six of these. They are
  * the sibling app's live step-3 replies (conv_mvmzl3vs2kxujv0, conv_mvmzl40e2dxpgej, conv_mvmzlbhv2ww7y5v, conv_mvmzlvq124nmks8, conv_mvmznap42vcw0dl), with its store names swapped for invented salon labels and the manager's name for an invented one. The manager did not refer back to anything; every one must go, and
  * the policy sentence beside them must stay.
@@ -148,6 +165,8 @@ describe("withoutCrossChatClaims — QA's six live sentences", () => {
   "Salon discrepancy — you've mentioned Test Employee before in two different contexts: a dress code CA request for Salon 0101, and a lateness CA request for Salon 0202.",
   "That matches what you did earlier today for Test Employee's late-arrival verbal.",
   "This is a first documented cell phone issue for her that I can see — your other notes on Test Employee are a dress code CA at Salon 0101 (10/11) and a lateness CA at Salon 0202 (10/5, 10/15).",
+  // QA, second pass: two more live sentences the backstop still KEPT, verbatim.
+  ...LIVE_TWO,
   ];
   const KEEP = "Personal cell phones must be kept out of sight [p.19].";
   const input = {
@@ -167,7 +186,7 @@ describe("withoutCrossChatClaims — QA's six live sentences", () => {
     expect(content).toBe(`${kept}${KEEP}`);
   });
 
-  it("removes all six from one reply and keeps the policy line", () => {
+  it("removes all of them from one reply and keeps the policy line", () => {
     const { content } = withoutCrossChatClaims([...SIX, KEEP].join("\n\n"), input);
     expect(content).toBe(`Thanks, Marlo.\n\n${KEEP}`);
   });
@@ -190,5 +209,78 @@ describe("refersBack — the manager's own words for an earlier chat", () => {
         [],
       ),
     ).toBe(false);
+  });
+});
+
+describe("withoutCrossChatClaims — QA's two further live sentences in their own conversation", () => {
+  const input = { question: EMPIRE_TURN, history: [], todayIso: "2026-10-24" };
+  const KEEP = "A verbal warning is the first step [p.12].";
+
+  it("the manager's turn does not refer back, so the backstop runs", () => {
+    expect(refersBack(EMPIRE_TURN, [])).toBe(false);
+  });
+
+  it.each(LIVE_TWO.map((sentence, index) => [index + 1, sentence]))("removes sentence %i and keeps the policy line", (_n, sentence) => {
+    const { content, removed } = withoutCrossChatClaims(`${sentence} ${KEEP}`, input);
+    expect(removed).toEqual([sentence]);
+    expect(content).toBe(KEEP);
+  });
+});
+
+describe("withoutCrossChatClaims — counts, dates and records that stay", () => {
+  it("keeps a date the manager gave here, with 'you told me'", () => {
+    const reply = "You told me she came into the store on 10-22-26 to show her team her new puppy.";
+    expect(withoutCrossChatClaims(reply, { question: EMPIRE_TURN, history: [], todayIso: "2026-10-24" }).content).toBe(reply);
+  });
+
+  it("keeps a count the manager made in this conversation", () => {
+    const reply = "This would be the third time she was late that you've told me about, so a written warning fits.";
+    const history = [
+      { role: "user", content: "Test Employee was late Monday and Tuesday" },
+      { role: "assistant", content: "Noted. Anything else?" },
+    ];
+    const question = "she was late today too, that makes three times this week";
+    expect(withoutCrossChatClaims(reply, { question, history, todayIso: "2026-10-24" }).content).toBe(reply);
+  });
+
+  it("keeps policy sentences about counts and prior write-ups", () => {
+    const reply =
+      "A third documented issue within 90 days calls for a written warning [p.12]. If the employee's last two write-ups were for the same behavior, note them on the form. Your last step is the signature line.";
+    expect(withoutCrossChatClaims(reply, { question: EMPIRE_TURN, history: [], todayIso: "2026-10-24" }).content).toBe(reply);
+  });
+
+  it("does not read '1-2 times' as a date", () => {
+    const reply = "You said she was 1-2 times late this week.";
+    const history = [{ role: "user", content: "she was late 1-2 times this week" }];
+    expect(withoutCrossChatClaims(reply, { question: "what form", history, todayIso: "2026-10-24" }).content).toBe(reply);
+  });
+});
+
+describe("withoutCrossChatClaims — a reply that was nothing but other chats", () => {
+  it("comes back as the neutral line, with every sentence it lost listed", () => {
+    const reply = LIVE_TWO.join(" ");
+    const { content, removed } = withoutCrossChatClaims(reply, {
+      question: "Her name is Test Employee",
+      history: [{ role: "user", content: "I need to coach an employee" }],
+      todayIso: "2026-10-24",
+    });
+    expect(content).toBe(CROSS_CHAT_NEUTRAL_REPLY);
+    expect(content).toBe("Tell me what happened in this case and I'll help from there.");
+    expect(removed).toEqual(LIVE_TWO);
+  });
+
+  it("an unchanged reply still lists nothing", () => {
+    const reply = "Coach in private, soon after the behaviour.";
+    expect(withoutCrossChatClaims(reply, { question: "how do I coach", history: [], todayIso: "2026-10-24" })).toEqual({
+      content: reply,
+      removed: [],
+    });
+  });
+});
+
+describe("refersBack — a counted earlier record", () => {
+  it("reads 'her last two write-ups' and 'my previous CA' as pointing back", () => {
+    expect(refersBack("her last two write-ups were for attendance", [])).toBe(true);
+    expect(refersBack("attach my previous CA", [])).toBe(true);
   });
 });

@@ -57,6 +57,10 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
     async fetchRoleGrounding() {
       return null;
     }
+    // A turn that names the policy manual reads it; none here.
+    async fetchOfficialPolicyManual() {
+      return null;
+    }
   },
 }));
 
@@ -192,5 +196,41 @@ describe("CROSS_CHAT_REPLY_GUARD_ENABLED on the live answer path", () => {
     expect(state.recallInput).not.toHaveProperty("crossChatGuard");
     expect(String(state.claudeInput?.system)).not.toContain("OTHER CONVERSATIONS");
     expect(String(state.claudeInput?.system)).toContain("Last time you mentioned that");
+  });
+
+  /*
+   * QA, second pass: a reply made of nothing but QA's two live carryover
+   * sentences (verbatim) comes back as the neutral line, and the removal is
+   * logged by count — never by the manager's words.
+   */
+  const ONLY_CARRYOVER =
+    "Your last two write-ups for this name were at Empire, SD and Dodge, NE. This would be a third documented issue for Test Employee that you've told me about — a verbal for the Dodge, NE attendance/no-call issue (10-20-26) and a verbal for the Empire, SD puppy visit (10-22-26).";
+  const EMPIRE_TURN =
+    "do verbal for team member Test Employee at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 Test was not scheduled to work and came into the store to show her team her new puppy. Test was in the store 45 min";
+
+  it("a reply that was only other chats comes back as the neutral line, and is logged", async () => {
+    process.env.CROSS_CHAT_REPLY_GUARD_ENABLED = "true";
+    state.reply = ONLY_CARRYOVER;
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const response = await ask(EMPIRE_TURN);
+      expect(response.content).toBe("Tell me what happened in this case and I'll help from there.");
+      const logged = info.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("reply.cross_chat.removed"));
+      expect(logged.map((line) => JSON.parse(line))).toEqual([
+        { event: "reply.cross_chat.removed", sentences: 2, neutral: true },
+      ]);
+      expect(logged.join("")).not.toContain("Empire");
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("off, that reply reaches the manager exactly as written", async () => {
+    delete process.env.CROSS_CHAT_REPLY_GUARD_ENABLED;
+    state.reply = ONLY_CARRYOVER;
+
+    const response = await ask(EMPIRE_TURN);
+
+    expect(response.content).toBe(ONLY_CARRYOVER);
   });
 });

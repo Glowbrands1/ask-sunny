@@ -87,7 +87,13 @@ import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { recallPeople } from "@/lib/chat/person-memory-store";
-import { asksAboutRecords, refersBack, withoutCrossChatClaims } from "@/lib/chat/cross-chat-guard";
+import {
+  asksAboutRecords,
+  CROSS_CHAT_NEUTRAL_REPLY,
+  refersBack,
+  withoutCrossChatClaims,
+  type CrossChatCheck,
+} from "@/lib/chat/cross-chat-guard";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
@@ -125,7 +131,7 @@ import {
 import { loadFullManualContext } from "./full-manual-load";
 import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
-import { updateChatTrace } from "./chat-trace-store";
+import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
@@ -1541,14 +1547,16 @@ async function answerQuestionUntraced(
    * something in another chat or on another date is taken out. Only that
    * sentence; every other word the model wrote is kept.
    */
-  const answer =
+  const crossChatCheck =
     crossChatGuard && !refersBack(request.question, request.history)
       ? withoutCrossChatClaims(written, {
           question: request.question,
           history: request.history,
           todayIso: request.context.todayIso,
-        }).content
-      : written;
+        })
+      : null;
+  if (crossChatCheck) noteCrossChatRemoval(crossChatCheck);
+  const answer = crossChatCheck?.content ?? written;
 
   /* ----------------------------------------------------------- citations -- */
   // Only the markers the model actually used become source cards, and each one
@@ -1721,4 +1729,20 @@ function previousManagerTurn(request: AskRequest): string | null {
     }
   }
   return null;
+}
+
+/**
+ * A reply the cross-chat backstop changed is logged and tagged on the trace's
+ * intent column ("cross_chat_removed", or "cross_chat_neutral" when nothing
+ * but the neutral line was left), so a read of chat_traces finds every one.
+ * The count only: the removed sentences carry the manager's own words.
+ */
+function noteCrossChatRemoval(check: CrossChatCheck): void {
+  if (check.removed.length === 0) return;
+  const neutral = check.content === CROSS_CHAT_NEUTRAL_REPLY;
+  console.info(
+    JSON.stringify({ event: "reply.cross_chat.removed", sentences: check.removed.length, neutral }),
+  );
+  const tag = neutral ? "cross_chat_neutral" : "cross_chat_removed";
+  updateChatTrace({ intent: [chatTraceDraft()?.intent, tag].filter(Boolean).join("|") });
 }

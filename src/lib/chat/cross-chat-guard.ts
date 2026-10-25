@@ -31,7 +31,14 @@
  *                                 raised, sent or asked something in another
  *                                 chat or on another date is taken out
  *                                 (`withoutCrossChatClaims`). Only that
- *                                 sentence: every other word stays.
+ *                                 sentence: every other word stays. So is
+ *                                 one reading the manager's earlier records
+ *                                 back to them ("your last two write-ups …
+ *                                 were"), counting them as things the
+ *                                 manager told ("a third documented issue …
+ *                                 you've told me about"), or giving a date
+ *                                 this conversation never had. A reply with
+ *                                 nothing else left becomes a neutral line.
  *
  * Pure: no I/O.
  */
@@ -58,8 +65,9 @@ const REFERS_BACK = new RegExp(
     String.raw`\bremind\s+me\b`,
     // "the one I did yesterday", "the one we wrote up"
     String.raw`\bthe\s+one\s+(?:i|we)\s+(?:did|wrote|made|created|filed|started|sent|issued|gave|did\s+yesterday)\b`,
-    // "her earlier CA", "his last write-up", "the previous coaching form"
-    String.raw`\b(?:her|his|their|the)\s+(?:earlier|previous|prior|last|old|other|first)\s+(?:ca|cas|caf|corrective\s+action|coaching|form|write-?up|warning|verbal)s?\b`,
+    // "her earlier CA", "his last write-up", "the previous coaching form",
+    // "her last two write-ups"
+    String.raw`\b(?:her|his|their|the|my)\s+(?:earlier|previous|prior|last|old|other|first)\s+(?:(?:\d+|two|three|four|five|few|couple(?:\s+of)?)\s+)?(?:ca|cas|caf|corrective\s+action|coaching|form|write-?up|warning|verbal)s?\b`,
   ].join("|"),
   "i",
 );
@@ -166,6 +174,53 @@ const YOUR_OTHER_NOTES =
   /\byour\s+(?:other|earlier|past|previous|prior|last)\s+(?:notes?|conversations?|chats?|messages?|requests?|mentions?)\b/i;
 
 /*
+ * The manager's own earlier records, counted or not: "your last two write-ups
+ * for this name were at …", "your previous CAs", "your earlier coaching forms".
+ * Possessive, a word for before, an optional count, then a kind of record —
+ * the manager's history read back to them. A policy sentence speaks of "the
+ * employee's" or "a" record, not "your last two".
+ */
+const YOUR_PRIOR_RECORDS = new RegExp(
+  String.raw`\byour\s+(?:other|earlier|past|previous|prior|last|first)\s+` +
+    String.raw`(?:(?:\d+|two|three|four|five|six|few|several|couple(?:\s+of)?)\s+)?` +
+    String.raw`(?:documented\s+|recorded\s+|verbal\s+|written\s+)?` +
+    String.raw`(?:write-?ups?|cas|ca|cafs?|corrective\s+actions?|coachings?|coaching\s+forms?|warnings?|verbals?|forms?|documents?|incidents?|issues?)\b`,
+  "i",
+);
+
+/* Either way of reading the manager's history back to them. */
+function readsBackHistory(text: string): boolean {
+  return YOUR_OTHER_NOTES.test(text) || YOUR_PRIOR_RECORDS.test(text);
+}
+
+/*
+ * A count of earlier records the manager is said to have told about: "a third
+ * documented issue … that you've told me about", "the second write-up you
+ * mentioned". It is this chat's count only when the manager, here, spoke of
+ * more than one occurrence ("again", "twice", "previous coaching", "the second
+ * time").
+ */
+const COUNTED_RECORD = new RegExp(
+  String.raw`\b(?:a|the|this|that|her|his|their)\s+(?:second|third|fourth|fifth|sixth|2nd|3rd|4th|5th|6th)\s+` +
+    String.raw`(?:documented\s+|recorded\s+|separate\s+|prior\s+)?` +
+    String.raw`(?:issue|incident|write-?up|ca|caf|corrective\s+action|warning|verbal|coaching|occurrence|offen[cs]e|violation|time)s?\b`,
+  "i",
+);
+const SPOKE_OF_MORE_THAN_ONE =
+  /\b(?:again|another|twice|second|third|fourth|2nd|3rd|4th|times|multiple|repeated(?:ly)?|previous(?:ly)?|prior|before|already|last\s+(?:week|month|time))\b/i;
+
+/*
+ * Any date a sentence carries, with or without "on": "(10-20-26)", "10/22/26",
+ * "October 20". A bare number pair needs its year ("1-2 times" is not a date)
+ * and a bare month needs its full or short name ("decided 2" is not one).
+ */
+const ANY_DATE = new RegExp(
+  String.raw`\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b` +
+    String.raw`|\b(\d{1,2})[/-](\d{1,2})[/-]\d{2,4}\b`,
+  "gi",
+);
+
+/*
  * On the first turn of a conversation the manager has said nothing else here
  * and created nothing here, so "you told me earlier", "you mentioned her
  * before" and "the one you created today" can only be another chat. Bare
@@ -231,16 +286,36 @@ export function claimsAnotherChat(
   sentence: string,
   input: { question: string; history: readonly Turn[]; todayIso?: string | null },
 ): boolean {
-  if (YOUR_OTHER_NOTES.test(sentence) || NAMES_ANOTHER_CHAT.test(sentence)) return true;
+  if (readsBackHistory(sentence) || NAMES_ANOTHER_CHAT.test(sentence)) return true;
   if (!MANAGER_SAID.test(sentence)) return false;
   const conversationText = [input.question, ...input.history.map((turn) => turn.content)].join("\n");
+  const todayIso = input.todayIso ?? null;
+
+  /*
+   * Every date the manager is said to have given must be in this
+   * conversation: "you've told me about … (10-20-26) and … (10-22-26)" when
+   * only 10-22-26 was said here is another chat's. All of them here, and the
+   * checks below decide.
+   */
+  const dates = [...sentence.matchAll(ANY_DATE)]
+    .map((found) =>
+      found[1]
+        ? { month: monthIndex(found[1]), day: Number(found[2]) }
+        : { month: Number(found[3]) - 1, day: Number(found[4]) },
+    )
+    .filter((date) => date.month >= 0 && date.month < 12 && date.day >= 1 && date.day <= 31);
+  if (dates.some((date) => !dateInConversation(date, conversationText, todayIso))) return true;
 
   const dated = ON_A_DATE.exec(sentence);
   if (dated) {
     const date = dateNamed(dated);
-    return !(date && dateInConversation(date, conversationText, input.todayIso ?? null));
+    return !(date && dateInConversation(date, conversationText, todayIso));
   }
   if (ANOTHER_CHAT.test(sentence)) return true;
+  if (COUNTED_RECORD.test(sentence)) {
+    const said = [input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content)];
+    if (!said.some((turn) => SPOKE_OF_MORE_THAN_ONE.test(turn))) return true;
+  }
   const firstTurn = !input.history.some((turn) => turn.role === "user");
   if (firstTurn && SAID_BEFORE_THIS.test(sentence)) return true;
   // "a Corrective Action you created" when nothing was created in this chat.
@@ -262,7 +337,8 @@ export interface CrossChatCheck {
 /**
  * The reply without the sentences that claim the manager said or sent
  * something in another chat. Every other word is kept as written; a reply
- * that would be left empty is returned unchanged.
+ * that would be left empty becomes `CROSS_CHAT_NEUTRAL_REPLY`, with every
+ * sentence it lost in `removed`.
  *
  * Only for a conversation where the manager did not refer back — the caller
  * checks `refersBack` — because then nothing from another chat is theirs to
@@ -274,7 +350,7 @@ export function withoutCrossChatClaims(
 ): CrossChatCheck {
   const removed: string[] = [];
   const lines = content.split("\n").map((line) => {
-    if (!MANAGER_SAID.test(line) && !YOUR_OTHER_NOTES.test(line) && !NAMES_ANOTHER_CHAT.test(line)) return line;
+    if (!MANAGER_SAID.test(line) && !readsBackHistory(line) && !NAMES_ANOTHER_CHAT.test(line)) return line;
     const sentences = line.match(SENTENCE) ?? [line];
     const kept = sentences.filter((sentence) => {
       if (!claimsAnotherChat(sentence, input)) return true;
@@ -294,9 +370,13 @@ export function withoutCrossChatClaims(
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (!joined) return { content, removed: [] };
+  // Nothing left but other chats: a neutral line, never the carryover itself.
+  if (!joined) return { content: CROSS_CHAT_NEUTRAL_REPLY, removed };
   return { content: joined, removed };
 }
+
+/** What the manager sees when every sentence of the reply was another chat's. */
+export const CROSS_CHAT_NEUTRAL_REPLY = "Tell me what happened in this case and I'll help from there.";
 
 /**
  * The prompt rule that travels with the guard, memory or not: nothing from
