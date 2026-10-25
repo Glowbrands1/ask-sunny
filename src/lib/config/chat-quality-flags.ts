@@ -440,6 +440,18 @@ export function conversationDraftReuseEnabled(): boolean {
 }
 
 /**
+ * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: an open draft is reused only when this
+ * chat made it, for the same employee, form and incident or date. A card
+ * dated differently from the chat's own draft makes a new draft, and a reuse
+ * says so on the card ("Updated your open draft from <date>"). A draft from
+ * another chat is never reopened, so it is never overwritten (QA, B18–B20,
+ * 25 Oct 2026). Off, every lookup is as it was.
+ */
+export function draftReuseSameChatOnlyEnabled(): boolean {
+  return envFlag("DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED");
+}
+
+/**
  * Keep other conversations out of the reply text. The person-memory recall
  * quotes another chat only when the manager refers back to it ("again", "last
  * time", "like before", "same as …"); a name read from a turn that is only
