@@ -1,7 +1,10 @@
 import "server-only";
 
+import { differentEmployeeNewFormEnabled } from "@/lib/config/chat-quality-flags";
+
 import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
+import { namingTheForm } from "./other-employee";
 import { employeeState, managerContext, samePerson } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { dateAnswerTurns } from "./incident-dates";
@@ -49,8 +52,16 @@ export function checkProposalIsCurrent(input: {
       message.content.trim() !== "" &&
       !answers.has(message.content.trim()),
   );
-  const last = turns[turns.length - 1];
-  if (!last) return { current: true };
+  const latest = turns[turns.length - 1];
+  if (!latest) return { current: true };
+  /*
+   * "NOW ONE FOR CASEY …" read as the chat read it when it made the card
+   * (DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED): the form named in place of "one".
+   * See `other-employee.ts`.
+   */
+  const last = differentEmployeeNewFormEnabled()
+    ? { ...latest, content: namingTheForm(latest.content, "form") }
+    : latest;
 
   // An id is provenance only; one the history arrived without is simply absent.
   const prior = turns.slice(0, -1).map((turn) => ({ id: turn.id ?? "", role: turn.role, content: turn.content }));

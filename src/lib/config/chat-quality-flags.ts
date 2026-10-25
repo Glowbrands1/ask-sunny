@@ -440,6 +440,16 @@ export function conversationDraftReuseEnabled(): boolean {
 }
 
 /**
+ * DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED: a turn that asks for a form for somebody
+ * other than the open form's employee ("now one for Test Employee Two …") is
+ * not a redraft or an edit of the open form; it gets its own card (sibling QA,
+ * B21-4, 25 Oct 2026). Off, the open form answers as it does today.
+ */
+export function differentEmployeeNewFormEnabled(): boolean {
+  return envFlag("DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED");
+}
+
+/**
  * Keep other conversations out of the reply text. The person-memory recall
  * quotes another chat only when the manager refers back to it ("again", "last
  * time", "like before", "same as …"); a name read from a turn that is only
