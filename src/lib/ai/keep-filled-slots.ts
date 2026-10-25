@@ -10,10 +10,12 @@ import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
+  actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
   globalSalonAskEnabled,
@@ -180,7 +182,10 @@ export function holdFilledSlots(input: {
   }
 
   const citations = (input.response.citations ?? []).filter((citation) => !isWarningCitation(citation));
-  if (actionPlanSentencesEnabled() && next.templateKey === "dpoa" && next.employeeName) {
+  if (actionPlanManagerOnlyEnabled() && next.templateKey === "dpoa") {
+    // The manager's plan, word for word, or none. Never the two sentences.
+    content = replyWithManagerActionPlan(content, turns, "Action Plan");
+  } else if (actionPlanSentencesEnabled() && next.templateKey === "dpoa" && next.employeeName) {
     content = withActionPlan(content, next, citations);
   }
   if (codeSlotsEnabled()) {

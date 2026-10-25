@@ -151,6 +151,7 @@ import {
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import type { AskRequest, AskResponse } from "./types";
+import { keepManagerActionPlan } from "./manager-action-plan-reply";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -248,11 +249,12 @@ export async function answerQuestion(
   const produce = async () => {
     const response = await answerQuestionUntraced(request, actor, memory);
     noteTraceOutcome(response);
-    return applyQuietQuality(response);
+    // Last on every path, after the reply check too: the Action Plan is the manager's or none.
+    return keepManagerActionPlan(await applyQuietQuality(response), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
-    return guardReply(await produce(), { request, actor });
+    return keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request);
   }
   const draft = openChatTrace({
     conversationId: request.conversationId,
@@ -265,7 +267,7 @@ export async function answerQuestion(
   });
   const response = await finishChatTrace(draft, produce);
   if (!selfCheckEnabled()) return response;
-  return guardReply(response, { request, actor });
+  return keepManagerActionPlan(await guardReply(response, { request, actor }), request);
 }
 
 /** A manager manual or another brand. Not a Sun Tan City policy source. */

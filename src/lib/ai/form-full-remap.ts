@@ -1,7 +1,8 @@
 import "server-only";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { formFullRemapEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { actionPlanManagerOnlyEnabled, formFullRemapEnabled, notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { listIncidentDates } from "@/lib/forms/form-date-answer";
@@ -127,7 +128,9 @@ export function groundFormSlots(input: {
   const observation = statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said);
   const priorActions = statedPrior(said);
   const incidentTime = statedTime(said);
-  const actionPlan = acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
+  // Manager-only: the plan they typed, word for word, or none. Never the model's summary.
+  const planManagerOnly = actionPlanManagerOnlyEnabled();
+  const actionPlan = planManagerOnly ? managerTypedActionPlan(users) : acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
   const closeMatchNote = employeeName ? closeNote(employeeName, input.people) : null;
 
   const read: FormRemapSlots = {
@@ -147,7 +150,9 @@ export function groundFormSlots(input: {
     actionPlan,
     closeMatchNote,
   };
-  const slots = finishSlots(mergeSlots(read, input.saved ?? null), said);
+  const merged = finishSlots(mergeSlots(read, input.saved ?? null), said);
+  // A saved summary from an earlier turn does not come back either.
+  const slots = planManagerOnly ? { ...merged, actionPlan } : merged;
 
   const assistants = conversation.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
   const questions = questionsFor(slots, assistants);
