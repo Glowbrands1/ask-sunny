@@ -29,12 +29,12 @@ import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { topicHeadings } from "@/lib/forms/specific-policy-topics";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
-import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
+import { isNotAName, maskNotANameText, saidInReply, withoutRoleLead } from "@/lib/forms/not-a-name";
 import { isExitAnswerPhrase } from "@/lib/forms/exit-answer-phrase";
 import { inStatedPermanentAddress } from "@/lib/forms/exit-details";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listFormDates, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
-import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { acceptedNameSuggestions, displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { correctiveActionBasis } from "@/lib/forms/corrective-action-intake";
@@ -45,6 +45,7 @@ import {
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
+import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
@@ -263,7 +264,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         blob,
         input.people,
         input.salons,
-        notANameGuardEnabled() ? managerTurns(input) : null,
+        notANameGuardEnabled() ? managerWords(input) : null,
       );
   /*
    * KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" names Test Employee
@@ -756,9 +757,20 @@ function groundStatedForm(
     const key = formNamedIn(turns[at]!, templates);
     if (key && !(metricOnly && key === CORRECTIVE_ACTION_KEY)) return { key, ambiguous: [] };
   }
+  // Preparing for a conversation, with no form named: the model's form opens no card (QA BH4, conv_mvntn2si2hyyz5g).
+  if (preparingConversation(turns)) return { key: null, ambiguous: [] };
   const typed = modelForm?.trim() ? matchTemplates(modelForm.trim(), templates) : [];
   const key = typed.length === 1 && !(typed[0]!.key === "dpoa" && coachingConversation(turns)) ? typed[0]!.key : null;
   return { key, ambiguous: [] };
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. "Help me prepare for a conversation with a team
+ * member." then what the team member did: the manager asked for help with a
+ * conversation, not for a form, so the model's formType does not open one.
+ */
+function preparingConversation(turns: readonly string[]): boolean {
+  return turns.some((turn) => /\bprep(?:are|aring)?\b(?:\s+\S+){0,4}\s+(?:conversation|talk|discussion|meeting)\b/i.test(turn));
 }
 
 /**
@@ -779,11 +791,29 @@ function formsNamedTogether(text: string, templates: readonly TemplateRow[]): Te
   const parts = text.split(/,|&|\band\b|\bplus\b|\bas well as\b/i).filter((part) => part.trim() !== "");
   if (parts.length < 2) return [];
   const keys = new Set<string>();
-  for (const part of parts) {
+  for (const part of parts.filter((part) => !isPriorStep(part))) {
     const key = formNamedIn(part, templates);
     if (key) keys.add(key);
   }
   return keys.size > 1 ? templates.filter((template) => keys.has(template.key)) : [];
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. A part of a turn that lists a step already
+ * taken is not a request for that form: "Prior coaching: September Promo
+ * coaching 9/29/26, product coaching form 9/30/26" (QA H9, B14 conv_mvntwwn22a8fgi0)
+ * and "she completed September Promo coaching 9/29/26, Hemp nation product
+ * coaching form 9/30/26" (conv_muxahcdkiiur2tu) asked "Which form should I
+ * start with?" after "create a CA" / "this will be a written warning". A
+ * dated part, or one that says the step happened, with no word asking for a
+ * form, is history.
+ */
+const PRIOR_STEP_SAID =
+  /\b(?:prior|previous(?:ly)?|past|earlier|completed|had|received|got|signed|was\s+given|were\s+given)\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/i;
+const ASKS_FOR_FORM = /\b(?:create|make|write|draft|start|need|want|do|issue|prepare|open|give\s+(?:her|him|them))\b/i;
+
+function isPriorStep(part: string): boolean {
+  return PRIOR_STEP_SAID.test(part) && !ASKS_FOR_FORM.test(part);
 }
 
 /**
@@ -882,6 +912,17 @@ function managerTurns(input: IntentTurnInput): string[] {
   return [...said, input.question, saved].filter((part) => part.trim() !== "");
 }
 
+/**
+ * NOT_A_NAME_GUARD_ENABLED: what a name may be read from — the manager's turns
+ * and the saved state, plus a name the manager said "yes" to when the assistant
+ * asked "Did you mean **<name>**?" (conv_mvl7ntrk2wg08iy). A suggestion the
+ * manager answered "keep <typed>" is not among them (conv_mvh9a9q62mjffk2).
+ */
+function managerWords(input: IntentTurnInput): string[] {
+  const accepted = acceptedNameSuggestions([...input.history, { role: "user", content: input.question }]);
+  return [...managerTurns(input), ...accepted];
+}
+
 function conversationBlob(input: IntentTurnInput): string {
   const prior = input.history.map((turn) => turn.content);
   const saved = input.saved ? stateSentences(input.saved).join(" ") : "";
@@ -895,7 +936,11 @@ function groundEmployee(
   salons: readonly SalonRow[] = [],
   manager: readonly string[] | null = null,
 ): { person: GroundedPerson | null; name: string | null; ambiguous: readonly GroundedPerson[]; typed: string | null } {
-  const fromText = peopleNamedIn(blob, people);
+  // NOT_A_NAME_GUARD_ENABLED: a roster person only the assistant named ("Did you mean **<name>**?",
+  // answered "keep <typed>") is not the employee; the manager's turns and the saved state are read.
+  const fromText = peopleNamedIn(manager ? manager.join("\n") : blob, people);
+  // The guard reads a role the model copied with the name ("Tanning Consulatant <name>") as the label it is.
+  if (manager && typed?.trim()) typed = withoutRoleLead(typed);
   // The guard keeps a name the model copied from an assistant reply, or a
   // placeholder like "blank", off the card: it must be in the manager's words.
   if (manager && typed?.trim() && (isNotAName(typed) || !saidBy(manager, typed))) typed = null;
@@ -1136,7 +1181,9 @@ function groundTitle(
   const inWords = (title: string) => !wholeWord || titleInWords(title, blob);
   // FORM_NAME_NOT_A_TITLE_ENABLED: "SDIT" read from "Create an SDIT EPP for …" is the form's name, not a title.
   const formName = (title: string) => formNameNotATitleEnabled() && saidOnlyAsFormName(title, blob);
-  const probe = typed?.trim() && inWords(typed.trim()) && !formName(typed.trim()) ? typed.trim() : null;
+  // TITLE_WHOLE_WORD_ENABLED: "bed tech st joe" is the title "bed tech" at St Joseph (QA H10).
+  const typedTitle = wholeWord && typed?.trim() ? withoutTrailingSalon(typed.trim()) : typed?.trim();
+  const probe = typedTitle && inWords(typedTitle) && !formName(typedTitle) ? typedTitle : null;
   if (probe) {
     const hit = titles.find((title) => title.toLowerCase() === probe.toLowerCase() && inWords(title));
     if (hit) return hit;
@@ -1153,6 +1200,22 @@ function groundTitle(
   }
   if (probe && blob.toLowerCase().includes(probe.toLowerCase())) return probe;
   return null;
+}
+
+/**
+ * TITLE_WHOLE_WORD_ENABLED. A title the model typed with the salon on the end
+ * ("4. bed tech st joe" → "bed tech st joe", conv_mvnt9mnt2m0tls0) is the
+ * title without it: the longest run of trailing words that names exactly one
+ * roster salon comes off, as long as a word is left.
+ */
+function withoutTrailingSalon(title: string): string {
+  const words = title.split(/\s+/);
+  for (let start = 1; start < words.length; start += 1) {
+    const tail = words.slice(start).join(" ");
+    const mentions = readSalonMentions(tail);
+    if (mentions.length === 1 && mentions[0]!.salonIds.length === 1) return words.slice(0, start).join(" ");
+  }
+  return title;
 }
 
 function groundIncident(typed: string | null, blob: string, headings: readonly string[]): string | null {

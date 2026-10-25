@@ -129,6 +129,21 @@ export const FAMILY_QUESTION_TERMS: Readonly<Record<ReportFamilyId, readonly str
     "year-to-date",
     "last year",
     "prior year",
+    /*
+     * QA, Ask Sunny history (conv_mv5u8m282je9f8w): "144th center revenue
+     * compared to last years" reached Sales Totals only, which carries no prior
+     * year, and the answer said last year's figures did not exist; "compare
+     * that to last years" then found them here. The plural, "compared" and the
+     * other ways of saying the year before route here too ("last year's" is
+     * already read by "last year").
+     */
+    "last years",
+    "previous year",
+    "prior years",
+    "year over year",
+    "year-over-year",
+    "yoy",
+    "compared",
     "trend",
     "trending",
     "improving",
