@@ -374,6 +374,18 @@ export function fullManualContextEnabled(): boolean {
 }
 
 /**
+ * With FULL_MANUAL_CONTEXT_ENABLED on, a question the policy gate does not
+ * take is still asked with the whole manual when retrieval's best excerpt is
+ * from the manual or the question names a distinctive word of a heading the
+ * manual prints. Off, only the gate (intent, policy words, taxonomy) chooses
+ * the manual. Same name as the sibling app; here it only widens a gate that
+ * already reads the intent extraction. Default off.
+ */
+export function fullManualWideGateEnabled(): boolean {
+  return envFlag("FULL_MANUAL_WIDE_GATE_ENABLED");
+}
+
+/**
  * One read of the whole conversation fills the form. A field is kept only
  * when this chat stated it. A later turn replaces that field. A blank read
  * does not erase one. Off, the card is filled exactly as it is today.

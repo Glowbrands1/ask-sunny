@@ -1,0 +1,117 @@
+{
+  "source": "Ask Sunny production chat_messages joined to chat_conversations (client_conversation_id), QA policy sweep of 25 Oct 2026 11:06-11:28 UTC, FULL_MANUAL_CONTEXT on. Each content is byte-identical to the stored reply (md5 checked); sources are the stored citations (locator and section). trace is chat_traces for the same conversation: cacheReadInputTokens > 0 means the full manual was in the prompt; conv_mvnqof6h2aa9pd8 is the one sweep turn answered from retrieval (16 rows, no cached tokens). conv_mvo0ayai2x20aiy is QA Round 17 turn 3 (15:53 UTC), answered from retrieval (intent other, 49 rows, the retrieval query rewritten to the earlier turn's \"Employment Verification\"); history holds its two earlier manager turns.",
+  "answers": [
+    {
+      "conversationId": "conv_mvnq26ts2mccxc4",
+      "question": "Who are we allowed to hire under immigration law?",
+      "md5": "ace0e28dc03b67c7ee2d24e342e8ee44",
+      "content": "The company hires only United States citizens and aliens who are authorized to work in the United States, and it does not unlawfully discriminate on the basis of citizenship or national origin (Immigration Law Compliance, JBA Policy Manual p.9 [p.9]).\n\nThe compliance piece that sits with you at the salon:\n\n- Under the Immigration Reform and Control Act of 1986, every newly hired or rehired employee must, as a condition of employment, complete the Employment Eligibility Verification Form I-9 and present documentation establishing identity and employment eligibility (Immigration Law Compliance, JBA Policy Manual p.9 [p.9]).\n- New hires must present on their start date a voided check or direct deposit form from their bank, along with the necessary copies of their identification according to the I-9 — if those items aren't presented on the start date, all training stops until the employee can present the proper documentation (Orientation, JBA Policy Manual p.33 [p.33]).\n- Employees with questions about immigration law issues are encouraged to contact Human Resources, and may raise questions or complaints about immigration law compliance without fear of reprisal (Immigration Law Compliance, JBA Policy Manual p.9 [p.9]).\n\nThe manual doesn't spell out which specific documents satisfy the I-9 list or the federal completion deadlines — if you need that detail for a particular hire, HR is the right call (jbahr@Glowbrands.com).",
+      "sources": [
+        "Page 9 Immigration Law Compliance",
+        "Page 33 Orientation"
+      ],
+      "trace": {
+        "intent": "policy|no_card",
+        "cacheReadInputTokens": 39290,
+        "retrievalCount": null
+      }
+    },
+    {
+      "conversationId": "conv_mvnqof6h2aa9pd8",
+      "question": "Who is eligible for PTO and when does it start?",
+      "md5": "e4859fb91f8554251695a4ee8de2bc1f",
+      "content": "**Who's eligible** — All salaried managers, full-time corporate office personnel, and full-time Assistant Salon Directors/Assistant Makery Managers. PTO is not issued to temporary or contract employees.\n\n**When it starts** — Accrual begins after 90 days of employment in that position.\n\n**What they accrue** [S6]:\n- 90 days – 4 years full-time: 2 weeks (80 hours), accrual cap 120 hours\n- 5–9 years full-time: 3 weeks (120 hours), cap 160 hours\n- 10+ years full-time: 4 weeks (160 hours), cap 200 hours\n\nUnused PTO carries over year to year, but once someone hits their tier's cap, accrual stops until they use some and drop below it.\n\nA couple of things worth knowing alongside that: PTO covers vacation, personal time, personal illness, and time off to care for dependents — it replaces separate sick, absence, personal and vacation time. Salaried employees schedule it in half-day (4 hour) or full-day (8 hour) increments, requests go in at least two weeks ahead, and no PTO is permitted during Sun Tan City's peak season of February 1 to June 1. Only one team member per location is approved off at the same time unless the supervisor says otherwise.\n\nNote that this eligibility list doesn't cover hourly Tanning Consultants — myGlow has a separate non-PTO-eligible time off request path for them, which records the time off but isn't paid. If you need the specifics for a particular person's situation, tell me the role and I'll point you to what's there.",
+      "sources": [
+        "Page 41 — Eligibility",
+        "Page 42 — Provisions",
+        "Page 41 — Employee Benefits",
+        "Page 42 — Usage",
+        "Page 44 — PTO Eligible Employees"
+      ],
+      "trace": {
+        "intent": "policy|no_card",
+        "cacheReadInputTokens": 0,
+        "retrievalCount": 16
+      }
+    },
+    {
+      "conversationId": "conv_mvnq7l7p2fbyqf5",
+      "question": "Are beards allowed?",
+      "md5": "45ebc5ba0ce034ec10a8e7e579e5605d",
+      "content": "Yes. Facial hair is acceptable as long as it is clean, well-groomed, and trimmed (Facial Hair, JBA Policy Manual p.16 [p.16]).\n\nThat sits inside the broader expectation that employees keep a neat, clean, professional appearance at all times, and anyone violating the dress code may be sent home to change into proper work attire and may be subject to disciplinary action up to and potentially including termination (Dress Code for The Company, JBA Policy Manual p.15 [p.15]).\n\nSo the standard is grooming, not length — if a beard is unkempt, that's the coaching conversation, not the beard itself.",
+      "sources": [
+        "Page 16 Facial Hair",
+        "Page 15 Dress Code for The Company"
+      ],
+      "trace": {
+        "intent": "policy|no_card",
+        "cacheReadInputTokens": 39290,
+        "retrievalCount": null
+      }
+    },
+    {
+      "conversationId": "conv_mvnq8s5c2a990pj",
+      "question": "Where should employees park?",
+      "md5": "4e1323da656d93daa516e6dcee0b01a9",
+      "content": "Employees are not allowed to park directly in front of the location — the spaces closest to the front are reserved for customers. Employees should park farther out (\"Employee Parking\", JBA Policy Manual p.18 [p.18]). Worth noting for the team: the company assumes no risk or liability for theft or damage to employee vehicles or their contents while on company property (\"Employee Parking\", JBA Policy Manual p.18 [p.18]).\n\nOne related point if you're reviewing parking with staff — smoking and vapor products are not permitted anywhere on the premises, including the parking lots (\"Smoking/Vaping\", JBA Policy Manual p.12 [p.12]).",
+      "sources": [
+        "Page 18 Employee Parking",
+        "Page 12 Smoking/Vaping"
+      ],
+      "trace": {
+        "intent": "policy|no_card",
+        "cacheReadInputTokens": 39290,
+        "retrievalCount": null
+      }
+    },
+    {
+      "conversationId": "conv_mvnqow6y2zn8pj5",
+      "question": "How much PTO does a full-time manager get in their first years?",
+      "md5": "4af88260d1b56df87d3da85223053915",
+      "content": "For a qualifying full-time position, PTO starts accruing after 90 days in that position, and salaried managers are among the eligible groups [p.41]. From 90 days through 4 years of service in a full-time position, the accrual is 2 weeks (80 hours), with a maximum accrual cap of 120 hours [p.41]. That steps up to 3 weeks (120 hours) at 5–9 years, cap 160 hours, and 4 weeks (160 hours) at 10+ years, cap 200 hours [p.42].\n\nTwo things worth flagging alongside it:\n\n- Unused PTO carries over year to year, but once someone hits their tier's cap, accrual stops until they use some and drop back below it.\n- Salaried employees must schedule PTO in half-day (4 hour) or full-day (8 hour) increments, and no PTO is permitted during the Sun Tan City peak season listed as February 1 and June 1 [p.42]. Requests should go into the Personnel System at least two weeks in advance [p.42].\n\nCites: \"Provisions\", JBA Policy Manual p.41 [p.41]; \"Eligibility\", JBA Policy Manual p.41 [p.41]; \"Usage\", JBA Policy Manual p.42 [p.42].",
+      "sources": [
+        "Page 41 Eligibility",
+        "Page 41 Provisions",
+        "Page 42 Provisions",
+        "Page 42 Usage"
+      ],
+      "trace": {
+        "intent": "policy|no_card",
+        "cacheReadInputTokens": 39290,
+        "retrievalCount": null
+      }
+    },
+    {
+      "conversationId": "conv_mvnqt75n2lvvtrb",
+      "question": "Do employees get time off for jury duty?",
+      "md5": "790e9ce9f7430362d2c58d6a5dc2ee36",
+      "content": "Yes. Employees who need time off for jury duty are granted the accommodations afforded them under the laws for their area (\"Jury Duty\", JBA Policy Manual p.47 [p.47]). A few specifics:\n\n- The employee must show the jury duty summons to their supervisor as soon as possible so schedules can be adjusted (\"Jury Duty\", JBA Policy Manual p.47 [p.47]).\n- As the supervisor receiving the summons, you must reach out to Human Resources for guidance on handling the request (\"Jury Duty\", JBA Policy Manual p.47 [p.47]).\n- The leave is paid — normal salary or hourly compensation for up to 15 days. After 15 days the employee can use PTO or take unpaid leave (\"Jury Duty\", JBA Policy Manual p.47 [p.47]).\n- The employee is expected to sign over to the Company any paycheck received from the courts for those first 15 days (\"Jury Duty\", JBA Policy Manual p.47 [p.47]).\n- They're expected to report for work whenever the court schedule permits, or if dismissed from jury duty (\"Jury Duty\", JBA Policy Manual p.47 [p.47]).\n\nIf someone brings you a summons, the first move is to get the copy from them and loop in HR before you commit to anything on the schedule.",
+      "sources": [
+        "Page 47 Jury Duty"
+      ],
+      "trace": {
+        "intent": "policy|no_card",
+        "cacheReadInputTokens": 39290,
+        "retrievalCount": null
+      }
+    },
+    {
+      "conversationId": "conv_mvo0ayai2x20aiy",
+      "question": "The NCR and Fitzpatrick Skin Type Chart, EFT Agreements",
+      "md5": "df1c28bd8c979aeb7b7a481c46acf72d",
+      "content": "That's a compliance track, not a sales one, and it changes how you frame the conversation.\n\n**What the knowledge base actually has:** nothing on the NCR, the Fitzpatrick Skin Type Chart, or EFT agreement signature requirements — no retention rule, no \"who verifies\" step, no timeframe. If you need the exact policy language to quote at her, I'd need the specific procedure doc; the sources available to me don't carry it. What the sources do support is the handling: missing signed membership documents are treated as an immediate operational/compliance follow-up, flagged and corrected right away rather than parked in a sales coaching plan. Membership documentation sits on the operational follow-up list, separate from coaching priorities [S4].\n\n**How I'd run the conversation**, as a general approach:\n\n- **Go in with specifics, not a trend.** Pull the actual files — which clients, which dates, which of the three documents was unsigned or missing. \"Several NCRs aren't signed\" is arguable; five named dates aren't.\n- **Separate the three.** The NCR and Fitzpatrick chart are client safety and liability records; the EFT agreement is a financial commitment. She may be solid on one and sloppy on another, and the fix differs.\n- **Diagnose before you prescribe.** Does she know verification is her step at the point of sale (knowledge), is she rushing it during busy periods (process), or is she skipping it (follow-through)? Ask her to walk you through her own process on a new client start to finish — her description tells you which it is.\n- **Set the expectation as a moment, not a habit.** Something like: the document is signed and checked before the client goes to a bed or the EFT is processed — not at end of shift, not later.\n- **Have her demonstrate it.** Run one new-client start with you watching, start to finish, including the verification step out loud.\n- **Set the checkpoint.** You review new-client paperwork at a set interval — daily for the first week, then weekly — and tell her that's happening. Unsigned financial and safety documents are the kind of gap where you want to see correction immediately, not at the next review.\n\nTwo things to decide, and they're yours, not mine: whether the already-unsigned documents need to be corrected or re-obtained, and whether the pattern is serious or repeated enough that it belongs in corrective action rather than coaching. If you're unsure on the first, that's an HR/LP question.\n\nGive me her name and I can help you tighten the wording. If you want it documented, ask me to create a coaching form for her.",
+      "sources": [],
+      "history": [
+        "Help me prepare for a coaching conversation.",
+        "I have an employee that is not verifying documents are signed"
+      ],
+      "trace": {
+        "intent": "other|no_card",
+        "cacheReadInputTokens": 0,
+        "retrievalCount": 49,
+        "rewrittenQuery": "Employment Verification",
+        "topRetrieved": "JBA Policy Manual Edited 5.2025 — Employment Verification"
+      }
+    }
+  ]
+}

@@ -1,5 +1,33 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 25 Oct 2026: policy sweep citations — ported from Ask Bubbles, two Sunny-only fixes
+
+Ported from Ask Bubbles (47ffdff): a manual excerpt's [S#] in a reply
+answered from retrieval is cited as the printed page its sentence restates,
+in the sentence (`citeRetrievedAnswer`); a tied page counts every passage on
+it the sentence restates (first PTO tier on 41, not 42); a sentence that
+names its section is cited there (the jury-duty summons on 47, not Witness
+Duty on 48); a marker the sentence reads through ("at [p.47]") is
+re-pointed in place or goes with its word; text before any heading is
+labelled with the heading printed nearest above it, not the first heading
+further down the page. Unflagged: the FULL_MANUAL_CONTEXT citation rule.
+
+Sunny-only (QA Sunny sweep): A3, a stored section label that only repeats
+the chunk before is carried text, not a heading of its page (Immigration
+Law Compliance is printed on p.8, not p.9), and a "<section>, JBA Policy
+Manual p.N" label takes the page its sentence's words are printed on within
+that section. Ask Bubbles reads headings from the printed lines and already
+cites p.8 / p.9 here. E1, "when does it start?" is not a form command
+("start" needs something to start); Ask Bubbles' gate has no form-command
+check. The adjacent-marker fix in `stripMarkers` ("[S6][S2]:" kept "[S6]")
+is the one Ask Bubbles already has.
+
+`FULL_MANUAL_WIDE_GATE_ENABLED` (default off, same name in both apps): a
+question the gate does not take still gets the manual when retrieval's best
+excerpt is from the manual or it names a printed heading word. Here the gate
+already reads the intent extraction, so the flag only catches what it
+misses (every sweep question but E1 read the manual).
+
 ## 24 Oct 2026: the app's own lines are not the manager's words — ported to Ask Bubbles
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation

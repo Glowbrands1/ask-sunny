@@ -27,6 +27,7 @@ import {
   slotRetentionEnabled,
   manualTopicPinEnabled,
   fullManualContextEnabled,
+  fullManualWideGateEnabled,
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
   manualNegatedListNoteEnabled,
@@ -128,8 +129,12 @@ import { groundingWithoutCachedManual } from "./prompt-cache";
 import { withManualReadingNotes } from "./manual-reading-notes";
 import {
   applyFullManualAnswer,
+  asksAboutManual,
+  citeRetrievedAnswer,
   FULL_MANUAL_GROUNDING_NOTE,
+  isJbaPolicyManualTitle,
   isPolicyAnswerQuestion,
+  retrievedLocatorPages,
   type AssembledManual,
 } from "./full-manual-context";
 import { loadFullManualContext } from "./full-manual-load";
@@ -1130,6 +1135,7 @@ async function answerQuestionUntraced(
     ? loadFullManualContext({ scopeId: request.scopeId, question: request.question })
     : null;
   if (policyAnswer) updateChatTrace({ intent: "policy" });
+  let manualAnswer = policyAnswer;
 
   let rows: MatchedChunkRow[];
   let fullManualBlock: string | null = null;
@@ -1244,6 +1250,26 @@ async function answerQuestionUntraced(
         score: row.similarity,
       })),
     });
+  }
+
+  /*
+   * FULL_MANUAL_WIDE_GATE_ENABLED (same flag as the sibling app; QA, 25 Oct
+   * 2026). A question the gate above did not take is still asked with the
+   * whole manual when retrieval's best excerpt is from the manual, or when it
+   * names a distinctive word of a printed heading ("What is COBRA?"). The
+   * gate already reads the intent extraction, so this only catches what it
+   * misses. Off, nothing here runs.
+   */
+  if (!fullManualBlock && !policyAnswer && fullManualContextEnabled() && fullManualWideGateEnabled()) {
+    const topIsManual = rows[0] ? isJbaPolicyManualTitle(rows[0].document_title) : false;
+    const loaded = await loadFullManualContext({ scopeId: request.scopeId, question: request.question });
+    if (loaded.ok && (topIsManual || asksAboutManual(request.question, loaded.manuals))) {
+      fullManualBlock = loaded.block;
+      fullManuals = loaded.manuals;
+      rows = [];
+      manualAnswer = true;
+      updateChatTrace({ intent: "policy", retrievalCount: null, retrieved: [] });
+    }
   }
 
   const roleResult = await rolePromise;
@@ -1606,10 +1632,29 @@ async function answerQuestionUntraced(
   // Only the markers the model actually used become source cards, and each one
   // resolves to the row at that position — retrieved data, not model output.
   const checked =
-    policyAnswer && fullManuals.length > 0
+    manualAnswer && fullManuals.length > 0
       ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
       : null;
-  const spoken = checked?.content ?? answer;
+  /*
+   * A reply answered from retrieved excerpts (the manual was not loaded for
+   * this turn) cites each manual excerpt as the printed page its sentence
+   * restates, in the sentence (see `citeRetrievedAnswer`). Only when the
+   * reply cites a manual excerpt is the manual read for this.
+   */
+  let retrievalCited: { readonly content: string; readonly citations: readonly SourceCitation[] } | null = null;
+  if (!checked && fullManualContextEnabled()) {
+    const manualPages = (marker: number): number[] | null => {
+      const row = used[marker - 1];
+      return row && isJbaPolicyManualTitle(row.document_title) ? retrievedLocatorPages(row) : null;
+    };
+    const groundingMarkers = grounding.map((chunk) => chunk.marker);
+    if (extractUsedMarkers(answer, groundingMarkers).some((marker) => manualPages(marker) !== null)) {
+      const manuals = fullManuals.length > 0 ? fullManuals : await manualsForCitations(request.scopeId, request.question);
+      const cited = citeRetrievedAnswer({ content: answer, manuals, manualPagesOfMarker: manualPages });
+      retrievalCited = cited.ok ? cited : null;
+    }
+  }
+  const spoken = checked?.content ?? retrievalCited?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
   const retrievedCitations: SourceCitation[] = markers
     .map((marker) => used[marker - 1])
@@ -1654,7 +1699,11 @@ async function answerQuestionUntraced(
   return {
     content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
     formSelection: suggested?.selection,
-    citations: checked ? [...checked.citations] : retrievedCitations,
+    citations: checked
+      ? [...checked.citations]
+      : retrievalCited
+        ? [...retrievalCited.citations, ...retrievedCitations]
+        : retrievedCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance
@@ -1682,6 +1731,12 @@ async function answerQuestionUntraced(
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],
   };
+}
+
+/** The current manual, for citing a reply answered from retrieval. None when it cannot be read. */
+async function manualsForCitations(scopeId: string, question: string): Promise<readonly AssembledManual[]> {
+  const loaded = await loadFullManualContext({ scopeId, question });
+  return loaded.ok ? loaded.manuals : [];
 }
 
 /**

@@ -34,6 +34,7 @@ import {
   globalSalonAskEnabled,
   manualTopicPinEnabled,
   fullManualContextEnabled,
+  fullManualWideGateEnabled,
   formFullRemapEnabled,
   warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
@@ -108,6 +109,7 @@ const NEW_FLAGS = [
   "GLOBAL_SALON_ASK_ENABLED",
   "MANUAL_TOPIC_PIN_ENABLED",
   "FULL_MANUAL_CONTEXT_ENABLED",
+  "FULL_MANUAL_WIDE_GATE_ENABLED",
   "FORM_FULL_REMAP_ENABLED",
   "WARNING_LEVEL_MANAGER_ONLY_ENABLED",
   "MANAGER_WORDS_ONLY_ENABLED",
@@ -237,6 +239,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(globalSalonAskEnabled()).toBe(false);
     expect(manualTopicPinEnabled()).toBe(false);
     expect(fullManualContextEnabled()).toBe(false);
+    expect(fullManualWideGateEnabled()).toBe(false);
     expect(formFullRemapEnabled()).toBe(false);
     expect(warningLevelManagerOnlyEnabled()).toBe(false);
     expect(managerWordsOnlyEnabled()).toBe(false);
