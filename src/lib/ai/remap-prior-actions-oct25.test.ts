@@ -54,6 +54,14 @@ function remap(turns: string[], raw: Record<string, unknown>) {
 
 const lines = (value: string | null) => (value ?? "").split("\n").filter(Boolean);
 
+/*
+ * QA decision, 25 Oct 2026: a prior-action line holds no word the manager did
+ * not say. These expectations read "Coaching — signed 09/08/2026" before; the
+ * managers below never wrote "signed", so the line is "Coaching — 09/08/2026",
+ * and a manual they named reads as its title, "JBA Policy Manual" ("jba
+ * manual" was "JBA Manual"). "signed" stays when they write it (last block).
+ */
+
 describe("1. a prior list keeps every step the manager named", () => {
   const SAID =
     "Avery Holt today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant";
@@ -61,9 +69,9 @@ describe("1. a prior list keeps every step the manager named", () => {
   it("lists 9/8, 9/15 and 9/25 on the card, and dates none of them on the form", () => {
     const { slots, response } = remap([SAID], { employeeName: "Avery Holt" });
     expect(lines(slots.priorActions)).toEqual([
-      "Coaching — signed 09/08/2026",
-      "Coaching — signed 09/15/2026",
-      "Coaching — signed 09/25/2026",
+      "Coaching — 09/08/2026",
+      "Coaching — 09/15/2026",
+      "Coaching — 09/25/2026",
     ]);
     expect(response.formProposal?.priorActions).toBe(slots.priorActions);
     expect(slots.incidentDateIso ?? null).toBeNull();
@@ -76,11 +84,11 @@ describe("1. a prior list keeps every step the manager named", () => {
 
 describe("2. \"prior verbal 9-1-26\" is a prior action", () => {
   it.each([
-    ["prior verbal 9-1-26", "Verbal warning — signed 09/01/2026"],
-    ["previous verbal 9-1-26", "Verbal warning — signed 09/01/2026"],
-    ["prior written 9-1-26", "Written warning — signed 09/01/2026"],
-    ["had a verbal on 9-1-26", "Verbal warning — signed 09/01/2026"],
-    ["prior verbal ca 9-1-26", "Verbal corrective action — signed 09/01/2026"],
+    ["prior verbal 9-1-26", "Verbal warning — 09/01/2026"],
+    ["previous verbal 9-1-26", "Verbal warning — 09/01/2026"],
+    ["prior written 9-1-26", "Written warning — 09/01/2026"],
+    ["had a verbal on 9-1-26", "Verbal warning — 09/01/2026"],
+    ["prior verbal ca 9-1-26", "Verbal corrective action — 09/01/2026"],
   ])("%s", (phrase, expected) => {
     const { slots } = remap([`create written ca for Test Employee at KS Lawrence. she was late on 10/20/26. ${phrase}. no payroll deduct`], {});
     expect(lines(slots.priorActions)).toEqual([expected]);
@@ -95,8 +103,8 @@ describe("3 and 4. a labelled history, with a colon or a dash", () => {
       {},
     );
     expect(lines(slots.priorActions)).toEqual([
-      "Coaching — JBA Policy Manual — signed 01/01/2026",
-      "Verbal corrective action — signed 09/01/2026",
+      "Coaching — JBA Policy Manual — 01/01/2026",
+      "Verbal corrective action — 09/01/2026",
     ]);
     expect(slots.incidentDateIso).toBe("2026-10-20");
   });
@@ -109,7 +117,7 @@ describe("3 and 4. a labelled history, with a colon or a dash", () => {
       // The model reading Ask Bubbles stored for these words (chat_traces.slots).
       { observation: "Register shortage", actionPlan: "Previous coaching" },
     );
-    expect(lines(slots.priorActions)).toEqual(["Coaching — JBA Policy Manual — signed 01/20/2026"]);
+    expect(lines(slots.priorActions)).toEqual(["Coaching — JBA Policy Manual — 01/20/2026"]);
     expect(slots.actionPlan).toBeNull();
     expect(response.content).not.toMatch(/Action plan:\*\*\s*Previous coaching/i);
     expect(slots.incidentDateIso).toBe("2026-10-20");
@@ -124,7 +132,7 @@ describe("5. \"Previous coaching was a Verbal CA 10-1-26\" (conv_mvmzn0sn2pfk6uk
       ],
       { observation: "create a for Tanning Consultant" },
     );
-    expect(lines(slots.priorActions)).toEqual(["Verbal corrective action — signed 10/01/2026"]);
+    expect(lines(slots.priorActions)).toEqual(["Verbal corrective action — 10/01/2026"]);
     expect(slots.incidentDateIso).not.toBe("2026-10-01");
   });
 });
@@ -138,7 +146,7 @@ describe("6. \"Her prior coaching is her policy manual ackwnelegement on 9/01\" 
       ],
       { observation: "Employee was out of dress code" },
     );
-    expect(lines(slots.priorActions)).toEqual(["Coaching — Policy Manual ackwnelegement — signed 09/01/2026"]);
+    expect(lines(slots.priorActions)).toEqual(["Coaching — JBA Policy Manual ackwnelegement — 09/01/2026"]);
     expect(slots.incidentDateIso).toBe("2026-10-11");
   });
 });
@@ -157,7 +165,7 @@ describe("7. a prior-coaching date never dates the form (conv_mvmznap42vcw0dl)",
     );
     expect(slots.incidentDateIso).toBe("2026-10-22");
     expect(response.formProposal?.formDate).toBe("2026-10-22");
-    expect(lines(slots.priorActions)).toEqual(["Coaching — JBA Manual — signed 11/01/2025"]);
+    expect(lines(slots.priorActions)).toEqual(["Coaching — JBA Policy Manual — 11/01/2025"]);
   });
 });
 
@@ -173,7 +181,8 @@ describe("8. \"she was coached on 9-15 for being late\" (conv_mvnoiw8n2kfbcvc)",
       today: "2026-10-25",
       people: [],
     });
-    expect(lines(slots.priorActions)).toEqual(["Coaching for being late — signed 09/15/2026"]);
+    // QA 25 Oct 2026: no "signed" — the manager never wrote it (see the note above case 1).
+    expect(lines(slots.priorActions)).toEqual(["Coaching for being late — 09/15/2026"]);
     expect(slots.incidentDateIso).toBe("2026-10-20");
   });
 
@@ -187,5 +196,48 @@ describe("8. \"she was coached on 9-15 for being late\" (conv_mvnoiw8n2kfbcvc)",
       people: [],
     });
     expect(slots.priorActions).toBe("coached on 9-15");
+  });
+});
+
+/*
+ * QA decisions, 25 Oct 2026, with REMAP_INCIDENT_FIX_ENABLED (the "previous
+ * coaching: …" list reader) and PRIOR_ACTIONS_PARSE_ENABLED (this reader).
+ * The manager's two turns are copied exactly: "jba manual 1-1-26 for previous
+ * coaching", then a turn of just "verbal" (the warning level).
+ */
+describe("a bare \"verbal\" turn is never a prior action, and the line holds only the manager's words", () => {
+  const TURNS = ["jba manual 1-1-26 for previous coaching", "verbal"];
+  const LINE = "Coaching — JBA Policy Manual — 01/01/2026";
+
+  it.each([
+    ["both flags on", { fix: "1", parse: "1" }, [LINE]],
+    ["PRIOR_ACTIONS_PARSE_ENABLED alone", { fix: "", parse: "1" }, [LINE]],
+    // The list reader reads a label followed by its items; here the label comes last, so there is no list.
+    ["REMAP_INCIDENT_FIX_ENABLED alone", { fix: "1", parse: "" }, []],
+  ])("%s", (_name, flags, expected) => {
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", flags.fix);
+    vi.stubEnv(FLAG, flags.parse);
+    const { slots, response } = remap(TURNS, {});
+    expect(lines(slots.priorActions)).toEqual(expected);
+    expect(lines(slots.priorActions).some((line) => /^verbal$/i.test(line.trim()))).toBe(false);
+    expect(response.content).not.toMatch(/Prior actions:\*\*[^\n]*\bverbal\b/i);
+  });
+
+  it("\"signed\" is on the line only when the manager wrote it", () => {
+    expect(statedPriorActions("prior verbal ca signed 9-1-26", TODAY)).toEqual(["Verbal corrective action — signed 09/01/2026"]);
+    expect(statedPriorActions("prior verbal ca 9-1-26", TODAY)).toEqual(["Verbal corrective action — 09/01/2026"]);
+    expect(statedPriorActions("jba manual 1-1-26 for previous coaching", TODAY)).toEqual([LINE]);
+  });
+
+  it("the list reader adds no \"acknowledgement\" the manager did not type", () => {
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "1");
+    vi.stubEnv(FLAG, "");
+    const { slots } = remap(["create a verbal ca for Test Employee for being late on 10-20-26. previous coaching: jba manual 1-1-26"], {});
+    expect(lines(slots.priorActions)).toEqual(["JBA Policy Manual 1-1-26"]);
+  });
+
+  it("flag off, the line is as before", () => {
+    vi.stubEnv(FLAG, "");
+    expect(statedPriorActions("prior verbal ca 9-1-26", TODAY)).toEqual(["Verbal corrective action — signed 09/01/2026"]);
   });
 });

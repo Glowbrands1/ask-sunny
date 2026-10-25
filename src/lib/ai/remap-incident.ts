@@ -52,9 +52,14 @@ const POLICY_ASK =
 const PAYROLL_STATEMENT =
   /^\s*(?:(?:yes|no)\b[\s,]*)?payroll(?:\s+|-)deduct(?:ion|ed)?\s+(?:does|do|did|is|isn'?t|will|won'?t|applies|apply|not|doesn'?t|should|shall)\b/i;
 
-/** The prior-action list a manager labels "previous coaching: …". */
+/**
+ * The prior-action list a manager labels "previous coaching: …". The label and
+ * its items sit on one line: "jba manual 1-1-26 for previous coaching" then a
+ * turn of just "verbal" is no list, so "verbal" is never a prior action (QA,
+ * 25 Oct 2026). Only spaces and tabs separate the label from the items.
+ */
 const PRIOR_LIST =
-  /\b(?:previous|prior|past)\s+(?:coaching|corrective\s+actions?|cas?|c\/as?|actions?|steps?|warnings?|discipline)(?:\s+(?:is|was|were|are|includes?|included))?\s*[:=-]?\s*([^\n]+?)(?=\.(?:\s|$)|\n|$)/gi;
+  /\b(?:previous|prior|past)[^\S\n]+(?:coaching|corrective[^\S\n]+actions?|cas?|c\/as?|actions?|steps?|warnings?|discipline)(?:[^\S\n]+(?:is|was|were|are|includes?|included))?[^\S\n]*[:=-]?[^\S\n]*([^\n]+?)(?=\.(?:\s|$)|\n|$)/gi;
 
 export function withoutPriorList(text: string): string {
   return text.replace(PRIOR_LIST, " ").replace(/\bprior\s*=\s*[^\n.]+/gi, " ");
@@ -62,7 +67,9 @@ export function withoutPriorList(text: string): string {
 
 /**
  * "previous coaching: jba policy manual 1-1-26, verbal ca 9-1-26" is two prior
- * actions. The manual shorthand is the JBA Policy Manual acknowledgement.
+ * actions. The manual shorthand reads as the manual's title, "JBA Policy
+ * Manual"; "acknowledgement" is added to it only when the manager typed an
+ * acknowledgement word (QA, 25 Oct 2026: no word the manager did not say).
  */
 export function priorListActions(text: string): string[] {
   const items: string[] = [];
@@ -80,8 +87,8 @@ function priorItem(raw: string): string | null {
   if (!item || /^(?:none|no|n\/?a)$/i.test(item)) return null;
   if (/\bmanual\b/i.test(item)) {
     item = item.replace(
-      /\b(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+(?:ack(?:nowledge?ments?)?|acknowledged|signed|signature|sign[- ]off))?\b/i,
-      "JBA Policy Manual acknowledgement",
+      /\b(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+(ack(?:nowledge?ments?)?|acknowledged|signed|signature|sign[- ]off))?\b/i,
+      (_whole: string, said: string | undefined) => (said ? `JBA Policy Manual ${said}` : "JBA Policy Manual"),
     );
   }
   return item.replace(/\bc\/a\b/gi, "C/A").replace(/\bca\b/gi, "CA");
