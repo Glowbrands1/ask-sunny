@@ -771,14 +771,22 @@ const PLACE_FILLER = new Set(["the", "salon", "location", "store", "our"]);
 
 /** Every word is the salon's own name ("manhattan", "the NE Grand Island location"). */
 function isPlaceOnly(text: string): boolean {
+  return placeWords(text) !== null;
+}
+
+/** The words of the salons a place-only phrase names, or null when it is not only a place. */
+function placeWords(text: string): Set<string> | null {
   const ids = [...new Set(readSalonMentions(`at ${text}`).flatMap((mention) => mention.salonIds))];
-  if (ids.length === 0) return false;
+  if (ids.length === 0) return null;
   const salonWords = new Set(
     ids.flatMap((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/)).filter(Boolean),
   );
   const words = text.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
-  return words.length > 0 && words.every((word) => salonWords.has(word) || PLACE_FILLER.has(word));
+  return words.length > 0 && words.every((word) => salonWords.has(word) || PLACE_FILLER.has(word)) ? salonWords : null;
 }
+
+/** Small words a salon name holds ("144th and Center") that never extend a place on their own. */
+const PLACE_STOP = new Set(["and", "the", "of", "on", "at", "for", "in", "to", "a", "an"]);
 
 /** "at NE Grand Island", "at manhattan": the salon, taken out of the clause. */
 function withoutPlace(clause: string): string {
@@ -788,9 +796,22 @@ function withoutPlace(clause: string): string {
     for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
       const phrase = words.slice(index + 1, index + 1 + length).join(" ");
       const bare = phrase.replace(/[.!?]+$/, "");
-      if (!isPlaceOnly(bare)) continue;
-      const tail = phrase.slice(bare.length);
-      const rest = [...words.slice(0, index), ...words.slice(index + 1 + length)].join(" ");
+      const named = placeWords(bare);
+      if (!named) continue;
+      // Round 18 (a), conv_mvo1ri4r2q9bnfv: "at Omaha Center" is the city and a
+      // word of one of its salons ("NE Omaha 144th and Center"). The salon's
+      // own words after the city go with it, so no "Center" is left behind.
+      let end = index + 1 + length;
+      let tail = phrase.slice(bare.length);
+      while (!tail && end < words.length) {
+        const next = words[end]!;
+        const word = next.replace(/[.!?,;:]+$/, "");
+        const key = word.toLowerCase();
+        if (!named.has(key) || PLACE_STOP.has(key)) break;
+        tail = next.slice(word.length);
+        end += 1;
+      }
+      const rest = [...words.slice(0, index), ...words.slice(end)].join(" ");
       return withoutPlace(`${rest}${tail}`.trim());
     }
   }

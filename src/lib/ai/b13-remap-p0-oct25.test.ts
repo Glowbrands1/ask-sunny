@@ -542,3 +542,30 @@ describe.each([[[] as string[]], [["MANAGER_WORDS_ONLY_ENABLED"]]])("QA B-list, 
     expect(priorLine(reply!.content)).toBe("Coaching — JBA Policy Manual — 01/01/1995; Verbal corrective action — 10/05/2026");
   });
 });
+
+/*
+ * Round 18 (a), conv_mvo1ri4r2q9bnfv (Ask Sunny production, pair 2 on:
+ * PLACE_SPAN_GUARD + TITLE_WHOLE_WORD): "create a verbal CA for Test Employee
+ * at Omaha Center for being late on 10-20-26" printed the Observation "Test
+ * Employee Center for being late on 10-20-26". A two-word salon was trimmed
+ * only partly; "at NE Kearney" trims cleanly.
+ */
+describe("Round 18 (a): a two-word salon is taken out whole", () => {
+  const PAIR_2 = ["PLACE_SPAN_GUARD_ENABLED", "TITLE_WHOLE_WORD_ENABLED"] as const;
+
+  // Production had MANAGER_WORDS_ONLY on (its reader printed exactly "Test
+  // Employee Center for being late on 10-20-26"); also with the remap fix on.
+  it.each([
+    [["MANAGER_WORDS_ONLY_ENABLED"], "Test Employee for being late on 10-20-26"],
+    [["MANAGER_WORDS_ONLY_ENABLED", "REMAP_INCIDENT_FIX_ENABLED", "PRIOR_ACTIONS_PARSE_ENABLED"], "being late on 10-20-26"],
+  ] as const)("conv_mvo1ri4r2q9bnfv (also on: %j): the Observation reads as it does for \"at NE Kearney\"", async (also, expected) => {
+    for (const flag of UNDER_TEST) vi.stubEnv(flag, "");
+    for (const flag of [...PAIR_2, ...also]) vi.stubEnv(flag, "1");
+    intentModel.reading = copiesTheManager;
+    const [omaha] = await chat(["create a verbal CA for Test Employee at Omaha Center for being late on 10-20-26"], `conv-r18a-${also.length}`);
+    const [kearney] = await chat(["create a verbal CA for Test Employee at NE Kearney for being late on 10-20-26"], `conv-r18k-${also.length}`);
+    // Production printed "Test Employee Center for being late on 10-20-26".
+    expect(whatHappened(omaha!.content)).toBe(expected);
+    expect(whatHappened(kearney!.content)).toBe(expected);
+  });
+});
