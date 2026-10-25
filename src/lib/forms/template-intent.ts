@@ -23,6 +23,8 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
+import { formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
 // From its own module: importing it from the intake closed a cycle that broke a production build (see `warning-level.ts`).
@@ -643,11 +645,11 @@ function leadsWithTheForm(q: string, original: string): boolean {
  * "WRITE A …" IS A REQUEST ONLY WHEN WHAT IS WRITTEN IS THE FORM
  * ============================================================================
  *
- * "write a CA for Paisley" was read as a question about the progression and
+ * "write a CA for Daisley" was read as a question about the progression and
  * the manager was told to rephrase (October 2026), so "write a" / "write an"
  * were made creation verbs. QA, 22 Oct 2026 (F-04): as bare verbs they also
  * turned "can you write a summary of the corrective action policy", "write a
- * note explaining the corrective action steps" and "write an email to Paisley
+ * note explaining the corrective action steps" and "write an email to Daisley
  * about her CA" into requests to create a Corrective Action Form. Writing is a
  * request for the form only when its object IS the form or the warning;
  * "how do I write a CA?" is still ruled a question before this is consulted.
@@ -674,7 +676,7 @@ const CREATION_VERBS = [
   "open",
   "write up",
   "write-up",
-  /* "write a CA for Paisley" is read by `writesTheForm`, not by a bare "write a". */
+  /* "write a CA for Daisley" is read by `writesTheForm`, not by a bare "write a". */
   "write her up",
   "write him up",
   "write them up",
@@ -1252,6 +1254,34 @@ function requestedNaming(q: string, original: string): { key: string; phrase: st
 const DECLINES_FORM =
   /\b(?:(?:don'?t|do\s+not|doesn'?t|does\s+not|didn'?t)\s+(?:want|need)|not\s+(?:ready\s+for|looking\s+for)|no\s+need\s+for)\s+(?:(?:a|an|the|any)\s+)?(?:actual\s+|real\s+|official\s+)?(?:[a-z-]+\s+){0,2}?(?:form|forms|document|paperwork|write[- ]?up)\b|\bno\s+(?:actual\s+)?(?:form|forms|paperwork)\b|\bnot\s+(?:a|an)\s+(?:actual\s+)?form\b|\b(?:never\s*mind|forget)\s+(?:the|this|that)\s+form\b|\b(?:form|forms|paperwork)\s+not\s+yet\b/;
 
+/**
+ * FORM_CHOICE_STATED_ENABLED. "Policy reference: Disciplinary Action, JBA
+ * Policy Manual p.14." is the stored policy written ahead of the turn, not a
+ * form the manager asked for. Its "disciplinary action" is a Corrective Action
+ * alias, and it beat "Create a coaching form" on the list's order (QA, 24 Oct
+ * 2026). The line is read for its policy elsewhere; here it names no form.
+ */
+const POLICY_REFERENCE_LINE = /\bPolicy reference:[^\n]*?JBA Policy Manual(?:\s+p\.\s*\d+)?\.?/gi;
+
+function withoutPolicyReference(text: string): string {
+  return text.replace(POLICY_REFERENCE_LINE, " ");
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. Whether the manager's own words mention coaching
+ * that already happened, or a follow-up: "follow up on her coaching", "I
+ * coached her last week", "prior coaching 9-1", "she was coached before".
+ * The Follow-Up Coaching Form is only for that. "I need to coach an employee"
+ * is a first coaching (QA, 25 Oct 2026: conv_mvnbbhdq2a8t7nk showed the
+ * follow-up card with no earlier coaching mentioned).
+ */
+const EARLIER_COACHING =
+  /\bfollow[- ]?ups?\b|\b(?:coached|re-?coach(?:ed|ing)?)\b|\b(?:prior|previous|previously|earlier|last|first|already|again|second|past)\s+(?:(?:documented|verbal)\s+)?coach(?:ing|ed)?\b|\bcoach(?:ing|ed)?\s+(?:\w+\s+){0,3}?(?:before|again|already|last\s+(?:week|month|time)|previously)\b/i;
+
+export function mentionsEarlierCoaching(text: string): boolean {
+  return EARLIER_COACHING.test(text ?? "");
+}
+
 function declinesForm(q: string): boolean {
   return DECLINES_FORM.test(q);
 }
@@ -1428,7 +1458,8 @@ const LEVEL_AS_DOCUMENT = new RegExp(
 
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
 
-export function detectTemplateIntent(question: string): TemplateIntent {
+export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
+  const question = formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion;
   const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   /*

@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
-import { extractFormDate } from "@/lib/forms/form-date-answer";
+import { payrollAmountFieldEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { blankYearlessStepDates, extractFormDate } from "@/lib/forms/form-date-answer";
+import { lateOpenOn, yearlessCuedDates } from "@/lib/forms/late-open";
 import {
   payrollAmountFromConversation,
   payrollAnswerForAmount,
@@ -168,7 +169,8 @@ export function fieldLines(question: string, today: string, earlier = ""): strin
   const corpus = earlier.trim() ? `${earlier}\n${question}` : question;
   if (!extractFormDate(question, today)) {
     const known = extractFormDate(corpus, today);
-    const slash = lastUnyearDated(corpus, today);
+    // "she was coached on 9-15": an earlier step's yearless date is not the incident (PRIOR_ACTIONS_PARSE_ENABLED).
+    const slash = lastUnyearDated(priorActionsParseEnabled() ? blankYearlessStepDates(corpus, today) : corpus, today);
     if (known) lines.push(`It happened on ${slashDate(known)}.`);
     else if (slash) lines.push(`It happened on ${slash}.`);
   }
@@ -207,6 +209,11 @@ function slashDate(iso: string): string {
 }
 
 function lastUnyearDated(text: string, today: string): string | null {
+  // "late to open 10-19", "change the date to 10-22": any date cue, and never a future day (LATE_OPEN_DATE_ENABLED).
+  if (lateOpenOn()) {
+    const iso = yearlessCuedDates(text, today).at(-1)?.iso;
+    return iso ? slashDate(iso) : null;
+  }
   let last: string | null = null;
   for (const match of text.matchAll(/\b(?:on|dated?)\s+(\d{1,2})-(\d{1,2})(?!\d|-)/gi)) {
     const formatted = calendarDay(Number(match[1]), Number(match[2]), today);

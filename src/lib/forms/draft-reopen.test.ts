@@ -11,7 +11,7 @@ import { pickOpenIncidentDraft, type ResentDraftRow } from "./draft-reopen";
 function row(overrides: Partial<ResentDraftRow>): ResentDraftRow {
   return {
     id: "draft-1",
-    employeeName: "Paisley Peklo",
+    employeeName: "Daisley Veklo",
     locationId: "loc-0313",
     createdAt: "2026-10-20T15:00:00Z",
     formDate: "2026-10-20",
@@ -26,7 +26,7 @@ describe("open draft for the same incident", () => {
       [row({ id: "older", createdAt: "2026-10-20T12:00:00Z" }), row({ id: "newer", createdAt: "2026-10-21T12:00:00Z", locationId: null })],
       {
         templateKey: "dpoa",
-        employeeName: "paisley peklo",
+        employeeName: "daisley veklo",
         createdBy: "someone-else",
         locationId: null,
         formDate: "2026-10-20",
@@ -41,7 +41,7 @@ describe("open draft for the same incident", () => {
     expect(
       pickOpenIncidentDraft(rows, {
         templateKey: "dpoa",
-        employeeName: "Paisley Peklo",
+        employeeName: "Daisley Veklo",
         createdBy: "sarah",
         locationId: "loc-0313",
         formDate: "2026-10-22",
@@ -51,7 +51,7 @@ describe("open draft for the same incident", () => {
     expect(
       pickOpenIncidentDraft(rows, {
         templateKey: "dpoa",
-        employeeName: "Paisley Peklo",
+        employeeName: "Daisley Veklo",
         createdBy: "sarah",
         locationId: "loc-0313",
         formDate: "2026-10-20",

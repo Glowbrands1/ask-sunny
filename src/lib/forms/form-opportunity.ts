@@ -279,7 +279,7 @@ export function detectFormOpportunity(input: {
  * product suggesting a warning, which is exactly the substitution §7 of the
  * framework refuses.
  *
- * UNLESS THEY ASKED FOR IT. A manager who wrote "write a CA for Paisley" or
+ * UNLESS THEY ASKED FOR IT. A manager who wrote "write a CA for Daisley" or
  * "I need it to be a corrective action form" has made the decision; leading
  * with the Coaching Form is the same substitution in the other direction.
  */

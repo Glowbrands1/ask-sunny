@@ -1,21 +1,21 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
-## 24 Oct 2026: the app's own lines are not the manager's words — Sunny-only
+## 24 Oct 2026: the app's own lines are not the manager's words — ported to Ask Bubbles
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation
 and grounded entities write lines such as "Job title: CA. It happened at KS
 Lawrence." onto the question. On, the card's Job title reads each of those
 sentences alone (no more "CA. It happened"), the Observation of Offense skips
 lines made only of those sentences and a sentence that only says where the
-employee works, and the intent reader no longer keeps a model title that is
-the form ("CA") or the employee's own name ("test").
+employee works, and the intent reader keeps a model title only when it is a
+known title or a short noun phrase the manager typed: not the form ("CA"),
+the employee's own name ("test"), a clause ("test was late opening salon"),
+or letters inside another word ("HR"). "ass't salon director" reads ASD, and
+a pasted policy is not read for the title.
 
-**Sibling app: not needed.** Ask Bubbles writes the same lines, but its label
-reader (`titleFollowingJobTitleLabel`) stops at the first period, its intent
-`groundTitle` keeps only a roster title, and its card has no Observation built
-from the turns (`keep-filled-slots.ts` does not exist there). Bubbles
-production has no `employeeRole` containing "happened" and no card observation
-opening with "It happened at" (45 days, 189 proposals).
+**Sibling app: ported** on Ask Bubbles branch
+`claude/new-session-vowi84-it-happened`, through its live form-full-remap path
+and its intent path.
 
 ## 24 Oct 2026: a manual citation marks the page the sentence restates — ported from Ask Bubbles
 
@@ -270,8 +270,8 @@ Ask Bubbles was not attached. Port the mechanism. Do not copy company
 wording. The manual title stays **JBA Policy Manual**.
 
 - A field label in front of a real name comes off. s11 "lawrence location
-  tanning consultant, colene schildt" is Colene Schildt, not "Location
-  Colene Schildt". "Jane Store" still keeps the surname.
+  tanning consultant, corena schardt" is Corena Schardt, not "Location
+  Corena Schardt". "Jane Store" still keeps the surname.
 
 ## 24 Oct 2026: Woven edition dedupe — Sunny-only
 
@@ -295,8 +295,8 @@ and no merge.
   They reject a candidate only when the candidate is the label itself
   ("Job title", "Store"). A surname that is one of those words still passes
   ("Jane Store", "Jane Salon"). A trailing Job or Title comes off only after
-  a full name (s17 "Marissa Lempka Job"). The value after "Name:" stays the
-  name ("Name: Christiana Headley, job title tanning consultant"). s8 still
+  a full name (s17 "Larissa Venko Job"). The value after "Name:" stays the
+  name ("Name: Evangeline Pembury, job title tanning consultant"). s8 still
   does not store "Job title".
 
 ## 24 Oct 2026: validation code fixes — Sunny-only
@@ -854,7 +854,7 @@ With `INTENT_EXTRACTION_ENABLED` on, `applyIntentExtraction` returned
 level) and `answerQuestion` sent that instead of a proposal. A live replay
 of 14 chats produced no card. A name missing from Woven, and a missing
 warning level, were in that list. `CA`, `coaching`, and `exit` were not
-read as the published form. Erin Nelson's Woven primary salon was not used
+read as the published form. Elin Haskett's Woven primary salon was not used
 when she is affiliated with more than one. A salon the manager named
 outside those affiliations was dropped.
 
@@ -876,3 +876,61 @@ no form. The baseline card there was the live reply. The harness does not
 invent a coaching form from a complaint.
 
 Sibling app: not ported. Same reason as the form-card note above.
+
+## 24 Oct 2026: remap incident (from Ask Bubbles prod, FORM_FULL_REMAP on)
+
+Ask Bubbles built What happened from what was left of the request ("create a
+corrective action form for"), lost "previous coaching: …", read "10-1" out of
+"10-15-26", and cited no policy on a remap card. Sunny's `form-full-remap.ts`
+is the same code and gets the same fix behind `REMAP_INCIDENT_FIX_ENABLED`
+(the date regex is an unflagged bug fix in both apps).
+
+Sunny's live path (intent extraction) had the same failures in its own
+readers: the Observation of Offense copied the request and the prior-action
+list, the Standards of Conduct the account points at was not cited, "empire,
+sd" became Salon Director, and "prior = manual ack 9/01" was not a prior
+action and became the form date. Those fixes, behind the same flag, are in
+`keep-filled-slots.ts`, `form-card-slots.ts`, `intent-extraction.ts` and one
+line of `intent-slots.ts`. They stay Sunny-only: Ask Bubbles has no
+`keep-filled-slots.ts` or `form-card-slots.ts`, and its live form path is the
+remap path, which is fixed there. Tests: `src/lib/ai/remap-incident-oct24.test.ts`
+in both apps.
+
+Follow-up (Ask Bubbles QA step 3 and C-list, 25 Oct 2026): the remap path
+gets the same per-turn What happened, new-request reset, bare-yes rule,
+manager-only action plan and "as you said" guard. On the intent path, behind
+the same flag, the Observation of Offense skips edit, command and complaint
+turns and starts at a later create request with its own incident; that
+request also starts the proposal's history and the intent read's stored
+slots afresh, and a date edit ("change the date to 10/22") is read from the
+manager's words, not the intent read's "It happened on …" sentence.
+## 24 Oct 2026: a policy phrase is not a place (from Ask-bubbles#102)
+
+`PLACE_SPAN_GUARD_ENABLED` (default off), the same flag as Ask Bubbles PR
+102 (conv_mvmcetjw2i4vtwz: "cite animals in the workplace policy", then
+"store location is empire, sd", asked about a typed store "workplace
+policy"). Sunny's roster salon readers (`salon-mention.ts`, `salon-text.ts`)
+match only roster names and numbers, and the conversation's own wording
+("salon location is Kearney, NE") already reads Kearney. Two free-text
+readers had the same weakness and are guarded at the caller:
+`place-state.ts` joined the turns, so "cite animals in the workplace policy"
+then "at Kearney, NE" read as a place "the workplace policy at Kearney" and
+blanked the salon on the intent slots and the form card; on, each turn is
+read on its own and a span naming a policy, manual, section or similar
+document is skipped. `employment-change.ts` kept a labelled location as
+typed, so "per the new salon policy" printed "Policy" as the new salon; on,
+a labelled value naming a document is not a location. No store wording was
+copied. Test: `src/lib/forms/place-span-guard.test.ts`.
+
+## 24 Oct 2026: "location st joe" names the salon (QA Round 4)
+
+Same flag, `PLACE_SPAN_GUARD_ENABLED`. In conv_mvmw4hwq292a6vq, "name is
+test testyone, location st joe, …" came after "salon is wornall", and the
+card stayed on Wornall. The roster reader (`salon-mention.ts`, protected)
+counts a short name only behind a place cue, and a field label was not one.
+On, `salon-cue.ts` reads "location / salon / store <name>" as "at <name>"
+(the roster reader's other rules still apply), and the salon the newest
+manager turn names replaces the saved one on the intent slots and the card.
+Ported to Ask Bubbles' store reader on the form remap path in the same
+session (its "location kearney" / "store kearney" kept the earlier store).
+Test: `src/lib/forms/salon-label-cue.test.ts`.
