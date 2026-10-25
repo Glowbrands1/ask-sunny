@@ -10,6 +10,7 @@ import {
   caSalesPolicyEnabled,
   cleaningOtherEveryWordingEnabled,
   formEditDateRulesEnabled,
+  policyConductWordingEnabled,
   removePolicyNotNamedEnabled,
   policyCleaningIncidentEnabled,
   salesObservationAccountEnabled,
@@ -102,7 +103,7 @@ export const CA_POLICY_LABEL: Record<CaPolicyName, string> = {
 };
 
 /** What an incident was, in the terms the suggestion is explained in. */
-export type ConductTopic = "task" | "deadline" | "direction";
+export type ConductTopic = "task" | "deadline" | "direction" | "disrespect";
 
 export interface CaPolicyReading {
   /** The policy the manager named, latest turn first. */
@@ -313,6 +314,58 @@ export function cleaningUndonePhrase(rawText: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * POLICY_CONDUCT_WORDING_ENABLED: THE PLAIN WORDS MANAGERS USE (QA, 25 Oct
+ * 2026). Each was read as no policy, and the card was left to the model:
+ *
+ *   T4 "she didn't complete required policy acknowledgments during
+ *      onboarding", "failed to have a new hire complete required policy
+ *      acknowledgements in woven" — either spelling, with a failure word;
+ *   T2 "refused to do what I asked her to do and walked off", "talked back",
+ *      "disrespectful to her manager";
+ *   J1 "talking negatively about co-workers", "gossip", "talking behind her
+ *      back".
+ *
+ * All are the Standards of Conduct: failing to follow the policies,
+ * insubordination, and "behavior that demonstrates disrespect for a manager
+ * or other Employees" (`ANCHORS`). Gossip is NOT the harassment section: an
+ * account with a harassment word is left to the existing reading.
+ */
+const ACKNOWLEDGMENT = String.raw`acknowledg(?:e)?ments?`;
+const HARASSMENT_WORDS =
+  /\b(?:harass\w*|sexual\w*|hostile work environment|discriminat\w*|racis[mt]\w*|racial\w*|slurs?|unwelcome touch\w*|touch(?:ed|ing)? (?:her|him|them) inappropriately|inappropriate(?:ly)? touch\w*)\b/;
+const PLAIN_CONDUCT: { topic: ConductTopic; pattern: RegExp; unless?: RegExp }[] = [
+  {
+    topic: "task",
+    pattern: new RegExp(
+      String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,6}?(?:complete|completed|finish|finished|do|done|sign|signed|submit|submitted)\b[^.;!?\n]{0,60}?\b${ACKNOWLEDGMENT}\b|\b(?:missed|outstanding|incomplete|unsigned|overdue|unfinished)\s+(?:\S+\s+){0,3}?${ACKNOWLEDGMENT}\b|\b${ACKNOWLEDGMENT}\s+(?:\S+\s+){0,4}?(?:not|never|were ?n[o']?t|was ?n[o']?t)\s+(?:been\s+|being\s+)?(?:completed|done|signed|finished)\b|\b${FAILED}\s+(?:\S+\s+){0,2}?acknowledged?\s+(?:\S+\s+){0,3}?polic(?:y|ies)\b`,
+    ),
+  },
+  {
+    topic: "direction",
+    pattern: new RegExp(
+      String.raw`\brefus(?:ed|es|ing)\s+to\s+(?:do|complete|finish|help|clean|listen|work|stock|restock|take|go|stay)\b|\b(?:${FAILED}|would ?n[o']?t|wouldn't|won't)\s+(?:do|complete|finish)\s+what\s+(?:i|we|her manager|his manager|their manager|the manager|management|her supervisor|his supervisor)\s+(?:had\s+)?(?:asked|told|instructed|directed)\b`,
+    ),
+  },
+  {
+    topic: "disrespect",
+    pattern:
+      /\btalk(?:ed|ing|s)?\s+back\b|\bback[- ]?talk\w*|\bdisrespect(?:ful|ed|ing)?\b|\brude\s+to\s+(?:her|his|their|the|a|my|me)\b|\b(?:argued|arguing|yelled|yelling|cursed|cursing|swore|swearing|screamed|screaming)\s+(?:with|at)\s+(?:her|his|their|the|a|my|me)\b|\bgossip\w*|\b(?:talk(?:ed|ing|s)?|spoke|speaking|saying\s+things)\s+(?:negatively|badly|bad|poorly|trash|smack)\s+(?:about|of)\b|\bbad[- ]?mouth\w*|\b(?:talk(?:ed|ing|s)?|spoke|speaking|said\s+things)\s+(?:\S+\s+){0,3}?behind\s+(?:her|his|their|my|our|someone'?s|people'?s|other people'?s|co-?workers'?|coworkers'?|everyone'?s)\s+backs?\b|\bspread(?:ing|s)?\s+rumou?rs?\b/,
+    unless: HARASSMENT_WORDS,
+  },
+];
+
+/** The conduct topics an account describes, with the plain words read under POLICY_CONDUCT_WORDING_ENABLED. */
+function conductTopicsIn(sentences: readonly string[]): ConductTopic[] {
+  const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(({ topic }) => topic);
+  if (!policyConductWordingEnabled()) return topics;
+  for (const { topic, pattern, unless } of PLAIN_CONDUCT) {
+    if (topics.includes(topic) || (unless && sentences.some((s) => unless.test(s)))) continue;
+    if (sentences.some((s) => pattern.test(s))) topics.push(topic);
+  }
+  return topics;
 }
 
 /**
@@ -891,9 +944,7 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
    */
   if (stated === null && missedEvent !== null) stated = "attendance";
 
-  let topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
-    ({ topic }) => topic,
-  );
+  let topics = conductTopicsIn(sentences);
   // CONDUCT_INCIDENT_CITES_PAGE_ENABLED: "not completing her woven courses by the deadline" is unfinished assigned work.
   if (conductIncidentCitesPageEnabled() && !topics.includes("task") && sentences.some((s) => NOT_COMPLETING_TASK.test(s))) topics.push("task");
   if (policyCleaningIncidentEnabled()) {
@@ -1028,6 +1079,7 @@ const TOPIC_WORDS: Record<ConductTopic, string> = {
   task: "assigned work that wasn't completed",
   deadline: "a required deadline that was missed",
   direction: "a manager's direction that wasn't followed",
+  disrespect: "disrespect toward a manager or co-workers",
 };
 
 const ALTERNATIVE_WORDS: Record<CaPolicyReading["alternatives"][number], string> = {
@@ -1254,6 +1306,7 @@ const ANCHORS: Record<ConductTopic, RegExp[]> = {
   task: [/failing to follow the policies and procedures/i],
   deadline: [/failing to follow the policies and procedures/i],
   direction: [/insubordination/i, /refusal to follow the directions/i, /failing to follow the policies and procedures/i],
+  disrespect: [/disrespect for a manager or other employees/i, /failing to follow the policies and procedures/i],
 };
 
 /** How many chunks a section may run across before another heading must have begun. */

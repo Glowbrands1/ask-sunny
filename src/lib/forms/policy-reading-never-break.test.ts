@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { accountManualSections } from "@/lib/ai/account-manual-sections";
@@ -25,7 +25,18 @@ const CHUNKS: readonly ManualChunk[] = (rows.chunks as ChunkRow[]).map(manualChu
 const cited = (text: string) => accountManualSections(text, CHUNKS).map((section) => `${section.heading} p.${section.page}`);
 const section = (heading: string) => findManualSection(CHUNKS, [heading])!;
 
-describe("never-break: the policy a manager's words already resolve", () => {
+/** Every policy-reading flag. Each later one is added here, so the list is checked with all of them on. */
+const POLICY_READING_FLAGS = ["POLICY_CONDUCT_WORDING_ENABLED"] as const;
+
+describe.each([
+  ["off", "off"],
+  ["on", "true"],
+] as const)("never-break with the policy-reading flags %s", (_state, value) => {
+  beforeEach(() => {
+    for (const name of POLICY_READING_FLAGS) vi.stubEnv(name, value);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   it('"violating the standards of conduct" is Standards of Conduct p.12', () => {
     const text = "create a written ca for Test Employee for violating the standards of conduct";
     expect(readCaPolicy(text).stated).toBe("standards_of_conduct");
