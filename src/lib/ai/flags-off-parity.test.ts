@@ -163,6 +163,22 @@ const APPROVED_PROTECTED_EDITS = [":(exclude)src/lib/forms/form-date-answer.ts"]
 
 const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.tsx", "**/*.css"];
 
+/*
+ * The user (Pau) approved, via QA on 25 Oct 2026, the forms list's Edit and
+ * History mount for form revisions in both apps: exactly these two added
+ * lines in monitoring-table.tsx, rendering nothing with
+ * NEXT_PUBLIC_FORM_REVISIONS_ENABLED off. Any other change to the file fails.
+ */
+const MONITORING_TABLE = "src/features/forms/monitoring-table.tsx";
+const MONITORING_MOUNT = [
+  '+import { RegisterRowActions } from "@/form-revisions/register-row-actions";',
+  "+                            <RegisterRowActions form={form} />",
+];
+
+function changedLines(patch: string): string[] {
+  return patch.split("\n").filter((line) => /^[+-](?![+-]{2} )/.test(line));
+}
+
 function diff(ref: string, args: string[]): string {
   return execFileSync("git", ["diff", ref, "--", ...args], { encoding: "utf8" });
 }
@@ -307,8 +323,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
+          `:(exclude)${MONITORING_TABLE}`,
         ]),
       ).toBe("");
+      expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",

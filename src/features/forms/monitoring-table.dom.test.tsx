@@ -521,3 +521,25 @@ describe("small row controls are big enough to tap", () => {
     expect(sized(rowFor("Late One").ui.getByRole("button", { name: /mark followed up/i }))).toBe(true);
   });
 });
+
+/* ------------------------------------------- form revisions: Edit / History --- */
+
+describe("Edit and History on a row (NEXT_PUBLIC_FORM_REVISIONS_ENABLED)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("off: the row has no Edit or History, exactly as before", () => {
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.queryByText("Edit")).toBeNull();
+    expect(ui.queryByText("History")).toBeNull();
+    expect(ui.getByText("PDF")).toBeTruthy();
+  });
+
+  it("on: a finalized row offers Edit and History", () => {
+    vi.stubEnv("NEXT_PUBLIC_FORM_REVISIONS_ENABLED", "true");
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.getByText("Edit")).toBeTruthy();
+    expect(ui.getByText("History")).toBeTruthy();
+  });
+});
