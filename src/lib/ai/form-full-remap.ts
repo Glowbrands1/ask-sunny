@@ -6,6 +6,7 @@ import {
   notANameGuardEnabled,
   priorActionsParseEnabled,
   remapIncidentFixEnabled,
+  newestPlaceTurnEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { lateOpenOn } from "@/lib/forms/late-open";
@@ -16,6 +17,7 @@ import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
+import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { payrollDeductAmount, payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
@@ -25,6 +27,7 @@ import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
 import {
   currentRequestStart,
+  HAS_WORD,
   hasCutDate,
   isAmbiguousAnswer,
   isEditTurn,
@@ -152,7 +155,13 @@ export function groundFormSlots(input: {
     (isTemplate(raw.templateKey) ? raw.templateKey : null);
   const employeeName = groundedName(raw.employeeName, users);
   const jobTitle = groundedTitle(fixed ? users.map(withoutStateCodes) : users);
-  const store = groundedStore(said) ?? (fixed ? placeStore(said) : null);
+  // NEWEST_PLACE_TURN_ENABLED: the newest manager turn that names one salon wins.
+  const newest = newestPlaceTurnEnabled() ? newestManagerTurnSalon([...users].reverse()) : null;
+  const newestName = newest ? rosterSalonName(newest.id) : null;
+  const store =
+    (newest && newestName ? { id: newest.id, name: newestName } : null) ??
+    groundedStore(said) ??
+    (fixed ? placeStore(said) : null);
   const incidentDateIso = groundedDate(said, input.today);
   const warningLevel = explicitWarning(users);
   // A bare "Yes" after a list of questions answers none of them (REMAP_INCIDENT_FIX_ENABLED).
@@ -168,12 +177,14 @@ export function groundFormSlots(input: {
   // policy is named and the manual gives no section for it.
   const lateOpening = fixed && !named ? describedLateOpening(withoutPriorList(scoped)) : null;
   const policySection = fixed ? (named ?? lateOpening) : groundedPolicy(said);
-  const observation = fixed
+  const incidentRead = fixed
     ? (requestIncident({ text: scoped, employeeName, slotClause }) ??
       (isRequestLeftover(raw.observation, employeeName) || hasCutDate(raw.observation, said)
         ? null
         : acceptSummary(raw.observation, scoped)))
     : (statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said));
+  // A stray quote or other punctuation alone is never What happened (sibling app conv_mvnu3j932gpohx4).
+  const observation = incidentRead && HAS_WORD.test(incidentRead) ? incidentRead : null;
   // Both readers contribute, each behind its own flag: the "previous coaching: …"
   // list (REMAP_INCIDENT_FIX_ENABLED) and the intent path's step reader
   // (PRIOR_ACTIONS_PARSE_ENABLED). With both on, a list item whose date a

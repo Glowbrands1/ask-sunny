@@ -518,6 +518,20 @@ export function placeSpanGuardEnabled(): boolean {
 }
 
 /**
+ * The salon the newest manager turn names is the card's salon, whichever turn
+ * that is. "change salon location to <place>, <state>" and then "create a
+ * Corrective Action Form for Test Employee"" kept the place the first turn
+ * named (sibling app conv_mvnsstvq2cywp78 / conv_mvnu3j932gpohx4, 25 Oct
+ * 2026). On, the intent reading looks at the manager's turns newest first and
+ * takes the first that names exactly one salon, a field label or "<place>,
+ * <state>" counting as a naming. Off, only this turn's labelled salon wins
+ * (PLACE_SPAN_GUARD_ENABLED) and the salon is grounded as before.
+ */
+export function newestPlaceTurnEnabled(): boolean {
+  return envFlag("NEWEST_PLACE_TURN_ENABLED");
+}
+
+/**
  * Prior actions read the way managers write them. A list after "received …
  * coaching 9/8" keeps its later comma items that name a step; "prior verbal
  * 9-1-26" and "Her prior coaching is her policy manual acknowledgement on
