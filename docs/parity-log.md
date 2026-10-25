@@ -904,3 +904,33 @@ turns and starts at a later create request with its own incident; that
 request also starts the proposal's history and the intent read's stored
 slots afresh, and a date edit ("change the date to 10/22") is read from the
 manager's words, not the intent read's "It happened on …" sentence.
+## 24 Oct 2026: a policy phrase is not a place (from Ask-bubbles#102)
+
+`PLACE_SPAN_GUARD_ENABLED` (default off), the same flag as Ask Bubbles PR
+102 (conv_mvmcetjw2i4vtwz: "cite animals in the workplace policy", then
+"store location is empire, sd", asked about a typed store "workplace
+policy"). Sunny's roster salon readers (`salon-mention.ts`, `salon-text.ts`)
+match only roster names and numbers, and the conversation's own wording
+("salon location is Kearney, NE") already reads Kearney. Two free-text
+readers had the same weakness and are guarded at the caller:
+`place-state.ts` joined the turns, so "cite animals in the workplace policy"
+then "at Kearney, NE" read as a place "the workplace policy at Kearney" and
+blanked the salon on the intent slots and the form card; on, each turn is
+read on its own and a span naming a policy, manual, section or similar
+document is skipped. `employment-change.ts` kept a labelled location as
+typed, so "per the new salon policy" printed "Policy" as the new salon; on,
+a labelled value naming a document is not a location. No store wording was
+copied. Test: `src/lib/forms/place-span-guard.test.ts`.
+
+## 24 Oct 2026: "location st joe" names the salon (QA Round 4)
+
+Same flag, `PLACE_SPAN_GUARD_ENABLED`. In conv_mvmw4hwq292a6vq, "name is
+test testyone, location st joe, …" came after "salon is wornall", and the
+card stayed on Wornall. The roster reader (`salon-mention.ts`, protected)
+counts a short name only behind a place cue, and a field label was not one.
+On, `salon-cue.ts` reads "location / salon / store <name>" as "at <name>"
+(the roster reader's other rules still apply), and the salon the newest
+manager turn names replaces the saved one on the intent slots and the card.
+Ported to Ask Bubbles' store reader on the form remap path in the same
+session (its "location kearney" / "store kearney" kept the earlier store).
+Test: `src/lib/forms/salon-label-cue.test.ts`.

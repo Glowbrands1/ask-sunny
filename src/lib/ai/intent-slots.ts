@@ -6,6 +6,7 @@ import {
   formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
   managerWordsOnlyEnabled,
+  placeSpanGuardEnabled,
   notANameGuardEnabled,
   typedNameProceedsEnabled,
   remapIncidentFixEnabled,
@@ -28,6 +29,7 @@ import {
   detectTemplateIntent,
   mentionsEarlierCoaching,
 } from "@/lib/forms/template-intent";
+import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
@@ -240,7 +242,9 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
-  const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
+  const salon =
+    newestTurnSalon(input.question, input.salons) ??
+    groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   // The manager's turns only: a pasted policy is not their words, and
   // "ass't salon director" is read as the assistant title.
   const managerTitleText = managerWordsOnlyEnabled()
@@ -780,6 +784,24 @@ function peopleNamedIn(blob: string, people: readonly GroundedPerson[]): Grounde
 
 function asGrounded(employee: RosterEmployee, people: readonly GroundedPerson[]): GroundedPerson {
   return people.find((person) => person.id === employee.id) ?? { ...employee, title: null, primaryLocationName: null, primarySalonId: null };
+}
+
+/*
+ * PLACE_SPAN_GUARD_ENABLED. The salon this turn names wins over the one the
+ * conversation saved: "location st joe" after "salon is wornall" is St
+ * Joseph (QA Round 4, 24 Oct 2026). A field label counts as the place cue
+ * (`salon-cue.ts`). Off, or when this turn names no single salon, the
+ * salon is grounded as before.
+ */
+function newestTurnSalon(
+  question: string,
+  salons: readonly SalonRow[],
+): { id: string; name: string; ambiguous: readonly SalonRow[] } | null {
+  if (!placeSpanGuardEnabled()) return null;
+  const ids = labelledSalonIds(question);
+  if (ids.length !== 1) return null;
+  const row = salons.find((salon) => salon.id === ids[0]);
+  return row ? { id: row.id, name: row.name, ambiguous: [] } : null;
 }
 
 function groundSalon(

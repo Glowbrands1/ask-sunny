@@ -45,6 +45,7 @@ import {
   caTemplateMapEnabled,
   formChoiceStatedEnabled,
   remapIncidentFixEnabled,
+  placeSpanGuardEnabled,
   notANameGuardEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
@@ -114,6 +115,7 @@ const NEW_FLAGS = [
   "CA_TEMPLATE_MAP_ENABLED",
   "FORM_CHOICE_STATED_ENABLED",
   "REMAP_INCIDENT_FIX_ENABLED",
+  "PLACE_SPAN_GUARD_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
 ] as const;
 
@@ -229,6 +231,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(caTemplateMapEnabled()).toBe(false);
     expect(formChoiceStatedEnabled()).toBe(false);
     expect(remapIncidentFixEnabled()).toBe(false);
+    expect(placeSpanGuardEnabled()).toBe(false);
     expect(notANameGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";

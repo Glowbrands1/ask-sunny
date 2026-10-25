@@ -502,6 +502,22 @@ export function formChoiceStatedEnabled(): boolean {
 }
 
 /**
+ * A policy or document phrase is not a place (ported from Ask Bubbles,
+ * conv_mvmcetjw2i4vtwz). Off, the salon readers are unchanged. On, the
+ * "<place>, <state>" reader reads each manager turn on its own and skips a
+ * span that names a policy, manual, section or similar document, so "cite
+ * animals in the workplace policy" followed by "at Kearney, NE" is not read
+ * as a place called "the workplace policy at Kearney"; and a labelled
+ * current or new location that names a document ("per the new salon
+ * policy") is not kept as the salon. Also on, a field label is a place cue
+ * and the newest turn's salon replaces the saved one: "location st joe"
+ * after "salon is wornall" is St Joseph (QA Round 4).
+ */
+export function placeSpanGuardEnabled(): boolean {
+  return envFlag("PLACE_SPAN_GUARD_ENABLED");
+}
+
+/**
  * Words that are not a person never become the employee: a placeholder
  * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
  * practice"), a product or service this business sells, a place on the
