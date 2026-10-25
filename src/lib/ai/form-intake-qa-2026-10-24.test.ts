@@ -188,7 +188,12 @@ describe("the app's own lines are not the manager's words (24 Oct 2026)", () => 
     // What happened is the manager's sentence. "Job title: tan consultant.",
     // "It happened at KS Manhattan.", "Policy reference: …" and "Incident: …"
     // are the app's.
-    expect(observation(held.content)).toBe(question);
+    // Changed on purpose (QA decision, 25 Oct 2026): with MANAGER_WORDS_ONLY
+    // on, What happened drops the clauses that only request the form, name
+    // the employee or give their place ("create a CA form for ima employee",
+    // "tan consultant at manhattan"); the rest stays word for word. Was the
+    // whole question, which REMAP_INCIDENT_FIX_ENABLED did not print.
+    expect(observation(held.content)).toBe("opening salon late on 9-28-26");
   });
 
   it("name is test testy, todays date, shawnee location, test was late opening salon", () => {
@@ -283,7 +288,7 @@ describe("the app's own lines are not the manager's words (24 Oct 2026)", () => 
     });
     expect(observation(created.content)).toBe("She was on her cell phone for 30+ minutes at the front desk");
 
-    // Naming the salon in the account of what happened keeps the sentence.
+    // Naming the salon in the account of what happened keeps the account.
     const late = holdFilledSlots({
       response: answer(lead, coaching),
       question: "She opened the salon late at NE Grand Island",
@@ -291,11 +296,18 @@ describe("the app's own lines are not the manager's words (24 Oct 2026)", () => 
       today: TODAY,
       people: [],
     });
-    expect(observation(late.content)).toBe("She opened the salon late at NE Grand Island");
+    // Changed on purpose (QA decision, 25 Oct 2026, QA's own example): the
+    // place is not what happened, so "at NE Grand Island" goes and the rest
+    // stays word for word. Was the whole sentence, place included, which
+    // REMAP_INCIDENT_FIX_ENABLED did not print.
+    expect(observation(late.content)).toBe("She opened the salon late");
   });
 
   it("off, the card reads the question as main does", () => {
     vi.stubEnv(FLAG, "");
+    // Main's production card: the remap fix is off there too. The bundle runs
+    // this file with every flag on, and that flag reads What happened itself.
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
     const off = holdFilledSlots({
       response: answer("Here is what I would put on a **Coaching Form**.", proposal({
         templateKey: "coaching",
@@ -317,6 +329,70 @@ describe("the app's own lines are not the manager's words (24 Oct 2026)", () => 
       }),
     );
     expect(reading.state.title).toBe("CA");
+  });
+});
+
+/*
+ * QA decision, 25 Oct 2026: "With MANAGER_WORDS_ONLY on, drop only the
+ * clauses that just request the form, name the employee or give their place
+ * (salon/store, job title at a place). Keep everything else word for word.
+ * Example: 'She opened the salon late at NE Grand Island' → 'She opened the
+ * salon late'." The same card with REMAP_INCIDENT_FIX_ENABLED off and on: the
+ * two readers that write What happened (keep-filled-slots' withObservation
+ * and withAccount) agree. Ask Bubbles applies the same rule on its remap path.
+ */
+describe("QA 25 Oct 2026: What happened without the request, the name or the place", () => {
+  const lead = "Here is what I would put on a **Coaching Form**.";
+  const history = [
+    { role: "user", content: "I need to coach an employee" },
+    { role: "assistant", content: "Happy to help. Give me a few details." },
+  ];
+
+  function held(question: string, employeeName: string) {
+    return holdFilledSlots({
+      response: answer(lead, proposal({ templateKey: "coaching", templateName: "Coaching Form", employeeName, locationId: "loc-0307" })),
+      question,
+      history,
+      today: TODAY,
+      people: [],
+    });
+  }
+
+  for (const remapFix of ["", "1"]) {
+    const label = remapFix ? "with REMAP_INCIDENT_FIX_ENABLED on" : "with REMAP_INCIDENT_FIX_ENABLED off";
+
+    it(`She opened the salon late at NE Grand Island → She opened the salon late (${label})`, () => {
+      vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", remapFix);
+      expect(observation(held("She opened the salon late at NE Grand Island", "Test Employee").content)).toBe(
+        "She opened the salon late",
+      );
+    });
+
+    it(`create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26 (${label})`, () => {
+      vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", remapFix);
+      expect(
+        observation(
+          held("create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26", "ima employee").content,
+        ),
+      ).toBe("opening salon late on 9-28-26");
+    });
+
+    it(`a sentence that says only where she works is still no account (${label})`, () => {
+      vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", remapFix);
+      expect(observation(held("She works at NE Grand Island", "Test Employee").content)).toBeNull();
+      // A place that is not a salon is part of what happened.
+      expect(observation(held("She was on her cell phone for 30+ minutes at the front desk", "Test Employee").content)).toBe(
+        "She was on her cell phone for 30+ minutes at the front desk",
+      );
+    });
+  }
+
+  it("flag off, the sentence is printed as main prints it", () => {
+    vi.stubEnv(FLAG, "");
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    expect(observation(held("She opened the salon late at NE Grand Island", "Test Employee").content)).toBe(
+      "She opened the salon late at NE Grand Island",
+    );
   });
 });
 
