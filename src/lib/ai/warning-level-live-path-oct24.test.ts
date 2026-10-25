@@ -266,6 +266,21 @@ describe("acceptance: the level is only what the manager said, on the live path"
     expect(last.content).not.toMatch(/Yes or No\?/);
   });
 
+  it('a bare "Yes" after an either/or level question reads back no level and answers payroll (parity with Ask Bubbles)', async () => {
+    const replies = await replay("conv_test_a2c", [
+      {
+        user: "create a corrective action form for Test Employee",
+        recordedReply:
+          "I can create a **Corrective Action Form** for **Test Employee**.\n\nIs this new corrective action a **Verbal Warning** or a **Written Warning**? Tell me here, or tick it on the form — I won't choose it for you.\n\nOne more question: **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.",
+      },
+      "Yes",
+    ]);
+    const last = replies.at(-1)!;
+    expect(readBack(last.content)).toBeNull();
+    expect(last.formProposal?.warningLevel ?? null).toBeNull();
+    expect(last.formProposal?.payrollDeduct).toBe("yes");
+  });
+
   it("conv_mvmtndnm2k6ilyr with main's payroll flag on too: both readers agree on the bare Yes", async () => {
     process.env[PAYROLL_FLAG] = "true";
     const replies = await replay("conv_test_a2b", [

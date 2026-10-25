@@ -359,7 +359,8 @@ function payrollAnsweredNow(
   const questions = (before.content.replace(/[*_`]/g, "").match(/[^.!?\n]*\?/g) ?? [])
     .map((line) => line.trim())
     .filter((line) => !/payroll/i.test(line) && !/^yes\s+or\s+no\?$/i.test(line));
-  if (questions.some((line) => OTHER_YES_NO.test(line))) return null;
+  // An either/or ("a Verbal Warning or a Written Warning?") is not answered by "Yes", as payroll-deduct.ts reads it too.
+  if (questions.some((line) => OTHER_YES_NO.test(line) && !/\bor\b/i.test(line))) return null;
   return payrollDeductFromConversation(
     [
       { role: "assistant", content: before.content },
