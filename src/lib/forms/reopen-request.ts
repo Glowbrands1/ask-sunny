@@ -1,3 +1,5 @@
+import { reopenVerbGuardEnabled } from "@/lib/config/chat-quality-flags";
+
 import { EDIT_VERB, SHOW_VERB } from "./reopen-cue";
 import { asksAboutForms, detectTemplateIntent, leadingFormRequest } from "./template-intent";
 
@@ -38,6 +40,18 @@ export interface ReopenRequest {
  */
 const NEW_RECORD =
   /\b(?:create|make\s+(?:a|an|one|another)|start\s+(?:a|an|another)|another|fresh|blank|pull\s+up\s+(?:a|an))\b|\b(?:a|an)\s+new\s+(?:\S+\s+)?(?:form|paperwork|exit|coaching|transfer|demotion|resignation|epp|plan)\b/i;
+/*
+ * REOPEN_VERB_GUARD_ENABLED (QA B22, 25 Oct 2026): "Write up Test Employee …
+ * for no call no show on 10/22" in a new chat read "show" as the verb and put
+ * another chat's corrective action back in the thread. An incident that
+ * contains a reopen verb is not one, and a turn that opens by asking for a
+ * document is a new one.
+ */
+const INCIDENT_WITH_A_VERB =
+  /\bno[\s,/-]*call(?:[\s,/-]*(?:and|or|\/))?[\s,/-]*no[\s-]*shows?\b|\bno[\s-]shows?\b|\b(?:did(?:n['’]?t|\s+not)|never|doesn['’]?t|won['’]?t|failed\s+to)\s+show(?:\s+up)?\b|\bshow(?:s|ed|ing)?\s+up\b/gi;
+const ASKS_FOR_A_DOCUMENT =
+  /^\s*(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:i\s+(?:need|want)\s+(?:to\s+(?:draft|write|do)\s+)?(?:a|an)\b|draft\s+(?:a|an|up)\b|write\s+(?:up|a|an)\b|do\s+(?:a|an)\b)/i;
+
 /** A question somebody is asking, not a request to act. "Can you …" is a request. */
 const QUESTION_OPENING =
   /^\s*(?:how|what|why|when|where|which|who|is|are|does|do|did|should|would|will|can\s+(?:i|we|managers?|a\s+manager)|could\s+(?:i|we))\b/i;
@@ -56,9 +70,12 @@ export function readReopenRequest(question: string): ReopenRequest | null {
   if (text === "" || text.length > 400) return null;
   if (QUESTION_OPENING.test(text)) return null;
   if (NEW_RECORD.test(text)) return null;
+  const guarded = reopenVerbGuardEnabled();
+  if (guarded && ASKS_FOR_A_DOCUMENT.test(text)) return null;
+  const verbs = guarded ? text.replace(INCIDENT_WITH_A_VERB, " ") : text;
 
-  const edit = EDIT_VERB.test(text);
-  const show = !edit && SHOW_VERB.test(text);
+  const edit = EDIT_VERB.test(verbs);
+  const show = !edit && SHOW_VERB.test(verbs);
   if (!edit && !show) return null;
   if (asksAboutForms(text) && !LEADING_REQUEST.test(text)) return null;
 
