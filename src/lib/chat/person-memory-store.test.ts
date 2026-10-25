@@ -323,7 +323,7 @@ describe("recallPeople with the cross-chat guard", () => {
     expect(await recall(SITUATION, guarded)).toBeNull();
   });
 
-  it("still lists a form on file, as a record, and labels the block", async () => {
+  it("lists a form on file only when the manager refers back, labelled as a record", async () => {
     conversation({ createdAt: "2026-10-23T20:46:08Z", turns: OCT_23_TURNS });
     db.tables.form_instances!.push({
       employee_name: "Wren Calder",
@@ -335,13 +335,15 @@ describe("recallPeople with the cross-chat guard", () => {
       form_templates: { name: "Coaching Form" },
     });
 
-    const block = await recall(SITUATION, guarded);
+    // Changed on purpose (QA follow-up, 25 Oct): forms from other
+    // conversations stay out too unless the manager refers back. The first
+    // version of this guard still listed them.
+    expect(await recall(SITUATION, guarded)).toBeNull();
 
+    const block = await recall("what about her earlier CA? Wren Calder", guarded);
     expect(block).toContain("- Coaching Form for Wren Calder — dated 2026-10-23, draft, not finalized");
     expect(block).toContain("records from OTHER conversations");
-    expect(block).toContain("Never say the manager raised, said, sent or asked any of it before");
-    expect(block).not.toContain("Earlier conversation,");
-    expect(block).not.toContain("> an employee");
+    expect(block).toContain("a form discussed, requested or proposed in an earlier conversation was not created");
   });
 
   it("quotes the earlier chat when the manager refers back to it", async () => {

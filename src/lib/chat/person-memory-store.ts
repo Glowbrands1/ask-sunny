@@ -98,10 +98,10 @@ export interface RecallInput {
    */
   readonly todayIso?: string;
   /**
-   * CROSS_CHAT_REPLY_GUARD_ENABLED, read by the caller. On: another chat is
-   * quoted only when the manager refers back to one in this conversation (forms
-   * on file are still listed), a name read only from a bare turn must be on
-   * `roster`, and the block is labelled as records from other conversations.
+   * CROSS_CHAT_REPLY_GUARD_ENABLED, read by the caller. On: nothing is
+   * recalled unless the manager refers back to an earlier conversation here; a
+   * name read only from a bare turn must be on `roster`; and the block is
+   * labelled as records from other conversations.
    */
   readonly crossChatGuard?: boolean;
   /** The caller's scoped roster, read only when a bare-turn name needs it. */
@@ -130,6 +130,15 @@ async function guardedCandidates(
  * The memory block for this turn, or null — never a rejection.
  */
 export async function recallPeople(input: RecallInput): Promise<string | null> {
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED: nothing from another conversation — its
+   * words or the forms listed with it — unless the manager refers back to one
+   * here ("like last time", "the one I did yesterday", "her earlier CA").
+   * QA: replies said "You raised this same situation with me on October 23"
+   * and "you already have a Corrective Action on file…" in chats that never
+   * mentioned either. No query is made.
+   */
+  if (input.crossChatGuard && !refersBack(input.question, input.history)) return null;
   const named = namesToRecall(input);
   if (named.length === 0) return null;
 
@@ -246,15 +255,7 @@ async function readMemory(
       });
   });
 
-  /*
-   * CROSS_CHAT_REPLY_GUARD_ENABLED: another chat is quoted only when the
-   * manager refers back to one here. Otherwise the reply told them "you raised
-   * this same situation with me on October 23" about a chat they never
-   * mentioned. The forms they filed are still listed, as records.
-   */
-  const quoteOtherChats = !input.crossChatGuard || refersBack(input.question, input.history);
-
-  const consideredIds = !quoteOtherChats ? [] : [
+  const consideredIds = [
     ...new Set(
       conversationsByPerson.flatMap((ids) =>
         ids.filter((id) => !currentConversations.has(id)).slice(0, CANDIDATE_CONVERSATIONS_PER_PERSON),

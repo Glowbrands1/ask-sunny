@@ -134,3 +134,61 @@ describe("refersBack and isBareNameTurn", () => {
     expect(isBareNameTurn(SITUATION, "Wren")).toBe(false);
   });
 });
+
+/*
+ * QA review, 25 Oct: the first version KEPT all six of these. They are
+ * the sibling app's live step-3 replies (conv_mvmzl3vs2kxujv0, conv_mvmzl40e2dxpgej, conv_mvmzlbhv2ww7y5v, conv_mvmzlvq124nmks8, conv_mvmznap42vcw0dl), with its store names swapped for invented salon labels and the manager's name for an invented one. The manager did not refer back to anything; every one must go, and
+ * the policy sentence beside them must stay.
+ */
+describe("withoutCrossChatClaims — QA's six live sentences", () => {
+  const SIX = [
+  "Thanks, Marlo. I see a couple of earlier items on Test Employee from your past conversations: a note about being out of dress code at Salon 0495 on 10-18, and a Corrective Action you created for being late to open (dated 10-22, verbal, no payroll change).",
+  "You told me earlier today about a separate CA for Test Employee at Salon 0495 — late to open 10-19, documented as a verbal warning, no payroll deduction.",
+  "A quick note on timeline: you already have a Corrective Action on file for Test Employee for a late-to-open on 10-19 (verbal, no payroll change, later corrected to date 10-22, per what you told me earlier).",
+  "Salon discrepancy — you've mentioned Test Employee before in two different contexts: a dress code CA request for Salon 0101, and a lateness CA request for Salon 0202.",
+  "That matches what you did earlier today for Test Employee's late-arrival verbal.",
+  "This is a first documented cell phone issue for her that I can see — your other notes on Test Employee are a dress code CA at Salon 0101 (10/11) and a lateness CA at Salon 0202 (10/5, 10/15).",
+  ];
+  const KEEP = "Personal cell phones must be kept out of sight [p.19].";
+  const input = {
+    question: "Her name is Test Employee",
+    history: [
+      { role: "user", content: "I need to coach an employee" },
+      { role: "assistant", content: "Happy to help you build this out. What did you observe?" },
+    ],
+    todayIso: "2026-10-24",
+  };
+
+  it.each(SIX.map((sentence, index) => [index + 1, sentence]))("removes sentence %i and keeps the policy line", (_n, sentence) => {
+    const { content, removed } = withoutCrossChatClaims(`${sentence} ${KEEP}`, input);
+    // "Thanks, Marlo." is a sentence of its own and says nothing about another chat: it stays.
+    const kept = sentence.startsWith("Thanks, Marlo. ") ? "Thanks, Marlo. " : "";
+    expect(removed).toEqual([sentence.slice(kept.length)]);
+    expect(content).toBe(`${kept}${KEEP}`);
+  });
+
+  it("removes all six from one reply and keeps the policy line", () => {
+    const { content } = withoutCrossChatClaims([...SIX, KEEP].join("\n\n"), input);
+    expect(content).toBe(`Thanks, Marlo.\n\n${KEEP}`);
+  });
+
+  it("keeps the policy line and a sentence about this chat on their own", () => {
+    const reply = `${KEEP} You said she was on her phone, so start with the policy.`;
+    expect(withoutCrossChatClaims(reply, input).content).toBe(reply);
+  });
+});
+
+describe("refersBack — the manager's own words for an earlier chat", () => {
+  it("reads 'like last time', 'the one I did yesterday' and 'her earlier CA'", () => {
+    for (const said of ["do it like last time", "same as the one I did yesterday", "add it to her earlier CA"]) {
+      expect(refersBack(said, [])).toBe(true);
+    }
+    expect(refersBack("Her name is Test Employee", [{ role: "user", content: "I need to coach an employee" }])).toBe(false);
+    expect(
+      refersBack(
+        "do verbal for team member Test Employee at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 Test was not scheduled to work and came into the store to show her team her new puppy. Test was in the store 45 min",
+        [],
+      ),
+    ).toBe(false);
+  });
+});

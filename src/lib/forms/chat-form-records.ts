@@ -153,7 +153,21 @@ const STATUS_LABEL: Record<InstanceRow["status"], string> = {
   revised: "revised — replaced by a newer version",
 };
 
-function describeRow(row: InstanceRow, today: string): string {
+/*
+ * CROSS_CHAT_REPLY_GUARD_ENABLED: each row says whether the person asking
+ * created it. The register lists every form this user may SEE, and a reply
+ * called another manager's draft "the written one you created today"
+ * (conv_mvmznap42vcw0dl). Without a viewer the line is unchanged.
+ */
+const CREATED_BY_RULE =
+  'Each row says who created it. Say the manager created a form only when its row says "created by: this user"; a form created by another user was not created by them.';
+
+function createdByPart(row: InstanceRow, viewerId: string | null | undefined): string[] {
+  if (!viewerId) return [];
+  return [row.createdBy === viewerId ? "created by: this user" : "created by: another user"];
+}
+
+function describeRow(row: InstanceRow, today: string, viewerId?: string | null): string {
   const state = followUpState(row, today);
   const parts = [
     `${row.formDate} — ${row.templateName}`,
@@ -164,6 +178,7 @@ function describeRow(row: InstanceRow, today: string): string {
   if (row.followUpDate) parts.push(`follow-up date: ${row.followUpDate}`);
   if (state !== "drafted" && state !== "untracked") parts.push(`follow-up: ${FOLLOW_UP_LABEL[state]}`);
   if (row.archivedAt) parts.push("archived");
+  parts.push(...createdByPart(row, viewerId));
   return `- ${parts.join("; ")}`;
 }
 
@@ -187,9 +202,9 @@ function draftRows(rows: readonly InstanceRow[]): InstanceRow[] {
   return rows.filter((row) => row.status === "draft");
 }
 
-function notOnFileSection(rows: readonly InstanceRow[], today: string): string | null {
+function notOnFileSection(rows: readonly InstanceRow[], today: string, viewerId: string | null): string | null {
   if (rows.length === 0) return null;
-  return `${NOT_ON_FILE}\n${rows.map((row) => describeRow(row, today)).join("\n")}`;
+  return `${NOT_ON_FILE}\n${rows.map((row) => describeRow(row, today, viewerId)).join("\n")}`;
 }
 
 export function renderFormRecordsBlock(input: {
@@ -199,11 +214,14 @@ export function renderFormRecordsBlock(input: {
   matches: NameMatches | null;
   recent: readonly InstanceRow[];
   today: string;
+  /** CROSS_CHAT_REPLY_GUARD_ENABLED: the asking user's id, to mark who created each row. */
+  viewerId?: string | null;
 }): string {
+  const viewerId = input.viewerId ?? null;
   const { words, matches, recent, today } = input;
   const sections: string[] = [
     FORM_RECORDS_HEADING,
-    `${RECORDS_RULES} ${scopeSentence(input.visibility)}`,
+    `${RECORDS_RULES} ${scopeSentence(input.visibility)}${viewerId ? ` ${CREATED_BY_RULE}` : ""}`,
   ];
 
   if (matches) {
@@ -213,7 +231,7 @@ export function renderFormRecordsBlock(input: {
     const drafts = draftRows([...matches.named, ...matches.possible]);
     if (named.length > 0) {
       sections.push(
-        `Forms naming the person in the question (${named.length}), newest first:\n${named.map((row) => describeRow(row, today)).join("\n")}`,
+        `Forms naming the person in the question (${named.length}), newest first:\n${named.map((row) => describeRow(row, today, viewerId)).join("\n")}`,
       );
     } else {
       sections.push(
@@ -222,20 +240,20 @@ export function renderFormRecordsBlock(input: {
     }
     if (possible.length > 0) {
       sections.push(
-        `Possible matches — part of the name matches, so they may be somebody else. Ask before treating them as the same person:\n${possible.map((row) => describeRow(row, today)).join("\n")}`,
+        `Possible matches — part of the name matches, so they may be somebody else. Ask before treating them as the same person:\n${possible.map((row) => describeRow(row, today, viewerId)).join("\n")}`,
       );
     }
-    const draftsBlock = notOnFileSection(drafts, today);
+    const draftsBlock = notOnFileSection(drafts, today, viewerId);
     if (draftsBlock) sections.push(draftsBlock);
   } else if (recent.length > 0) {
     const filed = onFileRows(recent);
     const drafts = draftRows(recent);
     if (filed.length > 0) {
       sections.push(
-        `The question names nobody. The ${filed.length} most recent forms this user can see, newest first:\n${filed.map((row) => describeRow(row, today)).join("\n")}`,
+        `The question names nobody. The ${filed.length} most recent forms this user can see, newest first:\n${filed.map((row) => describeRow(row, today, viewerId)).join("\n")}`,
       );
     }
-    const draftsBlock = notOnFileSection(drafts, today);
+    const draftsBlock = notOnFileSection(drafts, today, viewerId);
     if (draftsBlock) sections.push(draftsBlock);
     if (filed.length === 0 && !draftsBlock) {
       sections.push("No forms are on file at the salons this user can see.");
@@ -295,6 +313,8 @@ export async function loadFormRecords(input: {
   question: string;
   previousQuestion?: string | null;
   today?: string;
+  /** CROSS_CHAT_REPLY_GUARD_ENABLED: mark which rows the asking user created. */
+  markCreator?: boolean;
 }): Promise<{ block: string } | null> {
   const { actor } = input;
   // Fails closed: no verified identity, no read. Chat is live-only, so this is
@@ -303,6 +323,7 @@ export async function loadFormRecords(input: {
   if (!hasPermission(DEFAULT_PERMISSION_MATRIX, actor.role, "view_form_monitoring")) return null;
 
   const today = input.today ?? businessToday();
+  const viewerId = input.markCreator ? actor.subject : null;
   try {
     const formsActor = (await chatFormsActor(actor))!;
     const visibility = formsActor.visibility!;
@@ -322,7 +343,7 @@ export async function loadFormRecords(input: {
       );
       const matches = matchRowsToQuestion(rows, words);
       if (matches.named.length > 0 || matches.possible.length > 0) {
-        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today }) };
+        return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId }) };
       }
     }
 
@@ -335,6 +356,7 @@ export async function loadFormRecords(input: {
     const named = words.length > 0 && looksLikeItNamesSomebody(nameSource);
     return {
       block: renderFormRecordsBlock({
+        viewerId,
         visibility,
         words,
         matches: named ? { named: [], possible: [] } : null,
