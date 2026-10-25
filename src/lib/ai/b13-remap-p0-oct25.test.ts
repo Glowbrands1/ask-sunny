@@ -513,3 +513,32 @@ describe("prior actions the manager typed", () => {
     expect(line).toContain("09/25/2026");
   });
 });
+
+/*
+ * The sibling app's QA B-list turns (conv_mvi98yvkfuehzye and
+ * conv_mvlb6ils11qqyexg there), with this app's salon and job title, with
+ * REMAP_INCIDENT_FIX + PRIOR_ACTIONS_PARSE on, and with MANAGER_WORDS_ONLY on
+ * too.
+ */
+describe.each([[[] as string[]], [["MANAGER_WORDS_ONLY_ENABLED"]]])("QA B-list, also on: %j", (also) => {
+  beforeEach(() => {
+    for (const flag of also) vi.stubEnv(flag, "1");
+    intentModel.reading = copiesTheManager;
+  });
+
+  it("B4: the prior is never What happened, and the register-shortage CA has only its own prior", async () => {
+    const replies = await chat(B4, `conv-blist-b4-${also.length}`);
+    for (const reply of replies.slice(0, 2)) {
+      expect(whatHappened(reply.content)).toBe("violating attendance policy on 10-20-26");
+      expect(priorLine(reply.content)).toBe("Coaching — JBA Policy Manual — 01/01/2026");
+    }
+    expect(whatHappened(replies[2]!.content)).toBe("a register shortage on 10-20-26");
+    expect(priorLine(replies[2]!.content)).toBe("Coaching — JBA Policy Manual — 01/20/2026");
+  });
+
+  it("G11: What happened is the late open, never the job title at the salon", async () => {
+    const [reply] = await chat([G11], `conv-blist-g11-${also.length}`);
+    expect(whatHappened(reply!.content)).toBe("late open on 10-21-26");
+    expect(priorLine(reply!.content)).toBe("Coaching — JBA Policy Manual — 01/01/1995; Verbal corrective action — 10/05/2026");
+  });
+});
