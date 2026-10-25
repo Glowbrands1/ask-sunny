@@ -1062,7 +1062,82 @@ function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit
     }
     chosen.push(hit);
   }
-  return dominantPages(text, chosen);
+  return dominantPages(text, outsaid(text, chosen, hits));
+}
+
+/*
+ * A PAGE THAT SAYS CLEARLY MORE OF THE SENTENCE WINS, EVEN WITHOUT THE
+ * LONGEST PHRASE (live, 25 Oct 2026; ported from the sibling app). "Dress
+ * code violations can lead to being sent home to change and are subject to
+ * disciplinary action, up to and including termination" shares that
+ * discipline clause word for word only with Retaliation (23) and the Bonus
+ * Policy (38). The Dress Code page (15) prints "up to and potentially
+ * including termination", so its longest phrase is shorter, but it is the
+ * page that says "dress code", "sent home" and "change". The discipline words
+ * are printed on dozens of pages and say little about which page a sentence
+ * restates; "dress", "home" and "sent" are printed on a few. Each shared word
+ * counts by how few pages print it, and a page whose words count for clearly
+ * more (half as much again as any tied page), sharing as many distinctive
+ * words, is cited instead. "Payout on termination follows state and federal
+ * guidelines" stays where it was: the smoking page's "state and federal"
+ * counts for only a little more.
+ */
+const OUTSAID = 2 / 3;
+
+function outsaid(text: string, tied: readonly PassageHit[], hits: readonly PassageHit[]): PassageHit[] {
+  if (tied.length === 0) return [...tied];
+  const rarity = wordRarityOf(hits);
+  const tiedPages = new Set(tied.map((hit) => hit.passage.page));
+  const tiedBest = Math.max(...tied.map((hit) => rareOverlap(text, hit.passage.text, rarity)));
+  let best: PassageHit | null = null;
+  let bestScore = 0;
+  for (const hit of hits) {
+    const score = rareOverlap(text, hit.passage.text, rarity);
+    if (score > bestScore) {
+      best = hit;
+      bestScore = score;
+    }
+  }
+  // It also shares at least as many distinctive words as the closest tied page: two rare words are not a page.
+  const tiedWords = Math.max(...tied.map((hit) => overlapScore(text, hit.passage.text)));
+  if (!best || tiedPages.has(best.passage.page) || overlapScore(text, best.passage.text) < Math.max(4, tiedWords)) {
+    return [...tied];
+  }
+  return tiedBest < OUTSAID * bestScore ? [best] : [...tied];
+}
+
+const wordRarityCache = new WeakMap<readonly PassageHit[], ReadonlyMap<string, number>>();
+
+/** log(pages / pages that print the word), for each word of four or more letters. */
+function wordRarityOf(hits: readonly PassageHit[]): ReadonlyMap<string, number> {
+  const cached = wordRarityCache.get(hits);
+  if (cached) return cached;
+  const pagesOf = new Map<string, Set<number>>();
+  const allPages = new Set<number>();
+  for (const hit of hits) {
+    allPages.add(hit.passage.page);
+    for (const word of rareCandidates(hit.passage.text)) {
+      const pages = pagesOf.get(word);
+      if (pages) pages.add(hit.passage.page);
+      else pagesOf.set(word, new Set([hit.passage.page]));
+    }
+  }
+  const rarity = new Map<string, number>();
+  for (const [word, pages] of pagesOf) rarity.set(word, Math.log(allPages.size / pages.size));
+  wordRarityCache.set(hits, rarity);
+  return rarity;
+}
+
+function rareCandidates(text: string): Set<string> {
+  return new Set(wordsOf(text).split(" ").filter((word) => word.length >= 4 && !OVERLAP_STOP.has(word)));
+}
+
+/** The sentence's words the passage prints too, each counted by how few pages print it. */
+function rareOverlap(text: string, passageText: string, rarity: ReadonlyMap<string, number>): number {
+  const hay = rareCandidates(passageText);
+  let score = 0;
+  for (const word of rareCandidates(text)) if (hay.has(word)) score += rarity.get(word) ?? 0;
+  return score;
 }
 
 /*

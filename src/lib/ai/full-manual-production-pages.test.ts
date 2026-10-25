@@ -333,3 +333,30 @@ describe("QA: every manual page kept is one the sentence restates", () => {
     expect(out.citations.map((citation) => citation.locator)).not.toContain("Page 36");
   }, 20_000);
 });
+
+/**
+ * Live, 25 Oct 2026 (ported from the sibling app's B4 round): the discipline
+ * clause is printed word for word only on Retaliation (23) and the Bonus
+ * Policy (38); the Dress Code page (15) says "up to and potentially including
+ * termination" but is the page the rest of the sentence restates.
+ */
+describe("live B4: the page that says clearly more", () => {
+  it("dress-code discipline cites the Dress Code page (15), not Retaliation (23) or the Bonus Policy (38)", () => {
+    const out = cite(
+      "- Dress code violations can lead to being sent home to change and are subject to disciplinary action, up to and including termination [p.23] [p.38].",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+  }, 20_000);
+
+  it("the customer-experience line cites Cell Phone (19), not Employee Injury (26)", () => {
+    const out = cite(
+      "- Employees are personally responsible for protecting the customer experience — texting, making calls, or using social media on the clock jeopardizes that [p.19] [p.26].",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+  }, 20_000);
+
+  it('"Payout on termination follows state and federal guidelines" does not move to the smoking page (12)', () => {
+    const out = cite("- Payout on termination follows state and federal guidelines [p.42].");
+    expect(pagesIn(out.content).has(12)).toBe(false);
+  }, 20_000);
+});
