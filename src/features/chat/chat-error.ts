@@ -15,6 +15,35 @@ import type { ChatTurnError } from "@/types";
  */
 export function toChatTurnError(error: unknown, question: string): ChatTurnError {
   if (error instanceof AiError) {
+    /*
+     * WHAT THE SERVER SAID, KEPT ON THE STORED TURN. The card's wording is
+     * chosen below; the code and HTTP status are what tell an expired session,
+     * a platform timeout and a model failure apart afterwards. A failed turn
+     * stores `content: ""`, and without these the history could only say
+     * "model_failed" for all of them.
+     */
+    return { ...turnErrorFor(error, question), code: error.code, status: error.status };
+  }
+  return turnErrorFor(error, question);
+}
+
+function turnErrorFor(error: unknown, question: string): ChatTurnError {
+  if (error instanceof AiError) {
+    /*
+     * THE SERVER'S AUTH REFUSAL ARRIVES AS AN AiError. `post` rebuilds every
+     * non-2xx body as one, carrying the server's code, so a 401 "You are not
+     * signed in." used to fall to the default branch and read "Sunny could
+     * not produce an answer… try again", which asking again does not fix.
+     */
+    const code = error.code as string;
+    if (code === "unauthenticated" || code === "forbidden" || code === "no_provider") {
+      return {
+        kind: "unauthenticated",
+        message: error.message,
+        retryable: false,
+        question,
+      };
+    }
     switch (error.code) {
       case "not_configured":
         return {

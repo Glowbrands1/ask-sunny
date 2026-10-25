@@ -54,6 +54,7 @@ import {
   notANameGuardEnabled,
   exitIntakeFixEnabled,
   manualNegatedListNoteEnabled,
+  emptyReplyGuardEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
@@ -618,6 +619,7 @@ const NEW_FLAGS = [
   // coding 6: REQUEST_ISSUE_KEPT (ported from Ask Bubbles, QA round 17b; default off).
   "REQUEST_ISSUE_KEPT_ENABLED",
   "GROUP_WORDS_NOT_A_NAME_ENABLED",
+  "EMPTY_REPLY_GUARD_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -1004,6 +1006,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(cardChangeFinalizedEnabled()).toBe(false);
     expect(formPatchReducerEnabled()).toBe(false);
     expect(formReplyFromDiffEnabled()).toBe(false);
+    expect(emptyReplyGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

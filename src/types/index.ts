@@ -497,6 +497,10 @@ export interface ChatTurnError {
   retryable: boolean;
   /** The question that failed, so the UI can offer to send it again. */
   question: string;
+  /** The server's error code, when it sent one. Diagnostic; never shown. */
+  code?: string;
+  /** The HTTP status the turn failed with, when there was one. Diagnostic. */
+  status?: number;
 }
 
 export interface ChatConversation {

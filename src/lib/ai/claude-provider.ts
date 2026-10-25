@@ -39,6 +39,16 @@ export class ClaudeProvider implements AIProvider {
     if (response.pendingCopy?.fromInstanceId) {
       this.offeredCopies.set(key, { fromInstanceId: response.pendingCopy.fromInstanceId, answer: response.content });
     }
+    /*
+     * A 200 WITH NO ANSWER IN IT IS A FAILURE, NOT A BLANK BUBBLE. `post`
+     * reads an unparseable body as `{}`, and a body without a string
+     * `content` used to become an assistant turn with nothing in it and no
+     * error card. Every answer the route returns has string content, so this
+     * only ever catches a response that is not one of them.
+     */
+    if (!response || typeof response.content !== "string") {
+      throw new AiError("model_failed", "Ask Sunny's answer did not arrive.", 502);
+    }
     return response;
   }
 
