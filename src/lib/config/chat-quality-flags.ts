@@ -452,6 +452,17 @@ export function draftActionsEnabled(): boolean {
 }
 
 /**
+ * A late opening, read as one (QA, 24 Oct 2026). "late to open 10-19" is the
+ * manual's Late Opening section and is dated 19 October: a yearless dashed
+ * month-day after a date cue is a date, the newest one the manager states
+ * dates the form, a late opening cites Late Opening only, and "payroll deduct
+ * is not applicable" is No in the saved state. Off, as before.
+ */
+export function lateOpenDateEnabled(): boolean {
+  return envFlag("LATE_OPEN_DATE_ENABLED");
+}
+
+/**
  * Words that are not a person never become the employee: a placeholder
  * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
  * practice"), a product or service this business sells, a place on the

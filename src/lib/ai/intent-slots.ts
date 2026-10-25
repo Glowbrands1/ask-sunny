@@ -10,6 +10,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
@@ -236,16 +237,33 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     : userText;
   const title = groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
-  const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
+  /*
+   * LATE_OPEN_DATE_ENABLED (QA, 24 Oct 2026): "late to open 10-19" and
+   * "change the date to 10-22" are dates, and the one this turn states dates
+   * the form ahead of the saved one. See `late-open.ts`.
+   */
+  const lateOpen = lateOpenOn();
+  const dateQuestion = lateOpen ? withYearlessDatesWritten(input.question, input.today) : input.question;
+  const dateText = lateOpen ? withYearlessDatesWritten(userText, input.today) : userText;
+  const statedNow =
+    lateOpen && !choice?.date ? newestStatedDate(input.question, input.today, explicitIncidentIso) : null;
+  const groundedDate = statedNow
+    ? { iso: statedNow, ambiguous: [] as readonly string[] }
+    : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
   const date = codeSlotsEnabled()
-    ? { iso: explicitIncidentIso(input.question, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
+    ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
     : groundedDate;
   const managerOnly = intentPayrollManagerOnlyEnabled();
-  const payrollAnswer = managerOnly
-    ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
-    : null;
+  // The manager's Yes/No, never an assistant turn's: "payroll deduct is not
+  // applicable" is No in the saved state too (LATE_OPEN_DATE_ENABLED).
+  const payrollAnswer =
+    managerOnly || lateOpen
+      ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
+      : null;
   const payrollAmount = !managerOnly
-    ? groundPayroll(reading?.payrollAmount ?? null, blob)
+    ? lateOpen && payrollAnswer === "no"
+      ? null
+      : groundPayroll(reading?.payrollAmount ?? null, blob)
     : payrollAnswer === "no"
       ? null
       : (payrollClauseAmount(input) ??
@@ -297,6 +315,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     payrollAmount,
     payrollAnswer,
     managerOnly,
+    managerAnswer: lateOpen,
     warningLevel: warningLevel.value,
     formType: formType.key,
     policyHeading,
@@ -877,6 +896,8 @@ function mergeSlots(
     payrollAnswer?: PayrollDeductAnswer | null;
     /** INTENT_PAYROLL_MANAGER_ONLY_ENABLED: Yes/No only from the manager's answer, never from an amount alone. */
     managerOnly?: boolean;
+    /** LATE_OPEN_DATE_ENABLED: the manager's stated Yes/No is kept, ahead of an amount's Yes. */
+    managerAnswer?: boolean;
     warningLevel: "verbal" | "written" | null;
     formType: string | null;
     policyHeading: string | null;
@@ -897,9 +918,11 @@ function mergeSlots(
     warningLevel: slots.warningLevel ?? prior.warningLevel,
     payrollDeduct: slots.managerOnly
       ? (slots.payrollAnswer ?? prior.payrollDeduct)
-      : slots.payrollAmount
-        ? "yes"
-        : prior.payrollDeduct,
+      : slots.managerAnswer && slots.payrollAnswer
+        ? slots.payrollAnswer
+        : slots.payrollAmount
+          ? "yes"
+          : prior.payrollDeduct,
     templateKey: slots.formType ?? prior.templateKey,
     incidentType: slots.incidentType ?? prior.incidentType,
     payrollAmount: slots.payrollAnswer === "no" ? null : slots.payrollAmount ?? prior.payrollAmount,

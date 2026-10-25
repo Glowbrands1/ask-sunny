@@ -41,6 +41,7 @@ import {
   conversationDraftReuseEnabled,
   crossChatReplyGuardEnabled,
   draftActionsEnabled,
+  lateOpenDateEnabled,
   notANameGuardEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
@@ -106,6 +107,7 @@ const NEW_FLAGS = [
   "CONVERSATION_DRAFT_REUSE_ENABLED",
   "CROSS_CHAT_REPLY_GUARD_ENABLED",
   "DRAFT_ACTIONS_ENABLED",
+  "LATE_OPEN_DATE_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
 ] as const;
 
@@ -217,6 +219,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(conversationDraftReuseEnabled()).toBe(false);
     expect(crossChatReplyGuardEnabled()).toBe(false);
     expect(draftActionsEnabled()).toBe(false);
+    expect(lateOpenDateEnabled()).toBe(false);
     expect(notANameGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";

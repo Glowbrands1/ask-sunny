@@ -14,7 +14,13 @@ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
-import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
+import {
+  findManualSection,
+  headingKey,
+  withoutAttendanceForLateOpening,
+  type ManualChunk,
+  type ManualSection,
+} from "@/lib/forms/official-policy-manual";
 import {
   payrollAmountFromConversation,
   payrollAnswerForAmount,
@@ -184,7 +190,7 @@ export function attachFormTurnSources(input: {
   readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
   const found = formTurnCitations(input);
-  const citations = input.citations.length > 0 ? [...input.citations] : found;
+  const citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
   let sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes));
   sections = citeAttendanceForTardiness({
@@ -206,6 +212,7 @@ export function attachFormTurnSources(input: {
       if (!sections.some((seen) => headingKey(seen.heading) === headingKey(section.heading))) sections.push(section);
     }
   }
+  sections = withoutAttendanceForLateOpening(sections, input.notes);
   const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
   for (const section of sections) {
     const line =
@@ -221,6 +228,17 @@ export function attachFormTurnSources(input: {
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
   return { content, citations };
+}
+
+/**
+ * A late opening's Sources are Late Opening alone (LATE_OPEN_DATE_ENABLED).
+ * A citation's excerpt starts with its heading. See
+ * `withoutAttendanceForLateOpening`.
+ */
+function lateOpeningCitations(citations: SourceCitation[], notes: string): SourceCitation[] {
+  const headed = citations.map((citation) => ({ citation, heading: citation.excerpt.split(".")[0]?.trim() ?? "" }));
+  const kept = withoutAttendanceForLateOpening(headed, notes);
+  return kept.length === headed.length ? citations : kept.map((entry) => entry.citation);
 }
 
 export function statedManualHeading(notes: string): string | null {
