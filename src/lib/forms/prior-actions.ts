@@ -1,3 +1,5 @@
+import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, priorSteps } from "./form-date-answer";
 import { OFFICIAL_POLICY_MANUAL } from "./official-policy-manual";
@@ -146,9 +148,34 @@ function stepTopic(topic: string | undefined): string {
  * chat reads back before the form is created.
  */
 export function statedPriorActions(notes: string, today: string): string[] {
-  return priorSteps(notes, today).map((step) =>
-    priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic), stepDescription(step.named) || (step.about ?? "")),
-  );
+  return priorSteps(notes, today).map(managerStepLine);
+}
+
+/**
+ * One step the manager dated, as a line. PRIOR_ACTIONS_PARSE_ENABLED (QA, 25 Oct
+ * 2026): the line holds no word the manager did not say — "signed" only when
+ * they wrote sign/signed, and a manual they named reads as the manual's title,
+ * "JBA Policy Manual", with nothing added after it. "jba manual 1-1-26 for
+ * previous coaching" is "Coaching — JBA Policy Manual — 01/01/2026". Off, the
+ * line is as before.
+ */
+function managerStepLine(step: { iso: string; named: string; topic?: string; about?: string }): string {
+  const label = stepLabel(step.named);
+  const description = stepDescription(step.named) || (step.about ?? "");
+  if (!priorActionsParseEnabled()) return priorActionLine(label, step.iso, stepTopic(step.topic), description);
+  const what = description ? `${label} ${description}` : label;
+  // "verbal ca signed 9-1-26": "signed" marks the date, it is not what the step was about.
+  const topic = manualTitled(stepTopic(step.topic))
+    .replace(/\bsign(?:ed|ing)?\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const signed = /\bsign(?:ed|ing)?\b/i.test(`${step.named} ${step.topic ?? ""}`);
+  return `${topic ? `${what} — ${topic}` : what} — ${signed ? "signed " : ""}${signedDate(step.iso)}`;
+}
+
+/** "jba manual", "policy manual", "JBA Policy Manual": the manual's title, never renamed. */
+function manualTitled(topic: string): string {
+  return topic.replace(/\b(?:jba\s+)?(?:policy\s+)?manual\b/i, "JBA Policy Manual");
 }
 
 /**
@@ -201,9 +228,7 @@ export function groundPriorActions(input: {
   for (const step of priorSteps(input.notes, input.today)) {
     if (present.has(step.iso)) continue;
     present.add(step.iso);
-    added.push(
-      priorActionLine(stepLabel(step.named), step.iso, stepTopic(step.topic), stepDescription(step.named) || (step.about ?? "")),
-    );
+    added.push(managerStepLine(step));
   }
   /*
    * What the manager said of a step comes first; the record fills in the rest.

@@ -4,7 +4,9 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import {
   managerWordsOnlyEnabled,
+  formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
+  remapIncidentFixEnabled,
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -14,7 +16,13 @@ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
-import { findManualSection, headingKey, type ManualChunk, type ManualSection } from "@/lib/forms/official-policy-manual";
+import {
+  findManualSection,
+  headingKey,
+  withoutAttendanceForLateOpening,
+  type ManualChunk,
+  type ManualSection,
+} from "@/lib/forms/official-policy-manual";
 import {
   payrollAmountFromConversation,
   payrollAnswerForAmount,
@@ -35,9 +43,11 @@ import {
 
 import { accountManualSections } from "./account-manual-sections";
 import { appSentencesOnePerLine } from "./app-sentences";
+import { titleTextFromQuestion } from "./title-words";
 import type { ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
+import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
 import type { AskResponse } from "./types";
 
 /**
@@ -86,7 +96,11 @@ export function enrichFormCard(input: {
   const savedName = input.saved?.employeeName ? stripFieldLabels(input.saved.employeeName) : null;
   const statedName = statedEmployee(said) ?? savedName;
   const employeeName = preferRosterName(proposed ?? statedName, said, input.people);
-  const title = statedTitle(blob, input.saved?.title ?? null) ?? proposal.employeeRole;
+  // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
+  const fixed = remapIncidentFixEnabled();
+  const titleBlob = fixed ? withoutStateCodes(blob) : blob;
+  let title = statedTitle(titleBlob, input.saved?.title ?? null) ?? proposal.employeeRole;
+  if (fixed && title && extractJobTitle(blob) === title && !extractJobTitle(titleBlob)) title = null;
   const spoken = withoutStateSentences(input.question);
   const groundedOn = incidentMarkedIn(input.question, input.today);
   const spokenIncidents = listIncidentDates(spoken, input.today);
@@ -151,7 +165,7 @@ export function formTurnCitations(input: {
   readonly documentCategory?: string | null;
   readonly modelHeading?: string | null;
 }): SourceCitation[] {
-  const sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? null);
+  const sections = violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null));
   const category = categoryOf(input.documentCategory);
   const citations: SourceCitation[] = [];
   for (const section of sections) {
@@ -170,7 +184,7 @@ export function formTurnCitations(input: {
 }
 
 /** Citations plus the policy line, for a form answer. Existing citations stay. */
-export function attachFormTurnSources(input: {
+export function attachFormTurnSources(given: {
   readonly content: string;
   readonly citations: readonly SourceCitation[];
   readonly notes: string;
@@ -182,10 +196,13 @@ export function attachFormTurnSources(input: {
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
+  const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
   const found = formTurnCitations(input);
-  const citations = input.citations.length > 0 ? [...input.citations] : found;
+  let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
-  let sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes));
+  let sections = violatedSections(
+    sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes)),
+  );
   sections = citeAttendanceForTardiness({
     enabled: input.attendanceCitation === true,
     notes: input.notes,
@@ -205,6 +222,16 @@ export function attachFormTurnSources(input: {
       if (!sections.some((seen) => headingKey(seen.heading) === headingKey(section.heading))) sections.push(section);
     }
   }
+  // REMAP_INCIDENT_FIX_ENABLED: the Standards of Conduct the account points
+  // at ("missing the 10-15-26 woven deadline") is cited with its page, as the
+  // remap path cites it (Ask Bubbles prod, 24 Oct 2026).
+  if (sections.length === 0 && remapIncidentFixEnabled()) {
+    sections = remapManualSections({ said: input.notes, chunks: input.chunks, incident: null, modelHeading: null });
+    if (citations.length === 0) citations = lateOpeningCitations(remapCitations(input, sections), input.notes);
+  }
+  // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, never Attendance,
+  // whichever reader found the sections.
+  sections = withoutAttendanceForLateOpening(sections, input.notes);
   const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
   for (const section of sections) {
     const line =
@@ -220,6 +247,53 @@ export function attachFormTurnSources(input: {
     input.attendanceCitation === true && sections.some((section) => /^attendance$/i.test(section.heading)),
   );
   return { content, citations };
+}
+
+/**
+ * A late opening's Sources are Late Opening alone (LATE_OPEN_DATE_ENABLED).
+ * A citation's excerpt starts with its heading. See
+ * `withoutAttendanceForLateOpening`.
+ */
+function lateOpeningCitations(citations: SourceCitation[], notes: string): SourceCitation[] {
+  const headed = citations.map((citation) => ({ citation, heading: citation.excerpt.split(".")[0]?.trim() ?? "" }));
+  const kept = withoutAttendanceForLateOpening(headed, notes);
+  return kept.length === headed.length ? citations : kept.map((entry) => entry.citation);
+}
+
+/** "Disciplinary Action" is the manual's discipline procedure, not a policy an offense breaks. */
+function isDisciplineProcedure(heading: string): boolean {
+  return /^disciplinary actions?(?: policy)?$/.test(headingKey(heading));
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. The card cites the policy the reply names.
+ * "Disciplinary Action" is the procedure, never the policy broken; with it
+ * gone, the reply's own "**Policy:** this reads as **Standards of Conduct**"
+ * is the source (QA, 24 Oct 2026: the reply said Standards of Conduct and the
+ * only source was "Page 14 — Disciplinary Action").
+ */
+function headingForCard(input: { readonly content: string; readonly notes: string; readonly modelHeading?: string | null }): string | null {
+  const stated = input.modelHeading ?? statedManualHeading(input.notes);
+  return (stated && !isDisciplineProcedure(stated) ? stated : null) ?? policyNamedInReply(input.content);
+}
+
+/** FORM_CHOICE_STATED_ENABLED: the discipline procedure is never cited as the violated policy. */
+function violatedSections(sections: ManualSection[]): ManualSection[] {
+  if (!formChoiceStatedEnabled()) return sections;
+  return sections.filter((section) => !isDisciplineProcedure(section.heading));
+}
+
+/**
+ * The policy the reply's "**Policy:**" line names in bold: "this reads as
+ * **Standards of Conduct**", "reads as the policy manual's **Cell
+ * Phone/Smart Watch Policy** (page 19)". Null when that line names none.
+ */
+export function policyNamedInReply(content: string): string | null {
+  const line = content.split("\n").find((item) => item.trim().startsWith("**Policy:**"));
+  if (!line) return null;
+  const bold = [...line.slice(line.indexOf("**Policy:**") + "**Policy:**".length).matchAll(/\*\*([^*]+)\*\*/g)];
+  const heading = bold[0]?.[1]?.replace(/\s+policy$/i, "").trim() ?? "";
+  return heading && !isDisciplineProcedure(heading) ? heading : null;
 }
 
 export function statedManualHeading(notes: string): string | null {
@@ -287,7 +361,7 @@ function categoryOf(value: string | null | undefined): KnowledgeCategory {
 
 /**
  * The person the manager named in full, when the card is holding a fragment
- * ("lisa", "lawrence") or nobody. An exact directory spelling stays. A name
+ * ("nadia", "lawrence") or nobody. An exact directory spelling stays. A name
  * the roster does not have stays as typed when the manager named nobody else.
  */
 function preferRosterName(name: string | null, text: string, people: readonly GroundedPerson[]): string | null {
@@ -312,7 +386,8 @@ function statedEmployee(text: string): string | null {
   return around ? stripFieldLabels(around) : null;
 }
 
-function statedTitle(text: string, saved: string | null): string | null {
+function statedTitle(said: string, saved: string | null): string | null {
+  const text = managerWordsOnlyEnabled() ? titleTextFromQuestion(said) : said;
   const labelled = managerWordsOnlyEnabled() ? labelledTitleByLine(text) : titleAfterJobTitleLabel(text);
   if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();

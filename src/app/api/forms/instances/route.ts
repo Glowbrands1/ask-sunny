@@ -7,6 +7,7 @@ import { errorResponse } from "@/lib/api/respond";
 import {
   conversationDraftReuseEnabled,
   conversationProposalDedupeEnabled,
+  draftActionsEnabled,
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -40,6 +41,7 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
@@ -314,8 +316,16 @@ export async function POST(request: Request) {
      * any-chat check below, which one earlier "another" switches off for the
      * rest of the chat. See `conversation-draft.ts`.
      */
+    /*
+     * "DIFFERENT INCIDENT", answering whether this is the same incident as the
+     * form on file (QA F8): a new form, so no open draft is reopened in its
+     * place. DRAFT_ACTIONS_ENABLED only. Read before the chat's own draft too,
+     * so "different incident" is not folded into the draft this chat already
+     * made when both flags are on.
+     */
+    const newIncident = draftActionsEnabled() && historySaysDifferentIncident(body.conversation);
     const draftChat =
-      body.source === "ask_sunny" && conversationDraftReuseEnabled()
+      body.source === "ask_sunny" && conversationDraftReuseEnabled() && !newIncident
         ? conversationKeyOf({ conversationId: body.conversationId, conversation: body.conversation })
         : null;
     const chatTurns = draftChat ? parseHistory(body.conversation) : [];
@@ -349,9 +359,10 @@ export async function POST(request: Request) {
     /*
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
-     * account of what happened still creates.
+     * account of what happened still creates. Not after "different incident"
+     * (`newIncident`, above).
      */
-    if (body.source === "ask_sunny" && !historyWantsSeparateDocument(body.conversation)) {
+    if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
       const incidentText = turns
         .filter((turn) => turn.role === "user")
@@ -419,6 +430,7 @@ export async function POST(request: Request) {
     if (
       draftDedupeEnabled() &&
       body.source === "ask_sunny" &&
+      !newIncident &&
       !historyWantsSeparateDocument(body.conversation)
     ) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];

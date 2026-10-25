@@ -57,7 +57,7 @@
   },
   {
     "claim": "write-a intent",
-    "input": "write an email to Paisley about her CA",
+    "input": "write an email to Daisley about her CA",
     "want": "not a creation request",
     "got": {
       "kind": "corrective_action",
@@ -67,7 +67,7 @@
   },
   {
     "claim": "write-a intent",
-    "input": "write a CA for Paisley",
+    "input": "write a CA for Daisley",
     "want": "creation request",
     "got": {
       "kind": "corrective_action",

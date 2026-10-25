@@ -9,6 +9,8 @@ import {
   type ManualChunk,
 } from "@/lib/forms/official-policy-manual";
 
+import { LATE_TO_OPEN, lateOpenOn } from "@/lib/forms/late-open";
+
 import { isPolicyTypeQuestion, sectionTitleMatches } from "./hybrid-rank";
 import { scopeToCurrentManual } from "./current-manual-scope";
 import type { MatchedChunkRow } from "./mappers";
@@ -49,7 +51,9 @@ const SYNONYMS: readonly { readonly pattern: RegExp; readonly section: string }[
 export function policySectionsFor(text: string): string[] {
   const found: string[] = [];
   for (const entry of SYNONYMS) {
-    if (!entry.pattern.test(text)) continue;
+    // "late to open" names Late Opening too (LATE_OPEN_DATE_ENABLED, QA 24 Oct 2026).
+    const lateToOpen = entry.section === "Late Opening" && lateOpenOn() && LATE_TO_OPEN.test(text);
+    if (!entry.pattern.test(text) && !lateToOpen) continue;
     if (!found.some((section) => section.toLowerCase() === entry.section.toLowerCase())) found.push(entry.section);
   }
   return found;

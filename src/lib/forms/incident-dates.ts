@@ -1,3 +1,6 @@
+import { withoutAppLines } from "@/lib/ai/app-sentences";
+import { keepFormEmployeeEnabled } from "@/lib/config/chat-quality-flags";
+
 import { explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
 import { correctsTheEmployee } from "./proposal";
 
@@ -186,7 +189,16 @@ export function dateAnswerTurns(conversation: readonly Turn[]): Set<string> {
     const before = conversation[index - 1]!;
     if (turn.role !== "user" || before.role !== "assistant" || !askedForDate(before.content)) continue;
     const reply = String(turn.content).trim();
-    if (reply !== "" && !correctsTheEmployee(reply) && readDateChoice(reply, ["0000-00-00"], "9999-12-31") !== null) {
+    /*
+     * KEEP_FORM_EMPLOYEE_ENABLED: the answer is in the manager's words. The
+     * lines the app wrote onto the question ("The employee is test employee.
+     * It happened on 10/16/2026.") are not an answer, so "create the ca" after
+     * "Which date goes on the form?" is not dropped from the name readers —
+     * dropping it lost the employee line, and the reply named the new hire an
+     * earlier turn described (QA round 10, conv_mvnjix4r2wm7u7r).
+     */
+    const words = keepFormEmployeeEnabled() ? withoutAppLines(reply).trim() : reply;
+    if (words !== "" && !correctsTheEmployee(words) && readDateChoice(words, ["0000-00-00"], "9999-12-31") !== null) {
       answered.add(reply);
     }
   }
