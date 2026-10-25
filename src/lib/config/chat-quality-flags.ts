@@ -476,6 +476,19 @@ export function caTemplateMapEnabled(): boolean {
 }
 
 /**
+ * The form is the one the manager named in their own words, newest turn
+ * first. The model's formType, the assistant's "**Corrective Action Form**"
+ * and the state lines never pick it, and a "Policy reference:" line is not a
+ * form request. "Disciplinary Action" (the discipline procedure) is never the
+ * violated policy, so the card's source follows the policy the reply names
+ * (QA, 24 Oct 2026: coaching and Policy Review requests became a Corrective
+ * Action). Off, the form is read as before.
+ */
+export function formChoiceStatedEnabled(): boolean {
+  return envFlag("FORM_CHOICE_STATED_ENABLED");
+}
+
+/**
  * Words that are not a person never become the employee: a placeholder
  * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
  * practice"), a product or service this business sells, a place on the

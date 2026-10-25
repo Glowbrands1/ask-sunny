@@ -4,6 +4,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import {
   managerWordsOnlyEnabled,
+  formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
@@ -158,7 +159,7 @@ export function formTurnCitations(input: {
   readonly documentCategory?: string | null;
   readonly modelHeading?: string | null;
 }): SourceCitation[] {
-  const sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? null);
+  const sections = violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null));
   const category = categoryOf(input.documentCategory);
   const citations: SourceCitation[] = [];
   for (const section of sections) {
@@ -177,7 +178,7 @@ export function formTurnCitations(input: {
 }
 
 /** Citations plus the policy line, for a form answer. Existing citations stay. */
-export function attachFormTurnSources(input: {
+export function attachFormTurnSources(given: {
   readonly content: string;
   readonly citations: readonly SourceCitation[];
   readonly notes: string;
@@ -189,10 +190,13 @@ export function attachFormTurnSources(input: {
   readonly attendanceCitation?: boolean;
   readonly pageRequired?: boolean;
 }): { content: string; citations: SourceCitation[] } {
+  const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
   const found = formTurnCitations(input);
   const citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
-  let sections = sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes));
+  let sections = violatedSections(
+    sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes)),
+  );
   sections = citeAttendanceForTardiness({
     enabled: input.attendanceCitation === true,
     notes: input.notes,
@@ -239,6 +243,42 @@ function lateOpeningCitations(citations: SourceCitation[], notes: string): Sourc
   const headed = citations.map((citation) => ({ citation, heading: citation.excerpt.split(".")[0]?.trim() ?? "" }));
   const kept = withoutAttendanceForLateOpening(headed, notes);
   return kept.length === headed.length ? citations : kept.map((entry) => entry.citation);
+}
+
+/** "Disciplinary Action" is the manual's discipline procedure, not a policy an offense breaks. */
+function isDisciplineProcedure(heading: string): boolean {
+  return /^disciplinary actions?(?: policy)?$/.test(headingKey(heading));
+}
+
+/**
+ * FORM_CHOICE_STATED_ENABLED. The card cites the policy the reply names.
+ * "Disciplinary Action" is the procedure, never the policy broken; with it
+ * gone, the reply's own "**Policy:** this reads as **Standards of Conduct**"
+ * is the source (QA, 24 Oct 2026: the reply said Standards of Conduct and the
+ * only source was "Page 14 — Disciplinary Action").
+ */
+function headingForCard(input: { readonly content: string; readonly notes: string; readonly modelHeading?: string | null }): string | null {
+  const stated = input.modelHeading ?? statedManualHeading(input.notes);
+  return (stated && !isDisciplineProcedure(stated) ? stated : null) ?? policyNamedInReply(input.content);
+}
+
+/** FORM_CHOICE_STATED_ENABLED: the discipline procedure is never cited as the violated policy. */
+function violatedSections(sections: ManualSection[]): ManualSection[] {
+  if (!formChoiceStatedEnabled()) return sections;
+  return sections.filter((section) => !isDisciplineProcedure(section.heading));
+}
+
+/**
+ * The policy the reply's "**Policy:**" line names in bold: "this reads as
+ * **Standards of Conduct**", "reads as the policy manual's **Cell
+ * Phone/Smart Watch Policy** (page 19)". Null when that line names none.
+ */
+export function policyNamedInReply(content: string): string | null {
+  const line = content.split("\n").find((item) => item.trim().startsWith("**Policy:**"));
+  if (!line) return null;
+  const bold = [...line.slice(line.indexOf("**Policy:**") + "**Policy:**".length).matchAll(/\*\*([^*]+)\*\*/g)];
+  const heading = bold[0]?.[1]?.replace(/\s+policy$/i, "").trim() ?? "";
+  return heading && !isDisciplineProcedure(heading) ? heading : null;
 }
 
 export function statedManualHeading(notes: string): string | null {
