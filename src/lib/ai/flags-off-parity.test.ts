@@ -38,6 +38,7 @@ import {
   managerWordsOnlyEnabled,
   intentPayrollManagerOnlyEnabled,
   conversationDraftReuseEnabled,
+  crossChatReplyGuardEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
@@ -99,6 +100,7 @@ const NEW_FLAGS = [
   "MANAGER_WORDS_ONLY_ENABLED",
   "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
   "CONVERSATION_DRAFT_REUSE_ENABLED",
+  "CROSS_CHAT_REPLY_GUARD_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -206,6 +208,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(managerWordsOnlyEnabled()).toBe(false);
     expect(intentPayrollManagerOnlyEnabled()).toBe(false);
     expect(conversationDraftReuseEnabled()).toBe(false);
+    expect(crossChatReplyGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

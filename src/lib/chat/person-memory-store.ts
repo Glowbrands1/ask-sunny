@@ -1,6 +1,8 @@
 import "server-only";
 
 import { businessToday } from "@/lib/business-date";
+import { refersBack } from "@/lib/chat/cross-chat-guard";
+import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { samePerson } from "@/lib/forms/proposal";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import {
@@ -95,14 +97,41 @@ export interface RecallInput {
    * is not recalled: parallel chats were quoted as "earlier today".
    */
   readonly todayIso?: string;
+  /**
+   * CROSS_CHAT_REPLY_GUARD_ENABLED, read by the caller. On: another chat is
+   * quoted only when the manager refers back to one in this conversation (forms
+   * on file are still listed), a name read only from a bare turn must be on
+   * `roster`, and the block is labelled as records from other conversations.
+   */
+  readonly crossChatGuard?: boolean;
+  /** The caller's scoped roster, read only when a bare-turn name needs it. */
+  readonly roster?: () => Promise<readonly RosterEmployee[]>;
+}
+
+/**
+ * The candidates the guard lets through: a name typed as a whole turn on its
+ * own ("asdasd") is recalled only when the roster has somebody by that name.
+ * No roster to check against keeps it out.
+ */
+async function guardedCandidates(
+  input: RecallInput,
+  candidates: readonly PersonCandidate[],
+): Promise<PersonCandidate[]> {
+  if (!candidates.some((person) => person.bareTurnOnly)) return [...candidates];
+  const roster = input.roster ? await input.roster() : [];
+  return candidates.filter((person) => {
+    if (!person.bareTurnOnly) return true;
+    const match = matchEmployeeName(person.name, roster);
+    return match.kind === "exact" || match.kind === "confirm";
+  });
 }
 
 /**
  * The memory block for this turn, or null — never a rejection.
  */
 export async function recallPeople(input: RecallInput): Promise<string | null> {
-  const candidates = namesToRecall(input);
-  if (candidates.length === 0) return null;
+  const named = namesToRecall(input);
+  if (named.length === 0) return null;
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const budget = new Promise<null>((resolve) => {
@@ -110,7 +139,11 @@ export async function recallPeople(input: RecallInput): Promise<string | null> {
   });
 
   try {
-    return await Promise.race([readMemory(input, candidates), budget]);
+    const read = async () => {
+      const candidates = input.crossChatGuard ? await guardedCandidates(input, named) : named;
+      return candidates.length === 0 ? null : readMemory(input, candidates);
+    };
+    return await Promise.race([read(), budget]);
   } catch (error) {
     // The reason only: the rows carry the manager's own words.
     console.warn(
@@ -213,7 +246,15 @@ async function readMemory(
       });
   });
 
-  const consideredIds = [
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED: another chat is quoted only when the
+   * manager refers back to one here. Otherwise the reply told them "you raised
+   * this same situation with me on October 23" about a chat they never
+   * mentioned. The forms they filed are still listed, as records.
+   */
+  const quoteOtherChats = !input.crossChatGuard || refersBack(input.question, input.history);
+
+  const consideredIds = !quoteOtherChats ? [] : [
     ...new Set(
       conversationsByPerson.flatMap((ids) =>
         ids.filter((id) => !currentConversations.has(id)).slice(0, CANDIDATE_CONVERSATIONS_PER_PERSON),
@@ -290,5 +331,7 @@ async function readMemory(
     return { name: person.name, conversations: recalled, forms: personForms };
   });
 
-  return renderMemoryBlock(recollections, input.userName);
+  return input.crossChatGuard
+    ? renderMemoryBlock(recollections, input.userName, { crossChatGuard: true })
+    : renderMemoryBlock(recollections, input.userName);
 }

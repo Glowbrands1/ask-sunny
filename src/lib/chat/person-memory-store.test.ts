@@ -270,3 +270,84 @@ describe("recallPeople", () => {
     warn.mockRestore();
   });
 });
+
+/*
+ * ============================================================================
+ * CROSS_CHAT_REPLY_GUARD_ENABLED — QA: OTHER CHATS IN THE REPLY TEXT
+ * ============================================================================
+ *
+ * The manager's turns are production's (conv_mvmtj8ia2qwr8pu,
+ * conv_mvmw29wp27tkony, conv_mvmvugx525mtd2v and the October 23 / August 26
+ * chats they recalled), with the people's names swapped for invented ones.
+ * The flag is read by `server-ask.ts`; here it arrives as `crossChatGuard`.
+ */
+describe("recallPeople with the cross-chat guard", () => {
+  const SITUATION =
+    "an employee (Wren)  is talking negatively about co workers and customers. another employee, marlo, complained to salon director about Wren";
+  const OCT_23_TURNS = [
+    SITUATION,
+    "an employee (wren)  is talking negatively about co workers and customers. another employee, marlo, complained to salon director about wren",
+    "create coaching form for wren, works at lawrence as a tanning consultant. use todays date",
+    "wren calder, tanning consultant at lawrence. use todays date",
+  ];
+  const ROSTER = [{ id: "e1", firstName: "Wren", lastName: "Calder", salonIds: ["loc-0495"] }];
+  const guarded = { crossChatGuard: true, todayIso: "2026-10-24", roster: async () => ROSTER };
+
+  it('"asdasd" recalls nothing: a lone keystroke is not a person (flag off, it recalled the August 26 chat)', async () => {
+    conversation({ createdAt: "2026-08-26T09:09:12Z", turns: ["asdasd"] });
+
+    // Production today: the August 26 "asdasd" is quoted back as memory.
+    expect(await recall("asdasd", { todayIso: "2026-10-24" })).toContain("2026-08-26");
+
+    expect(await recall("asdasd", guarded)).toBeNull();
+    expect(await recall("asdasd", { ...guarded, roster: async () => [] })).toBeNull();
+    expect(await recall("asdasd", { crossChatGuard: true, todayIso: "2026-10-24" })).toBeNull();
+  });
+
+  it("a name typed as a whole turn is still recalled when the roster has that person", async () => {
+    conversation({ createdAt: "2026-10-03T15:00:00Z", turns: ["Wren Calder was late again last week"] });
+    const history = [
+      { role: "user", content: "she was late again" },
+      { role: "assistant", content: "Who is this about?" },
+    ];
+    const block = await recall("Wren Calder", { ...guarded, history });
+    expect(block).toContain("> Wren Calder was late again last week");
+  });
+
+  it("does not quote the October 23 chat when the manager does not refer back to it", async () => {
+    conversation({ createdAt: "2026-10-23T20:46:08Z", turns: OCT_23_TURNS });
+
+    // Production today: the October 23 chat is quoted, and the reply said "You raised this same situation with me on October 23".
+    expect(await recall(SITUATION, { todayIso: "2026-10-24" })).toContain("2026-10-23");
+
+    expect(await recall(SITUATION, guarded)).toBeNull();
+  });
+
+  it("still lists a form on file, as a record, and labels the block", async () => {
+    conversation({ createdAt: "2026-10-23T20:46:08Z", turns: OCT_23_TURNS });
+    db.tables.form_instances!.push({
+      employee_name: "Wren Calder",
+      status: "draft",
+      form_date: "2026-10-23",
+      created_by: ME,
+      archived_at: null,
+      created_at: "2026-10-23T20:50:00Z",
+      form_templates: { name: "Coaching Form" },
+    });
+
+    const block = await recall(SITUATION, guarded);
+
+    expect(block).toContain("- Coaching Form for Wren Calder — dated 2026-10-23, draft, not finalized");
+    expect(block).toContain("records from OTHER conversations");
+    expect(block).toContain("Never say the manager raised, said, sent or asked any of it before");
+    expect(block).not.toContain("Earlier conversation,");
+    expect(block).not.toContain("> an employee");
+  });
+
+  it("quotes the earlier chat when the manager refers back to it", async () => {
+    conversation({ createdAt: "2026-10-23T20:46:08Z", turns: OCT_23_TURNS });
+    const block = await recall("Wren is talking negatively about co workers again, same as last time", guarded);
+    expect(block).toContain("Earlier conversation, 2026-10-23");
+    expect(block).toContain("records from OTHER conversations");
+  });
+});

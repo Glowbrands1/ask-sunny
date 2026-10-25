@@ -414,6 +414,20 @@ export function conversationDraftReuseEnabled(): boolean {
   return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
 }
 
+/**
+ * Keep other conversations out of the reply text. The person-memory recall
+ * quotes another chat only when the manager refers back to it ("again", "last
+ * time", "like before", "same as …"); a name read from a turn that is only
+ * that name ("asdasd") is recalled only when it is on the roster; the prompt
+ * labels the block as records from other conversations; and a reply sentence
+ * that still says the manager raised or sent something in another chat or on
+ * another date is taken out (QA, conv_mvmtj8ia2qwr8pu and conv_mvmvugx525mtd2v).
+ * Off, recall and the reply are exactly as before.
+ */
+export function crossChatReplyGuardEnabled(): boolean {
+  return envFlag("CROSS_CHAT_REPLY_GUARD_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

@@ -28,6 +28,7 @@ import {
   manualTopicPinEnabled,
   fullManualContextEnabled,
   formFullRemapEnabled,
+  crossChatReplyGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -86,6 +87,7 @@ import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { recallPeople } from "@/lib/chat/person-memory-store";
+import { refersBack, withoutCrossChatClaims } from "@/lib/chat/cross-chat-guard";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
@@ -785,6 +787,12 @@ async function answerQuestionUntraced(
    * return, so a proposal never pays for it; it runs alongside retrieval and
    * never rejects. See `chat/person-memory-store.ts`.
    */
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED: another chat is quoted only when the
+   * manager refers back to one, and a name typed as a whole turn on its own
+   * must be on this caller's roster. See `chat/cross-chat-guard.ts`.
+   */
+  const crossChatGuard = crossChatReplyGuardEnabled();
   const memoryPromise = memory.memoryOwnerId
     ? recallPeople({
         userId: memory.memoryOwnerId,
@@ -793,6 +801,9 @@ async function answerQuestionUntraced(
         conversationId: request.conversationId,
         userName: request.context.userName,
         todayIso: request.context.todayIso,
+        ...(crossChatGuard
+          ? { crossChatGuard: true, roster: () => loadScopedRoster(actor.scope) }
+          : {}),
       })
     : Promise.resolve(null);
 
@@ -1438,6 +1449,7 @@ async function answerQuestionUntraced(
     hasFormRecords: formRecords !== null,
     /* Read from whether the block exists, like the forms library above. */
     hasPersonMemory: personMemory !== null,
+    ...(crossChatGuard ? { crossChatGuard: true } : {}),
     policyManualNote: fullManualBlock ? null : policyManualNote,
     citeManualPages: fullManualBlock !== null,
     /* Read from the instance by the route, never from the body. */
@@ -1486,7 +1498,7 @@ async function answerQuestionUntraced(
   const groundingText = groundingWithoutCachedManual(joinedGrounding, manualBlock);
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
-  const answer = await callClaude({
+  const written = await callClaude({
     system,
     grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
     reportData: dataAddition.data
@@ -1513,6 +1525,20 @@ async function answerQuestionUntraced(
     manualBlock,
     fullManualBlock,
   });
+  /*
+   * THE BACKSTOP to the labelled block above: with the guard on and no refer-back
+   * in this conversation, a sentence saying the manager raised or sent
+   * something in another chat or on another date is taken out. Only that
+   * sentence; every other word the model wrote is kept.
+   */
+  const answer =
+    crossChatGuard && !refersBack(request.question, request.history)
+      ? withoutCrossChatClaims(written, {
+          question: request.question,
+          history: request.history,
+          todayIso: request.context.todayIso,
+        }).content
+      : written;
 
   /* ----------------------------------------------------------- citations -- */
   // Only the markers the model actually used become source cards, and each one
