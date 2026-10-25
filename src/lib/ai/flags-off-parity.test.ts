@@ -53,6 +53,8 @@ import {
   priorActionsParseEnabled,
   keepFormEmployeeEnabled,
   titleWholeWordEnabled,
+  futureIncidentDateConfirmEnabled,
+  statedTitleWinsEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -123,6 +125,8 @@ const NEW_FLAGS = [
   "NOT_A_NAME_GUARD_ENABLED",
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
+  "FUTURE_INCIDENT_DATE_CONFIRM_ENABLED",
+  "STATED_TITLE_WINS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -251,6 +255,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(notANameGuardEnabled()).toBe(false);
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
+    expect(futureIncidentDateConfirmEnabled()).toBe(false);
+    expect(statedTitleWinsEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

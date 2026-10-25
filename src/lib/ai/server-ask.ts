@@ -39,6 +39,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
+import { withFutureDateQuestion } from "./future-incident-date";
 import { historyForRemap } from "./form-remap-scope";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
@@ -648,7 +649,8 @@ async function answerQuestionUntraced(
             : null;
         },
       });
-      if (remapped) return remapped;
+      // FUTURE_INCIDENT_DATE_CONFIRM_ENABLED: a future incident date on the card is asked about once.
+      if (remapped) return withFutureDateQuestion(remapped, { today: request.context.todayIso, history: [...request.history, ...history] });
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

@@ -80,8 +80,47 @@ const FORM_DATE_IS_INCIDENT_DATE: ReadonlySet<string> = new Set(["dpoa"]);
  * path as typing into the field — so it is recorded as the manager's and
  * limited to fields a person may edit. A finalized form is never written: the
  * correction is made on a new draft of it (`editable-draft.ts`).
+ *
+ * BOTH FACTS IN ONE TURN (the sibling app's QA history, conv_mvi94k418pzwgmn,
+ * 21 Oct 2026): "verbal. payroll deduct is not applicable." set payroll deduct
+ * and dropped the level, because the payroll answer was written by the field
+ * readers below and the level is read only by the Corrective Action reader,
+ * which ran only when no field reader took the turn. Where a field reader
+ * wrote the turn, the Corrective Action reader also reads it, so the level
+ * (and any prior step) the same words state is applied, and one reply names
+ * both.
  */
-export async function correctActiveForm(input: {
+export async function correctActiveForm(input: CorrectionInput): Promise<AskResponse | null> {
+  const first = await correctFormFields(input);
+  if (!first?.formUpdate) return first;
+  const facts = await correctCorrectiveActionFacts({ ...input, instanceId: first.formUpdate.instanceId });
+  if (!facts?.formUpdate) return first;
+  const lead = /^(Updated the [^\n]*?\*\*: )([^\n]*)\.$/m;
+  const one = lead.exec(first.content);
+  const two = lead.exec(facts.content);
+  const content =
+    one && two && one[1] === two[1]
+      ? first.content.replace(one[0], `${one[1]}${one[2]}; ${two[2]}.`)
+      : `${first.content}\n\n${facts.content}`;
+  return {
+    ...first,
+    content,
+    formUpdate: {
+      instanceId: first.formUpdate.instanceId,
+      updated: [...new Set([...first.formUpdate.updated, ...facts.formUpdate.updated])],
+    },
+  };
+}
+
+interface CorrectionInput {
+  request: Request;
+  instanceId: string;
+  question: string;
+  today: string;
+  history?: readonly { role: string; content: string; error?: unknown }[];
+}
+
+async function correctFormFields(input: {
   request: Request;
   instanceId: string;
   question: string;

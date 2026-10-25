@@ -26,6 +26,8 @@ import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
+import { withFutureDateQuestion } from "./future-incident-date";
+import { withStatedTitleOnCard } from "./stated-title-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
 /**
@@ -76,15 +78,23 @@ export async function deliverFormProposal(input: {
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
-    return withTypedEmployeeOnCard(
-      holdFilledSlots({
-        response: enriched,
-        question: input.question,
-        history: input.request.history,
-        today: input.request.context.todayIso,
-        people: [],
-      }),
-      input.request.question,
+    // STATED_TITLE_WINS_ENABLED: the title the intent reading kept is the card's, as stated.
+    // FUTURE_INCIDENT_DATE_CONFIRM_ENABLED: a future incident date on the card is asked about once.
+    return withFutureDateQuestion(
+      withStatedTitleOnCard(
+        withTypedEmployeeOnCard(
+          holdFilledSlots({
+            response: enriched,
+            question: input.question,
+            history: input.request.history,
+            today: input.request.context.todayIso,
+            people: [],
+          }),
+          input.request.question,
+        ),
+        input.question,
+      ),
+      { today: input.request.context.todayIso, history: input.request.history },
     );
   }
 
@@ -129,15 +139,21 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = withTypedEmployeeOnCard(
-    holdFilledSlots({
-      response: settled,
-      question: input.question,
-      history: input.request.history,
-      today: input.request.context.todayIso,
-      people,
-    }),
-    input.request.question,
+  const held = withFutureDateQuestion(
+    withStatedTitleOnCard(
+      withTypedEmployeeOnCard(
+        holdFilledSlots({
+          response: settled,
+          question: input.question,
+          history: input.request.history,
+          today: input.request.context.todayIso,
+          people,
+        }),
+        input.request.question,
+      ),
+      input.question,
+    ),
+    { today: input.request.context.todayIso, history: input.request.history },
   );
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {

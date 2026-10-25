@@ -566,6 +566,31 @@ export function titleWholeWordEnabled(): boolean {
   return envFlag("TITLE_WHOLE_WORD_ENABLED");
 }
 
+/**
+ * An incident date after today is asked about once ("That date is in the
+ * future — is 12-20-26 right?") and never changed. A "yes", a restatement or
+ * any other answer keeps it and the question is not asked again for that date
+ * in the conversation; a corrected date is used instead. Only the incident
+ * date the form carries, not a follow-up or review date. Same flag in the
+ * sibling app (QA history, 21 Oct 2026). Off, a future date is accepted
+ * without a question, as before.
+ */
+export function futureIncidentDateConfirmEnabled(): boolean {
+  return envFlag("FUTURE_INCIDENT_DATE_CONFIRM_ENABLED");
+}
+
+/**
+ * The job title the manager states for the employee is the form's. The intent
+ * reading keeps the title the manager's turns state — one on the title list,
+ * or one stated as what the employee is ("she is an HR assistant") — ahead of
+ * the directory's title for the matched person, which used to replace it
+ * without a word. Same flag in the sibling app (QA history, 22 and 25 Oct
+ * 2026). Off, the title is read as before.
+ */
+export function statedTitleWinsEnabled(): boolean {
+  return envFlag("STATED_TITLE_WINS_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
