@@ -1,5 +1,14 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 25 Oct 2026: the reply check never blanks a reply (SELF_CHECK_NEVER_BLANK_ENABLED) — Ask Sunny only
+
+QA G1: a finished 1,388-token answer reached the manager as "No answer was
+produced" because the reply check (`guardReply` → `runSelfCheck`, after the
+trace) dropped every sentence whose citation was not a policy-manual heading.
+With the flag on, a check that would leave nothing sends the model's reply.
+**Sibling app: not needed** — Ask Bubbles has no reply check
+(`self-check.ts` / `guardReply` do not exist there).
+
 ## 25 Oct 2026: two unflagged full-remap changes in integration bundle 2 — same in both apps
 
 Neither is behind its own flag, and neither changes production today: both
