@@ -1,5 +1,15 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
+
+Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
+route from pinning the Performance Management Framework's sections into a
+governed form's prompt. Its uploaded framework was prepared from this app's
+framework with only the app name changed, so it still carries this
+company's name, examples and metrics. Not ported: this app's framework is
+this company's own text, so pinning it here is correct and the same draft
+route stays as it is. No code change in this app.
+
 ## 24 Oct 2026: the app's own lines are not the manager's words — ported to Ask Bubbles
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation
