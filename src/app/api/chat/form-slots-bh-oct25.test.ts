@@ -540,6 +540,14 @@ describe(`BH5 (${DATE_FLAG}): an incident date in the future is asked about once
     expect(later.content).not.toContain("in the future");
   });
 
+  it('flags off: "yes" after the card is not read as the payroll answer (payroll-deduct.ts, QA 25 Oct 2026)', async () => {
+    const thread = new Thread();
+    const card = await thread.say(BH5);
+    expect(card.formProposal?.payrollDeduct).toBe("no");
+    const answer = await thread.say("yes");
+    expect(answer.formProposal?.payrollDeduct).toBe("no");
+  });
+
   it("a corrected date is used, and not asked about", async () => {
     process.env[DATE_FLAG] = "true";
     const thread = new Thread();
