@@ -16,24 +16,24 @@ Each case runs 1 time and passes only when every run passes. Latency is those ru
 | --- | --- | --- | --- |
 | s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 234ms | PASS 3391ms |
 | s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 131ms | PASS 505ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 111ms | PASS 460ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 65ms | PASS 438ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 211ms | PASS 654ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 33ms | PASS 117ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 18ms | PASS 68ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 63ms | PASS 369ms |
+| s11 | Corena Schardt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 111ms | PASS 460ms |
+| s5 | Nadia Brook · loc-0468 · 2026-10-23 · — | PASS 65ms | PASS 438ms |
+| s27 | Elin Haskett · loc-0313 · — · Standards of Conduct p.12 | PASS 211ms | PASS 654ms |
+| s28 | Elin Haskett · loc-0313 · — · Standards of Conduct p.12 | PASS 33ms | PASS 117ms |
+| s29 | Elin Haskett · loc-0313 · — · — | PASS 18ms | PASS 68ms |
+| s17 | Dora Lee · — · 2026-10-23 · — | PASS 63ms | PASS 369ms |
 | s20 | — · — · — · — | PASS 32ms | PASS 341ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 138ms | PASS 409ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 32ms | PASS 145ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 106ms | PASS 1082ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 22ms | PASS 155ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 18ms | PASS 180ms |
+| s21 | Sloane Wexford · loc-0410 · 2026-10-05 · — | PASS 138ms | PASS 409ms |
+| s25 | Dasiley Veklo · loc-0313 · — · — | PASS 32ms | PASS 145ms |
+| s8 | Evangeline Pembury · loc-0463 · — · — | PASS 106ms | PASS 1082ms |
+| s12 | Corena Schardt · loc-0462 · — · — | PASS 22ms | PASS 155ms |
+| s16 | Marnie Kettering · loc-0309 · — · — | PASS 18ms | PASS 180ms |
 | b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 46ms | PASS 346ms |
 | b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 129ms | PASS 606ms |
 | b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 83ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 108ms | PASS 792ms |
+| b12 | Odette Brannock · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 108ms | PASS 792ms |
 | n1 | Test Employee · loc-0462 · — · — | PASS 29ms | PASS 215ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 48ms |
+| n2 | Corena Shardt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 48ms |
 | n3 | TT · — · 2026-10-23 · — | PASS 6ms | PASS 68ms |
 
 Harness events (not case failures):
@@ -61,24 +61,24 @@ Harness events (not case failures):
 | --- | --- | --- | --- |
 | s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 221ms | PASS 3130ms |
 | s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 132ms | PASS 486ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 97ms | PASS 457ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 61ms | PASS 433ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 210ms | PASS 635ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 32ms | PASS 115ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 19ms | PASS 66ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 63ms | PASS 358ms |
+| s11 | Corena Schardt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 97ms | PASS 457ms |
+| s5 | Nadia Brook · loc-0468 · 2026-10-23 · — | PASS 61ms | PASS 433ms |
+| s27 | Elin Haskett · loc-0313 · — · Standards of Conduct p.12 | PASS 210ms | PASS 635ms |
+| s28 | Elin Haskett · loc-0313 · — · Standards of Conduct p.12 | PASS 32ms | PASS 115ms |
+| s29 | Elin Haskett · loc-0313 · — · — | PASS 19ms | PASS 66ms |
+| s17 | Dora Lee · — · 2026-10-23 · — | PASS 63ms | PASS 358ms |
 | s20 | — · — · — · — | PASS 32ms | PASS 343ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 118ms | PASS 401ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 31ms | PASS 143ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 106ms | PASS 1127ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 22ms | PASS 195ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 18ms | PASS 182ms |
+| s21 | Sloane Wexford · loc-0410 · 2026-10-05 · — | PASS 118ms | PASS 401ms |
+| s25 | Dasiley Veklo · loc-0313 · — · — | PASS 31ms | PASS 143ms |
+| s8 | Evangeline Pembury · loc-0463 · — · — | PASS 106ms | PASS 1127ms |
+| s12 | Corena Schardt · loc-0462 · — · — | PASS 22ms | PASS 195ms |
+| s16 | Marnie Kettering · loc-0309 · — · — | PASS 18ms | PASS 182ms |
 | b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 47ms | PASS 347ms |
 | b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 129ms | PASS 603ms |
 | b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 15ms | PASS 84ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 103ms | PASS 772ms |
+| b12 | Odette Brannock · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 103ms | PASS 772ms |
 | n1 | Test Employee · loc-0462 · — · — | PASS 28ms | PASS 210ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 49ms |
+| n2 | Corena Shardt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 9ms | PASS 49ms |
 | n3 | TT · — · 2026-10-23 · — | PASS 7ms | PASS 68ms |
 
 Harness events (not case failures):
@@ -94,10 +94,11 @@ Harness events (not case failures):
 
 ## Round 3 — prompt A/B
 
-- replay_set.json sha256: `6a35f1c0d260ac8b58342d7da63fedc21bf9936eed95b6aa9166f99038517c92`
+- replay_set.json sha256: `2d5654a83952a84a9e21e3e19185bf253b9a776c7fa3f8c8ba2da518954d1fde`
 - prompts.ts sha256: `df5d07eb04132cde54c952ac0ae10bbee012e638f6006903a6b426885d4bb709`
 - prompts.ts sha256, printed-page citation rule: `8878c96230502f9a6eaed04ee2bf215a6ce1c55fdbc2d9249189ef8f01c27b4c`
 - prompts.ts sha256, cross-chat reply rule (CROSS_CHAT_REPLY_GUARD_ENABLED, off by default; flags-off prompt text unchanged): `e3e039dc61724e95b68a35f31748a7aae997d27be0d1c4751b1b55eb9dcae14a`
+- prompts.ts sha256, retrieved-sources rule (retrieved sources are never "the sources you shared"): `14577433ba7a80bb1798e9335b94a29e6f691e36a2b3b94b20223e92be67456a`
 - commit: `f4b261628145bc17059fa753a5bc22f96a06694e`
 - model: `claude-opus-5`
 - flag set: `INTENT_EXTRACTION_ENABLED, FEWSHOT_EXAMPLES_ENABLED, SELF_CHECK_ENABLED, QUERY_REWRITE_ENABLED, GROUNDED_ENTITIES_ENABLED, DRAFT_MERGE_ENABLED, ACTION_PLAN_SENTENCES_ENABLED, TYPED_NAME_PROCEEDS_ENABLED, ATTENDANCE_POLICY_CITATION_ENABLED, POLICY_PAGE_REQUIRED_ENABLED, MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED, POLICY_GATE_NONBLOCKING_ENABLED, MANUAL_SECTION_DEDUPE_ENABLED, PRINTED_PAGE_CITATION_ENABLED, PAYROLL_AMOUNT_FIELD_ENABLED, CODE_SLOTS_ENABLED, GLOBAL_SALON_ASK_ENABLED`
@@ -115,24 +116,24 @@ Harness events (not case failures):
 | --- | --- | --- | --- | --- |
 | s4 | Test Testy · loc-0462 · 2026-09-20 · Late Opening p.15 | PASS 67ms | PASS 428ms | PASS 239ms |
 | s9 | Ima · loc-0462 · 2026-09-28 · Late Opening p.15 | PASS 43ms | PASS 78ms | PASS 71ms |
-| s11 | Colene Schildt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 34ms | PASS 83ms | PASS 71ms |
-| s5 | Lisa Smith · loc-0468 · 2026-10-23 · — | PASS 21ms | PASS 79ms | PASS 38ms |
-| s27 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 65ms | PASS 127ms | PASS 112ms |
-| s28 | Erin Nelson · loc-0313 · — · Standards of Conduct p.12 | PASS 11ms | PASS 23ms | PASS 20ms |
-| s29 | Erin Nelson · loc-0313 · — · — | PASS 4ms | PASS 8ms | PASS 6ms |
-| s17 | Betty Sue · — · 2026-10-23 · — | PASS 19ms | PASS 82ms | PASS 77ms |
+| s11 | Corena Schardt · loc-0468 · 2026-09-29 · Cell Phone/Smart Watch Policy p.19 | PASS 34ms | PASS 83ms | PASS 71ms |
+| s5 | Nadia Brook · loc-0468 · 2026-10-23 · — | PASS 21ms | PASS 79ms | PASS 38ms |
+| s27 | Elin Haskett · loc-0313 · — · Standards of Conduct p.12 | PASS 65ms | PASS 127ms | PASS 112ms |
+| s28 | Elin Haskett · loc-0313 · — · Standards of Conduct p.12 | PASS 11ms | PASS 23ms | PASS 20ms |
+| s29 | Elin Haskett · loc-0313 · — · — | PASS 4ms | PASS 8ms | PASS 6ms |
+| s17 | Dora Lee · — · 2026-10-23 · — | PASS 19ms | PASS 82ms | PASS 77ms |
 | s20 | — · — · — · — | PASS 10ms | PASS 64ms | PASS 46ms |
-| s21 | Kennedy Morehouse · loc-0410 · 2026-10-05 · — | PASS 31ms | PASS 59ms | PASS 46ms |
-| s25 | Pasiley Peklo · loc-0313 · — · — | PASS 8ms | PASS 18ms | PASS 14ms |
-| s8 | Christiana Headley · loc-0463 · — · — | PASS 36ms | PASS 188ms | PASS 169ms |
-| s12 | Colene Schildt · loc-0462 · — · — | PASS 8ms | PASS 22ms | PASS 16ms |
-| s16 | Kayla Koehn · loc-0309 · — · — | PASS 5ms | PASS 24ms | PASS 19ms |
+| s21 | Sloane Wexford · loc-0410 · 2026-10-05 · — | PASS 31ms | PASS 59ms | PASS 46ms |
+| s25 | Dasiley Veklo · loc-0313 · — · — | PASS 8ms | PASS 18ms | PASS 14ms |
+| s8 | Evangeline Pembury · loc-0463 · — · — | PASS 36ms | PASS 188ms | PASS 169ms |
+| s12 | Corena Schardt · loc-0462 · — · — | PASS 8ms | PASS 22ms | PASS 16ms |
+| s16 | Marnie Kettering · loc-0309 · — · — | PASS 5ms | PASS 24ms | PASS 19ms |
 | b9 | Test Employee · — · 2026-10-15 · Standards of Conduct p.12 | PASS 15ms | PASS 83ms | PASS 96ms |
 | b10 | Testy Testerson · loc-0903 · 2026-10-16 · Standards of Conduct p.12 | PASS 40ms | PASS 135ms | PASS 96ms |
 | b11 | Testy Testerson · loc-0903 · 2026-10-20 · Attendance p.14 | PASS 5ms | PASS 21ms | PASS 21ms |
-| b12 | Sadie Hoffart · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 29ms | PASS 197ms | PASS 162ms |
+| b12 | Odette Brannock · — · 2026-10-22 · Animals in the Workplace p.30 | PASS 29ms | PASS 197ms | PASS 162ms |
 | n1 | Test Employee · loc-0462 · — · — | PASS 9ms | PASS 26ms | PASS 22ms |
-| n2 | Colene Shildt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 4ms | PASS 11ms | PASS 9ms |
+| n2 | Corena Shardt · loc-0462 · 2026-09-29 · Attendance p.14 | PASS 4ms | PASS 11ms | PASS 9ms |
 | n3 | TT · — · 2026-10-23 · — | PASS 2ms | PASS 11ms | PASS 9ms |
 | g1 | Sarah Test · loc-0462 · — · — | PASS 5ms | PASS 12ms | PASS 11ms |
 | g2 | Sarah Test · loc-0462 · — · — | PASS 9ms | PASS 16ms | PASS 16ms |

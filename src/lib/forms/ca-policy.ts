@@ -1,4 +1,5 @@
 import { JOIN } from "./bounded-context";
+import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
   isApprovedPolicyManualTitle,
@@ -227,7 +228,7 @@ function missedEventIn(sentences: readonly string[]): string | null {
  * code"), so they count only as an answer — a short reply, or a sentence that
  * frames them as the policy.
  */
-const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean }[] = [
+const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enabled?: () => boolean }[] = [
   { name: "standards_of_conduct", pattern: /\b(?:standards? of conduct|code of conduct)\b/, alwaysAPolicy: true },
   { name: "under_performance", pattern: /\b(?:under[- ]?performance|underperforming)\b/, alwaysAPolicy: false },
   /*
@@ -240,6 +241,8 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean }[] =
     pattern: /\blate[- ]open(?:ing|ed|er)?\b|\bopen(?:ed|ing)\s+late\b/,
     alwaysAPolicy: true,
   },
+  /* "late to open" is the same section (QA, 24 Oct 2026; LATE_OPEN_DATE_ENABLED). */
+  { name: "late_opening", pattern: new RegExp(LATE_TO_OPEN.source), alwaysAPolicy: true, enabled: lateOpenOn },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
   /* "wore leggings" names the dress code when the manager does not say those words. */
@@ -256,7 +259,8 @@ function statedIn(turn: string): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
   for (const sentence of statements(turn)) {
-    for (const { name, pattern, alwaysAPolicy } of NAMED) {
+    for (const { name, pattern, alwaysAPolicy, enabled } of NAMED) {
+      if (enabled && !enabled()) continue;
       const match = pattern.exec(sentence);
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;

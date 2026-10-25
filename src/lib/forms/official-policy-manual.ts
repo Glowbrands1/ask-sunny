@@ -62,6 +62,7 @@
  */
 
 import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { describesAttendanceToo, LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import { headingOf, isPageFooter } from "@/lib/ingestion/extract/pdf-sections";
 
 /* ------------------------------------------------------------- identity --- */
@@ -887,7 +888,7 @@ export function sectionHeadingsFor(input: {
 
   const notes = input.notes ?? "";
   const described = DESCRIBED_SECTIONS.filter(
-    (rule) => input.offenseKeys.includes(rule.offenseKey) && rule.describes.test(notes),
+    (rule) => input.offenseKeys.includes(rule.offenseKey) && describesRule(rule, notes),
   ).map((rule) => [...rule.headings]);
 
   return [...described, ...ticked];
@@ -933,6 +934,45 @@ const DESCRIBED_SECTIONS: readonly {
     headings: ["Seminar/Webinar Attendance"],
   },
 ];
+
+const LATE_OPENING = "Late Opening";
+
+/**
+ * "late to open" describes the Late Opening section too, with
+ * LATE_OPEN_DATE_ENABLED (QA, 24 Oct 2026). See `late-open.ts`.
+ */
+function describesRule(rule: (typeof DESCRIBED_SECTIONS)[number], notes: string): boolean {
+  if (rule.describes.test(notes)) return true;
+  return lateOpenOn() && rule.headings.includes(LATE_OPENING) && LATE_TO_OPEN.test(notes);
+}
+
+/** Whether the manager's own words describe a late opening. */
+export function describesLateOpening(notes: string): boolean {
+  const rule = DESCRIBED_SECTIONS.find((entry) => entry.headings.includes(LATE_OPENING));
+  return rule ? describesRule(rule, notes ?? "") : false;
+}
+
+/**
+ * A LATE OPENING CITES LATE OPENING ONLY (LATE_OPEN_DATE_ENABLED).
+ *
+ * The Tardiness box cites Attendance, and a late opening under it cited both
+ * sections. Live, 24 Oct 2026 (conv_mvmyre8z2unys1a): the card listed Late
+ * Opening p.15 and Attendance p.14, which HR had already flagged on a draft
+ * ("noted tardiness/leaving early vs late open policy pg.15"). When the
+ * account is a late opening and nothing else the Attendance section governs
+ * (a late shift, an absence), Attendance is dropped — only once Late Opening
+ * itself was found, so a manual without that section still cites one.
+ */
+export function withoutAttendanceForLateOpening<T extends { readonly heading: string }>(
+  sections: readonly T[],
+  notes: string | null | undefined,
+): T[] {
+  const text = notes ?? "";
+  if (!lateOpenOn() || !text.trim()) return [...sections];
+  if (!sections.some((section) => headingKey(section.heading) === headingKey(LATE_OPENING))) return [...sections];
+  if (!describesLateOpening(text) || describesAttendanceToo(text)) return [...sections];
+  return sections.filter((section) => headingKey(section.heading) !== "attendance");
+}
 
 /**
  * The offense box a section is cited under: the box that already cites it
@@ -1043,7 +1083,7 @@ export function manualSectionsFor(input: {
     found.push(section);
   }
 
-  return found;
+  return withoutAttendanceForLateOpening(found, input.notes);
 }
 
 /** The first section the ticked boxes point at, or none. */
