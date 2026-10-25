@@ -32,6 +32,7 @@ import {
   titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
+  noCardNoDraftClaimEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
   sameFormCopyNewPersonEnabled,
@@ -88,6 +89,7 @@ import { answersWhichFormOnFile, mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
+import { noCardNoDraftClaim, type NoCardClaimContext } from "@/lib/ai/no-card-draft-claim";
 import type { AskRequest, AskResponse } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
@@ -811,21 +813,25 @@ async function postChat(request: Request) {
         // FORM_EDIT_TOOL_IN_STREAM_ENABLED: the tool was called and wrote nothing — said so, never the model's text.
         (toolNothing = formEditTool?.calledWithoutEdit() ? (await import("@/lib/forms/form-edit-tool")).nothingChangedAnswer() : null) ??
         toolMain ??
-        (await answerQuestion(
-          // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a turn the tool was not offered on carries only its trace (and a failed main call's fallback, no offer).
-          { ...parsed, openForm, ...(formEditTool && !formEditTool.turn.offer ? { formEditTool: formEditTool.turn } : {}) },
-          {
-            role: context.identity.role,
-            scope: context.identity.scope,
-            subject: context.identity.subject,
-            verified: context.identity.verified,
-          },
-          /*
-           * WHOSE EARLIER CONVERSATIONS SUNNY MAY RECALL: the validated
-           * session's, and only ever theirs. See `chat/person-memory-store.ts`.
-           */
-          { memoryOwnerId: context.identity.subject },
-        ));
+        // NO_CARD_NO_DRAFT_CLAIM_ENABLED (QA B22-2): the model's card-less answer never claims a draft that isn't there.
+        noCardClaimChecked(
+          await answerQuestion(
+            // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a turn the tool was not offered on carries only its trace (and a failed main call's fallback, no offer).
+            { ...parsed, openForm, ...(formEditTool && !formEditTool.turn.offer ? { formEditTool: formEditTool.turn } : {}) },
+            {
+              role: context.identity.role,
+              scope: context.identity.scope,
+              subject: context.identity.subject,
+              verified: context.identity.verified,
+            },
+            /*
+             * WHOSE EARLIER CONVERSATIONS SUNNY MAY RECALL: the validated
+             * session's, and only ever theirs. See `chat/person-memory-store.ts`.
+             */
+            { memoryOwnerId: context.identity.subject },
+          ),
+          { question: parsed.question, openForm, proposalPending: Boolean(parsed.continueProposalTemplateKey) },
+        );
       /*
        * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): the tool was offered and handed
        * the turn off (not called, refused, or nothing to change) — the old
@@ -1014,6 +1020,17 @@ async function postChat(request: Request) {
   } catch (error) {
     return errorResponse(error, "POST /api/chat");
   }
+}
+
+/**
+ * NO CARD, NO CLAIM THAT A DRAFT IS OPEN (NO_CARD_NO_DRAFT_CLAIM_ENABLED, QA
+ * B22-2). The model's answer, when it carries no card, has any sentence that
+ * says a draft is open or created that is not on screen — or that tells the
+ * manager to press Finalize or Create on it — replaced with one honest line.
+ * Off, the answer is returned as it came. See `lib/ai/no-card-draft-claim.ts`.
+ */
+function noCardClaimChecked(answer: AskResponse, context: NoCardClaimContext): AskResponse {
+  return noCardNoDraftClaimEnabled() ? noCardNoDraftClaim(answer, context) : answer;
 }
 
 /** Validates and bounds everything that arrived from the browser. */
