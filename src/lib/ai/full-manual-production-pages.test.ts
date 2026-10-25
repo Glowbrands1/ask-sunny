@@ -228,3 +228,33 @@ describe("live replies against the whole manual", () => {
     expect(pagesIn(out.content).size).toBeGreaterThan(0);
   });
 });
+
+/**
+ * QA P0, 24 Oct 2026 (live, Ask Bubbles conv_mvmzil682z73liv; the same
+ * mechanism runs here): "the employee's responsibility to" is printed on
+ * pages 9, 10, 14, 26, 31 and 48, so a cell-phone sentence sharing it was
+ * cited on all of them while page 19, whose words it restates, lost on
+ * length. A phrase printed on three or more pages says nothing about which
+ * page a sentence restates; "it's" is "it is".
+ */
+describe("boilerplate phrases cite no page (QA P0)", () => {
+  const SENTENCE =
+    "It's the employee's responsibility to protect the guest experience — texting, phone calls, or social media use while working jeopardizes that.";
+
+  it("the cell-phone sentence cites page 19 only", () => {
+    const out = cite(SENTENCE);
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+    for (const citation of out.citations) expect(citation.locator).toMatch(/^Page 19\b/);
+  }, 20_000);
+
+  it.each([
+    ["conv_mvmyowur2sni6l6", [15, 19]],
+    ["conv_mvmzywuv2sytdlj", [19]],
+  ] as const)("Sunny's live cell-phone reply %s (22:20 / 22:55, flag on) keeps pages %j, words and lines", (conversationId, pages) => {
+    const raw = liveReply(conversationId);
+    const out = cite(raw);
+    expectSameWordsAndLines(raw, out.content);
+    expect(pagesIn(out.content)).toEqual(new Set(pages));
+    expectLabelsMatchMarkers(out.content);
+  }, 20_000);
+});
