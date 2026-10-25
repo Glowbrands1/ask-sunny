@@ -1,5 +1,18 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 25 Oct 2026: two unflagged full-remap changes in integration bundle 2 — same in both apps
+
+Neither is behind its own flag, and neither changes production today: both
+run only on the full-remap path, and `FORM_FULL_REMAP_ENABLED` is off in Ask
+Sunny's production. They come from Ask Bubbles (stray quote from its replay
+fixes, and #143's proposal ids), where they already run.
+- `remap-incident.ts` (PR 213): `HAS_WORD` — a stray quote or other
+  punctuation-only text is never an incident; it reads as none (null).
+- `form-full-remap.ts` `proposalFor` (PR 215): each remap card's
+  `proposalId` is `randomUUID()` instead of the shared `"form-remap"`, and an
+  observation with no letter or digit is null. When the remap is switched on
+  this is the P0 fix (a new chat never gets another chat's draft).
+
 ## 25 Oct 2026: a follow-up that names its own documents is searched on them — ported to Ask Bubbles
 
 `FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED` defaults off, same name in both apps.
