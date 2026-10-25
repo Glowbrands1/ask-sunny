@@ -35,6 +35,7 @@ import {
   manualTopicPinEnabled,
   fullManualContextEnabled,
   formFullRemapEnabled,
+  formRemapStrictScopeEnabled,
   warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
   intentPayrollManagerOnlyEnabled,
@@ -97,6 +98,7 @@ const NEW_FLAGS = [
   "MANUAL_TOPIC_PIN_ENABLED",
   "FULL_MANUAL_CONTEXT_ENABLED",
   "FORM_FULL_REMAP_ENABLED",
+  "FORM_REMAP_STRICT_SCOPE_ENABLED",
   "WARNING_LEVEL_MANAGER_ONLY_ENABLED",
   "MANAGER_WORDS_ONLY_ENABLED",
   "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
@@ -205,6 +207,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualTopicPinEnabled()).toBe(false);
     expect(fullManualContextEnabled()).toBe(false);
     expect(formFullRemapEnabled()).toBe(false);
+    expect(formRemapStrictScopeEnabled()).toBe(false);
     expect(warningLevelManagerOnlyEnabled()).toBe(false);
     expect(managerWordsOnlyEnabled()).toBe(false);
     expect(intentPayrollManagerOnlyEnabled()).toBe(false);

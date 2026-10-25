@@ -177,6 +177,8 @@ async function scopedReplay(conversationId: string, turns: readonly string[]) {
       history: [{ id: "msg-payroll", role: "user", content: PAYROLL }, ...prior],
     });
     expect(scoped.history.map((turn) => turn.content)).toEqual(prior.map((turn) => turn.content));
+    // A new conversation starts with nothing saved: not a blank $40, not any field.
+    if (index === 0) expect(scoped.saved, `${conversationId} first turn`).toBeNull();
     expect(scoped.saved?.payrollAmount ?? null).not.toBe("$40");
     expect(scoped.saved?.locationId ?? null).not.toBe("loc-0468");
     const step = groundFormSlots({

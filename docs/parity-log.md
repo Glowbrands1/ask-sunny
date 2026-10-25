@@ -1,5 +1,25 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: the form remap fallback does not read another chat — ported to Ask Bubbles
+
+New flag `FORM_REMAP_STRICT_SCOPE_ENABLED`, default off. With
+`FORM_FULL_REMAP_ENABLED` on, `historyForRemap` drops a browser turn whose id
+is stored on a different conversation. When it cannot run (no signed-in
+subject, no conversation id) or its read fails, `server-ask.ts` used the
+browser history as sent. A $40 payroll chat at KS Lawrence then filled the
+next chat's card with KS Lawrence (`loc-0468`) and October 1, although that
+chat said 10-20 (`src/lib/ai/form-remap-request.test.ts`). On, that fallback
+reads only the current question and no saved slots. Off, nothing changes.
+
+The same file runs one request through `answerQuestion` with the remap on and
+checks that `historyForRemap` read this conversation id and that the remap,
+not the proposal path, answered. `conv-remap-carryover.dom.test.tsx` now also
+checks that the first turn of each new conversation has no saved slots.
+
+**Sibling app: ported.** Ask Bubbles has the same fallback and the same
+bug. Ported on local branch `test/carryover-bubbles` (not pushed), with
+Bubbles' own stores (Bellevue, NE `loc-67`; Kearney `loc-66`; Grand Island
+`loc-236`). No Sun Tan City salon names were copied.
 ## 24 Oct 2026: the app's own lines are not the manager's words — Sunny-only
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation
