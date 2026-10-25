@@ -543,6 +543,20 @@ export function notANameGuardEnabled(): boolean {
 }
 
 /**
+ * The exit form's intake reads what the manager typed (ported from the
+ * sibling app's live QA, 25 Oct 2026). A Details answer ("items returned") or
+ * the Permanent Address the manager typed is never taken for the employee;
+ * "change the reason for resignation to: …" replaces the reason; a yearless
+ * "last day 10-24" is the most recent 24 October; "gave notice 9/25 –
+ * fulfilled 10/9" fills the fulfilled date; the Permanent Address is read;
+ * and "did not call in for her last two shifts" is No Call No Show. Same
+ * name in the sibling app. Off, the exit readers read as before.
+ */
+export function exitIntakeFixEnabled(): boolean {
+  return envFlag("EXIT_INTAKE_FIX_ENABLED");
+}
+
+/**
  * A reading note beside the JBA Policy Manual p.19 cell-phone sentence when
  * the grounding holds it: "not in back pockets, charging in the break room,
  * or sitting on top of a drawer till" lists three places the phone may NOT

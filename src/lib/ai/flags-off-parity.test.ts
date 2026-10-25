@@ -47,6 +47,7 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  exitIntakeFixEnabled,
   manualNegatedListNoteEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
@@ -125,6 +126,7 @@ const NEW_FLAGS = [
   "MANUAL_NEGATED_LIST_NOTE_ENABLED",
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
+  "EXIT_INTAKE_FIX_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -254,6 +256,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualNegatedListNoteEnabled()).toBe(false);
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
+    expect(exitIntakeFixEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

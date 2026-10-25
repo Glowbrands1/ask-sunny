@@ -21,6 +21,8 @@ import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
+import { isExitAnswerPhrase } from "@/lib/forms/exit-answer-phrase";
+import { inStatedPermanentAddress } from "@/lib/forms/exit-details";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
@@ -748,13 +750,30 @@ function groundEmployee(
   // The guard keeps a name the model copied from an assistant reply, or a
   // placeholder like "blank", off the card: it must be in the manager's words.
   if (manager && typed?.trim() && (isNotAName(typed) || !saidBy(manager, typed))) typed = null;
-  const extracted = typed?.trim()
-    ? []
-    : (manager ? namesInTurns(manager) : extractEmployeeNames(blob)).filter(
-        (name) =>
-          name.trim().split(/\s+/).length >= 2 && !isDocumentName(name) && !isRosterStateName(name),
-      );
-  const rawProbe = typed?.trim() || (fromText.length === 1 ? displayName(fromText[0]!) : null) || (extracted.length === 1 ? extracted[0]! : null);
+  /*
+   * EXIT_INTAKE_FIX_ENABLED (ported from the sibling app's live QA, 25 Oct
+   * 2026): "… items returned, payroll deduction does not apply" put **Items
+   * Returned** on the exit card, and "permanent address 123 Main St, …" put
+   * **Main St** there. One of the exit form's answers, or a street inside the
+   * Permanent Address the manager typed, names nobody — and when it was the
+   * only other name read, the one person left is the form's subject.
+   */
+  const notAPerson = (name: string | null | undefined) => isExitAnswerPhrase(name) || inStatedPermanentAddress(name, blob);
+  if (typed?.trim() && notAPerson(typed)) typed = null;
+  const read = typed?.trim() ? [] : manager ? namesInTurns(manager) : extractEmployeeNames(blob);
+  const named = read.filter((name) => !notAPerson(name));
+  const extracted = named.filter(
+    (name) => name.trim().split(/\s+/).length >= 2 && !isDocumentName(name) && !isRosterStateName(name),
+  );
+  const subject =
+    extracted.length === 0 && named.length === 1 && named.length < read.length && !isDocumentName(named[0]!) && !isRosterStateName(named[0]!)
+      ? named[0]!
+      : null;
+  const rawProbe =
+    typed?.trim() ||
+    (fromText.length === 1 ? displayName(fromText[0]!) : null) ||
+    (extracted.length === 1 ? extracted[0]! : null) ||
+    subject;
   const probe = rawProbe ? stripFieldLabels(rawProbe) : null;
   if (!probe) {
     if (fromText.length > 1) {
