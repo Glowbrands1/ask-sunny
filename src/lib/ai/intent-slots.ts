@@ -8,6 +8,7 @@ import {
   managerWordsOnlyEnabled,
   notANameGuardEnabled,
   typedNameProceedsEnabled,
+  remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
@@ -41,6 +42,7 @@ import {
   type ConversationFormState,
 } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
+import { withoutStateCodes } from "./remap-incident";
 
 /**
  * Slots read off one turn, then kept only when the roster, the salon list,
@@ -241,9 +243,11 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   // The manager's turns only: a pasted policy is not their words, and
   // "ass't salon director" is read as the assistant title.
-  const titleText = managerWordsOnlyEnabled()
+  const managerTitleText = managerWordsOnlyEnabled()
     ? titleTextFromTurns([input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)])
     : userText;
+  // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
+  const titleText = remapIncidentFixEnabled() ? withoutStateCodes(managerTitleText) : managerTitleText;
   const title = groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed);
   const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const incidentType = choiceStated && isDisciplineProcedure(groundedIncident) ? null : groundedIncident;

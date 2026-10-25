@@ -44,6 +44,7 @@ import {
   lateOpenDateEnabled,
   caTemplateMapEnabled,
   formChoiceStatedEnabled,
+  remapIncidentFixEnabled,
   notANameGuardEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
@@ -112,6 +113,7 @@ const NEW_FLAGS = [
   "LATE_OPEN_DATE_ENABLED",
   "CA_TEMPLATE_MAP_ENABLED",
   "FORM_CHOICE_STATED_ENABLED",
+  "REMAP_INCIDENT_FIX_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
 ] as const;
 
@@ -226,6 +228,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(lateOpenDateEnabled()).toBe(false);
     expect(caTemplateMapEnabled()).toBe(false);
     expect(formChoiceStatedEnabled()).toBe(false);
+    expect(remapIncidentFixEnabled()).toBe(false);
     expect(notANameGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";

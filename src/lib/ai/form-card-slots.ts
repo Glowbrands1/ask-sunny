@@ -6,6 +6,7 @@ import {
   managerWordsOnlyEnabled,
   formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
+  remapIncidentFixEnabled,
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -46,6 +47,7 @@ import { titleTextFromQuestion } from "./title-words";
 import type { ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
+import { remapCitations, remapManualSections, withoutStateCodes } from "./remap-incident";
 import type { AskResponse } from "./types";
 
 /**
@@ -94,7 +96,11 @@ export function enrichFormCard(input: {
   const savedName = input.saved?.employeeName ? stripFieldLabels(input.saved.employeeName) : null;
   const statedName = statedEmployee(said) ?? savedName;
   const employeeName = preferRosterName(proposed ?? statedName, said, input.people);
-  const title = statedTitle(blob, input.saved?.title ?? null) ?? proposal.employeeRole;
+  // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
+  const fixed = remapIncidentFixEnabled();
+  const titleBlob = fixed ? withoutStateCodes(blob) : blob;
+  let title = statedTitle(titleBlob, input.saved?.title ?? null) ?? proposal.employeeRole;
+  if (fixed && title && extractJobTitle(blob) === title && !extractJobTitle(titleBlob)) title = null;
   const spoken = withoutStateSentences(input.question);
   const groundedOn = incidentMarkedIn(input.question, input.today);
   const spokenIncidents = listIncidentDates(spoken, input.today);
@@ -192,7 +198,7 @@ export function attachFormTurnSources(given: {
 }): { content: string; citations: SourceCitation[] } {
   const input = formChoiceStatedEnabled() ? { ...given, modelHeading: headingForCard(given) } : given;
   const found = formTurnCitations(input);
-  const citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
+  let citations = lateOpeningCitations(input.citations.length > 0 ? [...input.citations] : found, input.notes);
   let content = input.content;
   let sections = violatedSections(
     sectionsFor(input.notes, input.chunks, input.modelHeading ?? statedManualHeading(input.notes)),
@@ -216,6 +222,15 @@ export function attachFormTurnSources(given: {
       if (!sections.some((seen) => headingKey(seen.heading) === headingKey(section.heading))) sections.push(section);
     }
   }
+  // REMAP_INCIDENT_FIX_ENABLED: the Standards of Conduct the account points
+  // at ("missing the 10-15-26 woven deadline") is cited with its page, as the
+  // remap path cites it (Ask Bubbles prod, 24 Oct 2026).
+  if (sections.length === 0 && remapIncidentFixEnabled()) {
+    sections = remapManualSections({ said: input.notes, chunks: input.chunks, incident: null, modelHeading: null });
+    if (citations.length === 0) citations = lateOpeningCitations(remapCitations(input, sections), input.notes);
+  }
+  // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, never Attendance,
+  // whichever reader found the sections.
   sections = withoutAttendanceForLateOpening(sections, input.notes);
   const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
   for (const section of sections) {

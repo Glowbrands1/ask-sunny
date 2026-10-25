@@ -29,6 +29,7 @@ import {
   fullManualContextEnabled,
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
+  remapIncidentFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -37,6 +38,7 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
+import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
@@ -457,6 +459,11 @@ async function answerQuestionUntraced(
    */
   const knowledge = new SupabaseKnowledgeProvider();
 
+  /** REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident starts a new form. */
+  function formHistory(): AskRequest["history"] {
+    return remapIncidentFixEnabled() ? requestScopedHistory(request.history, request.question) : request.history;
+  }
+
   async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
     const coachingOn = priorCoachingOptionalEnabled();
     const recallOn = retrievalRecallEnabled();
@@ -472,7 +479,7 @@ async function answerQuestionUntraced(
       policyPageRequiredEnabled();
     if (!coachingOn && !recallOn && !citeOn) return response;
     const turns = [
-      ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+      ...formHistory().filter((turn) => turn.role === "user").map((turn) => turn.content),
       request.question,
     ];
     let content = response.content;
@@ -627,6 +634,18 @@ async function answerQuestionUntraced(
         continueTemplateKey: request.continueProposalTemplateKey ?? null,
         people,
         saved,
+        // Read only with REMAP_INCIDENT_FIX_ENABLED on, so the card cites the section and page.
+        policyManual: async () => {
+          const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+          return manual.ok
+            ? {
+                documentId: manual.documentId,
+                documentTitle: manual.documentTitle,
+                documentCategory: manual.documentCategory ?? null,
+                chunks: manual.chunks,
+              }
+            : null;
+        },
       });
       if (remapped) return remapped;
     }
@@ -634,12 +653,19 @@ async function answerQuestionUntraced(
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
     const proposal = await deliverFormProposal({
-      request,
+      request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
-      question: prepareProposalQuestion(questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request)),
+      question: withPriorShorthand(
+        prepareProposalQuestion(
+          questionForProposal(
+            proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion),
+            remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
+          ),
+        ),
+      ),
       decorate: decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
-      history: request.history,
+      history: withPriorShorthandTurns(formHistory()),
       question,
       questionMessageId: request.questionMessageId,
       actor,
@@ -1726,6 +1752,16 @@ function proposalQuestion(lead: string | null, question: string, original: strin
   const split = lead.indexOf(". ");
   const prefix = split > 0 ? lead.slice(0, split) : "";
   return prefix ? `${prefix}. ${question}` : lead;
+}
+
+/** REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" reads as a prior action, not the form's date. */
+function withPriorShorthand(question: string): string {
+  return remapIncidentFixEnabled() ? priorShorthand(question) : question;
+}
+
+function withPriorShorthandTurns<T extends { role: string; content: string }>(history: readonly T[]): T[] {
+  if (!remapIncidentFixEnabled()) return history as T[];
+  return history.map((turn) => (turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn));
 }
 
 function questionForProposal(question: string, request: AskRequest): string {
