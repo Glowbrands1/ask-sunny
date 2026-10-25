@@ -1,3 +1,18 @@
+/*
+ * NAMES COPIED FROM PRODUCTION CHATS ARE SWAPPED FOR INVENTED ONES BEFORE
+ * COMMITTING. This repository is public. A bug report's exact wording becomes a
+ * test (CLAUDE.md, "Every bug report becomes a test"), but the people in it do
+ * not: every real employee or manager named in a chat, a form or the directory,
+ * with their typo, nickname and first-name-only variants, is replaced by an
+ * invented name, used the same way across the test and the fixtures it reads.
+ * Check an invented name against the directory so it is not someone real.
+ *
+ * The second check below makes that machine-checkable where a roster export is
+ * at hand: one "First Last" per line in `.real-people-roster.txt` (gitignored,
+ * never committed) or in a file named by REAL_PEOPLE_ROSTER outside the
+ * repository. Without that file the check is skipped, as it is in CI.
+ */
+
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
@@ -54,5 +69,50 @@ describe("no real person's address in a tracked file", () => {
       }
     }
     expect(found).toEqual([]);
+  });
+});
+
+/** "First Last" lines from a local roster export that is never committed. */
+function localRosterNames(): string[] {
+  const file = process.env.REAL_PEOPLE_ROSTER || ".real-people-roster.txt";
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  return [
+    ...new Set(
+      text
+        .split("\n")
+        .map((line) => line.trim().replace(/\s+/g, " ").toLowerCase())
+        .filter((line) => !line.startsWith("#") && /^\S+ \S+/.test(line)),
+    ),
+  ];
+}
+
+const ROSTER_NAMES = localRosterNames();
+
+describe("no real person's name in a tracked file", () => {
+  it.skipIf(ROSTER_NAMES.length === 0)("no first-last name from the local roster appears", () => {
+    const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(
+      `(?<![\\p{L}])(?:${ROSTER_NAMES.map((name) => name.split(" ").map(escape).join("\\s+")).join("|")})(?![\\p{L}])`,
+      "giu",
+    );
+    const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).split("\n").filter(Boolean);
+    const found = new Set<string>();
+    for (const file of files) {
+      let text: string;
+      try {
+        text = readFileSync(file, "utf8");
+      } catch {
+        continue;
+      }
+      // Only the file is reported, so a failure does not print the name.
+      if (pattern.test(text)) found.add(file);
+      pattern.lastIndex = 0;
+    }
+    expect([...found]).toEqual([]);
   });
 });

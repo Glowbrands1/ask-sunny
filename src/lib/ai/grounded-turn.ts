@@ -25,6 +25,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
 /**
@@ -74,13 +75,17 @@ export async function deliverFormProposal(input: {
           saved: null,
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
-    return holdFilledSlots({
-      response: enriched,
-      question: input.question,
-      history: input.request.history,
-      today: input.request.context.todayIso,
-      people: [],
-    });
+    // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
+    return withTypedEmployeeOnCard(
+      holdFilledSlots({
+        response: enriched,
+        question: input.question,
+        history: input.request.history,
+        today: input.request.context.todayIso,
+        people: [],
+      }),
+      input.request.question,
+    );
   }
 
   const saved = await readSaved(stateOn, input.actor.subject, input.request.conversationId);
@@ -124,13 +129,16 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = holdFilledSlots({
-    response: settled,
-    question: input.question,
-    history: input.request.history,
-    today: input.request.context.todayIso,
-    people,
-  });
+  const held = withTypedEmployeeOnCard(
+    holdFilledSlots({
+      response: settled,
+      question: input.question,
+      history: input.request.history,
+      today: input.request.context.todayIso,
+      people,
+    }),
+    input.request.question,
+  );
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(stateOn, input, saved, held, prep);
