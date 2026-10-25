@@ -426,6 +426,30 @@ export function conversationDraftReuseEnabled(): boolean {
   return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
 }
 
+/**
+ * The form's employee stays the employee. A person the manager's account
+ * mentions ("onboarding with new hire Test Newhire") does not replace them on
+ * a later turn (QA round 10, conv_mvnjix4r2wm7u7r). Here: "Which date goes on
+ * the form?" is answered in the manager's words; the lines the app writes
+ * onto the question ("The employee is test employee. It happened on
+ * 10/16/2026.") are not an answer, so "create the ca" after that question is
+ * not dropped from the name readers. Off, a turn is a date answer as before.
+ */
+export function keepFormEmployeeEnabled(): boolean {
+  return envFlag("KEEP_FORM_EMPLOYEE_ENABLED");
+}
+
+/**
+ * A directory title counts as stated only as a whole word, and a short
+ * all-capitals title ("HR") only as the manager typed it. "throught the
+ * rest" is not "HR", and neither is "1 hr late" (QA round 10,
+ * conv_mvnjo8k22hy75ii). A title the slot model typed is kept only when the
+ * manager's words carry it. Off, the title is grounded as before.
+ */
+export function titleWholeWordEnabled(): boolean {
+  return envFlag("TITLE_WHOLE_WORD_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
