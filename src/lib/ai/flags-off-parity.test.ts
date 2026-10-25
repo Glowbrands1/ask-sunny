@@ -63,6 +63,7 @@ import {
   formEditDateRulesEnabled,
   followupNewTopicRetrievalEnabled,
   draftReuseSameChatOnlyEnabled,
+  resignMethodFollowupEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -143,6 +144,7 @@ const NEW_FLAGS = [
   "FORM_EDIT_DATE_RULES_ENABLED",
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
+  "RESIGN_METHOD_FOLLOWUP_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -281,6 +283,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formEditDateRulesEnabled()).toBe(false);
     expect(followupNewTopicRetrievalEnabled()).toBe(false);
     expect(draftReuseSameChatOnlyEnabled()).toBe(false);
+    expect(resignMethodFollowupEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

@@ -692,6 +692,17 @@ export function followupNewTopicRetrievalEnabled(): boolean {
   return envFlag("FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED");
 }
 
+/**
+ * The exit form's How Employee Resigned line also reads a resignation the
+ * manager says was given verbally ("she told me verbally", "verbal notice"),
+ * as "Verbal" (Pau's decision, 25 Oct 2026). A bare "she resigned" still
+ * leaves the line blank, and "verbal warning" is never a method. Off, the
+ * methods read are exactly as before.
+ */
+export function resignMethodFollowupEnabled(): boolean {
+  return envFlag("RESIGN_METHOD_FOLLOWUP_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
