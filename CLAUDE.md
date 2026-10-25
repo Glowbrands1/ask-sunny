@@ -33,6 +33,13 @@ that uses **their exact wording** (see `src/app/api/forms/hr-feedback-oct21-e2e.
 and `src/lib/ai/form-intake-qa-*.test.ts`). Prove it fails before the fix and
 passes after.
 
+Keep their wording, not their people. The repository is public: before
+committing, swap every real employee or manager named in a production chat or
+form (with typo, nickname and first-name-only variants) for an invented name,
+used the same way in the test and every fixture it reads, and check the
+invented name is not on the directory. `src/lib/security/no-real-people.test.ts`
+says how to check a change against a local roster export.
+
 ## 3. Before pushing
 
 ```bash

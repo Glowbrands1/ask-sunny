@@ -13,8 +13,8 @@ import type { ChatMessage } from "@/types";
  *
  * A salon computer is shared, and its browser's chat history holds threads
  * other people started. The avatar used to be the signed-in person's initials
- * on every question, so a regional manager opening a thread Dez started saw
- * their own initials beside Dez's words.
+ * on every question, so a regional manager opening a thread Delsin started saw
+ * their own initials beside Delsin's words.
  */
 
 vi.mock("@/lib/session/session-context", () => ({
@@ -52,16 +52,16 @@ afterEach(cleanup);
 describe("question avatar", () => {
   it("shows the person who asked, not the person signed in", () => {
     renderQuestion(
-      question({ author: { userId: "u-dez", name: "Dez Ruiz", initials: "DR" } }),
+      question({ author: { userId: "u-delsin", name: "Delsin Ruiz", initials: "DR" } }),
       false,
     );
-    expect(screen.getByTitle("Dez Ruiz").textContent).toBe("DR");
+    expect(screen.getByTitle("Delsin Ruiz").textContent).toBe("DR");
     expect(screen.queryByText("SA")).toBeNull();
   });
 
   it("uses the stamp even on a thread the signed-in account holds", () => {
     renderQuestion(
-      question({ author: { userId: "u-dez", name: "Dez Ruiz", initials: "DR" } }),
+      question({ author: { userId: "u-delsin", name: "Delsin Ruiz", initials: "DR" } }),
       true,
     );
     expect(screen.getByText("DR")).toBeTruthy();

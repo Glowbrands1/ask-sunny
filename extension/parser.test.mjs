@@ -561,7 +561,7 @@ describe("the rating-only review the live page actually renders", () => {
         cards: [
           liveReviewCard({
             lid: "FIXTURE-ONLY-003",
-            reviewer: "Hailey Werne",
+            reviewer: "Ottilie Pellar",
             rating: 4,
             text: "Booth was ready when I arrived and the desk staff were friendly.",
           }),
@@ -586,7 +586,7 @@ describe("the rating-only review the live page actually renders", () => {
     expect([...byStore.keys()].sort()).toEqual(["144", "145", "146"]);
     expect(byStore.get("145").reviewerName).toBe("Abbi Tuma");
     expect(byStore.get("144").reviewerName).toBe("Kim Hartig");
-    expect(byStore.get("146").reviewerName).toBe("Hailey Werne");
+    expect(byStore.get("146").reviewerName).toBe("Ottilie Pellar");
     for (const review of parsed.reviews) {
       expect(review.reviewText).toBeNull();
       expect(review.rating).toBeGreaterThanOrEqual(1);

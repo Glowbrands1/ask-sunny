@@ -128,6 +128,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.FULL_MANUAL_CONTEXT_ENABLED;
+  delete process.env.FULL_MANUAL_WIDE_GATE_ENABLED;
 });
 
 describe("a reply answered from retrieval shows its [p.N] beside its source", () => {
@@ -167,5 +168,58 @@ describe("E1: Who is eligible for PTO and when does it start?", () => {
     expect(state.fullManualBlocks[0]).toMatch(/\[p\.41\]/);
     expect(response.content).toContain("[p.41]");
     expect(response.citations.map((citation) => `${citation.locator} ${citation.excerpt}`)).toEqual(["Page 41 Eligibility"]);
+  }, 30_000);
+});
+
+/*
+ * FULL_MANUAL_WIDE_GATE_ENABLED (same name as the sibling app, default off).
+ * Here the gate already reads the intent extraction; the flag only catches a
+ * question it misses.
+ */
+describe("FULL_MANUAL_WIDE_GATE_ENABLED", () => {
+  const otherRow = {
+    chunk_id: "other-1",
+    document_id: "doc-other",
+    document_title: "Product Guide: Naturally WOWW Face Lotion",
+    category: "other",
+    locator: "Page 1",
+    page: 1,
+    section: null,
+    content: "Apply a thin layer after tanning.",
+    similarity: 0.79,
+  };
+
+  it("on: retrieval's best excerpt from the manual loads the manual", async () => {
+    process.env.FULL_MANUAL_WIDE_GATE_ENABLED = "1";
+    state.rows = [manualRow(55, 0.925)];
+    state.reply = "Employees are not allowed to park directly in front of the location [p.18].";
+    const response = await ask("Where should employees park?");
+    expect(state.fullManualBlocks[0]).toContain("Employee Parking");
+    expect(response.content).toBe("Employees are not allowed to park directly in front of the location [p.18].");
+    expect(response.citations.map((citation) => `${citation.locator} ${citation.excerpt}`)).toEqual(["Page 18 Employee Parking"]);
+  }, 30_000);
+
+  it("on: a question naming a printed heading word (COBRA) loads the manual with no manual excerpt retrieved", async () => {
+    process.env.FULL_MANUAL_WIDE_GATE_ENABLED = "1";
+    state.rows = [otherRow];
+    state.reply = "COBRA continuation coverage only lasts for a limited period of time [p.45].";
+    const response = await ask("What is COBRA?");
+    expect(state.fullManualBlocks[0]).toMatch(/Group Health Plan Continuation Coverage Under COBRA/);
+    expect(response.citations.map((citation) => citation.locator)).toEqual(["Page 45"]);
+  }, 30_000);
+
+  it("on: a question about something else keeps retrieval", async () => {
+    process.env.FULL_MANUAL_WIDE_GATE_ENABLED = "1";
+    state.rows = [otherRow];
+    state.reply = "Apply a thin layer after tanning [S1].";
+    const response = await ask("How do I apply the face lotion?");
+    expect(state.fullManualBlocks[0]).toBeNull();
+    expect(response.content).toBe("Apply a thin layer after tanning.");
+  }, 30_000);
+
+  it("off: COBRA keeps retrieval (the default)", async () => {
+    state.rows = [otherRow];
+    await ask("What is COBRA?");
+    expect(state.fullManualBlocks[0]).toBeNull();
   }, 30_000);
 });
