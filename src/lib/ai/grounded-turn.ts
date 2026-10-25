@@ -27,6 +27,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { withCrossPersonGuard } from "./cross-person-guard";
 import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
@@ -79,7 +80,7 @@ export async function deliverFormProposal(input: {
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
-    return withEditDateRules(
+    const ready = withEditDateRules(
       withTypedEmployeeOnCard(
         holdFilledSlots({
           response: enriched,
@@ -92,6 +93,8 @@ export async function deliverFormProposal(input: {
       ),
       input,
     );
+    // CROSS_PERSON_INCIDENT_GUARD_ENABLED: a new employee does not inherit the earlier account.
+    return withCrossPersonGuard(ready, input.request);
   }
 
   const saved = await readSaved(stateOn, input.actor.subject, input.request.conversationId);
@@ -135,7 +138,7 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = withEditDateRules(
+  const ruled = withEditDateRules(
     withTypedEmployeeOnCard(
       holdFilledSlots({
         response: settled,
@@ -148,6 +151,8 @@ export async function deliverFormProposal(input: {
     ),
     input,
   );
+  // CROSS_PERSON_INCIDENT_GUARD_ENABLED: a new employee does not inherit the earlier account.
+  const held = withCrossPersonGuard(ruled, input.request);
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
     await writeSaved(stateOn, input, saved, held, prep);
