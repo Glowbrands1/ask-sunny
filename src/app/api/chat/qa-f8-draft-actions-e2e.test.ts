@@ -386,7 +386,11 @@ class JoiningRows extends Array<Record<string, unknown>> {
   }
 }
 
-const saved = { DRAFT_ACTIONS_ENABLED: process.env.DRAFT_ACTIONS_ENABLED, INTENT_EXTRACTION_ENABLED: process.env.INTENT_EXTRACTION_ENABLED };
+const saved = {
+  DRAFT_ACTIONS_ENABLED: process.env.DRAFT_ACTIONS_ENABLED,
+  INTENT_EXTRACTION_ENABLED: process.env.INTENT_EXTRACTION_ENABLED,
+  CONVERSATION_DRAFT_REUSE_ENABLED: process.env.CONVERSATION_DRAFT_REUSE_ENABLED,
+};
 
 beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
@@ -591,6 +595,38 @@ describe('QA F8 case 2: "same incident" answering "is this the same incident?"',
     const created = await thread.create();
     expect(created).not.toBe(existing);
     expect(drafts("Sela Brandt")).toHaveLength(2);
+  });
+
+  /*
+   * INTEGRATION, DRAFT_ACTIONS_ENABLED + CONVERSATION_DRAFT_REUSE_ENABLED. The
+   * chat-draft reuse ran before the "different incident" check, so Create on
+   * the new card reopened the draft this chat had already made (the same
+   * instance id came back). The different-incident check now gates it.
+   */
+  it('"different incident" after a draft made in this same chat files a new draft (CONVERSATION_DRAFT_REUSE_ENABLED on too)', async () => {
+    process.env.CONVERSATION_DRAFT_REUSE_ENABLED = "on";
+    const thread = new Thread();
+    await thread.say("create a corrective action form for Sela Brandt for opening the salon late on 10-17-26. payroll deduct no");
+    const existing = await thread.create();
+    thread.replay(REQUEST, ASKED);
+    const card = await thread.say("different incident");
+    expect(card.formOpened).toBeUndefined();
+    expect(card.formProposal?.employeeName).toBe("Sela Brandt");
+    const created = await thread.create();
+    expect(created).not.toBe(existing);
+    expect(row(existing)?.status).toBe("draft");
+    expect(drafts("Sela Brandt")).toHaveLength(2);
+  });
+
+  it('"same incident" in the chat that made the draft still opens that draft (CONVERSATION_DRAFT_REUSE_ENABLED on too)', async () => {
+    process.env.CONVERSATION_DRAFT_REUSE_ENABLED = "on";
+    const thread = new Thread();
+    await thread.say("create a corrective action form for Sela Brandt for opening the salon late on 10-17-26. payroll deduct no");
+    const existing = await thread.create();
+    thread.replay(REQUEST, ASKED);
+    const answer = await thread.say("same incident");
+    expect(answer.formOpened?.instanceId).toBe(existing);
+    expect(drafts("Sela Brandt")).toHaveLength(1);
   });
 
   it('"same incident" with no such question asked is left to the ordinary answer', async () => {
