@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 import {
   actionPlanManagerOnlyEnabled,
@@ -1078,7 +1080,16 @@ function proposalFor(slots: FormRemapSlots): ChatFormProposal {
   const located = Boolean(slots.locationId);
   const status = !named ? "needs_employee" : located ? "ready" : "needs_location";
   return {
-    proposalId: "form-remap",
+    /*
+     * ONE ID PER CARD, generated here as the proposal flow does. A proposal id
+     * names one card: the create route's card-id match returns the draft that
+     * card already made, and `createInstance` files a card's form under an id
+     * derived from the manager, the form and the card id (`cardInstanceId`).
+     * A fixed "form-remap" made every remap card of a manager the same card,
+     * so a new chat about a different incident got the first chat's draft
+     * back (sibling app B18, 25 Oct 2026).
+     */
+    proposalId: randomUUID(),
     templateKey,
     templateName: TEMPLATE_SEEDS.find((seed) => seed.key === templateKey)?.name ?? templateKey,
     supportsInlineDraft: status === "ready" && supportsInlineDraft(templateKey, []),
