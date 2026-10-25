@@ -436,6 +436,18 @@ export function conversationDraftReuseEnabled(): boolean {
   return envFlag("CONVERSATION_DRAFT_REUSE_ENABLED");
 }
 
+/**
+ * Words that are not a person never become the employee: a placeholder
+ * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
+ * practice"), a product or service this business sells, a place on the
+ * salon roster, and the app's own lines and lists (the stored "Policy
+ * reference: …" line, an assistant reply, a bulleted or priced offer list).
+ * Off, the readers take names as they do today.
+ */
+export function notANameGuardEnabled(): boolean {
+  return envFlag("NOT_A_NAME_GUARD_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

@@ -12,6 +12,7 @@ import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intak
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
@@ -20,6 +21,7 @@ import {
   intentExtractionEnabled,
   warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
+  notANameGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -63,7 +65,8 @@ export function holdFilledSlots(input: {
   ].filter((turn) => turn.trim());
   const previous = previousProposal(input.history, proposal.templateKey);
   const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
-  const kept = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people);
+  const replies = input.history.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
+  const kept = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people, replies);
   let employeeName = kept;
   if (codeSlotsEnabled()) {
     // The model never writes Employee. Each user turn can name someone;
@@ -225,8 +228,16 @@ function keptName(
   previous: string | null,
   turns: readonly string[],
   people: readonly GroundedPerson[],
+  replies: readonly string[] = [],
 ): string | null {
   const question = turns[turns.length - 1] ?? "";
+  // NOT_A_NAME_GUARD_ENABLED: the previous card's name does not carry forward
+  // when it came from a reply — a reply in the window says it other than as
+  // a card's subject, and none of the manager's turns do (QA L23: "One
+  // Tanner"). With no evidence, it stays.
+  if (previous && notANameGuardEnabled() && !typedBy(turns, previous) && saidInReply(replies, previous)) {
+    previous = null;
+  }
   const stated = newestName(turns);
   let picked: string | null = null;
   if (previous && !isFragment(previous)) {
@@ -240,6 +251,12 @@ function keptName(
   }
   if (!picked || isFragment(picked)) return !isFragment(current) ? spell(current, people) : null;
   return spell(picked, people);
+}
+
+/** The name is in the manager's words, outside a bulleted or priced offer list. */
+function typedBy(turns: readonly string[], name: string): boolean {
+  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return turns.some((turn) => maskNotANameText(turn).toLowerCase().replace(/\s+/g, " ").includes(needle));
 }
 
 function spell(name: string | null, people: readonly GroundedPerson[]): string | null {
@@ -310,6 +327,8 @@ function isFragment(name: string | null | undefined): boolean {
     return true;
   }
   if (readSalonMentions(text).length > 0 || readSalonMentions(`at ${text}`).length > 0) return true;
+  // NOT_A_NAME_GUARD_ENABLED: "employee name is blank" put "Blank" on the card (QA round 4).
+  if (isNotAName(text)) return true;
   return false;
 }
 
