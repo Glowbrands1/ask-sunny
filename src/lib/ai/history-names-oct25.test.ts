@@ -571,6 +571,19 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager asked for", SLOW, () 
     expect(turn!.employeeName).toBe("Test Employee");
   });
 
+  // conv_mvo094062svv29y (prod, 25 Oct 2026, CA_TEMPLATE_MAP + FORM_CHOICE_STATED on): "Which form should I start with?
+  // 1. Coaching Form 2. Corrective Action Form". The manager's turn word for word (QA's own test name).
+  it("conv_mvo094062svv29y: a CA with a prior-coaching list is the Corrective Action card, never which form", async () => {
+    bag.intent.latest = ["Test Employee"];
+    bag.extra = { 0: { formType: "dpoa", title: "Tanning Consultant" } };
+    const [turn] = await converse([
+      "create a CA for Test Employee, she is a TC at Mo Kansas City Wornall, below company average in all categories for September, this will be a written warning. Prior coaching: September Promo coaching 9/29/26, Hemp nation product coaching form 9/30/26, Shrink coaching 9/30/26. no payroll deduction",
+    ]);
+    expect(turn!.content).not.toMatch(/which form should I start with/i);
+    expect(turn!.template).toBe("Corrective Action Form");
+    expect(turn!.employeeName).toBe("Test Employee");
+  });
+
   // conv_muxahcdkiiur2tu: the same list after "this will be a written warning". Failed before this fix.
   it("conv_muxahcdkiiur2tu: completed coachings listed with dates are not a second form", async () => {
     bag.intent.latest = ["Avery Lund", "avery lund"];
@@ -582,6 +595,9 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager asked for", SLOW, () 
       expect(turn.content, turn.question).not.toMatch(/which form should I start with/i);
       expect(turn.template, turn.question).toBe("Corrective Action Form");
     }
+    // PRIOR_ACTIONS_PARSE_ENABLED: "she completed … coaching 9/29/26" is a prior step on the card.
+    expect(turns[1]!.content).toMatch(/\*\*Prior actions:\*\*[^\n]*09\/29\/2026/);
+    expect(turns[1]!.content).not.toContain("I won't guess at it");
   });
 
   // QA S5, conv_mvnsypd62c90b3f: a CA on every turn. Fixed by FORM_CHOICE_STATED_ENABLED (merged, off).
