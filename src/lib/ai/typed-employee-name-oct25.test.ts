@@ -39,8 +39,10 @@ import { keepFormEmployeeEnabled } from "@/lib/config/chat-quality-flags";
  *     one-word "Test" and stores nobody.
  * KEEP_FORM_EMPLOYEE_ENABLED: a capitalised "<First> Employee" the manager
  * typed as the person ("for Test Employee", "name is Test Employee") is the
- * employee, and its line is put ahead of the form request. A lower-case
- * "an employee", "my employee", "the employee" is still nobody's name.
+ * employee, and its line is put ahead of the form request; with intent
+ * extraction off, the card is given the typed name after the slot keeper. A
+ * lower-case "an employee", "my employee", "the employee" is still nobody's
+ * name.
  */
 
 const PROFILE = [
@@ -350,6 +352,28 @@ describe("the typed name is the employee (KEEP_FORM_EMPLOYEE_ENABLED on)", { tim
     const turns = await converse(["create a coaching form", "an employee was late"]);
     expect(turns[1]!.employeeName).toBeNull();
     expect(turns[1]!.content).not.toMatch(/\*\*(?:An )?Employee\*\*/i);
+  });
+});
+
+/*
+ * The same reader cuts the name on the proposal path with intent extraction
+ * off (no stored employee line), so the card keeps the typed name there too.
+ */
+describe("intent extraction off: the proposal path keeps the typed name", { timeout: 120_000 }, () => {
+  beforeEach(() => {
+    vi.stubEnv("KEEP_FORM_EMPLOYEE_ENABLED", "true");
+    vi.stubEnv("INTENT_EXTRACTION_ENABLED", "");
+  });
+
+  it.each([CLIST, EXIT])("%s → Test Employee", async (question) => {
+    const [turn] = await converse([question]);
+    expect(turn!.employeeName).toBe("Test Employee");
+    expect(turn!.content).not.toMatch(/\*\*Test\*\*|\*\*Name:\*\* Test\n/);
+  });
+
+  it('controls: "my employee Jordan Hale was late" stays Jordan Hale; "an employee was late" gives no name', async () => {
+    expect((await converse(["create a coaching form", "my employee Jordan Hale was late"]))[1]!.employeeName).toBe("Jordan Hale");
+    expect((await converse(["create a coaching form", "an employee was late"]))[1]!.employeeName).toBeNull();
   });
 });
 
