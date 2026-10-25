@@ -28,6 +28,7 @@ import {
   manualTopicPinEnabled,
   fullManualContextEnabled,
   formFullRemapEnabled,
+  crossChatReplyGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -86,6 +87,13 @@ import { isFrameworkAvailable } from "@/lib/knowledge/framework-availability";
 import { rowToCitation, type MatchedChunkRow } from "@/lib/knowledge/mappers";
 import { loadEmployeeFacts } from "@/lib/reporting/read/employee-facts";
 import { recallPeople } from "@/lib/chat/person-memory-store";
+import {
+  asksAboutRecords,
+  CROSS_CHAT_NEUTRAL_REPLY,
+  refersBack,
+  withoutCrossChatClaims,
+  type CrossChatCheck,
+} from "@/lib/chat/cross-chat-guard";
 import { assembleGrounding } from "./grounding-assembly";
 import { classifyEmployeePerformanceIntent } from "./employee-performance-gate";
 import { isDailyStatsQuestion } from "./daily-stats-gate";
@@ -123,7 +131,7 @@ import {
 import { loadFullManualContext } from "./full-manual-load";
 import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
-import { updateChatTrace } from "./chat-trace-store";
+import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
@@ -785,6 +793,12 @@ async function answerQuestionUntraced(
    * return, so a proposal never pays for it; it runs alongside retrieval and
    * never rejects. See `chat/person-memory-store.ts`.
    */
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED: another chat is quoted only when the
+   * manager refers back to one, and a name typed as a whole turn on its own
+   * must be on this caller's roster. See `chat/cross-chat-guard.ts`.
+   */
+  const crossChatGuard = crossChatReplyGuardEnabled();
   const memoryPromise = memory.memoryOwnerId
     ? recallPeople({
         userId: memory.memoryOwnerId,
@@ -793,6 +807,9 @@ async function answerQuestionUntraced(
         conversationId: request.conversationId,
         userName: request.context.userName,
         todayIso: request.context.todayIso,
+        ...(crossChatGuard
+          ? { crossChatGuard: true, roster: () => loadScopedRoster(actor.scope) }
+          : {}),
       })
     : Promise.resolve(null);
 
@@ -1057,12 +1074,22 @@ async function answerQuestionUntraced(
    * `chat-form-records.ts`. Never rejects: a failed read becomes a block that
    * says so.
    */
-  const formRecordsPromise = isFormRecordsQuestion(request.question)
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED: the register is read for a QUESTION about
+   * records ("does she have previous coachings?") or a refer-back, not for a
+   * form request that mentions history ("do verbal for team member … previous
+   * coaching jba manual 11-1-26"), and each row says who created it.
+   */
+  const readsFormRecords =
+    isFormRecordsQuestion(request.question) &&
+    (!crossChatGuard || asksAboutRecords(request.question) || refersBack(request.question, request.history));
+  const formRecordsPromise = readsFormRecords
     ? loadFormRecords({
         actor,
         question: request.question,
         previousQuestion: previousManagerTurn(request),
         today: request.context.todayIso,
+        ...(crossChatGuard ? { markCreator: true } : {}),
       })
     : Promise.resolve(null);
 
@@ -1438,6 +1465,7 @@ async function answerQuestionUntraced(
     hasFormRecords: formRecords !== null,
     /* Read from whether the block exists, like the forms library above. */
     hasPersonMemory: personMemory !== null,
+    ...(crossChatGuard ? { crossChatGuard: true } : {}),
     policyManualNote: fullManualBlock ? null : policyManualNote,
     citeManualPages: fullManualBlock !== null,
     /* Read from the instance by the route, never from the body. */
@@ -1486,7 +1514,7 @@ async function answerQuestionUntraced(
   const groundingText = groundingWithoutCachedManual(joinedGrounding, manualBlock);
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
-  const answer = await callClaude({
+  const written = await callClaude({
     system,
     grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
     reportData: dataAddition.data
@@ -1513,6 +1541,22 @@ async function answerQuestionUntraced(
     manualBlock,
     fullManualBlock,
   });
+  /*
+   * THE BACKSTOP to the labelled block above: with the guard on and no refer-back
+   * in this conversation, a sentence saying the manager raised or sent
+   * something in another chat or on another date is taken out. Only that
+   * sentence; every other word the model wrote is kept.
+   */
+  const crossChatCheck =
+    crossChatGuard && !refersBack(request.question, request.history)
+      ? withoutCrossChatClaims(written, {
+          question: request.question,
+          history: request.history,
+          todayIso: request.context.todayIso,
+        })
+      : null;
+  if (crossChatCheck) noteCrossChatRemoval(crossChatCheck);
+  const answer = crossChatCheck?.content ?? written;
 
   /* ----------------------------------------------------------- citations -- */
   // Only the markers the model actually used become source cards, and each one
@@ -1685,4 +1729,20 @@ function previousManagerTurn(request: AskRequest): string | null {
     }
   }
   return null;
+}
+
+/**
+ * A reply the cross-chat backstop changed is logged and tagged on the trace's
+ * intent column ("cross_chat_removed", or "cross_chat_neutral" when nothing
+ * but the neutral line was left), so a read of chat_traces finds every one.
+ * The count only: the removed sentences carry the manager's own words.
+ */
+function noteCrossChatRemoval(check: CrossChatCheck): void {
+  if (check.removed.length === 0) return;
+  const neutral = check.content === CROSS_CHAT_NEUTRAL_REPLY;
+  console.info(
+    JSON.stringify({ event: "reply.cross_chat.removed", sentences: check.removed.length, neutral }),
+  );
+  const tag = neutral ? "cross_chat_neutral" : "cross_chat_removed";
+  updateChatTrace({ intent: [chatTraceDraft()?.intent, tag].filter(Boolean).join("|") });
 }

@@ -253,3 +253,27 @@ describe("loadFormRecords", () => {
     expect(result!.block).toContain("could not be read");
   });
 });
+
+/*
+ * CROSS_CHAT_REPLY_GUARD_ENABLED (`markCreator`): the register lists every form
+ * this user may SEE, and a reply called another manager's draft "the written
+ * one you created today" (QA, conv_mvmznap42vcw0dl). Each row now says who
+ * created it, and the rules say only "this user" rows are the manager's.
+ */
+describe("loadFormRecords marks who created each row", () => {
+  it("says 'created by: this user' or 'another user' only when asked to", async () => {
+    state.rows = [
+      row({ createdBy: "user-1", status: "draft", formDate: "2026-10-24", templateName: "Corrective Action Form" }),
+      row({ createdBy: "someone", formDate: "2026-09-12" }),
+    ];
+    const question = "does wren halvorsen have previous coachings?";
+
+    const marked = (await loadFormRecords({ actor: SALON_DIRECTOR, question, today: "2026-10-24", markCreator: true }))!.block;
+    expect(marked).toContain("created by: this user");
+    expect(marked).toContain("created by: another user");
+    expect(marked).toContain('Say the manager created a form only when its row says "created by: this user"');
+
+    const plain = (await loadFormRecords({ actor: SALON_DIRECTOR, question, today: "2026-10-24" }))!.block;
+    expect(plain).not.toContain("created by:");
+  });
+});
