@@ -28,6 +28,7 @@ import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-vali
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutAppLines } from "./app-sentences";
+import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
@@ -83,9 +84,10 @@ export function holdFilledSlots(input: {
   }
   const slotsOn = intentExtractionEnabled() || groundedEntitiesEnabled();
   const spokenRole = slotsOn ? spokenDirectoryTitle(turns.join("\n"), input.people, employeeName) : null;
+  const managerOnly = managerWordsOnlyEnabled();
   const employeeRole =
-    extractJobTitle(input.question) ||
-    extractJobTitle(turns.join("\n")) ||
+    extractJobTitle(managerOnly ? titleTextFromQuestion(input.question) : input.question) ||
+    extractJobTitle(managerOnly ? titleTextFromTurns(turns.map(withoutAppLines)) : turns.join("\n")) ||
     spokenRole ||
     proposal.employeeRole ||
     previous?.employeeRole ||

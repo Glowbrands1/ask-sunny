@@ -22,6 +22,7 @@ import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
+import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
@@ -228,7 +229,12 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon = groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
-  const title = groundTitle(reading?.title ?? null, userText, input.people, employee.person, employee.name ?? employee.typed);
+  // The manager's turns only: a pasted policy is not their words, and
+  // "ass't salon director" is read as the assistant title.
+  const titleText = managerWordsOnlyEnabled()
+    ? titleTextFromTurns([input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)])
+    : userText;
+  const title = groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed);
   const incidentType = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const groundedDate = groundDate(choice?.date ?? reading?.incidentDate ?? null, input.question, userText, input.today);
   const date = codeSlotsEnabled()
@@ -700,24 +706,11 @@ function groundTitle(
   const inText = titles.filter((title) => blob.toLowerCase().includes(title.toLowerCase()));
   if (inText.length === 1) return inText[0]!;
   // A title the manager stated stays, even when this person is not on the roster.
-  if (probe && managerWordsOnlyEnabled()) return statedAsTitle(probe, blob, employeeName) ? probe : null;
+  if (probe && managerWordsOnlyEnabled()) {
+    return readsAsStatedTitle({ probe, text: blob, employeeName, knownTitle: extractJobTitle }) ? probe : null;
+  }
   if (probe && blob.toLowerCase().includes(probe.toLowerCase())) return probe;
   return null;
-}
-
-/**
- * Words the model has read as the job title that are not one: the form
- * ("CA for Test Employee …") and the employee's own name ("test was late").
- */
-const FORM_WORDS = /^(?:ca|cas|corrective action|corrective action form|coaching|coaching form|form|write[- ]?up|dpoa|epp)$/i;
-
-function statedAsTitle(probe: string, blob: string, employeeName: string | null): boolean {
-  const words = probe.toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0 || FORM_WORDS.test(probe.trim())) return false;
-  const nameWords = new Set((employeeName ?? "").toLowerCase().split(/\s+/).filter(Boolean));
-  if (words.every((word) => nameWords.has(word))) return false;
-  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
-  return new RegExp(`(?:^|[^a-z0-9'’])${escaped}(?![a-z0-9'’])`, "i").test(blob);
 }
 
 function groundIncident(typed: string | null, blob: string, headings: readonly string[]): string | null {

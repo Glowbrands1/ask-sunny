@@ -320,6 +320,130 @@ describe("the app's own lines are not the manager's words (24 Oct 2026)", () => 
   });
 });
 
+describe("the job title is a title the manager stated (24 Oct 2026, round 4)", () => {
+  const CA_LEAD = "I'll draft a **Corrective Action Form** from what you've described.";
+
+  it("name is test testy, todays date, shawnee location, test was late opening salon (conv_mvmw1ccu2t7y3bi)", () => {
+    const first = "Create a coaching form for a performance concern.";
+    const question = "name is test testy, todays date, shawnee location, test was late opening salon";
+    // chat_traces.slots.title for this turn: the model copied a clause.
+    const decision = decideIntentTurn(
+      turn({
+        question,
+        history: [
+          { role: "user", content: first },
+          { role: "assistant", content: "Great, I can help you create a **Corrective Action Form**." },
+        ],
+        saved: { ...EMPTY_FORM_STATE, templateKey: "dpoa", policyHeading: "Late Opening", policyPage: 15 },
+        raw: { employee: "test testy", title: "test was late opening salon", formTurn: true, policyHeading: "Late Opening" },
+      }),
+    );
+    expect(decision.state.title).toBeNull();
+    const card = enrichFormCard({
+      response: answer(CA_LEAD, proposal({ templateKey: "dpoa", templateName: "Corrective Action Form", employeeName: "test testy", locationId: "loc-0463" })),
+      question: decision.question,
+      said: `${first}\n${question}`,
+      today: TODAY,
+      people: [],
+      saved: decision.state,
+    });
+    // Production printed "test was late opening".
+    expect(card.formProposal?.employeeRole ?? null).toBeNull();
+    expect(jobTitleLine(card.content)).toBeNull();
+  });
+
+  it("create coaching form. test testy is ass't salon director. test did not call anyone about opening late", () => {
+    const question = "create coaching form. test testy is ass't salon director. test did not call anyone about opening late";
+    const history = [
+      { role: "user", content: "Create a coaching form for a performance concern." },
+      { role: "assistant", content: "Great, I can help you create a **Corrective Action Form**." },
+      { role: "user", content: "name is test testy, todays date, shawnee location, test was late opening salon" },
+      { role: "assistant", content: CA_LEAD },
+    ];
+    const decision = decideIntentTurn(
+      turn({
+        question,
+        history,
+        saved: { ...EMPTY_FORM_STATE, employeeName: "test testy", templateKey: "dpoa", formDate: TODAY },
+        raw: { employee: "test testy", title: "ass't salon director", formTurn: true },
+      }),
+    );
+    // Production stored "Salon Director". ASD is how this form prints an
+    // assistant salon director (JOB_TITLES).
+    expect(decision.state.title).toBe("ASD");
+    const card = enrichFormCard({
+      response: answer(CA_LEAD, proposal({ templateKey: "dpoa", templateName: "Corrective Action Form", employeeName: "test testy", locationId: "loc-0463" })),
+      question: decision.question,
+      said: [...history.filter((item) => item.role === "user").map((item) => item.content), question].join("\n"),
+      today: TODAY,
+      people: [],
+      saved: decision.state,
+    });
+    const held = holdFilledSlots({ response: card, question: decision.question, history, today: TODAY, people: [] });
+    expect(card.formProposal?.employeeRole).toBe("ASD");
+    expect(held.formProposal?.employeeRole).toBe("ASD");
+  });
+
+  it("Please make me a coaching form for test employee at the lincoln pine lake location … (conv_mvmvl6jy23nwuuk, \"HR. It happened\")", () => {
+    const question =
+      "Please make me a coaching form for test employee at the lincoln pine lake location Test did not complete closing duties. Trash was not taken out of the bathrooms, there was no\ntoilet paper in the women's bathroom, and there were no spray towels in the rooms also all the cleaning duties were signed off in the binder and not alll were completed and the way she signed off on the checklist was incorrect she signed one box with a arrown throught the rest each box needs an initial";
+    // The model read "HR"; the manager never wrote it ("throught" holds the letters).
+    const decision = decideIntentTurn(
+      turn({ question, raw: { employee: "test employee", title: "HR", salon: "lincoln pine lake", formTurn: true } }),
+    );
+    expect(decision.state.title).toBeNull();
+
+    // chat_traces.original_query as production sent it.
+    const sent =
+      "The employee is test employee. Job title: HR. It happened at NE Lincoln Pine Lake. Policy reference: Disciplinary Action, JBA Policy Manual p.14.\n" +
+      question;
+    const card = enrichFormCard({
+      response: answer(CA_LEAD, proposal({ templateKey: "dpoa", templateName: "Corrective Action Form", employeeName: "test employee", locationId: "loc-0312" })),
+      question: sent,
+      said: question,
+      today: TODAY,
+      people: [],
+      saved: { ...EMPTY_FORM_STATE, employeeName: "test employee", title: "HR", salonId: "loc-0312", templateKey: "dpoa" },
+    });
+    // Production stored "HR. It happened".
+    expect(card.formProposal?.employeeRole ?? "").not.toMatch(/It happened/i);
+  });
+
+  it("a pasted Late Opening policy does not make ima employee a District Manager (conv_mumxp13p2s15e4x)", () => {
+    const paste =
+      "When an employee assigned to open a location is unable to open the location at the proper\ntime, the employee must notify the manager as soon as possible. The manager of the salon will\nbe required to open the salon and work until the person originally assigned arrives, or a\nreplacement is found. The employee who failed to open will then be required to reimburse The\nCompany $25.00 via payroll deduction (when applicable and following all state and local\nguidelines), for all expenses incurred. Managers or District Managers will be responsible for\noffering restitution to affected clients, as well as giving the payroll deduct total to Payroll. *";
+    const history = [
+      { role: "user", content: "create a CA form for ima employee, tan consultant at manhattan, for opening salon late on 9-28-26" },
+      { role: "assistant", content: CA_LEAD },
+      { role: "user", content: "this should be a written and note a verbal ca was given on 9-1-26" },
+      { role: "assistant", content: CA_LEAD },
+    ];
+    const saved = {
+      ...EMPTY_FORM_STATE,
+      employeeName: "ima employee",
+      title: "tan consultant",
+      salonId: "loc-0462",
+      formDate: "2026-09-28",
+      warningLevel: "written" as const,
+      templateKey: "dpoa",
+    };
+    const decision = decideIntentTurn(turn({ question: paste, history, saved, raw: { formTurn: true } }));
+    // Production stored "District Manager".
+    expect(decision.state.title).toBe("tan consultant");
+    const card = enrichFormCard({
+      response: answer(CA_LEAD, proposal({ templateKey: "dpoa", templateName: "Corrective Action Form", employeeName: "ima employee", locationId: "loc-0462" })),
+      question: decision.question,
+      said: [...history.filter((item) => item.role === "user").map((item) => item.content), paste].join("\n"),
+      today: TODAY,
+      people: [],
+      saved: decision.state,
+    });
+    const held = holdFilledSlots({ response: card, question: decision.question, history, today: TODAY, people: [] });
+    expect(card.formProposal?.employeeRole).toBe("tan consultant");
+    expect(held.formProposal?.employeeRole).toBe("tan consultant");
+  });
+});
+
 describe("app-sentences", () => {
   it("knows a line the app wrote from a line the manager wrote", () => {
     expect(

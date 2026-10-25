@@ -35,6 +35,7 @@ import {
 
 import { accountManualSections } from "./account-manual-sections";
 import { appSentencesOnePerLine } from "./app-sentences";
+import { titleTextFromQuestion } from "./title-words";
 import type { ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
@@ -312,7 +313,8 @@ function statedEmployee(text: string): string | null {
   return around ? stripFieldLabels(around) : null;
 }
 
-function statedTitle(text: string, saved: string | null): string | null {
+function statedTitle(said: string, saved: string | null): string | null {
+  const text = managerWordsOnlyEnabled() ? titleTextFromQuestion(said) : said;
   const labelled = managerWordsOnlyEnabled() ? labelledTitleByLine(text) : titleAfterJobTitleLabel(text);
   if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
