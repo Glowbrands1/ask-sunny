@@ -54,6 +54,11 @@ export interface CreateInlineFormResult {
   /** The server returned the draft this card already made; nothing was drafted again. */
   reused?: boolean;
   /**
+   * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: the reopened draft's date, which the
+   * card states ("Updated your open draft from <date>"). Absent otherwise.
+   */
+  reusedFrom?: string;
+  /**
    * What the drafting route says it left off or could not decide — an
    * observation that lost a policy finding, a refused box, a policy it could
    * not choose between. Said on the card; null when it left nothing out.
@@ -106,7 +111,7 @@ export async function createInlineForm({
    * docs/chat-phase-3.md. A validated id with no name is honest; a validated id
    * with a demo name beside it is not.
    */
-  const created = await call<{ instance: { id: string }; reused?: boolean }>("/api/forms/instances", {
+  const created = await call<{ instance: { id: string }; reused?: boolean; reusedFrom?: string }>("/api/forms/instances", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -184,7 +189,14 @@ export async function createInlineForm({
    * response, or another tab. It is opened as it is — drafting it again would
    * overwrite what Sunny and the manager have written on it since.
    */
-  if (created.reused) return { reference, draftWarning: null, reused: true };
+  if (created.reused) {
+    return {
+      reference,
+      draftWarning: null,
+      reused: true,
+      ...(typeof created.reusedFrom === "string" && created.reusedFrom ? { reusedFrom: created.reusedFrom } : {}),
+    };
+  }
 
   /*
    * THE DRAFT. Manager turns only, resolved from the ids the server retained —
