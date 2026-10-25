@@ -243,6 +243,17 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enab
   },
   /* "late to open" is the same section (QA, 24 Oct 2026; LATE_OPEN_DATE_ENABLED). */
   { name: "late_opening", pattern: new RegExp(LATE_TO_OPEN.source), alwaysAPolicy: true, enabled: lateOpenOn },
+  /*
+   * "opening salon late", "opened the salon late" (QA, 25 Oct 2026; the
+   * sibling app's B1, conv_mvifqra017j15ld8): the place between the verb and
+   * "late" is still a late opening (LATE_OPEN_DATE_ENABLED).
+   */
+  {
+    name: "late_opening",
+    pattern: /\bopen(?:ed|ing|s)?\s+(?:the\s+|our\s+|her\s+|his\s+|their\s+)?(?:salon|location|shop)\s+late\b/,
+    alwaysAPolicy: true,
+    enabled: lateOpenOn,
+  },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
   /* "wore leggings" names the dress code when the manager does not say those words. */
