@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   chatMemoryEnabled,
   intentExtractionEnabled,
@@ -125,6 +126,7 @@ const NEW_FLAGS = [
   "MANUAL_NEGATED_LIST_NOTE_ENABLED",
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
+  "ACTION_PLAN_MANAGER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -254,6 +256,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualNegatedListNoteEnabled()).toBe(false);
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
+    expect(actionPlanManagerOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

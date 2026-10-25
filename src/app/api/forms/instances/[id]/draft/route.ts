@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
+  actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
@@ -154,6 +155,7 @@ import {
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import {
   citeAttendanceForTardiness,
   policyFieldsWithCitation,
@@ -1782,8 +1784,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       (loaded.values ?? []).some(
         (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
       );
+    /*
+     * THE MANAGER'S ACTION PLAN, OR NONE (ACTION_PLAN_MANAGER_ONLY_ENABLED; Pau,
+     * 25 Oct 2026). No plan is built. A plan the manager typed in chat ("action
+     * plan: …") goes on the blank line word for word, as their statement —
+     * written like the other stated facts, so no sentence is added to it. With
+     * none typed the line stays blank.
+     */
+    const managerOnlyPlan = fixedPlan !== null && actionPlanManagerOnlyEnabled();
+    if (managerOnlyPlan && !keeps(fixedPlan.key)) {
+      const typed = managerTypedActionPlan(notes);
+      if (typed) {
+        await applyStatedFacts(id, { values: { [fixedPlan.key]: typed }, checked: {} }, actor.id, new Set([fixedPlan.key]));
+      }
+    }
     const planned =
-      fixedPlan && planInput && draftedAnything && !keeps(fixedPlan.key)
+      !managerOnlyPlan && fixedPlan && planInput && draftedAnything && !keeps(fixedPlan.key)
         ? {
             values: {
               ...named.values,
