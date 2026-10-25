@@ -408,6 +408,34 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
     expect(earlier.saved?.templateKey).toBe("follow-up-coaching");
   });
 
+  // QA round 12 (conv_mvnmetao241awxn); the whole chat runs through
+  // answerQuestion in form-choice-stated-live-oct25.test.ts.
+  it("the model's Corrective Action Form counts only outside a first coaching conversation", async () => {
+    vi.stubEnv("FORM_CHOICE_STATED_ENABLED", "true");
+    const raw = { formType: "Corrective Action Form", formTurn: true };
+    const question = "I have an employee that is not verifying documents are signed";
+    const coaching = await live({
+      history: [
+        { id: "u0", role: "user", content: "Help me prepare for a coaching conversation." },
+        { id: "a0", role: "assistant", content: "Happy to help." },
+      ],
+      question,
+      saved: null,
+      raw,
+    });
+    expect(coaching.decision.state.templateKey).toBeNull();
+    const coachedBefore = await live({
+      history: [
+        { id: "u0", role: "user", content: "I coached her last week about this" },
+        { id: "a0", role: "assistant", content: "Happy to help." },
+      ],
+      question,
+      saved: null,
+      raw,
+    });
+    expect(coachedBefore.decision.state.templateKey).toBe("dpoa");
+  });
+
   it("a Policy reference line names no form", () => {
     vi.stubEnv("FORM_CHOICE_STATED_ENABLED", "true");
     expect(
