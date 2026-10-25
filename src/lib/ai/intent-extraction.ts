@@ -2,7 +2,7 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { intentExtractionEnabled } from "@/lib/config/chat-quality-flags";
+import { intentExtractionEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
 import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
@@ -20,6 +20,7 @@ import {
   INTENT_TOOL_INPUT_SCHEMA,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
+import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -45,7 +46,10 @@ export async function applyIntentExtraction(input: {
 }): Promise<{ request: AskRequest; clarification: AskResponse | null; formTurn: boolean }> {
   if (!intentExtractionEnabled()) return { request: input.request, clarification: null, formTurn: false };
   try {
-    const saved = await readSaved(input.actor.subject, input.request.conversationId);
+    // REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident
+    // is a new form, so the old form's stored slots are not carried onto it.
+    const newForm = remapIncidentFixEnabled() && startsNewForm(input.request.history, input.request.question);
+    const saved = newForm ? null : await readSaved(input.actor.subject, input.request.conversationId);
     const [people, manual, templates] = await Promise.all([
       loadPeople(input.actor),
       loadManualIndex(input.request.scopeId),
@@ -69,9 +73,15 @@ export async function applyIntentExtraction(input: {
       ],
     }).catch(() => null);
 
+    // REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" is a prior step, not the incident date.
+    const fixed = remapIncidentFixEnabled();
     const decision = decideIntentTurn({
-      question: input.request.question,
-      history: input.request.history,
+      question: fixed ? priorShorthand(input.request.question) : input.request.question,
+      history: fixed
+        ? requestScopedHistory(input.request.history, input.request.question).map((turn) =>
+            turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn,
+          )
+        : input.request.history,
       today: input.request.context.todayIso,
       saved,
       raw,

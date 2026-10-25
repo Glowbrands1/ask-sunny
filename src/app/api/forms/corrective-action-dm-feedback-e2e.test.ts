@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
@@ -963,6 +963,35 @@ describe("a late opening with a payroll deduction", () => {
 
     const { reference } = await create();
     expect(field(await review(reference.instanceId), "action_plan")!.value).toContain("$25 will be deducted from Tess's pay.");
+  });
+});
+
+/*
+ * QA, 24 Oct 2026 (conv_mvmyre8z2unys1a: the card cited Late Opening p.15 and
+ * Attendance p.14), and the same complaint from HR on the sibling app ("noted
+ * tardiness/leaving early vs late open policy pg.15"). With
+ * LATE_OPEN_DATE_ENABLED a late opening cites Late Opening, p. 15 only.
+ */
+describe("LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening only", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    [G1],
+    ["create verbal ca for tess varga, she was late to open 10-1-26, no payroll"],
+  ])("%s", async (account) => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    const { create } = await conversation([account]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(policy).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
+    expect(policy).not.toMatch(/Attendance/);
+    expect(field(form, "action_plan")!.value).not.toMatch(/Attendance/);
   });
 });
 

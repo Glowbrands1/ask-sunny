@@ -319,7 +319,7 @@ async function readMemory(
       const lastMention = [...turns].reverse().find((turn) => mentionsPerson(turn.content, person.name));
       const date = rememberedDate(lastMention?.createdAt ?? conversation.created_at) ?? "an earlier day";
       // A different chat from today is not "earlier". The live replay quoted
-      // Lisa Smith from a parallel tab as something said earlier today.
+      // Nadia Brook from a parallel tab as something said earlier today.
       const today = input.todayIso?.trim() || businessToday();
       if (date === today) continue;
       recalled.push({
