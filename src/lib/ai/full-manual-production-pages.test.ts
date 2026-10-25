@@ -397,3 +397,28 @@ describe("live B6: a word match prefers the answer's own page", () => {
     expect(pagesIn(lineWith(out.content, "Dress code violations"))).toEqual(new Set([15]));
   }, 20_000);
 });
+
+/**
+ * Live, 25 Oct 2026 (ported from the sibling app's B8 round): a sentence
+ * quoting two policies cited only the first. A quote cites the page it is
+ * printed on. Both payout wordings cite PTO (42).
+ */
+describe("live B8: a quote cites the page it is printed on", () => {
+  it('"please do not bring pets into the workplace" cites Animals in the Workplace (30) beside Visitors (29)', () => {
+    const out = cite(
+      'On the underlying situation: the manual does address being in the salon while off-schedule and pets — "Employees who are not scheduled to be working should not be in the workplace unless they are shopping or receiving services from the workplace", and the animals policy says "please do not bring pets into the workplace" [p.29].',
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([29, 30]));
+  }, 20_000);
+
+  it('both payout wordings cite PTO (42)', () => {
+    const intro = "- Request it in the Personnel System at least two weeks ahead; if something unforeseen comes up, call your supervisor directly and log the request as soon as possible [p.42].";
+    for (const payout of [
+      "- Payout on termination follows all applicable state and federal law [p.12].",
+      "- Payout on termination follows state and federal guidelines [p.42].",
+    ]) {
+      const out = cite(`${intro}\n${payout}`);
+      expect(pagesIn(out.content.split("\n")[1] ?? "")).toEqual(new Set([42]));
+    }
+  }, 20_000);
+});

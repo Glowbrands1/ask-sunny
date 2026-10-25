@@ -1096,6 +1096,32 @@ function restatedByPhrase(text: string, hits: readonly PassageHit[]): { hits: Pa
  * up to and including termination" keeps the Dress Code page (15) beside a
  * progression line on 14. Nothing is added to a stretch that cited no page.
  */
+/*
+ * A QUOTE CITES THE PAGE IT IS PRINTED ON (live, 25 Oct 2026; ported from
+ * the sibling app). "…"Employees who are not scheduled to be working should
+ * not be in the workplace unless they are shopping or receiving services from
+ * the workplace", and the animals policy says "please do not bring pets into
+ * the workplace" [p.29]" quotes Visitors in the Workplace (29) and Animals in
+ * the Workplace (30); only 29 was cited. Each quoted span of four words or
+ * more that the manual prints word for word cites the page it is printed on;
+ * a quote printed on three pages or more names none of them.
+ */
+const QUOTED = /["“]([^"“”\n]{12,}?)["”]/g;
+
+function quotedPassages(text: string, hits: readonly PassageHit[]): PassageHit[] {
+  const found: PassageHit[] = [];
+  for (const match of text.matchAll(QUOTED)) {
+    const quote = wordsOf(match[1] ?? "");
+    if (quote.split(" ").length < 4) continue;
+    const printing = hits.filter((hit) => ` ${wordsOf(hit.passage.text)} `.includes(` ${quote} `));
+    if (new Set(printing.map((hit) => hit.passage.page)).size > 2) continue;
+    for (const hit of printing) {
+      if (!found.some((kept) => kept.passage.page === hit.passage.page)) found.push(hit);
+    }
+  }
+  return found;
+}
+
 const OWN_PAGE_YIELD = 2.5;
 
 function answersOwnPage(
@@ -1475,6 +1501,7 @@ export function applyFullManualAnswer(input: {
       if (!bare.trim() || namesExcludedBrand(bare)) continue;
       const phrase = restatedByPhrase(bare, hits);
       if (phrase.byPhrase) for (const hit of phrase.hits) anchored.add(hit.passage.page);
+      for (const hit of quotedPassages(bare, hits)) anchored.add(hit.passage.page);
     }
   }
 
@@ -1505,6 +1532,13 @@ export function applyFullManualAnswer(input: {
           }
           if (restated.length === 0) restated = closestPassage(bare, hits);
           if (loose) restated = answersOwnPage(bare, restated, anchored, hits);
+          const quoted = quotedPassages(bare, hits);
+          if (quoted.length > 0) {
+            // A verbatim quote names its page outright; the other pages stand only where they restate more than it.
+            const quotedPages = new Set(quoted.map((hit) => hit.passage.page));
+            const kept = loose ? [] : restated.filter((hit) => !quotedPages.has(hit.passage.page));
+            restated = [...quoted, ...kept];
+          }
           for (const hit of restated) {
             const own = hit.passage.heading && !FRAGMENT_HEADING.test(hit.passage.heading.trim()) ? hit.passage.heading : null;
             const heading =
