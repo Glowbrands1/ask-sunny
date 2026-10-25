@@ -1238,7 +1238,10 @@ export async function reviseInstance(
   return revision.instance;
 }
 
-/** The draft revision of this form still open, if there is one. */
+/**
+ * The draft revision of this form still open, if there is one. An archived
+ * draft is not open: somebody put it away, and a new request starts afresh.
+ */
 export async function findOpenRevision(instanceId: string): Promise<InstanceRow | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -1246,6 +1249,7 @@ export async function findOpenRevision(instanceId: string): Promise<InstanceRow 
     .select("*")
     .eq("revises_instance_id", instanceId)
     .eq("status", "draft")
+    .is("archived_at", null)
     .order("created_at", { ascending: false })
     .limit(1);
   if (error) throw new Error(`Could not read the form's revisions: ${error.message}`);
