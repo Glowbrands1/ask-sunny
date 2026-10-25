@@ -33,19 +33,27 @@ export const EDIT_AS_NEW_DRAFT_LABEL = "Edit as new draft";
  *
  * Any other click on the card (finalizing, mainly) re-reads the history a
  * moment later, so the marks follow the record's status.
+ *
+ * `mayEdit` false (the form page, for a role without the permission the
+ * server's edit check needs: `edit-permission.ts`) catches "Edit as new
+ * draft" too, but says plainly that this role can read the form and not edit
+ * it, instead of asking for a reason the server would answer with a 403.
  */
 export function FormRevisionsMount({
   reference,
   onReplaced,
+  mayEdit = true,
   children,
 }: {
   reference: ChatFormInstanceRef;
   onReplaced?: (reference: ChatFormInstanceRef) => void;
+  /** Whether this viewer may edit the form. The chat's card is its creator's, so it defaults to true. */
+  mayEdit?: boolean;
   children: React.ReactNode;
 }) {
   if (!formRevisionsUiEnabled()) return <>{children}</>;
   return (
-    <ActiveMount key={reference.instanceId} reference={reference} onReplaced={onReplaced}>
+    <ActiveMount key={reference.instanceId} reference={reference} onReplaced={onReplaced} mayEdit={mayEdit}>
       {children}
     </ActiveMount>
   );
@@ -54,15 +62,18 @@ export function FormRevisionsMount({
 function ActiveMount({
   reference,
   onReplaced,
+  mayEdit,
   children,
 }: {
   reference: ChatFormInstanceRef;
   onReplaced?: (reference: ChatFormInstanceRef) => void;
+  mayEdit: boolean;
   children: React.ReactNode;
 }) {
   const call = useFormsCall();
   const { state, reload } = useRevisionHistory(reference.instanceId);
   const [asking, setAsking] = React.useState(false);
+  const [refused, setRefused] = React.useState(false);
   const timers = React.useRef<ReturnType<typeof setTimeout>[]>([]);
   React.useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
@@ -75,6 +86,12 @@ function ActiveMount({
   function onClickCapture(event: React.MouseEvent) {
     const button = (event.target as Element | null)?.closest?.("button");
     if (!button) return;
+    if (button.textContent?.trim() === EDIT_AS_NEW_DRAFT_LABEL && !mayEdit) {
+      event.preventDefault();
+      event.stopPropagation();
+      setRefused(true);
+      return;
+    }
     if (button.textContent?.trim() === EDIT_AS_NEW_DRAFT_LABEL && !openDraft) {
       event.preventDefault();
       event.stopPropagation();
@@ -95,6 +112,11 @@ function ActiveMount({
       <div data-testid="form-revisions-mount" onClickCapture={onClickCapture}>
         {children}
       </div>
+      {refused ? (
+        <p role="status" aria-label="You may not edit this form" className="mt-2 text-xs text-muted-foreground">
+          Your role can read this {reference.templateName} but not edit it.
+        </p>
+      ) : null}
       <RevisionReasonDialog
         open={asking}
         formName={reference.templateName}

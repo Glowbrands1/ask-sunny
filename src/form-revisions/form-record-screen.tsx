@@ -11,6 +11,7 @@ import type { ChatFormInstanceRef } from "@/types";
 
 import { formPageHref } from "./form-page-href";
 import { FormRevisionsMount } from "./form-revisions-mount";
+import { useMayEditForm } from "./use-revision-history";
 import { REGISTER_HREF, REGISTER_NAME } from "./words";
 
 /**
@@ -28,6 +29,8 @@ export function FormRecordScreen({ instanceId, templateName }: { instanceId: str
   const router = useRouter();
   const reference: ChatFormInstanceRef = { instanceId, proposalId: "", templateName };
   const moveTo = (next: ChatFormInstanceRef) => router.replace(formPageHref(next.instanceId));
+  /* The server's edit check, not the page's view permission: see `edit-permission.ts`. */
+  const mayEdit = useMayEditForm(templateName);
 
   return (
     <PageShell>
@@ -39,7 +42,7 @@ export function FormRecordScreen({ instanceId, templateName }: { instanceId: str
         <ArrowLeft className="size-3.5" aria-hidden />
         Back to {REGISTER_NAME}
       </Link>
-      <FormRevisionsMount reference={reference} onReplaced={moveTo}>
+      <FormRevisionsMount reference={reference} onReplaced={moveTo} mayEdit={mayEdit}>
         <InlineForm reference={reference} prefill={{ kind: "complete" }} onReplaced={moveTo} />
       </FormRevisionsMount>
     </PageShell>

@@ -6,6 +6,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 
 import { MonitoringTable, type MonitoredForm } from "./monitoring-table";
+import type { Permission, Role } from "@/types";
 
 /**
  * WHAT THE TABLE OFFERS, AND WHAT IT SAYS ABOUT EACH ROW.
@@ -533,6 +534,49 @@ describe("Edit and History on a row (NEXT_PUBLIC_FORM_REVISIONS_ENABLED)", () =>
     expect(ui.queryByText("Edit")).toBeNull();
     expect(ui.queryByText("History")).toBeNull();
     expect(ui.getByText("PDF")).toBeTruthy();
+  });
+
+  /*
+   * Edit only for a role the server lets edit that template
+   * (`authorizeInstance(..., "edit")` needs the template's create
+   * permission). The roles here are read from the real permission matrix.
+   */
+  const signedInAs = async (role: string) => {
+    const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+    mockSession.value = {
+      role,
+      user: { name: "QA" },
+      can: (permission: Permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, role as Role, permission),
+      demoMode: false,
+    };
+  };
+
+  it("on: an owner sees Edit and History", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORM_REVISIONS_ENABLED", "true");
+    await signedInAs("owner");
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.getByText("Edit")).toBeTruthy();
+    expect(ui.getByText("History")).toBeTruthy();
+  });
+
+  it("on: an assistant salon director, who may view but not edit, sees History and no Edit", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FORM_REVISIONS_ENABLED", "true");
+    await signedInAs("assistant_salon_director");
+    table([form(), form({ id: "form-2", employeeName: "Tessaly Brone", status: "draft", finalizedAt: null })]);
+    for (const name of [form().employeeName, "Tessaly Brone"]) {
+      const { ui } = rowFor(name);
+      expect(ui.queryByText("Edit")).toBeNull();
+      expect(ui.getByText("History")).toBeTruthy();
+    }
+  });
+
+  it("off: an assistant salon director sees neither", async () => {
+    await signedInAs("assistant_salon_director");
+    table([form()]);
+    const { ui } = rowFor(form().employeeName);
+    expect(ui.queryByText("Edit")).toBeNull();
+    expect(ui.queryByText("History")).toBeNull();
   });
 
   it("on: a finalized row offers Edit and History", () => {

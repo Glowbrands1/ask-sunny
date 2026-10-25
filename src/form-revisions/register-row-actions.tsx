@@ -8,11 +8,20 @@ import { History, PencilLine } from "lucide-react";
 import { formRevisionsUiEnabled } from "@/lib/config/chat-quality-flags";
 
 import { RevisionReasonDialog } from "./revision-reason-dialog";
-import { openRevisionWithReason, useFormsCall } from "./use-revision-history";
+import { openRevisionWithReason, useFormsCall, useMayEditForm } from "./use-revision-history";
 import { formPageHref } from "./form-page-href";
 
 const LINK =
   "inline-flex min-h-8 items-center gap-1 px-1 text-[12px] whitespace-nowrap text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline";
+
+/** A row of the forms list: the fields of `MonitoredForm` these actions read. */
+interface RowForm {
+  id: string;
+  status: "draft" | "finalized" | "revised";
+  templateName: string;
+  templateShortName: string;
+  employeeName: string;
+}
 
 /**
  * ============================================================================
@@ -27,11 +36,17 @@ const LINK =
  *   and History leads there.
  *
  *   HISTORY opens the form page at its history.
+ *
+ *   EDIT ONLY FOR SOMEBODY WHO MAY EDIT THAT FORM. The server's edit check
+ *   needs the template's own permission (`edit-permission.ts`); seeing the
+ *   list is not enough. A role that may read the list but not edit this
+ *   template (one that creates no form, or lacks this template's permission)
+ *   gets History alone, not a reason dialog that ends in a 403.
  */
 export function RegisterRowActions({
   form,
 }: {
-  form: { id: string; status: "draft" | "finalized" | "revised"; templateShortName: string; employeeName: string };
+  form: RowForm;
 }) {
   if (!formRevisionsUiEnabled()) return null;
   return <ActiveRowActions form={form} />;
@@ -40,15 +55,16 @@ export function RegisterRowActions({
 function ActiveRowActions({
   form,
 }: {
-  form: { id: string; status: "draft" | "finalized" | "revised"; templateShortName: string; employeeName: string };
+  form: RowForm;
 }) {
   const router = useRouter();
   const call = useFormsCall();
   const [asking, setAsking] = React.useState(false);
+  const mayEdit = useMayEditForm(form.templateName);
 
   return (
     <>
-      {form.status === "draft" ? (
+      {!mayEdit ? null : form.status === "draft" ? (
         <Link href={formPageHref(form.id)} className={LINK} aria-label={`Edit the ${form.templateShortName} for ${form.employeeName}`}>
           <PencilLine className="size-3.5" />
           Edit

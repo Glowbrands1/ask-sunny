@@ -8,6 +8,8 @@ import type { RevisionHistoryResponse } from "@/lib/forms/revision-history";
 import { useSession } from "@/lib/session/session-context";
 import type { ChatFormInstanceRef } from "@/types";
 
+import { editPermissionFor } from "./edit-permission";
+
 export type RevisionHistoryState =
   | { readonly kind: "loading" }
   | { readonly kind: "ready"; readonly data: RevisionHistoryResponse }
@@ -20,6 +22,18 @@ export function useFormsCall() {
     <T,>(url: string, init: RequestInit = {}) => formsFetch<T>(url, role, user.name, init),
     [role, user.name],
   );
+}
+
+/**
+ * Whether this viewer may edit a form of this template: the permission the
+ * server's edit check needs (see `edit-permission.ts`), not the one that lets
+ * them see the forms list. Preview (`demoMode`) offers it, as the forms list
+ * does for its own controls: there the server carries the permission rather
+ * than refusing, so hiding it would change nothing a request can do.
+ */
+export function useMayEditForm(templateName: string): boolean {
+  const { can, demoMode } = useSession();
+  return demoMode || can(editPermissionFor(templateName));
 }
 
 /**
