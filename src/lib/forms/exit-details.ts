@@ -1,3 +1,5 @@
+import { resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
 import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_TYPE_GROUP } from "./exit-library";
@@ -396,9 +398,36 @@ function methodsIn(turn: string): string[] {
       }
     }
   }
+  if (resignMethodFollowupEnabled()) addVerbal(turn, found);
   // "Emailed her resignation letter" is one email, not an email and a letter.
   if (found.includes("Email")) return found.filter((label) => label !== "Written letter");
   return found;
+}
+
+/*
+ * ============================================================================
+ * "SHE TOLD ME VERBALLY" — RESIGN_METHOD_FOLLOWUP_ENABLED
+ * ============================================================================
+ *
+ * Pau's decision (25 Oct 2026): How Employee Resigned is filled only when the
+ * manager's words name the method, and a follow-up in chat fills the open
+ * form's line. "By text", "via email" and "texted me" were already read;
+ * "verbally" and "verbal notice / resignation" were not, and the line stayed
+ * blank. Read only as the resignation's channel: "verbal warning" is a
+ * Corrective Action level, never a method. A more exact spoken channel the
+ * manager also named ("in person", "phone call") is kept instead of "Verbal".
+ */
+const VERBAL = /\bverbally\b|\bverbal\s+(?:resignation|notice|two weeks)\b/g;
+
+function addVerbal(turn: string, found: string[]): void {
+  if (found.includes("Verbal") || found.includes("In person") || found.includes("Phone call")) return;
+  for (const sentence of statements(turn)) {
+    for (const match of sentence.matchAll(VERBAL)) {
+      if (negatedAt(sentence, match.index ?? 0)) continue;
+      found.push("Verbal");
+      return;
+    }
+  }
 }
 
 /** "Text message and phone call", "Email, text message and phone call". */
