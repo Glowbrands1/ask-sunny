@@ -594,6 +594,7 @@ async function answerQuestionUntraced(
         question: request.question,
         history: request.history,
         formsTurn,
+        continueTemplateKey: request.continueProposalTemplateKey ?? null,
       })
     ) {
       let history: { id?: string; role: string; content: string }[] = request.history;

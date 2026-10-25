@@ -11,6 +11,7 @@ import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { payrollDeductAmount, payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
@@ -164,18 +165,56 @@ export function groundFormSlots(input: {
 /**
  * A form turn is one the library already calls a form, or field notes
  * ("verbal", "no payroll", "prior ="). A question about the policy is not.
+ *
+ * ONLY THE FOUR FORMS THIS READ FILLS (ported from the sibling app, 25 Oct
+ * 2026). There, "Create an exit form for <name> at <location>, she resigned
+ * and her last day was 10-20" came back as the Corrective Action Form with
+ * "Verbal or written?" and "Is payroll deduct applicable?", and the next "Yes"
+ * set payroll deduct: the extraction can only choose among `TEMPLATES`, so a
+ * form outside them fell onto the Corrective Action Form. When the manager's
+ * own latest naming is a library form outside `TEMPLATES` (the
+ * Resignation/Exit Form, a demotion, an EPP, …), or none is named and the open
+ * card is one, this read does not run and the proposal flow serves the turn.
+ * Sunny's replies never count, and a Corrective Action that mentions "she
+ * resigned" is still a Corrective Action.
  */
 export function remapShouldRun(input: {
   readonly question: string;
   readonly history: readonly { role: string; content: string }[];
   readonly formsTurn: boolean;
+  /** The template of the card already open in this chat, if any. */
+  readonly continueTemplateKey?: string | null;
 }): boolean {
+  const named = managerNamedTemplate(input.question, input.history);
+  if (named !== null && !isTemplate(named)) return false;
+  if (named === null && input.continueTemplateKey && !isTemplate(input.continueTemplateKey)) return false;
   if (input.formsTurn) return true;
   if (/\?\s*$/.test(input.question.trim()) && /\b(?:what|how|when|where|who|why|can|does|do|is)\b/i.test(input.question)) {
     return false;
   }
   const text = [input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content)].join("\n");
   return /\b(?:verbal|written|warning|corrective|write-?ups?|payroll|prior\s*=)\b/i.test(text);
+}
+
+/**
+ * The library form the manager last asked for, newest manager turn first, or
+ * null when no manager turn names one.
+ */
+function managerNamedTemplate(question: string, history: readonly { role: string; content: string }[]): string | null {
+  const managerTurns = [
+    question,
+    ...history
+      .filter((turn) => turn.role === "user")
+      .map((turn) => turn.content)
+      .reverse(),
+  ];
+  for (const text of managerTurns) {
+    if (!text.trim()) continue;
+    const intent = detectTemplateIntent(text);
+    if (intent.kind === "explicit" || intent.kind === "clarify") return intent.templateKey;
+    if (intent.kind === "corrective_action" && intent.requestedCreation) return "dpoa";
+  }
+  return null;
 }
 
 export async function remapFormTurn(
@@ -321,7 +360,9 @@ function templateFromUser(text: string): TemplateKey | null {
   add(/\bfollow[- ]up coaching\b/gi, "follow-up-coaching");
   add(/\bpolicy review\b/gi, "policy-review");
   add(/\bcorrective actions?\b|\bwrite-?ups?\b|\bwritten up\b|\bca\b|\bc\/a\b|\bdpoa\b/gi, "dpoa");
-  add(/\bcoaching form\b/gi, "coaching");
+  // "follow-up coaching form" names the Follow-Up Coaching Form, not a second
+  // naming of the Coaching Form after it (25 Oct 2026).
+  add(/(?<!follow[- ]up )\bcoaching form\b/gi, "coaching");
   if (named.length > 0) {
     named.sort((a, b) => a.index - b.index);
     return named.at(-1)!.key;
