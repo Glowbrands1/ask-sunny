@@ -59,9 +59,20 @@ function count(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+/**
+ * The words, in one place. No product or company name: both apps show the
+ * same sentences. The composer renders them under the field and the route's
+ * 400 uses `over`.
+ */
+export const MESSAGE_LIMIT_COPY = {
+  near: (remaining: number, limit: number) => `${count(remaining)} characters left of ${count(limit)}.`,
+  over: (length: number, limit: number) =>
+    `This message is ${count(length)} characters. The limit is ${count(limit)}. Shorten it or split it into two messages. Nothing was cut.`,
+} as const;
+
 /** The words for a message over the limit. The server's 400 uses the same sentence. */
 export function messageTooLongNotice(length: number, limit: number): string {
-  return `This message is ${count(length)} characters. The limit is ${count(limit)}. Shorten it or split it into two messages. Nothing was cut.`;
+  return MESSAGE_LIMIT_COPY.over(length, limit);
 }
 
 export function messageLengthStatus(text: string, limit: number): MessageLengthStatus {
@@ -77,7 +88,7 @@ export function messageLengthStatus(text: string, limit: number): MessageLengthS
       limit,
       remaining,
       canSend: true,
-      notice: `${count(remaining)} characters left of ${count(limit)}.`,
+      notice: MESSAGE_LIMIT_COPY.near(remaining, limit),
     };
   }
   return { state: "ok", length, limit, remaining, canSend: true, notice: null };

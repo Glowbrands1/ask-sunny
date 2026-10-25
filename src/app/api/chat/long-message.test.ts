@@ -24,6 +24,10 @@ import { LEGACY_MESSAGE_LIMIT, LONG_MESSAGE_LIMIT } from "@/lib/chat/message-lim
 
 const ORIGINAL = { ...process.env };
 
+// Each test re-imports the route after resetModules; the first, cold import
+// can pass 5s on a loaded machine.
+vi.setConfig({ testTimeout: 20_000 });
+
 interface Seen {
   questions: string[];
   histories: { role: string; content: string }[][];

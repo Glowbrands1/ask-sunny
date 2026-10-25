@@ -298,6 +298,9 @@ describe("new flags default off and wrappers are inert", () => {
       // And except chat-screen.tsx: SEND_AFTER_HYDRATE_ENABLED queues a typed
       // send until the store is ready. The composer is not disabled and no
       // control is added. The diff is that queue.
+      // And except composer.tsx: QA approved on 25 Oct 2026, behind
+      // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
+      // and send disabled over the limit. Off, it renders as before.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -305,6 +308,7 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
+          ":(exclude)src/features/chat/composer.tsx",
         ]),
       ).toBe("");
     } else {
