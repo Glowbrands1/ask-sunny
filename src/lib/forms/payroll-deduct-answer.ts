@@ -161,7 +161,34 @@ function deniedNearby(clause: string, at: number, end: number): boolean {
 /** Yes, No, nothing about the deduction (null), or something about it that cannot safely be read. */
 export type ClauseReading = PayrollDeductAnswer | "unclear" | null;
 
+/*
+ * PAYROLL_DEDUCTIBLE_WORD_ENABLED. "payroll is deductable" (QA, Ask Sunny
+ * history, conv_mvh9a9q62mjffk2) was read as nothing, so the card asked
+ * "Is payroll deduct applicable?" on every later turn. "Deductible", either
+ * spelling, after "payroll" is the answer; "not (payroll) deductible" is No.
+ */
+const DEDUCTIBLE = String.raw`deduct[ai]ble`;
+
+/**
+ * PAYROLL_DEDUCTIBLE_WORD_ENABLED, read exactly as `envFlag` reads it
+ * (`payrollDeductibleWordEnabled` in chat-quality-flags.ts): this module
+ * imports nothing, so the flag is read here.
+ */
+function deductibleWordOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.PAYROLL_DEDUCTIBLE_WORD_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+const DEDUCTIBLE_NO: readonly RegExp[] = [
+  new RegExp(String.raw`\b(?:not|isn't|isnt|is not|non)[\s-]+(?:payroll[\s-]+)?${DEDUCTIBLE}\b`),
+  new RegExp(String.raw`\bpayroll\s+(?:is\s+|will\s+be\s+)?not\s+${DEDUCTIBLE}\b`),
+];
+const DEDUCTIBLE_YES = new RegExp(String.raw`\bpayroll\s+(?:is\s+|will\s+be\s+|would\s+be\s+)?${DEDUCTIBLE}\b`);
+
 function readClause(clause: string): ClauseReading {
+  if (deductibleWordOn() && !UNDECIDED.test(clause)) {
+    if (DEDUCTIBLE_NO.some((pattern) => pattern.test(clause))) return "no";
+    if (DEDUCTIBLE_YES.test(clause) && !DENIAL.test(clause)) return "yes";
+  }
   if (UNDECIDED.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   if (DENIED_WAIVER.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   const negative = NEGATIVE.find((pattern) => pattern.test(clause));
