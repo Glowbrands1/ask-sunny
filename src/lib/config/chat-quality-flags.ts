@@ -554,6 +554,18 @@ export function notANameGuardEnabled(): boolean {
 }
 
 /**
+ * A reading note beside the JBA Policy Manual p.19 cell-phone sentence when
+ * the grounding holds it: "not in back pockets, charging in the break room,
+ * or sitting on top of a drawer till" lists three places the phone may NOT
+ * be (sibling app conv_mvnoscyz200gtat, QA 25 Oct 2026). The note goes in the
+ * per-turn grounding block, never in the manual text or a cached manual
+ * block. Off, the grounding is exactly as before.
+ */
+export function manualNegatedListNoteEnabled(): boolean {
+  return envFlag("MANUAL_NEGATED_LIST_NOTE_ENABLED");
+}
+
+/**
  * The form's employee stays the employee. A person the manager's account
  * mentions ("onboarding with new hire Test Newhire") does not replace them on
  * a later turn (QA round 10, conv_mvnjix4r2wm7u7r). Here: "Which date goes on
