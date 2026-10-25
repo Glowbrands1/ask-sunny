@@ -80,14 +80,31 @@ function withGuardedTypedEmployee(
   if (shown.toLowerCase() === typed.toLowerCase()) return null;
   const escaped = shown.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const lead = `I'll draft a **${proposal.templateName}** for **${typed}** from what you've described.`;
-  let content = response.content
-    .split("\n")
-    .map((line) => (/^(?:Which of them is this|Who is this)\b/.test(line.trim()) ? lead : line))
-    .join("\n");
+  let content = renumbered(
+    response.content
+      .split("\n")
+      .map((line) => (/^(?:Which of them is this|Who is this)\b/.test(line.trim()) ? lead : line))
+      // The intake list's "1. The employee's full name …" is answered.
+      .filter((line) => !/^\s*\d+\.\s+(?:the\s+)?employee's full name\b/i.test(line)),
+  ).join("\n");
   if (shown) {
     content = content
       .replace(new RegExp(`\\*\\*${escaped}\\*\\*`, "g"), `**${typed}**`)
       .replace(new RegExp(`(\\*\\*(?:Employee(?: name)?|Name):\\*\\*\\s*)${escaped}(?=\\s*(?:$|[,.;(]))`, "gim"), `$1${typed}`);
   }
   return { ...response, content, formProposal: { ...proposal, employeeName: typed } };
+}
+
+/** A numbered list counted again from 1 after an item came out. */
+function renumbered(lines: readonly string[]): string[] {
+  let next = 0;
+  return lines.map((line) => {
+    const item = /^(\s*)\d+\.(\s+)/.exec(line);
+    if (!item) {
+      if (line.trim() !== "") next = 0;
+      return line;
+    }
+    next += 1;
+    return `${item[1]}${next}.${item[2]}${line.slice(item[0].length)}`;
+  });
 }
