@@ -1001,7 +1001,7 @@ kind, and a turn naming two forms together names either of them. Off, the
 form is read exactly as on main. Tests: `src/lib/ai/hidden-form-no-card-oct25.test.ts`,
 `src/lib/ai/form-choice-stated.test.ts`, `src/lib/ai/form-choice-stated-live-oct25.test.ts`.
 
-## 25 Oct 2026: "$3.25" cut to "$3" in the Issue — Bubbles-only fix (from Ask Bubbles 2cc5b8e)
+## 25 Oct 2026: "$3.25" cut to "$3" in the Issue — Bubbles-only fix (from Ask Bubbles f3e9b83)
 
 Ask Bubbles' Issue reader (`src/lib/forms/incident-issue.ts`) ended a
 sentence at the point in "$3.25" (conv_mvofkkrg2ipw28x); it is fixed there
