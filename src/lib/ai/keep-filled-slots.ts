@@ -13,6 +13,7 @@ import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intak
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
+import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
@@ -26,6 +27,7 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  newestPlaceTurnEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -106,6 +108,9 @@ export function holdFilledSlots(input: {
   let locationId = keptSalon(turns, proposal.locationId, previous?.locationId ?? null, employeeName, input.people);
   if (slotsOn && place.kind === "one") locationId = place.salon.id;
   if (slotsOn && place.kind === "unknown" && !namedSalon) locationId = null;
+  // NEWEST_PLACE_TURN_ENABLED: the newest manager turn that names one salon wins.
+  const newest = newestPlaceTurnEnabled() ? newestManagerTurnSalon([...turns].reverse()) : null;
+  if (newest) locationId = newest.id;
   // "prior = manual ack 9/01" dates the prior step, not this form.
   // The intent read's "It happened on …" sentence is the stored date, not the
   // manager's edit: "change the date to 10/22" is read from their own words.
