@@ -642,6 +642,18 @@ export function frameworkGeneralSectionsEnabled(): boolean {
   return envFlag("FRAMEWORK_GENERAL_SECTIONS_ENABLED");
 }
 
+/**
+ * A question is answered, never routed into a form (P0, live replay 25 Oct
+ * 2026: "how many hours is a part-time tanning consultant?" came back as
+ * "Which form did you mean?", "smoking policy" as "Who is this Corrective
+ * Action Form for?"). On, a turn `question-not-form.ts` reads as a question
+ * skips the slot reader, the remap, the proposal and the open-form correction
+ * and revision paths, and is answered. Off, every turn is routed as before.
+ */
+export function questionNotFormEnabled(): boolean {
+  return envFlag("QUESTION_NOT_FORM_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

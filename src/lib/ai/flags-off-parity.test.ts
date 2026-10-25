@@ -59,6 +59,7 @@ import {
   reformatKeepsSourcesEnabled,
   frameworkGeneralSectionsEnabled,
   newestPlaceTurnEnabled,
+  questionNotFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -135,6 +136,7 @@ const NEW_FLAGS = [
   "REFORMAT_KEEPS_SOURCES_ENABLED",
   "FRAMEWORK_GENERAL_SECTIONS_ENABLED",
   "NEWEST_PLACE_TURN_ENABLED",
+  "QUESTION_NOT_FORM_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -269,6 +271,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(reformatKeepsSourcesEnabled()).toBe(false);
     expect(frameworkGeneralSectionsEnabled()).toBe(false);
     expect(newestPlaceTurnEnabled()).toBe(false);
+    expect(questionNotFormEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
