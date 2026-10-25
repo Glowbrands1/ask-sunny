@@ -1,12 +1,13 @@
 import "server-only";
 
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { formFullRemapEnabled } from "@/lib/config/chat-quality-flags";
+import { formFullRemapEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
-import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { datesInText, listIncidentDates } from "@/lib/forms/form-date-answer";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
+import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { payrollDeductAmount, payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
@@ -124,9 +125,10 @@ export function groundFormSlots(input: {
   const payrollAmount = payrollDeduct === "yes" ? managerPayrollAmount(said) : null;
   const policySection = groundedPolicy(said);
   const observation = statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said);
-  const priorActions = statedPrior(said);
+  const priorActions = priorActionsParseEnabled() ? remapPriorActions(said, input.today) : statedPrior(said);
   const incidentTime = statedTime(said);
-  const actionPlan = acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
+  const plan = acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
+  const actionPlan = priorActionsParseEnabled() && plan && HISTORY_LABEL_ONLY.test(plan) ? null : plan;
   const closeMatchNote = employeeName ? closeNote(employeeName, input.people) : null;
 
   const read: FormRemapSlots = {
@@ -661,6 +663,30 @@ function slotClause(clause: string): boolean {
   if (STATE_ONLY.test(text)) return true;
   if (/\buse\s+.+\bas the (?:location|salon|store)\b/i.test(text)) return true;
   return false;
+}
+
+/*
+ * PRIOR_ACTIONS_PARSE_ENABLED. "previous coaching - jba policy manual
+ * 1-20-26" put "Action plan: Previous coaching" on the card and no prior
+ * action (conv_mvmzmhst2si3jfr). The history is read with the intent path's
+ * reader (`statedPriorActions`), one line per step, after any "prior =" or
+ * "coached on" line already read here; and an action plan that is only the
+ * history label is not an action plan.
+ */
+const HISTORY_LABEL_ONLY =
+  /^\s*(?:(?:the|her|his|their)\s+)?(?:previous|prior|past|earlier|last)\s+(?:coaching|coached|warnings?|verbal|written|final|corrective\s+actions?|cas?|c\/a|write[- ]?ups?|disciplin\w*|actions?)\b/i;
+
+function remapPriorActions(said: string, today: string): string | null {
+  const first = statedPrior(said);
+  const lines = first ? first.split("\n") : [];
+  const dated = new Set(lines.flatMap((line) => datesInText(line, today).map((found) => found.iso)));
+  for (const line of statedPriorActions(said, today)) {
+    const own = datesInText(line, today).map((found) => found.iso);
+    // A step a "prior =" line already dated is not listed twice; two steps on one day both are.
+    if (own.some((iso) => dated.has(iso)) || lines.includes(line)) continue;
+    lines.push(line);
+  }
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function statedPrior(text: string): string | null {
