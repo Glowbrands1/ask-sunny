@@ -975,3 +975,15 @@ the card (Ask Bubbles' store edit is a separate fix on its remap path). Test:
 ## 25 Oct 2026: EPP Store wording in Ask Bubbles — Bubbles-only (brand-specific)
 
 Ask Bubbles pins its Employee Performance Plans to "store" wording with no Sun Tan City name or logo, keeping the PPTA/LPSVA/UPTA/Club Close metrics and the stored `salon_*` keys (Ask Bubbles `src/lib/forms/epp-store-wording.test.ts`); not needed in Ask Sunny because "salon" and Sun Tan City are this app's own brand.
+
+## 25 Oct 2026: a named form that is not published opens no card (from Ask Bubbles b2cb091)
+
+Ask Bubbles ships this unflagged; Ask Sunny ships it behind
+`NAMED_FORM_EXACT_ENABLED` (default off) for the staged rollout. On, a form
+the manager named is kept only as itself on the intent slots: a named
+template that is not published leaves the form unset (the proposal flow says
+it is not published), the slot model's or the saved form does not stand in
+for it, a named kind of form ("… interview form") keeps only a form of that
+kind, and a turn naming two forms together names either of them. Off, the
+form is read exactly as on main. Tests: `src/lib/ai/hidden-form-no-card-oct25.test.ts`,
+`src/lib/ai/form-choice-stated.test.ts`, `src/lib/ai/form-choice-stated-live-oct25.test.ts`.

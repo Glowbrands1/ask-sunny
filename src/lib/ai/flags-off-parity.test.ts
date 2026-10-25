@@ -65,6 +65,7 @@ import {
   draftReuseSameChatOnlyEnabled,
   resignMethodFollowupEnabled,
   chatLongMessageEnabled,
+  namedFormExactEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -148,6 +149,7 @@ const NEW_FLAGS = [
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
+  "NAMED_FORM_EXACT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -288,6 +290,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(draftReuseSameChatOnlyEnabled()).toBe(false);
     expect(resignMethodFollowupEnabled()).toBe(false);
     expect(chatLongMessageEnabled()).toBe(false);
+    expect(namedFormExactEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
