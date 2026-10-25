@@ -29,6 +29,7 @@ import {
   fullManualContextEnabled,
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
+  manualNegatedListNoteEnabled,
   remapIncidentFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
@@ -124,6 +125,7 @@ import { rewriteToManualTerms } from "./query-rewrite-claude";
 import { guardReply } from "./self-check-run";
 import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { groundingWithoutCachedManual } from "./prompt-cache";
+import { withManualReadingNotes } from "./manual-reading-notes";
 import {
   applyFullManualAnswer,
   FULL_MANUAL_GROUNDING_NOTE,
@@ -1545,7 +1547,15 @@ async function answerQuestionUntraced(
     : buildGroundingBlock(grounding);
   const joinedGrounding = [knowledgeGrounding, pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
   const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
-  const groundingText = groundingWithoutCachedManual(joinedGrounding, manualBlock);
+  const uncachedGrounding = groundingWithoutCachedManual(joinedGrounding, manualBlock);
+  /*
+   * A reading note beside a manual sentence a reply read backwards (p.19's
+   * list of places a phone may not be). It goes in this per-turn block, not
+   * in the cached manual, so the system prompt and its cache key stay the same.
+   */
+  const groundingText = manualNegatedListNoteEnabled()
+    ? withManualReadingNotes(uncachedGrounding, fullManualBlock ?? manualBlock)
+    : uncachedGrounding;
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
   const written = await callClaude({
