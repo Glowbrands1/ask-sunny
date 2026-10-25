@@ -20,6 +20,7 @@ import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
+import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -261,6 +262,8 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
       }
     : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
+  // A numbered choice the manager just made is their naming; otherwise their own latest naming bounds the form.
+  const naming = choice?.form ? null : managerFormNaming(input);
   const modelPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
@@ -296,6 +299,9 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     policyHeading,
     policyPage,
   });
+  if (state.templateKey && !formAgreesWithNaming(state.templateKey, naming, input.templates)) {
+    state = { ...state, templateKey: null };
+  }
   if (warningManagerOnly) {
     const answered = payrollAnsweredNow(input.history, input.question);
     if (answered) state = { ...state, payrollDeduct: answered };
@@ -853,6 +859,89 @@ function groundForm(
   if (fromText.length === 1) return { key: fromText[0]!.key, ambiguous: [] };
   if (fromText.length > 1) return { key: null, ambiguous: fromText };
   return { key: null, ambiguous: [] };
+}
+
+/**
+ * ============================================================================
+ * THE FORM IS ONE THE MANAGER NAMED, AND ONE THIS LIBRARY PUBLISHES
+ * ============================================================================
+ *
+ * Ported from Ask Bubbles (QA, 25 Oct 2026: conv_mvnqbm6m28hg07j,
+ * conv_mvnqblza266tbwt). There, "create a tanning consultant interview form for
+ * Test Employee" came back as a Coaching Form card, and "create a first round
+ * management interview form for Test Employee" as a Corrective Action Form,
+ * after those templates had been hidden: a model reading of the form stood in
+ * for the one the manager named. Here the slot model's `formType`, or the form
+ * saved from an earlier turn, does the same if it is kept when the manager's
+ * own latest naming is a form that is not published, or a kind of form
+ * ("… interview form") the kept one is not. The form is then left unset, and
+ * the proposal flow answers: the form is not published, and no card opens.
+ */
+type ManagerNaming = { readonly kind: "template"; readonly key: string } | { readonly kind: "head"; readonly head: string };
+
+/** The head word of each library title: "Interview", "Exit", "Coaching", "EPP" … read from the titles themselves. */
+function titleHeads(name: string): string[] {
+  return name
+    .toLowerCase()
+    .split(/\s*[\/—–]\s*/)
+    .map((segment) => segment.split(/[^a-z]+/).filter((word) => word && word !== "form").at(-1))
+    .filter((word): word is string => Boolean(word));
+}
+
+/**
+ * The four everyday forms (the Corrective Action, Coaching, Follow-Up Coaching
+ * and Policy Review Forms). Their heads ("Action", "Coaching", "Review") are
+ * left to `detectTemplateIntent`, which reads them with their negations and
+ * earlier-coaching notes ("prior coaching form 9/1" is not a request); every
+ * other title's head is a kind of form a kept form must match.
+ */
+const EVERYDAY_FORMS: readonly string[] = ["dpoa", "coaching", "follow-up-coaching", "policy-review"];
+const FORM_HEADS: readonly string[] = (() => {
+  const everyday = new Set(TEMPLATE_SEEDS.filter((seed) => EVERYDAY_FORMS.includes(seed.key)).flatMap((seed) => titleHeads(seed.name)));
+  const other = new Set(TEMPLATE_SEEDS.filter((seed) => !EVERYDAY_FORMS.includes(seed.key)).flatMap((seed) => titleHeads(seed.name)));
+  return [...other].filter((head) => !everyday.has(head));
+})();
+const HEAD = `(${FORM_HEADS.join("|")})s?`;
+/** "interview form", "salon manager interview paperwork". */
+const HEAD_AS_FORM = new RegExp(String.raw`\b${HEAD}\s+(?:forms?|paperwork|packets?|sheets?|documents?|templates?)\b`, "i");
+/** "create a salon manager interview for …": the form's head is what is being made. */
+const HEAD_AS_OBJECT = new RegExp(
+  String.raw`\b(?:create|make|start|draft|build|fill\s+(?:out|in)|pull\s+up|open|begin|prepare|need)\s+(?:me\s+|us\s+)?(?:a|an|the|another)\s+(?:[a-z/'-]+\s+){0,4}?${HEAD}\b`,
+  "i",
+);
+
+/** The form the manager last named, newest manager turn first. Ask Sunny's turns never count. */
+function managerFormNaming(input: IntentTurnInput): ManagerNaming | null {
+  const turns = [
+    input.question,
+    ...input.history
+      .filter((turn) => turn.role === "user")
+      .map((turn) => turn.content)
+      .reverse(),
+  ];
+  for (const text of turns) {
+    if (!text.trim()) continue;
+    const intent = detectTemplateIntent(text);
+    if (intent.kind === "explicit" || intent.kind === "clarify") return { kind: "template", key: intent.templateKey };
+    if (intent.kind === "corrective_action" && intent.requestedCreation) return { kind: "template", key: "dpoa" };
+    const head = HEAD_AS_FORM.exec(text)?.[1] ?? HEAD_AS_OBJECT.exec(text)?.[1];
+    if (head) return { kind: "head", head: head.toLowerCase() };
+  }
+  return null;
+}
+
+/**
+ * A form the manager named is kept only as itself: a named template that is
+ * not published leaves no form to keep (the proposal flow then says so), and a
+ * different form read by the model or saved earlier is not kept in its place
+ * (the proposal flow reads the manager's naming). A named kind of form keeps
+ * only a form of that kind.
+ */
+function formAgreesWithNaming(templateKey: string, naming: ManagerNaming | null, templates: readonly TemplateRow[]): boolean {
+  if (!naming) return true;
+  if (naming.kind === "template") return templateKey === naming.key && templates.some((template) => template.key === naming.key);
+  const kept = templates.find((template) => template.key === templateKey);
+  return kept ? titleHeads(kept.name).includes(naming.head) : false;
 }
 
 function publishedKey(
