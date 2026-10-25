@@ -385,3 +385,44 @@ export function guardNarrativeDraft(
 
   return { values: next, adjusted, emptied };
 }
+
+/**
+ * ============================================================================
+ * NO PLAN THE MANAGER DID NOT MAKE (DRAFT_NO_INVENTED_PLAN_ENABLED)
+ * ============================================================================
+ *
+ * QA, 25 Oct 2026: a Corrective Action Form's saved Observation carried a
+ * "Going Forward" paragraph the manager never typed — "<Name> plans travel
+ * and preparation so that … notifies the salon in advance if arriving late is
+ * unavoidable" — with ACTION_PLAN_MANAGER_ONLY on. On a form whose Action
+ * Plan is the manager's own, that paragraph is a commitment nobody made, in
+ * the HR record. The "Going Forward" (and older "Next step") section is
+ * dropped from the observed/expectation fields; Observed and Expectation are
+ * kept as drafted. Pure.
+ */
+export function withoutGoingForward(
+  values: Record<string, string>,
+  fields: readonly NarrativeField[],
+): Record<string, string> {
+  const shaped = new Set(fields.filter((field) => field.narrative === OBSERVED_EXPECTATION).map((field) => field.key));
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!shaped.has(key) || typeof value !== "string" || value.trim() === "") {
+      next[key] = value;
+      continue;
+    }
+    const sections = splitSections(value);
+    const kept = sections.filter((section) => section.label !== GOING_FORWARD_LABEL && section.label !== "Next step:");
+    next[key] =
+      kept.length === sections.length
+        ? value
+        : kept
+            .map((section) =>
+              section.label ? `${section.label}\n${section.lines.join("\n").trim()}` : section.lines.join("\n").trim(),
+            )
+            .join("\n\n")
+            .trim();
+  }
+  return next;
+}
+
