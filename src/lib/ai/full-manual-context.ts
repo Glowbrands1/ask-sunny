@@ -1051,18 +1051,76 @@ function passagesOf(manuals: readonly AssembledManual[]): PassageHit[] {
 
 /** The passages a sentence restates, by longest shared phrase. */
 function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit[] {
+  return restatedByPhrase(text, hits).hits;
+}
+
+const MIN_PHRASE = 4;
+
+/**
+ * The passages a stretch restates, and whether a phrase longer than the
+ * shortest one read chose them (false when a page that says clearly more by
+ * its words took their place, or the phrase was only four words).
+ */
+function restatedByPhrase(text: string, hits: readonly PassageHit[]): { hits: PassageHit[]; byPhrase: boolean } {
   let best = 0;
   let chosen: PassageHit[] = [];
   for (const hit of hits) {
     const phrase = restatedPhraseLength(text, hit.passage.text, phrasePagesOf(hit.manual.passages));
-    if (phrase < 4 || phrase < best) continue;
+    if (phrase < MIN_PHRASE || phrase < best) continue;
     if (phrase > best) {
       best = phrase;
       chosen = [];
     }
     chosen.push(hit);
   }
-  return dominantPages(text, outsaid(text, chosen, hits));
+  const said = outsaid(text, chosen, hits);
+  return {
+    hits: dominantPages(text, said),
+    // Four words is the shortest phrase read at all ("state and federal law"): it decides nothing alone.
+    byPhrase: best > MIN_PHRASE && said.every((hit) => chosen.includes(hit)),
+  };
+}
+
+/*
+ * A WORD MATCH PREFERS THE ANSWER'S OWN PAGE (live, 25 Oct 2026; ported from
+ * the sibling app). "Payout on termination follows all applicable state and
+ * federal law [p.12]", the last bullet of a PTO answer whose other bullets
+ * restate pages 41 and 42, shares only "state and federal law" with any page:
+ * here the employee-files page (36). The PTO page (42) says it: "all state
+ * and federal guidelines will be followed regarding paying out accrued PTO
+ * upon termination". A stretch whose page was chosen by words, or by no more
+ * than the shortest phrase read at all, cites instead a page another stretch
+ * of the same answer restates by phrase, when that page shares enough of the
+ * stretch's words for a word match and the word-chosen page's words do not
+ * count for more than OWN_PAGE_YIELD times as much. "Dress code violations …
+ * up to and including termination" keeps the Dress Code page (15) beside a
+ * progression line on 14. Nothing is added to a stretch that cited no page.
+ */
+const OWN_PAGE_YIELD = 2.5;
+
+function answersOwnPage(
+  text: string,
+  loose: readonly PassageHit[],
+  anchored: ReadonlySet<number>,
+  hits: readonly PassageHit[],
+): PassageHit[] {
+  if (loose.length === 0 || loose.some((hit) => anchored.has(hit.passage.page))) return [...loose];
+  const distinctive = distinctiveCount(text);
+  const needed = Math.max(3, Math.min(4, Math.ceil(0.4 * distinctive)));
+  let best: PassageHit | null = null;
+  let bestScore = 0;
+  for (const hit of hits) {
+    if (!anchored.has(hit.passage.page)) continue;
+    const score = overlapScore(text, hit.passage.text);
+    if (score >= needed && score > bestScore) {
+      best = hit;
+      bestScore = score;
+    }
+  }
+  if (!best) return [...loose];
+  const rarity = wordRarityOf(hits);
+  const looseRare = Math.max(...loose.map((hit) => rareOverlap(text, hit.passage.text, rarity)));
+  return looseRare > OWN_PAGE_YIELD * rareOverlap(text, best.passage.text, rarity) ? [...loose] : [best];
 }
 
 /*
@@ -1409,6 +1467,17 @@ export function applyFullManualAnswer(input: {
   const hits = passagesOf(input.manuals);
   const marked: { manual: AssembledManual; heading: string; page: number }[] = [];
 
+  // The pages the answer restates by a phrase, for a stretch matched only by words.
+  const anchored = new Set<number>();
+  for (const line of withoutSources.split("\n")) {
+    for (const { text } of stretchesOf(line)) {
+      const bare = withoutPrintedMarkers(text);
+      if (!bare.trim() || namesExcludedBrand(bare)) continue;
+      const phrase = restatedByPhrase(bare, hits);
+      if (phrase.byPhrase) for (const hit of phrase.hits) anchored.add(hit.passage.page);
+    }
+  }
+
   const content = withoutSources
     .split("\n")
     .map((line) => {
@@ -1425,7 +1494,9 @@ export function applyFullManualAnswer(input: {
           // "…stay covered. (Tattoos, JBA Policy Manual p.16)": the label that follows carries the page.
           const next = stretches[at + 1]?.text ?? "";
           if (markLabels(withoutPrintedMarkers(next), input.manuals).found) return `${bare}${gap}`;
-          let restated = restatedPassages(bare, hits);
+          const phrase = restatedByPhrase(bare, hits);
+          let restated = phrase.hits;
+          const loose = restated.length === 0 || !phrase.byPhrase;
           if (restated.length === 0) {
             const pages = [...new Set(written)].filter((page) =>
               input.manuals.some((manual) => manual.pages.some((entry) => entry.page === page)),
@@ -1433,6 +1504,7 @@ export function applyFullManualAnswer(input: {
             restated = confirmedModelPages(bare, pages, hits);
           }
           if (restated.length === 0) restated = closestPassage(bare, hits);
+          if (loose) restated = answersOwnPage(bare, restated, anchored, hits);
           for (const hit of restated) {
             const own = hit.passage.heading && !FRAGMENT_HEADING.test(hit.passage.heading.trim()) ? hit.passage.heading : null;
             const heading =

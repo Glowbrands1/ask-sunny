@@ -360,3 +360,40 @@ describe("live B4: the page that says clearly more", () => {
     expect(pagesIn(out.content).has(12)).toBe(false);
   }, 20_000);
 });
+
+/**
+ * Live, 25 Oct 2026 (ported from the sibling app's B6 round): a PTO answer's
+ * last bullet, "Payout on termination follows all applicable state and
+ * federal law [p.12]", kept Smoking/Vaping. It ties on "state and federal
+ * law" with two unrelated pages, and the smoking page says more by its words
+ * ("as follows", "applicable"); the PTO page the rest of the answer restates
+ * says it: "all state and federal guidelines will be followed regarding
+ * paying out accrued PTO upon termination".
+ */
+describe("live B6: a word match prefers the answer's own page", () => {
+  const PTO_ANSWER = [
+    "PTO covers vacation, personal time, personal illness, or time off to care for dependents [p.41].",
+    "",
+    "**Using it**",
+    "- No PTO during Sun Tan City's peak season: Feb 1 and June 1 [p.42].",
+    "- Request it in the Personnel System at least two weeks ahead; if something unforeseen comes up, call your supervisor directly and log the request as soon as possible [p.42].",
+    "- Supervisor approval required — granted as long as it doesn't create undue hardship on the business [p.42].",
+    "- Payout on termination follows all applicable state and federal law [p.12].",
+  ].join("\n");
+
+  it("the payout line cites PTO (42), not Smoking/Vaping (12)", () => {
+    const out = cite(PTO_ANSWER);
+    expect(pagesIn(lineWith(out.content, "Payout on termination"))).toEqual(new Set([42]));
+    expect(out.citations.map((citation) => citation.locator).join(" ")).not.toMatch(/Page 12\b/);
+  }, 20_000);
+
+  it("the dress-code discipline line keeps the Dress Code page (15) beside a progression line (14)", () => {
+    const out = cite(
+      [
+        "- Dress code violations can lead to being sent home to change and are subject to disciplinary action, up to and including termination [p.23] [p.38].",
+        "- The standard progression is verbal warning (documented), written warning, final written warning, then termination — three write-ups equals termination [p.14].",
+      ].join("\n"),
+    );
+    expect(pagesIn(lineWith(out.content, "Dress code violations"))).toEqual(new Set([15]));
+  }, 20_000);
+});
