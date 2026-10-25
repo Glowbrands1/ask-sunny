@@ -83,6 +83,16 @@ const LIBRARY = [
     displayOrder: 2,
     currentVersion: { id: "v-dpoa", status: "published", document: correctiveActionDocument(), variants: [] },
   }),
+  template({
+    id: "tpl-policy-review",
+    key: "policy-review",
+    name: "Policy Review",
+    shortName: "Policy Review",
+    description: "A documented review of a policy with an employee, quoting the approved manual.",
+    layoutFamily: "corrective",
+    requiredPermission: "create_policy_review",
+    displayOrder: 3,
+  }),
 ];
 
 vi.mock("@/lib/config/server-env", () => ({
@@ -181,7 +191,8 @@ let groundFormSlots: typeof import("./form-full-remap").groundFormSlots;
 beforeAll(async () => {
   ({ answerQuestion } = await import("./server-ask"));
   ({ groundFormSlots } = await import("./form-full-remap"));
-});
+  // The first import loads the whole answer path; a busy machine takes longer than the 10 s default.
+}, 120_000);
 
 beforeEach(() => {
   stateBag.forms.clear();
@@ -474,3 +485,210 @@ describe("date bug fix in the remap path (REMAP_INCIDENT_FIX_ENABLED off)", () =
   });
 });
 
+
+/**
+ * QA's live step-3 run and C-list (Ask Bubbles, 24–25 Oct 2026), in Sunny's
+ * words, on both paths. Edits and commands never become What happened, a new
+ * request with a new incident is a new form, a bare "Yes" after a list of
+ * questions answers none, no plan is copied from the model or from "previous
+ * coaching", and "as you said" only for a manager's own words.
+ */
+const EDIT_WORDS = /change the date|name is|cite |show draft|this is a violation|^it happened\b|^location$|sunny|this conversation|generate/i;
+const KEARNEY = "loc-0309";
+
+const STEP3 = {
+  dateEdit: [
+    // Sunny's readers take a month and day with a slash; Ask Bubbles' manager typed "10-19" / "10-22".
+    { say: "CA for Test Employee at Kearney, late to open 10/19, verbal, no payroll", intent: { ...NAME, salon: "Kearney", incidentType: "late to open", incidentDate: "10/19", warningLevel: "verbal" }, remap: REMAP_NAME },
+    { say: "change the date to 10/22", intent: { ...NAME, incidentDate: "10/22" }, remap: REMAP_NAME },
+  ],
+  measuring: [
+    {
+      say: "create a verbal CA for tanning consultant Testy Testerson at Kearney, NE. location. On 10-16-26 Testy was not properly measuring and recording lotion inventory. payroll deduct is not applicable",
+      intent: { employee: "Testy Testerson", salon: "Kearney", title: "tanning consultant", incidentType: "not properly measuring and recording lotion inventory", incidentDate: "10-16-26", warningLevel: "verbal" },
+      remap: { employeeName: "Testy Testerson" },
+    },
+    { say: "employee name is Testy Testerson", intent: { employee: "Testy Testerson" }, remap: { employeeName: "Testy Testerson" } },
+    { say: "cite standards of conduct as policy violated", intent: { employee: "Testy Testerson" }, remap: { employeeName: "Testy Testerson" } },
+    { say: "show draft", intent: { employee: "Testy Testerson" }, remap: { employeeName: "Testy Testerson" } },
+    { say: "violation is that on 10-16-26 Testy was not measuring and recording lotion inventory", intent: { employee: "Testy Testerson" }, remap: { employeeName: "Testy Testerson" } },
+    { say: "show draft with edits", intent: { employee: "Testy Testerson" }, remap: { employeeName: "Testy Testerson" } },
+  ],
+  nameAndPolicy: [
+    {
+      say: "create a written corrective action for Tanning Consultant, Test Employee. Test was assigned to complete policy acknowledgements in woven by 10-15-26 and failed to meet the deadline. Previous coaching was a Verbal CA 10-1-26. Payroll deduct is not applicable.",
+      intent: { ...NAME, title: "Tanning Consultant", incidentType: "failed to complete policy acknowledgements by the deadline", warningLevel: "written" },
+      remap: REMAP_NAME,
+    },
+    { say: "name is Test Employee", intent: NAME, remap: { ...REMAP_NAME, actionPlan: "Complete policy acknowledgements in woven" } },
+    { say: "this is a violation under Standards of Conduct", intent: NAME, remap: { ...REMAP_NAME, actionPlan: "Complete policy acknowledgements in woven" } },
+  ],
+  newRequest: [
+    {
+      say: "create verbal CA for Test Testy for violating visitors at work policy on 10-10-26. Test Employee spent 40 minutes talking with friend and ignoring guests. previous coaching was jba policy manual 1-1-26",
+      intent: { employee: "Test Testy", incidentType: "talking with friend", incidentDate: "10-10-26", warningLevel: "verbal" },
+      remap: { employeeName: "Test Testy", observation: "Spent 40 minutes talking with friend and ignoring guests" },
+    },
+    { say: "no payroll deduct", intent: { employee: "Test Testy" }, remap: { employeeName: "Test Testy" } },
+    {
+      say: "create a verbal corrective action form for Test Employee. on 10-20-26 Test was talking on her cell phone for over 30 minutes",
+      intent: { ...NAME, incidentType: "talking on her cell phone", incidentDate: "10-20-26", warningLevel: "verbal" },
+      remap: { ...REMAP_NAME, observation: "Spent 40 minutes talking with friend and ignoring guests" },
+    },
+  ],
+  coachingChat: [
+    { say: "I need to coach an employee", intent: { formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "Her name is Test Employee", intent: { ...NAME, formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "She works at Kearney", intent: { ...NAME, salon: "Kearney", formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "It happened on 10-21", intent: { ...NAME, incidentDate: "10-21", formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "She was on her cell phone for 30+ minutes at the front desk", intent: { ...NAME, formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "Create a Coaching Form", intent: { ...NAME, formType: "coaching" }, remap: { templateKey: "coaching", employeeName: "Test Employee" } },
+  ],
+  fromConversation: [
+    {
+      say: "I have an employee Test Employee at our Kearney location who has been out of dress code three shifts. I verbally coached her on the second offense and she still is out of dress code",
+      intent: { ...NAME, formType: null, formTurn: false },
+      remap: { templateKey: null },
+    },
+    { say: "Create a Coaching Form from this conversation.", intent: { ...NAME, formType: "coaching" }, remap: { templateKey: "coaching", employeeName: "Test Employee" } },
+  ],
+  twoShifts: [
+    {
+      say: "My employee Test Employee has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15",
+      intent: NAME,
+      remap: REMAP_NAME,
+    },
+    { say: "I already told you the employee name. She is at Kearney", intent: { ...NAME, salon: "Kearney" }, remap: REMAP_NAME },
+    { say: "I gave sunny all of the information it should need, but it still would not generate the coaching form.", intent: { ...NAME, formType: "coaching" }, remap: { templateKey: "coaching", employeeName: "Test Employee" } },
+  ],
+  shortage: [
+    { say: "create ca form for Test Employee for violating attendance policy on 10-20-26. verbal. no payroll deduct. jba manual 1-1-26 for previous coaching", intent: { ...NAME, incidentType: "attendance", incidentDate: "10-20-26", warningLevel: "verbal" }, remap: REMAP_NAME },
+    { say: "verbal", intent: { ...NAME, warningLevel: "verbal" }, remap: REMAP_NAME },
+    {
+      say: "create ca form for Test Employee for a register shortage on 10-20-26. payroll deduct applies and $3.25 will be deducted from check. previous coaching - jba policy manual 1-20-26.",
+      intent: { ...NAME, incidentType: "register shortage", incidentDate: "10-20-26", payrollAmount: "$3.25" },
+      remap: { ...REMAP_NAME, actionPlan: "Previous coaching" },
+    },
+  ],
+  puppy: [
+    {
+      say: "do verbal for tanning consultant Test Employee at empire, sd. payroll deduct does not apply. previous coaching jba manual 11-1-26. on 10-22-26 Test was not scheduled to work and came into the salon to show her team her new puppy. Test was in the salon 45 min",
+      intent: { ...NAME, formType: null, formTurn: false },
+      remap: { templateKey: null },
+    },
+    { say: "jba manual 11-1-25", intent: { ...NAME, formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "cite animals in the workplace policy", intent: { formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "salon location is empire, sd. create corrective action", intent: { ...NAME }, remap: REMAP_NAME },
+  ],
+  phoneThenReview: [
+    { say: "Test Employee at Kearney used her cell phone on the salon floor on 10-17", intent: { ...NAME, salon: "Kearney", formType: null, formTurn: false }, remap: { templateKey: null } },
+    { say: "Create a Policy Review", intent: { ...NAME, formType: "policy review" }, remap: { templateKey: "policy-review", employeeName: "Test Employee" } },
+  ],
+} satisfies Record<string, readonly Turn[]>;
+
+for (const path of ["intent", "remap"] as const) {
+  describe(`${path} path: step 3 and C-list in Sunny's words`, () => {
+    beforeEach(() => useFlags(path === "intent" ? [...INTENT_FLAGS, "REMAP_INCIDENT_FIX_ENABLED"] : REMAP_FLAGS));
+
+    it("A3: 'change the date to 10-22' changes the date only", async () => {
+      const response = await chat(STEP3.dateEdit);
+      expect(response.formProposal?.formDate).toBe("2026-10-22");
+      expectIncident(response, /late to open/i);
+      expect(happened(response)).not.toMatch(EDIT_WORDS);
+    });
+
+    it("name, cite and show-draft turns keep the incident; 10-16-26 stays whole", async () => {
+      for (const count of [2, 3, 4, 5, 6]) {
+        const response = await chat(STEP3.measuring.slice(0, count));
+        expectIncident(response, /measuring and recording lotion inventory/i);
+        expect(happened(response), `turn ${count}`).not.toMatch(EDIT_WORDS);
+        expect(happened(response), `turn ${count}`).not.toMatch(/(?<!\d-)\b6-26\b/);
+      }
+    });
+
+    it("'name is' and the policy line keep the incident, and no plan is copied from the model", async () => {
+      for (const count of [2, 3]) {
+        const response = await chat(STEP3.nameAndPolicy.slice(0, count));
+        expectIncident(response, /policy acknowledgements in woven/i);
+        expect(happened(response), `turn ${count}`).not.toMatch(/^create a for|^name is|this is a violation/i);
+        expect(response.content, `turn ${count}`).not.toMatch(/Complete policy acknowledgements in woven/);
+        const prior = `${response.formProposal?.priorActions ?? ""}\n${response.content}`;
+        expect(prior, `turn ${count}`).toMatch(/Verbal (?:CA|corrective action)[^\n]*(?:10-1-26|10\/0?1\/2026)/i);
+      }
+    });
+
+    it("a new request with a new incident resets What happened and the policy", async () => {
+      const response = await chat(STEP3.newRequest);
+      expectIncident(response, /cell phone/i);
+      expect(happened(response)).not.toMatch(/talking with friend/i);
+      expect(response.content).not.toMatch(/Visitors[^\n]*as you said/i);
+    });
+
+    it("'It happened on 10-21' is the date; the cell phone sentence is What happened", async () => {
+      const response = await chat(STEP3.coachingChat);
+      expect(response.formProposal?.templateKey).toBe("coaching");
+      expectIncident(response, /cell phone for 30\+/i);
+      expect(happened(response)).not.toMatch(/^it happened/i);
+    });
+
+    it("'Create a Coaching Form from this conversation.' is never What happened", async () => {
+      const response = await chat(STEP3.fromConversation);
+      expect(happened(response)).not.toMatch(/Create a Coaching Form|this conversation/i);
+      expectIncident(response, /out of dress code/i);
+    });
+
+    it("the account keeps both dates and the verbal coaching; the complaint is never What happened", async () => {
+      for (const count of [1, 3]) {
+        const response = await chat(STEP3.twoShifts.slice(0, count));
+        const issue = happened(response);
+        expect(issue, `turn ${count}: ${response.content}`).toMatch(/10 minutes late/);
+        expect(issue, `turn ${count}`).toMatch(/10\/5/);
+        expect(issue, `turn ${count}`).toMatch(/10\/15/);
+        expect(issue, `turn ${count}`).toMatch(/verbally coached/);
+        expect(issue, `turn ${count}`).not.toMatch(EDIT_WORDS);
+      }
+    });
+
+    it("a new request drops the old policy; previous coaching is a prior action, never the plan", async () => {
+      const response = await chat(STEP3.shortage);
+      expectIncident(response, /register shortage/i);
+      expect(response.content).not.toMatch(/Attendance[^\n]*as you said/i);
+      expect(response.content).not.toMatch(/Action plan:\*\*\s*Previous coaching/i);
+      const prior = `${response.formProposal?.priorActions ?? ""}\n${response.content}`;
+      expect(prior).toMatch(/JBA Policy Manual[^\n]*(?:1-20-26|0?1\/20\/2026)/i);
+    });
+
+    it("every 'as you said' value is in the manager's words (conv_mvmzmy4g2wp7dhf)", async () => {
+      const turns = CASES.meeting.map((turn) => turn.say);
+      const response = await chat(CASES.meeting);
+      const said = turns.join("\n");
+      for (const match of response.content.matchAll(/\*\*([^*]+):\*\*\s*([^\n]+?),? as you said/g)) {
+        const [, label, value] = match;
+        const evidence = /payroll/i.test(label!) ? ["payroll"] : value!.replace(/\*/g, "").split(/[^A-Za-z]+/).filter((word) => word.length >= 3);
+        expect(evidence.some((word) => new RegExp(`\\b${word}\\b`, "i").test(said)), `${label}: ${value}`).toBe(true);
+      }
+    });
+
+    it("the form date is 10-22-26, never the 'jba manual 11-1-25' date", async () => {
+      const response = await chat(STEP3.puppy);
+      expect(response.formProposal?.formDate).toBe("2026-10-22");
+      expect(happened(response)).not.toMatch(/create corrective action|sd\./i);
+      cites(response, "Animals in the Workplace", 30);
+    });
+
+    it("the Policy Review keeps the salon named before the account", async () => {
+      const response = await chat(STEP3.phoneThenReview);
+      expect(response.formProposal?.templateKey).toBe("policy-review");
+      expect(response.formProposal?.locationId).toBe(KEARNEY);
+    });
+  });
+}
+
+describe("remap path: a bare yes after several questions (Sunny wording)", () => {
+  it("is not a payroll answer, and the questions are asked again", async () => {
+    useFlags(REMAP_FLAGS);
+    const response = await chat(CASES.bareYes);
+    expect(response.formProposal?.payrollDeduct ?? null).toBeNull();
+    expect(response.content).toContain("Is payroll deduct applicable?");
+  });
+});

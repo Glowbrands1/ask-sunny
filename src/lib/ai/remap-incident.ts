@@ -76,7 +76,7 @@ export function priorListActions(text: string): string[] {
 }
 
 function priorItem(raw: string): string | null {
-  let item = raw.replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
+  let item = raw.replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "").replace(/^(?:a|an|the)\s+/i, "");
   if (!item || /^(?:none|no|n\/?a)$/i.test(item)) return null;
   if (/\bmanual\b/i.test(item)) {
     item = item.replace(
@@ -113,21 +113,159 @@ export function requestIncident(input: {
   readonly slotClause: (clause: string) => boolean;
 }): string | null {
   let found: string | null = null;
-  for (const turn of withoutPriorList(input.text).split("\n")) {
-    for (const sentence of turn.split(/[.!?;]+(?=\s|$)/)) {
-      for (const clause of sentence.split(",")) {
-        const text = clause.trim();
-        if (!text || input.slotClause(text) || STORE_CLAUSE.test(text) || PAYROLL_STATEMENT.test(text) || POLICY_ASK.test(text)) continue;
-        const offense = clauseOffense(text, input.employeeName);
-        if (offense) found = offense;
-      }
-    }
+  // One turn at a time. An edit or a command ("change the date to 10-22",
+  // "name is …", "show draft", "cite standards of conduct …") changes its own
+  // field and never What happened; the newest turn that describes an
+  // incident is the incident.
+  for (const turn of input.text.split("\n")) {
+    const offense = turnIncident(turn, input.employeeName, input.slotClause);
+    if (offense) found = offense;
   }
   return found;
 }
 
+function turnIncident(
+  turn: string,
+  employeeName: string | null,
+  slotClause: (clause: string) => boolean,
+): string | null {
+  if (isEditTurn(turn)) return null;
+  let found: string | null = null;
+  const story: string[] = [];
+  for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
+    const sentence = raw.trim();
+    if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
+    const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
+    let kept = false;
+    for (const clause of sentence.split(",")) {
+      const text = clause.trim();
+      if (!text || slotClause(text) || STORE_CLAUSE.test(text) || PAYROLL_STATEMENT.test(text) || POLICY_ASK.test(text)) continue;
+      kept = true;
+      const offense = clauseOffense(text, employeeName);
+      if (offense) found = offense;
+    }
+    if (kept && !requested && sentence.split(/\s+/).length >= 3) story.push(sentence);
+  }
+  // An account of two or more sentences is kept in the manager's words, so
+  // both dates and the coaching they already gave stay on the form
+  // (conv_mvmzlpox2z7u4c3). One sentence is read down to the offense.
+  if (story.length >= 2) return story.join(". ");
+  return found;
+}
+
+/** "do verbal for team member …": a level and "for" is a request too. */
+const LEVEL_REQUEST =
+  /^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+for\b/i;
+
+/** "I need to coach an employee": the manager asking for help, not the account. */
+const ASKS_FOR_HELP = /^(?:i\s+)?(?:need|want|have|would\s+like)\s+to\s+(?:coach|write\s+up|discipline|document|create|make|do)\b/i;
+
+/** A sentence to the app, not about the employee: "it still would not generate the coaching form". */
+const TALKS_TO_THE_APP =
+  /\b(?:you|your|sunny|generate|generated|this\s+conversation|the\s+information|information\s+given)\b/i;
+
+/** An edit or a command: it sets a field, shows the draft, or names the policy. It is not an account. */
+const EDIT_TURN = [
+  /^(?:please\s+)?(?:change|update|edit|fix|correct|set|switch|replace)\b/i,
+  /^(?:(?:her|his|their|the)\s+)?(?:employee(?:'s)?\s+)?(?:full\s+)?name\s+(?:is|should\s+be|=|:)/i,
+  /^(?:the\s+)?(?:job\s+title|title|position|role|salon|location|date|warning(?:\s+level)?|level)\s+(?:is|should\s+be|=|:)/i,
+  /^(?:please\s+)?(?:show|view|see|open|display|preview|send|give\s+me)\b.*\b(?:draft|form|card|edits?)\b/i,
+  /^(?:please\s+)?cite\b/i,
+  /^(?:this|it|that)\s+(?:is|was)\s+(?:a\s+)?(?:violation|under|against)\b/i,
+  /^(?:she|he|they)\s+works?\s+(?:at|in)\b/i,
+  /^(?:she|he|they)\s+(?:is|are)\s+(?:at|in|a|an|the)\b/i,
+  /^it\s+happened\s+(?:on|at)\s+[^,.;]+[.!]?$/i,
+];
+
+export function isEditTurn(turn: string): boolean {
+  const text = turn.trim();
+  return text !== "" && EDIT_TURN.some((pattern) => pattern.test(text));
+}
+
+/**
+ * The turn that starts the form now being written. A later create request
+ * with its own incident is a new form: What happened, the policy and the
+ * action plan are read from that turn on. 0 when there is no such later
+ * request.
+ */
+export function currentRequestStart(input: {
+  readonly turns: readonly string[];
+  readonly employeeName: string | null;
+  readonly slotClause: (clause: string) => boolean;
+}): number {
+  let requests = 0;
+  let start = 0;
+  for (const [index, raw] of input.turns.entries()) {
+    const turn = raw.replace(STATE_LEAD, "");
+    if (!REQUEST_TURN.test(turn.trim())) continue;
+    requests += 1;
+    if (requests > 1 && turnIncident(turn, input.employeeName, input.slotClause)) start = index;
+  }
+  return start;
+}
+
+/** The state sentences the intent read puts in front of a question ("The employee is …."). */
+const STATE_LEAD =
+  /^\s*(?:(?:The form is the|The employee is|Job title:|It happened at|It happened on|Warning level:|Payroll amount:|Policy reference:|Incident:|The account continues)[^\n]*?\.(?=\s|$)\s*|(?:Payroll deduct applies|No payroll deduction)\.\s*)+/i;
+
+const REQUEST_TURN = new RegExp(
+  String.raw`^\s*(?:please\s+)?(?:(?:create|make|start|open|do|file|write|draft)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b`,
+  "i",
+);
+
+/** The action plan the manager gave in their own words ("action plan: …"), or null. */
+export function statedActionPlan(text: string): string | null {
+  let found: string | null = null;
+  for (const match of text.matchAll(/\b(?:action\s+plan|the\s+plan)\s*(?:is|will\s+be|:|=|-)\s*([^\n]+?)(?=\.(?:\s|$)|\n|$)/gi)) {
+    const plan = match[1]!.trim();
+    if (plan) found = plan;
+  }
+  return found;
+}
+
+/**
+ * A bare "yes" or "no" answers a yes/no question only when the reply before
+ * it asked exactly one question. After a list of questions it answers none.
+ */
+export function withoutAmbiguousAnswers<T extends { readonly role: string; readonly content: string }>(turns: readonly T[]): T[] {
+  return turns.filter((turn, index) => !isAmbiguousAnswer(turns, index));
+}
+
+export function isAmbiguousAnswer(turns: readonly { readonly role: string; readonly content: string }[], index: number): boolean {
+  const turn = turns[index];
+  if (!turn || turn.role !== "user" || !/^(?:yes|no|yeah|yep|yup|nope|y|n)[.!]?$/i.test(turn.content.trim())) return false;
+  const asked = [...turns.slice(0, index)].reverse().find((item) => item.role === "assistant");
+  if (!asked) return true;
+  return openQuestions(asked.content) !== 1;
+}
+
+function openQuestions(content: string): number {
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /\?(?:\*\*)?\s*$/.test(line) || /\?\*\*/.test(line)).length;
+}
+
+/** "as you said" only when a word of the value is in a manager turn. */
+export function saidInWords(value: string, said: string): boolean {
+  const words = value
+    .split(/[^A-Za-z']+/)
+    .filter((word) => word.length >= 3 && !STATE_CODES.test(word) && !/^(?:the|and|store|salon|location)$/i.test(word));
+  if (words.length === 0) return false;
+  return words.some((word) => new RegExp(String.raw`\b${escape(word)}\b`, "i").test(said));
+}
+
+/** "Test Employee at Grand Island used her cell phone": the capitalized place after "at", read alone. */
+export function placeSpans(text: string): string[] {
+  return [...text.matchAll(/\bat\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})/g)].map((match) => `at ${match[1]}`);
+}
+
 function clauseOffense(clause: string, employeeName: string | null): string | null {
-  let text = clause.replace(REQUEST_LEAD, " ");
+  let text = clause.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+  // "violation is that on 10-16-26 Testy was not measuring and weighing product"
+  text = text.replace(/^\s*(?:the\s+)?(?:violation|incident|issue|offen[cs]e|what\s+happened|reason)\s+(?:is|was)(?:\s+that)?\s*[:-]?\s*/i, "");
+  // "She was on her cell phone for 30+ minutes at the front desk"
+  text = text.replace(/^\s*(?:she|he|they)\s+(?:was|were|has\s+been|have\s+been)\s+/i, "");
   // "Test Employee" anywhere, and "Test" as the subject: "Test was late for shift".
   if (employeeName) {
     text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
@@ -144,15 +282,20 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");
   text = text.replace(new RegExp(String.raw`\s*,?\s*(?:on|at|dated)?\s*${DATE}$`, "i"), "");
   text = text.replace(/^(?:for|about|regarding|re:?)\s+/i, "");
+  // Another spelling of the person as the subject: "Test Employee spent 40 minutes …".
+  text = text.replace(/^[A-Z][a-z'-]+\s+[A-Z][a-z'-]+\s+(?=[a-z])/, "");
   text = text.replace(/^(?:was|is|has been)\s+/i, "");
+  text = text.replace(/^(?:a|an)\s+(?=\S+\s+\S)/i, "");
   text = text.replace(/^[,\s]+|[,\s.]+$/g, "").replace(/\s+(?:on|at)$/i, "");
   if (!text || text.length > 120) return null;
-  if (/^(?:for|a|an|the|form)$/i.test(text)) return null;
+  if (/^(?:for|a|an|the|form|location|store|draft)$/i.test(text)) return null;
+  // "jba manual 11-1-25" answers the prior-coaching question.
+  if (/^(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+ack\w*)?$/i.test(text)) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
   const title = titleAfterJobTitleLabel(text) ?? extractJobTitle(text);
   if (title && title.toLowerCase() === text.toLowerCase()) return null;
   if (/^team members?$/i.test(text)) return null;
-  const onDuration = /^on\s+(.+?)\s+(\d+\+?\s*(?:min|mins|minutes|hrs|hours))\b/i.exec(text);
+  const onDuration = /\bfor\b/i.test(text) ? null : /^on\s+(.+?)\s+(\d+\+?\s*(?:min|mins|minutes|hrs|hours))\b/i.exec(text);
   if (onDuration) {
     const thing = onDuration[1]!.replace(/\s+/g, " ").trim();
     const spaced = onDuration[2]!.replace(/\s+/g, "").replace(/(\d\+?)(?=[a-z])/i, "$1 ");
@@ -289,10 +432,16 @@ export function withoutStateCodes(text: string): string {
  */
 export function accountSentences(turns: readonly string[], employeeName: string | null): string[] {
   const kept: string[] = [];
-  for (const turn of turns) {
+  // A later create request with its own incident is a new form; an edit or a
+  // command turn ("change the date to 10-22", "show draft") is not an account.
+  const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
+  for (const turn of turns.slice(start)) {
+    if (isEditTurn(turn)) continue;
     const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
-      if (STATE_SENTENCE.test(sentence.trim())) continue;
+      const trimmed = sentence.trim();
+      if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
+      if (/^it\s+happened\b/i.test(trimmed)) continue;
       const parts = sentence
         .split(",")
         .map((part) => part.trim())
@@ -324,7 +473,10 @@ function accountSlot(part: string): boolean {
 }
 
 function accountPart(part: string, employeeName: string | null): string | null {
-  let text = part.replace(REQUEST_LEAD, " ");
+  const requested = REQUEST_LEAD.test(part) || LEVEL_REQUEST.test(part);
+  let text = part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+  // "Please create a CA form so I can document": the rest of a request is not the account.
+  if (requested && /^\s*(?:so|to|with|from|because|now)\b/i.test(text)) return null;
   if (employeeName) text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
   text = text.replace(/\bat\s+[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3}/g, " ");
   text = text.replace(/\s+/g, " ").trim().replace(/^(?:for|about|regarding|re:?)\s+/i, "").trim();
@@ -350,4 +502,31 @@ export function priorShorthand(text: string): string {
 
 function escape(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The history of the form now being written: from the turn of a later create
+ * request with its own incident. Empty when the question itself starts it.
+ */
+export function requestScopedHistory<T extends { readonly role: string; readonly content: string }>(
+  history: readonly T[],
+  question: string,
+): T[] {
+  const userAt = history.flatMap((turn, index) => (turn.role === "user" ? [index] : []));
+  const turns = [...userAt.map((index) => history[index]!.content), question];
+  const start = currentRequestStart({ turns, employeeName: null, slotClause: accountSlot });
+  if (start === 0) return [...history];
+  if (start >= userAt.length) return [];
+  return history.slice(userAt[start]!);
+}
+
+/** Whether the question is a later create request with its own incident: a new form. */
+export function startsNewForm(history: readonly { readonly role: string; readonly content: string }[], question: string): boolean {
+  const users = history.filter((turn) => turn.role === "user").map((turn) => turn.content);
+  return users.length > 0 && currentRequestStart({ turns: [...users, question], employeeName: null, slotClause: accountSlot }) === users.length;
+}
+
+/** The manager's own words of a question the intent read rewrote. */
+export function withoutStateLead(question: string): string {
+  return question.replace(STATE_LEAD, "");
 }

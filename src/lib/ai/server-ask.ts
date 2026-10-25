@@ -37,7 +37,7 @@ import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
-import { priorShorthand } from "./remap-incident";
+import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
@@ -449,6 +449,11 @@ async function answerQuestionUntraced(
    */
   const knowledge = new SupabaseKnowledgeProvider();
 
+  /** REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident starts a new form. */
+  function formHistory(): AskRequest["history"] {
+    return remapIncidentFixEnabled() ? requestScopedHistory(request.history, request.question) : request.history;
+  }
+
   async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
     const coachingOn = priorCoachingOptionalEnabled();
     const recallOn = retrievalRecallEnabled();
@@ -464,7 +469,7 @@ async function answerQuestionUntraced(
       policyPageRequiredEnabled();
     if (!coachingOn && !recallOn && !citeOn) return response;
     const turns = [
-      ...request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+      ...formHistory().filter((turn) => turn.role === "user").map((turn) => turn.content),
       request.question,
     ];
     let content = response.content;
@@ -638,12 +643,19 @@ async function answerQuestionUntraced(
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
     const proposal = await deliverFormProposal({
-      request,
+      request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
-      question: withPriorShorthand(prepareProposalQuestion(questionForProposal(proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion), request))),
+      question: withPriorShorthand(
+        prepareProposalQuestion(
+          questionForProposal(
+            proposalQuestion(separateLead, heard ? routingQuestion : request.question, managerQuestion),
+            remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
+          ),
+        ),
+      ),
       decorate: decorateFormAnswer,
       propose: (question) => proposeFormForTurn({
-      history: withPriorShorthandTurns(request.history),
+      history: withPriorShorthandTurns(formHistory()),
       question,
       questionMessageId: request.questionMessageId,
       actor,

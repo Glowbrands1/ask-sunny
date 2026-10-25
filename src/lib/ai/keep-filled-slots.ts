@@ -28,7 +28,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutAppLines } from "./app-sentences";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, priorShorthand, withoutPriorList, withoutStateCodes } from "./remap-incident";
+import { accountSentences, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
@@ -99,7 +99,9 @@ export function holdFilledSlots(input: {
   if (slotsOn && place.kind === "one") locationId = place.salon.id;
   if (slotsOn && place.kind === "unknown" && !namedSalon) locationId = null;
   // "prior = manual ack 9/01" dates the prior step, not this form.
-  const dateQuestion = fixed ? withoutPriorList(input.question) : input.question;
+  // The intent read's "It happened on …" sentence is the stored date, not the
+  // manager's edit: "change the date to 10/22" is read from their own words.
+  const dateQuestion = fixed ? withoutPriorList(withoutStateLead(input.question)) : input.question;
   const formDate = codeSlotsEnabled()
     ? explicitIncidentIso(dateQuestion, input.today) ?? previous?.formDate ?? proposal.formDate ?? null
     : keptDate(dateQuestion, input.today, proposal.formDate ?? null, previous?.formDate ?? null);

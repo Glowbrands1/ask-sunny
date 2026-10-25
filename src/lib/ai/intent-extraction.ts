@@ -20,7 +20,7 @@ import {
   INTENT_TOOL_INPUT_SCHEMA,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
-import { priorShorthand } from "./remap-incident";
+import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -46,7 +46,10 @@ export async function applyIntentExtraction(input: {
 }): Promise<{ request: AskRequest; clarification: AskResponse | null; formTurn: boolean }> {
   if (!intentExtractionEnabled()) return { request: input.request, clarification: null, formTurn: false };
   try {
-    const saved = await readSaved(input.actor.subject, input.request.conversationId);
+    // REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident
+    // is a new form, so the old form's stored slots are not carried onto it.
+    const newForm = remapIncidentFixEnabled() && startsNewForm(input.request.history, input.request.question);
+    const saved = newForm ? null : await readSaved(input.actor.subject, input.request.conversationId);
     const [people, manual, templates] = await Promise.all([
       loadPeople(input.actor),
       loadManualIndex(input.request.scopeId),
@@ -75,7 +78,9 @@ export async function applyIntentExtraction(input: {
     const decision = decideIntentTurn({
       question: fixed ? priorShorthand(input.request.question) : input.request.question,
       history: fixed
-        ? input.request.history.map((turn) => (turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn))
+        ? requestScopedHistory(input.request.history, input.request.question).map((turn) =>
+            turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn,
+          )
         : input.request.history,
       today: input.request.context.todayIso,
       saved,

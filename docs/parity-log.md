@@ -895,3 +895,12 @@ line of `intent-slots.ts`. They stay Sunny-only: Ask Bubbles has no
 `keep-filled-slots.ts` or `form-card-slots.ts`, and its live form path is the
 remap path, which is fixed there. Tests: `src/lib/ai/remap-incident-oct24.test.ts`
 in both apps.
+
+Follow-up (Ask Bubbles QA step 3 and C-list, 25 Oct 2026): the remap path
+gets the same per-turn What happened, new-request reset, bare-yes rule,
+manager-only action plan and "as you said" guard. On the intent path, behind
+the same flag, the Observation of Offense skips edit, command and complaint
+turns and starts at a later create request with its own incident; that
+request also starts the proposal's history and the intent read's stored
+slots afresh, and a date edit ("change the date to 10/22") is read from the
+manager's words, not the intent read's "It happened on …" sentence.

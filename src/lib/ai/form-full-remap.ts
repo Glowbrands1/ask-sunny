@@ -14,6 +14,9 @@ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
 import type { AskResponse } from "./types";
 import {
+  currentRequestStart,
+  isAmbiguousAnswer,
+  isEditTurn,
   isRequestLeftover,
   mergePriorActions,
   namedPolicy,
@@ -22,7 +25,11 @@ import {
   remapManualHeadings,
   remapManualSections,
   remapPolicyLine,
+  placeSpans,
   requestIncident,
+  saidInWords,
+  statedActionPlan,
+  withoutAmbiguousAnswers,
   withoutPriorList,
   withoutStateCodes,
   type RemapManual,
@@ -134,21 +141,27 @@ export function groundFormSlots(input: {
     (isTemplate(raw.templateKey) ? raw.templateKey : null);
   const employeeName = groundedName(raw.employeeName, users);
   const jobTitle = groundedTitle(fixed ? users.map(withoutStateCodes) : users);
-  const store = groundedStore(said);
+  const store = groundedStore(said) ?? (fixed ? placeStore(said) : null);
   const incidentDateIso = groundedDate(said, input.today);
   const warningLevel = explicitWarning(users);
-  const payrollDeduct = payrollDeductFromConversation(conversation);
+  // A bare "Yes" after a list of questions answers none of them (REMAP_INCIDENT_FIX_ENABLED).
+  const payrollDeduct = payrollDeductFromConversation(fixed ? withoutAmbiguousAnswers(conversation) : conversation);
   const payrollAmount = payrollDeduct === "yes" ? managerPayrollAmount(said) : null;
-  const named = fixed ? namedPolicy(withoutPriorList(said)) : null;
+  // A later create request with its own incident starts a new form: What
+  // happened, the policy, the prior actions and the plan are read from there.
+  const start = fixed ? currentRequestStart({ turns: users, employeeName, slotClause }) : 0;
+  const scoped = users.slice(start).join("\n");
+  const named = fixed ? namedPolicy(withoutPriorList(scoped)) : null;
   const policySection = fixed ? named : groundedPolicy(said);
   const observation = fixed
-    ? (requestIncident({ text: said, employeeName, slotClause }) ??
-      (isRequestLeftover(raw.observation, employeeName) ? null : acceptSummary(raw.observation, said)))
+    ? (requestIncident({ text: scoped, employeeName, slotClause }) ??
+      (isRequestLeftover(raw.observation, employeeName) ? null : acceptSummary(raw.observation, scoped)))
     : (statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said));
   const priorActions = fixed ? mergePriorActions(statedPrior(said), priorListActions(said)) : statedPrior(said);
   const incidentTime = statedTime(said);
-  const plan = acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
-  const actionPlan = fixed && isRequestLeftover(plan, employeeName) ? null : plan;
+  // The action plan is the manager's, or blank. The model's summary and
+  // "previous coaching …" are not a plan.
+  const actionPlan = fixed ? statedActionPlan(scoped) : acceptSummary(stripMoney(raw.actionPlan ?? ""), said);
   const closeMatchNote = employeeName ? closeNote(employeeName, input.people) : null;
 
   const read: FormRemapSlots = {
@@ -168,12 +181,12 @@ export function groundFormSlots(input: {
     actionPlan,
     closeMatchNote,
   };
-  const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName) : (input.saved ?? null);
+  const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName, start > 0) : (input.saved ?? null);
   let slots = finishSlots(mergeSlots(read, saved), said);
   const sections =
     fixed && input.manual
       ? remapManualSections({
-          said,
+          said: scoped,
           chunks: input.manual.chunks,
           incident: slots.observation,
           modelHeading: raw.policySection,
@@ -182,8 +195,20 @@ export function groundFormSlots(input: {
   if (fixed) slots = { ...slots, policySection: named ?? sections[0]?.heading ?? null };
 
   const assistants = conversation.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
+  // An ambiguous "Yes" answered nothing, so the questions before it are asked again.
+  if (fixed && isAmbiguousAnswer(conversation, conversation.length - 1)) assistants.pop();
   const questions = questionsFor(slots, assistants);
-  const content = renderReply(slots, questions, fixed ? { policyLine: remapPolicyLine(named, sections) } : null);
+  const content = renderReply(
+    slots,
+    questions,
+    fixed
+      ? {
+          policyLine: remapPolicyLine(named, sections),
+          storeSaid: slots.store ? saidInWords(slots.store, said) : false,
+          titleSaid: slots.jobTitle ? saidInWords(slots.jobTitle, said) : false,
+        }
+      : null,
+  );
   const response: AskResponse = {
     content,
     citations: fixed && input.manual ? remapCitations(input.manual, sections) : [],
@@ -490,7 +515,9 @@ function calendarPhrase(phrase: string): boolean {
 function dateIsPrior(text: string, index: number): boolean {
   const before = text.slice(Math.max(0, index - 80), index);
   const clause = before.slice(Math.max(before.search(/[^.;\n]*$/), 0));
-  return /\b(?:prior|previous|coached\s+on|manual\s+ack|already|got|received)\b/i.test(clause);
+  if (/\b(?:prior|previous|coached\s+on|manual\s+ack|already|got|received)\b/i.test(clause)) return true;
+  // REMAP_INCIDENT_FIX_ENABLED: "jba manual 11-1-25" dates the manual acknowledgement, not this form.
+  return remapIncidentFixEnabled() && /\b(?:jba\s+(?:policy\s+)?manual|policy\s+manual)\b/i.test(clause);
 }
 
 function explicitWarning(turns: readonly string[]): "verbal" | "written" | null {
@@ -759,15 +786,35 @@ const SLOT_KEYS = [
   "closeMatchNote",
 ] as const satisfies readonly (keyof FormRemapSlots)[];
 
-/** A saved What happened or action plan that was only the request is not kept. */
-function withoutLeftovers(saved: Partial<FormRemapSlots> | null, employeeName: string | null): Partial<FormRemapSlots> | null {
+/**
+ * A saved What happened that was only the request or an edit ("change the
+ * date to", "name is", "show draft") is not kept, and neither is a saved
+ * action plan: the plan is read from the manager's words each turn. A new
+ * request drops the old form's incident and policy.
+ */
+function withoutLeftovers(
+  saved: Partial<FormRemapSlots> | null,
+  employeeName: string | null,
+  newRequest: boolean,
+): Partial<FormRemapSlots> | null {
   if (!saved) return saved;
   const name = employeeName ?? saved.employeeName ?? null;
+  const observation = saved.observation ?? null;
+  const leftover =
+    !observation || isRequestLeftover(observation, name) || isEditTurn(observation) || /^it\s+happened\b/i.test(observation);
   return {
     ...saved,
-    observation: isRequestLeftover(saved.observation, name) ? null : saved.observation,
-    actionPlan: isRequestLeftover(saved.actionPlan, name) ? null : saved.actionPlan,
+    observation: newRequest || leftover ? null : observation,
+    actionPlan: null,
+    ...(newRequest ? { policySection: null } : {}),
   };
+}
+
+/** The capitalized place after "at", read alone: "at Grand Island used her cell phone". */
+function placeStore(text: string): { id: string; name: string } | null {
+  let found: { id: string; name: string } | null = null;
+  for (const span of placeSpans(text)) found = groundedStore(span) ?? found;
+  return found;
 }
 
 /** A later value replaces the same field. A blank read leaves the saved one. */
@@ -811,7 +858,7 @@ function questionsFor(slots: FormRemapSlots, assistants: readonly string[]): str
 function renderReply(
   slots: FormRemapSlots,
   questions: readonly string[],
-  fixed: { readonly policyLine: string | null } | null = null,
+  fixed: { readonly policyLine: string | null; readonly storeSaid: boolean; readonly titleSaid: boolean } | null = null,
 ): string {
   const lines: string[] = [];
   if (slots.templateKey) {
@@ -819,8 +866,10 @@ function renderReply(
     lines.push(`Here is the ${name}.`);
   }
   if (slots.employeeName) lines.push(`**Employee:** ${slots.employeeName}`);
-  if (slots.jobTitle) lines.push(`**Job title:** ${slots.jobTitle}, as you said`);
-  if (slots.store) lines.push(`**Salon:** ${slots.store}, as you said`);
+  const saidTitle = !fixed || fixed.titleSaid ? ", as you said" : "";
+  const saidStore = !fixed || fixed.storeSaid ? ", as you said" : "";
+  if (slots.jobTitle) lines.push(`**Job title:** ${slots.jobTitle}${saidTitle}`);
+  if (slots.store) lines.push(`**Salon:** ${slots.store}${saidStore}`);
   if (slots.incidentDateIso) lines.push(`**Date:** ${slots.incidentDateIso}`);
   if (slots.incidentTime) lines.push(`**Time:** ${slots.incidentTime}`);
   if (slots.observation) lines.push(`**What happened:** ${slots.observation}`);
