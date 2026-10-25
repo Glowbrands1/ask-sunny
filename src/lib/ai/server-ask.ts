@@ -16,6 +16,7 @@ import {
   secondFormEnabled,
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
+  followupNewTopicRetrievalEnabled,
   retrievalRecallEnabled,
   promptCacheEnabled,
   currentManualScopeEnabled,
@@ -27,10 +28,13 @@ import {
   slotRetentionEnabled,
   manualTopicPinEnabled,
   fullManualContextEnabled,
+  frameworkGeneralSectionsEnabled,
+  reformatKeepsSourcesEnabled,
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
   manualNegatedListNoteEnabled,
   remapIncidentFixEnabled,
+  questionNotFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -119,6 +123,7 @@ import { understandFormTurn } from "./form-tool-understand";
 import { attachFormTurnSources, statedManualHeading } from "./form-card-slots";
 import { prepareProposalQuestion } from "./proposal-question";
 import { applyIntentExtraction } from "./intent-extraction";
+import { isQuestionNotForm } from "./question-not-form";
 import { promoteSeparateForm } from "./second-form";
 import { fewShotBlock } from "./few-shot-examples";
 import { rewriteToManualTerms } from "./query-rewrite-claude";
@@ -133,10 +138,12 @@ import {
   type AssembledManual,
 } from "./full-manual-context";
 import { loadFullManualContext } from "./full-manual-load";
+import { earlierAnsweredTurn, isReformatTurn, keepEarlierSources } from "./reformat-turn";
 import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
 import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
+import { followUpOwnQuery } from "./query-rewrite";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -151,12 +158,14 @@ import {
   buildSystemPrompt,
   extractUsedMarkers,
   stripMarkers,
+  isCoachingFrameworkTitle,
   type GroundingChunk,
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import type { AskRequest, AskResponse } from "./types";
+import { keepManagerActionPlan } from "./manager-action-plan-reply";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -254,11 +263,12 @@ export async function answerQuestion(
   const produce = async () => {
     const response = await answerQuestionUntraced(request, actor, memory);
     noteTraceOutcome(response);
-    return applyQuietQuality(response);
+    // Last on every path, after the reply check too: the Action Plan is the manager's or none.
+    return keepManagerActionPlan(await applyQuietQuality(response), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
-    return guardReply(await produce(), { request, actor });
+    return keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request);
   }
   const draft = openChatTrace({
     conversationId: request.conversationId,
@@ -271,7 +281,7 @@ export async function answerQuestion(
   });
   const response = await finishChatTrace(draft, produce);
   if (!selfCheckEnabled()) return response;
-  return guardReply(response, { request, actor });
+  return keepManagerActionPlan(await guardReply(response, { request, actor }), request);
 }
 
 /** A manager manual or another brand. Not a Sun Tan City policy source. */
@@ -326,8 +336,20 @@ async function answerQuestionUntraced(
    * agrees, and a question goes out only for what is still missing.
    */
   const managerQuestion = request.question;
+  /*
+   * A QUESTION IS NEVER A FORM TURN (P0, live replay 25 Oct 2026). After an
+   * answer that offered "a coaching form or a policy review", the slot reader
+   * grounded those forms from the offer, and the next policy question came
+   * back as "Which form did you mean?" or "Who is this Corrective Action Form
+   * for?". A question skips the slot reader, the remap and the proposal and is
+   * answered; an inventory question is still answered from the library, and
+   * an open card is left as it was. A create or edit request, however it is
+   * phrased, is not a question. See `question-not-form.ts`. Behind
+   * QUESTION_NOT_FORM_ENABLED; off, every turn is routed as before.
+   */
+  const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(request.question, request.history);
   let intentForm = false;
-  if (intentExtractionEnabled()) {
+  if (intentExtractionEnabled() && !askedQuestion) {
     const prepared = await applyIntentExtraction({ request, actor });
     // A numbered choice (two people, two salons) still asks. The "I still
     // need …" list does not: it replaced the proposal card on every live
@@ -600,6 +622,7 @@ async function answerQuestionUntraced(
     if (inventoryAnswer) return inventoryAnswer;
 
     if (
+      !askedQuestion &&
       formFullRemapEnabled() &&
       remapShouldRun({
         question: request.question,
@@ -655,7 +678,7 @@ async function answerQuestionUntraced(
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
-    const proposal = await deliverFormProposal({
+    const proposal = askedQuestion ? null : await deliverFormProposal({
       request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
       question: withPriorShorthand(
@@ -748,7 +771,8 @@ async function answerQuestionUntraced(
    * A tool failure returns null and this falls through to retrieval.
    */
   if (formToolsEnabled() && !formsTurn) {
-    const understood = await understandFormTurn({
+    // A question is answered, never read as a form command (`question-not-form.ts`).
+    const understood = askedQuestion ? null : await understandFormTurn({
       question: request.question,
       history: request.history,
       today: request.context.todayIso,
@@ -1147,7 +1171,7 @@ async function answerQuestionUntraced(
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
   const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
-  const query = queryRewriteEnabled() && !slotTopic
+  const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
         history: request.history,
@@ -1155,6 +1179,20 @@ async function answerQuestionUntraced(
         scopeId: request.scopeId,
       })
     : followedUp;
+  /*
+   * FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED: a follow-up that names documents of
+   * its own is searched on them when the rewrite kept only the earlier
+   * subject (QA Round 17, conv_mvo0ayai2x20aiy). See `followUpOwnQuery`.
+   */
+  const query =
+    followupNewTopicRetrievalEnabled() && !slotTopic
+      ? followUpOwnQuery({
+          question: request.question,
+          history: request.history,
+          rewritten,
+          ownWords: queryRewriteEnabled() ? expandGlossaryQuery(followedUp) : followedUp,
+        })
+      : rewritten;
   const searched = expandPolicyQuery(query);
   updateChatTrace({
     rewrittenQuery: searched === request.question ? null : searched,
@@ -1187,16 +1225,17 @@ async function answerQuestionUntraced(
     rows = [];
   } else {
     try {
-      rows = retrievalRecallEnabled()
+      const search = async (searchedQuery: string) =>
+        retrievalRecallEnabled()
         ? await matchRecallKnowledge({
-            query: searched,
+            query: searchedQuery,
             scopeId: request.scopeId,
             limit: fetchLimit,
             question: request.question,
           })
         : hybridSearchEnabled()
           ? await matchHybridKnowledge({
-              query: searched,
+              query: searchedQuery,
               scopeId: request.scopeId,
               limit: fetchLimit,
             })
@@ -1207,7 +1246,7 @@ async function answerQuestionUntraced(
              * searched on its own words, exactly as before. Hybrid search and the
              * Haiku rewrite run only when their flags are on.
              */
-            query: searched,
+            query: searchedQuery,
             scopeId: request.scopeId,
             /*
              * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
@@ -1217,6 +1256,25 @@ async function answerQuestionUntraced(
              */
             limit: fetchLimit,
           });
+      rows = await search(searched);
+      /*
+       * A REFORMAT TURN KEEPS THE SOURCES OF THE ANSWER IT REFORMATS
+       * (REFORMAT_KEEPS_SOURCES_ENABLED). "Make this a downloadable document"
+       * is searched again with the question that answer was written for, and
+       * those rows go first, so the model is not left "correcting" claims whose
+       * sources it can no longer see (conv_mufp73ez8pl7992). See
+       * `reformat-turn.ts`.
+       */
+      const earlier =
+        reformatKeepsSourcesEnabled() && isReformatTurn(request.question, request.history)
+          ? earlierAnsweredTurn(request.history)
+          : null;
+      if (earlier) {
+        const earlierQuery = expandPolicyQuery(
+          retrievalQueryFor({ question: earlier.question, history: earlier.history }),
+        );
+        rows = keepEarlierSources(await search(earlierQuery), rows, fetchLimit);
+      }
     } catch (error) {
       if (error instanceof MissingConfigurationError) {
         throw new AiError("not_configured", error.message, 503, error.missing);
@@ -1504,6 +1562,16 @@ async function answerQuestionUntraced(
     ...(crossChatGuard ? { crossChatGuard: true } : {}),
     policyManualNote: fullManualBlock ? null : policyManualNote,
     citeManualPages: fullManualBlock !== null,
+    /*
+     * FRAMEWORK_GENERAL_SECTIONS_ENABLED, and only where the framework is a
+     * marked source: an issue it does not name is still covered by its
+     * general sections. See `FRAMEWORK_GENERAL_SECTIONS_RULE`.
+     */
+    ...(frameworkGeneralSectionsEnabled() &&
+    fullManualBlock === null &&
+    grounding.some((chunk) => isCoachingFrameworkTitle(chunk.documentTitle))
+      ? { frameworkGeneralSections: true }
+      : {}),
     /* Read from the instance by the route, never from the body. */
     openForm: request.openForm ?? null,
     /*
@@ -1645,7 +1713,7 @@ async function answerQuestionUntraced(
    * retrieved excerpts "the sources you shared" has that clause rewritten,
    * unless the manager pasted something. See `sources-not-shared.ts`.
    */
-  const prose = withoutSharedSourceClaims(stripMarkers(spoken), {
+  const prose = withoutSharedSourceClaims(stripMarkers(spoken, { tidy: reformatKeepsSourcesEnabled() }), {
     question: request.question,
     history: request.history,
     attachedDocumentIds: request.attachedDocumentIds,

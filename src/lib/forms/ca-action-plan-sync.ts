@@ -1,6 +1,6 @@
 import "server-only";
 
-import { actionPlanSentencesEnabled } from "@/lib/config/chat-quality-flags";
+import { actionPlanManagerOnlyEnabled, actionPlanSentencesEnabled } from "@/lib/config/chat-quality-flags";
 
 import { collapseToTwoSentences } from "./action-plan-sentences";
 import { refreshedActionPlan } from "./ca-action-plan";
@@ -22,6 +22,8 @@ export async function syncCorrectiveActionPlan(
   actorId: string,
   options: { notes?: string; loaded?: LoadedInstance; checked?: Record<string, string[]> } = {},
 ): Promise<string[]> {
+  // Manager-only: no plan is built, so none is rebuilt either.
+  if (actionPlanManagerOnlyEnabled()) return [];
   const loaded = options.loaded ?? (await loadInstance(instanceId));
   if (!loaded || loaded.instance.status !== "draft") return [];
   const saved = options.checked ?? {};

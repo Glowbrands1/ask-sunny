@@ -25,6 +25,8 @@ import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types
 import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
+import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
+
 import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
 import { FormRevisionsMount } from "@/form-revisions/form-revisions-mount";
@@ -391,6 +393,12 @@ function FormProposalCard({
    */
   const [created, setCreated] = React.useState<ChatFormInstanceRef | null>(null);
   /*
+   * CREATE REOPENED THIS CHAT'S OPEN DRAFT (DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED):
+   * its date, said on the card so the manager knows no new draft was filed.
+   * The server sends it only with the flag on.
+   */
+  const [reusedFrom, setReusedFrom] = React.useState<string | null>(null);
+  /*
    * WHICH SALON, WHEN THE ACTOR COVERS SEVERAL.
    *
    * Ids, not names: there is no salon roster, and the only source of a display
@@ -517,6 +525,7 @@ function FormProposalCard({
        * what appears is what the server stored rather than what the drafting
        * response happened to return.
        */
+      if (result.reusedFrom) setReusedFrom(result.reusedFrom);
       if (result.draftWarning) {
         /*
          * THE ROW EXISTS AND THE PREFILL DID NOT. Said on the card, and said in
@@ -577,6 +586,12 @@ function FormProposalCard({
     </p>
   ) : null;
 
+  const reusedNote = reusedFrom ? (
+    <p data-testid="reused-draft-note" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+      {reusedDraftNotice(reusedFrom)}
+    </p>
+  ) : null;
+
   const reference = instanceRef ?? created;
   const replaced = (next: ChatFormInstanceRef) => {
     setCreated(next);
@@ -585,6 +600,7 @@ function FormProposalCard({
   if (reference) {
     return (
       <>
+        {reusedNote}
         <FormRevisionsMount reference={reference} onReplaced={replaced}>
           <InlineForm
             reference={reference}

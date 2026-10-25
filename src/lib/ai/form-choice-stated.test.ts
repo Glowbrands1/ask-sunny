@@ -471,4 +471,23 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
       expect(out.sources?.citations.map((citation) => citation.locator)).toEqual(["Page 14"]);
     });
   });
+
+  /*
+   * NAMED_FORM_EXACT_ENABLED (PR 201) with FORM_CHOICE_STATED off: a form the
+   * manager named is kept only as itself, so the saved or model-read
+   * Corrective Action Form does not stand in for it.
+   */
+  describe("NAMED_FORM_EXACT_ENABLED on, FORM_CHOICE_STATED off", () => {
+    it("conv_mvmw1ccu2t7y3bi: \"create coaching form …\" on T3–T5 is the Coaching Form", async () => {
+      vi.stubEnv("NAMED_FORM_EXACT_ENABLED", "true");
+      const { keys } = await replay(PERFORMANCE_TURNS, PERFORMANCE_REPLIES);
+      expect(keys).toEqual(["dpoa", "dpoa", "coaching", "coaching", "coaching"]);
+    });
+
+    it('conv_mvmyba3d2ojmzuf: "Create a Policy Review" is the Policy Review', async () => {
+      vi.stubEnv("NAMED_FORM_EXACT_ENABLED", "true");
+      const { keys } = await replay(POLICY_REVIEW_TURNS, [CELL_PHONE_REPLY]);
+      expect(keys[1]).toBe("policy-review");
+    });
+  });
 });
