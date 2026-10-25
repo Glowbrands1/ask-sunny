@@ -1,3 +1,4 @@
+import { salonById } from "@/data/salons";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
@@ -7,6 +8,7 @@ import {
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
+import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -466,7 +468,11 @@ export function withoutStateCodes(text: string): string {
  * ("It happened at …", "Policy reference: …") are not the account. The rest
  * of each sentence stays in the manager's words, dates included.
  */
-export function accountSentences(turns: readonly string[], employeeName: string | null): string[] {
+export function accountSentences(
+  turns: readonly string[],
+  employeeName: string | null,
+  options: { readonly managerOnly?: boolean } = {},
+): string[] {
   const kept: string[] = [];
   // A later create request with its own incident is a new form; an edit or a
   // command turn ("change the date to 10-22", "show draft") is not an account.
@@ -482,6 +488,9 @@ export function accountSentences(turns: readonly string[], employeeName: string 
         .split(",")
         .map((part) => part.trim())
         .filter((part) => part && !accountSlot(part))
+        // MANAGER_WORDS_ONLY_ENABLED: a clause that only names or places them goes (QA, 25 Oct 2026).
+        .filter((part) => !(options.managerOnly && onlyWhoOrWhere(part, employeeName)))
+        .map((part) => (options.managerOnly ? withoutPlace(part) : part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
       const joined = parts.join(", ").trim();
@@ -522,6 +531,110 @@ function accountPart(part: string, employeeName: string | null): string | null {
   const title = titleAfterJobTitleLabel(text) ?? extractJobTitle(text);
   if (title && title.toLowerCase() === text.toLowerCase()) return null;
   return text;
+}
+
+/**
+ * MANAGER_WORDS_ONLY_ENABLED (QA, 25 Oct 2026; the rule Ask Bubbles applies
+ * on either reader): What happened is the manager's sentence without the
+ * clauses that only request the form, name the employee or give their place
+ * (the salon, or a job title at a place). Everything else stays word for word:
+ * "She opened the salon late at NE Grand Island" is "She opened the salon
+ * late"; "create a CA form for ima employee, tan consultant at manhattan, for
+ * opening salon late on 9-28-26" is "opening salon late on 9-28-26". Empty
+ * when nothing is left.
+ */
+export function managerAccount(sentence: string, employeeName: string | null): string {
+  const end = /[.!?]+$/.exec(sentence.trim())?.[0] ?? "";
+  const body = sentence.trim().slice(0, sentence.trim().length - end.length);
+  const kept: string[] = [];
+  let requested = false;
+  for (const clause of body.split(",")) {
+    let text = clause.trim();
+    if (!text) continue;
+    if (REQUEST_LEAD.test(text) || LEVEL_REQUEST.test(text)) {
+      requested = true;
+      text = text.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").replace(/\s+/g, " ").trim();
+      // "create a CA form so I can document": the rest of a request is not the account.
+      if (!text || /^(?:so|to|with|from|because|now)\b/i.test(text)) continue;
+      if (onlyNamesThem(text, employeeName) || /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) continue;
+    }
+    if (onlyWhoOrWhere(text, employeeName)) continue;
+    text = withoutPlace(text);
+    // The "for" the dropped request left: "… for opening salon late".
+    if (requested) text = text.replace(/^(?:for|about|regarding)\s+/i, "");
+    if (text) kept.push(text);
+  }
+  const account = kept.join(", ");
+  return account ? `${account}${end}` : "";
+}
+
+/**
+ * "Her name is Test Employee", "Test Employee works at NE Kearney", "tan
+ * consultant at manhattan", "NE Grand Island location": who and where, not
+ * what happened.
+ */
+function onlyWhoOrWhere(clause: string, employeeName: string | null): boolean {
+  const text = clause.trim().replace(/[.!?]+$/, "");
+  if (!text) return false;
+  if (/^(?:(?:her|his|their|the employee'?s|employee'?s?)\s+)?(?:full\s+)?name\s+is\b/i.test(text)) return true;
+  if (
+    /^(?:[A-Za-z'’-]+(?:\s+[A-Za-z'’-]+)?\s+)?(?:works|worked|is based|is assigned|is working)\s+(?:at|in|out of|from)\s+(?:the\s+)?[^.!?]{1,40}$/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (onlyNamesThem(text, employeeName) || isPlaceOnly(text)) return true;
+  const unplaced = withoutPlace(text);
+  if (unplaced === text) return false;
+  // A place was named: what is left is only the person or their job title.
+  const rest = employeeName ? unplaced.replace(new RegExp(escape(employeeName), "ig"), " ").trim() : unplaced;
+  if (!rest) return true;
+  const words = rest.replace(/^(?:a|an|the|our)\s+/i, "").split(/\s+/);
+  if (words.length > 4 || /\b(?:was|is|did|had|has|not)\b/i.test(rest)) return false;
+  return Boolean(titleAfterJobTitleLabel(rest) ?? extractJobTitle(rest)) || TITLE_HEAD.test(rest);
+}
+
+/** "tan consultant", "assistant manager": the last word is a job. */
+const TITLE_HEAD = /\b(?:managers?|directors?|consultants?|supervisors?|leads?|trainers?|coordinators?|specialists?)$/i;
+
+function onlyNamesThem(text: string, employeeName: string | null): boolean {
+  if (!employeeName) return false;
+  const rest = text
+    .replace(new RegExp(escape(employeeName), "ig"), " ")
+    .replace(/\b(?:for|employee|team\s+member)\b/gi, " ")
+    .trim();
+  return rest === "" && text.trim() !== "";
+}
+
+const PLACE_FILLER = new Set(["the", "salon", "location", "store", "our"]);
+
+/** Every word is the salon's own name ("manhattan", "the NE Grand Island location"). */
+function isPlaceOnly(text: string): boolean {
+  const ids = [...new Set(readSalonMentions(`at ${text}`).flatMap((mention) => mention.salonIds))];
+  if (ids.length === 0) return false;
+  const salonWords = new Set(
+    ids.flatMap((id) => (salonById(id)?.name ?? "").toLowerCase().split(/[^a-z0-9]+/)).filter(Boolean),
+  );
+  const words = text.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
+  return words.length > 0 && words.every((word) => salonWords.has(word) || PLACE_FILLER.has(word));
+}
+
+/** "at NE Grand Island", "at manhattan": the salon, taken out of the clause. */
+function withoutPlace(clause: string): string {
+  const words = clause.trim().split(/\s+/);
+  for (let index = 0; index < words.length - 1; index += 1) {
+    if (!/^(?:at|in)$/i.test(words[index]!)) continue;
+    for (let length = Math.min(6, words.length - index - 1); length >= 1; length -= 1) {
+      const phrase = words.slice(index + 1, index + 1 + length).join(" ");
+      const bare = phrase.replace(/[.!?]+$/, "");
+      if (!isPlaceOnly(bare)) continue;
+      const tail = phrase.slice(bare.length);
+      const rest = [...words.slice(0, index), ...words.slice(index + 1 + length)].join(" ");
+      return withoutPlace(`${rest}${tail}`.trim());
+    }
+  }
+  return clause.trim();
 }
 
 /**
