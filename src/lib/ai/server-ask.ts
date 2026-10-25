@@ -119,6 +119,7 @@ import { understandFormTurn } from "./form-tool-understand";
 import { attachFormTurnSources, statedManualHeading } from "./form-card-slots";
 import { prepareProposalQuestion } from "./proposal-question";
 import { applyIntentExtraction } from "./intent-extraction";
+import { isQuestionNotForm } from "./question-not-form";
 import { promoteSeparateForm } from "./second-form";
 import { fewShotBlock } from "./few-shot-examples";
 import { rewriteToManualTerms } from "./query-rewrite-claude";
@@ -326,8 +327,19 @@ async function answerQuestionUntraced(
    * agrees, and a question goes out only for what is still missing.
    */
   const managerQuestion = request.question;
+  /*
+   * A QUESTION IS NEVER A FORM TURN (P0, live replay 25 Oct 2026). After an
+   * answer that offered "a coaching form or a policy review", the slot reader
+   * grounded those forms from the offer, and the next policy question came
+   * back as "Which form did you mean?" or "Who is this Corrective Action Form
+   * for?". A question skips the slot reader, the remap and the proposal and is
+   * answered; an inventory question is still answered from the library, and
+   * an open card is left as it was. A create or edit request, however it is
+   * phrased, is not a question. See `question-not-form.ts`.
+   */
+  const askedQuestion = isQuestionNotForm(request.question, request.history);
   let intentForm = false;
-  if (intentExtractionEnabled()) {
+  if (intentExtractionEnabled() && !askedQuestion) {
     const prepared = await applyIntentExtraction({ request, actor });
     // A numbered choice (two people, two salons) still asks. The "I still
     // need …" list does not: it replaced the proposal card on every live
@@ -600,6 +612,7 @@ async function answerQuestionUntraced(
     if (inventoryAnswer) return inventoryAnswer;
 
     if (
+      !askedQuestion &&
       formFullRemapEnabled() &&
       remapShouldRun({
         question: request.question,
@@ -655,7 +668,7 @@ async function answerQuestionUntraced(
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
     const readManual = () => (manualRead ??= knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId));
-    const proposal = await deliverFormProposal({
+    const proposal = askedQuestion ? null : await deliverFormProposal({
       request: remapIncidentFixEnabled() ? { ...request, history: formHistory() } : request,
       actor,
       question: withPriorShorthand(
@@ -748,7 +761,8 @@ async function answerQuestionUntraced(
    * A tool failure returns null and this falls through to retrieval.
    */
   if (formToolsEnabled() && !formsTurn) {
-    const understood = await understandFormTurn({
+    // A question is answered, never read as a form command (`question-not-form.ts`).
+    const understood = askedQuestion ? null : await understandFormTurn({
       question: request.question,
       history: request.history,
       today: request.context.todayIso,
