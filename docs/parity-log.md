@@ -1,5 +1,18 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 24 Oct 2026: the model's raw answer on chat_traces — ported to Ask Bubbles
+
+`CHAT_TRACE_RAW_ANSWER_ENABLED` stays off. On, with `CHAT_TRACE_ENABLED`
+also on, the chat_traces row stores `raw_answer`: the answer call's text as
+the model returned it, before `applyFullManualAnswer` and marker stripping,
+first 20,000 characters. chat_messages still keeps only the processed text.
+Off, the insert does not name `raw_answer`, so the app works before
+`supabase/migrations/20261024200000_chat_traces_raw_answer.sql` is applied.
+Apply that file before turning the flag on. `chat_traces_live` is not
+changed: it lists named columns and leaves out the long text columns.
+
+**Sibling app: ported.** Ask Bubbles branch `feat/raw-answer-bubbles`, same
+flag and column name, and the same 20,000-character cap.
 ## 24 Oct 2026: the app's own lines are not the manager's words — Sunny-only
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation

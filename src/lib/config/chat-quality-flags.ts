@@ -383,6 +383,17 @@ export function formFullRemapEnabled(): boolean {
 }
 
 /**
+ * Store the answer call's raw model text on the chat_traces row, before any
+ * citation check or post-processing, capped at 20,000 characters. Needs
+ * CHAT_TRACE_ENABLED too. Off, the insert does not name raw_answer, so it
+ * works before supabase/migrations/20261024200000_chat_traces_raw_answer.sql
+ * is applied.
+ */
+export function chatTraceRawAnswerEnabled(): boolean {
+  return envFlag("CHAT_TRACE_RAW_ANSWER_ENABLED");
+}
+
+/**
  * The warning level kept for a Corrective Action is only one the manager
  * stated: read from their own turns, never from Ask Sunny's ("You'll set the
  * verbal/written warning level" is not "written"), never from the slot

@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { chatTraceRawAnswerEnabled } from "@/lib/config/chat-quality-flags";
+
 import type { ErrorSubtype, ModelCallSnapshot } from "./model-failure";
 
 /**
@@ -43,6 +45,11 @@ export interface ChatTraceDraft {
     outputTokens: number | null;
     slots: Record<string, unknown>;
   } | null;
+  /**
+   * The answer call's text exactly as the model returned it, before citation
+   * checks. Set only when CHAT_TRACE_RAW_ANSWER_ENABLED is on.
+   */
+  rawAnswer?: string;
 }
 
 const storage = new AsyncLocalStorage<ChatTraceDraft>();
@@ -77,4 +84,19 @@ export function updateChatTrace(patch: Partial<ChatTraceDraft>): void {
 
 export function chatTraceDraft(): ChatTraceDraft | undefined {
   return storage.getStore();
+}
+
+/** The most raw answer text a trace row keeps. */
+export const RAW_ANSWER_MAX_CHARS = 20_000;
+
+/**
+ * Keep the model's text for the answer call, before any citation check or
+ * rewrite, so a citation bug can be replayed from what the model wrote.
+ * Does nothing unless a trace is open and CHAT_TRACE_RAW_ANSWER_ENABLED is on.
+ */
+export function noteRawAnswer(text: string): void {
+  if (!chatTraceRawAnswerEnabled()) return;
+  const draft = storage.getStore();
+  if (!draft) return;
+  draft.rawAnswer = text.slice(0, RAW_ANSWER_MAX_CHARS);
 }
