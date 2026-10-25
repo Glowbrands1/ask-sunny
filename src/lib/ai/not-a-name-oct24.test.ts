@@ -261,7 +261,8 @@ async function converse(
       {
         question,
         mode: "standard",
-        history: [...history],
+        // The route keeps the last 20 turns (`LIMITS.historyTurns`).
+        history: history.slice(-20),
         scopeId: "stc-core",
         questionMessageId: `msg-${run}-${index}`,
         conversationId,
@@ -668,24 +669,53 @@ describe("QA L23: the exit form is for the person the manager typed", { timeout:
   });
 
   /*
-   * The same rule for any name: one the state holds but the manager never
-   * typed (here a synthetic "Pat Example", saved before the guard) is not
-   * kept, and is not carried from the previous card either.
+   * The same rule for any name: one the state holds and an assistant reply in
+   * the window says, but the manager never typed (a synthetic "Pat Example",
+   * saved before the guard), is not kept, and is not carried from the card.
    */
-  it("any saved name the manager never typed is dropped, and the typed one replaces it", async () => {
+  it("a saved name that came from a reply is dropped, and the typed one replaces it", async () => {
     bag.forms.set(`manager-not-a-name:conv-not-a-name-${run + 1}`, {
       ...EMPTY_FORM_STATE,
       employeeName: "Pat Example",
       templateKey: "stc-exit",
     });
+    const turns = await converse(
+      [
+        "who fills in the exit paperwork?",
+        "assist with creating an exit form",
+        "test employee, tanning consultant at shawnee",
+        "create exit form",
+      ],
+      { 0: "The salon director fills it in. I can start the Resignation/Exit Form for Pat Example whenever you're ready." },
+    );
+    for (const turn of turns.slice(1)) expect(turn.content, turn.question).not.toContain("Pat Example");
+    expect(turns[1]!.employeeName).toBeNull();
+    for (const turn of turns.slice(2)) expect(turn.employeeName, turn.question).toBe("Test Employee");
+  });
+
+  /*
+   * History is capped at 20 turns. A name the manager typed in the first
+   * turn of a long form chat falls out of the window; with no reply saying
+   * it either, that is no evidence it came from a reply, and it stays.
+   */
+  it("a name typed before the history window stays on the form", async () => {
+    bag.intent.latest = ["Avery Testperson"];
     const turns = await converse([
-      "assist with creating an exit form",
-      "test employee, tanning consultant at shawnee",
-      "create exit form",
+      "create a coaching form for Avery Testperson",
+      "she was late on 10/20",
+      "it was the third time this month",
+      "she was 25 minutes late",
+      "the coaching covers attendance",
+      "I explained the attendance policy",
+      "she said traffic was bad",
+      "we agreed she will leave earlier",
+      "follow up in two weeks",
+      "job title is tanning consultant",
+      "it happened at lawrence",
+      "add that she was apologetic",
+      "Create a form from this conversation.",
     ]);
-    for (const turn of turns) expect(turn.content, turn.question).not.toContain("Pat Example");
-    expect(turns[0]!.employeeName).toBeNull();
-    for (const turn of turns.slice(1)) expect(turn.employeeName, turn.question).toBe("Test Employee");
+    for (const turn of turns) expect(turn.employeeName?.toLowerCase(), turn.question).toBe("avery testperson");
   });
 
   /*

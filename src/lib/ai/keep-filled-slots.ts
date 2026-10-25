@@ -65,7 +65,8 @@ export function holdFilledSlots(input: {
   ].filter((turn) => turn.trim());
   const previous = previousProposal(input.history, proposal.templateKey);
   const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
-  const kept = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people);
+  const replies = input.history.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
+  const kept = keptName(proposal.employeeName, previous?.employeeName ?? null, turns, input.people, replies);
   let employeeName = kept;
   if (codeSlotsEnabled()) {
     // The model never writes Employee. Each user turn can name someone;
@@ -227,11 +228,15 @@ function keptName(
   previous: string | null,
   turns: readonly string[],
   people: readonly GroundedPerson[],
+  replies: readonly string[] = [],
 ): string | null {
   const question = turns[turns.length - 1] ?? "";
-  // NOT_A_NAME_GUARD_ENABLED: the previous card's name carries forward only
-  // when the manager typed it (QA L23: "One Tanner" came from a reply).
-  if (previous && notANameGuardEnabled() && !typedBy(turns, previous)) previous = null;
+  // NOT_A_NAME_GUARD_ENABLED: the previous card's name does not carry forward
+  // when it came from a reply — in a reply in the window and in none of the
+  // manager's turns (QA L23: "One Tanner"). With no evidence, it stays.
+  if (previous && notANameGuardEnabled() && !typedBy(turns, previous) && inAnyTurn(replies, previous)) {
+    previous = null;
+  }
   const stated = newestName(turns);
   let picked: string | null = null;
   if (previous && !isFragment(previous)) {
@@ -245,6 +250,11 @@ function keptName(
   }
   if (!picked || isFragment(picked)) return !isFragment(current) ? spell(current, people) : null;
   return spell(picked, people);
+}
+
+function inAnyTurn(turns: readonly string[], name: string): boolean {
+  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return turns.some((turn) => turn.toLowerCase().replace(/\s+/g, " ").includes(needle));
 }
 
 /** The name is in the manager's words, outside a bulleted or priced offer list. */
