@@ -26,6 +26,7 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  priorActionsParseEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -34,7 +35,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutAppLines } from "./app-sentences";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import { accountSentences, currentRequestTurns, firstTimeCoaching, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
@@ -595,7 +596,10 @@ function onlySaysWhereTheyWork(sentence: string, ignore: readonly string[]): boo
  */
 function withPriorActions(content: string, turns: readonly string[], today: string): string {
   if (/\*\*Prior actions:\*\*/i.test(content)) return content;
-  const lines = statedPriorActions(priorShorthand(turns.join("\n")), today);
+  const stated = statedPriorActions(priorShorthand(turns.join("\n")), today);
+  // PRIOR_ACTIONS_PARSE_ENABLED: a coaching the manager held on the first shift (QA B9).
+  const held = priorActionsParseEnabled() ? firstTimeCoaching(turns.join("\n"), today) : null;
+  const lines = held && !stated.some((line) => line.endsWith(held.slice(-10))) ? [...stated, held] : stated;
   if (lines.length === 0) return content;
   const cleaned = content
     .split("\n")

@@ -355,3 +355,161 @@ describe("B13 P0 rows, both flags on (production flags too)", () => {
     }
   });
 });
+
+/*
+ * The sibling app's B16 rows (live 25 Oct 2026, pairs 1-4 on:
+ * REMAP_INCIDENT_FIX, PRIOR_ACTIONS_PARSE, CA_TEMPLATE_MAP, FORM_CHOICE_STATED,
+ * KEEP_FORM_EMPLOYEE, LATE_OPEN_DATE, PLACE_SPAN_GUARD, TITLE_WHOLE_WORD),
+ * told with this app's salons:
+ *
+ *   conv_mvnub78w2aellap  a turn of only the warning level, the prior and the
+ *                         payroll answer replaced What happened with "Her".
+ *   conv_mvnuc0z025sotrk  a numbered intake ("2.today" with no space) was read
+ *                         as one sentence.
+ */
+const B16 = [
+  "CA_TEMPLATE_MAP_ENABLED",
+  "FORM_CHOICE_STATED_ENABLED",
+  "KEEP_FORM_EMPLOYEE_ENABLED",
+  "LATE_OPEN_DATE_ENABLED",
+  "PLACE_SPAN_GUARD_ENABLED",
+  "TITLE_WHOLE_WORD_ENABLED",
+] as const;
+
+describe("B16 rows, pairs 1-4 on (production flags too)", () => {
+  beforeEach(() => {
+    for (const flag of B16) vi.stubEnv(flag, "1");
+    intentModel.reading = copiesTheManager;
+  });
+
+  it("a turn of only the warning level, the prior and the payroll answer keeps the incident", async () => {
+    const replies = await chat(
+      [
+        "I need a CA form for Test Employee at Kearney for being out of dress code on October 11",
+        "This is a verbal warning. Her prior coaching is her policy manual ackwnelegement on 9/01. payroll deduction is not applicable.",
+        "Use Kearney as the location",
+      ],
+      "conv-b16-dress",
+    );
+    for (const reply of replies) {
+      expect(whatHappened(reply.content)).toBe("being out of dress code on October 11");
+    }
+  });
+
+  it("a numbered intake is read item by item", async () => {
+    const [, reply] = await chat(
+      ["create a coaching form", "1. test employee 2.today 3. i have observed test employee running late to her shifts 4. kearney"],
+      "conv-b16-list",
+    );
+    expect(whatHappened(reply!.content)).toBe("running late to her shifts");
+    expect(reply!.formProposal?.formDate ?? null).toBe(TODAY);
+  });
+});
+
+/*
+ * The sibling app's B17 (pairs 1-5 on), conv_mvnuh50i2hanl53 turn 3: a new
+ * incident carried incident 1's warning level and payroll answer "as you
+ * said", and What happened read "different incident: no call no show".
+ */
+describe("B17: a different incident starts its own form", () => {
+  beforeEach(() => {
+    for (const flag of [...B16, "DRAFT_ACTIONS_ENABLED", "CONVERSATION_DRAFT_REUSE_ENABLED"]) vi.stubEnv(flag, "1");
+    intentModel.reading = copiesTheManager;
+  });
+
+  it("no warning level or payroll from incident 1, and no \"different incident:\"", async () => {
+    const replies = await chat(
+      [
+        "create a CA for Test Employee at Kearney for being late to open on 10-20-26, verbal, no payroll",
+        "add that she was also on her phone",
+        "create a corrective action for Test Employee for a different incident: no call no show on 10-22-26",
+      ],
+      "conv-b17",
+    );
+    const third = replies[2]!;
+    expect(whatHappened(third.content)).toBe("no call no show on 10-22-26");
+    expect(third.formProposal?.formDate).toBe("2026-10-22");
+    expect(third.formProposal?.warningLevel ?? null).toBeNull();
+    expect(third.formProposal?.payrollDeduct ?? null).toBeNull();
+    expect(third.content).not.toMatch(/Verbal Warning, as you said|payroll[^\n]*as you said/i);
+  });
+});
+
+/* The sibling app's S20, S3, S22, S23, G10, S14, B18 and two leftovers, told with this app's salons. */
+describe("What happened is the incident only (QA, 25 Oct 2026)", () => {
+  beforeEach(() => {
+    for (const flag of B16) vi.stubEnv(flag, "1");
+    intentModel.reading = copiesTheManager;
+  });
+
+  it.each([
+    ["create a second coaching form for Test Employee at Kearney for being late on 10-22-26, she already has a coaching form from 10-15-26", "being late on 10-22-26"],
+    ["create a CA for Test Employee at Kearney citing the Standards of Conduct for missing the woven deadline on 10-15-26", "missing the woven deadline on 10-15-26"],
+    ["create a coaching citing dress code violation on 10-15-26. Tanning consultants name is Testy Testerson", "dress code violation on 10-15-26"],
+    ["create a written CA for Test Employee at Kearney for missing the 10-15-26 woven deadline. action plan: complete the Woven policy module by 10-30-26 and review it with her manager", "missing the 10-15-26 woven deadline"],
+    ["create a coaching form for Test Employee at Kearney: on 10-20-26 she did not restock the lotion shelf before close and left it empty for the morning shift", "on 10-20-26 she did not restock the lotion shelf before close and left it empty for the morning shift"],
+    ["create a written CA for Test Employee for not attending the monthly meeting on 12-20-26. previous coaching: jba policy manual 5-8-26, verbal ca 10-2-26. payroll deduct not applicable”", "not attending the monthly meeting on 12-20-26"],
+  ])("%s", async (said, expected) => {
+    const [reply] = await chat([said], `conv-wh2-${said.length}`);
+    expect(whatHappened(reply!.content)).toBe(expected);
+  });
+
+  it("B18: the form is dated the incident, not the plan's due date", async () => {
+    const [reply] = await chat(
+      ["create a written CA for Test Employee at Kearney for missing the 10-15-26 woven deadline. action plan: complete the Woven policy module by 10-30-26 and review it with her manager"],
+      "conv-b18",
+    );
+    expect(reply!.formProposal?.formDate).toBe("2026-10-15");
+  });
+
+  it("S3: \"use today's date\" is the date, not What happened", async () => {
+    const [reply] = await chat(["create a coaching form for Test Employee, tan consultant at Kearney, use today's date"], "conv-s3");
+    expect(whatHappened(reply!.content)).toBeNull();
+  });
+
+  it("S23: \"it is for …\" and \"the policy violated is …\" are answers, not What happened", async () => {
+    const replies = await chat(["create a CA", "it is for Test Employee at Kearney", "the policy violated is standards of conduct"], "conv-s23");
+    for (const reply of replies) expect(whatHappened(reply.content)).toBeNull();
+  });
+
+  it("\"employee name is …\" on the turn after a missed name is never What happened", async () => {
+    const replies = await chat(["create a CA for being late to open on 10-20-26", "employee name is Test Employee"], "conv-name-is");
+    expect(whatHappened(replies[1]!.content)).toBe("being late to open on 10-20-26");
+  });
+});
+
+/*
+ * QA B9 (the sibling app's conv_mvnt8fgs2gh96uh) and this app's S14
+ * (conv_mvnt6fj42ny2iuv, Ask Sunny production): a coaching the manager held on
+ * the first shift is a prior action, and every one of three typed coachings
+ * is listed.
+ */
+describe("prior actions the manager typed", () => {
+  beforeEach(() => {
+    intentModel.reading = copiesTheManager;
+  });
+
+  it("B9: \"On the first shift I verbally coached her … late on 10/5 and 10/15\" is a verbal coaching on 10/5", async () => {
+    const [reply] = await chat(
+      [
+        "My employee Test Employee has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15",
+      ],
+      "conv-b9",
+    );
+    expect(priorLine(reply!.content)).toBe("Verbal coaching — 10/05/2026");
+  });
+
+  it("S14 conv_mvnt6fj42ny2iuv: all three coachings are listed", async () => {
+    const replies = await chat(
+      [
+        "Can you create me a performance CA?",
+        "Test Employee today under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa% verbal warning received Open Ended Questions Coaching 9/8/2026, Focus Item Coaching 9/15/2026, New Product Coaching 9/25/2026 not payroll deductible Tanning Consultant",
+      ],
+      "conv-s14",
+    );
+    const line = priorLine(replies[1]!.content) ?? "";
+    expect(line).toContain("09/08/2026");
+    expect(line).toContain("09/15/2026");
+    expect(line).toContain("09/25/2026");
+  });
+});

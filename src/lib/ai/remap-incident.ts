@@ -9,6 +9,8 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { datesInText } from "@/lib/forms/form-date-answer";
+import { signedDate } from "@/lib/forms/prior-actions";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -35,7 +37,8 @@ export interface RemapManual {
 
 // "create a coaching document for …" asks for the form too (QA, 25 Oct 2026; the sibling app's conv_mvnt95q52gmu047).
 const FORM_WORDS = String.raw`(?:corrective\s+actions?|ca|c\/a|write-?ups?|dpoa|coaching\s+(?:form|document|doc|paperwork)|policy\s+review|follow-?up\s+coaching)(?:\s+forms?)?`;
-const LEVEL_WORDS = String.raw`(?:(?:a|an|the)\s+)?(?:new\s+)?(?:(?:verbal|written|final)\s+(?:warning\s+)?)?`;
+// "create a second coaching form for …" is the request too (QA S20, 25 Oct 2026; the sibling app's conv_mvnuhq2r2qzjtdg).
+const LEVEL_WORDS = String.raw`(?:(?:a|an|the)\s+)?(?:(?:new|second|2nd|another|follow-?up)\s+)?(?:(?:verbal|written|final)\s+(?:warning\s+)?)?`;
 
 /** "create a verbal CA for", "write a CA for", "CA for" — only at the start of a clause. */
 const REQUEST_LEAD = new RegExp(
@@ -163,9 +166,105 @@ function turnIncident(
   return found;
 }
 
+/**
+ * "1. test employee 2.today 3. i have observed … 4. kearney": a numbered intake
+ * is one answer per item (QA, 25 Oct 2026; the sibling app's conv_mvnub78w2aellap and conv_mvnuc0z025sotrk). Each item goes on its
+ * own line, so the name, the date and the store items are read as such and
+ * What happened is only the incident item. A line counts as a list only when
+ * it numbers its items 1, 2, 3 … in order; "2.today" needs no space.
+ */
+export function splitNumberedItems(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      const marker = /(?:^|\s)(\d{1,2})[.)](?!\d)\s*/g;
+      const numbers = [...line.matchAll(marker)].map((match) => Number(match[1]));
+      if (numbers.length < 2 || numbers.some((number, index) => number !== index + 1)) return line;
+      return line.replace(marker, "\n").trim();
+    })
+    .join("\n");
+}
+
+/** "This is a verbal warning", "written": the warning level, never the incident. */
+const WARNING_STATEMENT =
+  /^(?:(?:this|it)\s+(?:is|will\s+be|should\s+be)\s+)?(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+written)?(?:\s+(?:warning|ca|c\/a|corrective\s+action))?[.!]?$/i;
+
+/** "Her", "this": a lone pronoun or article is never an incident. */
+const FRAGMENT = /^(?:her|his|their|its|him|them|she|he|they|it|this|that|the|a|an)$/i;
+
+/*
+ * Answers to the card's questions are not the incident (QA S3, S23, S22,
+ * 25 Oct 2026; the sibling app's conv_mvnt7jx72gan2i2, conv_mvnt86tb2r30asu and conv_mvnt83f02depar5): "use today's date" answers the date, "it is for Test
+ * Employee at Kearney" the employee, "the policy violated is standards of
+ * conduct" the policy, and "citing the Standards of Conduct for …" names the
+ * policy before what happened.
+ */
+const DATE_ANSWER = /^(?:(?:use|put|make\s+it|the\s+date\s+is|date\s+is|date)\s+)?(?:today'?s?|todays)(?:\s+date)?$|^(?:use|put)\s+(?:today'?s?|todays)\s+date$/i;
+const POLICY_ANSWER = /^(?:the\s+)?(?:policy(?:\s+(?:violated|broken))?|violated\s+policy)\s*(?:is|was|=|:)\s+/i;
+const FOR_LEAD = /^(?:it|this|the\s+form|the\s+ca|this\s+form)\s+(?:is|was)\s+for\s+/i;
+const CITING_LEAD = /^(?:citing|cite|under|per)\s+(?:the\s+)?.{3,60}?\s+for\s+(?=\S)/i;
+
+function answersAQuestion(clause: string): boolean {
+  const text = clause.trim().replace(/[.!]+$/, "");
+  return DATE_ANSWER.test(text) || POLICY_ANSWER.test(text);
+}
+
+/**
+ * A coaching the manager held on the first of the occurrences they list (QA B9;
+ * the sibling app's conv_mvnt8fgs2gh96uh): "On the first shift I verbally
+ * coached her on our policy … She was late on 10/5 and 10/15" is "Verbal
+ * coaching — 10/05/2026", in the manager's words (rule (a)). A bare "verbal"
+ * turn is never a prior (rule (b)): this needs "I … coached/warned her", a
+ * "first" occurrence, and at least two dates to take the first of.
+ */
+export function firstTimeCoaching(text: string, today: string): string | null {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n/)) {
+    if (!/\b(?:the\s+)?first\s+(?:shift|time|day|occurrence)\b/i.test(sentence)) continue;
+    const held = /\bI\s+(verbally\s+)?(coached|warned)\s+(?:her|him|them)\b/i.exec(sentence);
+    if (!held) continue;
+    const dates = [...new Set(datesInText(text, today).map((found) => found.iso))].sort();
+    if (dates.length < 2) return null;
+    const kind = held[2]!.toLowerCase() === "warned" ? "warning" : "coaching";
+    const label = held[1] ? `Verbal ${kind}` : `${kind[0]!.toUpperCase()}${kind.slice(1)}`;
+    return `${label} — ${signedDate(dates[0]!)}`;
+  }
+  return null;
+}
+
+/** "Tanning consultants name is Testy Testerson", "employee name is Test Employee". */
+const NAME_STATEMENT = /^(?:[\w'’]+\s+){0,3}name\s+(?:is|=|:)(?:\s|$)/i;
+
+/** What is left of a payroll answer: "payroll deduct not applicable", ". payroll deduction n/a". */
+const PAYROLL_ANSWER_LEFT = /^[\s.,;:'"“”]*(?:(?:yes|no)\s+)?payroll(?:\s+|-)deduct(?:ion|ed)?\b[^a-z]*(?:(?:is\s+)?(?:not\s+)?(?:applicable|apply|applies|n\/?a|yes|no))?[\s.,;:'"“”]*$/i;
+
+/**
+ * A request followed by ":" is two sentences: "create a coaching form for Test
+ * Employee at Kearney: on 10-20-26 she did not restock …" and "… for a
+ * different incident: no call no show on 10-22-26" (QA S14, B17).
+ */
+function requestColonSplit(sentences: readonly string[]): string[] {
+  return sentences.flatMap((sentence) => {
+    const colon = sentence.indexOf(":");
+    return colon > 0 && (REQUEST_LEAD.test(sentence.trim()) || LEVEL_REQUEST.test(sentence.trim()))
+      ? [sentence.slice(0, colon), sentence.slice(colon + 1)]
+      : [sentence];
+  });
+}
+
+/**
+ * "action plan: complete the Woven policy module by 10-30-26 and review it with
+ * her manager": the plan, to the end of the sentence or the turn, is read as
+ * the plan only. Neither What happened nor the form's date comes from it
+ * (QA B18, 25 Oct 2026).
+ */
+export function withoutActionPlan(text: string): string {
+  return text.replace(/\b(?:action\s+plan|the\s+plan)\s*(?:is|will\s+be|:|=|-)\s*[^\n]+?(?=\.(?:\s|$)|\n|$)/gi, " ");
+}
+
 /** "do verbal for team member …": a level and "for" is a request too. */
+// "create a coaching citing dress code violation …" asks for the form too (QA G10; the sibling app's conv_mvnt901z2sicurz).
 const LEVEL_REQUEST =
-  /^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+for\b/i;
+  /^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:(?:verbal|written|final)(?:\s+warning)?\s+for\b|(?:(?:new|second|another)\s+)?coaching\b(?!\s+(?:form|document|doc|paperwork)\b)(?:\s+for\b)?)/i;
 
 /** "I need to coach an employee": the manager asking for help, not the account. */
 const ASKS_FOR_HELP = /^(?:i\s+)?(?:need|want|have|would\s+like)\s+to\s+(?:coach|write\s+up|discipline|document|create|make|do)\b/i;
@@ -485,11 +584,16 @@ export function accountSentences(
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
-    const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
-    for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
+    // The plan the manager labels is the plan only (QA B18; the sibling app's conv_mvnuqsc52eknfah).
+    const text = withoutPriorList(withoutActionPlan(splitNumberedItems(turn.replace(/\bThe account continues\.\s*/g, ""))));
+    for (const sentence of requestColonSplit(text.split(/\n+|[.!?;]+(?=\s|$)/))) {
       const trimmed = sentence.trim();
+      // "Tanning consultants name is Testy Testerson", "employee name is …": who, never what happened.
+      if (NAME_STATEMENT.test(trimmed)) continue;
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
       if (/^it\s+happened\b/i.test(trimmed)) continue;
+      // The warning level, or a lone "Her" left of a prior, is no account (QA, 25 Oct 2026).
+      if (WARNING_STATEMENT.test(trimmed) || FRAGMENT.test(trimmed)) continue;
       const parts = sentence
         .split(",")
         .map((part) => part.trim())
@@ -498,10 +602,10 @@ export function accountSentences(
         .map((part) => (PAYROLL_STATEMENT.test(part) ? (payrollReason(part) ?? part) : part))
         .filter((part) => part && !accountSlot(part))
         // A prior step is a prior action, never the account (QA, 25 Oct 2026).
-        .filter((part) => !isPriorStep(part))
+        .filter((part) => !isPriorStep(part) && !answersAQuestion(part))
         // A clause that only names or places them is never the account (QA, 25
         // Oct 2026; with MANAGER_WORDS_ONLY_ENABLED or without it).
-        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").trim(), employeeName))
+        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").replace(FOR_LEAD, " ").trim(), employeeName))
         .map((part) => (options.managerOnly ? withoutPlace(part) : part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
@@ -531,9 +635,13 @@ function accountSlot(part: string): boolean {
 
 function accountPart(part: string, employeeName: string | null): string | null {
   const requested = REQUEST_LEAD.test(part) || LEVEL_REQUEST.test(part);
-  let text = part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+  let text = part.replace(/[“”"]+/g, " ").replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").replace(FOR_LEAD, " ").trim().replace(CITING_LEAD, "");
+  // "citing dress code violation on 10-15-26": the violation itself (QA G10).
+  text = text.replace(/^(?:citing|cite)\s+(?!.*\bfor\b)/i, "");
   // "Please create a CA form so I can document": the rest of a request is not the account.
   if (requested && /^\s*(?:so|to|with|from|because|now)\b/i.test(text)) return null;
+  // "i have observed test employee running late to her shifts": what was observed.
+  text = text.replace(/^\s*i\s+(?:have\s+)?(?:observed|noticed|seen|saw|witnessed)\s+/i, "");
   if (employeeName) text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
   text = text.replace(/\bat\s+[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3}/g, " ");
   text = text.replace(/\s+/g, " ").trim();
@@ -541,6 +649,12 @@ function accountPart(part: string, employeeName: string | null): string | null {
   text = text.replace(/^(?:for|about|regarding|re:?)\s+/i, "").trim();
   // "regarding On 10-16-26 Test Employee did not …": the date the lead-in left.
   if (lead) text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "").trim();
+  // "Test Employee at Kearney citing the Standards of Conduct for missing …" (QA S22).
+  text = text.replace(CITING_LEAD, "").replace(/^[\s:;,-]+/, "").trim();
+  // "for a different incident: no call no show": the lead-in is not the incident (QA B17).
+  text = text.replace(/^(?:a\s+|an\s+|the\s+)?(?:different|new|another|separate|second|other)\s+incident\b\s*[:,-]?\s*/i, "").trim();
+  // ". payroll deduct not applicable\"": a payroll answer, whatever is around it (QA BH5).
+  if (PAYROLL_ANSWER_LEFT.test(text)) return null;
   // "… at grand island, ne. location.": the place noun left of the salon line is no account.
   if (!text || /^(?:for|a|an|the|form|location|salon|store)$/i.test(text)) return null;
   // Only capitalized words left ("Test Employee" when the card holds "Test"): a name or a place.
@@ -565,6 +679,7 @@ function isPriorStep(part: string): boolean {
   return (
     /\b(?:previous|prior|past|earlier)\s+(?:coaching|corrective|cas?\b|c\/as?\b|actions?|steps?|warnings?|discipline|verbal|written)/i.test(part) ||
     /\b(?:was|were|got|been|had\s+been)\s+(?:verbally\s+)?coached\b/i.test(part) ||
+    /\b(?:already\s+)?(?:has|had|got|received)\s+(?:a\s+|an\s+)?(?:coaching|verbal|written|final|ca\b|c\/a\b|corrective)/i.test(part) ||
     /\bmanual\b.*(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])/i.test(part)
   );
 }
