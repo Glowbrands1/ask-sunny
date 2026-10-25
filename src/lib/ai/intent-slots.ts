@@ -6,6 +6,7 @@ import {
   intentPayrollManagerOnlyEnabled,
   managerWordsOnlyEnabled,
   typedNameProceedsEnabled,
+  warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -17,8 +18,11 @@ import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-dat
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
-import { detectTemplateIntent, mentionsEarlierCoaching } from "@/lib/forms/template-intent";
-import { warningLevelFromTurns } from "@/lib/forms/warning-level";
+import {
+  detectTemplateIntent,
+  mentionsEarlierCoaching,
+} from "@/lib/forms/template-intent";
+import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -239,7 +243,6 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
       ? null
       : (payrollClauseAmount(input) ??
         (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
-  const warningLevel = groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   const formType = choiceStated
     ? groundStatedForm(
         choice?.form ?? null,
@@ -250,6 +253,22 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     : groundForm(choice?.form ?? reading?.formType ?? null, blob, input.templates);
   const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
   const modelPolicy = choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy;
+  /*
+   * THE MANAGER'S LEVEL ONLY (WARNING_LEVEL_MANAGER_ONLY_ENABLED). Live
+   * replays, 24 Oct 2026: the blob holds Ask Sunny's own "You'll set the
+   * verbal/written warning level", and the slot model's guess was taken as
+   * given, so "for Test Employee" and a bare "Yes" came back "Written Warning,
+   * as you said". With the flag, the level is a numbered choice the manager
+   * just made, or what their own turns state — nothing else.
+   */
+  const warningManagerOnly = warningLevelManagerOnlyEnabled();
+  const warningLevel = warningManagerOnly
+    ? {
+        value:
+          choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
+        ambiguous: false,
+      }
+    : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
@@ -285,6 +304,23 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
     policyPage,
   });
   if (choiceStated) state = firstCoachingUnlessEarlier(state, managerTurns(input), input.templates);
+  if (warningManagerOnly) {
+    const answered = payrollAnsweredNow(input.history, input.question);
+    if (answered) state = { ...state, payrollDeduct: answered };
+    /*
+     * RE-READ EVERY TURN, AND ONLY FOR A FORM WITH A TYPE OF WARNING. QA, 24
+     * Oct 2026: a level stored once (from the assistant's own words) came back
+     * on every later turn, beat "this is a verbal", and rode onto a
+     * Resignation/Exit Form and a Policy Review. The level is what the
+     * manager's turns state now; the stored one is kept only when the history
+     * may have been cut (the route keeps the last HISTORY_CAP turns), so a
+     * level stated before that is not lost.
+     */
+    const template = input.templates.find((row) => row.key === state.templateKey) ?? null;
+    const kept = warningLevel.value ?? (input.history.length >= HISTORY_CAP ? saved.warningLevel : null);
+    const level = templateHasWarningLevel(template ?? { key: state.templateKey }) ? kept : null;
+    if (level !== state.warningLevel) state = { ...state, warningLevel: level };
+  }
   if (codeSlotsEnabled()) {
     const salonNames = PRODUCTION_SALONS.map((salon) => salon.name);
     const prior = cleanPersonName(saved.employeeName, salonNames);
@@ -313,6 +349,43 @@ export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
   if (clarification) return { question, state, clarification, formTurn };
   if (!formTurn) return { question, state, clarification: null, formTurn: false };
   return { question, state, clarification: null, formTurn: true };
+}
+
+/** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
+const HISTORY_CAP = 20;
+
+/** Another yes/no question beside the payroll one: "Did you mean **Rowan Testo**?". */
+const OTHER_YES_NO =
+  /^\s*(?:did\s+you\s+mean|is|isn'?t|are|was|should|shall|do|does|did|will|would|can|could)\b/i;
+
+/**
+ * "Yes" / "No" ANSWERING "Is payroll deduct applicable? Yes or No?" — read
+ * here, while the reply is still bare. Live replay, 24 Oct 2026: once the
+ * stored slots are put ahead of it ("The form is the Corrective Action Form.
+ * The employee is … Yes") the reply is no longer a bare answer, and the card
+ * asked the payroll question again. Only the assistant turn right before it
+ * counts, and only when that turn asks no other yes/no question, so the "Yes"
+ * that confirms a name is never a payroll answer. Behind
+ * WARNING_LEVEL_MANAGER_ONLY_ENABLED.
+ */
+function payrollAnsweredNow(
+  history: readonly { role: string; content: string }[],
+  question: string,
+): "yes" | "no" | null {
+  const before = history[history.length - 1];
+  if (!before || before.role !== "assistant") return null;
+  const questions = (before.content.replace(/[*_`]/g, "").match(/[^.!?\n]*\?/g) ?? [])
+    .map((line) => line.trim())
+    .filter((line) => !/payroll/i.test(line) && !/^yes\s+or\s+no\?$/i.test(line));
+  // An either/or ("a Verbal Warning or a Written Warning?") is not answered by "Yes", as payroll-deduct.ts reads it too.
+  if (questions.some((line) => OTHER_YES_NO.test(line) && !/\bor\b/i.test(line))) return null;
+  return payrollDeductFromConversation(
+    [
+      { role: "assistant", content: before.content },
+      { role: "user", content: question },
+    ],
+    { fromThisForm: true },
+  );
 }
 
 /**
