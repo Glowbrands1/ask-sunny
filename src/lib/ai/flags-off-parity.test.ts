@@ -35,6 +35,7 @@ import {
   manualTopicPinEnabled,
   fullManualContextEnabled,
   formFullRemapEnabled,
+  warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
   intentPayrollManagerOnlyEnabled,
   conversationDraftReuseEnabled,
@@ -96,6 +97,7 @@ const NEW_FLAGS = [
   "MANUAL_TOPIC_PIN_ENABLED",
   "FULL_MANUAL_CONTEXT_ENABLED",
   "FORM_FULL_REMAP_ENABLED",
+  "WARNING_LEVEL_MANAGER_ONLY_ENABLED",
   "MANAGER_WORDS_ONLY_ENABLED",
   "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
   "CONVERSATION_DRAFT_REUSE_ENABLED",
@@ -203,6 +205,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualTopicPinEnabled()).toBe(false);
     expect(fullManualContextEnabled()).toBe(false);
     expect(formFullRemapEnabled()).toBe(false);
+    expect(warningLevelManagerOnlyEnabled()).toBe(false);
     expect(managerWordsOnlyEnabled()).toBe(false);
     expect(intentPayrollManagerOnlyEnabled()).toBe(false);
     expect(conversationDraftReuseEnabled()).toBe(false);

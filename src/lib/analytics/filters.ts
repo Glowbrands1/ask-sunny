@@ -11,6 +11,7 @@
  * Client-safe. No database client, no secret, no server-only import.
  */
 
+import { BUSINESS_TIMEZONE } from "@/lib/business-date";
 import { ROLES } from "@/lib/permissions";
 import type { Role } from "@/types";
 
@@ -188,12 +189,12 @@ export function resolveWindow(
   filters: AnalyticsFilters,
   anchorIsoDate: string,
 ): ResolvedWindow {
-  const endExclusive = startOfUtcDay(addDays(anchorIsoDate, 1));
+  const endExclusive = startOfBusinessDay(addDays(anchorIsoDate, 1));
 
   if (filters.from && filters.to) {
-    const from = startOfUtcDay(filters.from);
+    const from = startOfBusinessDay(filters.from);
     /* Inclusive to the user, exclusive to the query: they picked a last day. */
-    const to = startOfUtcDay(addDays(filters.to, 1));
+    const to = startOfBusinessDay(addDays(filters.to, 1));
     const days = Math.max(1, Math.round((to - from) / DAY_MS));
     return {
       from: new Date(from).toISOString(),
@@ -205,7 +206,7 @@ export function resolveWindow(
     };
   }
 
-  const start = windowStart(filters.range, anchorIsoDate, endExclusive);
+  const start = windowStart(filters.range, anchorIsoDate);
   const days = Math.max(1, Math.round((endExclusive - start) / DAY_MS));
 
   return {
@@ -236,20 +237,52 @@ function startOfUtcDay(isoDate: string): number {
   return Date.parse(`${isoDate}T00:00:00.000Z`);
 }
 
+/*
+ * THE BUSINESS DAY STARTS AT MIDNIGHT WHERE THE LOCATIONS ARE, NOT IN UTC.
+ * The window ended at UTC midnight after the anchor day, so from 8pm Eastern
+ * (00:00 UTC) until local midnight, everything written that evening fell
+ * after the window's end and the dashboard showed none of it: QA, 25 Oct
+ * 2026 (ported from the sibling app, where five ratings written "now" at
+ * 04:25 UTC counted as zero). The SQL
+ * already buckets days in BUSINESS_TIMEZONE; the window now ends where those
+ * days end.
+ */
+function startOfBusinessDay(isoDate: string): number {
+  const utcMidnight = startOfUtcDay(isoDate);
+  // The zone's offset at that instant, read once more at the corrected instant across a DST change.
+  const first = utcMidnight - zoneOffsetMs(utcMidnight);
+  return utcMidnight - zoneOffsetMs(first);
+}
+
+const zoneParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: BUSINESS_TIMEZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** How far the business zone's wall clock is ahead of UTC at an instant (negative in the Americas). */
+function zoneOffsetMs(instant: number): number {
+  const parts = zoneParts.formatToParts(new Date(instant));
+  const part = (type: string) => Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+  const wall = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
+  return wall - Math.floor(instant / 1000) * 1000;
+}
+
 function addDays(isoDate: string, days: number): string {
   const shifted = new Date(startOfUtcDay(isoDate) + days * DAY_MS);
   return shifted.toISOString().slice(0, 10);
 }
 
-function windowStart(
-  range: DateRangeKey,
-  anchorIsoDate: string,
-  endExclusive: number,
-): number {
+function windowStart(range: DateRangeKey, anchorIsoDate: string): number {
   const fixed = DATE_RANGES.find((entry) => entry.key === range)?.days ?? null;
-  if (fixed !== null) return endExclusive - fixed * DAY_MS;
+  if (fixed !== null) return startOfBusinessDay(addDays(anchorIsoDate, 1 - fixed));
 
   const [year, month] = anchorIsoDate.split("-");
-  if (range === "mtd") return startOfUtcDay(`${year}-${month}-01`);
-  return startOfUtcDay(`${year}-01-01`);
+  if (range === "mtd") return startOfBusinessDay(`${year}-${month}-01`);
+  return startOfBusinessDay(`${year}-01-01`);
 }
