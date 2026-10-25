@@ -270,6 +270,9 @@ export function placeSpans(text: string): string[] {
   return [...text.matchAll(/\bat\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})/g)].map((match) => `at ${match[1]}`);
 }
 
+/** A letter or a digit: anything else on its own is punctuation, not words. */
+export const HAS_WORD = /[\p{L}\p{N}]/u;
+
 function clauseOffense(clause: string, employeeName: string | null): string | null {
   let text = clause.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
   // "violation is that on 10-16-26 Testy was not measuring and weighing product"
@@ -300,6 +303,9 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   text = text.replace(/^(?:a|an)\s+(?=\S+\s+\S)/i, "");
   text = text.replace(/^[,\s]+|[,\s.]+$/g, "").replace(/\s+(?:on|at)$/i, "");
   if (!text || text.length > 120) return null;
+  // A stray quote or other punctuation left over is not an incident
+  // ('create a Corrective Action Form for Test Employee"', sibling app conv_mvnu3j932gpohx4).
+  if (!HAS_WORD.test(text)) return null;
   if (/^(?:for|a|an|the|form|location|store|draft)$/i.test(text)) return null;
   // "create a coaching document for Test Employee": a repeat request names the
   // person, it is no new incident (QA, 25 Oct 2026, conv_mvnt95q52gmu047).

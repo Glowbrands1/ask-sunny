@@ -7,12 +7,13 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
  * ============================================================================
- * TWO PROMPT RULES QA APPROVED IN THE SIBLING APP, 25 OCT 2026 (G12, B6)
+ * THREE RULES QA APPROVED IN THE SIBLING APP, 25 OCT 2026 (G12, B6, B15)
  * ============================================================================
  *
  * The sibling app's managers' words in this app's wording (salon for store,
  * this app's salons), replayed through `answerQuestion` with this app's
- * production profile (intent extraction on, the full remap off):
+ * production profile (intent extraction on, the full remap off), and through
+ * the full remap where the sibling's path runs it:
  *
  *   G12, conv_mvnu3j932gpohx4 T1: a Corrective Action request that lists
  *     previous coaching was answered there "I can't produce a facsimile of one
@@ -20,6 +21,8 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *     line carries the same wording, so FACSIMILE_ASK_ONLY_ENABLED changes it.
  *   B6, conv_mvnsqglc2v7zuyk: "previous coaching jba manual 11-1-25" came back
  *     as "Coaching Form on file, dated 2025-11-01". TYPED_PRIOR_NOT_ON_FILE_ENABLED.
+ *   B15, conv_mvnu3j932gpohx4 T1–T3: "payroll deduct applies" in T1 was lost
+ *     on the T3 card. PAYROLL_FROM_THIS_FORM_ENABLED, on the full remap.
  *
  * Synthetic names.
  */
@@ -267,9 +270,14 @@ async function converse(turns: readonly string[], recorded: Readonly<Record<numb
   return out;
 }
 
-/* conv_mvnu3j932gpohx4 (sibling app), the manager's words in this app's wording. */
+/* conv_mvnu3j932gpohx4 (sibling app), the manager's words in this app's wording. The stray quote in T3 is theirs. */
 const B15_T1 =
   "do verbal corrective action for Test Employee, team member at Kearney, NE. location. previous coaching jba manual 9-9-26. payroll deduct applies. on 10-22-26 the register was short 8.65 which will be payroll deducted from Test Employee check";
+const B15_T2 = "change salon location to grand island, ne";
+const B15_T3 = 'create a Corrective Action Form for Test Employee"';
+const B15_T1_REPLY =
+  "I can't write this up as a corrective action document here — that's a formal HR record, and I can't produce a facsimile of one or its contents. If you want to proceed, just say: **\"create a Corrective Action form for Test Employee\"** and the draft card will come up.";
+const B15_T2_REPLY = "Got it — the salon for this is NE Grand Island, not Kearney. When you're ready, say **\"create a Corrective Action form for Test Employee\"**.";
 
 /* conv_mvnsqglc2v7zuyk (sibling app), the manager's words in this app's wording. */
 const B6_T1 =
@@ -335,5 +343,44 @@ describe("B6: a prior step the manager typed is never on file", () => {
     await converse([B6_T4]);
     expect(sent).toHaveLength(1);
     expect(sent[0]).not.toContain(TYPED_PRIOR);
+  });
+});
+
+describe("B15 conv_mvnu3j932gpohx4: \"payroll deduct applies\" in T1 is on the T3 card", () => {
+  const RECORDED = { 0: B15_T1_REPLY, 1: B15_T2_REPLY };
+
+  it.each([
+    ["flag off", [] as string[]],
+    ["PAYROLL_FROM_THIS_FORM_ENABLED", ["PAYROLL_FROM_THIS_FORM_ENABLED"]],
+  ])("the live intent path keeps Yes (%s)", async (_name, flags) => {
+    on(...flags);
+    const turns = await converse([B15_T1, B15_T2, B15_T3], RECORDED);
+    expect(turns.at(-1)!.proposal?.payrollDeduct).toBe("yes");
+  });
+
+  /* The sibling app's production path, with its 25 Oct flags. */
+  const REMAP = ["FORM_FULL_REMAP_ENABLED", "REMAP_INCIDENT_FIX_ENABLED", "PRIOR_ACTIONS_PARSE_ENABLED"];
+
+  it("the full remap with PAYROLL_FROM_THIS_FORM_ENABLED: Yes", async () => {
+    on(...REMAP, "PAYROLL_FROM_THIS_FORM_ENABLED");
+    const turns = await converse([B15_T1, B15_T2, B15_T3], RECORDED);
+    const card = turns.at(-1)!;
+    expect(card.proposal?.templateKey).toBe("dpoa");
+    expect(card.proposal?.payrollDeduct).toBe("yes");
+  });
+
+  it("the full remap, flag on: a later request with its own incident is a new form, and T1's answer is not carried onto it", async () => {
+    on(...REMAP, "PAYROLL_FROM_THIS_FORM_ENABLED");
+    const turns = await converse(
+      [B15_T1, "create a written CA for Test Employee for being on her phone at the front desk on 10-24-26"],
+      { 0: B15_T1_REPLY },
+    );
+    expect(turns.at(-1)!.proposal?.payrollDeduct ?? null).toBeNull();
+  });
+
+  it("the full remap, flag off: the answer is lost (the sibling's production card)", async () => {
+    on(...REMAP);
+    const turns = await converse([B15_T1, B15_T2, B15_T3], RECORDED);
+    expect(turns.at(-1)!.proposal?.payrollDeduct ?? null).toBeNull();
   });
 });

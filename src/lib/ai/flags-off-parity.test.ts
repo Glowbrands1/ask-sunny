@@ -57,6 +57,7 @@ import {
   titleWholeWordEnabled,
   facsimileAskOnlyEnabled,
   typedPriorNotOnFileEnabled,
+  payrollFromThisFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -131,6 +132,7 @@ const NEW_FLAGS = [
   "ACTION_PLAN_MANAGER_ONLY_ENABLED",
   "FACSIMILE_ASK_ONLY_ENABLED",
   "TYPED_PRIOR_NOT_ON_FILE_ENABLED",
+  "PAYROLL_FROM_THIS_FORM_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -263,6 +265,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(actionPlanManagerOnlyEnabled()).toBe(false);
     expect(facsimileAskOnlyEnabled()).toBe(false);
     expect(typedPriorNotOnFileEnabled()).toBe(false);
+    expect(payrollFromThisFormEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
