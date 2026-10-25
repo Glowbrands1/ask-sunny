@@ -739,6 +739,28 @@ export function namedFormExactEnabled(): boolean {
   return envFlag("NAMED_FORM_EXACT_ENABLED");
 }
 
+/**
+ * A full-remap card names the manager's turns it was read from (QA H1, 25 Oct
+ * 2026, found in the sibling app), so Create draft prefills the form from them
+ * instead of filing it blank. Off, the remap card names no turns, as before.
+ * See `lib/ai/remap-draft-sources.ts`.
+ */
+export function remapDraftSourcesEnabled(): boolean {
+  return envFlag("REMAP_DRAFT_SOURCES_ENABLED");
+}
+
+/**
+ * The browser's reading of REMAP_DRAFT_SOURCES_ENABLED, for the Create step
+ * (`chat/create-inline-form.ts`): a draft whose notes are empty is written
+ * from the card's own lines only with this on. Only a statically written
+ * `process.env.NEXT_PUBLIC_…` is inlined by Next, so it is read here, not
+ * through `envFlag`. Off, a card with no usable turns files a blank draft and
+ * says so, as before.
+ */
+export function remapDraftSourcesClientEnabled(): boolean {
+  return flagOn(process.env.NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED);
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
