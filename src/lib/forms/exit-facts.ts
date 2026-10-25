@@ -1,4 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
+import { exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -7,6 +8,7 @@ import {
   EXIT_TYPE_GROUP,
 } from "./exit-library";
 import { datesInText } from "./form-date-answer";
+import { mostRecent } from "./late-open";
 
 /**
  * ============================================================================
@@ -216,6 +218,47 @@ const RESIGNED_AFTER: { role: ExitDateRole; pattern: RegExp } = {
 
 /* ---------------------------------------------------------- the dates -- */
 
+/*
+ * ============================================================================
+ * "LAST DAY 10-24" IS A DATE (EXIT_INTAKE_FIX_ENABLED)
+ * ============================================================================
+ *
+ * Sibling app's live QA, 25 Oct 2026: "she resigned, last day 10-24" left Last Day Worked
+ * blank, while "10-17-26" filled it. The shared date reader needs a year on a
+ * dashed date, because "10-12" alone is more often a range ("10-12 hours").
+ * On the exit form a date is only ever placed on a line by the words beside
+ * it ("last day", "gave notice"), so a yearless dashed month-day is read
+ * here as the most recent such day on or before today — the rule the
+ * late-opening reader uses (`late-open.ts`). A range ("10-12 hours") is not
+ * a date, and a date with no cue still fills nothing.
+ */
+const YEARLESS_DASHED = /(?<![\d/.-])(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)/g;
+const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|years?|people|times|x\b|%|am\b|pm\b|dollars?)/i;
+
+/*
+ * ============================================================================
+ * "SHE DID NOT CALL IN FOR HER LAST TWO SHIFTS" IS A NO CALL NO SHOW
+ * ============================================================================
+ *
+ * Sibling app's live QA (25 Oct 2026): the manager described the no call no show in words
+ * and the box stayed unticked. Not calling in (or not calling or showing) for
+ * a shift is what the box means. Only with EXIT_INTAKE_FIX_ENABLED; "called
+ * in sick for her shift" is not this, and neither is a shift she did call
+ * about. Read by `exit-details.ts` too, for How Employee Resigned.
+ */
+/*
+ * "GAVE NOTICE 9/25/26 – FULFILLED 10/9/26" (the sibling app's live QA, 25 Oct 2026): the
+ * fulfilled date follows a bare "fulfilled", the notice named once before it
+ * in the same sentence. Only with EXIT_INTAKE_FIX_ENABLED.
+ */
+const BARE_FULFILLED: { role: ExitDateRole; pattern: RegExp } = {
+  role: "noticeFulfilled",
+  pattern: /\b(?:fulfilled|completed|served|worked out)(?:\s+(?:on|by|thru|through))?\s*[:\-–—]?\s*$/g,
+};
+
+export const NO_CALL_FOR_SHIFT =
+  /\b(?:did ?n[o']?t|didn't|never|failed to)\s+(?:call(?:\s+in)?(?:\s+or\s+show(?:\s+up)?)?|show(?:\s+up)?\s+or\s+call(?:\s+in)?)\b[^.;!?\n]{0,40}?\bshifts?\b/;
+
 interface DateToken {
   /** Null for a weekday that names no particular week. */
   iso: string | null;
@@ -265,6 +308,16 @@ function dateTokens(text: string, today: string): DateToken[] {
     return shiftDays(today, ahead);
   });
   add(new RegExp(String.raw`\b(?:this\s+|on\s+)?(?:${WEEKDAY})\b`, "gi"), () => null);
+  if (exitIntakeFixEnabled()) {
+    for (const match of text.matchAll(YEARLESS_DASHED)) {
+      const index = match.index ?? 0;
+      const end = index + match[0].length;
+      if (tokens.some((token) => index < token.end && end > token.index)) continue;
+      if (RANGE_AFTER.test(text.slice(end, end + 12))) continue;
+      const iso = mostRecent(Number(match[1]), Number(match[2]), today);
+      if (iso) tokens.push({ iso, phrase: match[0], index, end });
+    }
+  }
 
   /*
    * "FRIDAY, SEPTEMBER 12" IS ONE DATE. A weekday written beside a calendar
@@ -335,6 +388,11 @@ function roleFor(
   if (sentence >= 0) before = before.slice(before.length - sentence);
   const fromBefore = nearestCue(before.toLowerCase(), cues);
   if (fromBefore) return fromBefore;
+  // EXIT_INTAKE_FIX_ENABLED: "gave notice 9/25/26 – fulfilled 10/9/26".
+  if (exitIntakeFixEnabled() && nearestCue(before.toLowerCase(), [BARE_FULFILLED])) {
+    const sentenceStart = Math.max(...[".", "!", "?", ";", "\n"].map((mark) => text.lastIndexOf(mark, token.index - 1)));
+    if (/\bnotice\b/i.test(text.slice(sentenceStart + 1, token.index))) return "noticeFulfilled";
+  }
 
   // AFTER: only an anchored phrase, only up to the next date.
   const after = text.slice(token.end, nextStart).toLowerCase();
@@ -419,7 +477,9 @@ function completedInvoluntary(q: string): boolean {
 function readSeparation(text: string): SeparationReading {
   const q = text.toLowerCase();
 
-  const noCallNoShow = /\bno[\s-]*call[\s,/&-]*(?:and\s+)?no[\s-]*show(?:s|ed)?\b|\bncns\b/.test(q);
+  const noCallNoShow =
+    /\bno[\s-]*call[\s,/&-]*(?:and\s+)?no[\s-]*show(?:s|ed)?\b|\bncns\b/.test(q) ||
+    (exitIntakeFixEnabled() && NO_CALL_FOR_SHIFT.test(q));
 
   const notFulfilled =
     new RegExp(

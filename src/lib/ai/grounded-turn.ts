@@ -25,6 +25,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { withFutureDateQuestion } from "./future-incident-date";
 import { withStatedTitleOnCard } from "./stated-title-card";
@@ -79,20 +80,24 @@ export async function deliverFormProposal(input: {
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
     // STATED_TITLE_WINS_ENABLED: the title the intent reading kept is the card's, as stated.
-    // FUTURE_INCIDENT_DATE_CONFIRM_ENABLED: a future incident date on the card is asked about once.
+    // FORM_EDIT_DATE_RULES_ENABLED: the date rules settle the card's dates.
+    // FUTURE_INCIDENT_DATE_CONFIRM_ENABLED: a future incident date on the card (after the date rules) is asked about once.
     return withFutureDateQuestion(
-      withStatedTitleOnCard(
-        withTypedEmployeeOnCard(
-          holdFilledSlots({
-            response: enriched,
-            question: input.question,
-            history: input.request.history,
-            today: input.request.context.todayIso,
-            people: [],
-          }),
-          input.request.question,
+      withEditDateRules(
+        withStatedTitleOnCard(
+          withTypedEmployeeOnCard(
+            holdFilledSlots({
+              response: enriched,
+              question: input.question,
+              history: input.request.history,
+              today: input.request.context.todayIso,
+              people: [],
+            }),
+            input.request.question,
+          ),
+          input.question,
         ),
-        input.question,
+        input,
       ),
       { today: input.request.context.todayIso, history: input.request.history },
     );
@@ -140,18 +145,21 @@ export async function deliverFormProposal(input: {
 
   const settled = withVisibleSalon(enriched, input);
   const held = withFutureDateQuestion(
-    withStatedTitleOnCard(
-      withTypedEmployeeOnCard(
-        holdFilledSlots({
-          response: settled,
-          question: input.question,
-          history: input.request.history,
-          today: input.request.context.todayIso,
-          people,
-        }),
-        input.request.question,
+    withEditDateRules(
+      withStatedTitleOnCard(
+        withTypedEmployeeOnCard(
+          holdFilledSlots({
+            response: settled,
+            question: input.question,
+            history: input.request.history,
+            today: input.request.context.todayIso,
+            people,
+          }),
+          input.request.question,
+        ),
+        input.question,
       ),
-      input.question,
+      input,
     ),
     { today: input.request.context.todayIso, history: input.request.history },
   );
@@ -162,6 +170,15 @@ export async function deliverFormProposal(input: {
   }
   await writeSaved(stateOn, input, saved, held, prep);
   return held;
+}
+
+/** FORM_EDIT_DATE_RULES_ENABLED: read from the manager's own turns, not the state sentences. See `edit-date-rules.ts`. */
+function withEditDateRules(response: AskResponse, input: { readonly request: AskRequest }): AskResponse {
+  return applyEditDateRules(response, {
+    question: input.request.question,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+  });
 }
 
 function withVisibleSalon(

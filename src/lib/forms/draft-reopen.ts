@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { trigramSimilarity } from "@/lib/ai/intake-augment";
 
+import { keepSameChat, type SameChat } from "./draft-same-chat";
 import { DUPLICATE_DRAFT_WINDOW_HOURS, loadInstance, type InstanceRow } from "./instances";
 
 /**
@@ -23,6 +24,8 @@ export interface ResentDraftWanted {
   /** When set, a draft is the same one only if its narrative is this incident. */
   readonly incident?: string | null;
   readonly formDate?: string | null;
+  /** DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: only a draft this chat made. See `draft-same-chat.ts`. */
+  readonly sameChat?: SameChat;
 }
 
 export interface ResentDraftRow {
@@ -109,6 +112,7 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
     createdAt: String(row.created_at ?? ""),
     formDate: typeof row.form_date === "string" ? row.form_date : null,
   }));
+  rows = await keepSameChat(rows, input.sameChat);
 
   if (input.incident != null) {
     const ids = rows.map((row) => row.id);
@@ -188,6 +192,7 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     createdAt: String(row.created_at ?? ""),
     formDate: typeof row.form_date === "string" ? row.form_date : null,
   }));
+  rows = await keepSameChat(rows, input.sameChat);
 
   if (input.incident) {
     const ids = rows.map((row) => row.id);

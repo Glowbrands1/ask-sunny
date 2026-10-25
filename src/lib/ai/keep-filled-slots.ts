@@ -14,6 +14,7 @@ import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
+import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
@@ -28,12 +29,15 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  newestPlaceTurnEnabled,
+  formEditDateRulesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutAppLines } from "./app-sentences";
+import { observationByRules } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
 import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
@@ -108,6 +112,9 @@ export function holdFilledSlots(input: {
   let locationId = keptSalon(turns, proposal.locationId, previous?.locationId ?? null, employeeName, input.people);
   if (slotsOn && place.kind === "one") locationId = place.salon.id;
   if (slotsOn && place.kind === "unknown" && !namedSalon) locationId = null;
+  // NEWEST_PLACE_TURN_ENABLED: the newest manager turn that names one salon wins.
+  const newest = newestPlaceTurnEnabled() ? newestManagerTurnSalon([...turns].reverse()) : null;
+  if (newest) locationId = newest.id;
   // "prior = manual ack 9/01" dates the prior step, not this form.
   // The intent read's "It happened on …" sentence is the stored date, not the
   // manager's edit: "change the date to 10/22" is read from their own words.
@@ -196,7 +203,10 @@ export function holdFilledSlots(input: {
      * she resigned …" was pasted under a Corrective Action heading (25 Oct 2026).
      */
     if (next.templateKey !== "stc-exit") {
-      content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
+      const build = (given: string, account: readonly string[]) =>
+        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
+      // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
+      content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);

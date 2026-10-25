@@ -48,6 +48,7 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  exitIntakeFixEnabled,
   manualNegatedListNoteEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
@@ -57,6 +58,16 @@ import {
   titleWholeWordEnabled,
   futureIncidentDateConfirmEnabled,
   statedTitleWinsEnabled,
+  reformatKeepsSourcesEnabled,
+  frameworkGeneralSectionsEnabled,
+  newestPlaceTurnEnabled,
+  questionNotFormEnabled,
+  formEditDateRulesEnabled,
+  followupNewTopicRetrievalEnabled,
+  draftReuseSameChatOnlyEnabled,
+  resignMethodFollowupEnabled,
+  chatLongMessageEnabled,
+  namedFormExactEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -131,6 +142,18 @@ const NEW_FLAGS = [
   "FUTURE_INCIDENT_DATE_CONFIRM_ENABLED",
   "STATED_TITLE_WINS_ENABLED",
   "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+  "EXIT_INTAKE_FIX_ENABLED",
+  "REFORMAT_KEEPS_SOURCES_ENABLED",
+  "FRAMEWORK_GENERAL_SECTIONS_ENABLED",
+  "NEWEST_PLACE_TURN_ENABLED",
+  "QUESTION_NOT_FORM_ENABLED",
+  "FORM_EDIT_DATE_RULES_ENABLED",
+  "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
+  "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
+  "RESIGN_METHOD_FOLLOWUP_ENABLED",
+  "CHAT_LONG_MESSAGE_ENABLED",
+  "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
+  "NAMED_FORM_EXACT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -263,6 +286,17 @@ describe("new flags default off and wrappers are inert", () => {
     expect(futureIncidentDateConfirmEnabled()).toBe(false);
     expect(statedTitleWinsEnabled()).toBe(false);
     expect(actionPlanManagerOnlyEnabled()).toBe(false);
+    expect(exitIntakeFixEnabled()).toBe(false);
+    expect(reformatKeepsSourcesEnabled()).toBe(false);
+    expect(frameworkGeneralSectionsEnabled()).toBe(false);
+    expect(newestPlaceTurnEnabled()).toBe(false);
+    expect(questionNotFormEnabled()).toBe(false);
+    expect(formEditDateRulesEnabled()).toBe(false);
+    expect(followupNewTopicRetrievalEnabled()).toBe(false);
+    expect(draftReuseSameChatOnlyEnabled()).toBe(false);
+    expect(resignMethodFollowupEnabled()).toBe(false);
+    expect(chatLongMessageEnabled()).toBe(false);
+    expect(namedFormExactEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -303,6 +337,9 @@ describe("new flags default off and wrappers are inert", () => {
       // And except chat-screen.tsx: SEND_AFTER_HYDRATE_ENABLED queues a typed
       // send until the store is ready. The composer is not disabled and no
       // control is added. The diff is that queue.
+      // And except composer.tsx: QA approved on 25 Oct 2026, behind
+      // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
+      // and send disabled over the limit. Off, it renders as before.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -310,6 +347,7 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
+          ":(exclude)src/features/chat/composer.tsx",
         ]),
       ).toBe("");
     } else {
@@ -353,7 +391,9 @@ describe("existing chat and form suites with every new flag off", () => {
           "src/app/api/chat",
           "src/app/api/forms",
         ],
-        { env, encoding: "utf8", timeout: 540_000, stdio: "pipe" },
+        // The child's output (every suite's logs) passed Node's 1 MB default
+        // buffer on CI and failed with ENOBUFS before any test failed.
+        { env, encoding: "utf8", timeout: 540_000, stdio: "pipe", maxBuffer: 256 * 1024 * 1024 },
       );
       expect(output).toMatch(/Test Files[\s\S]*passed/);
     },

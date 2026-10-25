@@ -542,6 +542,12 @@ export function buildSystemPrompt(input: {
    * is on and that manual loaded.
    */
   citeManualPages?: boolean;
+  /**
+   * The coaching framework is among this turn's sources and
+   * FRAMEWORK_GENERAL_SECTIONS_ENABLED is on. Omitted or false leaves the
+   * prompt byte-for-byte unchanged.
+   */
+  frameworkGeneralSections?: boolean;
 }): string {
   if (revision === "last-known-good") return buildLastKnownGoodSystemPrompt(input);
   const { assistantName, brandName, salonNoun, context, mode, hasContext } = input;
@@ -786,12 +792,15 @@ ${SUNNY_VOICE}`;
      * template above stays byte-identical. See `sources-not-shared.ts`.
      */
     const ruled = body.replace(NEVER_CLAIM_RULE, `${NEVER_CLAIM_RULE}\n${RETRIEVED_NOT_SHARED_RULE}`);
-    return citeManualPages
-      ? ruled.replace(
-          "- Never use a marker for a source that is not listed below. Only the markers listed are valid.",
-          markerRule,
-        )
-      : ruled;
+    return withFrameworkGeneralSections(
+      citeManualPages
+        ? ruled.replace(
+            "- Never use a marker for a source that is not listed below. Only the markers listed are valid.",
+            markerRule,
+          )
+        : ruled,
+      input.frameworkGeneralSections === true,
+    );
   }
 
   const reportBullet = hasReportData
@@ -829,7 +838,7 @@ ${SUNNY_VOICE}`;
     .filter((part) => part.length > 0)
     .join("\n\n");
 
-  return `You are ${assistantName}, the internal assistant for ${brandName} managers.
+  return withFrameworkGeneralSections(`You are ${assistantName}, the internal assistant for ${brandName} managers.
 
 Your job is to help a manager run their ${salonNoun}: company policy, operations, coaching conversations, training, and performance.
 
@@ -858,7 +867,34 @@ ${SUNNY_VOICE}
 
 ---DYNAMIC---
 
-${tail}`;
+${tail}`, input.frameworkGeneralSections === true);
+}
+
+const UNCOVERED_RULE =
+  '- If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.';
+
+/**
+ * THE COACHING FRAMEWORK COVERS AN ISSUE IT DOES NOT NAME
+ * (FRAMEWORK_GENERAL_SECTIONS_ENABLED).
+ *
+ * "Struggling to complete production timely … complains every shift" was
+ * answered "the knowledge base doesn't have a section that matches" with the
+ * framework's root-cause, performance-vs-behavior and conversation sections in
+ * the sources (QA, sibling app conv_mvb28ztb85z53mc). The rule above read "no
+ * section names it" as "not covered". Added after that rule only when the
+ * framework is a source and the flag is on; otherwise the prompt is unchanged.
+ */
+export const FRAMEWORK_GENERAL_SECTIONS_RULE =
+  "- WHEN THE COACHING FRAMEWORK IS AMONG THE SOURCES, A PEOPLE ISSUE IT DOES NOT NAME IS STILL COVERED BY ITS GENERAL SECTIONS: root cause identification, the difference between performance issues and behavior issues, and the coaching conversation structure. Answer from those sections and cite them by their markers. Say only that no section names this exact issue; do not say the knowledge base does not have it.";
+
+function withFrameworkGeneralSections(prompt: string, on: boolean): string {
+  if (!on || !prompt.includes(UNCOVERED_RULE)) return prompt;
+  return prompt.split(UNCOVERED_RULE).join(`${UNCOVERED_RULE}\n${FRAMEWORK_GENERAL_SECTIONS_RULE}`);
+}
+
+/** The coaching framework, read from a source's title. */
+export function isCoachingFrameworkTitle(title: string): boolean {
+  return /\bperformance management framework\b/i.test(title);
 }
 
 /**
@@ -945,9 +981,43 @@ export function extractUsedMarkers(answer: string, validMarkers: number[]): numb
  * the existing UI renders them. Markers out of range are removed too, so a
  * model slip never reaches the manager as a dangling "[S9]".
  */
-export function stripMarkers(answer: string): string {
+export function stripMarkers(answer: string, options: { readonly tidy?: boolean } = {}): string {
+  if (options.tidy) return stripMarkersTidily(answer);
   return answer
     .replace(/\s*\[S\d{1,2}\](?=[\s.,;:!?)]|$)/g, "")
+    .replace(/[^\S\n]{2,}/g, " ")
+    .trim();
+}
+
+/*
+ * REMOVING A MARKER NEVER LEAVES ITS GRAMMAR BEHIND (REFORMAT_KEEPS_SOURCES_ENABLED).
+ *
+ * "I cited two markers, [S6] and [S7], that are not valid sources" became
+ * "I cited two markers, and, that are not valid sources" (QA,
+ * conv_mufp73ez8pl7992). A run of markers joined by commas, "and", "or" or
+ * "&" is one group and goes as one; a group between two commas takes the
+ * commas, a group in brackets takes the brackets, and the word it was read
+ * through ("see [S2]", "per [S1]") goes with it. "[S2][S3]" goes whole. A
+ * list item left with nothing but its bullet is dropped.
+ */
+const MARKER = String.raw`\[S\d{1,2}\]`;
+const MARKER_GROUP = String.raw`${MARKER}(?:[^\S\n]*(?:,[^\S\n]*(?:and|or)[^\S\n]+|,|;|&|and[^\S\n]+|or[^\S\n]+)?[^\S\n]*${MARKER})*`;
+const AFTER_GROUP = String.raw`(?=[\s.,;:!?)]|$)`;
+
+function stripMarkersTidily(answer: string): string {
+  const group = (pattern: string) => new RegExp(pattern, "gi");
+  return answer
+    .replace(group(String.raw`[^\S\n]*\([^\S\n]*(?:(?:see|per|from|in)[^\S\n]+)?${MARKER_GROUP}[^\S\n]*\)`), "")
+    .replace(group(String.raw`[^\S\n]*,[^\S\n]*${MARKER_GROUP}[^\S\n]*,`), "")
+    .replace(group(String.raw`[^\S\n]+(?:at|see|on|in|per|from|under)[^\S\n]+${MARKER_GROUP}${AFTER_GROUP}`), "")
+    .replace(group(String.raw`[^\S\n]*${MARKER_GROUP}${AFTER_GROUP}`), "")
+    .replace(/[^\S\n]+([,.;:!?)])/g, "$1")
+    .replace(/,(?=[.;:!?])/g, "")
+    .replace(/,{2,}/g, ",")
+    .replace(/\([^\S\n]*\)/g, "")
+    .split("\n")
+    .filter((line) => !/^[^\S\n]*(?:[-*•]|\d{1,2}[.)])[^\S\n]*[.,;:]?[^\S\n]*$/.test(line))
+    .join("\n")
     .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 }

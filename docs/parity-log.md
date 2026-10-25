@@ -1,5 +1,40 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 25 Oct 2026: two unflagged full-remap changes in integration bundle 2 — same in both apps
+
+Neither is behind its own flag, and neither changes production today: both
+run only on the full-remap path, and `FORM_FULL_REMAP_ENABLED` is off in Ask
+Sunny's production. They come from Ask Bubbles (stray quote from its replay
+fixes, and #143's proposal ids), where they already run.
+- `remap-incident.ts` (PR 213): `HAS_WORD` — a stray quote or other
+  punctuation-only text is never an incident; it reads as none (null).
+- `form-full-remap.ts` `proposalFor` (PR 215): each remap card's
+  `proposalId` is `randomUUID()` instead of the shared `"form-remap"`, and an
+  observation with no letter or digit is null. When the remap is switched on
+  this is the P0 fix (a new chat never gets another chat's draft).
+
+## 25 Oct 2026: a follow-up that names its own documents is searched on them — ported to Ask Bubbles
+
+`FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED` defaults off, same name in both apps.
+QA Round 17, conv_mvo0ayai2x20aiy: after "I have an employee that is not
+verifying documents are signed", "The NCR and Fitzpatrick Skin Type Chart,
+EFT Agreements" was searched as "Employment Verification" (the manual-terms
+rewrite read the earlier turn), so Consent Forms (p.49, the skin typing
+chart) was not retrieved. On, a turn that names two or more words no earlier
+manager turn used keeps a rewritten query only when the rewrite still has
+one of them; otherwise it is searched on its own words (glossary-expanded).
+Ask Bubbles gets the same check after `rewriteRetrievalQuery`.
+
+## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
+
+Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
+route from pinning the Performance Management Framework's sections into a
+governed form's prompt. Its uploaded framework was prepared from this app's
+framework with only the app name changed, so it still carries this
+company's name, examples and metrics. Not ported: this app's framework is
+this company's own text, so pinning it here is correct and the same draft
+route stays as it is. No code change in this app.
+
 ## 24 Oct 2026: the app's own lines are not the manager's words — ported to Ask Bubbles
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation
@@ -934,3 +969,34 @@ manager turn names replaces the saved one on the intent slots and the card.
 Ported to Ask Bubbles' store reader on the form remap path in the same
 session (its "location kearney" / "store kearney" kept the earlier store).
 Test: `src/lib/forms/salon-label-cue.test.ts`.
+
+## 25 Oct 2026: edits are applied or answered; dates follow the incident
+
+`FORM_EDIT_DATE_RULES_ENABLED` (default off, same flag in Ask Bubbles). QA's
+history replay on prod 20120d7: "change observation of offense to: …",
+"clean up my grammar", "change salon location to omaha center", "can you edit
+the form I already finalized …" were appended to Observation of Offense;
+"the late opening policy INSTEAD of the attendance policy" read as
+Attendance; a prior action's date became the Date or a "Follow-up:" line.
+Ported to Ask Bubbles' remap path in the same session (replace / add /
+instruction for What happened, the Date past a prior step, "today", the
+set-aside policy, the finalized-form reopen). Stays Sunny-only: the
+Follow-up rule (the remap card has no Follow-up line) and the salon edit on
+the card (Ask Bubbles' store edit is a separate fix on its remap path). Test:
+`src/app/api/chat/edits-dates-replay-e2e.test.ts`.
+
+## 25 Oct 2026: EPP Store wording in Ask Bubbles — Bubbles-only (brand-specific)
+
+Ask Bubbles pins its Employee Performance Plans to "store" wording with no Sun Tan City name or logo, keeping the PPTA/LPSVA/UPTA/Club Close metrics and the stored `salon_*` keys (Ask Bubbles `src/lib/forms/epp-store-wording.test.ts`); not needed in Ask Sunny because "salon" and Sun Tan City are this app's own brand.
+
+## 25 Oct 2026: a named form that is not published opens no card (from Ask Bubbles b2cb091)
+
+Ask Bubbles ships this unflagged; Ask Sunny ships it behind
+`NAMED_FORM_EXACT_ENABLED` (default off) for the staged rollout. On, a form
+the manager named is kept only as itself on the intent slots: a named
+template that is not published leaves the form unset (the proposal flow says
+it is not published), the slot model's or the saved form does not stand in
+for it, a named kind of form ("… interview form") keeps only a form of that
+kind, and a turn naming two forms together names either of them. Off, the
+form is read exactly as on main. Tests: `src/lib/ai/hidden-form-no-card-oct25.test.ts`,
+`src/lib/ai/form-choice-stated.test.ts`, `src/lib/ai/form-choice-stated-live-oct25.test.ts`.
