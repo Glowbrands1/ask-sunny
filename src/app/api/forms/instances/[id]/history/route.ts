@@ -4,7 +4,7 @@ import { errorResponse } from "@/lib/api/respond";
 import { formRevisionsEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance-scope";
 import { loadRevisionHistory, marksFor } from "@/lib/forms/revision-chain";
-import { revisionLabel } from "@/lib/forms/revision-history";
+import { revisionLabel, type RevisionHistoryResponse } from "@/lib/forms/revision-history";
 
 /**
  * GET /api/forms/instances/[id]/history
@@ -36,7 +36,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       }
     });
     if (!history) return NextResponse.json({ error: "No such form." }, { status: 404 });
-    return NextResponse.json({ history, marks: marksFor(history), label: revisionLabel(history) });
+    const body: RevisionHistoryResponse = { history, marks: marksFor(history), label: revisionLabel(history) };
+    return NextResponse.json(body);
   } catch (error) {
     if (error instanceof InstanceNotVisibleError) {
       return NextResponse.json({ error: error.message }, { status: 404 });

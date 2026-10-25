@@ -175,3 +175,10 @@ export function displayCalendarDate(date: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   return match ? `${match[2]}/${match[3]}/${match[1]}` : date;
 }
+
+/** What `GET /api/forms/instances/[id]/history` answers. */
+export interface RevisionHistoryResponse {
+  readonly history: RevisionHistory;
+  readonly marks: readonly RevisionMark[];
+  readonly label: string | null;
+}
