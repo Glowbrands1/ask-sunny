@@ -4,7 +4,12 @@ import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
-import { draftActionsEnabled, questionNotFormEnabled, secondFormEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  chatLongMessageEnabled,
+  draftActionsEnabled,
+  questionNotFormEnabled,
+  secondFormEnabled,
+} from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -17,8 +22,10 @@ import {
   optionalString,
   parseHistory,
   parseJsonBody,
+  requireChatQuestion,
   requireString,
 } from "@/lib/api/validation";
+import { LONG_MESSAGE_LIMIT } from "@/lib/chat/message-limit";
 import { authorizeRequest } from "@/lib/auth/server";
 import { closeTurn, openTurn } from "@/lib/analytics/record";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
@@ -350,7 +357,14 @@ function parseAskRequest(body: Partial<AskRequest>): AskRequest {
   const context = body.context;
 
   return {
-    question: requireString(body.question, "A question", LIMITS.question),
+    /*
+     * CHAT_LONG_MESSAGE_ENABLED raises the limit to 12,000 characters and
+     * says how long a refused message is. The text is refused, never cut.
+     * Off, the 4,000 check and its wording are what main ships.
+     */
+    question: chatLongMessageEnabled()
+      ? requireChatQuestion(body.question, LONG_MESSAGE_LIMIT)
+      : requireString(body.question, "A question", LIMITS.question),
     mode: optionalEnum<AnswerMode>(body.mode, MODES, "standard"),
     history: parseHistory(body.history) as ChatMessage[],
     questionMessageId: optionalString(body.questionMessageId, LIMITS.messageId) || undefined,

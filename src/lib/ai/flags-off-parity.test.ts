@@ -64,6 +64,7 @@ import {
   followupNewTopicRetrievalEnabled,
   draftReuseSameChatOnlyEnabled,
   resignMethodFollowupEnabled,
+  chatLongMessageEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -145,6 +146,8 @@ const NEW_FLAGS = [
   "FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED",
   "RESIGN_METHOD_FOLLOWUP_ENABLED",
+  "CHAT_LONG_MESSAGE_ENABLED",
+  "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -284,6 +287,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(followupNewTopicRetrievalEnabled()).toBe(false);
     expect(draftReuseSameChatOnlyEnabled()).toBe(false);
     expect(resignMethodFollowupEnabled()).toBe(false);
+    expect(chatLongMessageEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -324,6 +328,9 @@ describe("new flags default off and wrappers are inert", () => {
       // And except chat-screen.tsx: SEND_AFTER_HYDRATE_ENABLED queues a typed
       // send until the store is ready. The composer is not disabled and no
       // control is added. The diff is that queue.
+      // And except composer.tsx: QA approved on 25 Oct 2026, behind
+      // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
+      // and send disabled over the limit. Off, it renders as before.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -331,6 +338,7 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
+          ":(exclude)src/features/chat/composer.tsx",
         ]),
       ).toBe("");
     } else {

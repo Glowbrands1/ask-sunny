@@ -727,3 +727,34 @@ export function sendAfterHydrateEnabled(): boolean {
     flagOn(process.env.NEXT_PUBLIC_SEND_AFTER_HYDRATE_ENABLED)
   );
 }
+
+/**
+ * The composer's reading of CHAT_LONG_MESSAGE_ENABLED. Only a statically
+ * written `process.env.NEXT_PUBLIC_*` name reaches a client bundle, so the
+ * browser reads the public twin and nothing else. Off, the composer renders
+ * and sends exactly as it did.
+ */
+export function chatLongMessageClientEnabled(): boolean {
+  const inlined = process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
+ * A chat message may be up to 12,000 characters instead of 4,000
+ * (`LONG_MESSAGE_LIMIT` in `lib/chat/message-limit.ts`). Over the limit the
+ * route returns a 400 that says how long the message is; nothing is cut.
+ * Off (the default), the route keeps the 4,000-character check and its
+ * wording exactly as they are.
+ *
+ * The composer is a client component, so the browser reads
+ * `NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED`, written out statically for Next
+ * to inline. The server reads either spelling, so a deployment that sets
+ * only the public name never shows a 12,000 limit the route refuses.
+ */
+export function chatLongMessageEnabled(): boolean {
+  return (
+    envFlag("CHAT_LONG_MESSAGE_ENABLED") ||
+    envFlag("NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED") ||
+    flagOn(process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED)
+  );
+}
