@@ -2,7 +2,13 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
-import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  managerWordsOnlyEnabled,
+  payrollAmountFieldEnabled,
+  typedNameProceedsEnabled,
+  warningLevelManagerOnlyEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -28,6 +34,7 @@ import {
 } from "@/lib/forms/required-policy-citation";
 
 import { accountManualSections } from "./account-manual-sections";
+import { appSentencesOnePerLine } from "./app-sentences";
 import type { ConversationFormState } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
 import { formatManualCitation } from "./policy-citation-fields";
@@ -97,7 +104,11 @@ export function enrichFormCard(input: {
     (namedSalon.length === 0 && askedHere.length === 0 ? primarySalon(employeeName, input.people) : null);
   const amount = cardPayrollAmount(input, blob);
   const payrollDeduct = proposal.payrollDeduct ?? (amount || input.saved?.payrollDeduct === "yes" ? "yes" : input.saved?.payrollDeduct ?? null);
-  const warningLevel = proposal.warningLevel ?? input.saved?.warningLevel ?? null;
+  // WARNING_LEVEL_MANAGER_ONLY_ENABLED: only a form with a Type of Warning carries a level.
+  const warningLevel =
+    warningLevelManagerOnlyEnabled() && !templateHasWarningLevel({ key: proposal.templateKey, name: proposal.templateName })
+      ? null
+      : proposal.warningLevel ?? input.saved?.warningLevel ?? null;
 
   let next: ChatFormProposal = {
     ...proposal,
@@ -302,12 +313,26 @@ function statedEmployee(text: string): string | null {
 }
 
 function statedTitle(text: string, saved: string | null): string | null {
-  const labelled = titleAfterJobTitleLabel(text);
+  const labelled = managerWordsOnlyEnabled() ? labelledTitleByLine(text) : titleAfterJobTitleLabel(text);
   if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
   if (marked && !isFieldLabelWord(marked)) return marked;
   if (saved && text.toLowerCase().includes(saved.toLowerCase())) return saved;
   return extractJobTitle(text);
+}
+
+/**
+ * The label reader takes up to six words after "job title", across sentence
+ * ends. The app's "Job title: CA." is followed on the same line by "It
+ * happened at KS Lawrence.", which is not part of the title, so each line is
+ * read alone and each app sentence is put on a line of its own.
+ */
+function labelledTitleByLine(text: string): string | null {
+  for (const line of appSentencesOnePerLine(text).split("\n")) {
+    const title = titleAfterJobTitleLabel(line);
+    if (title) return title;
+  }
+  return null;
 }
 
 function statedDate(text: string, question: string, today: string): string | null {
