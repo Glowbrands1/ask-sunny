@@ -28,6 +28,9 @@ describe("manual reading notes", () => {
     expect(notes).toContain(P19_PHONE_LIST_NOTE);
     expect(P19_PHONE_LIST_NOTE).toContain("charging in the break room is not allowed");
     expect(P19_PHONE_LIST_NOTE).toContain("three places the phone may NOT be");
+    // conv_mvnsu3dz2mwoihh: "either charging in the break room or in a drawer till". QA: name all three.
+    expect(P19_PHONE_LIST_NOTE).toContain("not sitting on top of a drawer till");
+    expect(P19_PHONE_LIST_NOTE).toContain("does not give the break room or a drawer till as a place the phone belongs");
   });
 
   it("reads the cached manual as well as the grounding block", () => {

@@ -10,6 +10,10 @@
  * charging in the break room is not allowed. Ported from the sibling app; the
  * sentence is in both apps' manuals.
  *
+ * A later reply (conv_mvnsu3dz2mwoihh, 25 Oct 2026) read two of the three as
+ * where the phone goes: "either charging in the break room or in a drawer
+ * till". The note names all three places, the drawer till included.
+ *
  * The manual text is not edited. When the grounding the model reads (the
  * cached full manual, the cached pinned manual block or the retrieved chunks)
  * holds that sentence, a short note
@@ -22,7 +26,7 @@ const P19_PHONE_LIST =
   /not\s+in\s+back\s+pockets\s*,?\s+charging\s+in\s+the\s+break\s+room\s*,?\s+or\s+sitting\s+on\s+top\s+of\s+a\s+drawer\s+till/i;
 
 export const P19_PHONE_LIST_NOTE =
-  "Reading note (p.19): 'not in back pockets, charging in the break room, or sitting on top of a drawer till' lists three places the phone may NOT be; charging in the break room is not allowed.";
+  "Reading note (p.19): 'not in back pockets, charging in the break room, or sitting on top of a drawer till' lists three places the phone may NOT be: not in a back pocket, not charging in the break room, and not sitting on top of a drawer till. None of the three is allowed; charging in the break room is not allowed. The manual does not give the break room or a drawer till as a place the phone belongs.";
 
 const HEADER =
   "MANUAL READING NOTES\n\nThese notes are not manual text and are not cited. Each one says how to read a sentence that is in the manual text above.";

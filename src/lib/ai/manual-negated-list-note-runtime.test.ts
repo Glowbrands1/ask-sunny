@@ -141,7 +141,7 @@ const SECTION_REPLY_LINE =
   "- **Phones are allowed in the building, but not on the floor with them.** Personal cell phones are permitted in the workplace but must be kept out of sight, on silent, and not on the employee's person — not in a back pocket, not charging in the break room, not sitting on top of a drawer till (\"Cell Phone/Smart Watch Policy\", JBA Policy Manual p.19 [p.19]).";
 
 const NOTE =
-  "Reading note (p.19): 'not in back pockets, charging in the break room, or sitting on top of a drawer till' lists three places the phone may NOT be; charging in the break room is not allowed.";
+  "Reading note (p.19): 'not in back pockets, charging in the break room, or sitting on top of a drawer till' lists three places the phone may NOT be: not in a back pocket, not charging in the break room, and not sitting on top of a drawer till. None of the three is allowed; charging in the break room is not allowed. The manual does not give the break room or a drawer till as a place the phone belongs.";
 
 const NOTE_BLOCK = `MANUAL READING NOTES
 
@@ -315,5 +315,50 @@ describe("p.19 reading note — ordinary retrieval (full manual off)", () => {
     const on = await run(B9_QUESTION, "1");
     expect(on.grounding).toBe(off.grounding);
     expect(on.grounding).not.toContain("Reading note");
+  });
+});
+
+/**
+ * conv_mvnsu3dz2mwoihh (Ask Bubbles production, chat-history replay, 25 Oct 2026). The
+ * turn read retrieved chunks (no cached manual: cache tokens 0/0) and the p.19
+ * chunk ranked first. The reply said "Phones should stay silent and either
+ * charging in the break room or in a drawer till, not carried during a shift."
+ * p.19 lists both the break room and "sitting on top of a drawer till" as
+ * places the phone may NOT be. QA (25 Oct 2026): the note must name all three
+ * places, the drawer till included.
+ */
+const PHONES_ON_SHIFT_QUESTION = "Can employees have their phones on them during a shift?";
+
+/** conv_mvnsu3dz2mwoihh, the reply production sent, word for word. */
+const PHONES_ON_SHIFT_REPLY = `No — per policy, personal cell phones are allowed in the workplace but must be kept out of sight and not on the employee's person while clocked in (not in back pockets, not on them). Phones should stay silent and either charging in the break room or in a drawer till, not carried during a shift. The only time a phone should be accessed while clocked in is an emergency.
+
+Smart watches are treated a bit differently — they're allowed as long as they're not being used for texting, calls, or social media, and you can ask an employee to remove one if it starts interfering with the guest experience.`;
+
+describe("conv_mvnsu3dz2mwoihh — \"Can employees have their phones on them during a shift?\"", () => {
+  it("the note names all three places as NOT allowed, the drawer till included", () => {
+    expect(NOTE).toContain("three places the phone may NOT be");
+    expect(NOTE).toContain("not in a back pocket");
+    expect(NOTE).toContain("not charging in the break room");
+    expect(NOTE).toContain("not sitting on top of a drawer till");
+    expect(NOTE).toContain("None of the three is allowed");
+    expect(NOTE).toContain("does not give the break room or a drawer till as a place the phone belongs");
+  });
+
+  it("ordinary retrieval (the path this turn took): the exact question gets the note with the flag on", async () => {
+    delete process.env.FULL_MANUAL_CONTEXT_ENABLED;
+    state.reply = PHONES_ON_SHIFT_REPLY;
+    const off = await run(PHONES_ON_SHIFT_QUESTION, undefined);
+    const on = await run(PHONES_ON_SHIFT_QUESTION, "1");
+    expect(off.grounding).toContain("sitting on top of a drawer till");
+    expect(off.grounding).not.toContain("Reading note");
+    expect(on.grounding).toBe(`${off.grounding}\n\n${NOTE_BLOCK}`);
+    expect(on.system).toBe(off.system);
+  });
+
+  it("full manual loaded: the exact question gets the note with the flag on", async () => {
+    process.env.FULL_MANUAL_CONTEXT_ENABLED = "1";
+    state.reply = PHONES_ON_SHIFT_REPLY;
+    const on = await run(PHONES_ON_SHIFT_QUESTION, "1");
+    expect(on.grounding).toContain(NOTE_BLOCK);
   });
 });
