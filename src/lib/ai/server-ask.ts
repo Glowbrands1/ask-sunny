@@ -30,6 +30,7 @@ import {
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
   remapIncidentFixEnabled,
+  policyPageOnCardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -116,6 +117,7 @@ import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
 import { attachFormTurnSources, statedManualHeading } from "./form-card-slots";
+import { withPolicyPagesOnCard } from "@/lib/forms/policy-page-on-card";
 import { prepareProposalQuestion } from "./proposal-question";
 import { applyIntentExtraction } from "./intent-extraction";
 import { promoteSeparateForm } from "./second-form";
@@ -464,6 +466,23 @@ async function answerQuestionUntraced(
     return remapIncidentFixEnabled() ? requestScopedHistory(request.history, request.question) : request.history;
   }
 
+  /**
+   * POLICY_PAGE_ON_CARD_ENABLED on the remap card: its own policy line with the
+   * printed page from the manual's chunk metadata. A failed manual read leaves
+   * the card as the remap wrote it.
+   */
+  async function withCardPolicyPages(response: AskResponse): Promise<AskResponse> {
+    if (!response.formProposal) return response;
+    try {
+      const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+      if (!manual.ok) return response;
+      const content = withPolicyPagesOnCard(response.content, manual.chunks);
+      return content === response.content ? response : { ...response, content };
+    } catch {
+      return response;
+    }
+  }
+
   async function decorateFormAnswer(response: AskResponse): Promise<AskResponse> {
     const coachingOn = priorCoachingOptionalEnabled();
     const recallOn = retrievalRecallEnabled();
@@ -477,7 +496,8 @@ async function answerQuestionUntraced(
       groundedEntitiesEnabled() ||
       attendancePolicyCitationEnabled() ||
       policyPageRequiredEnabled();
-    if (!coachingOn && !recallOn && !citeOn) return response;
+    const pageOn = policyPageOnCardEnabled() && Boolean(response.formProposal);
+    if (!coachingOn && !recallOn && !citeOn && !pageOn) return response;
     const turns = [
       ...formHistory().filter((turn) => turn.role === "user").map((turn) => turn.content),
       request.question,
@@ -491,9 +511,12 @@ async function answerQuestionUntraced(
         managerText: turns.join("\n"),
       });
     }
-    if (recallOn || (citeOn && response.formProposal)) {
+    if (recallOn || (citeOn && response.formProposal) || pageOn) {
       try {
         const manual = await knowledge.fetchOfficialPolicyManual(ACTIVE_BRAND.knowledgeScopeId);
+        // POLICY_PAGE_ON_CARD_ENABLED: the card's own policy line with its printed page, before the
+        // citation line below checks for one.
+        if (manual.ok && pageOn) content = withPolicyPagesOnCard(content, manual.chunks);
         if (manual.ok && recallOn) content = withMappedPolicy(content, turns, manual.chunks, true);
         if (manual.ok && citeOn && response.formProposal) {
           const notes = turns.join("\n");
@@ -648,7 +671,7 @@ async function answerQuestionUntraced(
             : null;
         },
       });
-      if (remapped) return remapped;
+      if (remapped) return policyPageOnCardEnabled() ? await withCardPolicyPages(remapped) : remapped;
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

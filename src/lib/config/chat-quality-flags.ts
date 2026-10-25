@@ -531,6 +531,17 @@ export function priorActionsParseEnabled(): boolean {
 }
 
 /**
+ * The form card's policy line carries the printed page from the JBA Policy
+ * Manual's chunk metadata: "**Policy:** Standards of Conduct (JBA Policy
+ * Manual p.12), as you said" (QA, 25 Oct 2026). Only a line the app wrote
+ * with one of its own policy names changes; a heading without exactly one
+ * printed page gets none. Off, the card is exactly as before.
+ */
+export function policyPageOnCardEnabled(): boolean {
+  return envFlag("POLICY_PAGE_ON_CARD_ENABLED");
+}
+
+/**
  * Words that are not a person never become the employee: a placeholder
  * ("blank", "n/a", "unknown"), a phrase that starts with a verb ("require
  * practice"), a product or service this business sells, a place on the
