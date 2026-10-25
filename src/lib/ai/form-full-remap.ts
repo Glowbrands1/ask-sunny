@@ -6,6 +6,7 @@ import {
   notANameGuardEnabled,
   priorActionsParseEnabled,
   remapIncidentFixEnabled,
+  formEditDateRulesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { lateOpenOn } from "@/lib/forms/late-open";
@@ -48,6 +49,7 @@ import {
 import type { ChatFormProposal } from "@/types";
 
 import { callClaudeTool } from "./call-claude";
+import { formDateByRules, managerWords, remapEditLine, remapObservation, withoutSetAsidePolicies } from "./edit-date-rules";
 import { chatTraceDraft } from "./chat-trace-store";
 
 /**
@@ -211,12 +213,22 @@ export function groundFormSlots(input: {
   };
   const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName, start > 0, said) : (input.saved ?? null);
   let slots = finishSlots(mergeSlots(read, saved), said);
+  // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never becomes What happened; the Date follows the incident.
+  if (formEditDateRulesEnabled()) {
+    slots = withEditDateRules(slots, {
+      users,
+      question: input.question,
+      today: input.today,
+      reread: (account) => (fixed ? requestIncident({ text: account, employeeName, slotClause }) : statedIncident(account, employeeName)),
+    });
+  }
   const sections =
     fixed && input.manual
       ? // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, not Attendance too.
         withoutAttendanceForLateOpening(
           remapManualSections({
-            said: scoped,
+            // FORM_EDIT_DATE_RULES_ENABLED: "INSTEAD of the attendance policy" cites no Attendance.
+            said: formEditDateRulesEnabled() ? withoutSetAsidePolicies(scoped) : scoped,
             chunks: input.manual.chunks,
             incident: slots.observation,
             modelHeading: raw.policySection,
@@ -243,8 +255,10 @@ export function groundFormSlots(input: {
         }
       : null,
   );
+  // FORM_EDIT_DATE_RULES_ENABLED: the reply says what an edit did.
+  const editLine = formEditDateRulesEnabled() ? remapEditLine(managerWords(input.question)) : null;
   const response: AskResponse = {
-    content,
+    content: editLine ? `${content}\n\n${editLine}` : content,
     citations: fixed && input.manual ? remapCitations(input.manual, sections) : [],
     recommendedVideoIds: [],
     ...(slots.templateKey ? { formProposal: proposalFor(slots) } : {}),
@@ -1051,6 +1065,33 @@ function renderReply(
   const body = lines.join("\n");
   const asked = questions.join("\n");
   return [body, asked].filter((part) => part.trim() !== "").join("\n\n");
+}
+
+/**
+ * FORM_EDIT_DATE_RULES_ENABLED: What happened under the three edit kinds, and
+ * the Date read past a prior step's date (see `edit-date-rules.ts`).
+ */
+function withEditDateRules(
+  slots: FormRemapSlots,
+  input: {
+    readonly users: readonly string[];
+    readonly question: string;
+    readonly today: string;
+    readonly reread: (account: string) => string | null;
+  },
+): FormRemapSlots {
+  const users = input.users.map(managerWords).filter((turn) => turn.trim());
+  const observation = remapObservation({ users, current: slots.observation, reread: input.reread });
+  const date = formDateByRules({
+    managerTurns: users,
+    question: managerWords(input.question),
+    today: input.today,
+    current: slots.incidentDateIso,
+  });
+  const incidentDateIso = date === undefined ? slots.incidentDateIso : date;
+  return observation === slots.observation && incidentDateIso === slots.incidentDateIso
+    ? slots
+    : { ...slots, observation, incidentDateIso };
 }
 
 function proposalFor(slots: FormRemapSlots): ChatFormProposal {

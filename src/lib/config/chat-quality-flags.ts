@@ -578,6 +578,21 @@ export function titleWholeWordEnabled(): boolean {
   return envFlag("TITLE_WHOLE_WORD_ENABLED");
 }
 
+/**
+ * An edit typed in chat is applied to its field or answered, and dates follow
+ * the incident (QA history replay, 25 Oct 2026). "change observation of
+ * offense to: …" replaces that line with the manager's text; "add that …"
+ * appends their clause; "clean up my grammar", "change the salon to …" and
+ * "can you edit the form I already finalized" are never appended to the
+ * Observation. "X instead of Y" names X. A prior action's date is never the
+ * form's Date or its Follow-up, Follow-up comes only from a follow-up or
+ * review phrase, and "today" dates the form today. Off, every reader is as
+ * before.
+ */
+export function formEditDateRulesEnabled(): boolean {
+  return envFlag("FORM_EDIT_DATE_RULES_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

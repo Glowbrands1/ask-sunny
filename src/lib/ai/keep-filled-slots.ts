@@ -26,12 +26,14 @@ import {
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
+  formEditDateRulesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutAppLines } from "./app-sentences";
+import { observationByRules } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
 import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
@@ -194,7 +196,10 @@ export function holdFilledSlots(input: {
      * she resigned …" was pasted under a Corrective Action heading (25 Oct 2026).
      */
     if (next.templateKey !== "stc-exit") {
-      content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
+      const build = (given: string, account: readonly string[]) =>
+        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
+      // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
+      content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
