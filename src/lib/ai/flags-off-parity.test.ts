@@ -385,7 +385,9 @@ describe("existing chat and form suites with every new flag off", () => {
           "src/app/api/chat",
           "src/app/api/forms",
         ],
-        { env, encoding: "utf8", timeout: 540_000, stdio: "pipe" },
+        // The child's output (every suite's logs) passed Node's 1 MB default
+        // buffer on CI and failed with ENOBUFS before any test failed.
+        { env, encoding: "utf8", timeout: 540_000, stdio: "pipe", maxBuffer: 256 * 1024 * 1024 },
       );
       expect(output).toMatch(/Test Files[\s\S]*passed/);
     },
