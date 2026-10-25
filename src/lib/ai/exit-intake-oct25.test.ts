@@ -268,6 +268,19 @@ async function converse(turns: readonly string[], recorded: Readonly<Record<numb
 
 const FLAG = "EXIT_INTAKE_FIX_ENABLED";
 
+/*
+ * The sibling's QA reads slot retention and form state as rolled back in its
+ * production, and this app's profile has slot retention on and form state
+ * off. The fix must not depend on either, so every case runs with each of
+ * them on and off (typed-name proceeds and field accuracy stay on).
+ */
+const PROFILES = [
+  ["slot retention off, form state off", false, false],
+  ["slot retention on, form state off", true, false],
+  ["slot retention off, form state on", false, true],
+  ["slot retention on, form state on", true, true],
+] as const;
+
 /* The sibling's managers' turns, in this app's wording. */
 const NOT_A_NAME_TURN =
   "create an exit form for Test Employee at Lawrence. Gave notice 9/25/26 – fulfilled 10/9/26, resigning to pursue other career options, items returned, payroll deduction does not apply";
@@ -291,79 +304,86 @@ async function workingEmployee(): Promise<string> {
   return name!;
 }
 
-describe("acceptance: the exit intake on this app's live path (EXIT_INTAKE_FIX_ENABLED on)", () => {
+describe.each(PROFILES)("%s", (_profile, slotRetention, formState) => {
   beforeEach(() => {
-    vi.stubEnv(FLAG, "true");
+    vi.stubEnv("SLOT_RETENTION_ENABLED", slotRetention ? "true" : "false");
+    vi.stubEnv("FORM_STATE_ENABLED", formState ? "true" : "false");
   });
 
-  it("items returned … does not apply: the card is for the employee, never 'Items Returned'", { timeout: 120_000 }, async () => {
-    const employee = await workingEmployee();
-    const [reply] = await converse([NOT_A_NAME_TURN]);
-    expect(reply!.proposal?.templateKey).toBe("stc-exit");
-    expect(reply!.proposal?.employeeName).toBe(employee);
-    expect(reply!.content).not.toMatch(/items returned\*\*|Which of them/i);
-    expect(reply!.content).toContain(`- **Name:** ${employee}`);
-    expect(reply!.content).toContain("- **Date that notice was given:** September 25, 2026");
-    expect(reply!.content).toContain("- **Date that notice was fulfilled:** October 9, 2026");
-    expect(reply!.content).toContain("- **Reason for Resignation:** To pursue other career options.");
-    expect(reply!.content).toContain("- **Payroll Deduction:** Payroll deduction is not applicable.");
-  });
+  describe("acceptance: the exit intake on this app's live path (EXIT_INTAKE_FIX_ENABLED on)", () => {
+    beforeEach(() => {
+      vi.stubEnv(FLAG, "true");
+    });
 
-  it("an explicit edit of the reason changes the reason on the open card", { timeout: 120_000 }, async () => {
-    const turns = await converse([REASON_REQUEST, REASON_EDIT]);
-    expect(turns[0]!.content).toContain("- **Reason for Resignation:** Moving out of state.");
-    const last = turns.at(-1)!;
-    expect(last.proposal?.templateKey).toBe("stc-exit");
-    expect(last.content).toContain("- **Reason for Resignation:** Going back to school.");
-    expect(last.content).not.toContain("Reason for Resignation:** Moving out of state");
-    expect(last.content).toContain("- **Last Day Worked:** October 24, 2026");
-  });
+    it("items returned … does not apply: the card is for the employee, never 'Items Returned'", { timeout: 120_000 }, async () => {
+      const employee = await workingEmployee();
+      const [reply] = await converse([NOT_A_NAME_TURN]);
+      expect(reply!.proposal?.templateKey).toBe("stc-exit");
+      expect(reply!.proposal?.employeeName).toBe(employee);
+      expect(reply!.content).not.toMatch(/items returned\*\*|Which of them/i);
+      expect(reply!.content).toContain(`- **Name:** ${employee}`);
+      expect(reply!.content).toContain("- **Date that notice was given:** September 25, 2026");
+      expect(reply!.content).toContain("- **Date that notice was fulfilled:** October 9, 2026");
+      expect(reply!.content).toContain("- **Reason for Resignation:** To pursue other career options.");
+      expect(reply!.content).toContain("- **Payroll Deduction:** Payroll deduction is not applicable.");
+    });
 
-  it("a yearless 'last day 10-24' is the most recent October 24", { timeout: 120_000 }, async () => {
-    const [reply] = await converse([YEARLESS]);
-    expect(reply!.content).toContain("- **Last Day Worked:** October 24, 2026");
-    expect(blankLine(reply!.content)).not.toContain("Last Day Worked");
-    // "She resigned" says that she resigned, not how.
-    expect(blankLine(reply!.content)).toContain("How Employee Resigned");
-  });
+    it("an explicit edit of the reason changes the reason on the open card", { timeout: 120_000 }, async () => {
+      const turns = await converse([REASON_REQUEST, REASON_EDIT]);
+      expect(turns[0]!.content).toContain("- **Reason for Resignation:** Moving out of state.");
+      const last = turns.at(-1)!;
+      expect(last.proposal?.templateKey).toBe("stc-exit");
+      expect(last.content).toContain("- **Reason for Resignation:** Going back to school.");
+      expect(last.content).not.toContain("Reason for Resignation:** Moving out of state");
+      expect(last.content).toContain("- **Last Day Worked:** October 24, 2026");
+    });
 
-  it("the typed Permanent Address is filled, No Call No Show is ticked, and 'Main St' is nobody", { timeout: 120_000 }, async () => {
-    const employee = await workingEmployee();
-    const [reply] = await converse([ADDRESS_NCNS]);
-    expect(reply!.proposal?.employeeName).toBe(employee);
-    expect(reply!.content).not.toMatch(/\*\*Main St\*\*/);
-    expect(reply!.content).toContain("- **Permanent Address:** 123 Main St, Lawrence, KS 66044");
-    expect(blankLine(reply!.content)).not.toContain("Permanent Address");
-    expect(reply!.content).toContain("- **Resignation Details:** No Call No Show");
-    expect(reply!.content).toContain("- **Last Day Worked:** October 20, 2026");
-  });
-});
+    it("a yearless 'last day 10-24' is the most recent October 24", { timeout: 120_000 }, async () => {
+      const [reply] = await converse([YEARLESS]);
+      expect(reply!.content).toContain("- **Last Day Worked:** October 24, 2026");
+      expect(blankLine(reply!.content)).not.toContain("Last Day Worked");
+      // "She resigned" says that she resigned, not how.
+      expect(blankLine(reply!.content)).toContain("How Employee Resigned");
+    });
 
-describe("unchanged", () => {
-  it("an exit form that already worked is the same card with the flag on and off", { timeout: 120_000 }, async () => {
-    vi.stubEnv(FLAG, "true");
-    const [on] = await converse([ALREADY_WORKS]);
-    vi.stubEnv(FLAG, "false");
-    const [off] = await converse([ALREADY_WORKS]);
-    expect(on!.content).toBe(off!.content);
-    expect({ ...on!.proposal, proposalId: null, sourceMessageIds: null }).toEqual({
-      ...off!.proposal,
-      proposalId: null,
-      sourceMessageIds: null,
+    it("the typed Permanent Address is filled, No Call No Show is ticked, and 'Main St' is nobody", { timeout: 120_000 }, async () => {
+      const employee = await workingEmployee();
+      const [reply] = await converse([ADDRESS_NCNS]);
+      expect(reply!.proposal?.employeeName).toBe(employee);
+      expect(reply!.content).not.toMatch(/\*\*Main St\*\*/);
+      expect(reply!.content).toContain("- **Permanent Address:** 123 Main St, Lawrence, KS 66044");
+      expect(blankLine(reply!.content)).not.toContain("Permanent Address");
+      expect(reply!.content).toContain("- **Resignation Details:** No Call No Show");
+      expect(reply!.content).toContain("- **Last Day Worked:** October 20, 2026");
     });
   });
 
-  it("flag off: read as before (the card this app gave)", { timeout: 120_000 }, async () => {
-    vi.stubEnv(FLAG, "false");
-    const [yearless] = await converse([YEARLESS]);
-    expect(blankLine(yearless!.content)).toContain("Last Day Worked");
-  });
+  describe("unchanged", () => {
+    it("an exit form that already worked is the same card with the flag on and off", { timeout: 120_000 }, async () => {
+      vi.stubEnv(FLAG, "true");
+      const [on] = await converse([ALREADY_WORKS]);
+      vi.stubEnv(FLAG, "false");
+      const [off] = await converse([ALREADY_WORKS]);
+      expect(on!.content).toBe(off!.content);
+      expect({ ...on!.proposal, proposalId: null, sourceMessageIds: null }).toEqual({
+        ...off!.proposal,
+        proposalId: null,
+        sourceMessageIds: null,
+      });
+    });
 
-  it("a Corrective Action whose account says 'items returned … does not apply' never names 'Items Returned'", { timeout: 120_000 }, async () => {
-    vi.stubEnv(FLAG, "true");
-    const [reply] = await converse([
-      "create a CA for Test Employee at Lawrence, she was out of dress code 10/11, items returned, payroll deduction does not apply",
-    ]);
-    expect(reply!.proposal?.employeeName ?? "").not.toMatch(/items returned/i);
+    it("flag off: read as before (the card this app gave)", { timeout: 120_000 }, async () => {
+      vi.stubEnv(FLAG, "false");
+      const [yearless] = await converse([YEARLESS]);
+      expect(blankLine(yearless!.content)).toContain("Last Day Worked");
+    });
+
+    it("a Corrective Action whose account says 'items returned … does not apply' never names 'Items Returned'", { timeout: 120_000 }, async () => {
+      vi.stubEnv(FLAG, "true");
+      const [reply] = await converse([
+        "create a CA for Test Employee at Lawrence, she was out of dress code 10/11, items returned, payroll deduction does not apply",
+      ]);
+      expect(reply!.proposal?.employeeName ?? "").not.toMatch(/items returned/i);
+    });
   });
 });
