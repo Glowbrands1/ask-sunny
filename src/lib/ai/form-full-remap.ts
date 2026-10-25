@@ -8,6 +8,8 @@ import {
   remapIncidentFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
+import { lateOpenOn } from "@/lib/forms/late-open";
+import { withoutAttendanceForLateOpening } from "@/lib/forms/official-policy-manual";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { datesInText, datesInTextWithYearless, listIncidentDates } from "@/lib/forms/form-date-answer";
 import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
@@ -161,7 +163,11 @@ export function groundFormSlots(input: {
   const start = fixed ? currentRequestStart({ turns: users, employeeName, slotClause }) : 0;
   const scoped = users.slice(start).join("\n");
   const named = fixed ? namedPolicy(withoutPriorList(scoped)) : null;
-  const policySection = fixed ? named : groundedPolicy(said);
+  // LATE_OPEN_DATE_ENABLED with REMAP_INCIDENT_FIX_ENABLED: a described late
+  // opening ("late to open 10-19") is still the Late Opening policy when no
+  // policy is named and the manual gives no section for it.
+  const lateOpening = fixed && !named ? describedLateOpening(withoutPriorList(scoped)) : null;
+  const policySection = fixed ? (named ?? lateOpening) : groundedPolicy(said);
   const observation = fixed
     ? (requestIncident({ text: scoped, employeeName, slotClause }) ??
       (isRequestLeftover(raw.observation, employeeName) || hasCutDate(raw.observation, said)
@@ -207,14 +213,18 @@ export function groundFormSlots(input: {
   let slots = finishSlots(mergeSlots(read, saved), said);
   const sections =
     fixed && input.manual
-      ? remapManualSections({
-          said: scoped,
-          chunks: input.manual.chunks,
-          incident: slots.observation,
-          modelHeading: raw.policySection,
-        })
+      ? // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, not Attendance too.
+        withoutAttendanceForLateOpening(
+          remapManualSections({
+            said: scoped,
+            chunks: input.manual.chunks,
+            incident: slots.observation,
+            modelHeading: raw.policySection,
+          }),
+          scoped,
+        )
       : [];
-  if (fixed) slots = { ...slots, policySection: named ?? sections[0]?.heading ?? null };
+  if (fixed) slots = { ...slots, policySection: named ?? sections[0]?.heading ?? lateOpening ?? null };
 
   const assistants = conversation.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
   // An ambiguous "Yes" answered nothing, so the questions before it are asked again.
@@ -225,7 +235,9 @@ export function groundFormSlots(input: {
     questions,
     fixed
       ? {
-          policyLine: remapPolicyLine(named, sections),
+          policyLine:
+            remapPolicyLine(named, sections) ??
+            (lateOpening && slots.policySection === lateOpening ? `**Policy:** ${lateOpening}` : null),
           storeSaid: slots.store ? saidInWords(slots.store, said) : false,
           titleSaid: slots.jobTitle ? saidInWords(slots.jobTitle, said) : false,
         }
@@ -702,6 +714,11 @@ function clausePayrollAmount(text: string): string | null {
     found = amount.startsWith("$") ? amount : `$${amount}`;
   }
   return found;
+}
+
+/** LATE_OPEN_DATE_ENABLED: "late to open", "opened the salon late" read as the Late Opening policy. */
+function describedLateOpening(text: string): string | null {
+  return lateOpenOn() && readCaPolicy(text).stated === "late_opening" ? CA_POLICY_LABEL.late_opening : null;
 }
 
 function groundedPolicy(text: string): string | null {

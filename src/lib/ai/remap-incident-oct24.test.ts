@@ -783,3 +783,62 @@ describe("remap path: Ask Bubbles QA B5 stored slots (Sunny wording)", () => {
     expect(slots.incidentDateIso).toBe("2026-10-15");
   });
 });
+
+/*
+ * INTEGRATION, REMAP_INCIDENT_FIX_ENABLED + LATE_OPEN_DATE_ENABLED. The remap
+ * fix reads the policy only from a policy the manager names, so with both on
+ * a described late opening ("late to open 10-19", conv_mvmt1v0u2u32xsf) lost
+ * the Late Opening policy LATE_OPEN_DATE gives it. The fix path now falls back
+ * to Late Opening when no policy is named and the manual gives no section.
+ */
+describe("remap path: a late opening with LATE_OPEN_DATE_ENABLED on too", () => {
+  const LATE: readonly Turn[] = [
+    {
+      say: "CA for Test Employee at NE Kearney, late to open 10-19, verbal, no payroll",
+      intent: { ...NAME, salon: "NE Kearney", incidentType: "late to open", incidentDate: "10-19", warningLevel: "verbal" },
+      remap: REMAP_NAME,
+    },
+  ];
+
+  afterEach(() => {
+    delete process.env.LATE_OPEN_DATE_ENABLED;
+  });
+
+  it("both on: the card keeps the Late Opening policy", async () => {
+    useFlags(REMAP_FLAGS);
+    process.env.LATE_OPEN_DATE_ENABLED = "true";
+    const response = await chat(LATE);
+    expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening/);
+    expect(response.content).not.toMatch(/Late Opening, as you said/);
+    // LATE_OPEN_DATE's rule: a late opening cites Late Opening, not Attendance too.
+    expect(response.content).toMatch(/Late Opening Policy, JBA Policy Manual p\.15/);
+    expect(response.content).not.toMatch(/Attendance/);
+    expect(response.formProposal?.formDate).toBe("2026-10-19");
+  });
+
+  it("both on, with no manual section to cite: the policy is still Late Opening", async () => {
+    useFlags(REMAP_FLAGS);
+    process.env.LATE_OPEN_DATE_ENABLED = "true";
+    const { remapFormTurn } = await import("./form-full-remap");
+    const response = await remapFormTurn({ question: LATE[0]!.say, history: [], today: TODAY, people: [] }, async () => ({
+      raw: null,
+      model: "test",
+      inputTokens: null,
+      outputTokens: null,
+    }));
+    expect(response?.content).toMatch(/\*\*Policy:\*\* Late Opening(?!, as you said)/);
+  });
+
+  it("LATE_OPEN_DATE alone: Late Opening, as before", async () => {
+    useFlags(["FORM_FULL_REMAP_ENABLED"]);
+    process.env.LATE_OPEN_DATE_ENABLED = "true";
+    const response = await chat(LATE);
+    expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening, as you said/);
+  });
+
+  it("REMAP_INCIDENT_FIX alone: no policy read from a description, as before", async () => {
+    useFlags(REMAP_FLAGS);
+    const response = await chat(LATE);
+    expect(response.content).not.toMatch(/\*\*Policy:\*\* Late Opening/);
+  });
+});

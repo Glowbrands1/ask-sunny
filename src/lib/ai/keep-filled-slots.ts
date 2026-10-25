@@ -1,6 +1,7 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { matchEmployeeName } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
 import { exitDateInWords, exitReady } from "@/lib/forms/exit-intake";
@@ -108,7 +109,11 @@ export function holdFilledSlots(input: {
   // "prior = manual ack 9/01" dates the prior step, not this form.
   // The intent read's "It happened on …" sentence is the stored date, not the
   // manager's edit: "change the date to 10/22" is read from their own words.
-  const dateQuestion = fixed ? withoutPriorList(withoutStateLead(input.question)) : input.question;
+  const ownWords = fixed ? withoutPriorList(withoutStateLead(input.question)) : input.question;
+  // LATE_OPEN_DATE_ENABLED with REMAP_INCIDENT_FIX_ENABLED: those own words
+  // keep "change the date to 10-22" yearless, so the yearless date is written
+  // out as the intent read wrote it; otherwise the card kept the earlier date.
+  const dateQuestion = fixed && lateOpenOn() ? withYearlessDatesWritten(ownWords, input.today) : ownWords;
   const formDate = codeSlotsEnabled()
     ? explicitIncidentIso(dateQuestion, input.today) ?? previous?.formDate ?? proposal.formDate ?? null
     : keptDate(dateQuestion, input.today, proposal.formDate ?? null, previous?.formDate ?? null);

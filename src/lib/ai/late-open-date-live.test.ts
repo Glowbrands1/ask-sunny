@@ -435,3 +435,43 @@ describe("payroll deduct is not applicable (F6)", () => {
     expect(saved.payrollDeduct).toBe("no");
   });
 });
+
+/*
+ * INTEGRATION, LATE_OPEN_DATE_ENABLED + REMAP_INCIDENT_FIX_ENABLED. The remap
+ * fix reads the held date from the manager's own words without the intent
+ * read's "It happened on …" line, and those words keep "change the date to
+ * 10-22" yearless, so with both on the card kept 10/19 (F5) and 10/20 (S1).
+ */
+describe("with REMAP_INCIDENT_FIX_ENABLED on too", () => {
+  beforeEach(() => {
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "1");
+  });
+
+  it('F5: "change the date to 10-22" on the open card dates it 10/22', async () => {
+    intentModel.reading = copiesTheManager;
+    const answers = await chat(["CA for Test Employee at NE Kearney, late to open 10-19, verbal, no payroll", "change the date to 10-22"], "conv-late-open-remap-f5");
+    expect(answers[0]!.formProposal?.formDate).toBe("2026-10-19");
+    const card = answers[1]!.formProposal!;
+    expect(card, answers[1]!.content).toBeTruthy();
+    expect(card.formDate).toBe("2026-10-22");
+    expect(sources(answers[1]!)).not.toMatch(/Attendance/);
+  });
+
+  it("S1: ends dated 10/21, citing Late Opening only", async () => {
+    intentModel.reading = copiesTheManager;
+    const answers = await chat(
+      [
+        "I need a CA for Test Employee",
+        "she works at NE Kearney and it happened on 10-20",
+        "she opened the salon 20 minutes late and did not call anyone",
+        "change the date to 10-21",
+      ],
+      "conv-late-open-remap-s1",
+    );
+    const last = answers[3]!;
+    expect(last.formProposal, last.content).toBeTruthy();
+    expect(last.formProposal!.formDate).toBe("2026-10-21");
+    expect(sources(last)).toMatch(/Late Opening/);
+    expect(sources(last)).not.toMatch(/Attendance/);
+  });
+});
