@@ -87,6 +87,7 @@ export async function deliverFormProposal(input: {
           people: [],
         }),
         input.request.question,
+        input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
       ),
       input,
     );
@@ -143,6 +144,7 @@ export async function deliverFormProposal(input: {
         people,
       }),
       input.request.question,
+      input.request.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
     ),
     input,
   );

@@ -1,4 +1,5 @@
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
+import { notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { isNotAName } from "./not-a-name";
 import { isFormVocabulary } from "./template-intent";
 
@@ -46,6 +47,16 @@ const POSITIONS: readonly RegExp[] = [
   new RegExp(`(?:^|\\n)\\s*${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|[.!]?\\s*$))`, "g"),
 ];
 
+/*
+ * NOT_A_NAME_GUARD_ENABLED (ported from Ask Bubbles, QA B8 / G11 there). The
+ * role in front of the name: "for Tanning Consultant, Test Employee at
+ * Kearney, NE", "for tanning consultant Test Employee at lincoln".
+ */
+const AFTER_ROLE = new RegExp(
+  `\\b(?:for|about|regarding)\\s+(?:(?:a|an|the|my|our)\\s+)?(?:[A-Za-z]+\\s+){0,2}[A-Za-z]+,?\\s+${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|\\bwho\\b|[.!]|$))`,
+  "g",
+);
+
 function namesSomebody(first: string): boolean {
   const key = first.toLowerCase();
   if (NOT_A_NAME.has(key) || NOT_A_TYPED_NAME.has(key) || DESCRIBING.has(key)) return false;
@@ -56,7 +67,7 @@ function namesSomebody(first: string): boolean {
 /** "Test Employee" when the manager typed it as the employee's name, else null. */
 export function typedEmployeeName(text: string): string | null {
   if (!text || !text.includes("Employee")) return null;
-  for (const position of POSITIONS) {
+  for (const position of notANameGuardEnabled() ? [...POSITIONS, AFTER_ROLE] : POSITIONS) {
     for (const match of text.matchAll(position)) {
       const first = match[1]!;
       if (namesSomebody(first)) return `${first} Employee`;
