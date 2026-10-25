@@ -55,6 +55,8 @@ import {
   priorActionsParseEnabled,
   keepFormEmployeeEnabled,
   titleWholeWordEnabled,
+  facsimileAskOnlyEnabled,
+  typedPriorNotOnFileEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -127,6 +129,8 @@ const NEW_FLAGS = [
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
   "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+  "FACSIMILE_ASK_ONLY_ENABLED",
+  "TYPED_PRIOR_NOT_ON_FILE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -257,6 +261,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
     expect(actionPlanManagerOnlyEnabled()).toBe(false);
+    expect(facsimileAskOnlyEnabled()).toBe(false);
+    expect(typedPriorNotOnFileEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

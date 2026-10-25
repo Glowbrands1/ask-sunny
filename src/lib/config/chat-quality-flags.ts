@@ -589,6 +589,29 @@ export function actionPlanManagerOnlyEnabled(): boolean {
   return envFlag("ACTION_PLAN_MANAGER_ONLY_ENABLED");
 }
 
+/**
+ * The answering prompt's form rule asks for the form and never refuses. Turn 1
+ * of a Corrective Action request (sibling app conv_mvnu3j932gpohx4, 25 Oct 2026) was
+ * answered "I can't produce a facsimile of one or its contents". On, the rule
+ * no longer says "facsimile": it tells the manager to ask for the form in one
+ * sentence and stop, and never to say it cannot write one. Off, the rule is
+ * worded as before.
+ */
+export function facsimileAskOnlyEnabled(): boolean {
+  return envFlag("FACSIMILE_ASK_ONLY_ENABLED");
+}
+
+/**
+ * A prior step the manager typed in this chat is never "on file". After
+ * "previous coaching jba manual 11-1-25" the answer said "Coaching Form on
+ * file, dated 2025-11-01" (sibling app conv_mvnsqglc2v7zuyk, 25 Oct 2026). On, the
+ * answering prompt says such a step is the manager's word, given in the
+ * manager's own words. Off, the prompt is unchanged.
+ */
+export function typedPriorNotOnFileEnabled(): boolean {
+  return envFlag("TYPED_PRIOR_NOT_ON_FILE_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
