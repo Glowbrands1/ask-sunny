@@ -63,15 +63,24 @@ export function withTypedEmployeeOnCard(
  * turn or the newest earlier turn that typed one) goes on a card whose
  * employee is that name's first word, is missing, or is not a person; a line
  * asking who the form is for then becomes the line that names them. A card
- * for anybody else is left alone. Off, unchanged.
+ * for anybody else, and any card but a Corrective Action or coaching one
+ * (`GUARDED_TEMPLATES`), is left alone. Off, unchanged.
  */
+/**
+ * The Corrective Action and coaching cards QA found this on. The exit form and
+ * the other forms keep their own readers (the sibling app's exit intake pin,
+ * with its EXIT_INTAKE_FIX_ENABLED off, had this guard answer its "Which of
+ * them is this …?" for it).
+ */
+const GUARDED_TEMPLATES: ReadonlySet<string> = new Set(["dpoa", "coaching", "follow-up-coaching", "policy-review"]);
+
 function withGuardedTypedEmployee(
   response: AskResponse,
   managerText: string,
   earlierTurns: readonly string[],
 ): AskResponse | null {
   const proposal = response.formProposal;
-  if (!notANameGuardEnabled() || !proposal) return null;
+  if (!notANameGuardEnabled() || !proposal || !GUARDED_TEMPLATES.has(proposal.templateKey)) return null;
   const typed = [managerText, ...[...earlierTurns].reverse()].map(typedEmployeeName).find(Boolean) ?? null;
   if (!typed) return null;
   const first = typed.split(" ")[0]!.toLowerCase();
