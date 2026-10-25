@@ -849,9 +849,23 @@ const OVERLAP_STOP = new Set([
   "your",
 ]);
 
+/*
+ * "It's" and "it is", ’ and ', are the same words. The manual prints "It is
+ * the Employee's personal responsibility"; an answer saying "It's the
+ * employee's responsibility" must match it on the same words (QA P0, 24 Oct
+ * 2026; ported from Ask Bubbles).
+ */
+const CONTRACTIONS: readonly [RegExp, string][] = [
+  [/\b(it|that|there|what|who)'s\b/g, "$1 is"],
+  [/\bcan't\b/g, "cannot"],
+  [/\bwon't\b/g, "will not"],
+  [/\b(is|are|was|were|do|does|did|has|have|had|should|would|could|must)n't\b/g, "$1 not"],
+];
+
 function wordsOf(text: string): string {
-  return text
-    .toLowerCase()
+  let folded = text.toLowerCase().replace(/[’‘`´]/g, "'");
+  for (const [pattern, replacement] of CONTRACTIONS) folded = folded.replace(pattern, replacement);
+  return folded
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -882,24 +896,83 @@ function restates(slice: readonly string[]): boolean {
   return distinctive.length >= 2 || (slice.length >= 5 && distinctive.length >= 1);
 }
 
-function restatedPhraseLength(answer: string, passage: string): number {
+/**
+ * BOILERPLATE IS NOT A RESTATEMENT (QA P0, 24 Oct 2026; ported from Ask
+ * Bubbles). "the employee's responsibility to" is printed on pages 9, 10,
+ * 14, 26, 31 and 48, so a cell-phone sentence sharing it was cited on all of
+ * them while page 19, whose words it restates, lost on length. A phrase
+ * printed on three or more pages of one manual says nothing about which page
+ * a sentence came from.
+ */
+interface PhrasePages {
+  /** Each four-word run of the manual, and the pages it is printed on. */
+  readonly grams: Map<string, Set<number>>;
+  /** Each page's words, passages kept apart so no phrase runs across two. */
+  readonly pageWords: Map<number, string>;
+}
+
+const BOILERPLATE_PAGES = 3;
+const phrasePagesCache = new WeakMap<readonly ManualPassage[], PhrasePages>();
+
+function phrasePagesOf(passages: readonly ManualPassage[]): PhrasePages {
+  const cached = phrasePagesCache.get(passages);
+  if (cached) return cached;
+  const grams = new Map<string, Set<number>>();
+  const pageParts = new Map<number, string[]>();
+  for (const passage of passages) {
+    const words = wordsList(passage.text);
+    for (let at = 0; at + 4 <= words.length; at += 1) {
+      const key = words.slice(at, at + 4).join(" ");
+      const pages = grams.get(key);
+      if (pages) pages.add(passage.page);
+      else grams.set(key, new Set([passage.page]));
+    }
+    const parts = pageParts.get(passage.page) ?? [];
+    parts.push(words.join(" "));
+    pageParts.set(passage.page, parts);
+  }
+  const pageWords = new Map([...pageParts].map(([page, parts]) => [page, ` ${parts.join(" | ")} `]));
+  const built = { grams, pageWords };
+  phrasePagesCache.set(passages, built);
+  return built;
+}
+
+/** Whether a run of words is printed on three or more pages of the manual. */
+function isBoilerplate(slice: readonly string[], index: PhrasePages): boolean {
+  if (slice.length < 4) return false;
+  let candidates = new Set<number>(index.grams.get(slice.slice(0, 4).join(" ")) ?? []);
+  for (let at = 0; at + 4 <= slice.length && candidates.size >= BOILERPLATE_PAGES; at += 1) {
+    const pages = index.grams.get(slice.slice(at, at + 4).join(" "));
+    candidates = new Set([...candidates].filter((page) => pages?.has(page)));
+  }
+  if (candidates.size < BOILERPLATE_PAGES) return false;
+  const phrase = ` ${slice.join(" ")} `;
+  let printed = 0;
+  for (const page of candidates) {
+    if (index.pageWords.get(page)?.includes(phrase)) printed += 1;
+    if (printed >= BOILERPLATE_PAGES) return true;
+  }
+  return false;
+}
+
+function restatedPhraseLength(answer: string, passage: string, index?: PhrasePages): number {
   const said = wordsList(answer);
   const words = wordsList(passage);
   if (said.length < 4 || words.length < 4) return 0;
   const starts = new Map<string, number[]>();
-  for (let at = 0; at + 4 <= said.length; at += 1) {
-    const key = said.slice(at, at + 4).join(" ");
+  for (let from = 0; from + 4 <= said.length; from += 1) {
+    const key = said.slice(from, from + 4).join(" ");
     const list = starts.get(key);
-    if (list) list.push(at);
-    else starts.set(key, [at]);
+    if (list) list.push(from);
+    else starts.set(key, [from]);
   }
   let best = 0;
-  for (let index = 0; index + 4 <= words.length; index += 1) {
-    const hits = starts.get(words.slice(index, index + 4).join(" "));
+  for (let at = 0; at + 4 <= words.length; at += 1) {
+    const hits = starts.get(words.slice(at, at + 4).join(" "));
     if (!hits) continue;
     for (const from of hits) {
       let run = 4;
-      while (index + run < words.length && from + run < said.length && words[index + run] === said[from + run]) run += 1;
+      while (at + run < words.length && from + run < said.length && words[at + run] === said[from + run]) run += 1;
       /*
        * Every window inside a shared run is shared too. Take the longest
        * window (at most 14 words) that names its page.
@@ -907,7 +980,8 @@ function restatedPhraseLength(answer: string, passage: string): number {
       for (let size = Math.min(14, run); size > best && size >= 4; size -= 1) {
         let found = false;
         for (let offset = 0; offset + size <= run; offset += 1) {
-          if (restates(words.slice(index + offset, index + offset + size))) {
+          const slice = words.slice(at + offset, at + offset + size);
+          if (restates(slice) && !(index && isBoilerplate(slice, index))) {
             found = true;
             break;
           }
@@ -948,7 +1022,7 @@ function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit
   let best = 0;
   let chosen: PassageHit[] = [];
   for (const hit of hits) {
-    const phrase = restatedPhraseLength(text, hit.passage.text);
+    const phrase = restatedPhraseLength(text, hit.passage.text, phrasePagesOf(hit.manual.passages));
     if (phrase < 4 || phrase < best) continue;
     if (phrase > best) {
       best = phrase;
