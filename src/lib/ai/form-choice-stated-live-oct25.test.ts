@@ -50,6 +50,7 @@ const PROD_FLAGS = [
   "WARNING_LEVEL_MANAGER_ONLY_ENABLED",
 ] as const;
 const FLAG = "FORM_CHOICE_STATED_ENABLED";
+const NAMED_FORM_EXACT = "NAMED_FORM_EXACT_ENABLED";
 const TODAY = "2026-10-25";
 
 const bag = vi.hoisted(() => ({
@@ -171,9 +172,10 @@ beforeAll(async () => {
 
 const saved = new Map<string, string | undefined>();
 beforeEach(() => {
-  for (const name of [...PROD_FLAGS, FLAG]) saved.set(name, process.env[name]);
+  for (const name of [...PROD_FLAGS, FLAG, NAMED_FORM_EXACT]) saved.set(name, process.env[name]);
   for (const name of PROD_FLAGS) process.env[name] = "true";
   delete process.env[FLAG];
+  delete process.env[NAMED_FORM_EXACT];
   bag.forms.clear();
   bag.raw = {};
 });
@@ -320,11 +322,34 @@ describe("conv_mvnmetao241awxn on the live path", { timeout: 60_000 }, () => {
     ]);
   });
 
-  it("FORM_CHOICE_STATED off: the production behaviour of 25 Oct (Corrective Action on T2–T3 once a form is named)", async () => {
+  it("FORM_CHOICE_STATED off: the production behaviour of 25 Oct (Corrective Action on T2–T5)", async () => {
     const replies = await replay(CA_READING);
-    // Changed on purpose (PR 201, unflagged): from T4 the manager has named a
-    // coaching form and a policy review, so the model's Corrective Action Form
-    // no longer stands in for them. T2–T3 named no form and stay as production.
+    expect(replies.slice(1).map((reply) => reply.formProposal?.templateKey ?? null)).toEqual(["dpoa", "dpoa", "dpoa", "dpoa"]);
+  });
+
+  /*
+   * NAMED_FORM_EXACT_ENABLED (PR 201): a form the manager named is kept only
+   * as itself, and a turn naming two forms together names either of them.
+   */
+  it("NAMED_FORM_EXACT on, FORM_CHOICE_STATED off: from T4 the named forms, not the model's Corrective Action", async () => {
+    process.env[NAMED_FORM_EXACT] = "true";
+    const replies = await replay(CA_READING);
     expect(replies.slice(1).map((reply) => reply.formProposal?.templateKey ?? null)).toEqual(["dpoa", "dpoa", "policy-review", null]);
+  });
+
+  it("NAMED_FORM_EXACT and FORM_CHOICE_STATED on: the manager's pick of two forms named together stays", async () => {
+    process.env[FLAG] = "true";
+    process.env[NAMED_FORM_EXACT] = "true";
+    const replies = await replay([
+      ...CA_READING.slice(0, 4).map((turn) => ({ user: turn.user, raw: turn.raw })),
+      { user: "1", raw: { incidentType: INCIDENT, formType: "Corrective Action Form", formTurn: true } },
+      { user: GENERIC, raw: { incidentType: INCIDENT, formType: "Corrective Action Form", formTurn: true } },
+      { user: "Now the policy review", raw: { incidentType: INCIDENT, formType: "Corrective Action Form", formTurn: true } },
+    ]);
+    expect(replies.slice(4).map((reply) => reply.formProposal?.templateKey ?? null)).toEqual([
+      "coaching",
+      "coaching",
+      "policy-review",
+    ]);
   });
 });

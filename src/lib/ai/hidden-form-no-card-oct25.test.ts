@@ -22,7 +22,8 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * same turns are run here against a template the library lists as inactive,
  * and against interview forms this library does not have. The path is
  * production's (intent extraction on, the full remap off), through
- * `answerQuestion` with the history `/api/chat` builds. Where the slot model
+ * `answerQuestion` with the history `/api/chat` builds, and
+ * NAMED_FORM_EXACT_ENABLED on. Where the slot model
  * copies the manager's words the proposal flow already says the form is not
  * published; where it names one of the everyday forms instead (Bubbles' model
  * did exactly that), the saved form used to follow the model. The manager's
@@ -43,6 +44,8 @@ const PROD_FLAGS = [
   "GLOBAL_SALON_ASK_ENABLED",
   "DRAFT_MERGE_ENABLED",
 ] as const;
+/** The check under test. Ask Bubbles ships it unflagged; Ask Sunny stages it. */
+const FLAG = "NAMED_FORM_EXACT_ENABLED";
 const TODAY = "2026-10-25";
 
 const bag = vi.hoisted(() => ({
@@ -170,8 +173,8 @@ beforeAll(async () => {
 
 const saved = new Map<string, string | undefined>();
 beforeEach(() => {
-  for (const name of PROD_FLAGS) saved.set(name, process.env[name]);
-  for (const name of PROD_FLAGS) process.env[name] = "true";
+  for (const name of [...PROD_FLAGS, FLAG]) saved.set(name, process.env[name]);
+  for (const name of [...PROD_FLAGS, FLAG]) process.env[name] = "true";
   bag.forms.clear();
   bag.modelLevel = null;
   bag.formType = null;

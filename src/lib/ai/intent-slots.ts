@@ -11,6 +11,7 @@ import {
   notANameGuardEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
+  namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -313,8 +314,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         question: input.question,
         managerText: managerBlob(input),
       });
-  // A numbered choice the manager just made is their naming; otherwise their own latest naming bounds the form.
-  const naming = choice?.form ? null : managerFormNaming(input);
+  // NAMED_FORM_EXACT_ENABLED: a numbered choice the manager just made is their
+  // naming; otherwise their own latest naming bounds the form.
+  const namedFormExact = namedFormExactEnabled();
+  const naming = namedFormExact && !choice?.form ? managerFormNaming(input) : null;
   const groundedPolicy = groundPolicy(reading?.policyHeading ?? null, input.headings);
   const modelPolicy = choiceStated && isDisciplineProcedure(groundedPolicy) ? null : groundedPolicy;
   /*
@@ -369,7 +372,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     policyPage,
   });
   if (choiceStated) state = firstCoachingUnlessEarlier(state, managerSaidTurns(input), input.templates);
-  if (state.templateKey && !formAgreesWithNaming(state.templateKey, naming, input.templates)) {
+  if (namedFormExact && state.templateKey && !formAgreesWithNaming(state.templateKey, naming, input.templates)) {
     state = { ...state, templateKey: null };
   }
   if (warningManagerOnly) {
@@ -1128,6 +1131,7 @@ function groundForm(
 /**
  * ============================================================================
  * THE FORM IS ONE THE MANAGER NAMED, AND ONE THIS LIBRARY PUBLISHES
+ * (NAMED_FORM_EXACT_ENABLED; Ask Bubbles ships it unflagged)
  * ============================================================================
  *
  * Ported from Ask Bubbles (QA, 25 Oct 2026: conv_mvnqbm6m28hg07j,

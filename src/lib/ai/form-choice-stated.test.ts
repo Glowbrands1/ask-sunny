@@ -448,10 +448,7 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
   describe("off, the production behaviour of 24 Oct", () => {
     it("conv_mvmw1ccu2t7y3bi turned every coaching request into a Corrective Action", async () => {
       const { keys } = await replay(PERFORMANCE_TURNS, PERFORMANCE_REPLIES);
-      // Changed on purpose (PR 201, unflagged): a form the manager named is kept
-      // only as itself, so "create coaching form …" on T3–T5 is no longer the
-      // saved Corrective Action Form. T1–T2 are still the production reading.
-      expect(keys).toEqual(["dpoa", "dpoa", "coaching", "coaching", "coaching"]);
+      expect(keys).toEqual(["dpoa", "dpoa", "dpoa", "dpoa", "dpoa"]);
     });
 
     it("conv_mvmvl6jy23nwuuk turned both coaching requests into a Corrective Action", async () => {
@@ -461,9 +458,7 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
 
     it('conv_mvmyba3d2ojmzuf turned "Create a Policy Review" into a Corrective Action', async () => {
       const { keys } = await replay(POLICY_REVIEW_TURNS, [CELL_PHONE_REPLY]);
-      // Changed on purpose (PR 201, unflagged): "Create a Policy Review" names
-      // the Policy Review, and no other form stands in for it.
-      expect(keys[1]).toBe("policy-review");
+      expect(keys[1]).toBe("dpoa");
     });
 
     it("conv_mvnbbhdq2a8t7nk showed the Follow-Up Coaching card with no earlier coaching mentioned", async () => {
@@ -474,6 +469,25 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
     it("conv_mvmyqvkq2zwzrln cited page 14, Disciplinary Action", async () => {
       const out = await live({ history: [], question: WOVEN_DEADLINE, saved: null, raw: WOVEN_RAW });
       expect(out.sources?.citations.map((citation) => citation.locator)).toEqual(["Page 14"]);
+    });
+  });
+
+  /*
+   * NAMED_FORM_EXACT_ENABLED (PR 201) with FORM_CHOICE_STATED off: a form the
+   * manager named is kept only as itself, so the saved or model-read
+   * Corrective Action Form does not stand in for it.
+   */
+  describe("NAMED_FORM_EXACT_ENABLED on, FORM_CHOICE_STATED off", () => {
+    it("conv_mvmw1ccu2t7y3bi: \"create coaching form …\" on T3–T5 is the Coaching Form", async () => {
+      vi.stubEnv("NAMED_FORM_EXACT_ENABLED", "true");
+      const { keys } = await replay(PERFORMANCE_TURNS, PERFORMANCE_REPLIES);
+      expect(keys).toEqual(["dpoa", "dpoa", "coaching", "coaching", "coaching"]);
+    });
+
+    it('conv_mvmyba3d2ojmzuf: "Create a Policy Review" is the Policy Review', async () => {
+      vi.stubEnv("NAMED_FORM_EXACT_ENABLED", "true");
+      const { keys } = await replay(POLICY_REVIEW_TURNS, [CELL_PHONE_REPLY]);
+      expect(keys[1]).toBe("policy-review");
     });
   });
 });
