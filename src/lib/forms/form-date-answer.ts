@@ -752,7 +752,7 @@ export function datesInText(text: string, today: string): DateInText[] {
       iso = calendarIso(Number(isoY), Number(isoM), Number(isoD));
     } else if (numM !== undefined) {
       const year =
-        numY === undefined ? currentYear : numY.length === 2 ? 2000 + Number(numY) : Number(numY);
+        numY === undefined ? currentYear : numY.length === 2 ? twoDigitYear(Number(numY), currentYear) : Number(numY);
       iso = calendarIso(year, Number(numM), Number(numD));
     } else if (name !== undefined) {
       const month = MONTHS[name.toLowerCase()];
@@ -767,6 +767,17 @@ export function datesInText(text: string, today: string): DateInText[] {
     }
   }
   return found;
+}
+
+/**
+ * PRIOR_ACTIONS_PARSE_ENABLED (QA, 25 Oct 2026; ported from the sibling app's
+ * conv_mvnt9m172krh73y): a two-digit year never lands in the future. "jba
+ * manual 1-1-95" is 1995, not 2095: a year more than one past this one reads
+ * as 19YY, any other as 20YY. Off, every two-digit year is 20YY, as before.
+ */
+function twoDigitYear(yy: number, currentYear: number): number {
+  if (!priorActionsParseEnabled()) return 2000 + yy;
+  return yy > (currentYear % 100) + 1 ? 1900 + yy : 2000 + yy;
 }
 
 /**

@@ -36,7 +36,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 import { withoutAppLines } from "./app-sentences";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
-import { accountSentences, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
+import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
 
@@ -201,7 +201,9 @@ export function holdFilledSlots(input: {
     if (next.templateKey !== "stc-exit") {
       content = fixed ? withAccount(content, turns, next.employeeName) : withObservation(content, turns, next.employeeName);
     }
-    if (fixed && next.templateKey === "dpoa") content = withPriorActions(content, turns, input.today);
+    if (fixed && next.templateKey === "dpoa") {
+      content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
+    }
     if (next.locationResolution === "needs_selection" && !next.locationId) {
       const asked = salonAlreadyAsked(input.history);
       // The global question already named every salon. A later turn does not
@@ -551,10 +553,14 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const sentences: string[] = [];
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
     for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
-      const sentence = part.trim();
-      if (sentence.length < 12) continue;
-      if (!describesMoreThanTheRequest(sentence, { ignore })) continue;
-      if (managerOnly && onlySaysWhereTheyWork(sentence, ignore)) continue;
+      const said = part.trim();
+      if (said.length < 12) continue;
+      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
+      // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
+      // form, name the employee or give their place (QA, 25 Oct 2026).
+      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      if (!sentence) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
       sentences.push(sentence);
@@ -622,7 +628,7 @@ function stateCodeTitle(text: string, role: string): boolean {
  * 24 Oct 2026: "create a corrective action form for" was What happened).
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
-  const sentences = accountSentences(turns, employeeName).filter(
+  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
     (sentence) => !content.toLowerCase().includes(sentence.toLowerCase()),
   );
   if (sentences.length === 0) return content;
