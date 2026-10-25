@@ -576,7 +576,6 @@ export function withoutStateCodes(text: string): string {
 export function accountSentences(
   turns: readonly string[],
   employeeName: string | null,
-  options: { readonly managerOnly?: boolean } = {},
 ): string[] {
   const kept: string[] = [];
   // A later create request with its own incident is a new form; an edit or a
@@ -606,7 +605,9 @@ export function accountSentences(
         // A clause that only names or places them is never the account (QA, 25
         // Oct 2026; with MANAGER_WORDS_ONLY_ENABLED or without it).
         .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").replace(FOR_LEAD, " ").trim(), employeeName))
-        .map((part) => (options.managerOnly ? withoutPlace(part) : part))
+        // "at kearney", "at omaha center": a salon in any case is taken out (Round 18 (a),
+        // with or without MANAGER_WORDS_ONLY_ENABLED).
+        .map((part) => withoutPlace(part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
       const joined = parts.join(", ").trim();

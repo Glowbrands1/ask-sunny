@@ -569,3 +569,20 @@ describe("Round 18 (a): a two-word salon is taken out whole", () => {
     expect(whatHappened(kearney!.content)).toBe(expected);
   });
 });
+
+/*
+ * The sibling app's port (Round 18 (a)) found a salon typed in lower case left
+ * whole in What happened on its remap. Here, with the remap fix on and
+ * MANAGER_WORDS_ONLY off, the same turn with this app's salons.
+ */
+describe("Round 18 (a): a salon typed in lower case is taken out too (remap fix on)", () => {
+  it.each(["Omaha Center", "omaha center", "NE Kearney", "kearney", "grand island"])(
+    "create a verbal CA for Test Employee at %s for being late on 10-20-26",
+    async (salon) => {
+      for (const flag of ["PLACE_SPAN_GUARD_ENABLED", "TITLE_WHOLE_WORD_ENABLED"]) vi.stubEnv(flag, "1");
+      intentModel.reading = copiesTheManager;
+      const [reply] = await chat([`create a verbal CA for Test Employee at ${salon} for being late on 10-20-26`], `conv-r18l-${salon}`);
+      expect(whatHappened(reply!.content)).toBe("being late on 10-20-26");
+    },
+  );
+});

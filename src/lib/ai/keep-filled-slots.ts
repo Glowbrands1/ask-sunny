@@ -627,7 +627,7 @@ function stateCodeTitle(text: string, role: string): boolean {
  * 24 Oct 2026: "create a corrective action form for" was What happened).
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
-  const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
+  const sentences = accountSentences(turns, employeeName).filter(
     (sentence) => !content.toLowerCase().includes(sentence.toLowerCase()),
   );
   if (sentences.length === 0) return content;
