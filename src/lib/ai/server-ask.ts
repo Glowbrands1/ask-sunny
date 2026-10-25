@@ -27,6 +27,8 @@ import {
   slotRetentionEnabled,
   manualTopicPinEnabled,
   fullManualContextEnabled,
+  frameworkGeneralSectionsEnabled,
+  reformatKeepsSourcesEnabled,
   formFullRemapEnabled,
   crossChatReplyGuardEnabled,
   manualNegatedListNoteEnabled,
@@ -133,6 +135,7 @@ import {
   type AssembledManual,
 } from "./full-manual-context";
 import { loadFullManualContext } from "./full-manual-load";
+import { earlierAnsweredTurn, isReformatTurn, keepEarlierSources } from "./reformat-turn";
 import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
 import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
@@ -151,6 +154,7 @@ import {
   buildSystemPrompt,
   extractUsedMarkers,
   stripMarkers,
+  isCoachingFrameworkTitle,
   type GroundingChunk,
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
@@ -1189,16 +1193,17 @@ async function answerQuestionUntraced(
     rows = [];
   } else {
     try {
-      rows = retrievalRecallEnabled()
+      const search = async (searchedQuery: string) =>
+        retrievalRecallEnabled()
         ? await matchRecallKnowledge({
-            query: searched,
+            query: searchedQuery,
             scopeId: request.scopeId,
             limit: fetchLimit,
             question: request.question,
           })
         : hybridSearchEnabled()
           ? await matchHybridKnowledge({
-              query: searched,
+              query: searchedQuery,
               scopeId: request.scopeId,
               limit: fetchLimit,
             })
@@ -1209,7 +1214,7 @@ async function answerQuestionUntraced(
              * searched on its own words, exactly as before. Hybrid search and the
              * Haiku rewrite run only when their flags are on.
              */
-            query: searched,
+            query: searchedQuery,
             scopeId: request.scopeId,
             /*
              * A DEEPER FETCH WHEN A ROLE IS IN PLAY. The framework out-competes every
@@ -1219,6 +1224,25 @@ async function answerQuestionUntraced(
              */
             limit: fetchLimit,
           });
+      rows = await search(searched);
+      /*
+       * A REFORMAT TURN KEEPS THE SOURCES OF THE ANSWER IT REFORMATS
+       * (REFORMAT_KEEPS_SOURCES_ENABLED). "Make this a downloadable document"
+       * is searched again with the question that answer was written for, and
+       * those rows go first, so the model is not left "correcting" claims whose
+       * sources it can no longer see (conv_mufp73ez8pl7992). See
+       * `reformat-turn.ts`.
+       */
+      const earlier =
+        reformatKeepsSourcesEnabled() && isReformatTurn(request.question, request.history)
+          ? earlierAnsweredTurn(request.history)
+          : null;
+      if (earlier) {
+        const earlierQuery = expandPolicyQuery(
+          retrievalQueryFor({ question: earlier.question, history: earlier.history }),
+        );
+        rows = keepEarlierSources(await search(earlierQuery), rows, fetchLimit);
+      }
     } catch (error) {
       if (error instanceof MissingConfigurationError) {
         throw new AiError("not_configured", error.message, 503, error.missing);
@@ -1506,6 +1530,16 @@ async function answerQuestionUntraced(
     ...(crossChatGuard ? { crossChatGuard: true } : {}),
     policyManualNote: fullManualBlock ? null : policyManualNote,
     citeManualPages: fullManualBlock !== null,
+    /*
+     * FRAMEWORK_GENERAL_SECTIONS_ENABLED, and only where the framework is a
+     * marked source: an issue it does not name is still covered by its
+     * general sections. See `FRAMEWORK_GENERAL_SECTIONS_RULE`.
+     */
+    ...(frameworkGeneralSectionsEnabled() &&
+    fullManualBlock === null &&
+    grounding.some((chunk) => isCoachingFrameworkTitle(chunk.documentTitle))
+      ? { frameworkGeneralSections: true }
+      : {}),
     /* Read from the instance by the route, never from the body. */
     openForm: request.openForm ?? null,
     /*
@@ -1647,7 +1681,7 @@ async function answerQuestionUntraced(
    * retrieved excerpts "the sources you shared" has that clause rewritten,
    * unless the manager pasted something. See `sources-not-shared.ts`.
    */
-  const prose = withoutSharedSourceClaims(stripMarkers(spoken), {
+  const prose = withoutSharedSourceClaims(stripMarkers(spoken, { tidy: reformatKeepsSourcesEnabled() }), {
     question: request.question,
     history: request.history,
     attachedDocumentIds: request.attachedDocumentIds,

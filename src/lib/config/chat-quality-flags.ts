@@ -603,6 +603,31 @@ export function actionPlanManagerOnlyEnabled(): boolean {
   return envFlag("ACTION_PLAN_MANAGER_ONLY_ENABLED");
 }
 
+/**
+ * A reformat turn keeps the sources of the answer it reformats. "Make this a
+ * downloadable document", "put that in a table", "summarize that" is searched
+ * again with the question the previous answer was written for, and those rows
+ * go first, so the reply does not "correct" claims whose sources it can no
+ * longer see (QA, conv_mufp73ez8pl7992). Removing [S#] markers also never
+ * leaves their grammar behind ("two markers, and, that"). Off, retrieval and
+ * marker stripping are as before.
+ */
+export function reformatKeepsSourcesEnabled(): boolean {
+  return envFlag("REFORMAT_KEEPS_SOURCES_ENABLED");
+}
+
+/**
+ * The coaching framework covers an issue it does not name. With the framework
+ * among the sources, the prompt tells the model to answer from its general
+ * sections (root cause, performance vs behavior, conversation structure), cite
+ * them, and say only that no section names this exact issue, instead of "the
+ * knowledge base does not have it" (QA, sibling app conv_mvb28ztb85z53mc).
+ * Off, the prompt is byte-for-byte as before.
+ */
+export function frameworkGeneralSectionsEnabled(): boolean {
+  return envFlag("FRAMEWORK_GENERAL_SECTIONS_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
