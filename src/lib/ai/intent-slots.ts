@@ -8,6 +8,7 @@ import {
   keepFormEmployeeEnabled,
   managerWordsOnlyEnabled,
   placeSpanGuardEnabled,
+  newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
@@ -34,6 +35,7 @@ import {
   mentionsEarlierCoaching,
 } from "@/lib/forms/template-intent";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
+import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
@@ -256,6 +258,9 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     .filter((part) => part.trim() !== "")
     .join("\n");
   const salon =
+    (newestPlaceTurnEnabled()
+      ? newestManagerTurnSalon([input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content).reverse()], input.salons)
+      : null) ??
     newestTurnSalon(input.question, input.salons) ??
     groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
   // The manager's turns only: a pasted policy is not their words, and
