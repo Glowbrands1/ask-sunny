@@ -258,3 +258,40 @@ describe("boilerplate phrases cite no page (QA P0)", () => {
     expectLabelsMatchMarkers(out.content);
   }, 20_000);
 });
+
+/**
+ * QA B-list, 25 Oct 2026 (found live in the sibling app; the same code runs
+ * here): a range marker kept beside the restated page, a sentence's first
+ * word used as the heading, a manager's note matched to a page on ordinary
+ * words, and shortened month names that matched nothing.
+ */
+describe("QA B-list: ranges, heading fragments, loose model pages, month names", () => {
+  it("a range marker is a marker: the page is written once and the range is gone", () => {
+    const raw = "- Name tags are worn and visible at all times while working [p.15-16] [p.15].";
+    const out = cite(raw);
+    expect(out.content).not.toMatch(/\[p\.\d+-\d+\]/);
+    expect(out.content.match(/\[p\.15\]/g)).toHaveLength(1);
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+  }, 20_000);
+
+  it('"Anyone violating…" cites p.15 with a real heading, never "Anyone"', () => {
+    const out = cite(
+      "Anyone violating the brand's dress code is to be sent home to change into proper attire and may be subject to disciplinary action, up to and including termination [p.15].",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+    for (const citation of out.citations) expect(citation.excerpt).not.toBe("Anyone");
+  }, 20_000);
+
+  it("a manager's prior-coaching note keeps no page", () => {
+    const out = cite(
+      'Once you confirm the salon, just say something like "create a corrective action form for Test Employee at [salon]" and the draft card will come up for you to fill in with the 10-22-26 details, the "not scheduled but came in for 45 minutes" observation, no payroll deduct, and the prior coaching reference [p.36].',
+    );
+    expect(pagesIn(out.content).has(36)).toBe(false);
+    expect(out.citations.map((citation) => citation.locator)).not.toContain("Page 36");
+  }, 20_000);
+
+  it('"Sun Tan City Feb 1 and June 1" is the manual\'s "February 1 and June 1": the peak-season bullet cites p.42', () => {
+    const out = cite("- No PTO during each brand's peak season: Sun Tan City Feb 1 and June 1");
+    expect(pagesIn(out.content)).toEqual(new Set([42]));
+  }, 20_000);
+});
