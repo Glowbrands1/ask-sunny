@@ -1,5 +1,17 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 25 Oct 2026: a follow-up that names its own documents is searched on them — ported to Ask Bubbles
+
+`FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED` defaults off, same name in both apps.
+QA Round 17, conv_mvo0ayai2x20aiy: after "I have an employee that is not
+verifying documents are signed", "The NCR and Fitzpatrick Skin Type Chart,
+EFT Agreements" was searched as "Employment Verification" (the manual-terms
+rewrite read the earlier turn), so Consent Forms (p.49, the skin typing
+chart) was not retrieved. On, a turn that names two or more words no earlier
+manager turn used keeps a rewritten query only when the rewrite still has
+one of them; otherwise it is searched on its own words (glossary-expanded).
+Ask Bubbles gets the same check after `rewriteRetrievalQuery`.
+
 ## 24 Oct 2026: the app's own lines are not the manager's words — ported to Ask Bubbles
 
 `MANAGER_WORDS_ONLY_ENABLED` defaults off. Form state, intake augmentation

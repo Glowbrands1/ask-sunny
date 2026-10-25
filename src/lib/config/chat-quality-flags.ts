@@ -669,6 +669,17 @@ export function formEditDateRulesEnabled(): boolean {
   return envFlag("FORM_EDIT_DATE_RULES_ENABLED");
 }
 
+/**
+ * A follow-up that names its own documents or nouns ("The NCR and
+ * Fitzpatrick Skin Type Chart, EFT Agreements") is searched on them when the
+ * retrieval rewrite kept none of them and searched only the earlier turn's
+ * subject ("Employment Verification"). Off, the rewritten query is searched
+ * as it is. Same name in both apps. Default off.
+ */
+export function followupNewTopicRetrievalEnabled(): boolean {
+  return envFlag("FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

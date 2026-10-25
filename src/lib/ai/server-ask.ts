@@ -16,6 +16,7 @@ import {
   secondFormEnabled,
   priorCoachingOptionalEnabled,
   queryRewriteEnabled,
+  followupNewTopicRetrievalEnabled,
   retrievalRecallEnabled,
   promptCacheEnabled,
   currentManualScopeEnabled,
@@ -142,6 +143,7 @@ import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
 import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
+import { followUpOwnQuery } from "./query-rewrite";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -1169,7 +1171,7 @@ async function answerQuestionUntraced(
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
   const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
-  const query = queryRewriteEnabled() && !slotTopic
+  const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
         history: request.history,
@@ -1177,6 +1179,20 @@ async function answerQuestionUntraced(
         scopeId: request.scopeId,
       })
     : followedUp;
+  /*
+   * FOLLOWUP_NEW_TOPIC_RETRIEVAL_ENABLED: a follow-up that names documents of
+   * its own is searched on them when the rewrite kept only the earlier
+   * subject (QA Round 17, conv_mvo0ayai2x20aiy). See `followUpOwnQuery`.
+   */
+  const query =
+    followupNewTopicRetrievalEnabled() && !slotTopic
+      ? followUpOwnQuery({
+          question: request.question,
+          history: request.history,
+          rewritten,
+          ownWords: queryRewriteEnabled() ? expandGlossaryQuery(followedUp) : followedUp,
+        })
+      : rewritten;
   const searched = expandPolicyQuery(query);
   updateChatTrace({
     rewrittenQuery: searched === request.question ? null : searched,
