@@ -1,5 +1,6 @@
 import {
   draftNotesAreUsable,
+  draftNotesFromCard,
   draftNotesFromConversation,
 } from "@/lib/forms/draft-notes";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
@@ -203,7 +204,14 @@ export async function createInlineForm({
    * see `draftNotesFromConversation`. An assistant turn cannot reach this, and
    * neither can a turn the bounded window dropped.
    */
-  const notes = draftNotesFromConversation(messages, proposal.sourceMessageIds);
+  const fromTurns = draftNotesFromConversation(messages, proposal.sourceMessageIds);
+  /*
+   * A FORM THAT WOULD OTHERWISE BE BLANK is drafted from the card the manager
+   * pressed Create on, when that card shows what happened (QA H1, 25 Oct
+   * 2026). Only when no turn qualified: a draft with usable turns is
+   * unchanged. See `draftNotesFromCard`.
+   */
+  const notes = draftNotesAreUsable(fromTurns) ? fromTurns : draftNotesFromCard(proposal);
   if (!draftNotesAreUsable(notes)) {
     return { reference, draftWarning: NO_NOTES_WARNING };
   }

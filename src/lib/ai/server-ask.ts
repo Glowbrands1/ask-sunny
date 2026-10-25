@@ -45,6 +45,7 @@ import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
+import { withRemapDraftSources } from "./remap-draft-sources";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { answersFormClarification } from "@/lib/forms/form-clarification";
@@ -673,7 +674,8 @@ async function answerQuestionUntraced(
             : null;
         },
       });
-      if (remapped) return remapped;
+      // REMAP_DRAFT_SOURCES_ENABLED: the card names the turns its draft is written from.
+      if (remapped) return withRemapDraftSources(remapped, request);
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

@@ -714,6 +714,16 @@ export function namedFormExactEnabled(): boolean {
   return envFlag("NAMED_FORM_EXACT_ENABLED");
 }
 
+/**
+ * A full-remap card names the manager's turns it was read from (QA H1, 25 Oct
+ * 2026, found in the sibling app), so Create draft prefills the form from them
+ * instead of filing it blank. Off, the remap card names no turns, as before.
+ * See `lib/ai/remap-draft-sources.ts`.
+ */
+export function remapDraftSourcesEnabled(): boolean {
+  return envFlag("REMAP_DRAFT_SOURCES_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());

@@ -66,6 +66,7 @@ import {
   resignMethodFollowupEnabled,
   chatLongMessageEnabled,
   namedFormExactEnabled,
+  remapDraftSourcesEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -150,6 +151,7 @@ const NEW_FLAGS = [
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
   "NAMED_FORM_EXACT_ENABLED",
+  "REMAP_DRAFT_SOURCES_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -291,6 +293,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(resignMethodFollowupEnabled()).toBe(false);
     expect(chatLongMessageEnabled()).toBe(false);
     expect(namedFormExactEnabled()).toBe(false);
+    expect(remapDraftSourcesEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

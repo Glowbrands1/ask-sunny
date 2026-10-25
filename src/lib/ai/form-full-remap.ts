@@ -857,7 +857,7 @@ const STATE_ONLY = new RegExp(
   "i",
 );
 
-function slotClause(clause: string): boolean {
+export function slotClause(clause: string): boolean {
   const text = clause.trim();
   if (/^(?:verbal|written|yes|no|yeah|nope)[.!]?\s*$/i.test(text)) return true;
   // "Create a Coaching Form" names the form. It is not what happened.
