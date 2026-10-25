@@ -7,8 +7,11 @@
  * reader (`template-intent.ts`), which both have to decide whether the words
  * after a form's name are a person. One list, so the two can never disagree
  * about whether "coaching tips" or "exit process" names somebody. Pure and
- * browser-safe; it imports nothing.
+ * browser-safe; its one import (`not-a-name.ts`, NOT_A_NAME_GUARD_ENABLED)
+ * reads only the salon roster and the report catalogues.
  */
+
+import { isNotAName, maskNotANameText } from "./not-a-name";
 
 export const NOT_A_NAME = new Set([
   /*
@@ -198,7 +201,9 @@ const MONTH_AS_DATE = new RegExp(
 );
 
 export function lowercaseMonths(text: string): string {
-  return text
+  // The last pass before a name is read. NOT_A_NAME_GUARD_ENABLED also takes
+  // the app's own lines, bulleted lists and priced runs out here.
+  return maskNotANameText(text)
     .replace(MONTH_ALWAYS, (month) => month.toLowerCase())
     .replace(MONTH_AS_DATE, (match, lead: string | undefined, led: string | undefined, dated: string | undefined) =>
       lead && led ? `${lead}${led.toLowerCase()}` : (dated ?? match).toLowerCase(),
@@ -311,5 +316,7 @@ export function stripFieldLabels(name: string): string | null {
   const source = readNameFieldValue(name) ?? name;
   const words = withoutTrailingJobOrTitle(withoutLeadingLabels(nameWords(source)));
   if (words.length === 0 || words.every((word) => isFieldLabelWord(word))) return null;
+  // NOT_A_NAME_GUARD_ENABLED: "blank", "require practice", "spa", "lawrence".
+  if (isNotAName(words.join(" "))) return null;
   return words.join(" ");
 }
