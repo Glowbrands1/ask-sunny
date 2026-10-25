@@ -40,6 +40,11 @@ export interface FullManualChunk {
    * Hair on 15 and continues with Facial Hair and Make-up on 16.
    */
   readonly sections?: readonly { readonly heading: string; readonly page: number }[];
+  /**
+   * Set on a piece whose section is carried from the text above it: the
+   * heading is not printed in this piece, so it is not a heading of its page.
+   */
+  readonly continued?: boolean;
 }
 
 export interface FullManualDocument {
@@ -82,7 +87,14 @@ export type FullManualAssembly =
     }
   | { readonly ok: false; readonly reason: "missing" | "over_budget" };
 
-const FORM_COMMAND = /\b(?:create|draft|file|start|write(?:\s+\w+){0,3}\s+up)\b/i;
+/*
+ * "Start" is a command only with something to start ("start a coaching
+ * form"). Sunny sweep E1, 25 Oct 2026: "Who is eligible for PTO and when does
+ * it start?" read as a form command, so the manual was not loaded and the
+ * reply came from retrieval with no page citations.
+ */
+const FORM_COMMAND =
+  /\b(?:create|draft|file|start(?=\s+(?:a|an|the|new|my|this|that|another|one)\b)|write(?:\s+\w+){0,3}\s+up)\b/i;
 const ASKS_WHAT_POLICY_SAYS = /\b(?:what|which|does the|policy say|how many)\b/i;
 const OTHER_MANUAL = /\b(?:dm manuals?|training manuals?|safety binders?|coaching guides?)\b/i;
 const HR_POLICY =
@@ -369,9 +381,26 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
   let carry: BrandScope = "shared";
   const kept: FullManualChunk[] = [];
   let piece = 0;
+  let storedBefore = "";
+  let printedBefore: string | null = null;
 
   for (const chunk of ordered) {
-    const section = (chunk.section ?? "").trim();
+    /*
+     * A STORED SECTION THAT ONLY REPEATS THE CHUNK BEFORE IS A CARRIED LABEL
+     * (QA, Sunny sweep A3, 25 Oct 2026). Chunks 24-26 all store "Immigration
+     * Law Compliance"; Disability Accommodation starts inside chunk 25, so
+     * chunk 26 is Disability Accommodation text, and chunk 24, on p.9, only
+     * continues Immigration Law Compliance from p.8. That label made p.9 a
+     * page "printing" Immigration Law Compliance, and the model's p.9 for
+     * the section was kept. The text continues the heading printed last; a
+     * heading is a page's heading only where it is printed.
+     */
+    const stored = (chunk.section ?? "").trim();
+    const repeats = stored !== "" && headingKey(stored) === headingKey(storedBefore);
+    const section: string = repeats && printedBefore ? printedBefore : stored;
+    const firstLine = chunk.content.split("\n").find((line) => line.trim()) ?? "";
+    let continued = repeats && headingKey(headingOf(firstLine) ?? "") !== headingKey(section);
+    if (stored) storedBefore = stored;
     if (section) carry = scopeForHeading(section, carry);
     let active: BrandScope = carry;
     let piecePage = chunk.printedPage;
@@ -387,6 +416,7 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
         printedPage: piecePage,
         section: blockSection,
         content,
+        ...(continued ? { continued: true } : {}),
       });
       piece += 1;
     };
@@ -404,6 +434,8 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
           piecePage = recordedHeadingPage(chunk, heading) ?? piecePage;
           active = next;
           blockSection = next === "excluded" ? null : heading;
+          continued = false;
+          if (next !== "excluded") printedBefore = heading;
           if (next !== "excluded") lines.push(line);
           continue;
         }
@@ -412,6 +444,7 @@ export function sunTanCityChunks(chunks: readonly FullManualChunk[]): FullManual
     }
     flush();
     carry = active;
+    if (blockSection) printedBefore = blockSection;
   }
   return kept;
 }
@@ -462,7 +495,7 @@ export function assembleManual(doc: FullManualDocument): AssembledManual {
       passages.push({ page, heading: passageHeading, lines: next ? [next] : [] });
     }
     const entry = pageMap.get(page) ?? { headings: [], texts: [] };
-    if (section && !entry.headings.some((heading) => headingKey(heading) === headingKey(section))) {
+    if (section && !chunk.continued && !entry.headings.some((heading) => headingKey(heading) === headingKey(section))) {
       entry.headings.push(section);
     }
     if (section) entry.texts.push(section);
@@ -1051,18 +1084,69 @@ function passagesOf(manuals: readonly AssembledManual[]): PassageHit[] {
 
 /** The passages a sentence restates, by longest shared phrase. */
 function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit[] {
+  const restating: { hit: PassageHit; phrase: number }[] = [];
   let best = 0;
-  let chosen: PassageHit[] = [];
   for (const hit of hits) {
     const phrase = restatedPhraseLength(text, hit.passage.text, phrasePagesOf(hit.manual.passages));
-    if (phrase < 4 || phrase < best) continue;
-    if (phrase > best) {
-      best = phrase;
-      chosen = [];
-    }
-    chosen.push(hit);
+    if (phrase < 4) continue;
+    restating.push({ hit, phrase });
+    best = Math.max(best, phrase);
   }
-  return dominantPages(text, outsaid(text, chosen, hits));
+  const longest = restating.filter((entry) => entry.phrase === best).map((entry) => entry.hit);
+  const chosen = namedSection(text, restating, best) ?? longest;
+  return dominantPages(
+    text,
+    outsaid(
+      text,
+      chosen,
+      hits,
+      restating.map((entry) => entry.hit),
+    ),
+  );
+}
+
+/** Whether the answer names a heading: the whole heading, or one distinctive word of a short one. */
+function mentionsHeading(answer: string, heading: string): boolean {
+  const hay = ` ${wordsOf(answer)} `;
+  const phrase = wordsOf(heading);
+  if (!phrase) return false;
+  if (phrase.length >= 8 && hay.includes(` ${phrase} `)) return true;
+  const words = phrase.split(" ");
+  if (words.length > 3) return false;
+  return words.some((word) => word.length >= 6 && !HEADING_STOP.has(word) && hay.includes(` ${word} `));
+}
+
+/*
+ * A SENTENCE THAT NAMES ITS SECTION IS CITED THERE (live sweep, 25 Oct 2026;
+ * ported from the sibling app). "If an employee is summoned for jury duty,
+ * they need to show the summons to their supervisor as soon as possible so
+ * the supervisor can adjust the schedule" was cited on p.48: Witness Duty
+ * prints "summons to their Supervisor as soon as possible so the
+ * Supervisor", two words longer than Jury Duty's "summons to their
+ * supervisor as soon as possible so that the supervisor" on p.47. The
+ * sentence says "jury duty". A passage whose own heading the sentence names,
+ * sharing nearly as long a phrase (three words in four), wins over a longer
+ * copy under a heading the sentence does not name.
+ */
+const NAMED_SHARE = 0.75;
+
+function namesOwnHeading(hit: PassageHit, text: string): boolean {
+  const heading = hit.passage.heading?.trim();
+  return Boolean(heading) && !FRAGMENT_HEADING.test(heading!) && mentionsHeading(text, heading!);
+}
+
+function namedSection(
+  text: string,
+  restating: readonly { hit: PassageHit; phrase: number }[],
+  best: number,
+): PassageHit[] | null {
+  if (restating.some((entry) => entry.phrase === best && namesOwnHeading(entry.hit, text))) return null;
+  const named = restating.filter(
+    (entry) => entry.phrase >= Math.max(5, NAMED_SHARE * best) && namesOwnHeading(entry.hit, text),
+  );
+  if (named.length === 0) return null;
+  const top = Math.max(...named.map((entry) => entry.phrase));
+  return named.filter((entry) => entry.phrase === top).map((entry) => entry.hit);
 }
 
 /*
@@ -1084,11 +1168,34 @@ function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit
  */
 const OUTSAID = 2 / 3;
 
-function outsaid(text: string, tied: readonly PassageHit[], hits: readonly PassageHit[]): PassageHit[] {
+/*
+ * A TIED PAGE IS READ AS EVERYTHING ON IT THE SENTENCE RESTATES (live sweep,
+ * 25 Oct 2026; ported from the sibling app). "A full-time manager begins
+ * accruing PTO after 90 days of employment in that position, and in the
+ * first tier — 90 days through 4 years of service — they earn 2 weeks (80
+ * hours) of PTO, with a maximum accrual cap of 120 hours" restates two
+ * sections of p.41, Eligibility and Provisions. Each alone says less of the
+ * sentence than the rest of the accrual list on p.42, so p.42 outsaid p.41.
+ * The tied page counts the words of every passage on it that shares a phrase
+ * with the sentence.
+ */
+function pageText(page: number, tied: readonly PassageHit[], restating: readonly PassageHit[]): string {
+  return [...new Set([...tied, ...restating].filter((hit) => hit.passage.page === page))]
+    .map((hit) => hit.passage.text)
+    .join("\n");
+}
+
+function outsaid(
+  text: string,
+  tied: readonly PassageHit[],
+  hits: readonly PassageHit[],
+  restating: readonly PassageHit[] = [],
+): PassageHit[] {
   if (tied.length === 0) return [...tied];
   const rarity = wordRarityOf(hits);
   const tiedPages = new Set(tied.map((hit) => hit.passage.page));
-  const tiedBest = Math.max(...tied.map((hit) => rareOverlap(text, hit.passage.text, rarity)));
+  const tiedTexts = [...tiedPages].map((page) => pageText(page, tied, restating));
+  const tiedBest = Math.max(...tiedTexts.map((joined) => rareOverlap(text, joined, rarity)));
   let best: PassageHit | null = null;
   let bestScore = 0;
   for (const hit of hits) {
@@ -1099,7 +1206,7 @@ function outsaid(text: string, tied: readonly PassageHit[], hits: readonly Passa
     }
   }
   // It also shares at least as many distinctive words as the closest tied page: two rare words are not a page.
-  const tiedWords = Math.max(...tied.map((hit) => overlapScore(text, hit.passage.text)));
+  const tiedWords = Math.max(...tiedTexts.map((joined) => overlapScore(text, joined)));
   if (!best || tiedPages.has(best.passage.page) || overlapScore(text, best.passage.text) < Math.max(4, tiedWords)) {
     return [...tied];
   }
@@ -1271,6 +1378,65 @@ function markStretch(text: string, pages: readonly number[]): string {
   return `${text.trimEnd()} ${markers}`;
 }
 
+/*
+ * A MARKER THE SENTENCE READS THROUGH IS NOT TAKEN OFF ALONE (live sweep, 25
+ * Oct 2026; ported from the sibling app). "(The manual gives a specific day
+ * limit — 15 days — at [p.47], so I'll note…)" restates no page, its marker
+ * was removed, and the reply said "— 15 days — at, so I'll note…". A marker
+ * after "at", "see", "on", "in", "per", "from" or "under" is part of the
+ * sentence. When the sentence restates a page, that page's marker is
+ * written in its place. When it restates none, the word goes with the
+ * marker, and so does a dash that only led into it. No other word changes.
+ */
+const EMBEDDED_MARKER =
+  /([^\S\n]*(?:[—–][^\S\n]*)?)\b(at|see|on|in|per|from|under)([^\S\n]+)(\[pp?\.\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?\])/gi;
+
+function markersFor(pages: readonly number[]): string {
+  return [...pages].sort((left, right) => left - right).map((page) => `[p.${page}]`).join(" ");
+}
+
+/** The removal of an embedded marker that no page backs: the word, and a dash that only led into it. */
+function droppedEmbedded(lead: string, after: string): string {
+  const closes = /^[^\S\n]*(?:[,.;:!?)\]]|$)/.test(after);
+  if (/[—–]/.test(lead) && !closes) return lead.replace(/[^\S\n]+$/, "");
+  return "";
+}
+
+/** Brackets a removed marker left empty, and a space before punctuation it left behind. */
+function tidyRemoved(text: string): string {
+  return text
+    .replace(/[^\S\n]*\([^\S\n]*\)/g, "")
+    .replace(/[^\S\n]+([,.;:!?])/g, "$1")
+    .replace(/[^\S\n]{2,}/g, " ");
+}
+
+/**
+ * The sentence with its embedded markers handled and every other marker
+ * taken off, or null when it has no embedded marker. With `pages`, the first
+ * embedded marker becomes those pages; without, each goes with its word.
+ */
+function withEmbeddedMarkers(text: string, pages: readonly number[]): string | null {
+  if (!new RegExp(EMBEDDED_MARKER.source, "i").test(text)) return null;
+  const kept: string[] = [];
+  let placed = false;
+  const held = text.replace(
+    new RegExp(EMBEDDED_MARKER.source, "gi"),
+    (full: string, lead: string, word: string, space: string, _marker: string, offset: number, whole: string) => {
+      let replacement: string;
+      if (pages.length > 0 && !placed) {
+        placed = true;
+        replacement = `${lead}${word}${space}${markersFor(pages)}`;
+      } else {
+        replacement = droppedEmbedded(lead, whole.slice(offset + full.length));
+      }
+      kept.push(replacement);
+      return `\u0000${kept.length - 1}\u0000`;
+    },
+  );
+  const restored = withoutPrintedMarkers(held).replace(/\u0000(\d+)\u0000/g, (_whole, at: string) => kept[Number(at)] ?? "");
+  return placed ? restored : tidyRemoved(restored);
+}
+
 function escapeLabelTitle(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -1339,15 +1505,29 @@ function labelPage(
   sentence: string,
 ): number | null {
   const pages = pagesWithHeading(manual, heading);
-  if (pages.length === 1) return pages[0]!;
   if (pages.length === 0) return null;
-  if (pages.includes(written)) return written;
+  /*
+   * The page the sentence's words are printed on, within that section, comes
+   * first (QA, Sunny sweep A3): Immigration Law Compliance is printed on p.8
+   * and runs onto p.9; a sentence from its p.8 text is p.8, and the
+   * contact-HR sentence printed on p.9 is p.9, whatever page the model wrote.
+   */
   const key = headingKey(heading);
   const own = manual.passages
-    .filter((passage) => pages.includes(passage.page) && headingKey(passage.heading ?? "") === key)
+    .filter((passage) => headingKey(passage.heading ?? "") === key)
     .map((passage) => ({ manual, passage }));
-  const restated = [...new Set(restatedPassages(sentence, own).map((hit) => hit.passage.page))];
-  return restated.length === 1 ? restated[0]! : null;
+  // The label's own words ("Bereavement Leave, JBA Policy Manual p.47") say nothing about the page.
+  const said = sentence
+    .replace(new RegExp(escapeLabelTitle(heading), "gi"), " ")
+    .replace(new RegExp(`${escapeLabelTitle(manual.displayTitle)}|${escapeLabelTitle(manual.title)}`, "gi"), " ")
+    .replace(/\bp\.\s*\d{1,4}\b/gi, " ");
+  let found = restatedPassages(said, own);
+  if (found.length === 0) found = closestPassage(said, own);
+  const restated = [...new Set(found.map((hit) => hit.passage.page))];
+  if (restated.length === 1) return restated[0]!;
+  if (pages.length === 1) return pages[0]!;
+  if (pages.includes(written)) return written;
+  return null;
 }
 
 /**
@@ -1381,6 +1561,23 @@ function markLabels(
     });
   }
   return { text, labels, found };
+}
+
+/**
+ * The section a restated passage belongs to: its own heading, or, for text
+ * before any heading, the heading printed nearest above it in the manual
+ * (QA cosmetic, 25 Oct 2026: not the first heading printed further down
+ * that page).
+ */
+function headingForHit(hit: PassageHit): string | null {
+  const own = hit.passage.heading?.trim();
+  if (own && !FRAGMENT_HEADING.test(own)) return hit.passage.heading;
+  const at = hit.manual.passages.indexOf(hit.passage);
+  for (let before = at - 1; before >= 0; before -= 1) {
+    const heading = hit.manual.passages[before]?.heading?.trim();
+    if (heading && !FRAGMENT_HEADING.test(heading)) return hit.manual.passages[before]!.heading;
+  }
+  return null;
 }
 
 /**
@@ -1421,10 +1618,12 @@ export function applyFullManualAnswer(input: {
           if (!bare.trim()) return text.trim() ? "" : `${text}${gap}`;
           const labelled = markLabels(bare, input.manuals);
           for (const label of labelled.labels) marked.push(label);
-          if (labelled.found || namesExcludedBrand(bare)) return `${labelled.text}${gap}`;
+          if (labelled.found) return `${labelled.text}${gap}`;
+          // A marker that is taken off takes the word it was read through ("at [p.47]") with it.
+          if (namesExcludedBrand(bare)) return `${withEmbeddedMarkers(text, []) ?? bare}${gap}`;
           // "…stay covered. (Tattoos, JBA Policy Manual p.16)": the label that follows carries the page.
           const next = stretches[at + 1]?.text ?? "";
-          if (markLabels(withoutPrintedMarkers(next), input.manuals).found) return `${bare}${gap}`;
+          if (markLabels(withoutPrintedMarkers(next), input.manuals).found) return `${withEmbeddedMarkers(text, []) ?? bare}${gap}`;
           let restated = restatedPassages(bare, hits);
           if (restated.length === 0) {
             const pages = [...new Set(written)].filter((page) =>
@@ -1434,17 +1633,11 @@ export function applyFullManualAnswer(input: {
           }
           if (restated.length === 0) restated = closestPassage(bare, hits);
           for (const hit of restated) {
-            const own = hit.passage.heading && !FRAGMENT_HEADING.test(hit.passage.heading.trim()) ? hit.passage.heading : null;
-            const heading =
-              own ??
-              hit.manual.pages
-                .find((entry) => entry.page === hit.passage.page)
-                ?.headings.find((name) => !FRAGMENT_HEADING.test(name.trim())) ??
-              null;
+            const heading = headingForHit(hit);
             if (heading) marked.push({ manual: hit.manual, heading, page: hit.passage.page });
           }
           const pages = [...new Set(restated.map((hit) => hit.passage.page))];
-          return `${markStretch(bare, pages)}${gap}`;
+          return `${withEmbeddedMarkers(text, pages) ?? markStretch(bare, pages)}${gap}`;
         })
         .join("")
         .replace(/[^\S\n]+$/, "");
@@ -1460,4 +1653,88 @@ export function applyFullManualAnswer(input: {
     citations.push(citationFor(item.manual, item.heading, item.page));
   }
   return { content, citations };
+}
+
+/*
+ * A RETRIEVED MANUAL SOURCE IS A PAGE MARKED IN THE SENTENCE (live sweep, 25
+ * Oct 2026; ported from the sibling app, where 54 of 71 replies showed a JBA
+ * source and no [p.N]). A reply answered from retrieved excerpts cites them
+ * [S#], and every [S#] is taken out before the reply is shown: Sunny's sweep
+ * reply to "Who is eligible for PTO and when does it start?" was such a turn
+ * (the manual was not in its prompt) and showed "Page 41 — Eligibility"
+ * sources with no [p.N]. Each [S#] whose row is a manual excerpt is read as
+ * that excerpt's pages, and the sentence is cited as a full-manual answer
+ * is: a [p.N] for each page it restates, written where the marker stood, and
+ * a section source for each. A sentence that restates nothing keeps no
+ * marker. Sentences the model did not cite, and an [S#] from any other
+ * document, are left as they are.
+ */
+export function citeRetrievedAnswer(input: {
+  readonly content: string;
+  readonly manuals: readonly AssembledManual[];
+  readonly manualPagesOfMarker: (marker: number) => readonly number[] | null;
+}): { readonly content: string; readonly citations: readonly SourceCitation[]; readonly ok: boolean } {
+  if (input.manuals.length === 0) return { content: input.content, citations: [], ok: false };
+  const asPages = input.content.replace(/\[S(\d{1,2})\]/g, (full: string, digits: string) => {
+    const pages = input.manualPagesOfMarker(Number(digits));
+    if (pages === null) return full;
+    const known = [...new Set(pages)].filter((page) => Number.isInteger(page) && page > 0).sort((a, b) => a - b);
+    if (known.length === 0) return "[p.0]";
+    const from = known[0]!;
+    const to = known[known.length - 1]!;
+    return to > from && to - from <= 5 ? `[p.${from}-${to}]` : `[p.${from}]`;
+  });
+  const hits = passagesOf(input.manuals);
+  const marked: { manual: AssembledManual; heading: string; page: number }[] = [];
+  const content = asPages
+    .split("\n")
+    .map((line) =>
+      stretchesOf(line)
+        .map(({ text, gap }) => {
+          const written = [...text.matchAll(PRINTED_MARKER)].flatMap(markerPages);
+          if (written.length === 0) return `${text}${gap}`;
+          const bare = withoutPrintedMarkers(text);
+          if (!bare.trim()) return text.trim() ? "" : `${text}${gap}`;
+          const said = bare.replace(/[^\S\n]*\[S\d{1,2}\]/g, "");
+          if (namesExcludedBrand(said)) return `${withEmbeddedMarkers(text, []) ?? bare}${gap}`;
+          let restated = restatedPassages(said, hits);
+          if (restated.length === 0) {
+            const pages = [...new Set(written)].filter((page) =>
+              input.manuals.some((manual) => manual.pages.some((entry) => entry.page === page)),
+            );
+            restated = confirmedModelPages(said, pages, hits);
+          }
+          if (restated.length === 0) restated = closestPassage(said, hits);
+          for (const hit of restated) {
+            const heading = headingForHit(hit);
+            if (heading) marked.push({ manual: hit.manual, heading, page: hit.passage.page });
+          }
+          const pages = [...new Set(restated.map((hit) => hit.passage.page))];
+          return `${withEmbeddedMarkers(text, pages) ?? markStretch(bare, pages)}${gap}`;
+        })
+        .join("")
+        .replace(/[^\S\n]+$/, ""),
+    )
+    .join("\n");
+  if (marked.length === 0) return { content: input.content, citations: [], ok: false };
+  const citations: SourceCitation[] = [];
+  const seen = new Set<string>();
+  for (const item of marked) {
+    const key = `${item.manual.id}\0${headingKey(item.heading)}\0${item.page}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    citations.push(citationFor(item.manual, item.heading, item.page));
+  }
+  return { content, citations, ok: true };
+}
+
+/** Pages a retrieved manual excerpt is printed on, from its stored locator ("Page 18 — …", "Pages 15–16 — …"). */
+export function retrievedLocatorPages(row: { readonly locator?: string | null; readonly page?: number | null }): number[] {
+  const match = (row.locator ?? "").match(/\bPages?\s+(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?/i);
+  if (!match) return [];
+  const from = Number(match[1]);
+  const to = match[2] ? Number(match[2]) : from;
+  if (!match[2] && row.page != null && from === row.page) return [];
+  if (to < from || to - from > 5) return [from];
+  return Array.from({ length: to - from + 1 }, (_unused, offset) => from + offset);
 }

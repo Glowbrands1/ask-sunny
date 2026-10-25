@@ -124,8 +124,11 @@ import { finishChatTrace, openChatTrace, redactTraceText } from "./chat-trace";
 import { groundingWithoutCachedManual } from "./prompt-cache";
 import {
   applyFullManualAnswer,
+  citeRetrievedAnswer,
   FULL_MANUAL_GROUNDING_NOTE,
+  isJbaPolicyManualTitle,
   isPolicyAnswerQuestion,
+  retrievedLocatorPages,
   type AssembledManual,
 } from "./full-manual-context";
 import { loadFullManualContext } from "./full-manual-load";
@@ -1572,7 +1575,26 @@ async function answerQuestionUntraced(
     policyAnswer && fullManuals.length > 0
       ? applyFullManualAnswer({ content: answer, manuals: fullManuals, sourceCount: 0 })
       : null;
-  const spoken = checked?.content ?? answer;
+  /*
+   * A reply answered from retrieved excerpts (the manual was not loaded for
+   * this turn) cites each manual excerpt as the printed page its sentence
+   * restates, in the sentence (see `citeRetrievedAnswer`). Only when the
+   * reply cites a manual excerpt is the manual read for this.
+   */
+  let retrievalCited: { readonly content: string; readonly citations: readonly SourceCitation[] } | null = null;
+  if (!checked && fullManualContextEnabled()) {
+    const manualPages = (marker: number): number[] | null => {
+      const row = used[marker - 1];
+      return row && isJbaPolicyManualTitle(row.document_title) ? retrievedLocatorPages(row) : null;
+    };
+    const groundingMarkers = grounding.map((chunk) => chunk.marker);
+    if (extractUsedMarkers(answer, groundingMarkers).some((marker) => manualPages(marker) !== null)) {
+      const manuals = fullManuals.length > 0 ? fullManuals : await manualsForCitations(request.scopeId, request.question);
+      const cited = citeRetrievedAnswer({ content: answer, manuals, manualPagesOfMarker: manualPages });
+      retrievalCited = cited.ok ? cited : null;
+    }
+  }
+  const spoken = checked?.content ?? retrievalCited?.content ?? answer;
   const markers = extractUsedMarkers(spoken, grounding.map((chunk) => chunk.marker));
   const retrievedCitations: SourceCitation[] = markers
     .map((marker) => used[marker - 1])
@@ -1617,7 +1639,11 @@ async function answerQuestionUntraced(
   return {
     content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
     formSelection: suggested?.selection,
-    citations: checked ? [...checked.citations] : retrievedCitations,
+    citations: checked
+      ? [...checked.citations]
+      : retrievalCited
+        ? [...retrievalCited.citations, ...retrievedCitations]
+        : retrievedCitations,
     /*
      * Coverage is decided by what retrieval returned, not by reading the
      * answer: the server knows whether any chunk cleared the relevance
@@ -1645,6 +1671,12 @@ async function answerQuestionUntraced(
     // seeded catalogue; it is not part of the grounded answer path.
     recommendedVideoIds: [],
   };
+}
+
+/** The current manual, for citing a reply answered from retrieval. None when it cannot be read. */
+async function manualsForCitations(scopeId: string, question: string): Promise<readonly AssembledManual[]> {
+  const loaded = await loadFullManualContext({ scopeId, question });
+  return loaded.ok ? loaded.manuals : [];
 }
 
 /**

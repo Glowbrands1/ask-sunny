@@ -946,8 +946,14 @@ export function extractUsedMarkers(answer: string, validMarkers: number[]): numb
  * model slip never reaches the manager as a dangling "[S9]".
  */
 export function stripMarkers(answer: string): string {
+  /*
+   * "[S6][S2]:" — the adjacent form — kept its first marker: the lookahead
+   * after "[S6]" did not allow a "[", so only "[S2]" was removed and "**What
+   * they accrue** [S6]:" reached the manager (Sunny sweep E1,
+   * conv_mvnqof6h2aa9pd8, 25 Oct 2026; the sibling app fixed the same).
+   */
   return answer
-    .replace(/\s*\[S\d{1,2}\](?=[\s.,;:!?)]|$)/g, "")
+    .replace(/\s*\[S\d{1,2}\](?=[\s.,;:!?)\[]|$)/g, "")
     .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 }
