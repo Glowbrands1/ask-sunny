@@ -311,3 +311,26 @@ describe("a salon's state code is not a person", () => {
     expect(isNotAName("Nell")).toBe(false);
   });
 });
+
+/*
+ * QA G4: conv_mvo1t7qv253555k dropped the employee, conv_mvo1vv4w2on1b4p kept
+ * it — the same turns. chat_traces: the title and salon were read the same
+ * both times (the code's readers); only the employee differed, and it came
+ * only from the intent model's slot (null in one run, "Test Employee" in the
+ * other). The stand-in model here names nobody, as in the run that dropped it.
+ */
+describe("G4: the employee does not depend on the model's slot", () => {
+  it.each([
+    ["production profile", [] as string[]],
+    ["with CA_TEMPLATE_MAP + FORM_CHOICE_STATED (live)", ["CA_TEMPLATE_MAP_ENABLED", "FORM_CHOICE_STATED_ENABLED"]],
+  ])("conv_mvo1t7qv253555k — %s", { timeout: 120_000 }, async (_label, extra) => {
+    for (const flag of extra) vi.stubEnv(flag, "true");
+    bag.extra = { 0: { formType: "coaching" }, 1: { formType: "coaching", title: "Tanning Consultant" } };
+    const turns = await converse([
+      "Help me prepare a coaching form for not completing daily cleaning duties and signing off on daily cleaning checklists when the tasks are not completed",
+      "Okay let's restart. Test Employee, Tanning Consultant, KS Manhattan. Not completing closing duties and signing off that they were complete when they weren't. Not completing proper sanitation procedures on the equipment.",
+    ]);
+    expect(turns[1]!.employeeName).toBe("Test Employee");
+    expect(turns[1]!.content).not.toMatch(/who is this|full name/i);
+  });
+});

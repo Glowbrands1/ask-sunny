@@ -57,6 +57,14 @@ const AFTER_ROLE = new RegExp(
   "g",
 );
 
+/*
+ * NOT_A_NAME_GUARD_ENABLED (QA G4, Ask Sunny conv_mvo1t7qv253555k): "Okay
+ * let's restart. Test Employee, Tanning Consultant, KS Manhattan. …" — the
+ * name opening a sentence after another, as it opens a turn. Only the model's
+ * slot carried it, so the card dropped the employee in one run of three.
+ */
+const SENTENCE_START = new RegExp(`(?<=[.!?]\\s+)${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|[.!]?\\s*$))`, "g");
+
 function namesSomebody(first: string): boolean {
   const key = first.toLowerCase();
   if (NOT_A_NAME.has(key) || NOT_A_TYPED_NAME.has(key) || DESCRIBING.has(key)) return false;
@@ -67,7 +75,7 @@ function namesSomebody(first: string): boolean {
 /** "Test Employee" when the manager typed it as the employee's name, else null. */
 export function typedEmployeeName(text: string): string | null {
   if (!text || !text.includes("Employee")) return null;
-  for (const position of notANameGuardEnabled() ? [...POSITIONS, AFTER_ROLE] : POSITIONS) {
+  for (const position of notANameGuardEnabled() ? [...POSITIONS, AFTER_ROLE, SENTENCE_START] : POSITIONS) {
     for (const match of text.matchAll(position)) {
       const first = match[1]!;
       if (namesSomebody(first)) return `${first} Employee`;
