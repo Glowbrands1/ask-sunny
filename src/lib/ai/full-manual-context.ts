@@ -862,9 +862,36 @@ const CONTRACTIONS: readonly [RegExp, string][] = [
   [/\b(is|are|was|were|do|does|did|has|have|had|should|would|could|must)n't\b/g, "$1 not"],
 ];
 
+/*
+ * "Feb 1" is the manual's "February 1" (QA B-list, 25 Oct 2026; ported from
+ * the sibling app). Only before a day number, so "may" and "dec" elsewhere
+ * are left alone.
+ */
+const MONTHS: Record<string, string> = {
+  jan: "january",
+  feb: "february",
+  mar: "march",
+  apr: "april",
+  jun: "june",
+  jul: "july",
+  aug: "august",
+  sep: "september",
+  oct: "october",
+  nov: "november",
+  dec: "december",
+};
+const SHORT_MONTH = /\b(jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+(?=\d)/g;
+
+/*
+ * A sentence's first word is not a heading (QA B-list, 25 Oct 2026; ported
+ * from the sibling app, where "Anyone violating…" became "Page 15 — Anyone").
+ */
+const FRAGMENT_HEADING = /^(?:anyone|everyone|someone|no one|employees?|all|each|any|every|none|this|these|those|they|you|we|it)$/i;
+
 function wordsOf(text: string): string {
   let folded = text.toLowerCase().replace(/[’‘`´]/g, "'");
   for (const [pattern, replacement] of CONTRACTIONS) folded = folded.replace(pattern, replacement);
+  folded = folded.replace(SHORT_MONTH, (_whole, month: string) => `${MONTHS[month.slice(0, 3)]} `);
   return folded
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
@@ -996,6 +1023,11 @@ function restatedPhraseLength(answer: string, passage: string, index?: PhrasePag
   return best;
 }
 
+/** The distinct words of five letters or more that say something. */
+function distinctiveCount(text: string): number {
+  return new Set(wordsOf(text).split(" ").filter((word) => word.length >= 5 && !OVERLAP_STOP.has(word))).size;
+}
+
 function overlapScore(answer: string, passage: string): number {
   const hay = new Set(wordsOf(answer).split(" ").filter((word) => word.length >= 5 && !OVERLAP_STOP.has(word)));
   const seen = new Set<string>();
@@ -1030,7 +1062,114 @@ function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit
     }
     chosen.push(hit);
   }
-  return chosen;
+  return dominantPages(text, outsaid(text, chosen, hits));
+}
+
+/*
+ * A PAGE THAT SAYS CLEARLY MORE OF THE SENTENCE WINS, EVEN WITHOUT THE
+ * LONGEST PHRASE (live, 25 Oct 2026; ported from the sibling app). "Dress
+ * code violations can lead to being sent home to change and are subject to
+ * disciplinary action, up to and including termination" shares that
+ * discipline clause word for word only with Retaliation (23) and the Bonus
+ * Policy (38). The Dress Code page (15) prints "up to and potentially
+ * including termination", so its longest phrase is shorter, but it is the
+ * page that says "dress code", "sent home" and "change". The discipline words
+ * are printed on dozens of pages and say little about which page a sentence
+ * restates; "dress", "home" and "sent" are printed on a few. Each shared word
+ * counts by how few pages print it, and a page whose words count for clearly
+ * more (half as much again as any tied page), sharing as many distinctive
+ * words, is cited instead. "Payout on termination follows state and federal
+ * guidelines" stays where it was: the smoking page's "state and federal"
+ * counts for only a little more.
+ */
+const OUTSAID = 2 / 3;
+
+function outsaid(text: string, tied: readonly PassageHit[], hits: readonly PassageHit[]): PassageHit[] {
+  if (tied.length === 0) return [...tied];
+  const rarity = wordRarityOf(hits);
+  const tiedPages = new Set(tied.map((hit) => hit.passage.page));
+  const tiedBest = Math.max(...tied.map((hit) => rareOverlap(text, hit.passage.text, rarity)));
+  let best: PassageHit | null = null;
+  let bestScore = 0;
+  for (const hit of hits) {
+    const score = rareOverlap(text, hit.passage.text, rarity);
+    if (score > bestScore) {
+      best = hit;
+      bestScore = score;
+    }
+  }
+  // It also shares at least as many distinctive words as the closest tied page: two rare words are not a page.
+  const tiedWords = Math.max(...tied.map((hit) => overlapScore(text, hit.passage.text)));
+  if (!best || tiedPages.has(best.passage.page) || overlapScore(text, best.passage.text) < Math.max(4, tiedWords)) {
+    return [...tied];
+  }
+  return tiedBest < OUTSAID * bestScore ? [best] : [...tied];
+}
+
+const wordRarityCache = new WeakMap<readonly PassageHit[], ReadonlyMap<string, number>>();
+
+/** log(pages / pages that print the word), for each word of four or more letters. */
+function wordRarityOf(hits: readonly PassageHit[]): ReadonlyMap<string, number> {
+  const cached = wordRarityCache.get(hits);
+  if (cached) return cached;
+  const pagesOf = new Map<string, Set<number>>();
+  const allPages = new Set<number>();
+  for (const hit of hits) {
+    allPages.add(hit.passage.page);
+    for (const word of rareCandidates(hit.passage.text)) {
+      const pages = pagesOf.get(word);
+      if (pages) pages.add(hit.passage.page);
+      else pagesOf.set(word, new Set([hit.passage.page]));
+    }
+  }
+  const rarity = new Map<string, number>();
+  for (const [word, pages] of pagesOf) rarity.set(word, Math.log(allPages.size / pages.size));
+  wordRarityCache.set(hits, rarity);
+  return rarity;
+}
+
+function rareCandidates(text: string): Set<string> {
+  return new Set(wordsOf(text).split(" ").filter((word) => word.length >= 4 && !OVERLAP_STOP.has(word)));
+}
+
+/** The sentence's words the passage prints too, each counted by how few pages print it. */
+function rareOverlap(text: string, passageText: string, rarity: ReadonlyMap<string, number>): number {
+  const hay = rareCandidates(passageText);
+  let score = 0;
+  for (const word of rareCandidates(text)) if (hay.has(word)) score += rarity.get(word) ?? 0;
+  return score;
+}
+
+/*
+ * ONE PAGE THAT SAYS MORE WINS (QA B3, 25 Oct 2026; ported from the sibling
+ * app). Pages tied on the longest shared phrase are kept only where they
+ * share nearly as many of the sentence's distinctive words as the best page
+ * does, and a sentence carries at most two pages. "…texting, making calls,
+ * or using social media while on duty jeopardizes that experience" restates
+ * the Cell Phone policy (19), not Using Social Media at Work (23) or
+ * Employee Injury (26); "…may be subject to disciplinary action, up to and
+ * including termination" restates the dress code (15), not the Bonus Policy
+ * (38) or Retaliation (23), which print the same discipline clause.
+ */
+const DOMINANCE = 0.75;
+const MAX_PAGES_PER_SENTENCE = 2;
+
+function dominantPages(text: string, tied: readonly PassageHit[]): PassageHit[] {
+  if (tied.length <= 1) return [...tied];
+  const scored = tied.map((hit) => ({ hit, score: overlapScore(text, hit.passage.text) }));
+  const best = Math.max(...scored.map((entry) => entry.score));
+  const kept = scored.filter((entry) => entry.score >= DOMINANCE * best).sort((a, b) => b.score - a.score);
+  const pages: number[] = [];
+  const out: PassageHit[] = [];
+  for (const entry of kept) {
+    const page = entry.hit.passage.page;
+    if (!pages.includes(page)) {
+      if (pages.length >= MAX_PAGES_PER_SENTENCE) continue;
+      pages.push(page);
+    }
+    out.push(entry.hit);
+  }
+  return out;
 }
 
 /** A model page stays only when a passage on it shares four distinctive words with the sentence. */
@@ -1047,7 +1186,13 @@ function confirmedModelPages(text: string, pages: readonly number[], hits: reado
         bestScore = score;
       }
     }
-    if (best && bestScore >= 4) kept.push(best);
+    /*
+     * Four shared words must also be a real share of what the sentence says
+     * (QA B-list, 25 Oct 2026; ported from the sibling app: "…and the prior
+     * coaching reference" shared ordinary words with Time Records). A
+     * manager's note is not a page.
+     */
+    if (best && bestScore >= 4 && bestScore >= 0.4 * distinctiveCount(text)) kept.push(best);
   }
   return kept;
 }
@@ -1058,7 +1203,8 @@ function closestPassage(text: string, hits: readonly PassageHit[]): PassageHit[]
   let bestScore = 0;
   for (const hit of hits) {
     const score = overlapScore(text, hit.passage.text);
-    if (score < 5 || score < bestScore) continue;
+    // The same share rule as a model page.
+    if (score < 5 || score < 0.4 * distinctiveCount(text) || score < bestScore) continue;
     if (score > bestScore) {
       bestScore = score;
       best = [];
@@ -1068,14 +1214,28 @@ function closestPassage(text: string, hits: readonly PassageHit[]): PassageHit[]
   return new Set(best.map((hit) => hit.passage.page)).size === 1 ? best.slice(0, 1) : [];
 }
 
-const PRINTED_MARKER = /[^\S\n]*\[p\.(\d{1,4})\]/gi;
+/*
+ * "[p.16-17]" and "[pp.16–17]" are markers too (QA B-list, 25 Oct 2026; ported
+ * from the sibling app, where a range stayed beside the page the sentence
+ * restates). They are taken off like any other marker; the pages they name
+ * count as the model's pages.
+ */
+const PRINTED_MARKER = /[^\S\n]*\[pp?\.\s*(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?\]/gi;
+
+/** The pages a marker names: one page, or each page of a short range. */
+function markerPages(match: RegExpMatchArray): number[] {
+  const from = Number(match[1]);
+  const to = match[2] ? Number(match[2]) : from;
+  if (to < from || to - from > 5) return [from];
+  return Array.from({ length: to - from + 1 }, (_unused, offset) => from + offset);
+}
 
 /** Markers out. "expense[p.15]and" keeps a space between the two words. */
 function withoutPrintedMarkers(text: string): string {
-  const bare = text.replace(/[^\S\n]*\[p\.\d{1,4}\]/gi, (full, offset: number, whole: string) =>
+  const bare = text.replace(/[^\S\n]*\[pp?\.\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?\]/gi, (full, offset: number, whole: string) =>
     /^[\p{L}\p{N}]/u.test(whole.slice(offset + full.length)) && offset > 0 ? " " : "",
   );
-  return /^[^\S\n]*\[p\.\d{1,4}\]/i.test(text) ? bare.trimStart() : bare;
+  return /^[^\S\n]*\[pp?\.\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?\]/i.test(text) ? bare.trimStart() : bare;
 }
 
 /**
@@ -1090,7 +1250,7 @@ function stretchesOf(line: string): { text: string; gap: string }[] {
     const text = parts[at] ?? "";
     const gap = parts[at + 1] ?? "";
     const previous = stretches[stretches.length - 1];
-    if (previous && /^(?:\[p\.\d{1,4}\][\s)\].,;:]*)+$/i.test(text.trim())) {
+    if (previous && /^(?:\[pp?\.\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?\][\s)\].,;:]*)+$/i.test(text.trim())) {
       previous.text = `${previous.text}${previous.gap}${text}`;
       previous.gap = gap;
       continue;
@@ -1255,7 +1415,7 @@ export function applyFullManualAnswer(input: {
       const stretches = stretchesOf(line);
       return stretches
         .map(({ text, gap }, at) => {
-          const written = [...text.matchAll(PRINTED_MARKER)].map((match) => Number(match[1]));
+          const written = [...text.matchAll(PRINTED_MARKER)].flatMap(markerPages);
           const bare = withoutPrintedMarkers(text);
           // A sentence that was only markers leaves nothing, not a gap.
           if (!bare.trim()) return text.trim() ? "" : `${text}${gap}`;
@@ -1274,9 +1434,12 @@ export function applyFullManualAnswer(input: {
           }
           if (restated.length === 0) restated = closestPassage(bare, hits);
           for (const hit of restated) {
+            const own = hit.passage.heading && !FRAGMENT_HEADING.test(hit.passage.heading.trim()) ? hit.passage.heading : null;
             const heading =
-              hit.passage.heading ??
-              hit.manual.pages.find((entry) => entry.page === hit.passage.page)?.headings[0] ??
+              own ??
+              hit.manual.pages
+                .find((entry) => entry.page === hit.passage.page)
+                ?.headings.find((name) => !FRAGMENT_HEADING.test(name.trim())) ??
               null;
             if (heading) marked.push({ manual: hit.manual, heading, page: hit.passage.page });
           }
