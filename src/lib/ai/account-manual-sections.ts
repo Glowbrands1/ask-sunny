@@ -1,5 +1,11 @@
-import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { policyConductWordingEnabled, printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  STANDARDS_OF_CONDUCT,
+  describedAttendanceKeys,
+  groundConductPolicy,
+  readCaPolicy,
+  statedOffenseKeys,
+} from "@/lib/forms/ca-policy";
 import { describedManualSection, namedManualSection } from "@/lib/forms/named-policy-section";
 import {
   OFFENSE_MANUAL_SECTIONS,
@@ -44,6 +50,16 @@ export function accountManualSections(
 
   if (named) keep(named.section);
   if (described) keep(described.section);
+  /*
+   * POLICY_CONDUCT_WORDING_ENABLED: an account that reads as the Standards of
+   * Conduct cites it here, where the manual's own section lists the
+   * infraction, so the code chooses the policy and not the model (QA, 25 Oct
+   * 2026: gossip came back as Sexual and Other Forms of Harassment p.9).
+   */
+  if (policyConductWordingEnabled() && keys.length === 0 && !named && !described && reading.source === "incident") {
+    const grounded = groundConductPolicy({ reading, chunks, jobTitle });
+    if (grounded.ok && reading.suggestion === STANDARDS_OF_CONDUCT) keep(grounded.section);
+  }
   for (const section of manualSectionsFor({ chunks, offenseKeys: keys, jobTitle, notes: text })) keep(section);
   for (const section of sectionsNamedIn({ text, chunks, jobTitle })) keep(section);
 
