@@ -223,3 +223,34 @@ describe("FULL_MANUAL_WIDE_GATE_ENABLED", () => {
     expect(state.fullManualBlocks[0]).toBeNull();
   }, 30_000);
 });
+
+/*
+ * QA Round 17, conv_mvo0ayai2x20aiy turn 3, exact wording. The best
+ * retrieved excerpt was the manual's Employment Verification (p.8); p.49
+ * (Consent Forms, the skin typing chart) was not retrieved.
+ */
+describe("Round 17: The NCR and Fitzpatrick Skin Type Chart, EFT Agreements", () => {
+  const QUESTION = "The NCR and Fitzpatrick Skin Type Chart, EFT Agreements";
+  const employmentVerification = () => {
+    const chunk = rows.chunks.find((row) => /^Employment Verification/.test(row.content))!;
+    return manualRow(chunk.chunk_index, 0.918);
+  };
+
+  it("flag off (as live): no manual in the prompt", async () => {
+    state.rows = [employmentVerification()];
+    await ask(QUESTION);
+    expect(state.fullManualBlocks[0]).toBeNull();
+  }, 30_000);
+
+  it("FULL_MANUAL_WIDE_GATE_ENABLED on: the manual is in the prompt, with the skin typing chart on p.49", async () => {
+    process.env.FULL_MANUAL_WIDE_GATE_ENABLED = "1";
+    state.rows = [employmentVerification()];
+    state.reply = "Every client must also fill out the skin typing chart provided at the front counter [p.49].";
+    const response = await ask(QUESTION);
+    expect(state.fullManualBlocks[0]).toMatch(/\[p\.49\][\s\S]*Every client must also fill out the skin typing chart/);
+    expect(response.content).toContain("[p.49]");
+    expect(response.citations.map((citation) => `${citation.locator} ${citation.excerpt}`)).toEqual([
+      "Page 49 Consent Forms (New Client Release Forms)",
+    ]);
+  }, 30_000);
+});

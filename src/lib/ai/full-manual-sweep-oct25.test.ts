@@ -8,6 +8,7 @@ import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
 
 import {
   applyFullManualAnswer,
+  asksAboutManual,
   choosePolicyManuals,
   citeRetrievedAnswer,
   isPolicyAnswerQuestion,
@@ -239,4 +240,36 @@ describe("guards: the sweep replies that were right are unchanged", () => {
     expect(out.content).toBe(live.content);
     expect([...pagesIn(out.content)].sort((a, b) => a - b)).toEqual([...pages]);
   }, 20_000);
+});
+
+/*
+ * QA Round 17, conv_mvo0ayai2x20aiy turn 3: "The NCR and Fitzpatrick Skin
+ * Type Chart, EFT Agreements" was answered "nothing on … the Fitzpatrick
+ * Skin Type Chart". The manual prints it on p.49 (Consent Forms: "Every
+ * client must also fill out the skin typing chart"). The turn never had the
+ * manual: the gate read intent "other", and the retrieval query was the
+ * earlier turn's "Employment Verification", so p.49 was not retrieved either.
+ * Not the model denying a page it had.
+ */
+describe("Round 17: The NCR and Fitzpatrick Skin Type Chart, EFT Agreements", () => {
+  const live = recorded("conv_mvo0ayai2x20aiy");
+
+  it("was answered from retrieval, without the manual", () => {
+    expect(live.trace.cacheReadInputTokens).toBe(0);
+    expect(live.trace.retrievalCount).toBe(49);
+    expect(live.content).toContain("nothing on the NCR, the Fitzpatrick Skin Type Chart");
+  });
+
+  it("the gate does not take it (heard as 'other', or with no intent)", () => {
+    expect(isPolicyAnswerQuestion(live.question, "other")).toBe(false);
+    expect(isPolicyAnswerQuestion(live.question, null)).toBe(false);
+  });
+
+  it("the manual prints the skin typing chart on p.49, and the wide gate's heading check takes the question", () => {
+    const block = choosePolicyManuals(live.question, [manual()]);
+    if (!block.ok) throw new Error("manual did not assemble");
+    expect(block.block).toMatch(/\[p\.49\][\s\S]*Every client must also fill out the skin typing chart/);
+    // "skin" is a word of the p.49 heading "Tanning with Skin Cancer", printed on few pages.
+    expect(asksAboutManual(live.question, manuals())).toBe(true);
+  });
 });

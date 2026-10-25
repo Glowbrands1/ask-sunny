@@ -1,5 +1,5 @@
 {
-  "source": "Ask Sunny production chat_messages joined to chat_conversations (client_conversation_id), QA policy sweep of 25 Oct 2026 11:06-11:28 UTC, FULL_MANUAL_CONTEXT on. Each content is byte-identical to the stored reply (md5 checked); sources are the stored citations (locator and section). trace is chat_traces for the same conversation: cacheReadInputTokens > 0 means the full manual was in the prompt; conv_mvnqof6h2aa9pd8 is the one sweep turn answered from retrieval (16 rows, no cached tokens).",
+  "source": "Ask Sunny production chat_messages joined to chat_conversations (client_conversation_id), QA policy sweep of 25 Oct 2026 11:06-11:28 UTC, FULL_MANUAL_CONTEXT on. Each content is byte-identical to the stored reply (md5 checked); sources are the stored citations (locator and section). trace is chat_traces for the same conversation: cacheReadInputTokens > 0 means the full manual was in the prompt; conv_mvnqof6h2aa9pd8 is the one sweep turn answered from retrieval (16 rows, no cached tokens). conv_mvo0ayai2x20aiy is QA Round 17 turn 3 (15:53 UTC), answered from retrieval (intent other, 49 rows, the retrieval query rewritten to the earlier turn's \"Employment Verification\"); history holds its two earlier manager turns.",
   "answers": [
     {
       "conversationId": "conv_mvnq26ts2mccxc4",
@@ -93,6 +93,24 @@
         "intent": "policy|no_card",
         "cacheReadInputTokens": 39290,
         "retrievalCount": null
+      }
+    },
+    {
+      "conversationId": "conv_mvo0ayai2x20aiy",
+      "question": "The NCR and Fitzpatrick Skin Type Chart, EFT Agreements",
+      "md5": "df1c28bd8c979aeb7b7a481c46acf72d",
+      "content": "That's a compliance track, not a sales one, and it changes how you frame the conversation.\n\n**What the knowledge base actually has:** nothing on the NCR, the Fitzpatrick Skin Type Chart, or EFT agreement signature requirements — no retention rule, no \"who verifies\" step, no timeframe. If you need the exact policy language to quote at her, I'd need the specific procedure doc; the sources available to me don't carry it. What the sources do support is the handling: missing signed membership documents are treated as an immediate operational/compliance follow-up, flagged and corrected right away rather than parked in a sales coaching plan. Membership documentation sits on the operational follow-up list, separate from coaching priorities [S4].\n\n**How I'd run the conversation**, as a general approach:\n\n- **Go in with specifics, not a trend.** Pull the actual files — which clients, which dates, which of the three documents was unsigned or missing. \"Several NCRs aren't signed\" is arguable; five named dates aren't.\n- **Separate the three.** The NCR and Fitzpatrick chart are client safety and liability records; the EFT agreement is a financial commitment. She may be solid on one and sloppy on another, and the fix differs.\n- **Diagnose before you prescribe.** Does she know verification is her step at the point of sale (knowledge), is she rushing it during busy periods (process), or is she skipping it (follow-through)? Ask her to walk you through her own process on a new client start to finish — her description tells you which it is.\n- **Set the expectation as a moment, not a habit.** Something like: the document is signed and checked before the client goes to a bed or the EFT is processed — not at end of shift, not later.\n- **Have her demonstrate it.** Run one new-client start with you watching, start to finish, including the verification step out loud.\n- **Set the checkpoint.** You review new-client paperwork at a set interval — daily for the first week, then weekly — and tell her that's happening. Unsigned financial and safety documents are the kind of gap where you want to see correction immediately, not at the next review.\n\nTwo things to decide, and they're yours, not mine: whether the already-unsigned documents need to be corrected or re-obtained, and whether the pattern is serious or repeated enough that it belongs in corrective action rather than coaching. If you're unsure on the first, that's an HR/LP question.\n\nGive me her name and I can help you tighten the wording. If you want it documented, ask me to create a coaching form for her.",
+      "sources": [],
+      "history": [
+        "Help me prepare for a coaching conversation.",
+        "I have an employee that is not verifying documents are signed"
+      ],
+      "trace": {
+        "intent": "other|no_card",
+        "cacheReadInputTokens": 0,
+        "retrievalCount": 49,
+        "rewrittenQuery": "Employment Verification",
+        "topRetrieved": "JBA Policy Manual Edited 5.2025 — Employment Verification"
       }
     }
   ]
