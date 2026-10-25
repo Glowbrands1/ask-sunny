@@ -295,3 +295,41 @@ describe("QA B-list: ranges, heading fragments, loose model pages, month names",
     expect(pagesIn(out.content)).toEqual(new Set([42]));
   }, 20_000);
 });
+
+/**
+ * QA B3, 25 Oct 2026 (ported from the sibling app, live on its P0 change):
+ * two reworded sentences still carried three pages. The sentences, verbatim.
+ */
+describe("QA B3: a page that says clearly more wins", () => {
+  it("the reworded cell-phone sentence cites p.19 only (not Using Social Media p.23 or Employee Injury p.26)", () => {
+    const out = cite(
+      "Employees are personally responsible for protecting the customer experience — texting, making calls, or using social media while on duty jeopardizes that experience.",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+  }, 20_000);
+
+  it("the dress-code discipline sentence cites p.15 only (not Retaliation p.23 or Bonus Policy p.38)", () => {
+    const out = cite(
+      "Anyone violating their brand's dress code policy may be sent home to change and may be subject to disciplinary action, up to and including termination.",
+    );
+    expect(pagesIn(out.content)).toEqual(new Set([15]));
+  }, 20_000);
+});
+
+/**
+ * QA, 25 Oct 2026: a page must restate what the sentence says on every path.
+ * The sibling app's retrieval re-ask kept "[p.36]" and an [S#] for a manual
+ * page as written. Here every answer with the manual loaded goes through this
+ * one pass, which takes off every [S#] and keeps only restated pages; this is
+ * the guard for the path.
+ */
+describe("QA: every manual page kept is one the sentence restates", () => {
+  it("an [S#] and an unrestated [p.N] are taken off; a restated page stays", () => {
+    const out = cite(
+      "Bring the 10-22-26 details and the prior coaching reference [S2] [p.36]. Employees are personally responsible for protecting the customer experience — texting, making calls, or using social media while on duty jeopardizes that experience [p.19].",
+    );
+    expect(out.content).not.toMatch(/\[S\d/);
+    expect(pagesIn(out.content)).toEqual(new Set([19]));
+    expect(out.citations.map((citation) => citation.locator)).not.toContain("Page 36");
+  }, 20_000);
+});

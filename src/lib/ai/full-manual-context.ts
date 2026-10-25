@@ -1062,7 +1062,39 @@ function restatedPassages(text: string, hits: readonly PassageHit[]): PassageHit
     }
     chosen.push(hit);
   }
-  return chosen;
+  return dominantPages(text, chosen);
+}
+
+/*
+ * ONE PAGE THAT SAYS MORE WINS (QA B3, 25 Oct 2026; ported from the sibling
+ * app). Pages tied on the longest shared phrase are kept only where they
+ * share nearly as many of the sentence's distinctive words as the best page
+ * does, and a sentence carries at most two pages. "…texting, making calls,
+ * or using social media while on duty jeopardizes that experience" restates
+ * the Cell Phone policy (19), not Using Social Media at Work (23) or
+ * Employee Injury (26); "…may be subject to disciplinary action, up to and
+ * including termination" restates the dress code (15), not the Bonus Policy
+ * (38) or Retaliation (23), which print the same discipline clause.
+ */
+const DOMINANCE = 0.75;
+const MAX_PAGES_PER_SENTENCE = 2;
+
+function dominantPages(text: string, tied: readonly PassageHit[]): PassageHit[] {
+  if (tied.length <= 1) return [...tied];
+  const scored = tied.map((hit) => ({ hit, score: overlapScore(text, hit.passage.text) }));
+  const best = Math.max(...scored.map((entry) => entry.score));
+  const kept = scored.filter((entry) => entry.score >= DOMINANCE * best).sort((a, b) => b.score - a.score);
+  const pages: number[] = [];
+  const out: PassageHit[] = [];
+  for (const entry of kept) {
+    const page = entry.hit.passage.page;
+    if (!pages.includes(page)) {
+      if (pages.length >= MAX_PAGES_PER_SENTENCE) continue;
+      pages.push(page);
+    }
+    out.push(entry.hit);
+  }
+  return out;
 }
 
 /** A model page stays only when a passage on it shares four distinctive words with the sentence. */
