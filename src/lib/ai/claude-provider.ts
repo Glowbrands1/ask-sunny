@@ -19,7 +19,18 @@ export class ClaudeProvider implements AIProvider {
   readonly connected = true;
 
   async ask(request: ClientAskRequest): Promise<AskResponse> {
-    return post<AskResponse>("/api/chat", request);
+    const answer = await post<AskResponse>("/api/chat", request);
+    /*
+     * A 200 WITH NO ANSWER IN IT IS A FAILURE, NOT A BLANK BUBBLE. `post`
+     * reads an unparseable body as `{}`, and a body without a string
+     * `content` used to become an assistant turn with nothing in it and no
+     * error card. Every answer the route returns has string content, so this
+     * only ever catches a response that is not one of them.
+     */
+    if (!answer || typeof answer.content !== "string") {
+      throw new AiError("model_failed", "Ask Sunny's answer did not arrive.", 502);
+    }
+    return answer;
   }
 
   titleForConversation(firstMessage: string): string {

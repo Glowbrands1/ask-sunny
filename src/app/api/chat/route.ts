@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
-import { secondFormEnabled } from "@/lib/config/chat-quality-flags";
+import { emptyReplyError, isEmptyReply } from "@/lib/ai/empty-reply";
+import { emptyReplyGuardEnabled, secondFormEnabled } from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -253,6 +254,12 @@ export async function POST(request: Request) {
            */
           { memoryOwnerId: context.identity.subject },
         ));
+      /*
+       * NEVER A BLANK ANSWER (EMPTY_REPLY_GUARD_ENABLED). An answer with no
+       * prose and no card is a failure, said as one: the turn closes as failed
+       * below and the thread shows an error card, not an empty bubble.
+       */
+      if (emptyReplyGuardEnabled() && isEmptyReply(answer)) throw emptyReplyError();
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

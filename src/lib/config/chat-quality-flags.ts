@@ -452,6 +452,17 @@ export function notANameGuardEnabled(): boolean {
   return envFlag("NOT_A_NAME_GUARD_ENABLED");
 }
 
+/**
+ * A turn never saves or shows a blank answer. A successful answer whose prose
+ * is empty after every post-processor, and which carries no form card, choice
+ * or update, is returned as an honest failure instead ("Sunny could not
+ * produce an answer…"), so the thread shows an error card and the turn is
+ * closed as failed. Off, the answer is returned as it is.
+ */
+export function emptyReplyGuardEnabled(): boolean {
+  return envFlag("EMPTY_REPLY_GUARD_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
