@@ -332,6 +332,41 @@ describe("conv_mvmt1v0u2u32xsf, word for word (F5)", () => {
   });
 });
 
+/*
+ * S1, conv_mvn007ti21c35au (24 Oct 2026, replayed live on 25 Oct), word for
+ * word: the date is given in the second turn, the late opening in the third,
+ * and "change the date to 10-21" in the fourth. Live, the card stayed 10/20.
+ */
+describe("S1: conv_mvn007ti21c35au, word for word", () => {
+  const S1 = [
+    "I need a CA for Test Employee",
+    "she works at NE Kearney and it happened on 10-20",
+    "she opened the salon 20 minutes late and did not call anyone",
+    "change the date to 10-21",
+  ];
+
+  it("ends dated 10/21, citing Late Opening only", async () => {
+    intentModel.reading = copiesTheManager;
+    const answers = await chat(S1, "conv-s1");
+    expect(answers[1]!.formProposal?.formDate).toBe("2026-10-20");
+    expect(answers[2]!.formProposal?.formDate).toBe("2026-10-20");
+    const last = answers[3]!;
+    expect(last.formProposal, last.content).toBeTruthy();
+    expect(last.formProposal!.formDate).toBe("2026-10-21");
+    expect(sources(last)).toMatch(/Late Opening/);
+    expect(sources(last)).not.toMatch(/Attendance/);
+    const saved = stateBag.forms.get("manager-late-open:conv-s1") as { formDate: string };
+    expect(saved.formDate).toBe("2026-10-21");
+  });
+
+  it("with the flag off it stays 10/20, as live", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+    intentModel.reading = copiesTheManager;
+    const answers = await chat(S1, "conv-s1-off");
+    expect(answers[3]!.formProposal?.formDate).toBe("2026-10-20");
+  });
+});
+
 describe("conv_mvmyre8z2unys1a, word for word", () => {
   it("a late opening cites Late Opening p.15 only", async () => {
     intentModel.reading = copiesTheManager;
