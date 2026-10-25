@@ -60,6 +60,7 @@ import {
   frameworkGeneralSectionsEnabled,
   newestPlaceTurnEnabled,
   questionNotFormEnabled,
+  formEditDateRulesEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -137,6 +138,7 @@ const NEW_FLAGS = [
   "FRAMEWORK_GENERAL_SECTIONS_ENABLED",
   "NEWEST_PLACE_TURN_ENABLED",
   "QUESTION_NOT_FORM_ENABLED",
+  "FORM_EDIT_DATE_RULES_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -272,6 +274,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(frameworkGeneralSectionsEnabled()).toBe(false);
     expect(newestPlaceTurnEnabled()).toBe(false);
     expect(questionNotFormEnabled()).toBe(false);
+    expect(formEditDateRulesEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

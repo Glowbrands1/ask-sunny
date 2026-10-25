@@ -934,3 +934,18 @@ manager turn names replaces the saved one on the intent slots and the card.
 Ported to Ask Bubbles' store reader on the form remap path in the same
 session (its "location kearney" / "store kearney" kept the earlier store).
 Test: `src/lib/forms/salon-label-cue.test.ts`.
+
+## 25 Oct 2026: edits are applied or answered; dates follow the incident
+
+`FORM_EDIT_DATE_RULES_ENABLED` (default off, same flag in Ask Bubbles). QA's
+history replay on prod 20120d7: "change observation of offense to: …",
+"clean up my grammar", "change salon location to omaha center", "can you edit
+the form I already finalized …" were appended to Observation of Offense;
+"the late opening policy INSTEAD of the attendance policy" read as
+Attendance; a prior action's date became the Date or a "Follow-up:" line.
+Ported to Ask Bubbles' remap path in the same session (replace / add /
+instruction for What happened, the Date past a prior step, "today", the
+set-aside policy, the finalized-form reopen). Stays Sunny-only: the
+Follow-up rule (the remap card has no Follow-up line) and the salon edit on
+the card (Ask Bubbles' store edit is a separate fix on its remap path). Test:
+`src/app/api/chat/edits-dates-replay-e2e.test.ts`.
