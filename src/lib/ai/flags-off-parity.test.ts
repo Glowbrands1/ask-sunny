@@ -48,6 +48,7 @@ import {
   placeSpanGuardEnabled,
   notANameGuardEnabled,
   emptyReplyGuardEnabled,
+  manualNegatedListNoteEnabled,
   policyGateNonblockingEnabled,
   printedPageCitationEnabled,
   slotRetentionEnabled,
@@ -122,6 +123,7 @@ const NEW_FLAGS = [
   "PLACE_SPAN_GUARD_ENABLED",
   "PRIOR_ACTIONS_PARSE_ENABLED",
   "NOT_A_NAME_GUARD_ENABLED",
+  "MANUAL_NEGATED_LIST_NOTE_ENABLED",
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
   "EMPTY_REPLY_GUARD_ENABLED",
@@ -251,6 +253,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(placeSpanGuardEnabled()).toBe(false);
     expect(priorActionsParseEnabled()).toBe(false);
     expect(notANameGuardEnabled()).toBe(false);
+    expect(manualNegatedListNoteEnabled()).toBe(false);
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
     expect(emptyReplyGuardEnabled()).toBe(false);
