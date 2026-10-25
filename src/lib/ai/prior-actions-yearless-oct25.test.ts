@@ -279,13 +279,6 @@ async function chat(turns: readonly string[], conversationId: string): Promise<A
   return answers;
 }
 
-/** The Sources the card shows: the policy lines in the reply and the citations. */
-function sources(answer: Answer): string {
-  const lines = answer.content.split("\n").filter((line) => /JBA Policy Manual p\.\d+/.test(line));
-  const cited = (answer.citations ?? []).map((item) => `${item.excerpt.split(".")[0]} ${item.locator}`);
-  return [...lines, ...cited].join("\n");
-}
-
 /** A faithful copy of the manager's words: the date exactly as typed, no policy guessed. */
 function copiesTheManager(manager: string): Record<string, unknown> {
   const date = /\b\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?\b/.exec(manager)?.[0] ?? null;
@@ -337,6 +330,7 @@ describe("conv_mvnoiw8n2kfbcvc, word for word", () => {
   });
 
   it("with the flag off it is dated 9/15 with no prior action, as live", async () => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
     intentModel.reading = reading(null);
     const [first] = await chat([SAID], "conv-yearless-off");
     expect(first!.formProposal?.formDate).toBe("2026-09-15");

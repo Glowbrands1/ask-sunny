@@ -375,6 +375,12 @@ function withYearlessDates(text: string, dates: readonly DateInText[], today: st
   return extra.length === 0 ? [...dates] : [...dates, ...extra].sort((left, right) => left.index - right.index);
 }
 
+/** Every date in the text, a yearless dashed "9-15" included with the flag on; `datesInText` with it off. */
+export function datesInTextWithYearless(text: string, today: string): DateInText[] {
+  const dates = datesInText(text, today);
+  return priorActionsParseEnabled() ? withYearlessDates(text ?? "", dates, today) : dates;
+}
+
 /**
  * The text with each yearless dashed date that names an earlier step ("she
  * was coached on 9-15") blanked to spaces, so a reader of yearless dates
