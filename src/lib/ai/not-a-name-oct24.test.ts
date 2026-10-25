@@ -7,6 +7,7 @@ import { continuationFor } from "@/lib/forms/proposal-continuation";
 import type { AccessScope, ChatMessage } from "@/types";
 
 import { groundFormSlots, type FormRemapSlots } from "./form-full-remap";
+import { EMPTY_FORM_STATE } from "./form-state";
 
 /**
  * ============================================================================
@@ -72,6 +73,16 @@ const PEOPLE: DirectoryFact[] = [
     title: "Tanning Consultant",
     primarySalonId: "loc-0468",
     primaryLocationName: "KS Lawrence",
+  },
+  {
+    id: "jordan-hale",
+    firstName: "Jordan",
+    lastName: "Hale",
+    preferredFirstName: null,
+    salonIds: ["loc-0462"],
+    title: "Tanning Consultant",
+    primarySalonId: "loc-0462",
+    primaryLocationName: "KS Manhattan",
   },
 ];
 
@@ -229,17 +240,23 @@ interface Turn {
   readonly question: string;
   readonly employeeName: string | null;
   readonly content: string;
+  readonly formDate?: string | null;
 }
 
 let run = 0;
 
 /** `recorded` replaces this app's reply with the one production sent, by turn index. */
-async function converse(turns: readonly string[], recorded: Readonly<Record<number, string>> = {}): Promise<Turn[]> {
+async function converse(
+  turns: readonly string[],
+  recorded: Readonly<Record<number, string>> = {},
+  beforeTurn?: (index: number) => void,
+): Promise<Turn[]> {
   run += 1;
   const conversationId = `conv-not-a-name-${run}`;
   const history: ChatMessage[] = [];
   const out: Turn[] = [];
   for (const [index, question] of turns.entries()) {
+    beforeTurn?.(index);
     const response = await answerQuestion(
       {
         question,
@@ -254,7 +271,12 @@ async function converse(turns: readonly string[], recorded: Readonly<Record<numb
       { role: "admin" as never, scope: SCOPE, subject: "manager-not-a-name", verified: true },
       { memoryOwnerId: "manager-not-a-name" },
     );
-    out.push({ question, employeeName: response.formProposal?.employeeName ?? null, content: response.content });
+    out.push({
+      question,
+      employeeName: response.formProposal?.employeeName ?? null,
+      content: response.content,
+      formDate: response.formProposal?.formDate ?? null,
+    });
     history.push({ id: `u-${run}-${index}`, role: "user", content: question, createdAt: `${TODAY}T15:00:00Z` });
     history.push({
       id: `a-${run}-${index}`,
@@ -471,5 +493,213 @@ describe("QA round 4 through the full remap reader (guard on)", () => {
     const turns = remap([...SPA, "create a coaching form for Jordan Testperson"], ["EFT's", "spa", "Jordan Testperson"]);
     expectNever(turns, ["spa", "EFT", "Here"]);
     expect(turns.at(-1)!.employeeName).toBe("Jordan Testperson");
+  });
+});
+
+/**
+ * ============================================================================
+ * EVERY NAME GUARD ON AT ONCE — THE EARLIER NAME FIXES STILL HOLD (25 OCT 2026)
+ * ============================================================================
+ *
+ * The production profile plus NOT_A_NAME_GUARD, MANAGER_WORDS_ONLY,
+ * WARNING_LEVEL_MANAGER_ONLY and CROSS_CHAT_REPLY_GUARD. CROSS_CHAT_REPLY_GUARD
+ * (the bare-name roster rule for memory recall) is not on main yet; the
+ * variable is set so this test covers it the day it lands, and is inert
+ * until then. That rule may gate memory recall only: a name the manager
+ * typed is never dropped from the form.
+ *
+ * Synthetic names only. Jordan Hale is on the directory; "jordan ha" is a
+ * partial surname and stays as typed; Avery Testperson is off the directory.
+ */
+const ALL_ON = [
+  "NOT_A_NAME_GUARD_ENABLED",
+  "MANAGER_WORDS_ONLY_ENABLED",
+  "WARNING_LEVEL_MANAGER_ONLY_ENABLED",
+  "CROSS_CHAT_REPLY_GUARD_ENABLED",
+] as const;
+
+describe("every name guard on: typed names still reach the form", { timeout: 60_000 }, () => {
+  beforeEach(() => {
+    for (const flag of ALL_ON) vi.stubEnv(flag, "true");
+  });
+
+  function savedState(): { employeeId?: string | null; employeeName?: string | null } | undefined {
+    return bag.forms.get(`manager-not-a-name:conv-not-a-name-${run}`) as never;
+  }
+
+  function expectNoNameQuestion(turn: Turn) {
+    expect(personQuestions(turn.content), turn.question).not.toMatch(/did you mean|which of them|which person/i);
+  }
+
+  it("a lowercase full name is the directory's person", async () => {
+    bag.intent.latest = ["jordan hale"];
+    const [turn] = await converse(["create a coaching form for jordan hale, she was late on 10/20"]);
+    expect(turn!.employeeName).toBe("Jordan Hale");
+    expect(savedState()?.employeeId).toBe("jordan-hale");
+    expectNoNameQuestion(turn!);
+  });
+
+  it("a lowercase first name and partial surname stays as typed", async () => {
+    bag.intent.latest = ["jordan ha"];
+    const [turn] = await converse(["create a coaching form for jordan ha, she was late on 10/20"]);
+    expect(turn!.employeeName?.toLowerCase()).toBe("jordan ha");
+    expectNoNameQuestion(turn!);
+  });
+
+  it.each([
+    ["jordan ha", /^jordan ha$/i],
+    ["jordan hale", /^Jordan Hale$/],
+    ["avery testperson", /^avery testperson$/i],
+  ])("%s, typed as the bare reply to who the form is for, is the employee", async (reply, expected) => {
+    bag.intent.latest = [reply];
+    const turns = await converse(["create a coaching form", reply]);
+    expect(turns[0]!.employeeName).toBeNull();
+    expect(turns[1]!.employeeName ?? "").toMatch(expected);
+    expectNoNameQuestion(turns[1]!);
+  });
+
+  it("ALL CAPS: the directory's person in the directory's spelling", async () => {
+    bag.intent.latest = ["JORDAN HALE"];
+    const [turn] = await converse(["COACHING FORM JORDAN HALE LATE 3 TIMES"]);
+    expect(turn!.employeeName).toBe("Jordan Hale");
+    expect(savedState()?.employeeId).toBe("jordan-hale");
+    expectNoNameQuestion(turn!);
+  });
+
+  it("ALL CAPS: a name off the directory is still the employee", async () => {
+    bag.intent.latest = ["AVERY TESTPERSON"];
+    const [turn] = await converse(["COACHING FORM AVERY TESTPERSON LATE 3 TIMES"]);
+    // The live card prints a typed name capitalised ("Avery Testperson"),
+    // with these guards on or off; the person is what this checks.
+    expect(turn!.employeeName?.toLowerCase()).toBe("avery testperson");
+    expectNoNameQuestion(turn!);
+  });
+
+  it.each([
+    ["Jordan Hale's coaching form, she was late on 10/20", "Jordan Hale"],
+    ["Avery Testperson's coaching form, she was late on 10/20", "Avery Testperson"],
+  ])("a possessive: %s", async (question, expected) => {
+    bag.intent.latest = [expected];
+    const [turn] = await converse([question]);
+    expect(turn!.employeeName).toBe(expected);
+    expectNoNameQuestion(turn!);
+  });
+});
+
+/**
+ * ============================================================================
+ * QA L23, conv_mvnjp3362vbremz (25 OCT 2026) — "ONE TANNER" ON AN EXIT FORM
+ * ============================================================================
+ *
+ * The manager asked about pets; the answer cited the manual heading "One
+ * Tanner per Room". The exit form that followed was drafted for "One Tanner"
+ * on every turn, including after "test employee, tanning consultant at
+ * shawnee" and "create exit: Test Employee, …". The intent read ran the name
+ * reader over a blob holding that reply, saved "One Tanner", and the saved
+ * "The employee is One Tanner." then outvoted the name the manager typed.
+ *
+ * The manager's ten turns as sent, and the production reply to the first.
+ * The intent model is a stand-in that copies only a name in the manager's
+ * latest turn; every other name is the code's reading.
+ */
+const L23_TURNS = [
+  "what does policy say about pets in salon",
+  "assist with creating an exit form",
+  "test employee, tanning consultant at shawnee",
+  "last day worked was 9-20-26. management called her with no response on 9-27-26",
+  "its a no call no show",
+  "create exit form",
+  "Create a form from this conversation.",
+  "create exit: Test Employee, Tanning Consultant, KS Shawnee Mission Pkwy\nLast day worked 9/20/26\nNo call/no show; management attempted phone contact 9/27/26, no response",
+  "Create a form from this conversation.",
+  "Create a form from this conversation.",
+];
+
+const L23_PETS_REPLY = `Pets are out; service animals are in.
+
+- The Company is responsible for the health and safety of everyone in the workplace, and because animals may pose a threat of infection, cause allergic reactions, make employees or customers feel threatened or distracted, or have accidents and damage company property, employees are asked not to bring pets into the workplace ("Animals in the Workplace", JBA Policy Manual p.30 [p.30]).
+- An employee who requires the help of a service animal — defined by 28 CFR 36.104 as any dog individually trained to do work or perform tasks for the benefit of an individual with a disability — is permitted to bring that service animal to the office, provided its presence does not create a danger to others and does not impose an undue hardship on The Company ("Animals in the Workplace", JBA Policy Manual p.30 [p.30]).
+- On the client side: only one client is allowed per tanning room, but service animals are allowed in the tanning room with a client ("One Tanner per Room", JBA Policy Manual p.50 [p.50]).
+- Also worth knowing for visitors: unauthorized animals are not permitted in areas within the workplace, including parking lots ("Visitors in the Workplace", JBA Policy Manual p.29 [p.29]).
+
+One thing the manual doesn't spell out is a verification process for service animals, so if a team member is unsure how to handle a specific situation at the counter, route it to HR rather than improvising.`;
+
+describe("QA L23: the exit form is for the person the manager typed", { timeout: 120_000 }, () => {
+  beforeEach(() => {
+    for (const flag of ["MANAGER_WORDS_ONLY_ENABLED", "WARNING_LEVEL_MANAGER_ONLY_ENABLED", "NOT_A_NAME_GUARD_ENABLED"]) {
+      vi.stubEnv(flag, "true");
+    }
+    bag.intent.latest = ["test employee", "Test Employee"];
+  });
+
+  it('never "One Tanner"; "Test Employee" from the turn the manager typed it', async () => {
+    const turns = await converse(L23_TURNS, { 0: L23_PETS_REPLY });
+    for (const turn of turns) {
+      expect(turn.content.toLowerCase(), turn.question).not.toContain("one tanner");
+      expect(turn.employeeName?.toLowerCase() ?? "", turn.question).not.toContain("tanner");
+    }
+    expect(turns[1]!.employeeName).toBeNull();
+    for (const turn of turns.slice(2)) expect(turn.employeeName, turn.question).toBe("Test Employee");
+    const saved = bag.forms.get(`manager-not-a-name:conv-not-a-name-${run}`) as { employeeName?: string | null } | undefined;
+    expect(saved?.employeeName).toBe("Test Employee");
+  });
+
+  /*
+   * A conversation that already saved "One Tanner" before the guard was on
+   * (as conv_mvnjp3362vbremz did): the saved name was never typed by the
+   * manager, so it does not survive, and "Test Employee" replaces it.
+   */
+  it("a saved name the manager never typed gives way to the one they type", async () => {
+    let savedAfterTurn2: string | null | undefined;
+    const turns = await converse(L23_TURNS, { 0: L23_PETS_REPLY }, (index) => {
+      if (index === 2) {
+        savedAfterTurn2 = (bag.forms.get(`manager-not-a-name:conv-not-a-name-${run}`) as { employeeName?: string | null } | undefined)
+          ?.employeeName;
+      }
+      vi.stubEnv("NOT_A_NAME_GUARD_ENABLED", index < 2 ? "" : "true");
+    });
+    // Before the guard: the card is for "One Tanner", and the state saved it.
+    expect(turns[1]!.content).toContain("for **One Tanner**");
+    expect(savedAfterTurn2).toBe("One Tanner");
+    for (const turn of turns.slice(2)) {
+      expect(turn.employeeName, turn.question).toBe("Test Employee");
+      expect(turn.content.toLowerCase(), turn.question).not.toContain("one tanner");
+    }
+  });
+
+  /*
+   * The same rule for any name: one the state holds but the manager never
+   * typed (here a synthetic "Pat Example", saved before the guard) is not
+   * kept, and is not carried from the previous card either.
+   */
+  it("any saved name the manager never typed is dropped, and the typed one replaces it", async () => {
+    bag.forms.set(`manager-not-a-name:conv-not-a-name-${run + 1}`, {
+      ...EMPTY_FORM_STATE,
+      employeeName: "Pat Example",
+      templateKey: "stc-exit",
+    });
+    const turns = await converse([
+      "assist with creating an exit form",
+      "test employee, tanning consultant at shawnee",
+      "create exit form",
+    ]);
+    for (const turn of turns) expect(turn.content, turn.question).not.toContain("Pat Example");
+    expect(turns[0]!.employeeName).toBeNull();
+    for (const turn of turns.slice(1)) expect(turn.employeeName, turn.question).toBe("Test Employee");
+  });
+
+  /*
+   * The 9/27 form date in production came from the intent model's
+   * incidentDate ("management called her … on 9-27-26" is in the manager's
+   * words, so the date reader accepts it). This stand-in names no date, so
+   * the card keeps "the day the draft is created"; with the model's 9-27 the
+   * card's formDate is 2026-09-27 while Last Day Worked stays September 20.
+   */
+  it("the last day worked is September 20, and the form date is not the call on 9-27", async () => {
+    const turns = await converse(L23_TURNS, { 0: L23_PETS_REPLY });
+    for (const turn of turns.slice(3)) {
+      expect(turn.content, turn.question).toContain("**Last Day Worked:** September 20, 2026");
+      expect(turn.formDate ?? null, turn.question).not.toBe("2026-09-27");
+    }
   });
 });

@@ -12,7 +12,7 @@ import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intak
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { readPlaceState } from "@/lib/forms/place-state";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
-import { isNotAName } from "@/lib/forms/not-a-name";
+import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
 import {
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
@@ -21,6 +21,7 @@ import {
   intentExtractionEnabled,
   warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
+  notANameGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -228,6 +229,9 @@ function keptName(
   people: readonly GroundedPerson[],
 ): string | null {
   const question = turns[turns.length - 1] ?? "";
+  // NOT_A_NAME_GUARD_ENABLED: the previous card's name carries forward only
+  // when the manager typed it (QA L23: "One Tanner" came from a reply).
+  if (previous && notANameGuardEnabled() && !typedBy(turns, previous)) previous = null;
   const stated = newestName(turns);
   let picked: string | null = null;
   if (previous && !isFragment(previous)) {
@@ -241,6 +245,12 @@ function keptName(
   }
   if (!picked || isFragment(picked)) return !isFragment(current) ? spell(current, people) : null;
   return spell(picked, people);
+}
+
+/** The name is in the manager's words, outside a bulleted or priced offer list. */
+function typedBy(turns: readonly string[], name: string): boolean {
+  const needle = name.trim().toLowerCase().replace(/\s+/g, " ");
+  return turns.some((turn) => maskNotANameText(turn).toLowerCase().replace(/\s+/g, " ").includes(needle));
 }
 
 function spell(name: string | null, people: readonly GroundedPerson[]): string | null {

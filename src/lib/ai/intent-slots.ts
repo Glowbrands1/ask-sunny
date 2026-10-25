@@ -203,7 +203,8 @@ function settleYesNo(question: string, saved: ConversationFormState): Conversati
   };
 }
 
-export function decideIntentTurn(input: IntentTurnInput): IntentTurnDecision {
+export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision {
+  const input = withoutUntypedSavedName(rawInput);
   const saved = input.saved ?? EMPTY_FORM_STATE;
   if (codeSlotsEnabled()) {
     const settled = settleYesNo(input.question, saved);
@@ -443,6 +444,21 @@ function payrollClauseAmount(input: IntentTurnInput): string | null {
     if (stated) return canonicalAmount(stated);
   }
   return null;
+}
+
+/**
+ * NOT_A_NAME_GUARD_ENABLED: a saved employee the manager never typed is not
+ * kept. QA L23 (conv_mvnjp3362vbremz): "One Tanner", read from the manual
+ * heading in an assistant reply, was saved, and "The employee is One
+ * Tanner." then outvoted "Test Employee" on every later turn. A roster pick
+ * (it carries the directory id) is the manager's choice and stays.
+ */
+function withoutUntypedSavedName(input: IntentTurnInput): IntentTurnInput {
+  const name = input.saved?.employeeName ?? null;
+  if (!notANameGuardEnabled() || !input.saved || !name || input.saved.employeeId) return input;
+  const said = [...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content), input.question];
+  if (!isNotAName(name) && saidBy(said, name)) return input;
+  return { ...input, saved: { ...input.saved, employeeName: null, keptTypedName: null } };
 }
 
 /**
