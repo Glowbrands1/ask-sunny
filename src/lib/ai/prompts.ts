@@ -2,10 +2,15 @@ import { REPORTS } from "@/features/reports/reports-routes";
 import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
+import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
 import { CHAT_STYLE_RULES } from "./chat-style-rules";
 import { buildLastKnownGoodSystemPrompt } from "./prompts-last-known-good";
 import { PRIOR_COACHING_OPTIONAL_RULES } from "./prior-coaching-optional";
+import { RETRIEVED_NOT_SHARED_NOTE, RETRIEVED_NOT_SHARED_RULE } from "./sources-not-shared";
 import type { AskContext, OpenFormSummary } from "./types";
+
+/** The rule the retrieved-sources rule follows in the flag-off template. */
+const NEVER_CLAIM_RULE = "- Never claim you have read, checked, searched or reviewed anything beyond the provided sources.";
 
 /**
  * SUNNY'S PRODUCTION SYSTEM INSTRUCTION AND GROUNDING FORMAT.
@@ -469,6 +474,12 @@ export function buildSystemPrompt(input: {
    */
   hasPersonMemory?: boolean;
   /**
+   * CROSS_CHAT_REPLY_GUARD_ENABLED. Adds the rule that nothing from another
+   * conversation is the manager's to have said in this one, and words the
+   * person-memory rules as records rather than "last time you mentioned".
+   */
+  crossChatGuard?: boolean;
+  /**
    * Whether a FORMS ON FILE block — forms already created, read from Form
    * Monitoring under this user's forms visibility — is attached to this turn.
    *
@@ -542,6 +553,7 @@ export function buildSystemPrompt(input: {
   const hasMissingReports = input.hasMissingReports ?? false;
   const hasFormsLibrary = input.hasFormsLibrary ?? false;
   const hasPersonMemory = input.hasPersonMemory ?? false;
+  const crossChatGuard = input.crossChatGuard ?? false;
   const hasFormRecords = input.hasFormRecords ?? false;
 
   /*
@@ -598,7 +610,9 @@ export function buildSystemPrompt(input: {
 
   if (hasPersonMemory) {
     statementKinds.push(
-      `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are the manager's own words from earlier Ask Sunny conversations, and the forms they created, about people named here. Never mark them with a source marker. Say where they came from in plain words — for example "Last time you mentioned that…" or "On October 3 you told me…".`,
+      crossChatGuard
+        ? `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are records from other Ask Sunny conversations, and the forms the manager created, about people named here. Never mark them with a source marker. A form is a record on file — say "On file: …". Mention an earlier conversation only because the manager referred back to it in this one, and never say the manager raised or sent this before otherwise.`
+        : `Earlier conversations — anything drawn from the ${MEMORY_SECTION} section below. These are the manager's own words from earlier Ask Sunny conversations, and the forms they created, about people named here. Never mark them with a source marker. Say where they came from in plain words — for example "Last time you mentioned that…" or "On October 3 you told me…".`,
     );
   }
 
@@ -677,7 +691,7 @@ export function buildSystemPrompt(input: {
 - Where a form is: a manager creates one by asking Ask Sunny, here in the conversation. Forms already created are in Forms → Form Monitoring. A form already created CAN be changed, here in the conversation: the manager asks for it by form and employee — for example "edit the exit form for Lacey Morrow" — and the form comes back into the conversation to edit; a finalized one opens as a new draft with everything carried over, and the finalized original stays on file. A finalized form's card also has an Edit as new draft button. Never say a created or finalized form cannot be edited, copied or drafted again. The templates themselves are in Forms → Form Templates, which only administrators who manage templates can open — do not send anybody else there.`
     : "";
 
-  const personMemorySection = hasPersonMemory
+  const plainPersonMemorySection = hasPersonMemory
     ? `\n\nWHAT THE MANAGER TOLD YOU BEFORE
 
 - The ${MEMORY_SECTION} section is the manager's own earlier account of the people named in this conversation. Use it so they do not have to repeat themselves: connect what they ask now to what they told you before, and notice patterns across conversations — a second late arrival, a follow-up that was due.
@@ -687,6 +701,19 @@ export function buildSystemPrompt(input: {
 - A form is only on record if the section lists it under forms the manager created. An earlier conversation that discussed a coaching or corrective action is not proof one was filed.
 - Use what is relevant to the question and leave the rest. Do not recite the history back unprompted.`
     : "";
+  /*
+   * CROSS_CHAT_REPLY_GUARD_ENABLED. QA: "You raised this same situation with me
+   * on October 23" about a chat the manager never mentioned. The rule travels
+   * with every answer while the flag is on, memory or not.
+   */
+  const crossChatSection = crossChatGuard ? `\n\nOTHER CONVERSATIONS\n\n${CROSS_CHAT_REPLY_RULE}` : "";
+  const personMemorySection =
+    (crossChatGuard
+      ? plainPersonMemorySection.replace(
+          /^- The [^\n]*notice patterns across conversations[^\n]*$/m,
+          `- The ${MEMORY_SECTION} section holds records from other conversations and the forms the manager created, about people named here. An earlier conversation is in it only because the manager referred back to one in this conversation; a form is there as a record on file.`,
+        )
+      : plainPersonMemorySection) + crossChatSection;
 
   /*
    * FORMS ON FILE. Sunny used to answer "does Wren have previous coachings?"
@@ -754,12 +781,17 @@ Direct, warm, practical. Write the way a good regional manager talks: plain sent
 
 ${SUNNY_VOICE}`;
     // END_MAIN_PROMPT_RETURN
+    /*
+     * The retrieved-sources rule joins the template after it, so the frozen
+     * template above stays byte-identical. See `sources-not-shared.ts`.
+     */
+    const ruled = body.replace(NEVER_CLAIM_RULE, `${NEVER_CLAIM_RULE}\n${RETRIEVED_NOT_SHARED_RULE}`);
     return citeManualPages
-      ? body.replace(
+      ? ruled.replace(
           "- Never use a marker for a source that is not listed below. Only the markers listed are valid.",
           markerRule,
         )
-      : body;
+      : ruled;
   }
 
   const reportBullet = hasReportData
@@ -813,6 +845,7 @@ RULES YOU DO NOT BREAK
 ${markerRule}
 - Never invent a document title, a page number, a section name or a policy name. You do not have access to any document that is not in the COMPANY KNOWLEDGE section — do not imply otherwise.
 - Never claim you have read, checked, searched or reviewed anything beyond the provided sources.
+${RETRIEVED_NOT_SHARED_RULE}
 - If the sources do not cover the question, say plainly that the knowledge base does not have it, say what you would need, and stop. Do not fill the gap with plausible-sounding policy. An honest "I do not have that" is the correct answer, not a failure.
 - Signature lines, corrective-action decisions and anything with legal weight stay with the manager. Point them at the policy language; do not decide for them.
 - NEVER WRITE A FACSIMILE OF A COMPANY FORM. Do not produce a "Coaching Record", a "Coaching Form", a corrective action write-up or any other document with fill-in blanks, signature lines or field labels, and never tell a manager to paste your text into an official form. ${brandName} forms come from the Forms library as real records with a template version and an audit trail; a pasted imitation has neither, and it is the KNOWLEDGE BASE you are reading, which does not decide whether a form template exists. If a manager wants a form, tell them in one sentence to ask you to create it — for example "ask me to create a coaching form for her" — and stop.
@@ -879,6 +912,8 @@ export function buildGroundingBlock(chunks: GroundingChunk[]): string {
     .join("\n\n---\n\n");
 
   return `COMPANY KNOWLEDGE
+
+${RETRIEVED_NOT_SHARED_NOTE}
 
 The following excerpts are the only company documents available for this question. Valid markers are ${chunks
     .map((chunk) => `[S${chunk.marker}]`)
