@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
-import { secondFormEnabled } from "@/lib/config/chat-quality-flags";
+import { draftActionsEnabled, secondFormEnabled } from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
   assertNoConfigurationProblems,
@@ -138,7 +138,38 @@ export async function POST(request: Request) {
      */
     let answer;
     try {
-      const parsed = parseAskRequest(body);
+      const asked = parseAskRequest(body);
+      /*
+       * "DELETE THAT DRAFT", "SAME INCIDENT" (QA F8). Ahead of every open-form
+       * path: the revision path read "delete that draft" as a change and said
+       * "I haven't changed…". Deletes a draft only under the forms API's own
+       * DELETE rules; "same incident" opens the form on file; "different
+       * incident" is asked as a new form for that person. Null for anything
+       * else, and off unless DRAFT_ACTIONS_ENABLED. See
+       * `lib/forms/chat-draft-actions.ts`.
+       */
+      const draftAction = draftActionsEnabled()
+        ? await (await import("@/lib/forms/chat-draft-actions")).draftActionForTurn({
+            request,
+            question: asked.question,
+            history: asked.history,
+            today: asked.context.todayIso,
+            activeInstanceId: asked.activeFormInstanceId,
+            continuingTemplateKey: asked.continueProposalTemplateKey,
+          })
+        : null;
+      const draftAnswer = draftAction && "answer" in draftAction ? draftAction.answer : null;
+      /*
+       * Either way the open form is not corrected or revised by this turn: it
+       * was answered above, or a new incident is a new form.
+       */
+      const parsed = draftAction
+        ? {
+            ...asked,
+            ...("question" in draftAction ? { question: draftAction.question } : {}),
+            activeFormInstanceId: undefined,
+          }
+        : asked;
       /*
        * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her
        * new location to salon 24". Tried first, and only where the browser
@@ -223,7 +254,7 @@ export async function POST(request: Request) {
        * `lib/forms/chat-reopen.ts`.
        */
       const reopened =
-        !correction && !policyChange && !redraft && !revision && mayAskToReopen(parsed.question)
+        !draftAnswer && !correction && !policyChange && !redraft && !revision && mayAskToReopen(parsed.question)
           ? await (await import("@/lib/forms/chat-reopen")).reopenRequestedForm({
               request,
               question: parsed.question,
@@ -234,6 +265,7 @@ export async function POST(request: Request) {
             })
           : null;
       answer =
+        draftAnswer ??
         correction ??
         policyChange ??
         redraft ??

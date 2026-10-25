@@ -8,6 +8,7 @@ import {
   EXIT_TYPE_GROUP,
 } from "./exit-library";
 import { datesInText } from "./form-date-answer";
+import { mostRecent } from "./late-open";
 
 /**
  * ============================================================================
@@ -228,22 +229,9 @@ const RESIGNED_AFTER: { role: ExitDateRole; pattern: RegExp } = {
  * On the exit form a date is only ever placed on a line by the words beside
  * it ("last day", "gave notice"), so a yearless dashed month-day is read
  * here as the most recent such day on or before today — the rule the
- * sibling app's late-opening reader uses. A range ("10-12 hours") is not
+ * late-opening reader uses (`late-open.ts`). A range ("10-12 hours") is not
  * a date, and a date with no cue still fills nothing.
  */
-/** The most recent `month`-`day` on or before `today` (the sibling's late-opening reader's rule). */
-function mostRecent(month: number, day: number, today: string): string | null {
-  const year = Number(/^(\d{4})-/.exec(today)?.[1]);
-  if (!Number.isFinite(year)) return null;
-  const isoOf = (y: number): string | null => {
-    if (month < 1 || month > 12 || day < 1 || day > new Date(Date.UTC(y, month, 0)).getUTCDate()) return null;
-    return `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  };
-  const thisYear = isoOf(year);
-  if (thisYear && thisYear <= today) return thisYear;
-  return isoOf(year - 1);
-}
-
 const YEARLESS_DASHED = /(?<![\d/.-])(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)/g;
 const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|years?|people|times|x\b|%|am\b|pm\b|dollars?)/i;
 

@@ -93,7 +93,7 @@ function nameIs(text: string): string | null {
   if (afterLabel) return afterLabel;
   const labelled = /(?:employee(?:'s)?\s+name|name)\s+is\s+([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,3})/i.exec(text)?.[1];
   if (labelled) return labelled;
-  // The saved slot is repeated as its own line: "The employee is Betty Sue."
+  // The saved slot is repeated as its own line: "The employee is Dora Lee."
   return /(?:^|\n)\s*the employee is\s+([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){0,3})/i.exec(text)?.[1] ?? null;
 }
 
@@ -189,7 +189,7 @@ function renameTarget(
 
 /**
  * A stored name changes only when this turn names somebody on purpose.
- * "erin" does not shorten "Erin Nelson". A narrative mention is not a change.
+ * "elin" does not shorten "Elin Haskett". A narrative mention is not a change.
  */
 export function employeeNamedOnPurpose(
   question: string,

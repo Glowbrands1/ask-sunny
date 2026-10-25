@@ -244,25 +244,25 @@ describe("slots are grounded and only the missing ones are asked", () => {
   });
 
   it("CA, coaching, and exit name the published form, and the Woven primary salon is used", () => {
-    const erin: GroundedPerson = {
-      ...person({ id: "emp-erin", first: "Erin", last: "Nelson", salonId: "loc-1001", title: "Tanning Consultant" }),
+    const elin: GroundedPerson = {
+      ...person({ id: "emp-elin", first: "Elin", last: "Haskett", salonId: "loc-1001", title: "Tanning Consultant" }),
       salonIds: ["loc-1001", "loc-1002"],
       primarySalonId: "loc-1001",
       primaryLocationName: "North Salon",
     };
     const templates = [...TEMPLATES, { key: "stc-exit", name: "Resignation/Exit Form" }];
     const cases = [
-      ["CA for Erin Nelson, she was rude on 9/28/26", "dpoa"],
-      ["coaching for Erin Nelson on 9/29/26", "coaching"],
-      ["exit for Erin Nelson, last day 9/28/26", "stc-exit"],
+      ["CA for Elin Haskett, she was rude on 9/28/26", "dpoa"],
+      ["coaching for Elin Haskett on 9/29/26", "coaching"],
+      ["exit for Elin Haskett, last day 9/28/26", "stc-exit"],
     ] as const;
     for (const [question, key] of cases) {
-      const decision = decideIntentTurn(turn({ question, people: [erin], templates, raw: null }));
+      const decision = decideIntentTurn(turn({ question, people: [elin], templates, raw: null }));
       expect(decision.clarification, question).toBeNull();
       expect(decision.formTurn, question).toBe(true);
       expect(decision.state.templateKey, question).toBe(key);
-      expect(decision.state.employeeName, question).toBe("Erin Nelson");
-      expect(decision.state.employeeId, question).toBe("emp-erin");
+      expect(decision.state.employeeName, question).toBe("Elin Haskett");
+      expect(decision.state.employeeId, question).toBe("emp-elin");
       expect(decision.state.salonId, question).toBe("loc-1001");
     }
   });

@@ -2,9 +2,9 @@
 -- ONE-TIME, APPROVED DATA CHANGE — NOT A MIGRATION. Run only with approval.
 -- ============================================================================
 --
--- KS Manhattan (salon 0462) is run by Rachael Dugan. The reporting workbook
--- still lists it under Patterson, Madeline, so the Reviews and Reports district
--- filters leave it out of Rachael's district.
+-- KS Manhattan (salon 0462) belongs to the 'Dugan, Rachael' district. The
+-- reporting workbook still lists it under Patterson, Madeline, so the Reviews
+-- and Reports district filters leave it out of that district.
 --
 -- Changes ONLY `salon_period_attributes.district_label`, from
 -- 'Patterson, Madeline' to 'Dugan, Rachael', for salon 0462, on LIVE
