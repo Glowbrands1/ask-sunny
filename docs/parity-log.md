@@ -971,3 +971,7 @@ set-aside policy, the finalized-form reopen). Stays Sunny-only: the
 Follow-up rule (the remap card has no Follow-up line) and the salon edit on
 the card (Ask Bubbles' store edit is a separate fix on its remap path). Test:
 `src/app/api/chat/edits-dates-replay-e2e.test.ts`.
+
+## 25 Oct 2026: EPP Store wording in Ask Bubbles — Bubbles-only (brand-specific)
+
+Ask Bubbles pins its Employee Performance Plans to "store" wording with no Sun Tan City name or logo, keeping the PPTA/LPSVA/UPTA/Club Close metrics and the stored `salon_*` keys (Ask Bubbles `src/lib/forms/epp-store-wording.test.ts`); not needed in Ask Sunny because "salon" and Sun Tan City are this app's own brand.
