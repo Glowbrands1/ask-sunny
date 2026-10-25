@@ -158,6 +158,7 @@ import { withManagerFormChoice } from "./manager-form-choice";
 import { withStoreAliases } from "./store-alias";
 import { withNameRespell } from "./name-respell";
 import { withCardNeverSilent } from "./card-never-silent";
+import { withCrossPersonGuard } from "./cross-person-guard";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -685,7 +686,8 @@ async function answerQuestionUntraced(
         },
       });
       // REMAP_DRAFT_SOURCES_ENABLED: the card names the turns its draft is written from.
-      if (remapped) return withRemapDraftSources(remapped, request);
+      // CROSS_PERSON_INCIDENT_GUARD_ENABLED: a new employee does not inherit the earlier account.
+      if (remapped) return withCrossPersonGuard(withRemapDraftSources(remapped, request), request);
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

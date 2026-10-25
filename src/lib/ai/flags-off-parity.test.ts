@@ -76,6 +76,7 @@ import {
   nameRespellEnabled,
   cardNeverSilentEnabled,
   nameCaseInsensitiveEnabled,
+  crossPersonIncidentGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -170,6 +171,7 @@ const NEW_FLAGS = [
   "NAME_RESPELL_ENABLED",
   "CARD_NEVER_SILENT_ENABLED",
   "NAME_CASE_INSENSITIVE_ENABLED",
+  "CROSS_PERSON_INCIDENT_GUARD_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -321,6 +323,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(nameRespellEnabled()).toBe(false);
     expect(cardNeverSilentEnabled()).toBe(false);
     expect(nameCaseInsensitiveEnabled()).toBe(false);
+    expect(crossPersonIncidentGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
