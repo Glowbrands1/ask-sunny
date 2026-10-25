@@ -87,6 +87,18 @@ const FOLLOW_UP_BEFORE =
 const PRIOR_STEP_BEFORE =
   /\b(?:got|gotten|received|was given|were given|been given|given|had|issued|gave|was|were|previous(?:ly)?|prior|already|last time)\b[^.;\n]{0,40}\b(?:warn(?:ing|ings|ed)|write[- ]?ups?|written up|coach(?:ed|ing)?|corrective actions?|cas?|c\/a|disciplin\w*|(?:a|an)\s+(?:final\s+)?(?:verbal|written)(?!\s+up))\b(?:[^.;,\n]{0,20}|\s+(?:on|about|for|over|regarding)\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:[a-z]+\s+){0,3}?(?:back\s+)?(?:on|in)\s+)$/i;
 
+/*
+ * PRIOR_ACTIONS_PARSE_ENABLED. "she completed September Promo coaching
+ * 9/29/26, Hemp nation product coaching form 9/30/26" (QA, Ask Sunny
+ * conv_muxahcdkiiur2tu) is a step she already took: "completed" is one of the
+ * verbs that say so. Off, the reading is exactly `PRIOR_STEP_BEFORE`.
+ */
+const PRIOR_STEP_BEFORE_PARSED = new RegExp(PRIOR_STEP_BEFORE.source.replace("(?:got|", "(?:completed|got|"), "i");
+
+function priorStepBefore(): RegExp {
+  return priorActionsParseEnabled() ? PRIOR_STEP_BEFORE_PARSED : PRIOR_STEP_BEFORE;
+}
+
 /**
  * A step that is hers already, with no past-tense verb: "despite / after /
  * since / following her written warning on 9/15", "her verbal warning on
@@ -513,7 +525,7 @@ function labelledStepsParsed(text: string, dates: readonly DateInText[], today?:
       continue;
     }
     // "received … Coaching 9/8/2026, Focus Item Coaching 9/15/2026": the step read before the date opens a list.
-    const prior = PRIOR_STEP_BEFORE.exec(before);
+    const prior = priorStepBefore().exec(before);
     const future = today !== undefined && date.iso > today && prior !== null && /^(?:was|were)\b/i.test(prior[0]);
     if (prior && !ISSUES_THIS_FORM.test(prior[0]) && !future) {
       list = "";
@@ -533,7 +545,7 @@ function isOtherDate(
   if (priorActionsParseEnabled() && (manualOrCoachedDate(before) || restated?.has(found.index))) return true;
   return (
     FOLLOW_UP_BEFORE.test(before) ||
-    PRIOR_STEP_BEFORE.test(before) ||
+    priorStepBefore().test(before) ||
     OWNED_STEP_BEFORE.test(before) ||
     DID_STEP_BEFORE.test(before) ||
     talkedStep(before) ||
@@ -641,7 +653,7 @@ function stepSpans(text: string, today: string): { step: WrittenStep; index: num
         ...(labelled.topic ? { topic: labelled.topic } : withAbout),
       });
     }
-    const match = PRIOR_STEP_BEFORE.exec(before);
+    const match = priorStepBefore().exec(before);
     // "she was late, give her a written warning on 10/2": the cue was the incident's, the warning is this form's.
     if (match && !ISSUES_THIS_FORM.test(match[0])) {
       // A date ahead of today is last year's only after a verb of receiving one ("got … on 12/20" in

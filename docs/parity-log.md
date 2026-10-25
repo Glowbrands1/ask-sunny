@@ -934,3 +934,14 @@ manager turn names replaces the saved one on the intent slots and the card.
 Ported to Ask Bubbles' store reader on the form remap path in the same
 session (its "location kearney" / "store kearney" kept the earlier store).
 Test: `src/lib/forms/salon-label-cue.test.ts`.
+
+## 25 Oct 2026 — QA full chat history: prior-year report routing (Sunny-only)
+
+"144th center revenue compared to last years" (conv_mv5u8m282je9f8w) routed
+to Sales Totals only, which carries no prior year, so the answer said last
+year's figures were not ingested; the Comp Report holds them. The Salon
+Performance vocabulary in `reporting/read/family-routing.ts` now also reads
+"last years", "previous year", "prior years", "year over year", "yoy" and
+"compared". Stays Sunny-only: Ask Bubbles has no report families or
+`family-routing.ts`. Unflagged — a vocabulary fix in a path that is always
+on. Test: `src/lib/reporting/read/family-routing-history-oct25.test.ts`.
