@@ -791,3 +791,12 @@ export function chatLongMessageEnabled(): boolean {
     flagOn(process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED)
   );
 }
+
+/**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
