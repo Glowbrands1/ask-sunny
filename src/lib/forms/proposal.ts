@@ -18,6 +18,7 @@ import {
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
+import { namesSomebody } from "./answer-not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -979,7 +980,8 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
-  return settle(strong, found, text, subjects);
+  // ANSWER_NOT_A_NAME_ENABLED: "yes payrol ldeduct" and "most recent" answer questions; they name nobody.
+  return settle(strong.filter(namesSomebody), found.filter(namesSomebody), text, subjects);
 }
 
 /*
