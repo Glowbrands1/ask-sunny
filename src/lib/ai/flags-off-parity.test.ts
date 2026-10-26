@@ -79,6 +79,8 @@ import {
   googleReviewsInChatEnabled,
 } from "@/lib/config/chat-quality-flags";
 
+import { staleBannerEnabled } from "@/lib/reviews/sync-health";
+
 import { augmentIntakeQuestion } from "./intake-augment";
 import { flaggedCitationWrite } from "./policy-citation-fields";
 
@@ -172,6 +174,7 @@ const NEW_FLAGS = [
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
+  "GOOGLE_REVIEWS_STALE_BANNER_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -340,6 +343,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
+    expect(staleBannerEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
