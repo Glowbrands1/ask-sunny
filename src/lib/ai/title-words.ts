@@ -95,6 +95,19 @@ const NOT_A_TITLE_WORD =
 const COPULAR =
   /\b(?:she|he|they|who)(?:\s+(?:is|are|works\s+as)|['’]s)\s+(?:a|an)\s+([a-z][a-z'’/-]*(?:\s+[a-z][a-z'’/-]*){0,3}?)(?=\s*(?:[,.;:!?\n]|$|\s(?:at|for|in|on|and|who|that|with|since|from)\b))/gi;
 
+/**
+ * STATED_TITLE_WINS_ENABLED: an initialism in a stated title reads the same
+ * however it was typed, so "an hr assistant" is HR Assistant, as "an HR
+ * assistant" is (registers, 26 Oct 2026). Any other word keeps the capitals
+ * the manager typed, or is Capitalized.
+ */
+const TITLE_INITIALISM = /^(?:hr|it|dm|gm|asd)$/i;
+
+function titleWord(word: string): string {
+  if (TITLE_INITIALISM.test(word)) return word.toUpperCase();
+  return word === word.toUpperCase() ? word : word[0]!.toUpperCase() + word.slice(1);
+}
+
 export function copularJobTitle(text: string, employeeName: string | null = null): string | null {
   let found: string | null = null;
   const spelled = spelledAssistant(text ?? "");
@@ -103,7 +116,7 @@ export function copularJobTitle(text: string, employeeName: string | null = null
     if (!ROLE_HEAD.test(words.at(-1)!) || words.some((word) => NOT_A_TITLE_WORD.test(word))) continue;
     const probe = words.join(" ");
     if (!readsAsStatedTitle({ probe, text: spelled, employeeName, knownTitle: () => null })) continue;
-    found = words.map((word) => (word === word.toUpperCase() ? word : word[0]!.toUpperCase() + word.slice(1))).join(" ");
+    found = words.map(titleWord).join(" ");
   }
   return found;
 }

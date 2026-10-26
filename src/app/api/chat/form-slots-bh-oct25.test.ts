@@ -574,3 +574,143 @@ describe(`BH5 (${DATE_FLAG}): an incident date in the future is asked about once
     expect(on.content).toBe(FUTURE);
   });
 });
+
+/* ========================================================================= */
+/* Registers: the same manager words typed all lowercase or in sentence case */
+/* ========================================================================= */
+
+/**
+ * Every manager turn above, typed (1) all lowercase and (2) in sentence case
+ * with the names typed lowercase or Capitalized. Names and keywords read the
+ * same either way, so every outcome is the one the wording above gets.
+ */
+type Register = readonly [label: string, type: (text: string, names: readonly string[]) => string];
+
+function sentenceCase(text: string, names: readonly string[], capitalizeNames: boolean): string {
+  let out = text.toLowerCase();
+  if (capitalizeNames) {
+    for (const name of names) {
+      out = out.replace(new RegExp(`\\b${name.toLowerCase()}\\b`, "g"), name.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase()));
+    }
+  }
+  return out.replace(/(^|[.!?]\s+)([a-z])/g, (_match, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
+}
+
+const REGISTERS: readonly Register[] = [
+  ["all lowercase", (text) => text.toLowerCase()],
+  ["sentence case, names lowercase", (text, names) => sentenceCase(text, names, false)],
+  ["sentence case, names Capitalized", (text, names) => sentenceCase(text, names, true)],
+];
+
+const BH1_NAMES = ["marlo quist", "kearney"];
+const B16_NAMES = ["test employee", "kearney"];
+const BH3_NAMES = ["sela brandt", "sela"];
+const BH5_NAMES = ["sela brandt"];
+
+describe("registers: BH1", () => {
+  it.each(REGISTERS)("%s: the Verbal Warning and the manager's Tanning Consultant", async (_label, type) => {
+    const thread = new Thread();
+    const card = await thread.say(type(BH1, BH1_NAMES));
+    expect(card.formProposal?.warningLevel).toBe("verbal");
+    expect(card.content).not.toMatch(LEVEL_ASKED);
+    expect(card.formProposal?.employeeRole).toBe("Tanning Consultant");
+    const { id } = await thread.create();
+    expect(checked(id, "warning_type")).toEqual(["verbal"]);
+    expect(value(id, "job_title")).toBe("Tanning Consultant");
+  });
+});
+
+describe("registers: B16", () => {
+  it.each(REGISTERS)(`%s: ${TITLE_FLAG}: HR Assistant, not the directory's title`, async (_label, type) => {
+    process.env[TITLE_FLAG] = "true";
+    const titled = await new Thread().say(type(B16_TITLE, B16_NAMES));
+    expect(titled.formProposal?.templateKey).toBe("coaching");
+    expect(titled.formProposal?.employeeRole).toBe("HR Assistant");
+    expect(titled.content).not.toMatch(/HR Assistant\. It happened/i);
+    const hr = await new Thread().say(type(B16_HR, B16_NAMES));
+    expect(hr.formProposal?.employeeRole ?? null).not.toMatch(/^HR\b/i);
+  });
+
+  it.each(REGISTERS)("%s: flag off: the directory's title, as before", async (_label, type) => {
+    const titled = await new Thread().say(type(B16_TITLE, B16_NAMES));
+    expect(titled.formProposal?.employeeRole).toBe("Tanning Consultant");
+  });
+
+  it.each(REGISTERS)("%s: the reader", (_label, type) => {
+    expect(copularJobTitle(type(B16_TITLE, B16_NAMES))).toBe("HR Assistant");
+    expect(copularJobTitle(type(B16_HR, B16_NAMES))).toBeNull();
+    expect(copularJobTitle(type("she is a no-show again", []))).toBeNull();
+    expect(copularJobTitle(type("she is a great worker", []))).toBeNull();
+    expect(copularJobTitle(type("he's a front desk lead at kearney", ["kearney"]))).toBe("Front Desk Lead");
+  });
+});
+
+describe("registers: BH3", () => {
+  it.each(REGISTERS)("%s: with the created form open, both facts", async (_label, type) => {
+    at("2026-10-21");
+    const thread = new Thread();
+    await thread.say(type(BH3_REQUEST, BH3_NAMES));
+    const { id } = await thread.create();
+    const answer = await thread.say(type(BH3, []));
+    expect(checked(id, "payroll_deduct")).toEqual(["no"]);
+    expect(checked(id, "warning_type")).toEqual(["verbal"]);
+    expect(answer.content).toMatch(/Is payroll deduct applicable\? → No; Type of Warning → Verbal Warning\./);
+  });
+
+  it.each(REGISTERS)("%s: on the card, both facts", async (_label, type) => {
+    at("2026-10-21");
+    const thread = new Thread();
+    await thread.say(type(BH3_REQUEST, BH3_NAMES));
+    const card = await thread.say(type(BH3, []));
+    expect(card.formProposal?.warningLevel).toBe("verbal");
+    expect(card.formProposal?.payrollDeduct).toBe("no");
+  });
+});
+
+describe(`registers: BH5 (${DATE_FLAG})`, () => {
+  beforeEach(() => {
+    at("2026-10-21");
+  });
+
+  it.each(REGISTERS)("%s: asks once, alone, and keeps the date on the card", async (_label, type) => {
+    process.env[DATE_FLAG] = "true";
+    const card = await new Thread().say(type(BH5, BH5_NAMES));
+    expect(card.formProposal?.formDate).toBe("2026-12-20");
+    expect(card.content).toBe(FUTURE);
+  });
+
+  it.each(REGISTERS)('%s: "that\'s right" keeps 12-20-26 and is not asked again', async (_label, type) => {
+    process.env[DATE_FLAG] = "true";
+    const thread = new Thread();
+    await thread.say(type(BH5, BH5_NAMES));
+    const answer = await thread.say(type("that's right", []));
+    expect(answer.formProposal?.formDate).toBe("2026-12-20");
+    expect(answer.content).not.toContain("in the future");
+    expect(answer.formProposal?.payrollDeduct).toBe("no");
+    const later = await thread.say(type("payroll deduct not applicable", []));
+    expect(later.content).not.toContain("in the future");
+  });
+
+  it.each(REGISTERS)("%s: a corrected date is used, and not asked about", async (_label, type) => {
+    process.env[DATE_FLAG] = "true";
+    const thread = new Thread();
+    await thread.say(type(BH5, BH5_NAMES));
+    const answer = await thread.say(type("sorry, it was 10-20-26", []));
+    expect(answer.formProposal?.formDate).toBe("2026-10-20");
+    expect(answer.content).not.toContain("in the future");
+  });
+
+  it.each(REGISTERS)("%s: a future follow-up date is not asked about", async (_label, type) => {
+    process.env[DATE_FLAG] = "true";
+    const card = await new Thread().say(type("create a coaching form for sela brandt for being late on 10-20-26, follow up on 11-15-26", BH5_NAMES));
+    expect(card.content).not.toContain("in the future");
+  });
+
+  it.each(REGISTERS)('%s: flags off: "yes" after the card is not the payroll answer', async (_label, type) => {
+    const thread = new Thread();
+    const card = await thread.say(type(BH5, BH5_NAMES));
+    expect(card.formProposal?.payrollDeduct).toBe("no");
+    const answer = await thread.say(type("yes", []));
+    expect(answer.formProposal?.payrollDeduct).toBe("no");
+  });
+});
