@@ -83,9 +83,9 @@ export function readsAsTeamSubject(text: string): boolean {
  */
 const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|doesn'?t|without|instead\s+of)\b/i;
 const NAMED_PERSON = /\b[A-Z][a-z'’-]+\s+[A-Z][a-z'’-]+\b/;
-/** QA-4, 26 Oct 2026: "coaching form for avery stone, generic for the team" names a person in lowercase. */
+/** QA-4, 26 Oct 2026: "coaching form for avery stone, generic for the team" (or "… for avery, …") names a person in lowercase. */
 const FORM_FOR_PERSON =
-  /\b(?:form|coaching|ca|c\/a|write\s*up)\s+for\s+(?!(?:the|my|our|a|an|any|all|every\w*|team|staff|crew|whole|entire|it|this|that|them|someone|anyone)\b)[a-z][a-z'’-]+\s+(?!(?:team|staff|crew|members?|not|who|that|and|or|for|to|at|on|in|with|because|since|so)\b)[a-z][a-z'’-]+/i;
+  /\b(?:form|coaching|ca|c\/a|write\s*up)\s+for\s+(?!(?:the|my|our|a|an|any|all|every\w*|team|staff|crew|whole|entire|it|this|that|them|someone|anyone)\b)[a-z][a-z'’-]+(?:\s*(?:[,.;]|$)|\s+(?!(?:team|staff|crew|members?|not|who|that|and|or|for|to|at|on|in|with|because|since|so)\b)[a-z][a-z'’-]+)/i;
 
 function chattyTeam(text: string): boolean {
   // A sentence's capitalised first word is not a name unless a capitalised word follows it ("Rowan Pell was late").

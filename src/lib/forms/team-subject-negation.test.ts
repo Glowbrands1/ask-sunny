@@ -73,3 +73,23 @@ describe("CARD_NEVER_SILENT_ENABLED on: a lowercase name in the request", () => 
     expect(readsAsTeamSubject(turn)).toBe(true);
   });
 });
+
+/** QA-4 re-check, 26 Oct 2026: a one-word name after "for" is a person too. */
+describe("CARD_NEVER_SILENT_ENABLED on: a one-word name in the request", () => {
+  it.each([
+    "coaching form for avery, generic for the team",
+    "Coaching form for Avery, generic for the team",
+    "COACHING FORM FOR AVERY, GENERIC FOR THE TEAM",
+  ])("'%s' is not the team", (turn) => {
+    process.env[FLAG] = "on";
+    expect(readsAsTeamSubject(turn)).toBe(false);
+  });
+
+  it.each(["coaching form for everyone, generic for the team", "coaching form for team, generic for the whole team", "GENERIC FOR THE WHOLE TEAM"])(
+    "'%s' is still the team",
+    (turn) => {
+      process.env[FLAG] = "on";
+      expect(readsAsTeamSubject(turn)).toBe(true);
+    },
+  );
+});
