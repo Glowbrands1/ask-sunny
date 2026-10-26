@@ -39,6 +39,8 @@ const state = vi.hoisted(() => ({
   draft: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown> },
   revision: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown>; clear?: string[] },
   forms: new Map<string, unknown>(),
+  /** The Performance Management Framework is served only while a draft is created, so the governed draft runs. */
+  framework: false,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
@@ -147,7 +149,32 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return [];
     }
     async fetchRoleGrounding() {
-      return { ok: false, failure: { code: "missing", detail: "not used", missingGroups: [] } };
+      if (!state.framework) return { ok: false, failure: { code: "missing", detail: "not used", missingGroups: [] } };
+      const row = (index: number, locator: string, content: string) => ({
+        chunk_id: `pmf-${index}`,
+        document_id: "doc-progression",
+        document_title: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+        category: "leadership_coaching",
+        locator,
+        page: null,
+        section: null,
+        content,
+        similarity: 0,
+      });
+      return {
+        ok: true,
+        grounding: {
+          role: { id: "performance_management_framework" },
+          documentId: "doc-progression",
+          documentTitle: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
+          matchedBy: "tag",
+          rows: [
+            row(0, "SECTION 2 – PERFORMANCE MANAGEMENT LADDER", "Solve the issue at the lowest appropriate level."),
+            row(1, "10.7 Final operating rule for Ask Sunny", "Classify the issue before escalating."),
+          ],
+          presentGroups: ["escalation_ladder", "final_operating_rule"],
+        },
+      };
     }
     async fetchOfficialPolicyManual() {
       return {
@@ -187,7 +214,8 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
     withRosterLimit: (_ids: readonly string[] | null, run: () => unknown) => run(),
   };
 });
-vi.mock("@/lib/forms/prior-forms", () => ({
+vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/forms/prior-forms")>()),
   priorFormsReadingForChat: async () => ({ attach: [], possible: [], identity: "none" }),
 }));
 
@@ -197,7 +225,10 @@ process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 60_000 });
 
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
+const { createInlineForm } = await import("@/features/chat/create-inline-form");
 const chatRoute = await import("./route");
+const instancesRoute = await import("../forms/instances/route");
+const draftRoute = await import("../forms/instances/[id]/draft/route");
 
 /** Production's profile on 25 Oct 2026: intent extraction on, the full remap off. */
 const PROD_FLAGS = [
@@ -261,6 +292,7 @@ beforeEach(async () => {
   state.draft = LATE_OPENING_MODEL;
   state.revision = { values: {} };
   state.forms.clear();
+  state.framework = false;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${TODAY}T15:00:00Z`));
   await ensureTemplateLibrary("system");
@@ -288,8 +320,44 @@ function toUuid(id: string): string {
   return uuid;
 }
 
+/** Create draft, as the browser calls it: POST /api/forms/instances, then the draft route. */
+async function call<T>(url: string, init?: RequestInit): Promise<T> {
+  joinOverview();
+  const request = new Request(`https://app.test${url}`, init);
+  const draft = /^\/api\/forms\/instances\/([^/]+)\/draft$/.exec(url);
+  const response = draft
+    ? await draftRoute.POST(request, { params: Promise.resolve({ id: draft[1]! }) })
+    : url === "/api/forms/instances"
+      ? await instancesRoute.POST(request)
+      : null;
+  if (!response) throw new Error(`no route for ${url}`);
+  joinOverview();
+  const body = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
+  return body;
+}
+
+/*
+ * The draft guard reads `employee_name` with `ilike`, which the shared fake
+ * does not model. Modelled here only, on `form_instances` only, as
+ * case-insensitive equality (as `draft-reuse-same-chat-e2e.test.ts` does).
+ */
+{
+  const proto = Object.getPrototypeOf(fakeSupabase(store).from("form_instances")) as Record<string, unknown>;
+  proto.ilike = function (
+    this: { table: string; filters: ((row: Record<string, unknown>) => boolean)[] },
+    column: string,
+    pattern: string,
+  ) {
+    if (this.table !== "form_instances") throw new TypeError(`fake-supabase: ilike is not modelled for ${this.table}`);
+    this.filters.push((row) => String(row[column] ?? "").toLowerCase() === pattern.toLowerCase());
+    return this;
+  };
+}
+
 type Answer = {
   content: string;
+  citations?: { excerpt: string; locator: string }[];
   formProposal?: ChatFormProposal;
   formOpened?: { instanceId: string; templateName: string; revisesInstanceId: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
@@ -348,6 +416,29 @@ class Thread {
     return payload;
   }
 
+  /** Create draft on the latest card; the form's stored fields. */
+  async createDraft(): Promise<Map<string, { value: string | null; checked: string[] }>> {
+    const proposal = this.proposal;
+    expect(proposal, "no card to create from").not.toBeNull();
+    state.framework = true;
+    const result = await createInlineForm({ proposal: proposal!, messages: this.messages, call, onCreated: () => {} }).finally(
+      () => {
+        state.framework = false;
+      },
+    );
+    expect(result.draftWarning ?? null, "the draft ran").toBeNull();
+    const id = result.reference.instanceId;
+    const fields = new Map<string, { value: string | null; checked: string[] }>();
+    for (const row of store.form_instance_values ?? []) {
+      if (row.instance_id !== id) continue;
+      fields.set(String(row.field_key), {
+        value: (row.value as string | null) ?? null,
+        checked: (row.checked as string[] | null) ?? [],
+      });
+    }
+    return fields;
+  }
+
   get proposal(): ChatFormProposal | null {
     for (let index = this.messages.length - 1; index >= 0; index -= 1) {
       const proposal = this.messages[index]!.formProposal;
@@ -394,4 +485,125 @@ describe("B1 in this app's words: a late opening with the salon named is Late Op
     const answer = await new Thread().say(B1, READING);
     expect(policy(answer)).not.toMatch(/^Late Opening\b/);
   });
+});
+
+/*
+ * ============================================================================
+ * QA-6 ON PR #223
+ * ============================================================================
+ *
+ * Every sentence lowercase, in Sentence case and in ALL CAPS, flag on, through
+ * POST /api/chat on both of this app's card paths: the proposal flow (intent
+ * extraction off), where this PR's reading shows, and production's intent
+ * path. The paths that cite are the card's sources and, after Create draft,
+ * the form's Policy Violated and Direct policy fields.
+ */
+const variants = (sentence: string) => [
+  sentence.toLowerCase(),
+  sentence.charAt(0).toUpperCase() + sentence.slice(1),
+  sentence.toUpperCase(),
+];
+const PATHS = [["proposal flow"], ["intent path"]] as const;
+const request = (sentence: string) => `create verbal ca for Test Employee on 10-1-26. ${sentence}. payroll deduct no`;
+
+async function onPath(path: string, words: string) {
+  if (path === "proposal flow") delete process.env.INTENT_EXTRACTION_ENABLED;
+  const thread = new Thread();
+  const answer = await thread.say(words, READING);
+  expect(answer.formProposal?.templateKey, answer.content).toBe("dpoa");
+  return { thread, answer };
+}
+
+/** The manual sections the card cites: its citations and the "<Policy>, JBA Policy Manual p.N" lines in the reply. */
+function citedOnCard(answer: Answer): string[] {
+  const fromCitations = (answer.citations ?? []).map(
+    (item) => `${item.excerpt.split(".")[0]!.trim()} p.${/Page (\d+)/.exec(item.locator)?.[1] ?? "?"}`,
+  );
+  const fromReply = [...answer.content.matchAll(/([A-Z][A-Za-z/ ]+?) Policy, JBA Policy Manual p\.(\d+)/g)].map(
+    (match) => `${match[1]!.trim()} p.${match[2]}`,
+  );
+  return [...new Set([...fromCitations, ...fromReply])];
+}
+
+/** The sections the draft's Direct policy quotes: its "Source: JBA Policy Manual — <Section>, p. N" lines. */
+function citedOnForm(fields: Map<string, { value: string | null }>): string[] {
+  const language = fields.get("policy_language")?.value ?? "";
+  return [...language.matchAll(/Source: JBA Policy Manual — (.+?), p\. (\d+)/g)].map((match) => `${match[1]} p.${match[2]}`);
+}
+
+describe("QA-6: a late opening cites Late Opening p.15 ONLY", () => {
+  const LATE = [
+    ...variants("opening salon late"),
+    ...variants("she opened the salon late"),
+    ...variants("she opened the location late"),
+  ];
+
+  it.each(PATHS.flatMap(([path]) => LATE.map((sentence) => [path, sentence])))("%s: %s", async (path, sentence) => {
+    const { thread, answer } = await onPath(path, request(sentence));
+    expect(policy(answer)).toMatch(/^Late Opening\b/);
+    expect(citedOnCard(answer)).toEqual(["Late Opening p.15"]);
+    const fields = await thread.createDraft();
+    expect(fields.get("policy_violated")?.value).toBe("Tardiness/Leaving Early — Late Opening");
+    expect(citedOnForm(fields)).toEqual(["Late Opening p.15"]);
+  });
+
+  it.each(PATHS)("%s: B1 in this app's words", async (path) => {
+    const { thread, answer } = await onPath(path, B1);
+    expect(citedOnCard(answer)).toEqual(["Late Opening p.15"]);
+    expect(citedOnForm(await thread.createDraft())).toEqual(["Late Opening p.15"]);
+  });
+});
+
+describe("QA-6: a late-for-shift account is not a late opening", () => {
+  it.each(
+    PATHS.flatMap(([path]) =>
+      [...variants("late for shift at the salon"), ...variants("she was late for her shift at the salon")].map(
+        (sentence) => [path, sentence],
+      ),
+    ),
+  )("%s: %s", async (path, sentence) => {
+    const { thread, answer } = await onPath(path, request(sentence));
+    expect(policy(answer)).not.toMatch(/Late Opening/);
+    expect(citedOnCard(answer)).toEqual(["Attendance p.14"]);
+    const fields = await thread.createDraft();
+    expect(fields.get("policy_violated")?.value).toBe("Tardiness/Leaving Early");
+    expect(citedOnForm(fields)).toEqual(["Attendance p.14"]);
+  });
+});
+
+/*
+ * THE FALSE POSITIVES. PR #223 as first written named Late Opening on the
+ * proposal flow for both ("**Policy:** Late Opening, as you said"). They now
+ * read as origin/main reads them, on both paths, byte for byte:
+ *
+ *   proposal flow — no Policy line; the card cites what the account
+ *   describes, as on main;
+ *   intent path — unchanged by this PR. Main's intent path already writes
+ *   "Late Opening, as you said" for both, from main's own late-opening
+ *   reading of the account (not this PR's pattern); pinned so this PR's
+ *   change stays where it is. Changing that is a separate fix.
+ */
+describe("QA-6: an approved late opening, and a late opening with an early leave, are not this PR's Late Opening", () => {
+  const MAIN_ON_PROPOSAL_FLOW: Record<string, string[]> = {
+    "opening the salon late was approved by the manager": ["Late Opening p.15"],
+    "she opened the location late and also left early": ["Late Opening p.15", "Attendance p.14"],
+  };
+
+  it.each(Object.keys(MAIN_ON_PROPOSAL_FLOW).flatMap((sentence) => variants(sentence)))(
+    "proposal flow: %s",
+    async (sentence) => {
+      const { answer } = await onPath("proposal flow", request(sentence));
+      expect(line(answer.content, "Policy")).toBeNull();
+      expect(citedOnCard(answer)).toEqual(MAIN_ON_PROPOSAL_FLOW[sentence.toLowerCase()]);
+    },
+  );
+
+  it.each(Object.keys(MAIN_ON_PROPOSAL_FLOW).flatMap((sentence) => variants(sentence)))(
+    "intent path, as on main: %s",
+    async (sentence) => {
+      const { answer } = await onPath("intent path", request(sentence));
+      expect(policy(answer)).toMatch(/^Late Opening, as you said\b/);
+      expect(citedOnCard(answer)).toEqual(MAIN_ON_PROPOSAL_FLOW[sentence.toLowerCase()]);
+    },
+  );
 });
