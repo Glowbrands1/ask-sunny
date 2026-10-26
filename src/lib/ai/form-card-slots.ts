@@ -9,6 +9,7 @@ import {
   remapIncidentFixEnabled,
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
+  followUpNotPriorEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
@@ -479,6 +480,8 @@ function statedPolicy(text: string, saved: ConversationFormState | null): { head
 function followUpDates(text: string, today: string, incident: string | null): string[] {
   const incidents = new Set(listIncidentDates(text, today).map((item) => item.iso));
   if (incident) incidents.add(incident);
+  // FOLLOW_UP_NOT_PRIOR_ENABLED: an earlier step's date ("a verbal on 06/25/2026") is a prior action, not a follow-up.
+  if (followUpNotPriorEnabled()) for (const step of priorSteps(text, today)) incidents.add(step.iso);
   return [...new Set(datesInText(text, today).map((item) => item.iso))].filter((iso) => !incidents.has(iso));
 }
 
