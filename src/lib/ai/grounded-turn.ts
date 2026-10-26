@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   draftDedupeEnabled,
+  draftReuseSameChatOnlyEnabled,
   fieldAccuracyEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
@@ -11,6 +12,7 @@ import {
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
+import { conversationKeyOf } from "@/lib/forms/conversation-key";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { loadScopedRoster, readDirectoryFacts, withRosterLimit, type DirectoryFact } from "@/lib/forms/employee-roster";
@@ -25,6 +27,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
 
@@ -76,15 +79,18 @@ export async function deliverFormProposal(input: {
           wovenNoteShown: input.request.history.some((turn) => /Woven has \*\*/.test(turn.content)),
         });
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
-    return withTypedEmployeeOnCard(
-      holdFilledSlots({
-        response: enriched,
-        question: input.question,
-        history: input.request.history,
-        today: input.request.context.todayIso,
-        people: [],
-      }),
-      input.request.question,
+    return withEditDateRules(
+      withTypedEmployeeOnCard(
+        holdFilledSlots({
+          response: enriched,
+          question: input.question,
+          history: input.request.history,
+          today: input.request.context.todayIso,
+          people: [],
+        }),
+        input.request.question,
+      ),
+      input,
     );
   }
 
@@ -129,15 +135,18 @@ export async function deliverFormProposal(input: {
     : applied;
 
   const settled = withVisibleSalon(enriched, input);
-  const held = withTypedEmployeeOnCard(
-    holdFilledSlots({
-      response: settled,
-      question: input.question,
-      history: input.request.history,
-      today: input.request.context.todayIso,
-      people,
-    }),
-    input.request.question,
+  const held = withEditDateRules(
+    withTypedEmployeeOnCard(
+      holdFilledSlots({
+        response: settled,
+        question: input.question,
+        history: input.request.history,
+        today: input.request.context.todayIso,
+        people,
+      }),
+      input.request.question,
+    ),
+    input,
   );
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
@@ -146,6 +155,15 @@ export async function deliverFormProposal(input: {
   }
   await writeSaved(stateOn, input, saved, held, prep);
   return held;
+}
+
+/** FORM_EDIT_DATE_RULES_ENABLED: read from the manager's own turns, not the state sentences. See `edit-date-rules.ts`. */
+function withEditDateRules(response: AskResponse, input: { readonly request: AskRequest }): AskResponse {
+  return applyEditDateRules(response, {
+    question: input.request.question,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+  });
 }
 
 function withVisibleSalon(
@@ -252,6 +270,15 @@ async function reopenSameIncident(
       createdBy: input.actor.subject,
       locationId: proposal.locationId,
       ...(incident ? { incident, formDate: proposal.formDate ?? null } : {}),
+      /*
+       * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: only a draft this chat made, as
+       * the create route already keeps (QA B22, 25 Oct 2026: a new chat's
+       * no-call-no-show reopened another chat's tardiness draft through this
+       * lookup). No chat id keeps nothing. See `draft-same-chat.ts`.
+       */
+      ...(draftReuseSameChatOnlyEnabled()
+        ? { sameChat: { conversationKey: conversationKeyOf({ conversationId: input.request.conversationId }) } }
+        : {}),
     });
     if (!resent) return null;
     const draft = {

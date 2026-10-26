@@ -1,5 +1,5 @@
 import { boundManagerTurns } from "./bounded-context";
-import type { ChatMessage } from "@/types";
+import type { ChatFormProposal, ChatMessage } from "@/types";
 
 /**
  * ============================================================================
@@ -32,7 +32,13 @@ import type { ChatMessage } from "@/types";
  *   id ∈ retained      A turn outside the server's bounded window was never
  *                      part of the proposal and must not be part of the draft.
  *
- * There is no fallback. If nothing survives, the caller creates the form and
+ * One fallback, behind NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED (default
+ * off), and only for a form that would otherwise be blank: when
+ * nothing survives but the card the manager pressed Create on shows what
+ * happened, the notes are that card's own lines (`draftNotesFromCard`) — the
+ * facts the manager saw and confirmed by pressing Create (QA H1, 25 Oct 2026,
+ * found in the sibling app: every full-remap card named no turns, so its
+ * draft was always blank). With no such line, the caller creates the form and
  * tells the manager it could not prefill it — see `chat/create-inline-form.ts`.
  */
 
@@ -99,4 +105,31 @@ export const DRAFT_NOTES_MINIMUM = 10;
 
 export function draftNotesAreUsable(notes: DraftNotes): boolean {
   return notes.text.trim().length >= DRAFT_NOTES_MINIMUM;
+}
+
+/**
+ * The card's own lines, for a draft whose notes are otherwise empty. Only
+ * when the card shows what happened: a card with no incident still drafts
+ * nothing. Each line is a field the card displayed, labelled as such.
+ */
+export function draftNotesFromCard(
+  proposal: Pick<
+    ChatFormProposal,
+    "employeeName" | "employeeRole" | "locationName" | "formDate" | "issue" | "warningLevel" | "payrollDeduct" | "priorActions"
+  >,
+): DraftNotes {
+  const issue = proposal.issue?.trim() ?? "";
+  if (issue.length < DRAFT_NOTES_MINIMUM) return { text: "", usedMessageIds: [], truncated: false };
+  const level = { verbal: "Verbal", written: "Written", final_warning: "Final warning" } as const;
+  const lines = [
+    proposal.employeeName ? `Employee: ${proposal.employeeName}` : null,
+    proposal.employeeRole ? `Job title: ${proposal.employeeRole}` : null,
+    proposal.locationName ? `Location: ${proposal.locationName}` : null,
+    proposal.formDate ? `Date: ${proposal.formDate}` : null,
+    `What happened: ${issue}`,
+    proposal.warningLevel ? `Type of warning: ${level[proposal.warningLevel]}` : null,
+    proposal.payrollDeduct ? `Payroll deduct applicable: ${proposal.payrollDeduct === "yes" ? "Yes" : "No"}` : null,
+    proposal.priorActions?.trim() ? `Prior actions: ${proposal.priorActions.trim()}` : null,
+  ].filter((line): line is string => line !== null);
+  return { text: lines.join("\n"), usedMessageIds: [], truncated: false };
 }

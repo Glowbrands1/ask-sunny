@@ -1,3 +1,5 @@
+import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+
 import { JOIN } from "./bounded-context";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
@@ -265,6 +267,13 @@ const POLICY_FRAME =
 /* "wore jeans against dress code" — the policy broken, straight after "against" (QA, 22 Oct 2026, round 3). */
 const AGAINST_BEFORE = /\b(?:against|breaking|broke|breaks)\s+(?:the\s+|our\s+|company\s+)?$/;
 const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\s+){0,2}$/;
+/*
+ * FORM_EDIT_DATE_RULES_ENABLED: "reference the late opening policy INSTEAD of
+ * the attendance policy" names Late Opening (QA replay, conv_mvnt5u7l2b5u91t,
+ * read "Policy: Attendance, as you said"). A policy named after "instead of",
+ * "rather than", "in place of" or "replace" is the one set aside.
+ */
+const SET_ASIDE_BEFORE = /\b(?:instead\s+of|rather\s+than|in\s+place\s+of|replac(?:e|ing)|remov(?:e|ing)|swap\s+out)\s+(?:the\s+|our\s+|that\s+)?$/;
 
 function statedIn(turn: string): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
@@ -275,6 +284,7 @@ function statedIn(turn: string): CaPolicyName | null {
       const match = pattern.exec(sentence);
       if (!match) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
+      if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
       }
