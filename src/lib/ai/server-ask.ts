@@ -165,6 +165,7 @@ import {
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
+import { carriedPolicyTopic } from "./policy-carry-retrieval";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
@@ -1162,11 +1163,15 @@ async function answerQuestionUntraced(
   let rows: MatchedChunkRow[];
   let fullManualBlock: string | null = null;
   let fullManuals: readonly AssembledManual[] = [];
-  const followedUp = retrievalQueryFor({
-    question: request.question,
-    history: request.history,
-    openForm: request.openForm ?? null,
-  });
+  // POLICY_CARRY_RETRIEVAL_ENABLED: "just make it" is searched with the policy named earlier (QA item 10).
+  const carriedTopic = carriedPolicyTopic(request.question, request.history);
+  const followedUp =
+    carriedTopic ??
+    retrievalQueryFor({
+      question: request.question,
+      history: request.history,
+      openForm: request.openForm ?? null,
+    });
   const glossed = queryRewriteEnabled()
     ? expandGlossaryQuery(heard?.modelQuery ?? followedUp)
     : followedUp;
@@ -1174,7 +1179,7 @@ async function answerQuestionUntraced(
    * A slot-only turn is already searched with the conversation's topic (see
    * `slot-only-turn.ts`); the rewrite would read the turn's own words again.
    */
-  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history);
+  const slotTopic = slotOnlyRetrievalTopic(request.question, request.history) ?? carriedTopic;
   const rewritten = queryRewriteEnabled() && !slotTopic
     ? await rewriteToManualTerms({
         question: request.question,
