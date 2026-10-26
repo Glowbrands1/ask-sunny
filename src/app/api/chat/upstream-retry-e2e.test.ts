@@ -410,9 +410,9 @@ describe("a non-retryable 400 is not retried", () => {
 });
 
 /*
- * QA-2 follow-up (26 Oct 2026): with MODEL_RETRY_ENABLED on, main answers a
- * 529 with the "busy" 503, not the 502. The retry throws the last attempt's
- * error unchanged, so a final 529 is still that 503. What differs with
+ * A final 529 under MODEL_RETRY stays the busy 503: with MODEL_RETRY_ENABLED
+ * on, main answers a 529 with the "busy" 503, not the 502. The retry throws
+ * the last attempt's error unchanged, so a final 529 is still that 503. What differs with
  * CHAT_UPSTREAM_RETRY_ENABLED on is only how many attempts came first, and
  * both are pinned.
  */
