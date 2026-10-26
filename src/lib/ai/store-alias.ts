@@ -8,25 +8,27 @@ import type { AskRequest } from "./types";
  * STORE_ALIAS_ENABLED: the way managers name a salon is written as the
  * roster name before any reader sees the turn.
  *
- * Live chats, 25 Oct 2026: "location o st" was not NE Lincoln O Street (Ask
- * Sunny conv_mvoehonm2pfrkng); in Ask Bubbles "dodge ne", "dodge ne location"
- * and a bare "dodge, ne" reply were not the Dodge store, so the Create draft
- * button never appeared. The readers are not changed: each manager turn has
- * its aliases replaced by the roster name, which every reader already reads.
+ * Live chats, 25 Oct 2026: "location o st" was not NE Lincoln O Street
+ * (conv_mvoehonm2pfrkng); the sibling app had the same gap with a store and
+ * its state. The readers are not changed: each manager turn has its aliases
+ * replaced by the roster name, which every reader already reads.
  *
  * THE ALIASES ARE BUILT FROM THE LOCATION LIST, never typed in by hand:
- *   - city or street with the state ("kearney ne", "dodge, ne", "o st ne")
+ *   - city or street with the state ("kearney ne", "kearney, ne", "o st ne")
  *     is a place wherever it appears;
- *   - city and street together ("lincoln o st", "o st lincoln", "omaha dodge")
- *     too;
- *   - the street or city alone ("o st", "dodge") only where the sentence says
- *     it is a place ("at", "in", "our", "the", "location", "salon", "store")
- *     or when it is the whole reply ("dodge, ne"; a one-word reply such as
- *     "dodge" only after the app asked which store).
+ *   - city and street together ("lincoln o st", "o st lincoln") too;
+ *   - the street or city alone ("o st", "manhattan") only where the sentence
+ *     says it is a place ("at", "our", "location", "salon", "store", "the
+ *     location is …"; "in" and "the" only for a name of two words or more)
+ *     or when it is the whole reply (a one-word reply only after the app
+ *     asked which salon).
  * An alias two locations share is never used. A roster name already typed is
- * left as it is. Off, every turn is read as typed.
+ * left as it is. A place the manager rules out ("not at lawrence", "she is
+ * never at the o st location") is never rewritten: the readers do not read
+ * negation, and the salon ruled out must not become the salon (QA-6, 26 Oct
+ * 2026). Off, every turn is read as typed.
  *
- * The same file in Ask Bubbles; only `READERS` differs.
+ * The same file in the sibling app; only `READERS` differs.
  */
 
 interface PlaceParts {
@@ -72,6 +74,15 @@ const READERS = {
 
 // "the location is o st", "salon: o st" (QA, 26 Oct 2026).
 const CUE_BEFORE = /\b(?:at|in|our|the|location|salon|store)\s+$|\b(?:location|salon|store)\s*(?:is|=|:)\s*$/i;
+/** A one-word name needs a stronger cue: "in the dodge" is a car, "the manhattan" a drink (QA-6, 26 Oct 2026). */
+const ONE_WORD_CUE_BEFORE = /\b(?:at|our|location|salon|store)\s+(?:the\s+)?$|\b(?:location|salon|store)\s*(?:is|=|:)\s*$/i;
+/**
+ * A place the manager rules out, in the same clause: "not at lawrence",
+ * "never at the o st location", "isn't kearney", "except lawrence",
+ * "without the o st salon". A comma or a stop ends it, so "it is not
+ * lawrence, it is kearney ne" still reads Kearney.
+ */
+const RULED_OUT = /\b(?:not|never|no|isn['’]?t|wasn['’]?t|aren['’]?t|weren['’]?t|doesn['’]?t|didn['’]?t|except|without)\b[^,.;!?\n]{0,30}$/i;
 const CUE_AFTER = /^\s*(?:location|salon|store)\b/i;
 const SUFFIXES: readonly [string, string][] = [
   ["street", "st"],
@@ -210,7 +221,10 @@ export function rosterNames(text: string, placeAsked = false): string {
     }
     const pattern = new RegExp(`(?<![\\w\\u0000])${escape(alias.phrase).replace(/,\\s?/g, ",?\\s*").replace(/ /g, "\\s+")}(?![\\w\\u0000])`, "gi");
     out = out.replace(pattern, (found, offset: number, all: string) => {
-      if (alias.cued && !CUE_BEFORE.test(all.slice(0, offset)) && !CUE_AFTER.test(all.slice(offset + found.length))) return found;
+      const before = all.slice(0, offset);
+      if (RULED_OUT.test(before)) return found;
+      const cue = alias.phrase.includes(" ") ? CUE_BEFORE : ONE_WORD_CUE_BEFORE;
+      if (alias.cued && !cue.test(before) && !CUE_AFTER.test(all.slice(offset + found.length))) return found;
       return `\u0000${kept.push(alias.name) - 1}\u0000`;
     });
   }

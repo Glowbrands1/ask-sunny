@@ -325,3 +325,40 @@ describe("STORE_ALIAS_ENABLED off", () => {
     expect(happened(card)).toBe("o st");
   });
 });
+
+describe("STORE_ALIAS_ENABLED: a place the manager rules out, and a word that only looks like one (QA-6, 26 Oct 2026)", () => {
+  const twins = (text: string) => [text, text.charAt(0).toUpperCase() + text.slice(1), text.toUpperCase()];
+
+  it("a negated place reads exactly as with the flag off", async () => {
+    const { withStoreAliases } = await import("./store-alias");
+    const read = (question: string, on: boolean) => {
+      process.env.STORE_ALIAS_ENABLED = on ? "true" : "";
+      return withStoreAliases({ question, history: [] } as unknown as Parameters<typeof withStoreAliases>[0]).question;
+    };
+    for (const wording of [
+      "kira dunmore was not at lawrence today",
+      "she is not at the o st location",
+      "she was never at the o st salon",
+      "kira dunmore isn't at kearney ne",
+      "every salon except lawrence ks",
+    ]) {
+      for (const say of twins(wording)) expect(read(say, true), say).toBe(read(say, false));
+    }
+    delete process.env.STORE_ALIAS_ENABLED;
+  });
+
+  it("only the place the manager means is rewritten", async () => {
+    const { rosterNames } = await import("./store-alias");
+    expect(rosterNames("it is not lawrence, it is kearney ne")).toBe("it is not lawrence, it is NE Kearney");
+    expect(rosterNames("It is not Lawrence, it is Kearney NE")).toBe("It is not Lawrence, it is NE Kearney");
+  });
+
+  it("a one-word name after \"in\" or \"the\" alone is not a place", async () => {
+    const { rosterNames } = await import("./store-alias");
+    for (const text of ["she was out in the pacific all week", "She was out in the Pacific all week", "the manhattan she ordered"]) {
+      expect(rosterNames(text), text).toBe(text);
+    }
+    // A cue that says it is the salon still reads it.
+    expect(rosterNames("she works at pacific")).toBe("she works at NE Omaha Pacific");
+  });
+});
