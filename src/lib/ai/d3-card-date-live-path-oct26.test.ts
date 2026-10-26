@@ -37,8 +37,14 @@ const PROD_FLAGS = [
   "POLICY_CITATION_ENABLED","POLICY_PAGE_REQUIRED_ENABLED","PRINTED_PAGE_CITATION_ENABLED","PRIOR_ACTIONS_PARSE_ENABLED",
   "PRIOR_COACHING_OPTIONAL_ENABLED","QUERY_REWRITE_ENABLED","REOPEN_VERB_GUARD_ENABLED","RETRIEVAL_RECALL_ENABLED","SELF_CHECK_ENABLED",
   "SEND_AFTER_HYDRATE_ENABLED","SENSITIVE_DEFAULTS_REDACT_ENABLED","STATE_CODE_NOT_A_PERSON_ENABLED","TITLE_WHOLE_WORD_ENABLED",
-  "TYPED_NAME_PROCEEDS_ENABLED","WARNING_LEVEL_MANAGER_ONLY_ENABLED","SLOT_RETENTION_ENABLED","FIELD_ACCURACY_ENABLED","SECOND_FORM_ENABLED",
+  "TYPED_NAME_PROCEEDS_ENABLED","WARNING_LEVEL_MANAGER_ONLY_ENABLED","LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
 ] as const;
+/*
+ * Production's list (coordinator, Vercel production, 09:44Z) has no
+ * FIELD_ACCURACY_ENABLED or SLOT_RETENTION_ENABLED; with them the intake adds
+ * the "It happened on" line D1 and D2 were dated by. Both profiles are pinned.
+ */
+const INTAKE_FLAGS = ["FIELD_ACCURACY_ENABLED", "SLOT_RETENTION_ENABLED", "SECOND_FORM_ENABLED"] as const;
 const FLAG = "FORM_DATE_INCIDENT_ONLY_ENABLED";
 const PAYROLL_FLAG = "TERSE_SLOT_READ_ENABLED";
 const TODAY = "2026-10-26";
@@ -167,8 +173,9 @@ beforeAll(async () => {
 
 const saved = new Map<string, string | undefined>();
 beforeEach(() => {
-  for (const name of [...PROD_FLAGS, FLAG, PAYROLL_FLAG]) saved.set(name, process.env[name]);
+  for (const name of [...PROD_FLAGS, ...INTAKE_FLAGS, FLAG, PAYROLL_FLAG]) saved.set(name, process.env[name]);
   for (const name of PROD_FLAGS) process.env[name] = "true";
+  for (const name of INTAKE_FLAGS) delete process.env[name];
   delete process.env[FLAG];
   delete process.env[PAYROLL_FLAG];
   bag.forms.clear();
@@ -229,6 +236,7 @@ const SENTENCES = {
   D1: "ca for lysander pembrook, coached her 10-16, written warning on 10-20",
   D2: "create a ca for thessaly ironwood at kearney, she was late on 10-5 and 10-15. i coached her on 10-16 about being late",
   D3: "create a ca for lysander pembrook at kearney for missing the woven deadline of 11-1-26",
+  D3b: "create a ca for lysander pembrook at kearney for missing the 11-1-26 woven deadline",
 } as const;
 
 const REGISTERS: [string, (text: string) => string][] = [
@@ -248,7 +256,7 @@ const REGISTERS: [string, (text: string) => string][] = [
 ];
 
 /* What the slot model read in production (chat_traces, 26 Oct 2026): nothing for D1/D2, the deadline for D3. */
-const MODEL_READ: Record<keyof typeof SENTENCES, string | null> = { D1: null, D2: null, D3: "11-1-26" };
+const MODEL_READ: Record<keyof typeof SENTENCES, string | null> = { D1: null, D2: null, D3: "11-1-26", D3b: null };
 
 async function cardDate(key: keyof typeof SENTENCES, as: (text: string) => string, id: string) {
   bag.modelDate = MODEL_READ[key];
@@ -256,33 +264,66 @@ async function cardDate(key: keyof typeof SENTENCES, as: (text: string) => strin
   return replies.at(-1)!.formProposal?.formDate ?? null;
 }
 
-describe.each(REGISTERS)("the card's Date on the live path (%s)", (register, as) => {
+const NEVER_BREAK = [
+  "create a ca for thessaly ironwood at kearney, she was late on 10-22",
+  "create a ca for thessaly ironwood at kearney, she was late on 10-22, coached her on 10-1",
+  "create a ca for thessaly ironwood at kearney, she was late on 10-22-26 and missed the 11-1-26 deadline",
+];
+
+async function neverBreak(as: (text: string) => string, register: string) {
+  bag.modelDate = null;
+  for (const [index, text] of NEVER_BREAK.entries()) {
+    const replies = await replay(`keep-${index}-${register}-${String(process.env.FIELD_ACCURACY_ENABLED)}`, [as(text)]);
+    expect(replies.at(-1)!.formProposal?.formDate ?? null, text).toBe("2026-10-22");
+  }
+}
+
+describe.each(REGISTERS)("Sunny's production flags: the card's Date (%s)", (register, as) => {
+  it("flag off: today's dates, pinned (D2 10/05, the deadlines 11/01)", async () => {
+    delete process.env[FLAG];
+    expect(await cardDate("D2", as, `p-off-d2-${register}`)).toBe("2026-10-05");
+    expect(await cardDate("D3", as, `p-off-d3-${register}`)).toBe("2026-11-01");
+    expect(await cardDate("D3b", as, `p-off-d3b-${register}`)).toBe("2026-11-01");
+  }, 120_000);
+
+  it("flag on: no coaching or deadline dates the card", async () => {
+    process.env[FLAG] = "true";
+    expect(await cardDate("D1", as, `p-on-d1-${register}`)).toBeNull();
+    expect(await cardDate("D2", as, `p-on-d2-${register}`)).toBeNull();
+    expect(await cardDate("D3", as, `p-on-d3-${register}`)).toBeNull();
+    expect(await cardDate("D3b", as, `p-on-d3b-${register}`)).toBeNull();
+  }, 120_000);
+
+  it("flag on, NEVER-BREAK: one stated incident date still dates the card", async () => {
+    process.env[FLAG] = "true";
+    await neverBreak(as, `p-${register}`);
+  }, 120_000);
+});
+
+describe.each(REGISTERS)("with the intake's field lines (FIELD_ACCURACY): the card's Date (%s)", (register, as) => {
+  beforeEach(() => {
+    for (const name of INTAKE_FLAGS) process.env[name] = "true";
+  });
+
   it("flag off: today's dates, pinned (D1 10/20, D2 10/05, D3 11/01)", async () => {
     delete process.env[FLAG];
-    expect(await cardDate("D1", as, `off-d1-${register}`)).toBe("2026-10-20");
-    expect(await cardDate("D2", as, `off-d2-${register}`)).toBe("2026-10-05");
-    expect(await cardDate("D3", as, `off-d3-${register}`)).toBe("2026-11-01");
+    expect(await cardDate("D1", as, `i-off-d1-${register}`)).toBe("2026-10-20");
+    expect(await cardDate("D2", as, `i-off-d2-${register}`)).toBe("2026-10-05");
+    expect(await cardDate("D3", as, `i-off-d3-${register}`)).toBe("2026-11-01");
   }, 120_000);
 
   it("flag on: no earlier step, coaching or deadline dates the card", async () => {
     process.env[FLAG] = "true";
     // D1: both dates are earlier steps; D2: two incident dates and a coaching; D3: a deadline.
     // None is the form's date, which is then the day the form is created.
-    expect(await cardDate("D1", as, `on-d1-${register}`)).toBeNull();
-    expect(await cardDate("D2", as, `on-d2-${register}`)).toBeNull();
-    expect(await cardDate("D3", as, `on-d3-${register}`)).toBeNull();
+    expect(await cardDate("D1", as, `i-on-d1-${register}`)).toBeNull();
+    expect(await cardDate("D2", as, `i-on-d2-${register}`)).toBeNull();
+    expect(await cardDate("D3", as, `i-on-d3-${register}`)).toBeNull();
+    expect(await cardDate("D3b", as, `i-on-d3b-${register}`)).toBeNull();
   }, 120_000);
 
   it("flag on, NEVER-BREAK: one stated incident date still dates the card", async () => {
     process.env[FLAG] = "true";
-    bag.modelDate = null;
-    for (const [index, text] of [
-      "create a ca for thessaly ironwood at kearney, she was late on 10-22",
-      "create a ca for thessaly ironwood at kearney, she was late on 10-22, coached her on 10-1",
-      "create a ca for thessaly ironwood at kearney, she was late on 10-22-26 and missed the 11-1-26 deadline",
-    ].entries()) {
-      const replies = await replay(`on-keep-${index}-${register}`, [as(text)]);
-      expect(replies.at(-1)!.formProposal?.formDate ?? null, text).toBe("2026-10-22");
-    }
+    await neverBreak(as, `i-${register}`);
   }, 120_000);
 });

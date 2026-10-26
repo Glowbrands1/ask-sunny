@@ -1,7 +1,8 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { datesInText, listIncidentDates as listAllIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { incidentOnly } from "@/lib/forms/form-date-incident-only";
 import {
   managerWordsOnlyEnabled,
   formChoiceStatedEnabled,
@@ -409,6 +410,16 @@ function labelledTitleByLine(text: string): string | null {
     if (title) return title;
   }
   return null;
+}
+
+/*
+ * FORM_DATE_INCIDENT_ONLY_ENABLED (live card test, 26 Oct 2026): "missing the
+ * 11-1-26 woven deadline" dated the card 11/1 here, where the card reads the
+ * account's dates itself. On, a deadline, assignment or prior-level date is
+ * not an incident date (`incidentOnly`); off, every one is, as before.
+ */
+function listIncidentDates(text: string, today: string): { iso: string; index: number }[] {
+  return incidentOnly(text, today, listAllIncidentDates(text, today));
 }
 
 function statedDate(text: string, question: string, today: string): string | null {
