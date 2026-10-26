@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JBA_MANUAL_CHUNKS } from "@/lib/ai/__fixtures__/jba-policy-manual";
 
@@ -38,6 +38,8 @@ const CHUNKS: ManualChunk[] = [
   sheet(65, "Animals in the Workplace", 30),
   sheet(70, "Cell Phone Usage", 32),
 ];
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("namesHeading", () => {
   it.each([
@@ -162,7 +164,25 @@ describe("describedManualSection — a policy the account describes", () => {
     "payroll deduct applies",
     "a $25 payroll deduction applies",
   ])("%s → nothing", (text) => {
+    /* The flag is set explicitly: this list is what the code reads with it OFF. The ON twin is below. */
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "");
     expect(described(text)).toBeNull();
+  });
+
+  /*
+   * POLICY_SPECIFIC_TOPICS_ENABLED changes two lines of the list above on
+   * purpose (QA rulings, 26 Oct 2026): a social media POST is the Social
+   * Media Policy, and a guest or client treated rudely is the Standards of
+   * Conduct, page 12. The rest of policy-specific-topics-oct26.test.ts covers
+   * the flag's other incidents.
+   */
+  it.each([
+    ["she was posting on social media", "Social Media Policy"],
+    ["create a disciplinary action form for tess. she was rude to a guest", "Standards of Conduct"],
+    ["create a disciplinary action form for tess. she was rude to a client", "Standards of Conduct"],
+  ])("POLICY_SPECIFIC_TOPICS_ENABLED on: %s → %s", (text, heading) => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
+    expect(described(text)?.section.heading).toBe(heading);
   });
 
   it("never over what already decides the policy", () => {
