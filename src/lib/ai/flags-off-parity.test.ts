@@ -73,6 +73,7 @@ import {
   reopenVerbGuardEnabled,
   priorActionsNoCommaEnabled,
   policyNameTyposEnabled,
+  policyAsYouSaidManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -164,6 +165,7 @@ const NEW_FLAGS = [
   "PRIOR_ACTIONS_NO_COMMA_ENABLED",
   "INCIDENT_SPLIT_FIX_ENABLED",
   "POLICY_NAME_TYPOS_ENABLED",
+  "POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -312,6 +314,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(priorActionsNoCommaEnabled()).toBe(false);
     expect(policyNameTyposEnabled()).toBe(false);
+    expect(policyAsYouSaidManagerOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

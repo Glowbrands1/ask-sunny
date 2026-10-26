@@ -1,4 +1,4 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, policyAsYouSaidManagerOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { correctPolicyTypos } from "./policy-typos";
@@ -295,6 +295,21 @@ function statedIn(turn: string): CaPolicyName | null {
  * The turns arrive joined by `JOIN`, oldest first, exactly as the proposal and
  * the drafting notes carry them.
  */
+/*
+ * POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED (D4, QA, 25 Oct 2026): the form
+ * state writes the policy the extraction chose ahead of each turn ("Policy
+ * reference: Standards of Conduct, JBA Policy Manual p.12."). That line is
+ * the app's, not the manager's, so it never makes a policy "stated" — the
+ * card said "Policy: Standards of Conduct, as you said" to a manager who had
+ * only written "she didnt do deep clean assigned by 9-15-26"
+ * (conv_mvod8jw02vsk2py). Same shape as `app-sentences.ts`.
+ */
+const APP_POLICY_REFERENCE = /policy reference: [^\n]*?jba policy manual(?: p\.\d+)?\./g;
+
+function managersWords(turn: string): string {
+  return policyAsYouSaidManagerOnlyEnabled() ? turn.replace(APP_POLICY_REFERENCE, " ").trim() : turn;
+}
+
 export function readCaPolicy(rawText: string): CaPolicyReading {
   const text = normalize(rawText);
   const turns = text.split(JOIN).map((turn) => turn.trim()).filter(Boolean);
@@ -303,7 +318,7 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
   const missedEvent = missedEventIn(sentences);
 
   let stated: CaPolicyName | null = null;
-  for (const turn of turns) stated = statedIn(turn) ?? stated;
+  for (const turn of turns) stated = statedIn(managersWords(turn)) ?? stated;
   /*
    * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
    * District Manager's 21 Oct report ("not attending the monthly meeting" was
