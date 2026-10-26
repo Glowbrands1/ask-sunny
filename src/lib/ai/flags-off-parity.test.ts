@@ -87,6 +87,7 @@ import {
   managerFormChoiceEnabled,
   nameRespellEnabled,
   storeAliasEnabled,
+  bareAnswerBindingEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -192,6 +193,7 @@ const NEW_FLAGS = [
   "MANAGER_FORM_CHOICE_ENABLED",
   "NAME_RESPELL_ENABLED",
   "STORE_ALIAS_ENABLED",
+  "BARE_ANSWER_BINDING_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -356,6 +358,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(managerFormChoiceEnabled()).toBe(false);
     expect(nameRespellEnabled()).toBe(false);
     expect(storeAliasEnabled()).toBe(false);
+    expect(bareAnswerBindingEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
