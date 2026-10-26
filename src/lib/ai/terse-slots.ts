@@ -153,20 +153,35 @@ function thirdNameWord(tokens: readonly string[], name: readonly string[], text:
  * QA-7, 26 Oct 2026: with only the shape to go on, lowercase "ca john michael
  * doe late today" and "ca dana smith barely late" read the same, and leaving
  * both as typed meant no card. A third word before the account is the surname
- * unless English never uses it as one: an adverb in -ly (four letters or more
- * before it; surnames like Kelly, Kimberly, Reilly are kept), a contraction
- * typed without its apostrophe, or a word from the closed set of degree and
- * frequency words.
+ * unless English never uses it as one:
+ *   - an adverb in -ly (three letters or more before it: "truly", "barely";
+ *     surnames like Kelly, Holly, Kimberly, Reilly are kept);
+ *   - a verb in the past tense: -ed ("skipped", "texted"; Alfred, Ahmed kept)
+ *     or an irregular one ("quit", "stole", "slept", "wore", "ate", "lied");
+ *   - a contraction typed without its apostrophe ("doesnt");
+ *   - a degree or frequency word ("too", "already"), a weekday or a number
+ *     word ("monday", "three"), an app ("tiktok");
+ *   - a two-letter code ("sm"; surnames like Li, Wu, Ng are kept)
+ * (QA-6, 26 Oct 2026).
  */
 const CONTRACTION =
   /^(?:doesnt|dont|didnt|wasnt|werent|cant|wont|isnt|arent|hasnt|havent|hadnt|couldnt|wouldnt|shouldnt|aint)$/i;
 const DEGREE_OR_FREQUENCY =
-  /^(?:kinda|sorta|seldom|sometimes|twice|once|too|very|so|even|already|ever|almost|quite|rather|somewhat|yet|soon|early|daily|badly|only|then|now)$/i;
-const LY_SURNAME = /^(?:kimberly|beverly|waverly|connolly|donnelly|mcnally|shelly|reilly|oreilly|kelly|nelly|dolly)$/i;
+  /^(?:kinda|sorta|seldom|sometimes|twice|once|too|very|so|even|already|ever|almost|quite|rather|somewhat|yet|soon|only|then|now)$/i;
+const IRREGULAR_PAST =
+  /^(?:quit|stole|slept|swore|wore|ate|lied|came|went|took|got|ran|said|told|threw|broke|forgot|wrote|spoke|drove|fell|lost|sold|spent|sent|kept|hid|bit|hit|cut|gave|made|sat|stood|spat|swam|drank)$/i;
+const DAY_OR_NUMBER =
+  /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thurs|fri|sat|sun|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|half)$/i;
+const APP = /^(?:tiktok|instagram|insta|facebook|snapchat|snap|youtube|netflix|discord|whatsapp|texting|text|texts)$/i;
+const LY_SURNAME = /^(?:kimberly|beverly|waverly|connolly|donnelly|mcnally|shelly|reilly|oreilly|kelly|nelly|dolly|holly|molly|polly|sally|emily|lilly|lily|tally|daly|ely|bly|ashly|riley|lyly)$/i;
+const ED_SURNAME = /^(?:alfred|winifred|manfred|mildred|ahmed|mohammed|mohamed|hamed|hammed|reed|creed|ned|ted|fred|jed|med|sigfried|siegfried)$/i;
+const TWO_LETTER_SURNAME = /^(?:li|wu|ng|ho|yu|ma|le|lu|xu|an|do|vo|bo|oh|ko|go|ra)$/i;
 
 function modifiesTheAccount(word: string): boolean {
-  if (CONTRACTION.test(word) || DEGREE_OR_FREQUENCY.test(word)) return true;
-  return /^[a-z]{4,}ly$/i.test(word) && !LY_SURNAME.test(word);
+  if (CONTRACTION.test(word) || DEGREE_OR_FREQUENCY.test(word) || IRREGULAR_PAST.test(word) || DAY_OR_NUMBER.test(word) || APP.test(word)) return true;
+  if (/^[a-z]{3,}ly$/i.test(word)) return !LY_SURNAME.test(word);
+  if (/^[a-z]{3,}ed$/i.test(word)) return !ED_SURNAME.test(word);
+  return /^[a-z]{2}$/i.test(word) && !TWO_LETTER_SURNAME.test(word);
 }
 
 /** The long form of a terse "<form word> <name> …" line, or the text as it is. */

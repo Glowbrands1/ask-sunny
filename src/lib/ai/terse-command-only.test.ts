@@ -300,3 +300,32 @@ describe("TERSE_COMMAND_ONLY_ENABLED on: a third name word is read from the shap
     for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase()).toMatch(new RegExp(` form for ${person}[.,]`));
   });
 });
+
+/**
+ * QA-6, 26 Oct 2026 (invented names): a word before the account that is never a surname — a verb
+ * in the past tense, "truly", a weekday or number word, an app, a two-letter code — is not written
+ * into the name; surnames that look like them stay.
+ */
+describe("TERSE_COMMAND_ONLY_ENABLED on: past-tense verbs, days, numbers and codes are not surnames", () => {
+  const WORDS = [
+    "quit", "skipped", "texted", "yelled", "argued", "stole", "slept", "ignored", "walked", "refused", "forgot", "wore", "ate", "lied",
+    "swore", "truly", "monday", "three", "five", "tiktok", "sm",
+  ];
+  const LINES = WORDS.flatMap((word) => [`ca dana smith ${word} late today`, `coach dana smith ${word} late 10/2 verbal`]);
+  it.each([...LINES, "ca rory vance sm late 10/2 verbal"])("'%s' keeps the two-word name, in any case", (command) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    const person = command.includes("rory") ? "rory vance" : "dana smith";
+    for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase()).toMatch(new RegExp(` form for ${person}(?:[.,]| at )`));
+  });
+
+  it.each([
+    ["ca rory ann kelly late today", "rory ann kelly"],
+    ["ca rory ann holly late today", "rory ann holly"],
+    ["ca omar ali ahmed late today", "omar ali ahmed"],
+    ["ca mei ling li late today", "mei ling li"],
+    ["ca john michael doe late today", "john michael doe"],
+  ])("'%s' keeps the surname, in any case", (command, person) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase()).toMatch(new RegExp(` form for ${person}[.,]`));
+  });
+});
