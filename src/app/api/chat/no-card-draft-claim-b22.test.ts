@@ -311,3 +311,58 @@ describe("QA-7: conditional and instructional truths are kept, a claim is rewrit
     }
   });
 });
+
+/*
+ * QA-6 re-probe (flag on, a reply with no card), through POST /api/chat, with
+ * Test Employee's form open. "Wren Alder" is an invented name, the same in
+ * both apps. Lowercase, sentence case and CAPS; off, each comes back as it came.
+ */
+describe("QA-6: claims in capitals, policy prose, and a known name that runs on (NO_CARD_NO_DRAFT_CLAIM_ENABLED)", () => {
+  const sentenceCase = (text: string) =>
+    text.toLowerCase().replace(/(^|[.!?]\s+|\n+)([a-z])/g, (_m, lead: string, first: string) => `${lead}${first.toUpperCase()}`);
+  const registers = [
+    ["all lowercase", (text: string) => text.toLowerCase()],
+    ["sentence case", sentenceCase],
+    ["CAPS", (text: string) => text.toUpperCase()],
+  ] as const;
+  const POLICY_PROSE = "The policy says a draft form is open to review by the manager.";
+
+  it.each(registers)("%s: \"A draft for Wren Alder is open.\" and \"…has been created.\" are rewritten, naming Wren Alder", async (_label, recase) => {
+    process.env.NO_CARD_NO_DRAFT_CLAIM_ENABLED = "true";
+    for (const claim of ["A draft for Wren Alder is open.", "The draft for Wren Alder has been created."]) {
+      const { route } = await load({ content: recase(claim) });
+      const payload = await (await route.POST(ask(recase("now one for Wren Alder, late today")))).json();
+      expect(payload.content, claim).toMatch(/^I haven't created a form for wren alder yet/i);
+    }
+  });
+
+  it.each(registers)("%s: policy prose about a draft form comes back as it came", async (_label, recase) => {
+    process.env.NO_CARD_NO_DRAFT_CLAIM_ENABLED = "true";
+    const { route } = await load({ content: recase(POLICY_PROSE) });
+    const question = recase("what does the policy say for Wren Alder?");
+    for (const overrides of [{}, { activeFormInstanceId: undefined, history: [] }]) {
+      const payload = await (await route.POST(ask(question, overrides))).json();
+      expect(payload.content).toBe(recase(POLICY_PROSE));
+    }
+  });
+
+  it.each(registers)("%s: \"the form has been created for test employee two late today.\" is rewritten, naming Test Employee Two", async (_label, recase) => {
+    process.env.NO_CARD_NO_DRAFT_CLAIM_ENABLED = "true";
+    const { route } = await load({ content: recase("the form has been created for test employee two late today.") });
+    const payload = await (await route.POST(ask(recase("is it ready?")))).json();
+    expect(payload.content).toMatch(/^I haven't created a form for test employee two yet/i);
+  });
+
+  it.each(registers)("off (%s): every QA-6 reply comes back exactly as it came", async (_label, recase) => {
+    for (const content of [
+      "A draft for Wren Alder is open.",
+      "The draft for Wren Alder has been created.",
+      POLICY_PROSE,
+      "the form has been created for test employee two late today.",
+    ]) {
+      const { route } = await load({ content: recase(content) });
+      const payload = await (await route.POST(ask(recase("now one for Wren Alder, late today")))).json();
+      expect(payload.content).toBe(recase(content));
+    }
+  });
+});

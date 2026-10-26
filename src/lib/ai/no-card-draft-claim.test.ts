@@ -286,3 +286,57 @@ describe("QA-7: only a claim that a draft IS open or created now is rewritten", 
     ).toMatch(/^I haven't created a form for Rook Pemberly yet/);
   });
 });
+
+/*
+ * QA-6 re-probe of the QA-7 fix (flag on, a reply with no card). "Wren Alder"
+ * is an invented name, the same in both apps. Each sentence in lowercase,
+ * sentence case and CAPS.
+ */
+const QA6_REGISTERS = [
+  ["all lowercase", lower],
+  ["sentence case", sentenceCase],
+  ["CAPS", (text: string) => text.toUpperCase()],
+] as const;
+
+describe("QA-6: claims in capitals, policy prose, and a known name that runs on", () => {
+  it.each(QA6_REGISTERS)("%s: with another employee's form open, a draft claimed open or created for Wren Alder is rewritten", (_label, recase) => {
+    for (const claim of ["A draft for Wren Alder is open.", "The draft for Wren Alder has been created."]) {
+      const out = withoutPhantomDraftClaim(recase(claim), {
+        question: recase("now one for Wren Alder, late today"),
+        openForm: OPEN,
+      });
+      expect(out, claim).toMatch(
+        /^I haven't created a form for wren alder yet — say "create a corrective action for wren alder" and I'll put a card here\.$/i,
+      );
+    }
+  });
+
+  it.each(QA6_REGISTERS)("%s: \"The policy says a draft form is open to review by the manager.\" is policy prose, not a claim", (_label, recase) => {
+    const content = recase("The policy says a draft form is open to review by the manager.");
+    const question = recase("what does the policy say for Wren Alder?");
+    for (const context of [{ question }, { question, openForm: OPEN }]) {
+      expect(withoutPhantomDraftClaim(content, context)).toBe(content);
+    }
+  });
+
+  it.each(QA6_REGISTERS)("%s: with Test Employee's form open, \"the form has been created for test employee two late today.\" is rewritten", (_label, recase) => {
+    const out = withoutPhantomDraftClaim(recase("the form has been created for test employee two late today."), {
+      question: recase("is it ready?"),
+      openForm: OPEN,
+    });
+    expect(out).toMatch(
+      /^I haven't created a form for test employee two yet — say "create a corrective action for test employee two" and I'll put a card here\.$/i,
+    );
+  });
+
+  it.each(QA6_REGISTERS)("%s: the true lines stay true: the open form's own employee, and a run-on that is not a name", (_label, recase) => {
+    for (const content of [
+      "The draft for Test Employee is open on the card above.",
+      "The form has been created for Test Employee as requested.",
+      "The draft for Test Employee has been created.",
+    ]) {
+      const typed = recase(content);
+      expect(withoutPhantomDraftClaim(typed, { question: recase("is it ready?"), openForm: OPEN }), content).toBe(typed);
+    }
+  });
+});
