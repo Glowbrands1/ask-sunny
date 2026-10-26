@@ -88,6 +88,7 @@ import {
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
   payrollTypoNotANameEnabled,
+  answerNotANameEnabled,
   dateAnswerAppliedEnabled,
   dateAnswerKeepsOpenEnabled,
   requestLineAccountEnabled,
@@ -198,10 +199,12 @@ const NEW_FLAGS = [
   "ATTENDANCE_ACTION_PLAN_ENABLED",
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
   "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
+  "ANSWER_NOT_A_NAME_ENABLED",
   "DATE_ANSWER_APPLIED_ENABLED",
   "DATE_ANSWER_KEEPS_OPEN_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
+  "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -241,8 +244,15 @@ const PROTECTED = [
  * (a prior step's date is never the form's Date). It stays
  * on the PROTECTED list; only the diff check leaves it out. No other
  * protected file is excepted.
+ *
+ * The user (Pau) approved, in the Code session on 26 Oct 2026, editing
+ * src/lib/forms/proposal.ts behind ANSWER_NOT_A_NAME_ENABLED: one import and
+ * readEmployeeMentions' return filters its candidates through `namesSomebody`,
+ * which keeps every one with the flag off. It stays on the PROTECTED list;
+ * only the diff check leaves it out.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/form-date-answer.ts",
   ":(exclude)src/lib/ai/form-proposal.ts",
 ];
@@ -394,6 +404,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(attendanceActionPlanEnabled()).toBe(false);
     expect(hideNoPolicyMatchNoticeEnabled()).toBe(false);
     expect(payrollTypoNotANameEnabled()).toBe(false);
+    expect(answerNotANameEnabled()).toBe(false);
     expect(dateAnswerAppliedEnabled()).toBe(false);
     expect(dateAnswerKeepsOpenEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
@@ -441,6 +452,11 @@ describe("new flags default off and wrappers are inert", () => {
       // And except composer.tsx: QA approved on 25 Oct 2026, behind
       // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
       // and send disabled over the limit. Off, it renders as before.
+      // And except the four Form Monitoring links (Overview card and page,
+      // chat card button, search and its hook): QA approved on 26 Oct 2026, behind
+      // NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED, hiding them from a reader
+      // without Form Monitoring. Each gate reads the flag first; off, it
+      // renders as before for every role.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -449,6 +465,11 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
           ":(exclude)src/features/chat/composer.tsx",
+          ":(exclude)src/features/chat/inline-form.tsx",
+          ":(exclude)src/features/dashboard/overview.tsx",
+          ":(exclude)src/components/shell/global-search.tsx",
+          ":(exclude)src/components/shell/hides-form-monitoring.ts",
+          ":(exclude)src/app/(app)/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
         ]),
       ).toBe("");

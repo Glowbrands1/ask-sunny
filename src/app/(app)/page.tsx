@@ -22,6 +22,7 @@ import { listOutstandingFollowUps } from "@/lib/forms/instances";
 import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
+import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import {
   scopeAreaLabel,
 } from "@/lib/reporting/scope/authorized-salons";
@@ -94,6 +95,8 @@ export default async function OverviewPage() {
       Overview's queue cannot disagree with a report page about which salons a
       person covers. See `scope/server.ts`.
     */
+    // ASD_NO_FORM_MONITORING: a reader without Form Monitoring is handed no follow-ups (the Overview draws none).
+    if (asdNoFormMonitoringEnabled() && !(await pageCan("view_form_monitoring"))) throw new NoFormMonitoring();
     const access = await pageFormsAccess(identity);
     const locationIds = access.locationIds;
     // Exit forms only for readers who may create them — see `withoutUnreadable`.
@@ -158,7 +161,7 @@ export default async function OverviewPage() {
           : scopeAreaLabel({ level: "salon", primaryAreaId: locationIds.length === 1 ? locationIds[0]! : null, alsoCoversAreaIds: [] }),
     };
   } catch (error) {
-    followUps = { ...followUps, failure: (error as Error).message };
+    if (!(error instanceof NoFormMonitoring)) followUps = { ...followUps, failure: (error as Error).message };
   }
 
   /*
@@ -220,3 +223,6 @@ export default async function OverviewPage() {
     />
   );
 }
+
+/** The reader holds no Form Monitoring: the follow-ups stay empty, without a failure. */
+class NoFormMonitoring extends Error {}
