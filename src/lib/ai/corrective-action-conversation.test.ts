@@ -1949,3 +1949,63 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
     expect(answer.formProposal).toBeUndefined();
   });
 });
+
+/**
+ * QA live run, 26 Oct 2026 (tester 2, conv_mvom8pmcfahjcb lowercase,
+ * conv_mvom8tp46c33ex sentence case, conv_mvom8y66qov94i capitals; the
+ * tester's invented name replaced): "coaching form for <name>, she was late
+ * today" gave a Coaching card with no Observation of Offense. INTENT_EXTRACTION
+ * is on in production, so it is on here. Flag off: as on main; flag on
+ * (COACHING_INCIDENT_KEPT_ENABLED): the incident is kept.
+ */
+describe("'coaching form for <name>, she was late today'", () => {
+  const TURNS = [
+    "coaching form for rory vance, she was late today",
+    "Coaching form for Rory Vance, she was late today",
+    "COACHING FORM FOR RORY VANCE, SHE WAS LATE TODAY",
+  ];
+  const on = (...names: string[]) => {
+    for (const name of names) process.env[name] = "1";
+    return () => {
+      for (const name of names) delete process.env[name];
+    };
+  };
+
+  it("flag off, as on main: no Observation of Offense", async () => {
+    const saved = process.env.COACHING_INCIDENT_KEPT_ENABLED;
+    delete process.env.COACHING_INCIDENT_KEPT_ENABLED;
+    const off = on("INTENT_EXTRACTION_ENABLED");
+    try {
+      const answer = await ask(TURNS[0]!);
+      expect(answer.formProposal?.templateKey).toBe("coaching");
+      expect(answer.content).not.toMatch(/\*\*Observation of Offense:\*\*/);
+    } finally {
+      off();
+      if (saved !== undefined) process.env.COACHING_INCIDENT_KEPT_ENABLED = saved;
+    }
+  });
+
+  it.each(TURNS.slice(0, 2))("flag on: '%s' keeps 'she was late today'", async (turn) => {
+    const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
+    try {
+      const answer = await ask(turn);
+      expect(answer.content).toMatch(/\*\*Observation of Offense:\*\* she was late today/i);
+    } finally {
+      off();
+    }
+  });
+
+  it.each([
+    "coaching form for rory vance, she was not late today",
+    "coaching form for rory vance, she was never late",
+    "coaching form for rory vance, tom lee was late today",
+  ])("flag on: '%s' keeps nothing", async (turn) => {
+    const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
+    try {
+      const answer = await ask(turn);
+      expect(answer.content).not.toMatch(/\*\*Observation of Offense:\*\*/);
+    } finally {
+      off();
+    }
+  });
+});

@@ -76,6 +76,7 @@ import {
   appPasswordHelpEnabled,
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
+  coachingIncidentKeptEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -170,6 +171,7 @@ const NEW_FLAGS = [
   "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
+  "COACHING_INCIDENT_KEPT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -335,6 +337,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(coachingIncidentKeptEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
 
