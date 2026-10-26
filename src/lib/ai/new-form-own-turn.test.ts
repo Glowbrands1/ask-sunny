@@ -58,3 +58,32 @@ describe("NEW_FORM_OWN_TURN_ENABLED on", () => {
     expect(withNewFormOwnTurn(response, { question: "another coaching form for rory vance", history: [HISTORY[0]] } as unknown as AskRequest)).toBe(response);
   });
 });
+
+/** QA-7 probes, 26 Oct 2026: a negated, edited or excepted "new form" keeps the earlier turns. */
+describe("NEW_FORM_OWN_TURN_ENABLED on: only a request for another form", () => {
+  const sentence = (text: string) => text[0]!.toUpperCase() + text.slice(1);
+
+  it.each([
+    "not another coaching form for rory vance",
+    "don't make another coaching form",
+    "do not create a new coaching form, just add that she left early",
+    "no new form, she also left early",
+    "never make a second ca for rory",
+    "without another form, add that she left early yesterday",
+    "make another form for anyone except rory vance",
+    "change it to the new date for the coaching form",
+    "the new hire rory vance left early, add it to the form",
+    "use the next open date for the coaching form",
+    "separate the two dates on the form",
+    "redraft the coaching form with the new date 10/4",
+    "edit the form, she left early on the next day",
+  ])("'%s' keeps the earlier turns, in lowercase and sentence case", (question) => {
+    process.env[FLAG] = "on";
+    for (const variant of [question, sentence(question)]) expect(second(variant).formProposal?.sourceMessageIds).toEqual(["m1", "m3"]);
+  });
+
+  it.each(["a second ca for rory vance, she left early", "make another coaching form for rory vance", "Create a new coaching form for Rory Vance"])("'%s' is its own form", (question) => {
+    process.env[FLAG] = "on";
+    expect(second(question).formProposal?.sourceMessageIds).toEqual(["m3"]);
+  });
+});
