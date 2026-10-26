@@ -9,6 +9,7 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { excerptTextForDisplay } from "@/lib/knowledge/excerpt-brand-filter";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -458,7 +459,7 @@ export function remapCitations(manual: RemapManual, sections: readonly ManualSec
       documentTitle: manual.documentTitle,
       locator: `Page ${section.page}`,
       category,
-      excerpt: `${section.heading}. ${chunk?.content ?? ""}`.slice(0, 500),
+      excerpt: `${section.heading}. ${excerptTextForDisplay(chunk?.content ?? "", manual.documentTitle)}`.slice(0, 500),
       relevance: 1,
     });
   }
