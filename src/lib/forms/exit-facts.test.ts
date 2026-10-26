@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { exitNoticeFulfilledEnabled } from "@/lib/config/chat-quality-flags";
 
 import { EXIT_OPTION } from "./exit-library";
 import { exitFactValues, exitFactsSupplied, readExitFacts } from "./exit-facts";
@@ -210,11 +211,20 @@ describe("how the person left", () => {
   });
 });
 
+/*
+ * EXIT_NOTICE_FULFILLED_ENABLED (changed on purpose, QA G4, 25 Oct 2026): a
+ * notice worked in full is fulfilled on the last day worked, so with the flag
+ * on the stored values gain notice_fulfilled_date. Off, as before.
+ */
+function fulfilledOnLastDay(iso: string): { notice_fulfilled_date?: string } {
+  return exitNoticeFulfilledEnabled() ? { notice_fulfilled_date: iso } : {};
+}
+
 describe("the values the draft carries", () => {
   it("only what was established, keyed like the stored version", () => {
     const facts = read("She gave notice on 9/1, worked out her notice, last day 9/15.");
     expect(exitFactValues(facts)).toEqual({
-      values: { notice_given_date: "2026-09-01", last_day_worked: "2026-09-15" },
+      values: { notice_given_date: "2026-09-01", last_day_worked: "2026-09-15", ...fulfilledOnLastDay("2026-09-15") },
       checked: { resignation_notice: [EXIT_OPTION.submittedFulfilledNotice] },
     });
   });
@@ -260,13 +270,17 @@ describe("HR feedback 30 Sep: the Delphine exit form", () => {
   });
 
   /*
-   * UNCHANGED ON PURPOSE, pending HR: the notice-fulfilled date is never taken
-   * from the last day worked, even when the notice was worked in full. Whether
-   * it should be is HR's decision, not a parsing fix.
+   * UNCHANGED WITH THE FLAG OFF: the notice-fulfilled date is never taken
+   * from the last day worked. QA decided it (25 Oct 2026, item G4): with
+   * EXIT_NOTICE_FULFILLED_ENABLED on, a notice worked in full is fulfilled on
+   * the last day worked — see `exit-notice-fulfilled.test.ts`. This test runs
+   * with that flag unset.
    */
   it("still leaves the notice-fulfilled date to the manager", () => {
-    expect(read(FEEDBACK_WORDING).noticeFulfilled).toBeNull();
-    expect(read(PRODUCTION_TURNS).noticeFulfilled).toBeNull();
+    // Flag on (changed on purpose, G4): fulfilled on the last day worked, 9-28.
+    const fulfilled = exitNoticeFulfilledEnabled() ? "2026-09-28" : null;
+    expect(read(FEEDBACK_WORDING).noticeFulfilled).toBe(fulfilled);
+    expect(read(PRODUCTION_TURNS).noticeFulfilled).toBe(fulfilled);
   });
 
   it.each([
