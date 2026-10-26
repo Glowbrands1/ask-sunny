@@ -239,3 +239,46 @@ describe("NEVER-BREAK: short commands and the exit-process answer are not the gu
     expect(answer(wording, "district_manager")).toBeNull();
   });
 });
+
+/*
+ * Sunny tester replay S27 (26 Oct 2026), the tester's exact words: a request
+ * for a form that is about no one is explained from the template, not answered
+ * by asking for an employee.
+ */
+describe("a generic form request is explained from the template", () => {
+  const WORDING = "can you make a generic policy review form that works for any employee";
+
+  it.each(both(WORDING))("%s explains the Policy Review and how to start it for someone", (wording) => {
+    const text = answer(wording, "district_manager")!;
+    expect(text).toContain("Forms in Ask Sunny are filled in for one employee at a time");
+    expect(text).toContain(`**Policy Review** — ${template("policy-review").description}`);
+    expect(text).toContain('say "create a policy review for <name>" to start it.');
+    expect(text).toContain("open Form Templates and press Preview PDF");
+  });
+
+  it("the answer follows the template's description", () => {
+    const edited = TEMPLATES.map((entry) =>
+      entry.key === "policy-review" ? { ...entry, description: "Fixture: a reviewed policy, signed." } : entry,
+    );
+    expect(answer(WORDING, "district_manager", edited)).toContain("**Policy Review** — Fixture: a reviewed policy, signed.");
+  });
+
+  it("a role that does not manage templates is not sent to Form Templates", () => {
+    const text = answer(WORDING, "salon_director")!;
+    expect(text).toContain("**Policy Review** — ");
+    expect(text).not.toContain("Form Templates");
+  });
+
+  it("an employee is told they cannot create it", () => {
+    expect(answer(WORDING, "employee")).toMatch(/Your role \([^)]+\) can't create this one/);
+  });
+
+  it.each([
+    ...both("create a policy review for Avery Holt"),
+    ...both("create a coaching form for Avery Holt using the template"),
+    ...both("create a ca for everyone at the salon"),
+    ...both("make a policy review for Avery Holt"),
+  ])("NEVER-BREAK: %s still creates", (wording) => {
+    expect(readFormsGuideQuestion(wording)).toBeNull();
+  });
+});
