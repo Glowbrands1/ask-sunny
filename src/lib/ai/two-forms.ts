@@ -20,7 +20,9 @@ import type { AskRequest, AskResponse } from "./types";
  * The same file in the sibling app.
  */
 
-const BETWEEN = /\s+(?:and|&|plus|then|also)\s+(?=(?:a|an|the|one)\b)|[,;?]+/i;
+/** QA-4, 26 Oct 2026: also before a form word with no article ("a coaching form and policy review", "coaching and ca"). */
+const BETWEEN =
+  /\s+(?:and|&|plus|then|also)(?:\s+then)?\s+(?=(?:a|an|the|one)\b|(?:coaching|coach|ca|c\/a|dpoa|corrective|policy|exit|write)\b)|[,;?]+/i;
 const REQUEST_WORDS = /^(?:(?:can|could|would)\s+you\s+|please\s+|i\s+(?:need|want)\s+|create\s+|make\s+|start\s+|do\s+)+/i;
 const FORM_PHRASE = /\b(?:a|an|the)\s+([a-z][a-z/ -]*?)\s*[.!]*$/i;
 
@@ -42,7 +44,8 @@ export function formsAskedFor(question: string): Asked[] {
     const part = segment.trim().replace(/\s+(?:and|also|plus|then|&)$/i, "");
     if (!part) continue;
     if (TURNED.test(part)) negated = false;
-    if (NEGATED.test(part)) negated = true;
+    // "no call no show" is an incident, not a negation.
+    if (NEGATED.test(part.replace(/\bno[\s-]*call[\s,/-]*no[\s-]*show\b/gi, ""))) negated = true;
     if (negated) continue;
     const intent = detectTemplateIntent(part);
     if (intent.kind !== "explicit" || asked.some((form) => form.templateKey === intent.templateKey)) continue;

@@ -113,3 +113,26 @@ describe("TWO_FORMS_ASK_ENABLED on: negated and finished forms", () => {
     expect(out.content).toContain('say **"now the policy review"**');
   });
 });
+
+/** QA-4, 26 Oct 2026: the second form named without an article (names invented). */
+describe("TWO_FORMS_ASK_ENABLED on: a second form with no article", () => {
+  it.each([
+    ...cases("a coaching form and policy review for Devon Harlan"),
+    ...cases("coaching and ca"),
+    ...cases("ca for avery stone for no call no show and then coaching for mara quill"),
+  ])("'%s' names two forms", (question) => {
+    process.env[FLAG] = "on";
+    const keys = formsAskedFor(question).map((form) => form.templateKey);
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it.each([
+    "ca for avery stone, coaching was not enough",
+    "coaching form for devon harlan about policy",
+    "coaching form for devon harlan and corrective feedback",
+  ])("'%s' still names one form", (question) => {
+    process.env[FLAG] = "on";
+    expect(formsAskedFor(question).length).toBeLessThan(2);
+  });
+});
