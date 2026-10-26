@@ -136,6 +136,34 @@ describe("flag on: harmless password and sign-in sentences are kept", () => {
   });
 });
 
+/* QA-5, 26 Oct 2026, second probe: recipes that name the secret only as "first sign-in", "Use …" or "It's …". */
+const QA5_RECIPES = [
+  "It's their first name plus the year they started.",
+  "Use your last name followed by 1.",
+  "Your first sign-in is your last name then the year you started.",
+  "Use Bluebird plus the last two digits of the year.",
+  "First-time sign-in: your birthday, then the month.",
+];
+
+describe("flag on: QA-5's second probe", () => {
+  it.each(QA5_RECIPES.flatMap(registers))("removed: %s", (text) => {
+    on();
+    expect(redactSensitiveDefaults(text, null)).toBe(REPLY_NOTE);
+  });
+
+  it.each(
+    [
+      "On your first day, sign in to Revel with the user name your manager gave you.",
+      "Use your employee number to clock in.",
+      "Use the store number on the deposit slip.",
+      "It's the first name on the schedule.",
+    ].flatMap(registers),
+  )("kept: %s", (text) => {
+    on();
+    expect(redactSensitiveDefaults(text, null)).toBe(text);
+  });
+});
+
 describe("recipe flag off: judged as before", () => {
   it.each([
     "Sign in the first time with your birthday.",

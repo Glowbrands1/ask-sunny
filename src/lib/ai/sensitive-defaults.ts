@@ -189,11 +189,26 @@ function isSuspectAfterDefault(piece: string): boolean {
  */
 const STARTER =
   /\b(?:default|defualt|starter|starting|initial|temporary|temp|first[- ]time|first\s+sign[- ]?in|first\s+log[- ]?in|new[- ]hire)\s+(?:pass\s?words?|passcodes?|codes?|pw|pins?|log-?\s?ins?|credentials?)\b/i;
+/** "Your first sign-in is …", "First-time sign-in: …": the secret named with no password word. */
+const FIRST_SIGN_IN = /\bfirst(?:[- ]time)?\s+(?:sign|log)[- ]?ins?\b/i;
 const SIGN_IN_WITH = /\b(?:sign|log)(?:s|ged|ging)?[- ]?(?:in|on)\b[^.!?\n]{0,40}?\b(?:with|using|as)\b/i;
 /** The part IS the secret ("… as the password"), or it is the first sign-in; "with your user name and password" names two things. */
 const SECRET_OR_FIRST = /\bas\s+(?:the|your|their|a)\s+(?:pass\s?words?|passcodes?|codes?|pins?|pw)\b|\b(?:the\s+)?first\s+(?:time|day)\b/i;
+const AS_THE_SECRET = /\bas\s+(?:the|your|their|a)\s+(?:pass\s?words?|passcodes?|codes?|pins?|pw)\b|\b(?:pass\s?word|passcode|pin|code)\s+is\b/i;
+/** What you sign in with that is not the secret: "with the user name your manager gave you" (QA-5). */
+const LOGIN_NAME = /\b(?:user\s*names?|usernames?|e-?mail|account|log-?\s?in\s+name)\b/i;
+/**
+ * A recipe said with no password word (QA-5, 26 Oct 2026): "It's their first
+ * name plus the year they started.", "Use your last name followed by 1.",
+ * "Use <word> plus the last two digits of the year.", "Your first sign-in is
+ * your last name then the year": the sentence opens with "it's / it is / use"
+ * or names the first sign-in, and joins a personal part with plus, followed
+ * by or then.
+ */
+const VALUE_LEAD = /^\s*(?:[-*•▪]\s+|\d+[.)]\s+)?(?:it'?s|it\s+is|use)\b/i;
+const RECIPE_JOIN = /\b(?:plus|followed\s+by|then)\b|\+/i;
 const PERSONAL_PART =
-  /\b(?:(?:first|last|full|user|middle)\s*names?|(?:your|their|his|her|the\s+employee'?s?)\s+names?|initials|(?:birth\s*|hire\s*|start\s*)?years?|birthdays?|birth\s*dates?|dates?\s+of\s+birth|dob|hire\s+dates?|employee\s+(?:id|numbers?|#)|store\s+(?:numbers?|codes?|#)|zip\s*codes?|phone\s+numbers?)\b/i;
+  /\b(?:(?:first|last|full|middle)\s*names?|(?:your|their|his|her|the\s+employee'?s?)\s+names?|initials|(?:birth\s*|hire\s*|start\s*)?years?|birthdays?|birth\s*dates?|dates?\s+of\s+birth|dob|hire\s+dates?|employee\s+(?:id|numbers?|#)|store\s+(?:numbers?|codes?|#)|zip\s*codes?|phone\s+numbers?)\b/i;
 const JOINED = /\b(?:plus|followed\s+by|and\s+(?:the|their|your|his|her)|then|combined\s+with|with|starts?\s+with|ends?\s+with|after|before)\b|\+/i;
 const FORBIDS_PART = /\b(?:do\s+not|don'?t|never|avoid|must\s+not|should\s+not|shouldn'?t|cannot|can'?t|no)\b[^.!?\n]{0,30}\b(?:use|include|contain|be)\b/i;
 
@@ -202,7 +217,10 @@ function isRecipe(sentence: string, inWindow: boolean): boolean {
   if (!sensitiveDefaultRecipeRedactEnabled()) return false;
   if (!PERSONAL_PART.test(sentence) || FORBIDS_PART.test(sentence)) return false;
   // "Log in with your employee ID." is a user name; as the password or the first time it is a recipe.
-  if (SIGN_IN_WITH.test(sentence) && SECRET_OR_FIRST.test(sentence)) return true;
+  if (SIGN_IN_WITH.test(sentence) && SECRET_OR_FIRST.test(sentence) && (AS_THE_SECRET.test(sentence) || !LOGIN_NAME.test(sentence))) {
+    return true;
+  }
+  if ((VALUE_LEAD.test(sentence) || FIRST_SIGN_IN.test(sentence)) && RECIPE_JOIN.test(sentence)) return true;
   if (!JOINED.test(sentence)) return false;
   return inWindow || STARTER.test(sentence);
 }
