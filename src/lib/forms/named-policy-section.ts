@@ -416,8 +416,13 @@ export function describedManualSection(input: {
   const chunks = input.chunks;
   if (!chunks || chunks.length === 0) return null;
   const cleaning = cleaningSection(input.text ?? "", chunks);
-  if (cleaning) return cleaning;
   const specific = specificSection(input.text ?? "", chunks);
+  /* Two incidents in one account: cleaning leads, and the other is offered beside it, never dropped. */
+  if (cleaning) {
+    return specific && specific.section.heading !== cleaning.section.heading
+      ? { ...cleaning, also: [specific.section, ...(specific.also ?? [])] }
+      : cleaning;
+  }
   if (specific) return specific;
   let byText = describedResultCache.get(chunks);
   if (!byText) {

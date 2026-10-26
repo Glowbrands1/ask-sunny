@@ -31,7 +31,10 @@ import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withCon
 const CHUNKS: readonly ManualChunk[] = (rows.chunks as ChunkRow[]).map(manualChunkFromRow);
 
 /* The flag is off unless a case turns it on, even when the whole suite runs with it on. */
-beforeEach(() => vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", ""));
+beforeEach(() => {
+  vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "");
+  vi.stubEnv("POLICY_CLEANING_INCIDENT_ENABLED", "");
+});
 afterEach(() => vi.unstubAllEnvs());
 const on = () => vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
 const cited = (text: string) => accountManualSections(text, CHUNKS).map((section) => `${section.heading} p.${section.page}`);
@@ -378,4 +381,52 @@ describe("flag on: a denial is not the incident", () => {
       expect(cited(ask(text))).toContain(cite);
     },
   );
+});
+
+/*
+ * TWO INCIDENTS IN ONE ACCOUNT, BOTH FLAGS ON (QA-3, 26 Oct 2026): cleaning left
+ * undone leads (Code 3's reader runs first) and the other incident is cited
+ * beside it, never dropped silently.
+ */
+describe("both flags on: cleaning plus another incident cites both", () => {
+  const CARE = "Care and Cleaning of Equipment and Facilities p.21";
+  const both = () => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
+    vi.stubEnv("POLICY_CLEANING_INCIDENT_ENABLED", "true");
+  };
+
+  it.each(
+    [
+      ["the cleaning didn't get done and she took product without paying", [CARE, SOC13, "Handling Theft p.30"]],
+      ["the cleaning didn't get done and she brought her dog in", [CARE, "Animals in the Workplace p.30", "Visitors in the Workplace p.29"]],
+      ["she left the beds dirty and there was no wet floor sign", [CARE, SAFETY, WET_SIGN]],
+      ["her drawer was short $20 and the cleaning didn't get done", [CARE, SOC13]],
+      ["cleaning duties not being completed and she was rude to a guest", [CARE, "Standards of Conduct p.12"]],
+    ].flatMap(([text, cites]) => registers(text as string).map((entry) => [entry, cites as string[]] as const)),
+  )("%s", (text, cites) => {
+    both();
+    expect(cited(ask(text))).toEqual(cites);
+  });
+
+  /*
+   * A conduct reading (a direction refused) already decides the policy, so the
+   * cleaning reader does not run: the card cites the Standards of Conduct page
+   * 13 and not Care and Cleaning. Pinned as it is, not as a wish.
+   */
+  it("a refused direction beside dirty beds is the Standards of Conduct p.13 on the card, and no section on the described path", () => {
+    both();
+    const text = ask("she left the beds dirty and refused to follow direction");
+    expect(cited(text)).toEqual([SOC13]);
+    expect(describedManualSection({ text, chunks: CHUNKS })).toBeNull();
+  });
+
+  it("cleaning alone is unchanged", () => {
+    both();
+    expect(cited(ask("the cleaning didn't get done"))).toEqual([CARE]);
+  });
+
+  it("the specific flag alone still cites the other incident (no cleaning reader)", () => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
+    expect(cited(ask("the cleaning didn't get done and she took product without paying"))).toEqual([SOC13, "Handling Theft p.30"]);
+  });
 });
