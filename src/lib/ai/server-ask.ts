@@ -151,7 +151,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
-import { withNameCase } from "./name-case";
+import { withNameCase, withNameTitleCase } from "./name-case";
 import { withTerseSlots } from "./terse-slots";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -287,7 +287,7 @@ async function answerQuestionChecked(
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
     // NAME_CASE_INSENSITIVE_ENABLED: a name is read the same however it is typed.
-    const response = await answerQuestionUntraced(withNameCase(withTerseSlots(request)), actor, memory);
+    const response = withNameTitleCase(await answerQuestionUntraced(withNameCase(withTerseSlots(request)), actor, memory));
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     return keepManagerActionPlan(await applyQuietQuality(response), request);

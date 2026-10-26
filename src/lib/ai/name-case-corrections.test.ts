@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { employeeState, managerContext } from "@/lib/forms/proposal";
 
-import { withNameCase } from "./name-case";
-import type { AskRequest } from "./types";
+import { titleCaseName, withNameCase, withNameTitleCase } from "./name-case";
+import type { AskRequest, AskResponse } from "./types";
 
 /**
  * QA-3, 26 Oct 2026, for NAME_CASE_INSENSITIVE_ENABLED: correction turns and
@@ -79,5 +79,39 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: the person after 'one of my team mem
 
   it.each(variants("my employee pat rivera was 10 minutes late on 10/5 and 10/15. create a ca"))("%s", (turn) => {
     expect(employeeAfter(turn)?.toLowerCase()).toBe("pat rivera");
+  });
+});
+
+/**
+ * QA coordinator, 26 Oct 2026: with the flag on, the card stores the name in
+ * Title Case word by word; a word with a capital inside it stays as typed.
+ */
+describe("NAME_CASE_INSENSITIVE_ENABLED on: the card's name in Title Case, word by word", () => {
+  it.each([
+    ["rory vance", "Rory Vance"],
+    ["Rory vance", "Rory Vance"],
+    ["MARLOWE CO", "Marlowe Co"],
+    ["mary anne cruz", "Mary Anne Cruz"],
+    ["mary-jane", "Mary-Jane"],
+    ["o'brien", "O'Brien"],
+    ["McDonald", "McDonald"],
+    ["DeShawn", "DeShawn"],
+    ["rOsAlYn Co", "rOsAlYn Co"],
+  ])("%s → %s", (typed, stored) => {
+    expect(titleCaseName(typed)).toBe(stored);
+  });
+
+  it("changes the card and the reply with the flag on, nothing with it off", () => {
+    const response = {
+      content: "I'll draft a **Corrective Action Form** for **rory vance**.",
+      citations: [],
+      formProposal: { employeeName: "rory vance" },
+    } as unknown as AskResponse;
+    delete process.env[FLAG];
+    expect(withNameTitleCase(response)).toBe(response);
+    process.env[FLAG] = "on";
+    const out = withNameTitleCase(response);
+    expect(out.formProposal?.employeeName).toBe("Rory Vance");
+    expect(out.content).toBe("I'll draft a **Corrective Action Form** for **Rory Vance**.");
   });
 });
