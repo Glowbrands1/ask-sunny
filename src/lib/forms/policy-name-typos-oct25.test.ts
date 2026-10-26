@@ -111,3 +111,20 @@ describe("flag on: what is not a misspelling", () => {
     expect(correctPolicyTypos(text)).toBe(text);
   });
 });
+
+/* HOW MANAGERS TYPE (Pau, 26 Oct 2026): the same reading in all lowercase and in sentence case. */
+const lower = (text: string) => text.toLowerCase();
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+
+describe("flag on: every register reads the same", () => {
+  it.each([ATTENDENCE, OPENNING].flatMap((text) => [lower(text), sentence(text)]))("%s", (text) => {
+    on();
+    const original = [ATTENDENCE, OPENNING].find((entry) => entry.toLowerCase() === text.toLowerCase())!;
+    expect(cited(text)).toEqual(cited(original));
+  });
+
+  it.each(["ATTENDENCE", "Attendence", "attendence"])("%s keeps its case and is corrected", (word) => {
+    on();
+    expect(correctPolicyTypos(word).toLowerCase()).toBe("attendance");
+  });
+});
