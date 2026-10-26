@@ -1045,6 +1045,17 @@ export function dateAnswerAppliedEnabled(): boolean {
 }
 
 /**
+ * A one-line request carries its own account (QA, 26 Oct 2026; same flag in
+ * both apps): in "create a verbal ca for <name> at kearney ne, she was late on
+ * 10-15-26" the clause after the comma is what happened, so a draft the model
+ * left blank is retried and then written from it (DRAFT_NEVER_BLANK). See
+ * `managerAccountClause` in `forms/draft-never-blank.ts`. Off, as before.
+ */
+export function requestLineAccountEnabled(): boolean {
+  return envFlag("REQUEST_LINE_ACCOUNT_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
