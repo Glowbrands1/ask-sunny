@@ -25,15 +25,17 @@ export interface GoogleReviewsChatBlock {
  * The Google review block for one chat turn, or null when the question is not
  * about Google reviews.
  *
- * View Google reviews is checked first: without it nothing is read. The
- * listings are the caller's salons (the same scope the report reads use),
- * narrowed to any salon the question names. The figures come from
- * `loadReviewsSnapshot`, the read /reviews renders.
+ * View Google reviews is checked first: without it nothing is read. The rows
+ * are the ones /reviews shows this caller (every salon; the page does not
+ * narrow by assignment), narrowed to any salon the question names, with the
+ * caller's own salons marked. The figures and the last sync come from
+ * `loadReviewsSnapshot`, the read the page renders.
  */
 export async function loadGoogleReviewsChatBlock(input: {
   readonly question: string;
   readonly role: Role | null;
   readonly scope: AccessScope | null;
+  readonly now?: Date;
 }): Promise<GoogleReviewsChatBlock | null> {
   if (!isGoogleReviewQuestion(input.question)) return null;
 
@@ -41,20 +43,13 @@ export async function loadGoogleReviewsChatBlock(input: {
     return { text: reviewsNotPermittedBlock(), figures: false };
   }
 
-  const scope = reportingScopeOf(input.scope);
-  const allowed = new Set(scope.unrestricted ? [] : storeCodesForSalonNumbers(scope.salonNumbers));
-  const mayRead = (storeCode: string) => scope.unrestricted || allowed.has(storeCode);
-  const named = storeCodesNamedIn(input.question);
-  const outOfScope = named.filter((storeCode) => !mayRead(storeCode));
-  const wanted = named.length > 0 ? named.filter(mayRead) : null;
-
-  if (wanted !== null && wanted.length === 0) {
-    return { text: formatGoogleReviewsBlock({ goal: null, locations: [], outOfScopeStoreCodes: outOfScope }), figures: false };
-  }
-
   if (!supabaseReadiness().ready) {
     return { text: reviewsUnavailableBlock("This deployment cannot read the Google review records."), figures: false };
   }
+
+  const scope = reportingScopeOf(input.scope);
+  const own = new Set(scope.unrestricted ? [] : storeCodesForSalonNumbers(scope.salonNumbers));
+  const named = storeCodesNamedIn(input.question);
 
   try {
     const snapshot = await loadReviewsSnapshot({ district: null, storeCode: null });
@@ -62,10 +57,16 @@ export async function loadGoogleReviewsChatBlock(input: {
       return { text: reviewsUnavailableBlock("No Google review has been synced into Ask Sunny yet."), figures: false };
     }
     const locations = snapshot.locations.filter(
-      (location) => mayRead(location.storeCode) && (wanted === null || wanted.includes(location.storeCode)),
+      (location) => named.length === 0 || named.includes(location.storeCode),
     );
     return {
-      text: formatGoogleReviewsBlock({ goal: snapshot.goal, locations, outOfScopeStoreCodes: outOfScope }),
+      text: formatGoogleReviewsBlock({
+        goal: snapshot.goal,
+        locations,
+        ownStoreCodes: own,
+        lastSyncAt: snapshot.lastSyncAt,
+        now: input.now ?? new Date(),
+      }),
       figures: locations.length > 0,
     };
   } catch {

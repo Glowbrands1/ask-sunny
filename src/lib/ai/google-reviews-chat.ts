@@ -1,4 +1,5 @@
 import { salonByNumber } from "@/data/salons";
+import { formatReviewsInstant } from "@/lib/reviews/display-time";
 import {
   formatGoalMonth,
   formatMonthToDate,
@@ -21,6 +22,10 @@ import type { LocationRollup } from "@/lib/reviews/types";
  * writes the block. The read and the permission check are in
  * `google-reviews-chat-read.ts`.
  *
+ * THE SAME SALONS THE PAGE SHOWS. /reviews lists every salon to anybody with
+ * View Google reviews, so the block does too, never more. The caller's own
+ * salons are marked so the answer can lead with them.
+ *
  * Client-safe: no database client and no `server-only` import.
  */
 
@@ -29,6 +34,7 @@ const GOOGLE_REVIEW_PATTERNS: readonly RegExp[] = [
   /\b(?:reviews?|ratings?)\b[\s\S]{0,20}\bgoogle\b/i,
   /\b(?:how many|number of|count of)\b[\s\S]{0,40}\breviews\b/i,
   /\breviews?\b[\s\S]{0,60}\b(?:this month|month to date|mtd|this week|goal|target|on track|on pace|behind pace)\b/i,
+  /\b(?:on track|on pace|behind pace|goal|target)\b[\s\S]{0,40}\breviews?\b/i,
   /\b(?:review (?:goal|count|target)s?|star ratings?)\b/i,
 ];
 
@@ -69,10 +75,16 @@ function salonLabel(location: Pick<LocationRollup, "salonNumber" | "locationName
 
 const HEADING = "GOOGLE REVIEWS — MONTH TO DATE";
 
+/** How old the last sync may be before the answer has to say the figures may be out of date. */
+export const STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000;
+
+const PAGE = "Google Reviews in the sidebar";
+
 const RULES = [
   "- These are the figures the Google Reviews page shows. Answer from them: give the count, the goal and whether the salon is on track, and say which period and which salon each figure is for.",
   "- On track means Goal met or On pace above. Behind pace means not on track yet.",
   "- Never state a Google review figure that is not written here, never estimate one, and never send the manager to another tracker for a figure written here.",
+  `- The manager can see the same figures on ${PAGE}.`,
 ].join("\n");
 
 export function reviewsNotPermittedBlock(): string {
@@ -80,46 +92,48 @@ export function reviewsNotPermittedBlock(): string {
 }
 
 export function reviewsUnavailableBlock(reason: string): string {
-  return `${HEADING}\n\n${reason} No figure was estimated. Say so plainly; do not give a Google review count.`;
+  return `${HEADING}\n\n${reason} No figure was estimated. Say so plainly, do not give a Google review count, and point the manager to ${PAGE}.`;
+}
+
+/** "Data as of" and, past two days, the instruction to say the figures may be out of date. */
+export function freshnessLines(lastSyncAt: string | null, now: Date): string[] {
+  const shown = formatReviewsInstant(lastSyncAt);
+  if (!lastSyncAt || !shown) {
+    return ["Data as of: no sync is recorded. Say the figures may not be current, and point the manager to " + PAGE + "."];
+  }
+  const lines = [`Data as of: the last Google review sync, ${shown} (Central time).`];
+  if (now.getTime() - new Date(lastSyncAt).getTime() > STALE_AFTER_MS) {
+    lines.push(
+      `The last sync is more than 2 days old. Say so first: these figures are as of ${shown} and may be out of date, and the latest are on ${PAGE}.`,
+    );
+  }
+  return lines;
 }
 
 /**
- * The block for the listings this account may see.
- *
- * `named` is what the question asked for; `outOfScope` is the part of it the
- * account may not see, which is named without a figure.
+ * The block. `locations` are the page's rows, already narrowed to any salon
+ * the question names; `ownStoreCodes` are the caller's salons, marked.
  */
 export function formatGoogleReviewsBlock(input: {
-  /** Null only when nothing is read: every salon the question named is out of scope. */
-  readonly goal: ReviewGoalContext | null;
+  readonly goal: ReviewGoalContext;
   readonly locations: readonly LocationRollup[];
-  readonly outOfScopeStoreCodes: readonly string[];
+  readonly ownStoreCodes: ReadonlySet<string>;
+  readonly lastSyncAt: string | null;
+  readonly now: Date;
 }): string {
   const { goal } = input;
-  const lines: string[] = [HEADING, ""];
-  if (goal) {
-    const period = `${formatGoalMonth(goal)} ${goal.monthStart.slice(0, 4)} month to date, ${formatMonthToDate(goal)} (Central time)`;
-    lines.push(
-      `Period: ${period}.`,
-      `Goal: ${goal.target} qualifying Google reviews (3, 4 or 5 stars) per salon per month. On pace today means at least ${goal.paceTarget} so far.`,
-    );
-  }
-
-  for (const storeCode of input.outOfScopeStoreCodes) {
-    const listing = GOOGLE_REVIEW_LOCATIONS.find((entry) => entry.storeCode === storeCode);
-    const salon = listing ? salonByNumber(listing.salonNumber) : undefined;
-    lines.push(`- ${salon?.name ?? `Store ${storeCode}`}: not one of the salons this account may see. No figure is given for it.`);
-  }
-
-  if (input.locations.length === 0 || !goal) {
-    if (input.outOfScopeStoreCodes.length === 0) {
-      lines.push("No salon with a Google listing is assigned to this account.");
-    }
-    return [...lines, "", RULES].join("\n");
-  }
+  const period = `${formatGoalMonth(goal)} ${goal.monthStart.slice(0, 4)} month to date, ${formatMonthToDate(goal)} (Central time)`;
+  const lines: string[] = [
+    HEADING,
+    "",
+    `Period: ${period}.`,
+    ...freshnessLines(input.lastSyncAt, input.now),
+    `Goal: ${goal.target} qualifying Google reviews (3, 4 or 5 stars) per salon per month. On pace today means at least ${goal.paceTarget} so far.`,
+  ];
 
   for (const location of input.locations) {
-    const name = `${salonLabel(location)} (store ${location.storeCode})`;
+    const own = input.ownStoreCodes.has(location.storeCode) ? ", this manager's salon" : "";
+    const name = `${salonLabel(location)} (store ${location.storeCode}${own})`;
     const status = goalStatus(location, goal);
     if (status === "not_counting") {
       lines.push(`- ${name}: not counting yet. No baseline is set, so the page shows no month-to-date figure for it.`);
