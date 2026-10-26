@@ -893,3 +893,40 @@ export function appPasswordHelpEnabled(): boolean {
 export function followUpNotPriorEnabled(): boolean {
   return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
 }
+
+/**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
+
+/**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
+ * A Corrective Action or coaching draft is never filed blank (found in the
+ * sibling app's production, 26 Oct 2026: `drafted` with no fields and nothing
+ * rejected, from Create clicks fired several at once). The model's tool call
+ * is read when its `values` / `checked` came back JSON-encoded, one object per
+ * section, keyed by label, or with a single option as text; a model call that
+ * threw (429, 529, overloaded), answered with no tool call, or left no
+ * narrative although the notes hold an account is tried again up to twice
+ * (after 1 s, then 3 s), as is a failed framework read; if it is still empty,
+ * the Observation is the manager's own incident clause. Every reason goes on
+ * a drafted event, with `{"fallback": "manager_words"}` where used. See
+ * `forms/draft-never-blank.ts`. Off, the draft route is unchanged.
+ */
+export function draftNeverBlankEnabled(): boolean {
+  return envFlag("DRAFT_NEVER_BLANK_ENABLED");
+}
