@@ -47,14 +47,19 @@ const state = vi.hoisted(() => ({
    */
   manualMatchedBy: "fallback" as "tag" | "fallback",
   /** What the drafting model returns. */
-  draft: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown> },
+  draft: {} as {
+    values?: Record<string, unknown>;
+    checked?: Record<string, unknown>;
+  },
   /** What the drafting model was given, per call: its system prompt and messages. */
   modelNotes: [] as string[],
   manual: null as null | { chunks: unknown[] },
   directory: [] as unknown[],
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseAdmin: () => fakeSupabase(store),
+}));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -68,11 +73,21 @@ vi.mock("@/lib/api/respond", async (importOriginal) => {
 
 vi.mock("@/lib/auth/server", async () => {
   const { AuthError } = await import("@/lib/auth/types");
-  const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+  const { DEFAULT_PERMISSION_MATRIX, hasPermission } =
+    await import("@/lib/permissions");
   return {
     authorizeRequest: async (_request: Request, permission: string) => {
-      if (!hasPermission(DEFAULT_PERMISSION_MATRIX, state.role as never, permission as never)) {
-        throw new AuthError("forbidden", "Your role does not have permission to do that.");
+      if (
+        !hasPermission(
+          DEFAULT_PERMISSION_MATRIX,
+          state.role as never,
+          permission as never,
+        )
+      ) {
+        throw new AuthError(
+          "forbidden",
+          "Your role does not have permission to do that.",
+        );
       }
       return {
         identity: {
@@ -94,9 +109,13 @@ vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
       create: async (request: { system?: unknown; messages?: unknown[] }) => {
-        state.modelNotes.push(JSON.stringify([request.system ?? null, request.messages ?? []]));
+        state.modelNotes.push(
+          JSON.stringify([request.system ?? null, request.messages ?? []]),
+        );
         return {
-          content: [{ type: "tool_use", name: "write_form_fields", input: state.draft }],
+          content: [
+            { type: "tool_use", name: "write_form_fields", input: state.draft },
+          ],
         };
       },
     },
@@ -129,15 +148,27 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
           documentTitle: "ASK SUNNY PERFORMANCE MANAGEMENT FRAMEWORK KB TEXT",
           matchedBy: "tag",
           rows: [
-            row(0, "SECTION 2 – PERFORMANCE MANAGEMENT LADDER", "Solve the issue at the lowest appropriate level."),
-            row(1, "10.7 Final operating rule for Ask Sunny", "Classify the issue before escalating."),
+            row(
+              0,
+              "SECTION 2 – PERFORMANCE MANAGEMENT LADDER",
+              "Solve the issue at the lowest appropriate level.",
+            ),
+            row(
+              1,
+              "10.7 Final operating rule for Ask Sunny",
+              "Classify the issue before escalating.",
+            ),
           ],
           presentGroups: ["escalation_ladder", "final_operating_rule"],
         },
       };
     }
     async fetchOfficialPolicyManual() {
-      if (!state.manual) return { ok: false, reason: "The official policy manual is not in the knowledge base." };
+      if (!state.manual)
+        return {
+          ok: false,
+          reason: "The official policy manual is not in the knowledge base.",
+        };
       return {
         ok: true,
         documentId: "doc-manual",
@@ -152,7 +183,9 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
 
 vi.mock("@/lib/knowledge", () => ({
   getKnowledgeProvider: () => {
-    throw new Error("getKnowledgeProvider() is the browser knowledge client and must not be used on the server");
+    throw new Error(
+      "getKnowledgeProvider() is the browser knowledge client and must not be used on the server",
+    );
   },
 }));
 
@@ -161,16 +194,19 @@ vi.mock("@/lib/knowledge", () => ({
  * `coaching-feedback-e2e.test.ts`.
  */
 vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
+  const actual =
+    await importOriginal<typeof import("@/lib/forms/employee-roster")>();
   return {
     ...actual,
-    loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope),
+    loadScopedRoster: async (scope: AccessScope | null) =>
+      actual.scopeRoster(state.directory as never, scope),
   };
 });
 
 process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 
-const { ensureTemplateLibrary, listTemplateSummaries } = await import("@/lib/forms/repository");
+const { ensureTemplateLibrary, listTemplateSummaries } =
+  await import("@/lib/forms/repository");
 const { proposeFormForTurn } = await import("@/lib/ai/form-proposal");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
 const instancesRoute = await import("./instances/route");
@@ -180,8 +216,12 @@ const draftRoute = await import("./instances/[id]/draft/route");
 /** The view's join, which the fake does not model — see `exit-form-e2e.test.ts`. */
 function joinOverview() {
   for (const row of store.form_instances ?? []) {
-    const template = store.form_templates!.find((entry) => entry.id === row.template_id);
-    const version = store.form_template_versions.find((entry) => entry.id === row.template_version_id);
+    const template = store.form_templates!.find(
+      (entry) => entry.id === row.template_id,
+    );
+    const version = store.form_template_versions.find(
+      (entry) => entry.id === row.template_version_id,
+    );
     Object.assign(row, {
       form_date: row.form_date ?? "2026-10-21",
       template_key: template?.key,
@@ -196,11 +236,16 @@ const requests: { url: string; body: Record<string, unknown> }[] = [];
 
 /** The browser's `formsFetch`, dispatched straight into the route handlers. */
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  requests.push({ url, body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
+  requests.push({
+    url,
+    body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
+  });
   const request = new Request(`https://app.test${url}`, init);
   const draft = /^\/api\/forms\/instances\/([^/]+)\/draft$/.exec(url);
   const response = draft
-    ? await draftRoute.POST(request, { params: Promise.resolve({ id: draft[1]! }) })
+    ? await draftRoute.POST(request, {
+        params: Promise.resolve({ id: draft[1]! }),
+      })
     : url === "/api/forms/instances"
       ? await instancesRoute.POST(request)
       : null;
@@ -213,9 +258,12 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 
 async function review(id: string) {
   joinOverview();
-  const response = await instanceRoute.GET(new Request(`https://app.test/api/forms/instances/${id}`), {
-    params: Promise.resolve({ id }),
-  });
+  const response = await instanceRoute.GET(
+    new Request(`https://app.test/api/forms/instances/${id}`),
+    {
+      params: Promise.resolve({ id }),
+    },
+  );
   expect(response.status).toBe(200);
   return (await response.json()) as {
     instance: Record<string, unknown>;
@@ -248,7 +296,9 @@ const said = (content: string): ChatMessage => ({
  */
 async function conversation(turns: string[]) {
   const messages: ChatMessage[] = [];
-  const responses: NonNullable<Awaited<ReturnType<typeof proposeFormForTurn>>>[] = [];
+  const responses: NonNullable<
+    Awaited<ReturnType<typeof proposeFormForTurn>>
+  >[] = [];
   let open: string | undefined;
   for (const text of turns) {
     const message = said(text);
@@ -263,7 +313,10 @@ async function conversation(turns: string[]) {
       policyManual: async () => (state.manual?.chunks as never) ?? null,
       ...(open ? { continueTemplateKey: open } : {}),
     });
-    expect(response, `turn left the form intake: ${JSON.stringify(text)}`).not.toBeNull();
+    expect(
+      response,
+      `turn left the form intake: ${JSON.stringify(text)}`,
+    ).not.toBeNull();
     expect(response!.formProposal, text).toBeDefined();
     responses.push(response!);
     open = response!.formProposal!.templateKey;
@@ -276,7 +329,8 @@ async function conversation(turns: string[]) {
     } as ChatMessage);
   }
   const last = responses[responses.length - 1]!;
-  expect(last.formProposal!.templateKey).toBe("dpoa");
+  // This file drafts the Corrective Action Form and the Coaching Form.
+  expect(["dpoa", "coaching"]).toContain(last.formProposal!.templateKey);
   return {
     responses,
     last,
@@ -295,14 +349,26 @@ async function conversation(turns: string[]) {
         status: "ready",
         supportsInlineDraft: true,
       };
-      return createInlineForm({ proposal, messages, call, onCreated: () => {} });
+      return createInlineForm({
+        proposal,
+        messages,
+        call,
+        onCreated: () => {},
+      });
     },
   };
 }
 
 /* Synthetic people only. */
 const DIRECTORY = [
-  { id: "e-1", firstName: "Test", lastName: "Employee", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"] },
+  {
+    id: "e-1",
+    firstName: "Test",
+    lastName: "Employee",
+    preferredFirstName: null,
+    employmentStatus: "active",
+    salonIds: ["loc-0309"],
+  },
 ];
 
 const STANDARDS_OF_CONDUCT_CHUNK = {
@@ -317,20 +383,30 @@ const STANDARDS_OF_CONDUCT_CHUNK = {
 
 const MANUAL = { chunks: [STANDARDS_OF_CONDUCT_CHUNK] };
 
-const LATE = "create a written CA for Test Employee at Kearney, she was 20 minutes late for her shift on 10-20-26";
-const MANAGER_PLAN = "arrive 10 minutes before every shift for the next 30 days";
+const LATE =
+  "create a written CA for Test Employee at Kearney, she was 20 minutes late for her shift on 10-20-26";
+const MANAGER_PLAN =
+  "arrive 10 minutes before every shift for the next 30 days";
 
 /* What the drafting model returns: the reported "Going Forward", with an invented person's name. */
-const OBSERVED = "Observed:\nOn October 20, 2026, Test Employee arrived 20 minutes late for her scheduled shift.";
-const EXPECTATION = "Expectation:\nEmployees are expected to arrive on time and be ready to work at the start of their scheduled shift.";
+const OBSERVED =
+  "Observed:\nOn October 20, 2026, Test Employee arrived 20 minutes late for her scheduled shift.";
+const EXPECTATION =
+  "Expectation:\nEmployees are expected to arrive on time and be ready to work at the start of their scheduled shift.";
 const GOING_FORWARD =
   "Going Forward:\nTest plans travel and preparation so that she arrives on time, and notifies the salon in advance if arriving late is unavoidable.";
 const MODEL_DRAFT = {
-  values: { observation: `${OBSERVED}\n\n${EXPECTATION}\n\n${GOING_FORWARD}`, action_plan: "Test will plan her travel." },
+  values: {
+    observation: `${OBSERVED}\n\n${EXPECTATION}\n\n${GOING_FORWARD}`,
+    action_plan: "Test will plan her travel.",
+  },
   checked: {},
 };
 
-const FLAGS = ["DRAFT_NO_INVENTED_PLAN_ENABLED", "ACTION_PLAN_MANAGER_ONLY_ENABLED"];
+const FLAGS = [
+  "DRAFT_NO_INVENTED_PLAN_ENABLED",
+  "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+];
 const savedFlags = new Map<string, string | undefined>();
 
 beforeEach(async () => {
@@ -341,7 +417,11 @@ beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   requests.length = 0;
   state.role = "salon_director";
-  state.scope = { level: "salon", primaryAreaId: "loc-0309", alsoCoversAreaIds: [] };
+  state.scope = {
+    level: "salon",
+    primaryAreaId: "loc-0309",
+    alsoCoversAreaIds: [],
+  };
   state.draft = MODEL_DRAFT;
   state.manualMatchedBy = "fallback";
   state.modelNotes = [];
@@ -365,7 +445,10 @@ async function drafted(turns: string[]) {
   const { create } = await conversation(turns);
   const { reference } = await create();
   const form = await review(reference.instanceId);
-  return { observation: field(form, "observation")?.value ?? "", plan: field(form, "action_plan")?.value ?? "" };
+  return {
+    observation: field(form, "observation")?.value ?? "",
+    plan: field(form, "action_plan")?.value ?? "",
+  };
 }
 
 describe("DRAFT_NO_INVENTED_PLAN_ENABLED: the Corrective Action Observation", () => {
@@ -380,7 +463,9 @@ describe("DRAFT_NO_INVENTED_PLAN_ENABLED: the Corrective Action Observation", ()
     process.env.ACTION_PLAN_MANAGER_ONLY_ENABLED = "true";
     process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
     const { observation, plan } = await drafted([LATE]);
-    expect(observation).not.toMatch(/Going Forward|plans travel|notifies the salon/);
+    expect(observation).not.toMatch(
+      /Going Forward|plans travel|notifies the salon/,
+    );
     expect(observation).toContain("Observed:");
     expect(observation).toContain("20 minutes late");
     expect(observation).toContain("Expectation:");
@@ -390,8 +475,66 @@ describe("DRAFT_NO_INVENTED_PLAN_ENABLED: the Corrective Action Observation", ()
   it("NEVER-BREAK: a typed action plan is kept word for word with both flags on", async () => {
     process.env.ACTION_PLAN_MANAGER_ONLY_ENABLED = "true";
     process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
-    const { observation, plan } = await drafted([`${LATE}. action plan: ${MANAGER_PLAN}`]);
+    const { observation, plan } = await drafted([
+      `${LATE}. action plan: ${MANAGER_PLAN}`,
+    ]);
     expect(plan).toBe(MANAGER_PLAN);
     expect(observation).toContain("Observed:");
   });
 });
+
+/*
+ * COACHING (QA, 26 Oct 2026): the Coaching Form's "Going Forward" is the
+ * model's as well. With the flag on it stays only when the manager stated a
+ * plan. Lowercase and sentence-case twins of the manager's turn.
+ */
+const COACHING =
+  "create a coaching form for Test Employee at Kearney, she was 20 minutes late for her shift on 10-20-26";
+const COACHING_DRAFT = {
+  values: {
+    coaching_details: `${OBSERVED}\n\n${EXPECTATION}\n\n${GOING_FORWARD}`,
+  },
+  checked: {},
+};
+
+async function coachingDetails(turns: string[]) {
+  state.draft = COACHING_DRAFT;
+  const { create } = await conversation(turns);
+  const { reference } = await create();
+  const form = await review(reference.instanceId);
+  return {
+    templateKey: form.templateKey as string | undefined,
+    details: field(form, "coaching_details")?.value ?? "",
+  };
+}
+
+const REGISTERS: [string, (text: string) => string][] = [
+  ["as typed", (text) => text],
+  ["all lowercase", (text) => text.toLowerCase()],
+  ["sentence case", (text) => text.charAt(0).toUpperCase() + text.slice(1)],
+];
+
+describe.each(REGISTERS)(
+  "DRAFT_NO_INVENTED_PLAN_ENABLED on the Coaching Form (%s)",
+  (_register, as) => {
+    it("off: the model's Going Forward is saved, as before", async () => {
+      const { details } = await coachingDetails([as(COACHING)]);
+      expect(details).toContain("Going Forward:");
+    });
+
+    it("on: no Going Forward the manager did not state; Observed and Expectation stay", async () => {
+      process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
+      const { details } = await coachingDetails([as(COACHING)]);
+      expect(details).not.toMatch(/Going Forward|plans travel/);
+      expect(details).toContain("Expectation:");
+    });
+
+    it("on, NEVER-BREAK: a plan the manager stated keeps its Going Forward", async () => {
+      process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
+      const { details } = await coachingDetails([
+        as(`${COACHING}. going forward she will leave home 20 minutes earlier`),
+      ]);
+      expect(details).toContain("Going Forward:");
+    });
+  },
+);

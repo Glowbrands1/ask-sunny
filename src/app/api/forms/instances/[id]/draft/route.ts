@@ -1042,6 +1042,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (draftNoInventedPlanEnabled() && fixedPlan !== null) {
       narrated.values = withoutGoingForward(narrated.values, fields);
     }
+    /*
+     * And on the Coaching and Follow-up Coaching forms (QA, 26 Oct 2026): their
+     * "Going Forward" is the model's too, so it stays only when the manager
+     * stated a plan themselves ("going forward …", "action plan: …").
+     */
+    const coachingForm =
+      loaded.instance.templateKey === "coaching" || loaded.instance.templateKey === "follow-up-coaching";
+    if (
+      draftNoInventedPlanEnabled() &&
+      coachingForm &&
+      !/\bgoing forward\b/i.test(notes) &&
+      managerTypedActionPlan(notes) === null
+    ) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
 
     /*
      * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the
