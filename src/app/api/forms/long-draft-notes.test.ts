@@ -4,22 +4,11 @@ import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
 /**
- * ============================================================================
- * A LONG ACCOUNT IS DRAFTED WHOLE (LONG_DRAFT_NOTES_ENABLED)
- * ============================================================================
- *
- * The model, the store and every provider are mocked, and the assertions are on
- * WHAT THE MODEL WAS SHOWN and WHAT THE PERSISTENCE CALL RECEIVED — the same
- * approach as `pm-draft-route.test.ts`. The questions:
- *
- *   - are the dates and Resignation Details ticks computed from the manager's
- *     notes, whatever the model returned for them?
- *   - can the model reach the yes/no questions, the involuntary box, or a
- *     signature? (It must not.)
- *   - does Details lose a sentence that answers a question nobody answered?
- *   - are HR's Details lines (resignation date, how and why, and the yes/no
- *     answers) filled from the MANAGER'S words through `applyStatedFacts`,
- *     and never through the model?
+ * LONG_DRAFT_NOTES_ENABLED: a long account reaches the drafting model whole.
+ * Exercised through the real draft route on the exit form; the model, the
+ * store and the knowledge provider are stand-ins (the harness is
+ * `exit-draft-route.test.ts`'s). The policy search's own short query is
+ * covered by `long-draft-notes-policy-search.test.ts`.
  */
 
 const state = vi.hoisted(() => ({
@@ -217,6 +206,11 @@ describe("LONG_DRAFT_NOTES_ENABLED", () => {
     await post(LONG_ACCOUNT);
     expect(prompt()).not.toContain(LAST_SENTENCE);
     expect(prompt()).toContain(FILLER.trim());
+  });
+
+  it("off, all lowercase: the 4,000-character cut stays", async () => {
+    await post(LONG_ACCOUNT.toLowerCase());
+    expect(prompt()).not.toContain(LAST_SENTENCE.toLowerCase());
   });
 
   it("on: the whole account reaches the model and its last day is read", async () => {

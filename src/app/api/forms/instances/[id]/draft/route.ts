@@ -240,6 +240,18 @@ interface DraftBody {
 /** Two full-length chat messages (CHAT_LONG_MESSAGE allows 12,000 characters each). */
 const LONG_DRAFT_NOTES_LIMIT = 24_000;
 
+/*
+ * THE POLICY SEARCH READS A SHORT QUERY, NOT THE WHOLE ACCOUNT
+ * (LONG_DRAFT_NOTES_ENABLED; coordinator ruling, 26 Oct 2026). The model gets
+ * the long notes; the policy retrieval gets their first 1,500 and last 500
+ * characters, so a 24,000-character account cannot dilute the query that
+ * finds the policy to cite. Notes of 4,000 or fewer reach it whole, as before.
+ */
+function retrievalNotes(notes: string): string {
+  if (!longDraftNotesEnabled() || notes.length <= 4000) return notes;
+  return `${notes.slice(0, 1500)} … ${notes.slice(-500)}`;
+}
+
 function fieldBrief(field: FormField, variantLabel: string | null): string {
   const label = interpolate(field.label, null).replace(/\{\{\w+\}\}/g, variantLabel ?? "the employee");
   /*
@@ -527,7 +539,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       (field) => field.policyGrounded && field.key !== EPP_POLICY_REFERENCE_KEY,
     );
     const grounding = needsPolicy
-      ? await groundPolicy(`${body.topic ?? ""} ${notes}`.trim())
+      ? await groundPolicy(`${body.topic ?? ""} ${retrievalNotes(notes)}`.trim())
       : { passages: [], sources: [], unverified: false, reason: null };
 
     /*
@@ -626,7 +638,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * states a section for, and an empty list is a plan written as ordinary
      * coaching with no policy named.
      */
-    const eppTopics = wantsEppPolicy ? eppPolicyTopics(`${body.topic ?? ""} ${notes}`) : [];
+    const eppTopics = wantsEppPolicy ? eppPolicyTopics(`${body.topic ?? ""} ${retrievalNotes(notes)}`) : [];
     const eppPassages =
       wantsEppPolicy && manual.ok
         ? eppPolicyPassages({ chunks: manual.chunks, topics: eppTopics })
