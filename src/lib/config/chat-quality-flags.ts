@@ -940,6 +940,15 @@ export function stateCodeNotAPersonEnabled(): boolean {
 }
 
 /**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
  * A policy the manager sets aside leaves the card (Code 3, policy reading;
  * QA F1/M3, 25 Oct 2026): "the policy violated is late opening, not
  * attendance", "not attendance, late opening", "no no late opening policy

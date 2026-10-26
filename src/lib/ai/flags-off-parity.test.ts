@@ -79,6 +79,7 @@ import {
   appPasswordHelpEnabled,
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
+  googleReviewsInChatEnabled,
   policySetAsideEnabled,
   policyEverydayHeadingEnabled,
   formsGuideEnabled,
@@ -180,6 +181,7 @@ const NEW_FLAGS = [
   "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
+  "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "POLICY_SET_ASIDE_ENABLED",
   "POLICY_EVERYDAY_HEADING_ENABLED",
   "FORMS_GUIDE_ENABLED",
@@ -354,6 +356,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
+    expect(googleReviewsInChatEnabled()).toBe(false);
     expect(policySetAsideEnabled()).toBe(false);
     expect(policyEverydayHeadingEnabled()).toBe(false);
     expect(formsGuideEnabled()).toBe(false);
