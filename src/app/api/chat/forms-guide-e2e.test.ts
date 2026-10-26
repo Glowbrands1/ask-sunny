@@ -349,3 +349,16 @@ describe("NEVER-BREAK with the flag on", () => {
     },
   );
 });
+
+describe("Sunny tester replay S27: a generic form request", () => {
+  it.each([
+    "can you make a generic policy review form that works for any employee",
+    "Can you make a generic policy review form that works for any employee",
+  ])("%s is explained, never asked for an employee", async (wording) => {
+    const reply = await say(wording);
+    expect(reply.content).toContain("are filled in for one employee at a time");
+    expect(reply.content).toContain("**Policy Review** — ");
+    expect(reply.formProposal).toBeUndefined();
+    expect(reply.formSelection).toBeUndefined();
+  });
+});

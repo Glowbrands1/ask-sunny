@@ -40,7 +40,9 @@ export type FormsGuideReading =
   | { kind: "explain"; phrases: string[] }
   | { kind: "compare"; phrases: string[] }
   | { kind: "situation"; group: SituationGroup }
-  | { kind: "list" };
+  | { kind: "list" }
+  /** "can you make a generic policy review form that works for any employee" */
+  | { kind: "generic"; phrase: string };
 
 type SituationGroup = "separation" | "transfer" | "demotion" | "hiring";
 
@@ -200,6 +202,33 @@ const LIST_PATTERNS: readonly RegExp[] = [
   /^(?:what|which)\s+forms\s+(?:can|do)\s+(?:i|we)\s+(?:create|make|use)\s+(?:here|in\s+here)$/,
 ];
 
+/*
+ * A REQUEST FOR A FORM THAT IS NOT ABOUT ANYONE — "can you make a generic
+ * policy review form that works for any employee" (Sunny tester replay S27,
+ * 26 Oct 2026). Read only with a make/create lead AND a generic cue, and only
+ * when what is left names a form; "create a policy review for Avery Holt"
+ * leaves a person's name behind and is never read here.
+ */
+const GENERIC_LEAD =
+  /^(?:(?:can|could|would|will)\s+(?:you|u|i|we)\s+)?(?:please\s+)?(?:make|create|build|draft|design|set\s+up|give\s+me|get\s+me|send\s+me|do|have)\s+(?:me\s+|us\s+)?(.+)$/;
+const GENERIC_CUE =
+  /\b(?:generic|reusable|universal|general\s+purpose|fill\s+in\s+the\s+blank|template|any\s+employee|every\s+employee|all\s+employees|any\s+team\s+member|anyone|everyone|anybody|any\s+one)\b/;
+const GENERIC_WORDS = /\b(?:generic|reusable|universal|general\s+purpose|template)\b/g;
+const GENERIC_TAIL =
+  /\s+(?:that|which|i\s+can|we\s+can)?\s*(?:works?|can\s+be\s+used|use|i\s+can\s+use|we\s+can\s+use|to\s+use)?\s*(?:for|with|on)\s+(?:any|every|all|anyone|everyone|anybody)(?:\s+(?:employee|employees|team\s+members?|one|body|person|people))?$/;
+
+function readGeneric(text: string): { kind: "generic"; phrase: string } | null {
+  if (!GENERIC_CUE.test(text)) return null;
+  const lead = GENERIC_LEAD.exec(text);
+  if (!lead) return null;
+  let rest = lead[1].replace(GENERIC_TAIL, "").replace(/\s+(?:that|which)\s+(?:works|anyone\s+can\s+use)$/, "");
+  rest = rest.replace(GENERIC_WORDS, " ").replace(/\s+/g, " ").trim();
+  const phrase = trimPhrase(rest);
+  if (!phrase) return null;
+  if (phrase === "form" || phrase === "forms") return { kind: "generic", phrase };
+  return plausibleFormPhrase(rest, phrase) ? { kind: "generic", phrase } : null;
+}
+
 /**
  * A question about the forms themselves, or null.
  *
@@ -214,6 +243,9 @@ export function readFormsGuideQuestion(question: string): FormsGuideReading | nu
   if (!text || text.length > 160) return null;
 
   if (LIST_PATTERNS.some((pattern) => pattern.test(text))) return { kind: "list" };
+
+  const generic = readGeneric(text);
+  if (generic) return generic;
 
   const situation = SITUATION.exec(text);
   if (situation) {
@@ -473,12 +505,36 @@ function listCreatable<Role extends string>(input: GuideAnswerInput<Role>): stri
 }
 
 /**
+ * Forms are filled in for one person, so a "generic" one is explained rather
+ * than drafted: the form's own description and sections, how to start it for
+ * someone, and — only for a role that manages templates — where the blank
+ * template prints from.
+ */
+function genericAnswer<Role extends string>(phrase: string, input: GuideAnswerInput<Role>): string | null {
+  const { access, templates, productName } = input;
+  const lead = `Forms in ${productName} are filled in for one employee at a time, so there isn't a generic copy to fill once and reuse.`;
+  const blank =
+    access.role !== null && access.may(access.role, "manage_form_templates")
+      ? `To see the blank template as it prints, open Form Templates and press Preview PDF.`
+      : null;
+  if (phrase === "form" || phrase === "forms") {
+    return [lead, `Ask "which forms can I create here?" to see the forms you can start, then say "create a <form> for <name>".`, blank]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  const group = resolveGuidePhrase(phrase, templates);
+  if (group.length === 0) return null;
+  return [lead, explainGroup(phrase, group, access, { full: group.length === 1 }), blank].filter(Boolean).join("\n\n");
+}
+
+/**
  * The answer, or null when the words name no published template — the turn
  * then goes down the usual path, so a guess about a form never replaces it.
  */
 export function buildFormsGuideAnswer<Role extends string>(input: GuideAnswerInput<Role>): string | null {
   const { reading, templates, access } = input;
   if (reading.kind === "list") return listCreatable(input);
+  if (reading.kind === "generic") return genericAnswer(reading.phrase, input);
 
   if (reading.kind === "situation") {
     const ref = SITUATION_REFS[reading.group];
