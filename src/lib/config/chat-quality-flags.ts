@@ -991,6 +991,19 @@ export function storedSlotsNotARequestEnabled(): boolean {
 }
 
 /**
+ * A coaching or prior step said as its own sentence on a Corrective Action
+ * (QA, 26 Oct 2026, Ask Sunny production; same flag in both apps): "i coached
+ * her on 10-16 about being late", "coached her 10-16, written warning on
+ * 10-20" are Prior actions rows, never the form's Date, and never the
+ * Observation of Offense in place of the incident ("she was late again
+ * today" stays). See `heldStepSpans` in `forms/form-date-answer.ts` and
+ * `withObservation` in `ai/keep-filled-slots.ts`. Off, read as before.
+ */
+export function priorSentenceFixEnabled(): boolean {
+  return envFlag("PRIOR_SENTENCE_FIX_ENABLED");
+}
+
+/**
  * Dates in every shape a manager types (Pau, 26 Oct 2026; QA-6; same flag in
  * both apps): "2 october", "2nd of october", "october second", "2-Oct",
  * "10-2", "10.2", "on 1002", "the 2nd", "25 jun" are read as dates by every

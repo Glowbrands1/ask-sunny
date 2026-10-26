@@ -84,6 +84,7 @@ import {
   nameBeforeTitleEnabled,
   latePayrollFromFormEnabled,
   storedSlotsNotARequestEnabled,
+  priorSentenceFixEnabled,
   dateReaderWideEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -187,6 +188,7 @@ const NEW_FLAGS = [
   "NAME_BEFORE_TITLE_ENABLED",
   "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
   "STORED_SLOTS_NOT_A_REQUEST_ENABLED",
+  "PRIOR_SENTENCE_FIX_ENABLED",
   "DATE_READER_WIDE_ENABLED",
 ] as const;
 
@@ -221,7 +223,12 @@ const PROTECTED = [
  * for STORED_SLOTS_NOT_A_REQUEST_ENABLED: in turnsAboutThisForm the new-request
  * check reads the manager's words, not the app's stored-slot lines, with the
  * flag-off reading unchanged. It stays on the PROTECTED list; only the diff
- * check leaves it out.
+ * check leaves it out. No other protected file is excepted.
+ * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged, and on
+ * 26 Oct 2026 again for the incident date behind PRIOR_SENTENCE_FIX_ENABLED
+ * (a prior step's date is never the form's Date). It stays
+ * on the PROTECTED list; only the diff check leaves it out. No other
+ * protected file is excepted.
  *
  * Pau's yes, 26 Oct 2026, DATE_READER_WIDE, 5 spots: editing
  * src/lib/forms/form-date-answer.ts behind DATE_READER_WIDE_ENABLED (default
@@ -377,6 +384,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(googleReviewsInChatEnabled()).toBe(false);
     expect(draftNeverBlankEnabled()).toBe(false);
     expect(storedSlotsNotARequestEnabled()).toBe(false);
+    expect(priorSentenceFixEnabled()).toBe(false);
     expect(dateReaderWideEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
