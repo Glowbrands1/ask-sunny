@@ -1,7 +1,9 @@
 import {
   draftNotesAreUsable,
+  draftNotesFromCard,
   draftNotesFromConversation,
 } from "@/lib/forms/draft-notes";
+import { remapDraftSourcesClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -203,7 +205,16 @@ export async function createInlineForm({
    * see `draftNotesFromConversation`. An assistant turn cannot reach this, and
    * neither can a turn the bounded window dropped.
    */
-  const notes = draftNotesFromConversation(messages, proposal.sourceMessageIds);
+  const fromTurns = draftNotesFromConversation(messages, proposal.sourceMessageIds);
+  /*
+   * NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED: a form that would otherwise be
+   * blank is drafted from the card the manager pressed Create on, when that
+   * card shows what happened (QA H1, 25 Oct 2026). Only when no turn
+   * qualified: a draft with usable turns is unchanged. Off, as before. See
+   * `draftNotesFromCard`.
+   */
+  const notes =
+    draftNotesAreUsable(fromTurns) || !remapDraftSourcesClientEnabled() ? fromTurns : draftNotesFromCard(proposal);
   if (!draftNotesAreUsable(notes)) {
     return { reference, draftWarning: NO_NOTES_WARNING };
   }

@@ -45,6 +45,7 @@ import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
+import { withRemapDraftSources } from "./remap-draft-sources";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { answersFormClarification } from "@/lib/forms/form-clarification";
@@ -150,6 +151,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withTerseSlots } from "./terse-slots";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -163,6 +165,8 @@ import {
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
+import { appPasswordHelpFor } from "./app-password-help";
+import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
@@ -260,8 +264,28 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  /*
+   * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
+   * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
+   * 2026). SENSITIVE_DEFAULTS_REDACT_ENABLED: no reply or cited excerpt ever
+   * repeats a default password format or SSN digits (QA P0). Off, both are
+   * the turn as before.
+   */
+  const passwordHelp = appPasswordHelpFor(request.question, request.history);
+  if (passwordHelp) {
+    return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
+  }
+  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory));
+}
+
+async function answerQuestionChecked(
+  request: AskRequest,
+  actor: ChatActor,
+  memory: { memoryOwnerId?: string },
+): Promise<AskResponse> {
   const produce = async () => {
-    const response = await answerQuestionUntraced(request, actor, memory);
+    // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
+    const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     return keepManagerActionPlan(await applyQuietQuality(response), request);
@@ -673,7 +697,8 @@ async function answerQuestionUntraced(
             : null;
         },
       });
-      if (remapped) return remapped;
+      // REMAP_DRAFT_SOURCES_ENABLED: the card names the turns its draft is written from.
+      if (remapped) return withRemapDraftSources(remapped, request);
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;
@@ -1612,7 +1637,8 @@ async function answerQuestionUntraced(
    */
   const knowledgeGrounding = fullManualBlock
     ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
-    : buildGroundingBlock(grounding);
+    : // SENSITIVE_DEFAULTS_REDACT_ENABLED: a default password format or SSN digits are never shown to the model.
+      buildGroundingBlock(grounding.map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })));
   const joinedGrounding = [knowledgeGrounding, pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
   const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
   const uncachedGrounding = groundingWithoutCachedManual(joinedGrounding, manualBlock);
