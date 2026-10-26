@@ -939,3 +939,17 @@ export function draftNeverBlankEnabled(): boolean {
 export function nameBeforeTitleEnabled(): boolean {
   return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }
+
+/**
+ * NO_CARD_NO_DRAFT_CLAIM_ENABLED: an answer that comes with no card (no
+ * proposal, no form choices, no form changed or opened) never says a new
+ * draft is open or was created, never says a draft is open for somebody
+ * other than the open form's employee, and never tells the manager to press
+ * Finalize or Create on a card that is not there (QA B22-2, 25 Oct 2026).
+ * Such a sentence is replaced with one honest line saying how to get the
+ * card; the rest of the reply is kept. See `lib/ai/no-card-draft-claim.ts`.
+ * Off (the default), the answer is returned as it came.
+ */
+export function noCardNoDraftClaimEnabled(): boolean {
+  return envFlag("NO_CARD_NO_DRAFT_CLAIM_ENABLED");
+}

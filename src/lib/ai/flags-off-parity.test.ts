@@ -80,6 +80,7 @@ import {
   googleReviewsInChatEnabled,
   draftNeverBlankEnabled,
   nameBeforeTitleEnabled,
+  noCardNoDraftClaimEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -178,6 +179,7 @@ const NEW_FLAGS = [
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
   "NAME_BEFORE_TITLE_ENABLED",
+  "NO_CARD_NO_DRAFT_CLAIM_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -349,6 +351,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
     expect(draftNeverBlankEnabled()).toBe(false);
+    expect(noCardNoDraftClaimEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
