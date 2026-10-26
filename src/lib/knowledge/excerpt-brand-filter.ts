@@ -1,3 +1,4 @@
+import { EXCERPT_HIDDEN_BRANDS } from "@/lib/brand/knowledge";
 import { excerptBrandFilterEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
@@ -6,15 +7,16 @@ import { excerptBrandFilterEnabled } from "@/lib/config/chat-quality-flags";
  * ============================================================================
  *
  * Ported from Ask Bubbles (QA, 25 Oct 2026, B22-4): the JBA Policy Manual
- * covers every brand, and its PTO page lists each brand's peak season
- * ("o Sun Tan City – February 1 and June 1", "o Buff City Soap – November 1
- * and December 31", …). A retrieved chunk's text is shown whole as its
- * source excerpt, so a Sun Tan City answer quoted the soap brand's bullet.
+ * covers every brand, and its PTO page lists each brand's peak season as
+ * one bullet per brand ("o <Brand> – <dates>"). A retrieved chunk's text is
+ * shown whole as its source excerpt, so an answer quoted another brand's
+ * bullet.
  * The full-manual path drops other brands' SECTIONS (`full-manual-context.ts`)
  * and cites a heading only; nothing read a retrieved excerpt.
  *
  * This module reads the text an excerpt is cut from and leaves out what
- * names a brand in `EXCERPT_HIDDEN_BRANDS`:
+ * names a brand in `EXCERPT_HIDDEN_BRANDS` (this company's list, in
+ * `lib/brand/knowledge.ts`):
  *
  *   A LINE OR SENTENCE        that names the brand.
  *   A BULLET                  "o <Brand> – …", on its own line or printed
@@ -27,13 +29,6 @@ import { excerptBrandFilterEnabled } from "@/lib/config/chat-quality-flags";
  * WHAT IS KEPT IS VERBATIM: a piece is kept whole or left out whole, nothing
  * is reworded. Text that names no hidden brand comes back unchanged.
  */
-
-/**
- * The sibling company's brand, as a source excerpt must never show it.
- * Regular expression SOURCES. Crunch is not listed: it is a JB & Associates
- * brand, and its sections are already left out of the full manual.
- */
-export const EXCERPT_HIDDEN_BRANDS: readonly string[] = [String.raw`Buff\s+City(?:\s+Soap)?`, String.raw`BCS`];
 
 /** Documents whose excerpts are read: the multi-brand JBA manual, by title. */
 const MULTI_BRAND_MANUAL = /\bJBA\s+Policy\s+Manual\b/i;

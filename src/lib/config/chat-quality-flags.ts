@@ -756,7 +756,8 @@ export function reopenVerbGuardEnabled(): boolean {
  * whole, so the PTO page's peak-season list showed the soap brand's bullet
  * under a Sun Tan City answer. On, a line, bullet or sentence of a JBA Policy
  * Manual excerpt that names a brand in `EXCERPT_HIDDEN_BRANDS`
- * (`lib/knowledge/excerpt-brand-filter.ts`) is left out; what is kept is
+ * (`lib/brand/knowledge.ts`, read by `lib/knowledge/excerpt-brand-filter.ts`)
+ * is left out; what is kept is
  * verbatim. Retrieval, ranking, the prompt, page numbers and titles are
  * unchanged. Off, excerpts are built exactly as before.
  */
