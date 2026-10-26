@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { groundFormSlots } from "@/lib/ai/form-full-remap";
 
 import { explicitIncidentIso } from "./explicit-incident-date";
-import { extractFormDate, listFormDates } from "./form-date-answer";
+import { extractFormDate, listFormDates, listIncidentDates } from "./form-date-answer";
 import { decideFormDate, incidentDates } from "./incident-dates";
+import { newestStatedDate, withYearlessDatesWritten } from "./late-open";
 
 /**
  * D3, decided by Pau's coordinator, 25 Oct 2026: the form's date is the
@@ -193,3 +196,78 @@ describe.each(REGISTERS)(
     }
   },
 );
+
+/*
+ * LIVE TESTER FINDINGS, 26 Oct 2026 (invented names). Sunny conv_mvolz9vk2cwijs1:
+ * "late on 10-5 and 10-15, i coached her on 10-16" dated the Coaching Form
+ * 10/5, the first of two late dates, because "10-15" after "and" was not read
+ * as a date. Bubbles conv_mvolwmup27zde0x: "I coached her on 10-16 and gave a
+ * verbal on 10-21" dated the form 10/21, a prior step, through the remap's
+ * own year-less dates.
+ */
+const explicitIncidentIsoOrNull = explicitIncidentIso;
+
+const LATE_TWICE = "create a coaching form for test employee at test salon, she was late on 10-5 and 10-15, i coached her on 10-16.";
+const PRIORS_TODAY = "Write up Ava Pellmore, Team Member, Dodge, NE, no call no show today. I coached her on 10-16 and gave a verbal on 10-21.";
+
+function remapDate(question: string): string | null {
+  return groundFormSlots({
+    raw: {
+      templateKey: "dpoa",
+      employeeName: "Ava Pellmore",
+      observation: null,
+      actionPlan: null,
+      warningLevel: null,
+      payrollDeduct: null,
+      payrollAmount: null,
+      jobTitle: null,
+      store: null,
+      policySection: null,
+    },
+    history: [],
+    question,
+    today: TODAY,
+    people: [],
+  }).slots.incidentDateIso;
+}
+
+describe.each(REGISTERS)("live tester findings, 26 Oct 2026 (%s)", (_register, as) => {
+  beforeEach(() => {
+    process.env.LATE_OPEN_DATE_ENABLED = "true";
+  });
+  afterEach(() => {
+    delete process.env.LATE_OPEN_DATE_ENABLED;
+  });
+
+  it("off: the first late date stands alone, and the prior verbal dates the remap (the reported failures)", () => {
+    withFlag(false);
+    expect(newestStatedDate(as(LATE_TWICE), TODAY, explicitIncidentIsoOrNull)).toBe("2026-10-05");
+    expect(remapDate(as(PRIORS_TODAY))).toBe("2026-10-21");
+  });
+
+  it("on: both late dates are read, so the form is never dated by the first alone", () => {
+    withFlag(true);
+    const written = withYearlessDatesWritten(as(LATE_TWICE), TODAY);
+    expect(listIncidentDates(written, TODAY).map((found) => found.iso)).toEqual(["2026-10-05", "2026-10-15"]);
+    expect(newestStatedDate(as(LATE_TWICE), TODAY, explicitIncidentIsoOrNull)).toBeNull();
+    // On the Coaching Form the coaching held dates it (incident-dates.ts rule 2).
+    expect(decideFormDate({ text: written, templateKey: "coaching", history: [], conversation: [], today: TODAY }).formDate).toBe(
+      "2026-10-16",
+    );
+  });
+
+  it("on: a coaching or a verbal already given is never the form's date", () => {
+    withFlag(true);
+    expect(remapDate(as(PRIORS_TODAY))).not.toBe("2026-10-21");
+    expect(remapDate(as(PRIORS_TODAY))).not.toBe("2026-10-16");
+  });
+
+  for (const on of [false, true]) {
+    it(`NEVER-BREAK (flag ${on ? "on" : "off"}): a late opening and a single year-less incident date are read as before`, () => {
+      withFlag(on);
+      expect(newestStatedDate(as("ca for ava pellmore late to open 10-19, verbal"), TODAY, explicitIncidentIsoOrNull)).toBe("2026-10-19");
+      expect(remapDate(as("Write up Ava Pellmore, she was late on 10-20"))).toBe("2026-10-20");
+      expect(withYearlessDatesWritten(as("she worked 10-12 hours on 10-20"), TODAY)).toContain("10-12 hours");
+    });
+  }
+});
