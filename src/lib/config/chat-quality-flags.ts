@@ -847,6 +847,17 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * The Observation of Offense is read from the request's turn: a later pasted
+ * policy paragraph, "Policy violated: …" or a one-line correction is not added
+ * as the incident, and "<place>, <state>" is not cut at the comma (QA, 25 Oct
+ * 2026; Ask Bubbles' Issue reader has the same rule). See
+ * `ai/observation-turns.ts`. Off, every turn is read as before.
+ */
+export function incidentSplitFixEnabled(): boolean {
+  return envFlag("INCIDENT_SPLIT_FIX_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
