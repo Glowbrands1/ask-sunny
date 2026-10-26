@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
+import { exitEffectiveDateEnabled, exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -543,6 +543,62 @@ function readSeparation(text: string): SeparationReading {
  * `today` is the business day (`YYYY-MM-DD`). It supplies the year for "9/15"
  * and the anchor for "yesterday" and "last Friday".
  */
+/** "effective october 2", "effective on 10/2", "effective as of 10/2". */
+const EFFECTIVE_BEFORE = /\beffective(?:\s+(?:on|as\s+of|date(?:\s+(?:is|was|of))?))?\s*[:\-]?\s*$/i;
+/** The departure the date is effective for: "exit for …", "resigned …", "her termination …". */
+const DEPARTURE_CUE = /\b(?:exit\w*|resign\w*|quit\w*|terminat\w*|fired|separat\w*|leav(?:e|es|ing)|last day)\b/gi;
+/** Something else the date could be effective for, between the departure and "effective". */
+const OTHER_SUBJECT = /\b(?:transfer\w*|mov(?:e|ed|es|ing)|promot\w*|policy|code|schedule|raise|pay|rate|change\w*)\b/i;
+/** "not effective", "never effective", "do not make it effective". */
+const EFFECTIVE_NEGATED = /\b(?:not|never|no longer|don't|isn't|wasn't|won't|can't|cannot)\b(?:\s+\S+){0,3}\s*$/i;
+/** "effective october 2 was cancelled, she stayed". */
+const EFFECTIVE_UNDONE =
+  /\b(?:cancel\w*|rescind\w*|withdr[ae]wn?|withdraws?|withdrawing|revoked|stayed|is staying|no longer|changed (?:her|his|their) mind|scratch that|never ?mind|wrong)\b/i;
+
+/**
+ * EXIT_EFFECTIVE_DATE_ENABLED: is the date at `index` the day a departure is
+ * effective? Within its sentence, "effective" sits right before it, a
+ * departure word comes before that with nothing else in between that the date
+ * could belong to, and nothing negates or undoes it (QA-6, 26 Oct 2026).
+ */
+function departureEffectiveOn(text: string, index: number, end: number): boolean {
+  const start = Math.max(text.lastIndexOf(".", index - 1), text.lastIndexOf(";", index - 1), text.lastIndexOf("\n", index - 1), text.lastIndexOf("!", index - 1), text.lastIndexOf("?", index - 1)) + 1;
+  const prefix = text.slice(start, index);
+  const cue = EFFECTIVE_BEFORE.exec(prefix);
+  if (!cue) return false;
+  const before = prefix.slice(0, cue.index);
+  if (EFFECTIVE_NEGATED.test(before)) return false;
+  if (EFFECTIVE_UNDONE.test(before)) return false;
+  const stop = text.slice(end).search(/[.;!?\n]/);
+  const after = stop === -1 ? text.slice(end) : text.slice(end, end + stop);
+  if (EFFECTIVE_UNDONE.test(after)) return false;
+  // "Exit form for <name>. Effective 11/1.": a sentence that opens with "effective" belongs to the one before it.
+  const said = before.trim() === "" ? previousSentence(text, start) : before;
+  const departures = [...said.matchAll(DEPARTURE_CUE)];
+  const departure = departures[departures.length - 1];
+  if (!departure) return false;
+  return !OTHER_SUBJECT.test(said.slice((departure.index ?? 0) + departure[0].length)) && !EFFECTIVE_UNDONE.test(said);
+}
+
+/** How many "effective …" phrases name a date, readable or not: never "effective immediately", nor a negated one. */
+function effectivePhrases(text: string): number {
+  let count = 0;
+  for (const match of text.matchAll(/\beffective\b/gi)) {
+    const at = match.index ?? 0;
+    if (/^\s+immediately\b/i.test(text.slice(at + match[0].length))) continue;
+    if (EFFECTIVE_NEGATED.test(text.slice(Math.max(0, at - 40), at))) continue;
+    count += 1;
+  }
+  return count;
+}
+
+/** The sentence ending just before `start` (the start of the current one). */
+function previousSentence(text: string, start: number): string {
+  const head = text.slice(0, start).replace(/[\s.;!?]+$/, "");
+  const from = Math.max(...[".", ";", "!", "?", "\n"].map((mark) => head.lastIndexOf(mark))) + 1;
+  return head.slice(from);
+}
+
 export function readExitFacts(rawText: string, today: string): ExitFacts {
   const text = normalize(rawText);
   const ambiguities: ExitAmbiguity[] = [];
@@ -587,6 +643,30 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   };
 
   let lastDayWorked = settle("lastDayWorked");
+  /*
+   * EXIT_EFFECTIVE_DATE_ENABLED (QA, 26 Oct 2026, conv_mvon64pk28tpb3k): "exit
+   * for <name> effective october 2" filled nothing. On an exit form the date
+   * a departure is effective is the last day of employment, so it fills Last
+   * Day Worked when no last day was stated. "effective immediately" names no
+   * date, and two effective dates are not guessed between.
+   */
+  if (exitEffectiveDateEnabled() && !lastDayWorked && !ambiguities.some((entry) => "role" in entry && entry.role === "lastDayWorked")) {
+    const read = tokens.filter((token) => token.iso && departureEffectiveOn(text, token.index, token.end));
+    /*
+     * QA-6 / QA-4, 26 Oct 2026: "effective october 2 or 11/1" names two
+     * dates, not the first one; and when a second "effective …" phrase has a
+     * date that could not be read ("effective 2 october and effective 11/8"),
+     * the one that could is not picked. Two readable dates are asked about.
+     */
+    const alternatives = tokens.filter(
+      (token) =>
+        token.iso &&
+        read.some((first) => first.end <= token.index && /^\s*,?\s*(?:or|and|,)\s*$/i.test(text.slice(first.end, token.index))),
+    );
+    const effective = [...new Set([...read, ...alternatives].map((token) => token.iso!))].sort();
+    if (effective.length === 1 && effectivePhrases(text) <= 1) lastDayWorked = effective[0]!;
+    else if (effective.length > 1) ambiguities.push({ kind: "date_conflict", role: "lastDayWorked", dates: effective });
+  }
   const noticeGiven = settle("noticeGiven");
   const noticeFulfilled = settle("noticeFulfilled");
   const quitDate = settle("resigned");

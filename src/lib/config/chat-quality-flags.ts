@@ -918,3 +918,12 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * On an exit form, "effective october 2" fills Last Day Worked when no last
+ * day was stated (QA, 26 Oct 2026). "effective immediately" names no date.
+ * Off, an effective date fills nothing, as before.
+ */
+export function exitEffectiveDateEnabled(): boolean {
+  return envFlag("EXIT_EFFECTIVE_DATE_ENABLED");
+}
