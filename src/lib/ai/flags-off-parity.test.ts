@@ -202,6 +202,7 @@ const NEW_FLAGS = [
   "DATE_ANSWER_APPLIED_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
+  "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -448,6 +449,11 @@ describe("new flags default off and wrappers are inert", () => {
       // And except composer.tsx: QA approved on 25 Oct 2026, behind
       // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
       // and send disabled over the limit. Off, it renders as before.
+      // And except the four Form Monitoring links (Overview card and page,
+      // chat card button, search and its hook): QA approved on 26 Oct 2026, behind
+      // NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED, hiding them from a reader
+      // without Form Monitoring. Each gate reads the flag first; off, it
+      // renders as before for every role.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -456,6 +462,11 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
           ":(exclude)src/features/chat/composer.tsx",
+          ":(exclude)src/features/chat/inline-form.tsx",
+          ":(exclude)src/features/dashboard/overview.tsx",
+          ":(exclude)src/components/shell/global-search.tsx",
+          ":(exclude)src/components/shell/hides-form-monitoring.ts",
+          ":(exclude)src/app/(app)/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
         ]),
       ).toBe("");

@@ -16,6 +16,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { KNOWLEDGE_CATEGORY_LABEL } from "@/data/knowledge-taxonomy";
 import { VIDEO_CATEGORY_LABEL } from "@/lib/videos/categories";
 import { useAppStore } from "@/lib/store/app-store";
+import { useHidesFormMonitoring } from "./hides-form-monitoring";
 import { NAV_SECTIONS } from "./navigation";
 
 interface Hit {
@@ -42,8 +43,13 @@ const KIND_LABEL = {
   salon: "Salon",
 };
 
+const NO_FORMS: never[] = [];
+
 export function GlobalSearch() {
-  const { documents, videos, forms } = useAppStore();
+  const { documents, videos, forms: storeForms } = useAppStore();
+  // ASD_NO_FORM_MONITORING: form hits and the screen open Form Monitoring, so a reader without it gets neither.
+  const hidesMonitoring = useHidesFormMonitoring();
+  const forms = hidesMonitoring ? NO_FORMS : storeForms;
   const [query, setQuery] = useState("");
 
   const hits = useMemo<Hit[]>(() => {
@@ -51,7 +57,7 @@ export function GlobalSearch() {
     if (q.length < 2) return [];
 
     const screens: Hit[] = NAV_SECTIONS.flatMap((section) =>
-      section.items.map((item) => ({
+      section.items.filter((item) => !(hidesMonitoring && item.permission === "view_form_monitoring")).map((item) => ({
         id: `screen-${item.href}`,
         label: item.label,
         detail: section.label,
@@ -118,7 +124,7 @@ export function GlobalSearch() {
           hit.label.toLowerCase().includes(q) || hit.detail.toLowerCase().includes(q),
       )
       .slice(0, 24);
-  }, [query, documents, videos, forms]);
+  }, [query, documents, videos, forms, hidesMonitoring]);
 
   return (
     <div>
