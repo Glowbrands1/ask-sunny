@@ -136,3 +136,35 @@ describe("TWO_FORMS_ASK_ENABLED on: a second form with no article", () => {
     expect(formsAskedFor(question).length).toBeLessThan(2);
   });
 });
+
+/** QA-7, 26 Oct 2026 (names invented). */
+describe("TWO_FORMS_ASK_ENABLED on: 'only', capitals and the same form twice", () => {
+  it.each(cases("create a policy review and a coaching form, but only the coaching form now"))("'%s' asks for the coaching form alone", (question) => {
+    process.env[FLAG] = "on";
+    expect(formsAskedFor(question).map((form) => form.templateKey)).toEqual(["coaching"]);
+    const response = reply("coaching", "Coaching Form");
+    expect(withTwoFormsAsk(response, { question, history: [] } as unknown as AskRequest)).toBe(response);
+  });
+
+  it.each(cases("can you just create a coaching form and a policy review"))("'%s' still names both forms", (question) => {
+    process.env[FLAG] = "on";
+    expect(formsAskedFor(question)).toHaveLength(2);
+  });
+
+  it("in capitals the other form is said back in lowercase", () => {
+    process.env[FLAG] = "on";
+    const out = withTwoFormsAsk(reply("policy-review", "Policy Review"), { question: ASKED.toUpperCase(), history: [] } as unknown as AskRequest);
+    expect(out.content).toContain('"now the coaching form"');
+    expect(out.content).not.toContain("COACHING FORM");
+  });
+
+  // Known gaps, pinned as they are: "except for dana" names a person, not a form, so two forms
+  // are still asked for; the same form for two people is one form here (NEXT_PERSON_FORM starts the next).
+  it.each([
+    ["create a coaching form and a policy review except for dana", 2],
+    ["create a coaching form for dana and a coaching form for tom", 1],
+  ] as const)("known gap: '%s' names %d form(s)", (question, count) => {
+    process.env[FLAG] = "on";
+    expect(formsAskedFor(question)).toHaveLength(count);
+  });
+});

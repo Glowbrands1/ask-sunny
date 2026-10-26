@@ -37,8 +37,12 @@ const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|already|without|instead\s+of|
 /** … until "just", "but", "instead", "now" or "only" turns it around. */
 const TURNED = /^(?:just|but|instead|now|only|then)\b|\b(?:just|instead|only)\b/i;
 
+/** QA-7, 26 Oct 2026: "…, but only the coaching form now" asks for that form alone. */
+const ONLY = /\bonly\b|\bjust\s+(?:the|a|an|one)\b/i;
+
 export function formsAskedFor(question: string): Asked[] {
   const asked: Asked[] = [];
+  const only: Asked[] = [];
   let negated = false;
   for (const segment of question.split(BETWEEN)) {
     const part = segment.trim().replace(/\s+(?:and|also|plus|then|&)$/i, "");
@@ -48,12 +52,17 @@ export function formsAskedFor(question: string): Asked[] {
     if (NEGATED.test(part.replace(/\bno[\s-]*call[\s,/-]*no[\s-]*show\b/gi, ""))) negated = true;
     if (negated) continue;
     const intent = detectTemplateIntent(part);
-    if (intent.kind !== "explicit" || asked.some((form) => form.templateKey === intent.templateKey)) continue;
+    if (intent.kind !== "explicit") continue;
+    const seen = asked.some((form) => form.templateKey === intent.templateKey);
+    if (seen && !ONLY.test(part)) continue;
     // "a coaching form" → "coaching form"; terse "coaching form" as typed.
     const phrase = (FORM_PHRASE.exec(part)?.[1] ?? part.replace(REQUEST_WORDS, "")).trim().replace(/[.!]+$/, "");
-    if (phrase) asked.push({ templateKey: intent.templateKey, phrase });
+    // QA-7: in capitals the phrase is said back in lowercase ("now the coaching form").
+    const said = phrase === phrase.toUpperCase() ? phrase.toLowerCase() : phrase;
+    if (said && !seen) asked.push({ templateKey: intent.templateKey, phrase: said });
+    if (said && ONLY.test(part) && !only.some((form) => form.templateKey === intent.templateKey)) only.push({ templateKey: intent.templateKey, phrase: said });
   }
-  return asked;
+  return only.length > 0 ? only : asked;
 }
 
 export function withTwoFormsAsk(response: AskResponse, request: AskRequest): AskResponse {
