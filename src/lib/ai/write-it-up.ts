@@ -26,7 +26,7 @@ import type { AskRequest } from "./types";
 const WRITE_IT_UP = /\bwrite\s+(?:it|this|that)\s+up\s+for\s+/i;
 /** QA-7, 26 Oct 2026: a negation before it, or a question, asks for nothing. */
 const NEGATED = /\b(?:not|never|no\s+need|don'?t|do\s+not|didn'?t|did\s+not|without|except|instead\s+of)\b/i;
-const QUESTION = /^\s*(?:how|what|when|why|where|should|can\s+i|do\s+i|is\s+it)\b|\?\s*$/i;
+const QUESTION = /^\s*(?:how|what|whats|what['’]s|when|why|where|should|can\s+i|do\s+i|is\s+it)\b|\?\s*$/i;
 /** What follows "for" that is never a person: times, pronouns, groups, topics. */
 const NOT_A_PERSON =
   /^(?:me|you|us|her|him|them|it|this|that|the|a|an|my|our|your|his|their|everyone|everybody|anyone|anybody|someone|somebody|all|team|staff|being|today|tonight|tomorrow|yesterday|now|later|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|last|this|attendance|lateness|tardiness|cash|dress|phone|policy|meeting|lunch|break|\d)/i;
@@ -52,9 +52,10 @@ export function writeItUpRequest(text: string): string {
   if (typeof text !== "string" || QUESTION.test(text)) return text;
   const hit = WRITE_IT_UP.exec(text);
   if (!hit) return text;
-  const clause = text.slice(0, hit.index).split(/[,.;!?]/).pop() ?? "";
+  // QA-6, 26 Oct 2026: a negation anywhere before it ("Rory said not to. Write it up …") also stops it.
+  const before = text.slice(0, hit.index);
   const rest = text.slice(hit.index + hit[0].length);
-  if (NEGATED.test(clause) || NOT_A_PERSON.test(rest) || !PERSON.test(rest)) return text;
+  if (NEGATED.test(before) || NOT_A_PERSON.test(rest) || !PERSON.test(rest)) return text;
   // Only the first: "… and write it up for <other>" stays as typed.
   return `${text.slice(0, hit.index)}create a corrective action form for ${rest}`;
 }

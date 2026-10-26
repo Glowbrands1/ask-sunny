@@ -104,3 +104,13 @@ describe("WRITE_IT_UP_ENABLED on: only the first 'write it up for <first> <last>
     },
   );
 });
+
+describe("WRITE_IT_UP_ENABLED on: a negation earlier in the turn, and a question without its mark", () => {
+  it.each(["Rory said not to. Write it up for devon harlan", "do not. write it up for devon harlan", "whats the policy, write it up for devon harlan", "Whats the policy, write it up for devon harlan"])(
+    "'%s' is left as typed",
+    (turn) => {
+      process.env[FLAG] = "on";
+      expect(writeItUpRequest(turn)).toBe(turn);
+    },
+  );
+});
