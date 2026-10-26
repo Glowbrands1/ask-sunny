@@ -155,6 +155,7 @@ import { deliverFormProposal } from "./grounded-turn";
 import { withTerseSlots } from "./terse-slots";
 import { withManagerFormChoice } from "./manager-form-choice";
 import { withNameRespell } from "./name-respell";
+import { withStoreAliases } from "./store-alias";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -268,8 +269,14 @@ export async function answerQuestion(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
+    // STORE_ALIAS_ENABLED: a salon named the managers' way is read as its roster name.
     // MANAGER_FORM_CHOICE_ENABLED: the form the manager named is the form.
-    const response = await answerQuestionUntraced(withManagerFormChoice(withTerseSlots(request)), actor, memory);
+    // Order (bundle 3): terse lines are written out first, then salon aliases, then the form choice.
+    const response = await answerQuestionUntraced(
+      withManagerFormChoice(withStoreAliases(withTerseSlots(request))),
+      actor,
+      memory,
+    );
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // NAME_RESPELL_ENABLED: the manager's newest spelling of the employee wins.

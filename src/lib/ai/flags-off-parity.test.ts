@@ -86,6 +86,7 @@ import {
   remapRoleCheckEnabled,
   managerFormChoiceEnabled,
   nameRespellEnabled,
+  storeAliasEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -190,6 +191,7 @@ const NEW_FLAGS = [
   "REMAP_ROLE_CHECK_ENABLED",
   "MANAGER_FORM_CHOICE_ENABLED",
   "NAME_RESPELL_ENABLED",
+  "STORE_ALIAS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -353,6 +355,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapRoleCheckEnabled()).toBe(false);
     expect(managerFormChoiceEnabled()).toBe(false);
     expect(nameRespellEnabled()).toBe(false);
+    expect(storeAliasEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
