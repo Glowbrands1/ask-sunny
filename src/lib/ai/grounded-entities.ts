@@ -7,6 +7,7 @@ import {
   rosterNameNamedIn,
   type RosterEmployee,
 } from "@/lib/forms/employee-match";
+import { isDateAnswerWords } from "@/lib/forms/incident-dates";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
@@ -223,6 +224,8 @@ function gateMentions(
 
   for (const name of mentions.names) {
     if (isDocumentOrPolicyName(name)) continue;
+    // DATE_ANSWER_APPLIED_ENABLED: "most recent" answers the date question; it is not an unknown person to strip.
+    if (isDateAnswerWords(name)) continue;
     const match = matchEmployeeName(name, roster);
     if (match.kind === "unchecked") continue;
     if (match.kind === "exact") {

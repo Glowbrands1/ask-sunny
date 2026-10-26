@@ -88,6 +88,7 @@ import {
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
   payrollTypoNotANameEnabled,
+  dateAnswerAppliedEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -194,6 +195,7 @@ const NEW_FLAGS = [
   "ATTENDANCE_ACTION_PLAN_ENABLED",
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
   "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
+  "DATE_ANSWER_APPLIED_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -386,6 +388,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(attendanceActionPlanEnabled()).toBe(false);
     expect(hideNoPolicyMatchNoticeEnabled()).toBe(false);
     expect(payrollTypoNotANameEnabled()).toBe(false);
+    expect(dateAnswerAppliedEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

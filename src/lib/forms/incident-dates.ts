@@ -1,5 +1,5 @@
 import { withoutAppLines } from "@/lib/ai/app-sentences";
-import { keepFormEmployeeEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   explicitFormDate,
@@ -92,6 +92,9 @@ export function readDateChoice(reply: string, dates: readonly string[], today: s
    */
   const typed = listFormDates(reply, today).filter((found) => found.iso <= today);
   if (typed.length > 0) return { kind: "date", iso: typed[typed.length - 1]!.iso };
+  // DATE_ANSWER_APPLIED_ENABLED: "10-15", "the 15th" pick the date asked about with that day.
+  const picked = dateAnswerAppliedEnabled() ? askedDayIn(text, dates) : null;
+  if (picked) return { kind: "date", iso: picked };
   if (/\b(?:most recent|latest|newest|last (?:one|date)|second)\b/.test(text)) {
     return { kind: "date", iso: dates[dates.length - 1]! };
   }
@@ -100,14 +103,58 @@ export function readDateChoice(reply: string, dates: readonly string[], today: s
   return null;
 }
 
+/*
+ * DATE_ANSWER_APPLIED_ENABLED (QA, 26 Oct 2026): a reply that is only a day —
+ * "10-15", "10.15", "the 15th", "15th" — names the date asked about with that
+ * month and day, or that day when only one of them has it. Live, "the 15th"
+ * read as nothing and the form was dated today.
+ */
+const MONTH_DAY_REPLY = /^\s*(?:on\s+)?(?:the\s+)?(\d{1,2})[-./](\d{1,2})(?:[-./]\d{2,4})?\s*[.!]*\s*$/;
+const DAY_REPLY = /^\s*(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)(?:\s+one)?\s*[.!]*\s*$/;
+
+function askedDayIn(text: string, dates: readonly string[]): string | null {
+  const monthDay = MONTH_DAY_REPLY.exec(text);
+  if (monthDay) {
+    const [month, day] = [Number(monthDay[1]), Number(monthDay[2])];
+    return dates.find((iso) => Number(iso.slice(5, 7)) === month && Number(iso.slice(8, 10)) === day) ?? null;
+  }
+  const day = DAY_REPLY.exec(text);
+  if (!day) return null;
+  const same = dates.filter((iso) => Number(iso.slice(8, 10)) === Number(day[1]));
+  return same.length === 1 ? same[0]! : null;
+}
+
+/** DATE_ANSWER_APPLIED_ENABLED: a short reply that only answers the date question. */
+function bareDateAnswer(reply: string, dates: readonly string[], today: string): DateChoice | null {
+  if (String(reply).trim().split(/\s+/).length > 4) return null;
+  return readDateChoice(reply, dates, today);
+}
+
+/** DATE_ANSWER_APPLIED_ENABLED: the date question is open — asked earlier, and no reply since has answered it. */
+function dateQuestionOpen(turns: readonly Turn[], dates: readonly string[], today: string): boolean {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]!;
+    if (turn.role === "assistant" && askedForDate(turn.content)) return true;
+    if (turn.role === "user" && bareDateAnswer(turn.content, dates, today)) return false;
+  }
+  return false;
+}
+
 /** The manager's answer to an earlier date question, over the whole conversation. */
 export function dateAnsweredIn(conversation: readonly Turn[], dates: readonly string[], today: string): DateChoice | null {
   let choice: DateChoice | null = null;
   for (let index = 1; index < conversation.length; index += 1) {
     const turn = conversation[index]!;
     const before = conversation[index - 1]!;
-    if (turn.role !== "user" || before.role !== "assistant" || !askedForDate(before.content)) continue;
-    choice = readDateChoice(turn.content, dates, today) ?? choice;
+    if (turn.role !== "user") continue;
+    if (before.role === "assistant" && askedForDate(before.content)) {
+      choice = readDateChoice(turn.content, dates, today) ?? choice;
+      continue;
+    }
+    // DATE_ANSWER_APPLIED_ENABLED: "10/15" after "She is at Kearney" still answers the open question.
+    if (dateAnswerAppliedEnabled() && dateQuestionOpen(conversation.slice(0, index), dates, today)) {
+      choice = bareDateAnswer(turn.content, dates, today) ?? choice;
+    }
   }
   return choice;
 }
@@ -115,7 +162,10 @@ export function dateAnsweredIn(conversation: readonly Turn[], dates: readonly st
 /** Whether the last turn is a bare answer to a pending date question. */
 export function answersDateQuestion(history: readonly Turn[], question: string, dates: readonly string[], today: string): boolean {
   const lastAssistant = [...history].reverse().find((turn) => turn.role === "assistant");
-  return !!lastAssistant && askedForDate(lastAssistant.content) && readDateChoice(question, dates.length ? dates : [today], today) !== null;
+  const asked = dates.length ? dates : [today];
+  // DATE_ANSWER_APPLIED_ENABLED: the question asked a turn or two back is still open.
+  if (dateAnswerAppliedEnabled() && dateQuestionOpen(history, asked, today) && bareDateAnswer(question, asked, today) !== null) return true;
+  return !!lastAssistant && askedForDate(lastAssistant.content) && readDateChoice(question, asked, today) !== null;
 }
 
 /*
@@ -210,7 +260,15 @@ export function dateAnswerTurns(conversation: readonly Turn[]): Set<string> {
   for (let index = 1; index < conversation.length; index += 1) {
     const turn = conversation[index]!;
     const before = conversation[index - 1]!;
-    if (turn.role !== "user" || before.role !== "assistant" || !askedForDate(before.content)) continue;
+    if (turn.role !== "user") continue;
+    const asked = before.role === "assistant" && askedForDate(before.content);
+    // DATE_ANSWER_APPLIED_ENABLED: "most recent" after "She is at Kearney" still answers the open question.
+    const stillOpen =
+      !asked &&
+      dateAnswerAppliedEnabled() &&
+      dateQuestionOpen(conversation.slice(0, index), ["0000-00-00"], "9999-12-31") &&
+      bareDateAnswer(String(turn.content), ["0000-00-00"], "9999-12-31") !== null;
+    if (!asked && !stillOpen) continue;
     const reply = String(turn.content).trim();
     /*
      * KEEP_FORM_EMPLOYEE_ENABLED: the answer is in the manager's words. The
@@ -291,4 +349,11 @@ export function statedFormDate(conversation: readonly Turn[], today: string): St
 export function dateAnswersSaid(conversation: readonly Turn[]): Set<string> {
   if (!priorSentenceFixEnabled()) return new Set();
   return dateAnswerTurns(conversation.map((turn) => (turn.role === "user" ? { ...turn, content: withoutAppLines(String(turn.content)).trim() } : turn)));
+}
+
+/** DATE_ANSWER_APPLIED_ENABLED: "most recent", "the latest", "first one" answer the date question; they name nobody. */
+const DATE_ANSWER_WORDS = /^(?:the\s+)?(?:most\s+recent|latest|newest|last(?:\s+(?:one|date))?|first(?:\s+one)?|earliest|oldest|second(?:\s+one)?)$/i;
+
+export function isDateAnswerWords(name: string): boolean {
+  return dateAnswerAppliedEnabled() && DATE_ANSWER_WORDS.test(name.trim());
 }
