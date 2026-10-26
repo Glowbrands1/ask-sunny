@@ -94,3 +94,46 @@ describe("STORE_ALIAS_ENABLED on", () => {
     }
   });
 });
+
+/**
+ * QA, 26 Oct 2026, with STORE_ALIAS_ENABLED on alone: the typed Permanent
+ * Address "123 Main St, Lawrence, KS 66044" was no longer filled (the city
+ * and state inside it were rewritten), and a later place word changed the
+ * salon (salon-replay-oct25 T3, NEWEST_PLACE_TURN_ENABLED off).
+ */
+describe("STORE_ALIAS_ENABLED on: addresses and later place words", () => {
+  const EXIT = "create an exit form for Test Employee at Lawrence, permanent address 123 Main St, Lawrence, KS 66044. She did not call in for her last two shifts. Last day worked 10-20-26";
+
+  it.each([EXIT, EXIT.toLowerCase(), EXIT.toUpperCase()])("keeps the typed address as typed: %s", (turn) => {
+    process.env[FLAG] = "on";
+    const address = /123 main st, lawrence, ks 66044/i.exec(turn)![0];
+    expect(withStoreAliases({ question: turn, history: [] } as unknown as AskRequest).question).toContain(address);
+    expect(rosterNames(`permanent address ${address}`)).toBe(`permanent address ${address}`);
+  });
+
+  it.each([
+    "change salon location to grand island, ne",
+    "Change salon location to Grand Island, NE",
+    "CHANGE SALON LOCATION TO GRAND ISLAND, NE",
+  ])("leaves a later place word as typed once a salon is named: %s", (later) => {
+    process.env[FLAG] = "on";
+    const history = [
+      { role: "user", content: "do verbal corrective action for Test Employee, team member at Kearney, NE. location." },
+      { role: "assistant", content: "Got it." },
+      { role: "user", content: later },
+      { role: "assistant", content: "Got it." },
+    ];
+    const out = withStoreAliases({ question: 'create a Corrective Action Form for Test Employee"', history } as unknown as AskRequest);
+    expect(out.history.map((turn) => turn.content)).toEqual(history.map((turn) => turn.content));
+  });
+
+  it("still names the first salon from an alias after other turns", () => {
+    process.env[FLAG] = "on";
+    const history = [
+      { role: "user", content: "ca for test testy, late 9-20-26" },
+      { role: "assistant", content: "Which salon is this for?" },
+    ];
+    const out = withStoreAliases({ question: "location o st", history } as unknown as AskRequest);
+    expect(ids(out.question)).toContain(O_STREET.id);
+  });
+});
