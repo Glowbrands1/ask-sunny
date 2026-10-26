@@ -7,6 +7,7 @@ import { errorResponse } from "@/lib/api/respond";
 import {
   conversationDraftReuseEnabled,
   draftReuseSameChatOnlyEnabled,
+  draftReuseOwnDraftsOnlyEnabled,
   conversationProposalDedupeEnabled,
   draftActionsEnabled,
   draftDedupeEnabled,
@@ -382,7 +383,8 @@ export async function POST(request: Request) {
      * SAME EMPLOYEE, SAME TEMPLATE, SAME INCIDENT, ANY CHAT. An open draft is
      * reopened instead of filing another one. A different date or a different
      * account of what happened still creates. Not after "different incident"
-     * (`newIncident`, above).
+     * (`newIncident`, above). With DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED on,
+     * only a draft this manager made is reopened; off, any manager's counts.
      */
     if (body.source === "ask_sunny" && !newIncident && !historyWantsSeparateDocument(body.conversation)) {
       const turns = Array.isArray(body.conversation) ? parseHistory(body.conversation) : [];
@@ -400,6 +402,7 @@ export async function POST(request: Request) {
         formDate: isIsoCalendarDate(body.formDate) ? body.formDate : null,
         incident: incidentText || null,
         ...(sameChat ? { sameChat } : {}),
+        ...(draftReuseOwnDraftsOnlyEnabled() ? { ownDraftsOnly: true } : {}),
       }).catch(() => null);
       if (open) return reused(open);
     }
