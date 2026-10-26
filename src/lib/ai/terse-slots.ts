@@ -116,6 +116,9 @@ const NOT_A_THIRD_NAME =
 function thirdNameWord(tokens: readonly string[], name: readonly string[]): boolean {
   const [word, next, after] = tokens;
   if (!word || !next || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || NOT_A_THIRD_NAME.test(word)) return false;
+  // QA-7, 26 Oct 2026: "repeatedly", "constantly", "doesn't", "and" are never a name word.
+  // Names that end in "ly" are kept: "Kelly", "Emily", "Holly", "Kimberly", "Beverly".
+  if ((/^[a-z]{5,}ly$/i.test(word) && !/^(?:kimberly|beverly|waverly|connolly|donnelly|mcnally)$/i.test(word)) || /['’]/.test(word) || /^(?:and|or|then|but|plus)$/i.test(word)) return false;
   if (READERS.place(word) || READERS.title(word) || STATE.test(word) || READERS.place(`${word} ${next}`)) return false;
   if (name.some((part) => part.toLowerCase() === word.toLowerCase())) return false;
   return (

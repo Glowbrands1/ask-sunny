@@ -195,3 +195,21 @@ describe("TERSE_COMMAND_ONLY_ENABLED on: 'never' is not a name, and long-tail th
     for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase().startsWith(start.toLowerCase())).toBe(true);
   });
 });
+
+/** QA-7, 26 Oct 2026: an -ly adverb, a word with an apostrophe or a conjunction is never a name word. */
+describe("TERSE_COMMAND_ONLY_ENABLED on: adverbs, contractions and conjunctions are not names", () => {
+  it.each(["ca dana smith repeatedly late", "ca dana smith constantly opened late", "ca dana smith doesn't clock in", "coach dana smith and ca tom lee"])(
+    "'%s' keeps the name 'dana smith', in any case",
+    (command) => {
+      process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+      for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase()).toMatch(/ form for dana smith(?:[.,]| at )/);
+    },
+  );
+});
+
+describe("TERSE_COMMAND_ONLY_ENABLED on: a surname that ends in 'ly' is a name", () => {
+  it.each(["ca rory ann kelly late today", "ca rory ann kimberly late today"])("'%s' keeps the three-part name", (command) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    expect(expandTerseRequest(command, TODAY).toLowerCase()).toMatch(/ form for rory ann (?:kelly|kimberly)\./);
+  });
+});
