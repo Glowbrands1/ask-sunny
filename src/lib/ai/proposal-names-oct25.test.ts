@@ -334,3 +334,96 @@ describe("G4: the employee does not depend on the model's slot", () => {
     expect(turns[1]!.content).not.toMatch(/who is this|full name/i);
   });
 });
+
+/*
+ * Pau, 26 Oct 2026: "lowercase or first letter capitalized, should be like
+ * human". QA's turns above, typed the way managers type: all in lower case
+ * (with and without the punctuation), and in sentence case with the name
+ * typed "test employee" or "Test employee". Each gives the card the same
+ * name as "Test Employee". Before the guard read the name in either case, B4
+ * put **Test** on the card in every variant, and B8, G11 (with the pair on)
+ * and G4 asked who the form was for.
+ */
+const allLower = (text: string) => text.toLowerCase();
+const bare = (text: string) => text.toLowerCase().replace(/[.,!?'’]/g, "").replace(/\s+/g, " ").trim();
+const named = (name: string) => (text: string) => text.replace(/Test Employee/g, name);
+const REGISTERS: readonly [string, (text: string) => string][] = [
+  ["all lower case", allLower],
+  ["all lower case, no punctuation", bare],
+  ['sentence case, "test employee"', named("test employee")],
+  ['sentence case, "Test employee"', named("Test employee")],
+];
+
+describe.each([
+  ["production profile", [] as string[]],
+  ["with CA_TEMPLATE_MAP + FORM_CHOICE_STATED (live)", ["CA_TEMPLATE_MAP_ENABLED", "FORM_CHOICE_STATED_ENABLED"]],
+])("typed in lower or sentence case, the card is still for Test Employee — %s", (_label, extra) => {
+  beforeEach(() => {
+    for (const flag of extra) vi.stubEnv(flag, "true");
+  });
+
+  const cases = Object.entries(TURNS).flatMap(([id, turns]) =>
+    REGISTERS.map(([register, retype]) => [`${id}, ${register}`, turns.map(retype)] as const),
+  );
+  it.each(cases)("%s", { timeout: 120_000 }, async (_id, turns) => {
+    const seen = await converse(turns);
+    for (const [index, turn] of seen.entries()) {
+      const where = `turn ${index + 1}: ${turns[index]!.slice(0, 50)}`;
+      expect(turn.template, where).toBe("Corrective Action Form");
+      expect(turn.employeeName, where).toBe("Test Employee");
+      expect(offered(turn.content), where).toEqual([]);
+      expect(turn.content, where).not.toMatch(/who is this \*\*/i);
+    }
+  });
+
+  it.each(REGISTERS)("G4, %s", { timeout: 120_000 }, async (_register, retype) => {
+    bag.extra = { 0: { formType: "coaching" }, 1: { formType: "coaching", title: "Tanning Consultant" } };
+    const turns = await converse(
+      [
+        "Help me prepare a coaching form for not completing daily cleaning duties and signing off on daily cleaning checklists when the tasks are not completed",
+        "Okay let's restart. Test Employee, Tanning Consultant, KS Manhattan. Not completing closing duties and signing off that they were complete when they weren't. Not completing proper sanitation procedures on the equipment.",
+      ].map(retype),
+    );
+    expect(turns[1]!.employeeName).toBe("Test Employee");
+    expect(turns[1]!.content).not.toMatch(/who is this|full name/i);
+  });
+});
+
+describe("the typed-name reader, in either case", () => {
+  it("guard on: lower case and sentence case read as the capitalised name", async () => {
+    const { typedEmployeeName } = await import("@/lib/forms/typed-employee-name");
+    for (const text of [
+      "create ca form for Test Employee for violating attendance policy",
+      "create ca form for test employee for violating attendance policy",
+      "create ca form for Test employee for violating attendance policy",
+      "okay lets restart test employee tanning consultant ks manhattan",
+      "Okay let's restart. Test employee, Tanning Consultant, KS Manhattan.",
+    ]) {
+      expect(typedEmployeeName(text), text).toBe("Test Employee");
+    }
+  });
+
+  it("guard on: a lower-case word before 'employee' is not a name unless it is QA's 'test'", async () => {
+    const { typedEmployeeName } = await import("@/lib/forms/typed-employee-name");
+    for (const text of [
+      "write a ca for a late employee at kearney",
+      "coaching for a rude employee",
+      "create a coaching form for my employee",
+      "a form for the test employee handbook",
+      "is there a test employee form",
+      "coaching for New Employee orientation",
+      "coaching for test employees",
+      "the employee dress code for test",
+    ]) {
+      expect(typedEmployeeName(text), text).toBeNull();
+    }
+  });
+
+  it("guard off: unchanged — only the capitalised name is read", async () => {
+    vi.stubEnv("NOT_A_NAME_GUARD_ENABLED", "false");
+    const { typedEmployeeName } = await import("@/lib/forms/typed-employee-name");
+    expect(typedEmployeeName("create ca form for Test Employee for violating attendance policy")).toBe("Test Employee");
+    expect(typedEmployeeName("create ca form for test employee for violating attendance policy")).toBeNull();
+    expect(typedEmployeeName("create ca form for Test employee for violating attendance policy")).toBeNull();
+  });
+});
