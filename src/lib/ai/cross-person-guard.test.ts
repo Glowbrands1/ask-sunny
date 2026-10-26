@@ -198,3 +198,34 @@ describe("CROSS_PERSON_INCIDENT_GUARD_ENABLED on", () => {
     expect(out.formProposal?.sourceMessageIds).toEqual(["t2"]);
   });
 });
+
+/**
+ * QA-6, 26 Oct 2026: one shared word made two people one ("Marla Quince" /
+ * "Marla Voss"), so the first person's incident stayed on the new person's
+ * card. Names invented.
+ */
+describe("CROSS_PERSON_INCIDENT_GUARD_ENABLED: two people are one only when first and last names match", () => {
+  it.each([
+    ["Marla Quince", "Marla Voss", false],
+    ["Rowan Pell", "Avery Pell", false],
+    ["Marla Quince", "Avery Quince", false],
+    ["Test Employee", "Test Employee Two", false],
+    ["Rowan Pell", "Rowan Pelt", true],
+    ["Marla Quince", "Marla Quinse", true],
+    ["Mara Quil", "Mara Quill", true],
+    ["Rowan Pell", "Rowan", true],
+  ])("%s / %s → %s", (a, b, same) => {
+    expect(samePerson(a, b)).toBe(same);
+    expect(samePerson(b.toUpperCase(), a.toLowerCase())).toBe(same);
+  });
+
+  it.each(["create a coaching document for Marla Voss", "create a coaching document for marla voss", "CREATE A COACHING DOCUMENT FOR AVERY QUINCE"])(
+    "'%s' leaves none of Marla Quince's incident on the new card",
+    (question) => {
+      process.env[FLAG] = "on";
+      const person = /voss/i.test(question) ? "Marla Voss" : "Avery Quince";
+      const out = withCrossPersonGuard({ ...TURN_3_RESPONSE, formProposal: card(person, ["m0", "m2", "m4"]) } as AskResponse, { ...REQUEST, question } as AskRequest);
+      expect(out.content).not.toContain("Tobin Ashgrove");
+    },
+  );
+});

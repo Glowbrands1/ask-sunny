@@ -170,16 +170,26 @@ function close(a: string, b: string): boolean {
 }
 
 /** One person when a word of one name is a word of the other, spelled within one letter. */
+/**
+ * Two names are one person when the first names AND the last names each match
+ * within one letter ("Marla Quince" / "Marla Quinse", "Mara Quil" / "Mara
+ * Quill"); a first name alone matches a full name only when no surname was
+ * given ("Rowan" / "Rowan Pell"). QA-6, 26 Oct 2026: one shared word made
+ * "Marla Quince" / "Marla Voss" and "Rowan Pell" / "Avery Pell" one person.
+ */
 export function samePerson(a: string, b: string): boolean {
   const left = words(a);
   const right = words(b);
   if (left.length === 0 || right.length === 0) return true;
-  return left.some((word) => right.some((other) => close(word, other)));
+  if (!close(left[0]!, right[0]!)) return false;
+  if (left.length === 1 || right.length === 1) return true;
+  return close(left[left.length - 1]!, right[right.length - 1]!);
 }
 
+/** The turn names the person: every word of the name, each within one letter ("Marla" alone is not "Marla Voss"). */
 function names(text: string, name: readonly string[]): boolean {
   const said = words(text);
-  return name.some((word) => said.some((other) => close(word, other)));
+  return name.length > 0 && name.every((word) => said.some((other) => close(word, other)));
 }
 
 /** The first of the latest run of manager turns that name the new person; the current turn when none does. */
