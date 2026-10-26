@@ -64,3 +64,20 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: the surname is never cut after a bla
     expect(employeeAfter(opener, account)?.toLowerCase()).toBe("devon harlan");
   });
 });
+
+/**
+ * QA live run, 26 Oct 2026 (Bubbles tester G14, conv_mvom3ssl2g7q7kn and
+ * conv_mvom3x2b2a98o2u; the same reader in both apps): a chatty exit that
+ * names the person after "one of my team members," left the Employee blank.
+ */
+describe("NAME_CASE_INSENSITIVE_ENABLED on: the person after 'one of my team members,'", () => {
+  const EXIT =
+    "hi, one of my team members, devon harlan at our lawrence, ks salon, gave her notice on 9/25/26 and worked through 10/9/26, she is resigning to pursue other career options, she returned all her salon items, no payroll deduction applies and she is eligible for rehire. can you create the exit form?";
+  it.each(variants(EXIT))("%s", (turn) => {
+    expect(employeeAfter(turn)?.toLowerCase()).toBe("devon harlan");
+  });
+
+  it.each(variants("my employee pat rivera was 10 minutes late on 10/5 and 10/15. create a ca"))("%s", (turn) => {
+    expect(employeeAfter(turn)?.toLowerCase()).toBe("pat rivera");
+  });
+});
