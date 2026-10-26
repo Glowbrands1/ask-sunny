@@ -38,6 +38,8 @@ export function respellEmployee(response: AskResponse, question: string, typed: 
 
 /** The question's spelling of `name`, when it differs by at most one letter per word; else null. */
 export function respelling(name: string, question: string): string | null {
+  // A question ("is it mara quill?") asks, it does not correct.
+  if (/\?\s*$/.test(question)) return null;
   const target = name.toLowerCase().split(/\s+/).filter(Boolean);
   if (target.length < 2) return null;
   const words = question.split(/[^A-Za-z'’-]+/).filter(Boolean);
@@ -48,7 +50,9 @@ export function respelling(name: string, question: string): string | null {
     if (lower.every((word, index) => word === target[index])) return null;
     // QA-6/QA-7, 26 Oct 2026: "never Mara Quill", "not Mara Quill but …", "without Mara Quill" are not the newest
     // spelling; "no, Mara Quill" is a correction and is.
-    if (words.slice(Math.max(0, start - 2), start).some((word) => /^(?:not|never|without|except)$/i.test(word))) continue;
+    if (words.slice(Math.max(0, start - 3), start).some((word) => /^(?:not|never|without|except|isn['’]?t|isnt|wasn['’]?t)$/i.test(word))) continue;
+    // "I spelled it mara quill" says how it was typed, not how to change it.
+    if (/^spelled$/i.test(words[start - 2] ?? "") && /^it$/i.test(words[start - 1] ?? "")) continue;
     return span.join(" ");
   }
   return null;
