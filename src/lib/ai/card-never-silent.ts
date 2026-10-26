@@ -70,9 +70,14 @@ function bareFormLine(templateName: string): string {
   return `Who is this **${templateName}** for, and what happened? Tell me their name, the date and what they did, and I'll fill in the card.`;
 }
 
+/** QA-6/QA-7, 26 Oct 2026: "don't finalize", "do not make it", "no edit please", "I haven't verified it yet". */
+const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|haven'?t|have\s+not|isn'?t|without)\b/i;
+
 function answerLine(question: string, canCreate: boolean): string {
   if (!canCreate) return NEEDS_LINE;
   const said = question.trim();
+  // A turn that says not to finalize, make or edit is answered as a change that did not happen.
+  if (NEGATED.test(said) && (FINALIZE.test(said) || EDIT.test(said) || MAKE.test(said))) return UNCHANGED_LINE;
   if (FINALIZE.test(said)) return CREATE_DRAFT_LINE;
   if (EDIT.test(said)) return EDIT_LINE;
   if (MAKE.test(said)) return CREATE_DRAFT_LINE;

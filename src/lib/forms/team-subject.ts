@@ -85,7 +85,9 @@ const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|doesn'?t|without|instead\s+of
 const NAMED_PERSON = /\b[A-Z][a-z'’-]+\s+[A-Z][a-z'’-]+\b/;
 
 function chattyTeam(text: string): boolean {
-  if (/\bexcept\b/i.test(text) || NAMED_PERSON.test(text.replace(/^\s*[A-Z][a-z]+\b/, "").replace(/([.!?]\s+)[A-Z][a-z]+\b/g, "$1"))) return false;
+  // A sentence's capitalised first word is not a name unless a capitalised word follows it ("Rowan Pell was late").
+  const unopened = text.replace(/(^\s*|[.!?]\s+)[A-Z][a-z]+(?=\s+[a-z]|\s*$)/g, "$1");
+  if (/\bexcept\b/i.test(text) || NAMED_PERSON.test(unopened)) return false;
   return text.split(/[,.;!?]+/).some((clause) =>
     CHATTY_TEAM_PHRASES.some((pattern) => {
       const hit = pattern.exec(clause);
