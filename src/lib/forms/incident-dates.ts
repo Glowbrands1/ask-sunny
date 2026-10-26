@@ -1,5 +1,8 @@
 import { isAppLine, withoutAppLines } from "@/lib/ai/app-sentences";
-import { dateAnswerAppliedEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+
+/** DATE_ANSWER_KEEPS_OPEN_ENABLED, on top of the live DATE_ANSWER_APPLIED_ENABLED. */
+const keepsOpen = () => dateAnswerAppliedEnabled() && dateAnswerKeepsOpenEnabled();
 
 import {
   explicitFormDate,
@@ -91,8 +94,8 @@ export function readDateChoice(reply: string, dates: readonly string[], today: s
    * Oct 2026, round 3 — the form was dated 1/1).
    */
   const typed = listFormDates(reply, today).filter((found) => found.iso <= today);
-  // DATE_ANSWER_APPLIED_ENABLED: "10/5 and 10/15" repeats the dates; it does not pick one.
-  if (dateAnswerAppliedEnabled() && new Set(typed.map((found) => found.iso)).size > 1) return null;
+  // DATE_ANSWER_KEEPS_OPEN_ENABLED: "10/5 and 10/15" repeats the dates; it does not pick one.
+  if (keepsOpen() && new Set(typed.map((found) => found.iso)).size > 1) return null;
   if (typed.length > 0) return { kind: "date", iso: typed[typed.length - 1]!.iso };
   // DATE_ANSWER_APPLIED_ENABLED: "10-15", "the 15th" pick the date asked about with that day.
   const picked = dateAnswerAppliedEnabled() ? askedDayIn(text, dates) : null;
@@ -128,7 +131,11 @@ function askedDayIn(text: string, dates: readonly string[]): string | null {
 
 /** DATE_ANSWER_APPLIED_ENABLED: a short reply that only answers the date question. */
 function bareDateAnswer(reply: string, dates: readonly string[], today: string): DateChoice | null {
-  // The manager's line only: the app adds its own lines around it ("10-15\nNo payroll deduction. Warning level: verbal.").
+  if (!keepsOpen()) {
+    if (String(reply).trim().split(/\s+/).length > 4) return null;
+    return readDateChoice(reply, dates, today);
+  }
+  // DATE_ANSWER_KEEPS_OPEN_ENABLED: the manager's line only: the app adds its own lines around it ("10-15\nNo payroll deduction. Warning level: verbal.").
   for (const line of String(reply).split("\n")) {
     const own = line.trim();
     if (own === "" || isAppLine(own) || own.split(/\s+/).length > 4) continue;
@@ -156,7 +163,7 @@ export function dateAnsweredIn(conversation: readonly Turn[], dates: readonly st
     const before = conversation[index - 1]!;
     if (turn.role !== "user") continue;
     if (before.role === "assistant" && askedForDate(before.content)) {
-      choice = readDateChoice(turn.content, dates, today) ?? (dateAnswerAppliedEnabled() ? bareDateAnswer(turn.content, dates, today) : null) ?? choice;
+      choice = readDateChoice(turn.content, dates, today) ?? (keepsOpen() ? bareDateAnswer(turn.content, dates, today) : null) ?? choice;
       continue;
     }
     // DATE_ANSWER_APPLIED_ENABLED: "10/15" after "She is at Kearney" still answers the open question.
@@ -251,8 +258,8 @@ export function decideFormDate(input: {
   return {
     formDate: null,
     candidates: dates,
-    // DATE_ANSWER_APPLIED_ENABLED: asked on every card until answered, as the payroll question is.
-    ...((dateAnswerAppliedEnabled() ? dateQuestionOpen(input.conversation, dates, input.today) || !dateAlreadyAsked(input.history) : !dateAlreadyAsked(input.history))
+    // DATE_ANSWER_KEEPS_OPEN_ENABLED: asked on every card until answered, as the payroll question is.
+    ...((keepsOpen() ? dateQuestionOpen(input.conversation, dates, input.today) || !dateAlreadyAsked(input.history) : !dateAlreadyAsked(input.history))
       ? { question: dateQuestion(dates) }
       : {}),
   };
@@ -353,8 +360,8 @@ export function statedFormDate(conversation: readonly Turn[], today: string): St
   const written = said.map((turn) => (turn.role === "user" ? { ...turn, content: yearlessWrittenOut(String(turn.content), today) } : turn));
   const choice = dateAnsweredIn(written, dates, today);
   if (choice) return { iso: choice.kind === "date" ? choice.iso : null, candidates: [], question: null };
-  // DATE_ANSWER_APPLIED_ENABLED: asked on every card until answered.
-  const askAgain = dateAnswerAppliedEnabled() && dateQuestionOpen(said, dates, today);
+  // DATE_ANSWER_KEEPS_OPEN_ENABLED: asked on every card until answered.
+  const askAgain = keepsOpen() && dateQuestionOpen(said, dates, today);
   return { iso: null, candidates: dates, question: dateAlreadyAsked(said) && !askAgain ? null : dateQuestion(dates) };
 }
 

@@ -453,6 +453,8 @@ afterEach(() => {
 
 
 const DA_FLAG = "DATE_ANSWER_APPLIED_ENABLED";
+/** On top of the live DATE_ANSWER_APPLIED_ENABLED: the BT4 follow-up and QA's negatives. */
+const KEEPS_OPEN = "DATE_ANSWER_KEEPS_OPEN_ENABLED";
 const T1 =
   "My employee rory vance has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15";
 const T2 = "I already told you the employee name. She is at Kearney";
@@ -473,7 +475,7 @@ const CASINGS = [
 ] as const;
 
 function useProduction(on: boolean) {
-  for (const name of [...ALL_FLAGS, DA_FLAG]) delete process.env[name];
+  for (const name of [...ALL_FLAGS, DA_FLAG, KEEPS_OPEN]) delete process.env[name];
   for (const name of PRODUCTION) process.env[name] = "true";
   // PRIOR_SENTENCE_FIX is live in this app since #305.
   process.env[FLAG] = "true";
@@ -522,8 +524,11 @@ describe(`${DA_FLAG} on`, () => {
  * answer, and a reply with two dates ("10/5 and 10/15") picks neither — on
  * main, straight after the question, it dated the form with the last one.
  */
-describe(`${DA_FLAG} on: not an answer`, () => {
-  beforeEach(() => useProduction(true));
+describe(`${KEEPS_OPEN} on: not an answer`, () => {
+  beforeEach(() => {
+    useProduction(true);
+    process.env[KEEPS_OPEN] = "true";
+  });
 
   for (const between of [false, true]) {
     it.each(["payton rolls", "10/5 and 10/15"])(`${between ? "after a turn, " : ""}"%s" leaves the form undated`, async (reply) => {
@@ -549,8 +554,11 @@ const BT4 = [
   "10-15",
 ];
 
-describe(`${DA_FLAG} on: BT4`, () => {
-  beforeEach(() => useProduction(true));
+describe(`${KEEPS_OPEN} on: BT4`, () => {
+  beforeEach(() => {
+    useProduction(true);
+    process.env[KEEPS_OPEN] = "true";
+  });
 
   it.each(CASINGS)("%s", async (_casing, cased) => {
     const thread = new Thread();
@@ -569,6 +577,31 @@ describe(`${DA_FLAG} on: BT4`, () => {
     expect(last!.formProposal?.formDate).toBe("2026-10-15");
     expect(last!.formProposal?.employeeName).toBe("Rory Vance");
     expect(await createdDate(thread, "Observed: Rory Vance arrived late on October 5, 2026, and again on October 15, 2026.")).toBe("2026-10-15");
+  });
+});
+
+/*
+ * ${DA_FLAG} on (live) with ${KEEPS_OPEN} off: exactly today's live reading.
+ */
+describe(`${DA_FLAG} on, ${KEEPS_OPEN} off: as live today`, () => {
+  beforeEach(() => useProduction(true));
+
+  it("BT4: asked once; \"10-15\" after two other answers dates it", async () => {
+    const thread = new Thread();
+    const asked: boolean[] = [];
+    let last: Answer | null = null;
+    for (const turn of BT4) {
+      last = await thread.say(turn);
+      asked.push(/Which date goes on the form\?/.test(last.content));
+    }
+    expect(asked).toEqual([true, false, false, false]);
+    // Here the live date answer already dates it: the intent path reads the answer.
+    expect(last!.formProposal?.formDate).toBe("2026-10-15");
+  });
+
+  it('"10/5 and 10/15" straight after the question dates the form with the last one', async () => {
+    const { proposal } = await answered([T1, "10/5 and 10/15"], false);
+    expect(proposal?.formDate).toBe("2026-10-15");
   });
 });
 
