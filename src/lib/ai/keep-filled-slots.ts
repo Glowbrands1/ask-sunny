@@ -31,6 +31,7 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  priorActionsNoCommaEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -204,7 +205,9 @@ export function holdFilledSlots(input: {
      */
     if (next.templateKey !== "stc-exit") {
       const build = (given: string, account: readonly string[]) =>
-        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
+        fixed
+          ? withAccount(given, account, next.employeeName)
+          : withObservation(given, account, next.employeeName, input.today);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
@@ -556,8 +559,20 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
   return person ? [...person.salonIds] : [];
 }
 
+/**
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED (Sunny tester, 26 Oct 2026): "… no call no
+ * show today. I coached her on 10-16 and gave a verbal on 10-21." The second
+ * sentence was dropped from the Observation: without its dates and the words
+ * a request uses, only "coached" and "gave" were left, too few to be an
+ * account. A sentence that names a dated earlier step is the manager's
+ * account too, and is kept.
+ */
+function namesAnEarlierStep(sentence: string, today: string | undefined): boolean {
+  return today !== undefined && priorActionsNoCommaEnabled() && statedPriorActions(sentence, today).length > 0;
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
-function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
+function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
@@ -565,7 +580,7 @@ function withObservation(content: string, turns: readonly string[], employeeName
     for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
       if (said.length < 12) continue;
-      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      if (!describesMoreThanTheRequest(said, { ignore }) && !namesAnEarlierStep(said, today)) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).

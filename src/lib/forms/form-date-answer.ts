@@ -1,4 +1,4 @@
-import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { priorActionsNoCommaEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -379,17 +379,45 @@ function withoutDateBrackets(text: string, leading: boolean): string {
 const YEARLESS_DASHED = /(?<![\d/.-])(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)/g;
 const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|years?|people|times|x\b|%|am\b|pm\b|dollars?)/i;
 
+/*
+ * "… NO CALL NO SHOW TODAY. I COACHED HER ON 10-16 AND GAVE A VERBAL ON
+ * 10-21." Sunny tester, 26 Oct 2026: no prior action was listed. The held
+ * coaching was skipped here, as it should be, but so was the verbal after it:
+ * the held-coaching reader runs back across "10-16 and gave a verbal on" and
+ * took the second step for the coaching too. With
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED on, a held coaching governs only the words
+ * since the date before it, and `stepSpans` also reads the held coaching's
+ * own date (`keepHeld`), so "I coached her on 10-16" is listed as an earlier
+ * step on a Corrective Action. `blankYearlessStepDates` blanks it only where
+ * the incident was today, and it never dates the form, as before.
+ */
+/** "I coached her on 10-16", "we counseled him about attendance on 10/1": an earlier step the manager held. */
+const COACHED_HER_BEFORE =
+  /\b(?:i|we)\s+(?:(?:verbally|formally|also|already|then|just)\s+)?(?:coached|counsel(?:ed|led))\s+(?:her|him|them|the employee)\b[^.;\n\d]{0,30}$/i;
+
+/** The end of the last date before `index` in `found`, or 0. */
+function previousDateEnd(found: readonly DateInText[], index: number): number {
+  let end = 0;
+  for (const date of found) if (date.end <= index && date.end > end) end = date.end;
+  return end;
+}
+
 /** `dates` with every yearless dashed month-day in the text added, in order (flag on only). */
-function withYearlessDates(text: string, dates: readonly DateInText[], today: string): DateInText[] {
+function withYearlessDates(text: string, dates: readonly DateInText[], today: string, keepHeld = false): DateInText[] {
   const year = Number(/^(\d{4})-/.exec(today)?.[1]);
   if (!Number.isFinite(year)) return [...dates];
+  const scoped = priorActionsNoCommaEnabled();
   const extra: DateInText[] = [];
+  // Every yearless date read so far, a skipped held coaching's included: each one ends the clause before the next.
+  const seen: DateInText[] = [];
   for (const match of text.matchAll(YEARLESS_DASHED)) {
     const index = match.index ?? 0;
     const end = index + match[0].length;
     if (RANGE_AFTER.test(text.slice(end, end + 12))) continue;
+    seen.push({ iso: "", index, end });
     // "I coached her on 10-16": a coaching the manager held is read as it was before.
-    if (HELD_COACHING_BEFORE.test(text.slice(0, index))) continue;
+    const heldText = scoped ? text.slice(previousDateEnd([...dates, ...seen], index), index) : text.slice(0, index);
+    if (!(scoped && keepHeld) && HELD_COACHING_BEFORE.test(heldText)) continue;
     if (dates.some((found) => index < found.end && end > found.index)) continue;
     const iso = calendarIso(year, Number(match[1]), Number(match[2]));
     if (iso) extra.push({ iso, index, end });
@@ -416,9 +444,22 @@ export function blankYearlessStepDates(text: string, today: string): string {
   const read = new Set(datesInText(text, today).map((found) => found.index));
   const steps = new Set(stepSpans(text, today).map((span) => span.index));
   let out = text;
-  for (const found of withYearlessDates(text, [], today)) {
+  /*
+   * "… NO CALL NO SHOW TODAY. I COACHED HER ON 10-16 AND GAVE A VERBAL ON
+   * 10-21." With PRIOR_ACTIONS_NO_COMMA_ENABLED on, a held coaching listed as
+   * an earlier step is blanked too where the manager has already said the
+   * incident was today: it is history, never "it happened on 10/16". A
+   * Coaching Form's own coaching ("late on 10-5 and 10-15, I coached her on
+   * 10-16") has no "today" before it and is left as it was.
+   */
+  const scoped = priorActionsNoCommaEnabled();
+  const plain = withYearlessDates(text, [], today);
+  const plainAt = new Set(plain.map((found) => found.index));
+  for (const found of scoped ? withYearlessDates(text, [], today, true) : plain) {
     if (read.has(found.index)) continue;
-    if (!steps.has(found.index) && !manualOrCoachedDate(text.slice(0, found.index))) continue;
+    if (!plainAt.has(found.index)) {
+      if (!steps.has(found.index) || !/\btoday\b/i.test(text.slice(0, found.index))) continue;
+    } else if (!steps.has(found.index) && !manualOrCoachedDate(text.slice(0, found.index))) continue;
     out = out.slice(0, found.index) + " ".repeat(found.end - found.index) + out.slice(found.end);
   }
   return out;
@@ -497,6 +538,53 @@ function labelledSteps(text: string, dates: readonly DateInText[], today?: strin
   return found;
 }
 
+/*
+ * "PRIOR COACHING VERBAL 6/25 WRITTEN 7/28 NO DEDUCT" — THE LIST WITH NO
+ * COMMA. QA, 26 Oct 2026: with nothing between the items, the second date was
+ * no list item, and the labelled-step reader read every word back to the
+ * label as its topic, so the line read "Written warning — verbal 6/25 —
+ * 07/28/2026". With PRIOR_ACTIONS_NO_COMMA_ENABLED on, after a labelled step
+ * an item that names a step ("written", "final", "coaching", "ca") and is set
+ * off only by spaces continues the list, as a comma or "and" does, and holds
+ * only its own words. Anything else, an account included ("… 6/25 late again
+ * 7/28"), is read as before. Off, nothing here runs.
+ */
+const SPACED_ITEM_BEFORE = new RegExp(String.raw`^\s+((?:${TOPIC_WORD}\s+){1,5}?)(?:(?:on|dated|signed)\s+)?$`, "i");
+
+/** The words of a step item set off from the previous date by spaces alone, or null (flag on only). */
+function spacedStepItem(text: string, dates: readonly DateInText[], date: DateInText): string | null {
+  if (!priorActionsNoCommaEnabled()) return null;
+  const at = dates.indexOf(date);
+  if (at < 1) return null;
+  const words = SPACED_ITEM_BEFORE.exec(text.slice(dates[at - 1]!.end, date.index))?.[1] ?? "";
+  return words && NAMES_A_STEP_PARSE.test(words) ? words : null;
+}
+
+/*
+ * "PRIOR COACHINGS 9/8 9/15 9/25" — A LABEL AND A BARE LIST OF DATES. QA,
+ * Sunny round 3 (26 Oct 2026): "… verbal prior coachings 9/8 9/15 9/25 no
+ * deduct" read "Coaching — 09/08/2026; Coaching — 9/8 — 09/15/2026; Coaching
+ * — 9/8 9/15 — 09/25/2026": each later date was no list item, and the label
+ * reader took the dates before it as its topic. With
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED on, a date with no words of its own straight
+ * after a labelled step's date is one more step under the same label, with
+ * only its own date: set off by spaces alone, or, under a plural label
+ * ("prior coachings 9/8, 9/15 and 9/25"), by a comma or "and" too. Off,
+ * nothing here runs.
+ */
+const BARE_DATE_GAP = /^\s+$/;
+const BARE_DATE_LIST_GAP = /^\s*(?:,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+)$/i;
+const PLURAL_LABEL = /\b(?:coachings|warnings|write[- ]?ups|actions|cas|c\/as)\b/i;
+
+/** Whether `date` is a bare date continuing the labelled list `list` (flag on only). */
+function bareDateItem(text: string, dates: readonly DateInText[], date: DateInText, list: string): boolean {
+  if (!priorActionsNoCommaEnabled() || !list) return false;
+  const at = dates.indexOf(date);
+  if (at < 1) return false;
+  const gap = text.slice(dates[at - 1]!.end, date.index);
+  return BARE_DATE_GAP.test(gap) || (PLURAL_LABEL.test(list) && BARE_DATE_LIST_GAP.test(gap));
+}
+
 /**
  * `labelledSteps` with PRIOR_ACTIONS_PARSE_ENABLED on: the level alone names
  * a step, the topic drops its article, "on" may precede the date, and a step
@@ -516,6 +604,20 @@ function labelledStepsParsed(text: string, dates: readonly DateInText[], today?:
         named: listNeedsStep ? (item[1] ?? "") : `${list}${item[1] ?? ""}`,
         topic: listNeedsStep ? "" : words.trim(),
       });
+      continue;
+    }
+    // "prior coaching verbal 6/25 written 7/28": a labelled step's list continues without a comma.
+    const spaced = list ? spacedStepItem(text, dates, date) : null;
+    if (list && spaced !== null) {
+      found.set(date.index, {
+        named: listNeedsStep ? spaced : `${list}${spaced}`,
+        topic: listNeedsStep ? "" : spaced.replace(TOPIC_ARTICLE, "").trim(),
+      });
+      continue;
+    }
+    // "prior coachings 9/8 9/15 9/25": a bare date after a labelled step's date is one more, with only its own date.
+    if (list && bareDateItem(text, dates, date, list)) {
+      found.set(date.index, { named: list, topic: "" });
       continue;
     }
     list = null;
@@ -648,7 +750,9 @@ function stepsAsWritten(text: string, today: string): WrittenStep[] {
 
 /** Each earlier step with the offset of its date. A yearless "9-15" is read too with the flag on. */
 function stepSpans(text: string, today: string): { step: WrittenStep; index: number }[] {
-  const dates = priorActionsParseEnabled() ? withYearlessDates(text, datesInText(text, today), today) : datesInText(text, today);
+  const dates = priorActionsParseEnabled()
+    ? withYearlessDates(text, datesInText(text, today), today, true)
+    : datesInText(text, today);
   const steps = labelledSteps(text, dates, today);
   // "jba manual 11-1-25" after "previous coaching jba manual 11-1-26": the later date is that step's (flag on only).
   const movedTo = new Map<number, DateInText>();
@@ -686,6 +790,9 @@ function stepSpans(text: string, today: string): { step: WrittenStep; index: num
     if (owned && !ISSUES_THIS_FORM.test(owned[0]) && found.iso < today) {
       return at({ iso: found.iso, named: owned[0], ...withAbout });
     }
+    // "I coached her on 10-16" before today: an earlier step (PRIOR_ACTIONS_NO_COMMA_ENABLED).
+    const coached = priorActionsNoCommaEnabled() && found.iso < today ? COACHED_HER_BEFORE.exec(before) : null;
+    if (coached) return at({ iso: found.iso, named: coached[0], ...withAbout });
     return [];
   });
 }
