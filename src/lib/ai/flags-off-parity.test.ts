@@ -80,6 +80,7 @@ import {
   googleReviewsInChatEnabled,
   draftNeverBlankEnabled,
   nameBeforeTitleEnabled,
+  latePayrollFromFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -178,6 +179,7 @@ const NEW_FLAGS = [
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
   "NAME_BEFORE_TITLE_ENABLED",
+  "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -345,6 +347,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(nameBeforeTitleEnabled()).toBe(false);
+    expect(latePayrollFromFormEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
