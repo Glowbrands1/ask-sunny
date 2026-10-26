@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import manual151 from "@/test/fixtures/jba-manual-production-151.json";
+import { manualChunkFromRow, type ChunkRow as ManualChunkRow } from "@/lib/ai/full-manual-load";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -576,6 +578,49 @@ describe("previous coaching stated in chat", () => {
 /* ========================================================================= */
 /* A POLICY NAMED BY THE MANUAL'S OWN SECTION                                */
 /* ========================================================================= */
+
+/*
+ * POLICY_SPECIFIC_TOPICS_ENABLED, ON THE DRAFT PATH (QA, 26 Oct 2026, "dog at
+ * work" saved Standards of Conduct p.12): the manager's words choose the
+ * manual's Animals in the Workplace section (and Visitors beside it) on the
+ * saved draft, read from the production JBA manual rows. Off, the model's box
+ * stands, as in the production draft.
+ */
+describe("a dog at work, on the saved draft, against the production manual rows", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const TURN = "create verbal CA for remy calder, brought her dog to work on 10-10-26. no payroll deduct";
+  const modelDraft = () => {
+    state.manual = { chunks: (manual151.chunks as ManualChunkRow[]).map(manualChunkFromRow) };
+    state.draft = {
+      values: { observation: "Observed:\nRemy Calder brought her dog to work.", other_offense: "Dog at work" },
+      checked: { offense_type: ["standards_of_conduct"] },
+    };
+  };
+
+  it("flag off: the model's Standards of Conduct stands (the production draft)", async () => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "");
+    const { create } = await conversation([TURN]);
+    modelDraft();
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "offense_type")!.checked).toEqual(["standards_of_conduct"]);
+    expect(field(form, "policy_language")!.value ?? "").not.toMatch(/Animals in the Workplace/);
+  });
+
+  it("POLICY_SPECIFIC_TOPICS_ENABLED on: Animals in the Workplace p.30, with Visitors p.29 beside it", async () => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
+    const { create } = await conversation([TURN]);
+    modelDraft();
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+    expect(field(form, "offense_type")!.checked).toEqual(["company_policies"]);
+    expect(field(form, "other_offense")).toBeUndefined();
+    expect(policy).toContain("Source: JBA Policy Manual — Animals in the Workplace, p. 30");
+    expect(policy).toContain("Source: JBA Policy Manual — Visitors in the Workplace, p. 29");
+    expect(policy).not.toMatch(/Standards of Conduct/);
+  });
+});
 
 describe('"violating visitors at work policy" is the manual\'s Visitors in the Workplace', () => {
   it("is named in the reply, ticked, and quoted with its section and page", async () => {
