@@ -151,6 +151,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withNamePlaceAnswer } from "./name-place-answer";
 import { withTerseSlots } from "./terse-slots";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -285,7 +286,8 @@ async function answerQuestionChecked(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
+    // NAME_PLACE_ANSWER_ENABLED: a salon named on its own in a comma list is where.
+    const response = await answerQuestionUntraced(withTerseSlots(withNamePlaceAnswer(request)), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     return keepManagerActionPlan(await applyQuietQuality(response), request);

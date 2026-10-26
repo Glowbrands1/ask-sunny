@@ -881,3 +881,12 @@ export function appPasswordHelpEnabled(): boolean {
 export function followUpNotPriorEnabled(): boolean {
   return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
 }
+
+/**
+ * A salon or store named on its own in a comma list ("<name>, <place>,
+ * <title>") is read as where (QA, 26 Oct 2026; same flag in both apps). See
+ * `ai/name-place-answer.ts`. Off, every turn is read as typed.
+ */
+export function namePlaceAnswerEnabled(): boolean {
+  return envFlag("NAME_PLACE_ANSWER_ENABLED");
+}
