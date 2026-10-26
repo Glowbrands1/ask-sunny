@@ -330,3 +330,22 @@ describe("flag off: answered exactly as before", () => {
     expect(reply.content).not.toContain("Who can create it:");
   });
 });
+
+/* NEVER-BREAK (owner's order via QA, 26 Oct 2026), with the flag on. */
+describe("NEVER-BREAK with the flag on", () => {
+  it.each(["what is the exit process?", "What is the exit process?"])("%s is the knowledge answer", async (wording) => {
+    const reply = await say(wording);
+    expect(reply.content).toContain(ANSWER);
+    expect(reply.content).not.toContain("Who can create it:");
+  });
+
+  it.each(["ca Avery Holt late today", "Ca Avery Holt late today", "coach Avery Holt", "Coach Avery Holt", "exit Avery Holt", "Exit Avery Holt"])(
+    "%s is a form command, never the guide",
+    async (wording) => {
+      const reply = await say(wording);
+      expect(reply.content).not.toContain("Who can create it:");
+      expect(reply.content).not.toContain("isn't a form available in");
+      expect(reply.content).not.toMatch(/you can create these \d+ forms/);
+    },
+  );
+});
