@@ -245,9 +245,12 @@ function afterCues(): { role: ExitDateRole; pattern: RegExp }[] {
   return exitNoticeFulfilledEnabled() ? [...AFTER_CUES, DATE_THEN_GAVE_NOTICE] : AFTER_CUES;
 }
 
-/** "gave notice worked it til 10/9", "worked her notice through 10/9": the notice was worked. */
+/**
+ * "gave notice worked it til 10/9", "worked her notice through 10/9", "2 wk
+ * notice worked", "she worked the notice": the notice was worked.
+ */
 const NOTICE_WORKED =
-  /\bnotice\b[^.;!?\n]{0,15}?\b(?:and\s+)?worked\s+it\b|\bworked\s+(?:it|(?:her|his|their)\s+notice)\s+(?:out|through|thru|until|till|til)\b/g;
+  /\bnotice\b[^.;!?\n]{0,15}?\b(?:and\s+)?worked\s+it\b|\bworked\s+(?:it|(?:her|his|their)\s+notice)\s+(?:out|through|thru|until|till|til)\b|\b(?:2|two)[- ]?(?:wks?|weeks?)'?\s+notice\s+(?:was\s+)?(?:worked|served|fulfilled)\b|\bworked\s+(?:out\s+)?the\s+(?:full\s+)?notice\b/g;
 
 /* ---------------------------------------------------------- the dates -- */
 
@@ -341,7 +344,8 @@ function dateTokens(text: string, today: string): DateToken[] {
     return shiftDays(today, ahead);
   });
   add(new RegExp(String.raw`\b(?:this\s+|on\s+)?(?:${WEEKDAY})\b`, "gi"), () => null);
-  if (exitIntakeFixEnabled()) {
+  // EXIT_NOTICE_FULFILLED_ENABLED too: "last day 9-28", "resigned 9-15" (QA, Sunny batch 13).
+  if (exitIntakeFixEnabled() || exitNoticeFulfilledEnabled()) {
     for (const match of text.matchAll(YEARLESS_DASHED)) {
       const index = match.index ?? 0;
       const end = index + match[0].length;
