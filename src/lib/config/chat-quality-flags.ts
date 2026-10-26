@@ -761,6 +761,19 @@ export function remapDraftSourcesClientEnabled(): boolean {
   return flagOn(process.env.NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED);
 }
 
+/**
+ * A new form asked for is never read as "show me the form on file" (QA B22,
+ * 25 Oct 2026, both apps): "… for no call no show on 10/22" read "show" as
+ * the verb and put another chat's corrective action back in the thread. On,
+ * incident phrases that contain a reopen verb ("no call no show", "didn't
+ * show up") are not read as one, and a turn that opens by asking for a
+ * document ("Draft a …", "Write up …", "I need a …") is never a reopen. Off,
+ * the reopen reading is exactly as before.
+ */
+export function reopenVerbGuardEnabled(): boolean {
+  return envFlag("REOPEN_VERB_GUARD_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
