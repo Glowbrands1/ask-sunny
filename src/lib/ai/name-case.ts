@@ -20,7 +20,7 @@ import type { AskRequest } from "./types";
  * word in capitals of three letters or more that is not a title or an acronym
  * ("ANSWER", "LAST DAY"), is read in lowercase, and the person named where a form is asked for — after
  * "write up", "ca for", "coaching for", "exit form for", "warning for", "name
- * is", or two words that open the turn before a verb or a comma — is written
+ * is", "one of my team members,", or two words that open the turn before a verb or a comma — is written
  * in Title Case. Up to two words (a third only when typed with a capital); a
  * job title, a place, a topic ("cash handling", "dress code"), an incident or
  * a function word is never part of it. One-word names are left as typed.
@@ -36,7 +36,7 @@ const READERS = {
 };
 
 const FORM_LEAD =
-  /\b(?:write\s*(?:-\s*)?up|(?:ca|c\/a|dpoa|corrective\s+action|coaching|coach|warning|write[- ]?up|exit|resignation|transfer|demotion|policy\s+review|follow[- ]?up(?:\s+coaching)?|epp|form|document|documentation)(?:\s+form)?\s+(?:for|on)|(?:employee(?:'s)?|her|his|their|the)\s+name\s+is|name\s+is|this\s+is\s+for|it'?s\s+for)\s+/gi;
+  /\b(?:write\s*(?:-\s*)?up|(?:ca|c\/a|dpoa|corrective\s+action|coaching|coach|warning|write[- ]?up|exit|resignation|transfer|demotion|policy\s+review|follow[- ]?up(?:\s+coaching)?|epp|form|document|documentation)(?:\s+form)?\s+(?:for|on)|(?:employee(?:'s)?|her|his|their|the)\s+name\s+is|name\s+is|this\s+is\s+for|it'?s\s+for|(?:one\s+of\s+)?(?:my|our)\s+(?:team\s+members?|employees?|associates?|tms?)\s*,?)\s+/gi;
 const OPENING = /^\s*([A-Za-z][A-Za-z'’-]+)\s+([A-Za-z][A-Za-z'’-]+)(?=\s*,|\s+(?:was|is|has|had|did|didn'?t|came|left|opened|needs|called|took|got)\b)/;
 const FUNCTION_WORDS = new Set(
   (
