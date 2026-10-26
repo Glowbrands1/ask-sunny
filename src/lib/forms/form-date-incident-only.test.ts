@@ -281,3 +281,27 @@ describe.each(REGISTERS)("live tester findings, 26 Oct 2026 (%s)", (_register, a
     });
   }
 });
+
+/* QA-6 date matrix, 26 Oct 2026: a date before "the deadline" in another clause is still the incident's. */
+describe("FORM_DATE_INCIDENT_ONLY_ENABLED: only the date that IS the deadline is skipped", () => {
+  const CASES = [
+    "rowan pell was late on 10/2 and the deadline was missed",
+    "rowan pell was late on 10/2 for the deadline",
+  ];
+  for (const on of [false, true]) {
+    it(`flag ${on ? "on" : "off"}: the late date stays the incident date (lowercase, sentence case, CAPS)`, () => {
+      withFlag(on);
+      for (const text of CASES) {
+        for (const as of [text, text.charAt(0).toUpperCase() + text.slice(1), text.toUpperCase()]) {
+          expect(incidentDates(as, TODAY), as).toEqual(["2026-10-02"]);
+        }
+      }
+    });
+  }
+
+  it("flag on: the woven deadline itself is still skipped", () => {
+    withFlag(true);
+    expect(incidentDates("she missed the 10-15-26 woven deadline", TODAY)).toEqual([]);
+    expect(incidentDates("she missed the 10/15 woven training deadline", TODAY)).toEqual([]);
+  });
+});

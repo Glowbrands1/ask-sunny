@@ -25,7 +25,14 @@ import { datesInText } from "./form-date-answer";
  */
 const ANY_BY_BEFORE = /\bby\s+(?:the\s+)?$/i;
 const ASSIGNED_BEFORE = /\b(?:assigned|given\s+out|handed\s+out)\s+(?:on\s+)?$/i;
-const DEADLINE_NEAR_AFTER = /^\s*(?:[a-z]+\s+){0,2}(?:deadline|due\s+date)\b/i;
+/*
+ * The date IS the deadline: "the 10-15-26 woven deadline", "10/15 due date".
+ * Up to two words that name the deadline may sit between, never a clause
+ * word: "late on 10/2 and the deadline was missed" and "late on 10/2 for the
+ * deadline" date the incident 10/2 (QA-6 date matrix, 26 Oct 2026).
+ */
+const DEADLINE_NEAR_AFTER =
+  /^\s*(?:(?!(?:and|for|the|but|or|then|after|before|so|to|was|were|is|are|of|on|at|with|because|when|while|she|he|they|her|his|it)\b)[a-z]+\s+){0,2}(?:deadline|due\s+date)\b/i;
 const PRIOR_LEVEL_PAREN_BEFORE =
   /\b(?:verbal|written|final|coachings?|coached|warnings?|ca|c\/a|corrective\s+action|write[- ]?up)\s*\(\s*$/i;
 
