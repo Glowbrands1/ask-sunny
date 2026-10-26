@@ -939,3 +939,14 @@ export function policyCleaningIncidentEnabled(): boolean {
 export function policySetAsideEnabled(): boolean {
   return envFlag("POLICY_SET_ASIDE_ENABLED");
 }
+
+/**
+ * A go-ahead turn ("just make it", "create it", "yes") is searched with the
+ * policy the manager named earlier, not its own words (Code 3, policy
+ * reading; QA item 10, 25 Oct 2026, reported in Ask Bubbles; same flag in
+ * both apps). "Just make it" found unrelated pages, and the reply denied a
+ * policy it had cited two turns before. Off, the turn is searched as before.
+ */
+export function policyCarryRetrievalEnabled(): boolean {
+  return envFlag("POLICY_CARRY_RETRIEVAL_ENABLED");
+}
