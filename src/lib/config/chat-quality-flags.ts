@@ -749,6 +749,22 @@ export function reopenVerbGuardEnabled(): boolean {
   return envFlag("REOPEN_VERB_GUARD_ENABLED");
 }
 
+/**
+ * A source excerpt shown under an answer never quotes the sibling company's
+ * lines (ported from Ask Bubbles, QA 25 Oct 2026). The JBA Policy Manual
+ * covers every brand, and a retrieved chunk's text is shown as its excerpt
+ * whole, so the PTO page's peak-season list showed the soap brand's bullet
+ * under a Sun Tan City answer. On, a line, bullet or sentence of a JBA Policy
+ * Manual excerpt that names a brand in `EXCERPT_HIDDEN_BRANDS`
+ * (`lib/brand/knowledge.ts`, read by `lib/knowledge/excerpt-brand-filter.ts`)
+ * is left out; what is kept is
+ * verbatim. Retrieval, ranking, the prompt, page numbers and titles are
+ * unchanged. Off, excerpts are built exactly as before.
+ */
+export function excerptBrandFilterEnabled(): boolean {
+  return envFlag("EXCERPT_BRAND_FILTER_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
