@@ -117,3 +117,23 @@ describe("flag on: the same result in lowercase and sentence case", () => {
     }
   });
 });
+
+/*
+ * QA-5, 26 Oct 2026: a title before a comma is not a list item, and ";"
+ * ends a clause, so this company's half of a sentence is kept.
+ */
+describe("flag on: QA-5 wording defects", () => {
+  const lower = (text: string) => text.toLowerCase();
+  const sentence = (text: string) => text.charAt(0) + text.slice(1).toLowerCase();
+  it.each([
+    ["Per the JBA Policy Manual, Buff City Soap staff and salon staff both clock in on time.", /^per the jba policy manual, salon staff clock in on time\.$/i],
+    ["Do not use the Buff City Soap process; use MyGLOW for Sun Tan City, or Revel for Buff City Soap.", /^use myglow for sun tan city\.$/i],
+  ] as const)("%s", (reply, expected) => {
+    on();
+    for (const typed of [reply, lower(reply), sentence(reply)]) {
+      const out = withoutOtherBrands(typed);
+      expect(out).toMatch(expected);
+      expect(out).not.toBe(NOTHING_LEFT);
+    }
+  });
+});

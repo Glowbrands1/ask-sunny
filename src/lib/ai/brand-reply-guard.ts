@@ -65,12 +65,21 @@ function withoutBrandParentheticals(sentence: string): string {
   return sentence.replace(/\s*\(([^()]*)\)/g, (whole, inner: string) => (OTHER_BRAND.test(inner) ? "" : whole));
 }
 
+/** "<another brand> staff and <ours> staff both …": the other company's conjunct goes, and its "both". */
+function withoutBrandConjunct(sentence: string): string {
+  const conjunct = new RegExp(String.raw`\b(?:${anyOf(WORDS.otherCompany)})\s+(?:\w+\s+)?and\s+`, "gi");
+  if (!conjunct.test(sentence)) return sentence;
+  return sentence.replace(conjunct, "").replace(/\bboth\s+/i, "");
+}
+
 /** List items that name another brand: "MyGlow for <this brand>, MyGlow for <another>, or Woven for <a third>". */
 function withoutBrandListItems(sentence: string): string {
   const parts = sentence.split(/(,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+)/);
   if (parts.length < 3) return sentence;
   const items: { sep: string; text: string }[] = [];
   for (let index = 0; index < parts.length; index += 2) items.push({ sep: index === 0 ? "" : parts[index - 1]!, text: parts[index]! });
+  // A list of each company's own system ("MyGlow for <this brand>, or Revel for <another>"), not any commas.
+  if (!items.every((item) => /\bfor\s+\S/i.test(item.text))) return sentence;
   const kept = items.filter((item) => !OTHER_BRAND.test(item.text));
   if (kept.length === items.length || kept.length === 0) return sentence;
   const last = items[items.length - 1]!;
@@ -124,6 +133,8 @@ function guardSentence(sentence: string): string | null {
   if (!OTHER_BRAND.test(text)) return text;
   text = withoutBrandParentheticals(text);
   if (!OTHER_BRAND.test(text)) return text;
+  text = withoutBrandConjunct(text);
+  if (!OTHER_BRAND.test(text)) return text;
   text = withoutBrandListItems(text);
   return OTHER_BRAND.test(text) ? null : text;
 }
@@ -135,7 +146,8 @@ export const NOTHING_LEFT = `That one isn't part of the ${STC_BRAND.brandName} p
 export function withoutOtherBrands(content: string): string {
   if (!brandReplyGuardEnabled() || !content) return content;
   const lines = content.split("\n").map((line) => {
-    const pieces = line.split(/(?<=[.!?])(\s+)/);
+    // A clause after ";" stands alone: "Do not use <another brand>'s process; use MyGlow for <this brand>."
+    const pieces = line.split(/(?<=[.!?;])(\s+)/);
     const out: string[] = [];
     let dropped = false;
     for (let index = 0; index < pieces.length; index += 2) {
@@ -149,7 +161,9 @@ export function withoutOtherBrands(content: string): string {
       out.push(kept, space);
     }
     const joined = out.join("").trimEnd();
-    return dropped && joined.trim() === "" ? null : joined;
+    if (dropped && joined.trim() === "") return null;
+    // A line that lost its first clause starts with a capital.
+    return dropped ? joined.replace(/^(\s*(?:[-*•]\s+|\d+\.\s+)?)(\p{Ll})/u, (_m, lead: string, first: string) => lead + first.toUpperCase()) : joined;
   });
   const guarded = withLocationWord(lines.filter((line): line is string => line !== null).join("\n")).replace(/\n{3,}/g, "\n\n");
   // What is left must still say something: not only a citation, a label or punctuation.
