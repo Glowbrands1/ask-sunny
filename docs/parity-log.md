@@ -1,5 +1,27 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 26 Oct 2026: a negated "test employee" is not the employee (QA-6) — same in both apps; capitalised negations a known gap
+
+With `NOT_A_NAME_GUARD_ENABLED` on, the lower-case "test employee" reading
+(PR #227 here, #158 in Ask Bubbles) took the name even where the manager said
+the form is not for them: "do not create a CA for test employee", "never
+write up test employee", "without test employee", "everyone except test
+employee", "Okay let's restart. Not Test Employee, …". Now a name right after
+not / never / no / without / except / don't / do not (with "for", "write up"
+or "create a CA for" in between) is passed over and the first name that is
+not negated is read. Only that guard-on reading is checked, so every name
+main already read is read the same, and flag off is unchanged.
+
+Known gap, pinned in `src/lib/ai/proposal-names-oct25.test.ts`: a
+capitalised name in a name place is main's reading and is still read when
+negated, the same with the guard off and on ("do not create a CA for Test
+Employee at Kearney" → Test Employee). The proposal card for "create a CA for
+test employee and a coaching for rowan pell" is for Rowan Pell, as on main;
+and a later turn's correction that repeats the old name ("not <old name>,
+it is <new name>") keeps the earlier card's employee (`renamesEmployee` in
+`keep-filled-slots.ts`), as on main. Ask Bubbles has the same code and the
+same gap.
+
 ## 25 Oct 2026: two unflagged full-remap changes in integration bundle 2 — same in both apps
 
 Neither is behind its own flag, and neither changes production today: both
