@@ -73,7 +73,7 @@ interface TopicRule {
 
 /* ------------------------------------------------------------ the words -- */
 
-const ANIMAL = String.raw`(?:pupp(?:y|ies|ie)|pupy|pups?|dogs?|doggy|doggie|doggies|pets?|cats?|kittens?|kitty|animals?|bunny|bunnies|rabbits?|ferrets?|birds?|snakes?|lizards?)`;
+const ANIMAL = String.raw`(?:pupp(?:y|ies|ie)|pupy|pups?|dogs?|doggy|doggie|doggies|pets?|cats?|kittens?|kitty|animals?|bunny|bunnies|rabbits?|hamsters?|ferrets?|birds?|snakes?|lizards?)`;
 const ANIMAL_AT_WORK = new RegExp(
   String.raw`\b(?:brought|bring(?:ing|s)?|brang|had|has|having|allow(?:ed|ing)?|let|letting|kept|keeping|walked in with|came in with|come in with|coming in with|showed up with)\s+(?:\S+\s+){0,3}?${ANIMAL}\b|\b${ANIMAL}\s+(?:\S+\s+){0,3}?(?:in|inside|at)\s+(?:\S+\s+){0,2}?(?:the\s+)?(?:salon|store|location|shop|lobby|building|work)\b`,
 );
@@ -108,7 +108,8 @@ const TOPICS: readonly TopicRule[] = [
   {
     id: "animals",
     words: [ANIMAL_AT_WORK],
-    not: /\b(?:service animal|hot ?dogs?|guinea pig)\b/,
+    /* A working animal is not a pet: service, guide, therapy and seeing-eye animals are exempt; "emotional support" is cited. */
+    not: /\b(?:(?:service|guide|therapy|seeing[- ]eye)\s+(?:animals?|dogs?|pupp(?:y|ies)|pups?)|hot ?dogs?|guinea pig)\b/,
     cite: { kind: "heading", heading: "Animals in the Workplace" },
     also: [{ heading: "Visitors in the Workplace" }],
   },
