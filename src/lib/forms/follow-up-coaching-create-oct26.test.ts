@@ -99,8 +99,27 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-describe("REOPEN_REQUEST_VERB_ONLY_ENABLED on", () => {
-  beforeEach(() => vi.stubEnv("REOPEN_REQUEST_VERB_ONLY_ENABLED", "true"));
+/*
+ * REOPEN_VERB_GUARD_ENABLED is "1" in production in both apps (fix C, #229):
+ * every case runs with the guard on, as in production, and off.
+ */
+for (const guard of ["1", ""]) describe(`REOPEN_REQUEST_VERB_ONLY_ENABLED on, REOPEN_VERB_GUARD_ENABLED ${guard ? "on (production)" : "off"}`, () => {
+  beforeEach(() => {
+    vi.stubEnv("REOPEN_REQUEST_VERB_ONLY_ENABLED", "true");
+    vi.stubEnv("REOPEN_VERB_GUARD_ENABLED", guard);
+  });
+
+  if (guard) {
+    // Fix C stays green: "no call no show" is never "show me the form", with this flag on too.
+    it.each([
+      "Write up Test Employee, Tanning Consultant, at Test Salon, for no call no show on 10/22.",
+      "Draft a corrective action for Test Employee at the Test Salon. She was a no call no show today.",
+      "follow up coaching form for devon harlan, no call no show on 10/22",
+      "Follow up coaching form for Devon Harlan, no call no show on 10/22",
+    ])("%s is not a reopen", (turn) => {
+      expect(readReopenRequest(turn)).toBeNull();
+    });
+  }
 
   it.each(TWINS)("%s asks for a new form, never one on file", async (turn) => {
     expect(readReopenRequest(turn)).toBeNull();
@@ -116,7 +135,9 @@ describe("REOPEN_REQUEST_VERB_ONLY_ENABLED on", () => {
   });
 });
 
-describe("REOPEN_REQUEST_VERB_ONLY_ENABLED off", () => {
+for (const guard of ["1", ""]) describe(`REOPEN_REQUEST_VERB_ONLY_ENABLED off, REOPEN_VERB_GUARD_ENABLED ${guard ? "on (production)" : "off"}`, () => {
+  beforeEach(() => vi.stubEnv("REOPEN_VERB_GUARD_ENABLED", guard));
+
   it("the tester's turn is read as a reopen and answered \"couldn't find … on file\" (the reported bug)", async () => {
     expect(readReopenRequest(TESTER)).toEqual({ mode: "show", templateKey: "follow-up-coaching", asksChange: false });
     const reply = await ask(TESTER);
