@@ -92,4 +92,13 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: the same person in lowercase, senten
       expect(humanCase(text)).toBe(text);
     }
   });
+
+  it("never offers words in capitals after a terse exit line as people (Sunny conv_mvokbx6w2gp8cu4)", async () => {
+    const { expandTerseRequest } = await import("./terse-slots");
+    const text = "EXIT DEVON HARLAN TC KS MANHATTAN NC/NS LAST DAY 9/20 CALLED 9/27 NO ANSWER";
+    for (const variant of [text, sentenceCase(text), text.toLowerCase()]) {
+      expect(extractEmployeeNames(humanCase(expandTerseRequest(variant, "2026-10-25")))).toEqual(["Devon Harlan"]);
+    }
+    expect(humanCase("ca for avery stone, JBA manual 1-1-26")).toBe("ca for Avery Stone, JBA manual 1-1-26");
+  });
 });

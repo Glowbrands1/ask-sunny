@@ -16,8 +16,9 @@ import type { AskRequest } from "./types";
  * the lowercase surname. The name reader looks for capitals. Managers type
  * in lowercase (37% of first turns) and in sentence case.
  *
- * So before any reader sees a manager turn: a turn typed in capitals is read
- * in lowercase, and the person named where a form is asked for — after
+ * So before any reader sees a manager turn: a turn typed in capitals, and any
+ * word in capitals of three letters or more that is not a title or an acronym
+ * ("ANSWER", "LAST DAY"), is read in lowercase, and the person named where a form is asked for — after
  * "write up", "ca for", "coaching for", "exit form for", "warning for", "name
  * is", or two words that open the turn before a verb or a comma — is written
  * in Title Case. Up to two words (a third only when typed with a capital); a
@@ -46,6 +47,8 @@ const FUNCTION_WORDS = new Set(
     "everyone someone somebody me you i we us also then there here please thanks thank"
   ).split(" "),
 );
+/** Capitalised abbreviations that are not shouting. */
+const ACRONYMS = new Set(["JBA", "EFT", "EFTS", "PPTA", "UPTA", "LPSVA", "NCNS", "EPP", "SOP", "PTO", "HR", "USA"]);
 /** Topic words: what the form is about, never who. */
 const TOPIC_WORDS = new Set(
   (
@@ -89,7 +92,11 @@ function titleCase(word: string): string {
 /** The turn with capitals read as lowercase and the named person in Title Case. */
 export function humanCase(text: string): string {
   if (!text?.trim()) return text;
-  const source = shouting(text) ? text.toLowerCase() : text;
+  // A word in capitals ("ANSWER", "LAST DAY", "CALLED") is read in lowercase, so it is never offered as a person;
+  // a job title or an acronym the managers use ("TC", "JBA", "EFT") keeps its capitals.
+  const source = shouting(text)
+    ? text.toLowerCase()
+    : text.replace(/\b[A-Z][A-Z'’-]{2,}\b/g, (word) => (ACRONYMS.has(word) || READERS.title(word) ? word : word.toLowerCase()));
   const spans: { start: number; end: number; words: string[] }[] = [];
   const take = (from: number) => {
     const rest = source.slice(from);
