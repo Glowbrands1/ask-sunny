@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { accountManualSections } from "@/lib/ai/account-manual-sections";
@@ -74,6 +74,8 @@ const LIVE = [
 ] as const;
 
 afterEach(() => vi.unstubAllEnvs());
+// Flag-off pins hold whatever the environment has on; flag-on tests set it.
+beforeEach(() => vi.stubEnv("POLICY_CONDUCT_WORDING_ENABLED", ""));
 
 const ACCOUNTS = ["talking bad about coworkers", "didn't complete policy acknowledgements in woven during onboarding"];
 const FRAMINGS = [

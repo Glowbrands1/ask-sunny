@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { accountManualSections } from "@/lib/ai/account-manual-sections";
@@ -44,6 +44,8 @@ const ACCOUNTS = [
 ] as const;
 
 afterEach(() => vi.unstubAllEnvs());
+// Flag-off pins hold whatever the environment has on; flag-on tests set it.
+beforeEach(() => vi.stubEnv("POLICY_CONDUCT_WORDING_ENABLED", ""));
 
 function on() {
   vi.stubEnv("POLICY_CONDUCT_WORDING_ENABLED", "true");
@@ -159,5 +161,43 @@ describe("flag on: the same Standards of Conduct reading in every register", () 
     for (const typed of [lower(text), sentence(text)]) {
       expect(accountManualSections(typed, CHUNKS).some((section) => /harassment/i.test(section.heading))).toBe(false);
     }
+  });
+});
+
+/*
+ * QA-7, 26 Oct 2026 (names invented): a conduct the manager denies is not one,
+ * and "one did, the other did not" names no one. Lowercase, sentence case and
+ * CAPS.
+ */
+describe("flag on: a denied conduct reads no Standards of Conduct", () => {
+  const registers = (text: string) => [lower(text), sentence(text), text.toUpperCase()];
+  const DENIED = [
+    "she did not talk back",
+    "she never gossips",
+    "she was not disrespectful to her manager",
+    "tom gossips but dana does not",
+    "Marlo Quint didn't talk back when I gave her the closing checklist.",
+    "Marlo Quint has never been rude to a customer.",
+  ].flatMap(registers);
+
+  it.each(DENIED)("%s", (text) => {
+    on();
+    expect(readCaPolicy(text).topics).not.toContain("disrespect");
+    expect(accountManualSections(text, CHUNKS).map((section) => section.heading)).not.toContain("Standards of Conduct");
+  });
+
+  it.each(
+    [
+      "she was not on time and she talked back",
+      "she did not clock in, then talked back to her manager",
+      "Marlo Quint was disrespectful to her manager, not to the customers.",
+    ].flatMap(registers),
+  )("what is still said is still read: %s", (text) => {
+    on();
+    expect(readCaPolicy(text).topics).toContain("disrespect");
+  });
+
+  it.each(DENIED)("flag off: reads no plain-wording conduct: %s", (text) => {
+    expect(readCaPolicy(text).topics).not.toContain("disrespect");
   });
 });
