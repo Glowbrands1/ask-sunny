@@ -221,7 +221,13 @@ const PROTECTED = [
  * for STORED_SLOTS_NOT_A_REQUEST_ENABLED: in turnsAboutThisForm the new-request
  * check reads the manager's words, not the app's stored-slot lines, with the
  * flag-off reading unchanged. It stays on the PROTECTED list; only the diff
- * check leaves it out. No other protected file is excepted.
+ * check leaves it out.
+ *
+ * Pau's yes, 26 Oct 2026, DATE_READER_WIDE, 5 spots: editing
+ * src/lib/forms/form-date-answer.ts behind DATE_READER_WIDE_ENABLED (default
+ * off) — the imports, two lines in isOtherDate, two lines in datesInText, the
+ * changesTheDate helper and the formDateChange offered filter. Already
+ * excepted above; no other line and no other protected file is excepted.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/form-date-answer.ts",

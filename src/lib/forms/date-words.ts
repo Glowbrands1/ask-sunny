@@ -78,6 +78,10 @@ const ORDINAL = `(${ORDINAL_WORDS.map((word) => word.replace("-", "[\\s-]")).joi
 const UNIT_AFTER =
   /^\s*(?:-|to\s+\d)?\s*(?:min|mins|minutes?|hrs?|hours?|days?|weeks?|months?|years?|yrs?|people|times|x\b|%|am\b|pm\b|a\.m|p\.m|dollars?|bucks|cents?|stars?|points?|pts|lbs?|pounds|miles|percent|o'?clock)/i;
 
+/** Money just before a dotted pair: "Payroll deduction amount: 3.25" is an amount, not March 25. */
+const MONEY_BEFORE =
+  /(?:\$|\bamount|\bdeduct\w*|\bpayroll|\bshort|\bowed?|\bcost|\bprice|\bpaid|\bpay|\bfee|\bcharged?|\btotal|\bdollars?)[^.;!?\n]{0,24}$/i;
+
 /** "the 2nd time", "the 3rd shift": an ordinal that counts something, not a day. */
 const COUNTED_AFTER =
   /^\s*(?:time|times|shift|shifts|floor|week|weeks|day|place|warning|quarter|year|grade|person|row|one|ones|attempt|offen[cs]e|occurrence|step|level|write|call|incident|month|period|round|try)\b/i;
@@ -181,7 +185,7 @@ export function wideDatesInText(text: string, today: string, taken: readonly Tak
   add(
     /(?<![\d.$\w])(\d{1,2})\.(\d{1,2})(?![\d]|\.\d)/g,
     (m) => dated(m, Number(m[1]), Number(m[2]), undefined),
-    (_m, end) => UNIT_AFTER.test(text.slice(end, end + 14)),
+    (m, end) => UNIT_AFTER.test(text.slice(end, end + 14)) || MONEY_BEFORE.test(text.slice(0, m.index ?? 0)),
   );
   // "on 1002": four digits are a date only after "on".
   add(
@@ -218,7 +222,14 @@ export function unreadDateTokens(text: string, read: readonly Taken[]): string[]
     }
   };
   const unit = (end: number) => UNIT_AFTER.test(text.slice(end, end + 14));
-  look(/(?<![\d$.\w/-])\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?(?![\d/.-]*\d)/g, unit);
+  const unitOrMoney = (end: number, index: number) => unit(end) || MONEY_BEFORE.test(text.slice(0, index));
+  for (const match of text.matchAll(/(?<![\d$.\w/-])\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?(?![\d/.-]*\d)/g)) {
+    const index = match.index ?? 0;
+    const end = index + match[0].length;
+    if (overlaps(spans, index, end) || unitOrMoney(end, index)) continue;
+    out.push(match[0].trim());
+    spans.push({ index, end });
+  }
   look(/\bon\s+\d{3,4}\b/gi, unit);
   look(new RegExp(String.raw`(?<![\d$])\b\d{1,2}(?:st|nd|rd|th)?(?:\s+of)?\s+${MONTH}\b`, "gi"));
   look(new RegExp(String.raw`\b${MONTH}\.?\s+\d{1,2}(?:st|nd|rd|th)?\b`, "gi"));

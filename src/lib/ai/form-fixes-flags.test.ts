@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { extractFormDate } from "@/lib/forms/form-date-answer";
 import { HR_TEMPLATE_SEEDS } from "@/lib/forms/library";
@@ -70,7 +70,13 @@ const LATE_CHUNK = {
 };
 
 describe("flags off leave the question unchanged", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("returns the same string when both intake flags are off", () => {
+    // DATE_READER_WIDE_ENABLED reads the yearless "10-1" in FACTS; this case pins main's reading (see the twin below).
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     const question = "create a verbal corrective action";
     const history = buriedHistory();
     expect(
@@ -78,6 +84,20 @@ describe("flags off leave the question unchanged", () => {
     ).toBe(question);
     expect(fieldLines(question, TODAY, FACTS)).not.toEqual([]);
     expect(extractFormDate(FACTS, TODAY)).toBeNull();
+    expect(payrollDeductAmount(FACTS)).toBeNull();
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026). "It happened
+   * on 10-1" is a date to the wider reader, so the facts carry one; the
+   * question is still unchanged with both intake flags off, and the $3.25 is
+   * still no date.
+   */
+  it("with DATE_READER_WIDE_ENABLED the facts' yearless 10-1 is read; the question is still unchanged", () => {
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+    const question = "create a verbal corrective action";
+    expect(augmentIntakeQuestion({ slots: false, fields: false, question, history: buriedHistory(), today: TODAY })).toBe(question);
+    expect(extractFormDate(FACTS, TODAY)).toBe("2026-10-01");
     expect(payrollDeductAmount(FACTS)).toBeNull();
   });
 });

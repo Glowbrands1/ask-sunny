@@ -94,6 +94,8 @@ describe("what is not a date stays unread", () => {
     "rated 4.5 stars",
     "counted 1002 items",
     "she was late on friday",
+    "Payroll deduction amount: 3.25.",
+    "payroll deduct applies and 3.25 will be deducted from check",
   ])("%s", (text) => {
     vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
     expect(wideDatesInText(text, TODAY, datesInText(text, TODAY).filter(() => false))).toEqual([]);
@@ -120,7 +122,7 @@ describe("a date that cannot be read is asked about once", () => {
 
   it("a read date is not asked about, nor a range", () => {
     vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
-    for (const text of ["late on 2 october", "late on 10-2", "she was 10-15 minutes late", "short $3.25"]) {
+    for (const text of ["late on 2 october", "late on 10-2", "she was 10-15 minutes late", "short $3.25", "Payroll deduction amount: 3.25."]) {
       expect(unreadDateTokens(text, datesInText(text, TODAY))).toEqual([]);
     }
   });

@@ -126,6 +126,11 @@ describe("an exit answer is not a person", () => {
 describe("flag off: read as before", () => {
   beforeEach(() => {
     process.env[FLAG] = "false";
+    // DATE_READER_WIDE_ENABLED reads a yearless "10-24" on its own; this case pins main's reading.
+    process.env.DATE_READER_WIDE_ENABLED = "false";
+  });
+  afterEach(() => {
+    delete process.env.DATE_READER_WIDE_ENABLED;
   });
 
   it("no yearless date, no bare fulfilled date, no address, no no-call, no reason edit, no answer phrase", () => {
@@ -137,3 +142,30 @@ describe("flag off: read as before", () => {
     expect(isExitAnswerPhrase("items returned")).toBe(false);
   });
 });
+
+/*
+ * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026). With this file's
+ * flag off, the wider date reader still reads "last day 10-24": a yearless
+ * dashed month-day is a date to every reader built on `datesInText`, and the
+ * exit form places it by the "last day" beside it. Nothing else in the case
+ * above changes.
+ */
+describe("flag off, DATE_READER_WIDE_ENABLED on: the yearless last day is read", () => {
+  beforeEach(() => {
+    process.env[FLAG] = "false";
+    process.env.DATE_READER_WIDE_ENABLED = "true";
+  });
+  afterEach(() => {
+    delete process.env.DATE_READER_WIDE_ENABLED;
+  });
+
+  it("last day 10-24 is 2026-10-24; the rest is read as with both flags off", () => {
+    expect(readExitFacts("she resigned, last day 10-24", TODAY).lastDayWorked).toBe("2026-10-24");
+    expect(readExitFacts("Gave notice 9/25/26 – fulfilled 10/9/26", TODAY).noticeFulfilled).toBeNull();
+    expect(readPermanentAddress("permanent address 123 Main St, Lawrence, KS 66044")).toBeNull();
+    expect(readExitFacts("She did not call in for her last two shifts.", TODAY).typeOptions).toEqual([]);
+    expect(readExitDetails("I need to edit the reason for resignation to: going back to school", TODAY).resignationReason).toBeNull();
+    expect(isExitAnswerPhrase("items returned")).toBe(false);
+  });
+});
+

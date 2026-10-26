@@ -361,9 +361,25 @@ describe("S1: conv_mvn007ti21c35au, word for word", () => {
 
   it("with the flag off it stays 10/20, as live", async () => {
     vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+    // DATE_READER_WIDE_ENABLED reads the yearless "10-21" on its own; this case pins main's reading.
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     intentModel.reading = copiesTheManager;
     const answers = await chat(S1, "conv-s1-off");
     expect(answers[3]!.formProposal?.formDate).toBe("2026-10-20");
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026: a yearless
+   * date gave nothing with LATE_OPEN_DATE unset). The wider reader reads the
+   * correction's yearless date without the late-opening reader, so the form
+   * moves to 10/21, as it does with LATE_OPEN_DATE on.
+   */
+  it("with the flag off and DATE_READER_WIDE_ENABLED on it moves to 10/21", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+    intentModel.reading = copiesTheManager;
+    const answers = await chat(S1, "conv-s1-wide");
+    expect(answers[3]!.formProposal?.formDate).toBe("2026-10-21");
   });
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   MANAGER_CONTEXT_CHARS,
@@ -807,7 +807,13 @@ describe("a salon named in two words is not a second employee", () => {
 /* ==================================================== not a record == */
 
 describe("16. a proposal carries no HR field values at all", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("has no topic, details, role, follow-up date or checked options", () => {
+    // DATE_READER_WIDE_ENABLED reads "the 12th" as a date; this case pins main's reading (see the twin below).
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     const proposal = propose(
       [userTurn("Sarah Jones was late on the 12th")],
       "coaching form please",
@@ -850,6 +856,25 @@ describe("16. a proposal carries no HR field values at all", () => {
       "follow_up_date",
       "expected_action",
     ]) {
+      expect(serialized, invented).not.toContain(invented);
+    }
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-6, 26 Oct 2026: "the 2nd" was
+   * dropped). "Late on the 12th" is a date the manager typed — the most recent
+   * 12th that is not in the future — so it is the form's date. Every other
+   * field is still absent, and nothing is invented.
+   */
+  it("with DATE_READER_WIDE_ENABLED, \"the 12th\" is the form's date and nothing else is filled", () => {
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+    const proposal = propose([userTurn("Sarah Jones was late on the 12th")], "coaching form please");
+    expect(proposal.formDate).toMatch(/^\d{4}-\d{2}-12$/);
+    expect(proposal.formDate! <= new Date().toISOString().slice(0, 10)).toBe(true);
+    expect(proposal.employeeRole).toBeNull();
+    expect(proposal.variantKey).toBeNull();
+    const serialized = JSON.stringify(proposal);
+    for (const invented of ["Tanning Consultant", "repeated tardiness", "Documented coaching", "three occasions", "follow_up_date", "expected_action"]) {
       expect(serialized, invented).not.toContain(invented);
     }
   });

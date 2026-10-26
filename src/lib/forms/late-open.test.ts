@@ -110,8 +110,23 @@ describe("the intent read (this app's live path)", () => {
   });
 
   it("F5 with the flag off reads no date and Attendance, as live", () => {
+    // DATE_READER_WIDE_ENABLED reads the yearless "10-19" on its own; this case pins main's reading.
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     const decision = decideIntentTurn(turn(F5));
     expect(decision.state.formDate).toBeNull();
+    expect(decision.state.incidentType).toBe("Attendance");
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026: a yearless
+   * "10-20" gave no date with LATE_OPEN_DATE unset). The wider reader dates
+   * F5 10/19 without the late-opening reader; the Late Opening policy is
+   * still that reader's, so the heading stays Attendance.
+   */
+  it("F5 with the flag off and DATE_READER_WIDE_ENABLED on is dated 10/19, still Attendance", () => {
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+    const decision = decideIntentTurn(turn(F5));
+    expect(decision.state.formDate).toBe("2026-10-19");
     expect(decision.state.incidentType).toBe("Attendance");
   });
 

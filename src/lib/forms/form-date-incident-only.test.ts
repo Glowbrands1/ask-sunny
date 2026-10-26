@@ -238,11 +238,27 @@ describe.each(REGISTERS)("live tester findings, 26 Oct 2026 (%s)", (_register, a
   });
   afterEach(() => {
     delete process.env.LATE_OPEN_DATE_ENABLED;
+    delete process.env.DATE_READER_WIDE_ENABLED;
   });
 
   it("off: the first late date stands alone, and the prior verbal dates the remap (the reported failures)", () => {
     withFlag(false);
+    // DATE_READER_WIDE_ENABLED reads "10-15" after "and" on its own; this case pins main's reading.
+    process.env.DATE_READER_WIDE_ENABLED = "false";
     expect(newestStatedDate(as(LATE_TWICE), TODAY, explicitIncidentIsoOrNull)).toBe("2026-10-05");
+    expect(remapDate(as(PRIORS_TODAY))).toBe("2026-10-21");
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-6, 26 Oct 2026). With this
+   * file's flag off, the wider date reader reads the yearless "10-15" after
+   * "and" too, so the first late date never stands alone (the reported Sunny
+   * failure is gone); the remap's prior verbal is this file's fix, untouched.
+   */
+  it("off, DATE_READER_WIDE_ENABLED on: both late dates are read, so the first never stands alone", () => {
+    withFlag(false);
+    process.env.DATE_READER_WIDE_ENABLED = "true";
+    expect(newestStatedDate(as(LATE_TWICE), TODAY, explicitIncidentIsoOrNull)).toBeNull();
     expect(remapDate(as(PRIORS_TODAY))).toBe("2026-10-21");
   });
 

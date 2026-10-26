@@ -374,8 +374,23 @@ describe.each(PROFILES)("%s", (_profile, slotRetention, formState) => {
 
     it("flag off: read as before (the card this app gave)", { timeout: 120_000 }, async () => {
       vi.stubEnv(FLAG, "false");
+      // DATE_READER_WIDE_ENABLED reads the yearless "10-24" on its own; this case pins main's card.
+      vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
       const [yearless] = await converse([YEARLESS]);
       expect(blankLine(yearless!.content)).toContain("Last Day Worked");
+    });
+
+    /*
+     * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026: the exit
+     * form's yearless last day was read nowhere). With this file's flag off,
+     * the wider reader reads "last day 10-24", so Last Day Worked is filled.
+     */
+    it("flag off, DATE_READER_WIDE_ENABLED on: the yearless last day is on the card", { timeout: 120_000 }, async () => {
+      vi.stubEnv(FLAG, "false");
+      vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+      const [yearless] = await converse([YEARLESS]);
+      expect(blankLine(yearless!.content)).not.toContain("Last Day Worked");
+      expect(yearless!.content).toMatch(/\*\*Last Day Worked:\*\* October 24, 2026/);
     });
 
     it("a Corrective Action whose account says 'items returned … does not apply' never names 'Items Returned'", { timeout: 120_000 }, async () => {

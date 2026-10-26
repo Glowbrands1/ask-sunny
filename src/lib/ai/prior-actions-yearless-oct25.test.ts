@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
-import { blankYearlessStepDates } from "@/lib/forms/form-date-answer";
+import { blankYearlessStepDates, extractFormDate } from "@/lib/forms/form-date-answer";
 import { correctiveActionDocument } from "@/lib/forms/library";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { continuationFor } from "@/lib/forms/proposal-continuation";
@@ -334,10 +334,28 @@ describe("conv_mvnoiw8n2kfbcvc, word for word", () => {
 
   it("with the flag off it is dated 9/15 with no prior action, as live", async () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    // DATE_READER_WIDE_ENABLED reads the yearless "10-20" on its own; this case pins main's reading.
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     intentModel.reading = reading(null);
     const [first] = await chat([SAID], "conv-yearless-off");
     expect(first!.formProposal?.formDate).toBe("2026-09-15");
     expect(priorLine(first!.content)).toBeNull();
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026). With this
+   * file's flag off, the wider reader reads both yearless dates, so the
+   * coaching's 9/15 no longer dates the form and the older step reader lists
+   * the coaching with its date. Its wording ("signed") is this file's flag's
+   * fix, off here and on in production.
+   */
+  it("with the flag off and DATE_READER_WIDE_ENABLED on it is dated 10/20, and the 9/15 coaching is a prior", async () => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+    intentModel.reading = reading(null);
+    const [first] = await chat([SAID], "conv-yearless-wide");
+    expect(first!.formProposal?.formDate).toBe("2026-10-20");
+    expect(priorLine(first!.content)).toMatch(/^Coaching for being late — .*09\/15\/2026$/);
   });
 });
 
@@ -358,6 +376,8 @@ describe("a coaching the manager held is read as before", () => {
 describe("the readers", () => {
   it("read the yearless coaching as an earlier step, and the late opening as the incident", () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    // DATE_READER_WIDE_ENABLED reads "10-20" directly, so no "It happened on" line is needed; see the twin.
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     // QA 25 Oct 2026: no "signed" — the manager never wrote it (see the header).
     expect(statedPriorActions(SAID, TODAY)).toEqual(["Coaching for being late — 09/15/2026"]);
     expect(fieldLines(SAID, TODAY)).toEqual(["It happened on 10/20/2026."]);
@@ -366,6 +386,7 @@ describe("the readers", () => {
 
   it("leave a range, a held coaching and the flag-off reading alone", () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "");
     const range = "CA for Test Employee, she was 10-15 minutes late on 10-20";
     expect(blankYearlessStepDates(range, TODAY)).toBe(range);
     expect(fieldLines(range, TODAY)).toEqual(["It happened on 10/20/2026."]);
@@ -376,5 +397,24 @@ describe("the readers", () => {
     expect(statedPriorActions(SAID, TODAY)).toEqual([]);
     expect(fieldLines(SAID, TODAY)).toEqual(["It happened on 9/15/2026."]);
     expect(blankYearlessStepDates(SAID, TODAY)).toBe(SAID);
+  });
+
+  /*
+   * FLAG-ON TWIN (DATE_READER_WIDE_ENABLED, QA-3, 26 Oct 2026). The wider
+   * reader reads the yearless "10-20" itself — the incident, never the 9-15
+   * coaching, and never the "10-15 minutes" range — so the intake needs no
+   * "It happened on" line for it. The prior step reads as before.
+   */
+  it("with DATE_READER_WIDE_ENABLED the incident's yearless date is read directly, and the coaching is still a prior", () => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    vi.stubEnv("DATE_READER_WIDE_ENABLED", "1");
+    expect(statedPriorActions(SAID, TODAY)).toEqual(["Coaching for being late — 09/15/2026"]);
+    expect(extractFormDate(SAID, TODAY)).toBe("2026-10-20");
+    expect(fieldLines(SAID, TODAY)).toEqual([]);
+    const range = "CA for Test Employee, she was 10-15 minutes late on 10-20";
+    expect(extractFormDate(range, TODAY)).toBe("2026-10-20");
+    expect(fieldLines(range, TODAY)).toEqual([]);
+    const held = "I coached her on 10-16 about her cell phone";
+    expect(statedPriorActions(held, TODAY)).toEqual([]);
   });
 });
