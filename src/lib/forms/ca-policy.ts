@@ -1,7 +1,7 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, lateOpenPlaceEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
-import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
+import { LATE_TO_OPEN, describesAttendanceToo, lateOpenOn } from "./late-open";
 import {
   findManualSection,
   isApprovedPolicyManualTitle,
@@ -224,13 +224,44 @@ function missedEventIn(sentences: readonly string[]): string | null {
   return null;
 }
 
+/*
+ * QA-6 on "open (the) salon late" (25 Oct 2026). That reading, and only that
+ * one, is set aside when:
+ *  - the account also describes a late shift or an absence ("she opened the
+ *    location late and also left early"): the Attendance section governs it
+ *    too, as the sibling app's own guard (`describesAttendanceToo`) reads it;
+ *  - the late opening was approved or permitted ("opening the salon late was
+ *    approved by the manager"): that is no offense. "Not approved" and
+ *    "without permission" still are.
+ * The readings main already had ("opened late", "late to open", "late
+ * opening") are not guarded here and read exactly as before.
+ */
+const APPROVED_IN_SENTENCE = new RegExp(
+  String.raw`\b(?:pre-?approved|approved|authori[sz]ed|excused|sanctioned|ok(?:ay)?'?e?d|cleared|signed\s+off)\b|\b(?:approval|permission|authori[sz]ation|go[- ]ahead|sign[- ]?off)\b|\b(?:was|were|is|are|been|being|got|get)\s+(?:\S+\s+){0,2}?(?:allowed|permitted)\b|\b(?:allowed|permitted|let)\s+(?:her|him|them|me|us|the\s+\w+)\s+(?:to\s+)?open\b`,
+);
+const NOT_APPROVED_IN_SENTENCE = new RegExp(
+  String.raw`\b(?:not|never|no|nor|without|\w+n't)\s+(?:\S+\s+){0,3}?(?:pre-?approv\w*|approv\w*|authori[sz]\w*|excused|sanctioned|ok(?:ay)?'?e?d|cleared|signed\s+off|permi\w*|allowed|go[- ]ahead|sign[- ]?off)\b|\b(?:unapproved|unauthori[sz]ed|unexcused|unpermitted|disallowed)\b`,
+);
+
+function lateOpeningSetAside(sentence: string, whole: string): boolean {
+  if (describesAttendanceToo(whole)) return true;
+  return APPROVED_IN_SENTENCE.test(sentence) && !NOT_APPROVED_IN_SENTENCE.test(sentence);
+}
+
 /**
  * A POLICY NAMED. The Standards of Conduct is a policy's name wherever it
  * appears; the others are also everyday words ("her attendance", "out of dress
  * code"), so they count only as an answer — a short reply, or a sentence that
  * frames them as the policy.
  */
-const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enabled?: () => boolean }[] = [
+const NAMED: {
+  name: CaPolicyName;
+  pattern: RegExp;
+  alwaysAPolicy: boolean;
+  enabled?: () => boolean;
+  /** A reading this pattern must not give, though it matches: `(sentence, the whole account)`. */
+  setAside?: (sentence: string, whole: string) => boolean;
+}[] = [
   { name: "standards_of_conduct", pattern: /\b(?:standards? of conduct|code of conduct)\b/, alwaysAPolicy: true },
   { name: "under_performance", pattern: /\b(?:under[- ]?performance|underperforming)\b/, alwaysAPolicy: false },
   /*
@@ -245,6 +276,19 @@ const NAMED: { name: CaPolicyName; pattern: RegExp; alwaysAPolicy: boolean; enab
   },
   /* "late to open" is the same section (QA, 24 Oct 2026; LATE_OPEN_DATE_ENABLED). */
   { name: "late_opening", pattern: new RegExp(LATE_TO_OPEN.source), alwaysAPolicy: true, enabled: lateOpenOn },
+  /*
+   * "opening salon late", "opened the salon late" (QA, 25 Oct 2026; the
+   * sibling app's B1, conv_mvifqra017j15ld8): the place between the verb and
+   * "late" is still a late opening (LATE_OPEN_PLACE_ENABLED, with
+   * LATE_OPEN_DATE_ENABLED).
+   */
+  {
+    name: "late_opening",
+    pattern: /\bopen(?:ed|ing|s)?\s+(?:the\s+|our\s+|her\s+|his\s+|their\s+)?(?:salon|location|shop)\s+late\b/,
+    alwaysAPolicy: true,
+    enabled: () => lateOpenOn() && lateOpenPlaceEnabled(),
+    setAside: lateOpeningSetAside,
+  },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },
   { name: "dress_code", pattern: /\bdress code\b/, alwaysAPolicy: false },
   /* "wore leggings" names the dress code when the manager does not say those words. */
@@ -264,14 +308,15 @@ const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\
  */
 const SET_ASIDE_BEFORE = /\b(?:instead\s+of|rather\s+than|in\s+place\s+of|replac(?:e|ing)|remov(?:e|ing)|swap\s+out)\s+(?:the\s+|our\s+|that\s+)?$/;
 
-function statedIn(turn: string): CaPolicyName | null {
+function statedIn(turn: string, whole: string = turn): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
   for (const sentence of statements(turn)) {
-    for (const { name, pattern, alwaysAPolicy, enabled } of NAMED) {
+    for (const { name, pattern, alwaysAPolicy, enabled, setAside } of NAMED) {
       if (enabled && !enabled()) continue;
       const match = pattern.exec(sentence);
       if (!match) continue;
+      if (setAside?.(sentence, whole)) continue;
       if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
       if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
@@ -301,7 +346,7 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
   const missedEvent = missedEventIn(sentences);
 
   let stated: CaPolicyName | null = null;
-  for (const turn of turns) stated = statedIn(turn) ?? stated;
+  for (const turn of turns) stated = statedIn(turn, text) ?? stated;
   /*
    * A MISSED MEETING IS ATTENDANCE — owner decision, 22 Oct 2026, after the
    * District Manager's 21 Oct report ("not attending the monthly meeting" was

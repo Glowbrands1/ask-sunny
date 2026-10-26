@@ -918,3 +918,15 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * A late opening with the place between the verb and "late" — "opening salon
+ * late", "opened the salon late" — names the Late Opening policy (QA, 25 Oct
+ * 2026; the sibling app's B1, same flag in both apps). Needs
+ * LATE_OPEN_DATE_ENABLED as well. Not when the late opening was approved, or
+ * when the account also describes a late shift or an absence. See
+ * `forms/ca-policy.ts`. Off, the policy reader is exactly as before.
+ */
+export function lateOpenPlaceEnabled(): boolean {
+  return envFlag("LATE_OPEN_PLACE_ENABLED");
+}
