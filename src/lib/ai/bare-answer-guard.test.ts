@@ -185,6 +185,14 @@ describe("BARE_ANSWER_BINDING_ENABLED on", () => {
     expect(bindBareAnswer({ response: no, question: "doesn't apply", history: asked }).formProposal?.payrollDeduct).toBeNull();
   });
 
+  it.each(["verbal", "Verbal", "VERBAL", "written", "Written", "WRITTEN"])("leaves the warning level a bare '%s' sets", (answer) => {
+    process.env[FLAG] = "on";
+    const level = answer.toLowerCase() as "verbal" | "written";
+    const asked = [...HISTORY.slice(0, 1), { role: "assistant", content: "Is this a **verbal** or **written** warning?", formProposal: card() }];
+    const set = respondWith(card({ warningLevel: level }), `Warning level: **${level}** — tell me if that should change.`);
+    expect(bindBareAnswer({ response: set, question: answer, history: asked })).toBe(set);
+  });
+
   it("reads bare answers the same in lowercase and sentence case", () => {
     process.env[FLAG] = "on";
     const no = { content: "Is payroll deduct applicable? **No** — tell me if that should change.", citations: [], formProposal: card({ payrollDeduct: "no" }) } as unknown as AskResponse;
