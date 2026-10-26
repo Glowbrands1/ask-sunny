@@ -1,5 +1,6 @@
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
 import { notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { isNegatedName } from "./negated-name";
 import { isNotAName } from "./not-a-name";
 import { isFormVocabulary } from "./template-intent";
 
@@ -112,33 +113,16 @@ function thingFollows(text: string, end: number): boolean {
  * name wherever it stands, so "do not create a CA for test employee at
  * Kearney", "never write up test employee", "without test employee",
  * "everyone except test employee" and "Okay let's restart. Not Test
- * Employee, …" were read as Test Employee. A name right after not / never /
- * no / without / except / don't / do not — with "for", "write up" or
- * "create a CA for" in between — is somebody the form is not for, so that
- * match is passed over and the first one not negated is read ("test
+ * Employee, …" were read as Test Employee. A name after a negation
+ * (`isNegatedName`, forms/negated-name.ts: not / never / no / don't / do not
+ * … for / without / except / instead of) is somebody the form is not for, so
+ * that match is passed over and the first one not negated is read ("test
  * employee, not Rowan Pell, was late" is for Test Employee).
  *
  * Only the reading this guard added is checked: a lower-case "employee" and
  * the "test employee" placeholder. A capitalised "for Test Employee" is read
  * as it always was, negated or not (a known gap, docs/parity-log.md).
  */
-const NEGATION = "(?:not|never|no|without|except|don['’]?t|do\\s+not)";
-const NEGATED_BEFORE = new RegExp(
-  `(?<![\\w'’-])${NEGATION}\\s+(?:` +
-    // "not for", "except for", "never about"
-    "(?:for|about|regarding)\\s+" +
-    // "never write up"
-    "|write\\s+up\\s+" +
-    // "do not create a CA for", "don't write a verbal for", "do not start a coaching form on"
-    "|(?:create|write|make|draft|start|open|prepare|issue|give|file|do)\\s+(?:(?:a|an|the|any)\\s+)?(?:[\\w-]+\\s+){0,3}?(?:for|about|regarding|on)\\s+" +
-    ")?$",
-  "i",
-);
-
-function negatedAt(text: string, nameStart: number): boolean {
-  return NEGATED_BEFORE.test(text.slice(0, nameStart));
-}
-
 /** "Test Employee" when the manager typed it as the employee's name, else null. */
 export function typedEmployeeName(text: string): string | null {
   if (!text) return null;
@@ -151,14 +135,14 @@ export function typedEmployeeName(text: string): string | null {
       // A lower-case "employee" is this guard's own reading: passed over when negated.
       if (guard && match[0].endsWith("employee")) {
         const nameStart = match.index + match[0].length - /\S+\s+employee$/.exec(match[0])![0].length;
-        if (negatedAt(text, nameStart)) continue;
+        if (isNegatedName(text, nameStart)) continue;
       }
       if (namesSomebody(first)) return `${first} Employee`;
     }
   }
   if (guard) {
     for (const match of text.matchAll(PLACEHOLDER)) {
-      if (negatedAt(text, match.index)) continue;
+      if (isNegatedName(text, match.index)) continue;
       if (!thingFollows(text, match.index + match[0].length)) return "Test Employee";
     }
   }
