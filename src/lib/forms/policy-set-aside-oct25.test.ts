@@ -184,3 +184,57 @@ describe("batch 11: \"not standards of conduct, its attendance\" replaces", () =
     expect(shown).not.toMatch(/Standards of Conduct/);
   });
 });
+
+/*
+ * QA-5 and QA-6, 26 Oct 2026 (names invented): "not only X but also Y" and
+ * "not just X, Y too" name both; "but" ends a negation ("not attendance but
+ * late opening" sets only Attendance aside). Flag on, three registers each.
+ */
+describe("flag on: additive 'not only' and the 'but' boundary", () => {
+  const caps = (text: string) => text.toUpperCase();
+  const lower = (text: string) => text.toLowerCase();
+  const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+  const registers = (text: string) => [lower(text), sentence(text), caps(text)];
+
+  it.each(
+    [
+      "not only attendance but also late opening",
+      "not just attendance, late opening too",
+      "not only attendance, also late opening for Rowan Pell",
+      "it is not only about attendance, it is also about late opening",
+      "not attendance only, late opening too",
+      "both attendance and late opening",
+    ].flatMap(registers),
+  )("%s names both: nothing set aside, no 'only'", (text) => {
+    on();
+    expect(policiesSetAside(text)).toEqual({ setAside: [], only: null });
+  });
+
+  it.each(["not only attendance but also late opening", "Not only attendance but also late opening"])(
+    "after a late-opening turn, %s keeps Late Opening and Attendance on the card",
+    (turn) => {
+      const notes = notesOf([turn]);
+      const off = cardLines(notes);
+      on();
+      expect(cardLines(notes)).toEqual(off);
+      expect(off.join("\n")).toMatch(/Late Opening/);
+      expect(off.join("\n")).toMatch(/Attendance/);
+    },
+  );
+
+  it.each(registers("not attendance but late opening"))("%s sets only Attendance aside", (text) => {
+    on();
+    expect(policiesSetAside(text)).toEqual({ setAside: ["attendance"], only: null });
+  });
+
+  it.each([
+    ["attendance and late opening, not the dress code", { setAside: ["dress_code"], only: null }],
+    ["it's attendance not the dress code", { setAside: ["dress_code"], only: null }],
+    ["attendance only", { setAside: [], only: "attendance" }],
+    ["late opening and attendance but not attendance for Avery Holt", { setAside: [], only: null }],
+    ["it is attendance, not late opening", { setAside: ["late_opening"], only: null }],
+  ] as const)("unchanged: %s", (text, expected) => {
+    on();
+    for (const typed of registers(text)) expect(policiesSetAside(typed)).toEqual(expected);
+  });
+});

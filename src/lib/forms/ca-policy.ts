@@ -273,10 +273,33 @@ const SET_ASIDE_BEFORE = /\b(?:instead\s+of|rather\s+than|in\s+place\s+of|replac
  */
 const INTERJECTION_ONLY = /^\s*(?:(?:no|nope|nah|wait|sorry|actually|oops)[,.!\s]+)+$/;
 
-function negatedBefore(before: string): boolean {
+/**
+ * "not only attendance but also late opening", "not just attendance, late
+ * opening too", "not attendance only": the manager names both (QA-5/QA-6, 26
+ * Oct 2026). "but" ends a negation like a comma does: "not attendance but
+ * late opening" sets only Attendance aside.
+ */
+const ADDITIVE_NOT = /\bnot\s+(?:only|just|merely|simply|solely)\s+(?:(?:about|for|the|a|an)\s+)*$/;
+const NOT_BEFORE_ONLY = /\bnot\s+(?:(?:about|for|the|a|an)\s+)*$/;
+const ONLY_AFTER = /^\s*(?:only|alone)\b/;
+
+/** The clause a negation before a policy name could reach: it ends at a comma, a dash or "but". */
+function clauseBefore(before: string): string {
+  return before.split(/[,;:–—]|\s-\s|\bbut\b/).pop() ?? "";
+}
+
+/** "not only X", "not X only": X is named alongside another, never set aside and never the only one. */
+function additiveNot(before: string, after: string): boolean {
+  if (!policySetAsideEnabled()) return false;
+  const clause = clauseBefore(before);
+  return ADDITIVE_NOT.test(clause) || (NOT_BEFORE_ONLY.test(clause) && ONLY_AFTER.test(after));
+}
+
+function negatedBefore(before: string, after = ""): boolean {
   if (!policySetAsideEnabled()) return NEGATED_BEFORE.test(before);
-  const clause = before.split(/[,;:–—]|\s-\s/).pop() ?? "";
+  const clause = clauseBefore(before);
   if (INTERJECTION_ONLY.test(clause)) return false;
+  if (additiveNot(before, after)) return false;
   return NEGATED_BEFORE.test(clause);
 }
 
@@ -292,7 +315,7 @@ function statedIn(turn: string): CaPolicyName | null {
       if (enabled && !enabled()) continue;
       const match = pattern.exec(sentence);
       if (!match) continue;
-      if (negatedBefore(sentence.slice(0, match.index))) continue;
+      if (negatedBefore(sentence.slice(0, match.index), sentence.slice(match.index + match[0].length))) continue;
       if (setAsideBefore(sentence.slice(0, match.index))) continue;
       if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
@@ -339,12 +362,13 @@ export function policiesSetAside(rawText: string): PolicySetAside {
         const match = pattern.exec(sentence);
         if (!match) continue;
         const before = sentence.slice(0, match.index);
-        if (negatedBefore(before) || setAsideBefore(before)) {
+        if (negatedBefore(before, sentence.slice(match.index + match[0].length)) || setAsideBefore(before)) {
           aside.add(name);
           if (only === name) only = null;
           continue;
         }
         aside.delete(name);
+        if (additiveNot(before, sentence.slice(match.index + match[0].length))) continue;
         if (ONLY_AROUND(match.index, match.index + match[0].length, sentence)) only = name;
       }
     }
