@@ -166,13 +166,15 @@ const UNDONE_DUTIES = new RegExp(
 
 /** Cleaning, sanitizing or the equipment — the words that make it Care and Cleaning. */
 const CLEANING_WORD =
-  String.raw`(?:clean(?:ing|ed|s)?|sanitiz\w*|sanitis\w*|disinfect\w*|wip(?:e|ed|ing)\s+down|mop(?:ped|ping)?|sweep(?:ing)?|swept|vacuum\w*|dust(?:ing|ed)?)`;
+  String.raw`(?:clean(?:ing|ed|s)?|san[ai]?t[ai]?[zs]\w*|disinfect\w*|wip(?:e|ed|ing)\s+down|mop(?:ped|ping)?|sweep(?:ing)?|swept|vacuum\w*|dust(?:ing|ed)?)`;
 const CLEANING_UNDONE = [
   new RegExp(
     String.raw`\b${CLEANING_WORD}\b[^.;!?\n]{0,40}?(?:(?:were|was|are|is|been)\s+not\s+(?:being\s+)?|(?:were ?n[o']?t|weren't|was ?n[o']?t|wasn't|are ?n[o']?t|aren't|is ?n[o']?t|isn't)\s+(?:being\s+)?|not\s+being\s+|(?:did ?n[o']?t|didn't|never)\s+(?:get|got)\s+)(?:completed|done|finished)\b`,
   ),
   new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:complete|completed|finish|finished|do|done)\b[^.;!?\n]{0,30}?\b${CLEANING_WORD}\b`),
   new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,2}?${CLEANING_WORD}\b`),
+  // "skipped the 10 minute sanitize"
+  new RegExp(String.raw`\b(?:skipped|skips|skipping)\s+(?:\S+\s+){0,4}?${CLEANING_WORD}\b`),
   /\bleft\s+(?:\S+\s+){0,4}?(?:dirty|unclean|filthy|a\s+mess|messy|uncleaned|unsanitized)\b/,
   /\b(?:dirty|unclean|filthy|uncleaned|unsanitized)\s+(?:\S+\s+){0,1}?(?:beds?|booths?|rooms?|equipment|lobby|restrooms?|bathrooms?|floors?|counters?|stations?|machines?|units?|towels?|break\s?room)\b/,
 ];

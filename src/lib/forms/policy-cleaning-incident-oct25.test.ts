@@ -141,3 +141,32 @@ describe("flag on: every register reads the same", () => {
     },
   );
 });
+
+/*
+ * QA live, 26 Oct 2026 (G19, name invented): "written ca <name> 10/5 didnt do
+ * 10 min sanitize at lawrence" missed Care and Cleaning p.21 (this flag was not
+ * yet on). Code 9's live test typed "sanatizing": the misspellings and
+ * "skipped" read the same.
+ */
+describe("flag on: G19 and the typed misspellings", () => {
+  const G19 = "written ca wren okafor 10/5 didnt do 10 min sanitize at lawrence";
+  it.each([
+    G19,
+    sentence(G19),
+    G19.toUpperCase(),
+    "she didnt do the sanatizing",
+    "She didnt do the sanatizing",
+    "didnt sanatize the beds",
+    "she skipped the 10 minute sanitize on bed 4",
+    "She skipped the 10 minute sanatize on bed 4",
+    "never sanitzed the booths",
+  ])("%s is Care and Cleaning p.21", (text) => {
+    on();
+    expect(cited(text)).toEqual([`${CARE} p.21`]);
+  });
+
+  it.each(["she sanatized every bed before close", "Santa's helper costume is not dress code"])("%s is not cleaning left undone", (text) => {
+    on();
+    expect(cited(text)).not.toContain(`${CARE} p.21`);
+  });
+});
