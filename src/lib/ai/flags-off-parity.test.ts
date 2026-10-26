@@ -79,6 +79,8 @@ import {
   googleReviewsInChatEnabled,
 } from "@/lib/config/chat-quality-flags";
 
+import { reviewsUpdateNoteEnabled } from "@/lib/reviews/update-note";
+
 import { augmentIntakeQuestion } from "./intake-augment";
 import { flaggedCitationWrite } from "./policy-citation-fields";
 
@@ -172,6 +174,7 @@ const NEW_FLAGS = [
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
+  "GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -216,6 +219,18 @@ const MONITORING_TABLE = "src/features/forms/monitoring-table.tsx";
 const MONITORING_MOUNT = [
   '+import { RegisterRowActions } from "@/form-revisions/register-row-actions";',
   "+                            <RegisterRowActions form={form} />",
+];
+
+/*
+ * Pau, 26 Oct 2026: asked for the update note on the Google Reviews page. The
+ * page may differ from main by exactly these lines: the note's import and one
+ * render guarded by GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED. Anything else in the
+ * file fails. Off, it renders as before (src/app/(app)/reviews/page.test.tsx).
+ */
+const REVIEWS_PAGE = "src/app/(app)/reviews/page.tsx";
+const REVIEWS_NOTE_MOUNT = [
+  '+import { REVIEWS_UPDATE_NOTE, reviewsUpdateNoteEnabled } from "@/lib/reviews/update-note";',
+  '+      {reviewsUpdateNoteEnabled() ? <div className="px-5 pt-5 sm:px-6"><Notice tone="attention"><p>{REVIEWS_UPDATE_NOTE}</p></Notice></div> : null}',
 ];
 
 function changedLines(patch: string): string[] {
@@ -340,6 +355,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
+    expect(reviewsUpdateNoteEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -383,6 +399,8 @@ describe("new flags default off and wrappers are inert", () => {
       // And except composer.tsx: QA approved on 25 Oct 2026, behind
       // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
       // and send disabled over the limit. Off, it renders as before.
+      // And except the Google Reviews page, line by line: only the update
+      // note's import and its one guarded render (REVIEWS_NOTE_MOUNT).
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -392,9 +410,17 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/chat/chat-screen.tsx",
           ":(exclude)src/features/chat/composer.tsx",
           `:(exclude)${MONITORING_TABLE}`,
+          `:(exclude)${REVIEWS_PAGE}`,
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
+      /*
+       * Exactly the mount, each line once and in order, or nothing at all
+       * (once main carries the note, a branch's diff of the page is empty).
+       * A duplicated, moved or extra line fails (QA-7, 26 Oct 2026).
+       */
+      const reviewsPageLines = changedLines(diff(uiBase, [REVIEWS_PAGE]));
+      expect(reviewsPageLines.length === 0 ? REVIEWS_NOTE_MOUNT : reviewsPageLines).toEqual(REVIEWS_NOTE_MOUNT);
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",

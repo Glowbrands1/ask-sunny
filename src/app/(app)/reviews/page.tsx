@@ -8,6 +8,7 @@ import { demoRuntime } from "@/lib/demo/runtime";
 import { ReviewsScreen } from "@/features/reviews/reviews-screen";
 import { requirePagePermission } from "@/lib/auth/page";
 import { isDemoMode } from "@/lib/config/runtime";
+import { REVIEWS_UPDATE_NOTE, reviewsUpdateNoteEnabled } from "@/lib/reviews/update-note";
 
 export const metadata: Metadata = {
   title: "Google Reviews",
@@ -51,6 +52,7 @@ export default async function ReviewsPage({
 
   return (
     <PermissionGate permission="view_google_reviews">
+      {reviewsUpdateNoteEnabled() ? <div className="px-5 pt-5 sm:px-6"><Notice tone="attention"><p>{REVIEWS_UPDATE_NOTE}</p></Notice></div> : null}
       <Suspense fallback={null}>
         {props.mode === "live" ? (
           <ReviewsScreen {...props} />
