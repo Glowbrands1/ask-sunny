@@ -869,6 +869,40 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
+ * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
+ * written on 07/28/2026" listed both under Prior actions and also as
+ * "Follow-up: 6/25/2026" and "Follow-up: 7/28/2026": the card counted every
+ * date that was not the incident's as a follow-up, and PRIOR_ACTIONS_PARSE
+ * takes the earlier steps' dates out of the incident dates. On, a date the
+ * earlier-step reader lists is never a Follow-up line. Off, the card's
+ * Follow-up lines are exactly as before.
+ */
+export function followUpNotPriorEnabled(): boolean {
+  return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
+}
+
+/**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
+
+/**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
  * What happened is read from the clauses that say what happened: a clause
  * that only gives the employee's title, salon or tenure, a policy
  * instruction or pasted policy text is never the incident, and "kearney, ne",

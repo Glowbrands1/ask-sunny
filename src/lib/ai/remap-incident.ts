@@ -10,6 +10,7 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -469,8 +470,8 @@ export function remapCitations(manual: RemapManual, sections: readonly ManualSec
   return citations;
 }
 
-const STATE_CODES =
-  /^(?:A[LKZR]|C[AOT]|DE|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])$/i;
+// Every US state's code; one list, shared with the create route's re-read.
+const STATE_CODES = US_STATE_CODE;
 
 /** "empire, sd" and "Kearney, NE": a state after a place is not Salon Director (SD). */
 export function withoutStateCodes(text: string): string {
