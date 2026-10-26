@@ -1,0 +1,86 @@
+import { afterEach, describe, expect, it } from "vitest";
+
+import { readSalonMentions } from "@/lib/forms/salon-mention";
+import { PRODUCTION_SALONS } from "@/data/salons";
+
+import { rosterNames, withStoreAliases } from "./store-alias";
+import type { AskRequest } from "./types";
+
+/**
+ * Ask Sunny conv_mvoehonm2pfrkng, 25 Oct 2026: "test testy, location o st,
+ * today's date, on 9-20-26 test was 10 minutes late clocking in, this is a
+ * verbal, test is a tc" — "o st" was not read as NE Lincoln O Street. The
+ * manager's words exactly; "test testy" is the manager's own placeholder.
+ */
+const FLAG = "STORE_ALIAS_ENABLED";
+const saved = process.env[FLAG];
+afterEach(() => {
+  if (saved === undefined) delete process.env[FLAG];
+  else process.env[FLAG] = saved;
+});
+
+const REPORTED = "test testy, location o st, today's date, on 9-20-26 test was 10 minutes late clocking in, this is a verbal, test is a tc";
+const O_STREET = PRODUCTION_SALONS.find((salon) => salon.name === "NE Lincoln O Street")!;
+const KEARNEY = PRODUCTION_SALONS.find((salon) => salon.name === "NE Kearney")!;
+
+function ids(text: string): string[] {
+  return [...new Set(readSalonMentions(text).flatMap((mention) => mention.salonIds))];
+}
+
+describe("STORE_ALIAS_ENABLED off", () => {
+  it("passes the turn on as typed, and main's reader does not find O Street in it", () => {
+    delete process.env[FLAG];
+    const request = { question: REPORTED, history: [] } as unknown as AskRequest;
+    expect(withStoreAliases(request)).toBe(request);
+    expect(ids(REPORTED)).not.toContain(O_STREET.id);
+  });
+});
+
+describe("STORE_ALIAS_ENABLED on", () => {
+  it("reads 'location o st' as NE Lincoln O Street, the rest of the turn as typed", () => {
+    process.env[FLAG] = "on";
+    const out = withStoreAliases({ question: REPORTED, history: [] } as unknown as AskRequest);
+    expect(out.question).toBe(REPORTED.replace("o st", "NE Lincoln O Street"));
+    expect(ids(out.question)).toEqual([O_STREET.id]);
+  });
+
+  it.each([
+    ["o st", O_STREET],
+    ["O ST", O_STREET],
+    ["at o st today", O_STREET],
+    ["lincoln o st", O_STREET],
+    ["o st lincoln", O_STREET],
+    ["kearney ne", KEARNEY],
+    ["kearney, ne", KEARNEY],
+    ["KEARNEY, NE", KEARNEY],
+    ["she works at our kearney ne salon", KEARNEY],
+  ])("reads %s as its salon", (text, salon) => {
+    expect(ids(rosterNames(text))).toEqual([salon.id]);
+  });
+
+  it("reads a one-word salon reply as the salon only after the app asked which salon", () => {
+    expect(rosterNames("kearney", true)).toBe("NE Kearney");
+    expect(rosterNames("kearney")).toBe("kearney");
+    process.env[FLAG] = "on";
+    const out = withStoreAliases({
+      question: "kearney",
+      history: [{ role: "assistant", content: "I have **Avery Stone**. Which salon is this for?" }],
+    } as unknown as AskRequest);
+    expect(out.question).toBe("NE Kearney");
+  });
+
+  it("leaves people, other words and roster names as typed", () => {
+    for (const text of [
+      "Liberty",
+      "kearney",
+      "create a ca for avery kearney",
+      "post office",
+      "joe st",
+      "she works at our KS Manhattan salon",
+      "NE Lincoln O Street",
+      "the costa st report",
+    ]) {
+      expect(rosterNames(text)).toBe(text);
+    }
+  });
+});
