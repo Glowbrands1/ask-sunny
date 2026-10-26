@@ -16,6 +16,7 @@ import {
   type ResponsiveFormValues,
 } from "@/features/forms/document/responsive-form";
 import { useSession } from "@/lib/session/session-context";
+import { asdNoFormMonitoringEnabled } from "@/lib/permissions";
 import { checkboxGroupsForVariant, fieldsForVariant } from "@/lib/forms/document";
 import { planSummary } from "@/lib/forms/plan-summary";
 import { manualStandingNotice } from "@/lib/forms/standing-notices";
@@ -214,7 +215,7 @@ export function InlineForm({
    */
   onReplaced?: (reference: ChatFormInstanceRef) => void;
 }) {
-  const { role, user } = useSession();
+  const { role, user, can } = useSession();
   /*
    * ==========================================================================
    * THE RECORD THIS CARD SHOWS, WHICH A REVISION MOVES
@@ -901,12 +902,15 @@ export function InlineForm({
                 )}
                 Download PDF
               </Button>
+              {/* ASD_NO_FORM_MONITORING: no link into a page the reader cannot open. */}
+              {!asdNoFormMonitoringEnabled() || can("view_form_monitoring") ? (
               <Button variant="secondary" size="sm" asChild>
                 <Link href="/forms/monitoring">
                   <ExternalLink />
                   View in Form Monitoring
                 </Link>
               </Button>
+              ) : null}
               {onStartAnother ? (
                 <Button variant="ghost" size="sm" onClick={onStartAnother}>
                   <Plus />
