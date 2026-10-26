@@ -749,6 +749,15 @@ export function reopenVerbGuardEnabled(): boolean {
   return envFlag("REOPEN_VERB_GUARD_ENABLED");
 }
 
+/**
+ * The reply check never sends an empty reply (QA G1, 25 Oct 2026): when the
+ * citation fallback or a repair would leave nothing, the model's own reply
+ * goes out instead. Off, a blank stays blank, as before. See `self-check.ts`.
+ */
+export function selfCheckNeverBlankEnabled(): boolean {
+  return envFlag("SELF_CHECK_NEVER_BLANK_ENABLED");
+}
+
 function flagOn(value: string | undefined): boolean {
   if (typeof value !== "string") return false;
   return ON.has(value.trim().toLowerCase());
