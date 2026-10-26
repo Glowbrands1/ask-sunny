@@ -168,6 +168,23 @@ describe("BARE_ANSWER_BINDING_ENABLED on", () => {
     expect(bindBareAnswer({ response: both, question: "yes", history: [{ role: "assistant", content: "x", formProposal: two }] })).toBe(both);
   });
 
+  // QA, 26 Oct 2026: "doesn't apply" / "not applicable" to the payroll question left Payroll blank.
+  it.each(["doesn't apply", "Doesn't apply", "DOESN'T APPLY", "not applicable", "Not applicable", "NOT APPLICABLE", "n/a", "N/A"])(
+    "keeps Payroll No from '%s' to the payroll question",
+    (answer) => {
+      process.env[FLAG] = "on";
+      const no = respondWith(card({ payrollDeduct: "no" }), "Is payroll deduct applicable? **No** — tell me if that should change.");
+      expect(bindBareAnswer({ response: no, question: answer, history: HISTORY })).toBe(no);
+    },
+  );
+
+  it("still does not take 'doesn't apply' as payroll when payroll was not the question", () => {
+    process.env[FLAG] = "on";
+    const asked = [{ role: "assistant", content: "What is the **Job title**? Tell me here.", formProposal: card() }];
+    const no = respondWith(card({ payrollDeduct: "no" }), "Is payroll deduct applicable? **No** — tell me if that should change.");
+    expect(bindBareAnswer({ response: no, question: "doesn't apply", history: asked }).formProposal?.payrollDeduct).toBeNull();
+  });
+
   it("reads bare answers the same in lowercase and sentence case", () => {
     process.env[FLAG] = "on";
     const no = { content: "Is payroll deduct applicable? **No** — tell me if that should change.", citations: [], formProposal: card({ payrollDeduct: "no" }) } as unknown as AskResponse;
