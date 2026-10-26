@@ -109,6 +109,26 @@ describe.each(REGISTERS)("EXIT_EFFECTIVE_DATE_ENABLED, %s", (_register, as) => {
     expect(read(as("exit form for ava pellmore\n\neffective 11/1")).lastDayWorked).toBe("2026-11-01");
   });
 
+  // QA-6 / QA-4, 26 Oct 2026: two dates joined by "or", and an unreadable second effective date.
+  it("on, two effective dates joined by \"or\" are asked about, not the first one taken", () => {
+    withFlag(true);
+    for (const text of ["exit for ava pellmore effective october 2 or 11/1", "exit for ava pellmore effective 10/2 or 11/1"]) {
+      const facts = read(as(text));
+      expect(facts.lastDayWorked, text).toBeNull();
+      expect(facts.ambiguities, text).toContainEqual({ kind: "date_conflict", role: "lastDayWorked", dates: ["2026-10-02", "2026-11-01"] });
+    }
+  });
+
+  it("on, an unreadable effective date next to a readable one picks neither", () => {
+    withFlag(true);
+    for (const text of [
+      "exit for ava pellmore effective 2 october and effective 11/8",
+      "exit for ava pellmore effective the 2nd of october and effective 11/8",
+    ]) {
+      expect(read(as(text)).lastDayWorked, text).toBeNull();
+    }
+  });
+
   it("on, two different effective dates are not guessed between", () => {
     withFlag(true);
     expect(

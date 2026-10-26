@@ -580,6 +580,18 @@ function departureEffectiveOn(text: string, index: number, end: number): boolean
   return !OTHER_SUBJECT.test(said.slice((departure.index ?? 0) + departure[0].length)) && !EFFECTIVE_UNDONE.test(said);
 }
 
+/** How many "effective …" phrases name a date, readable or not: never "effective immediately", nor a negated one. */
+function effectivePhrases(text: string): number {
+  let count = 0;
+  for (const match of text.matchAll(/\beffective\b/gi)) {
+    const at = match.index ?? 0;
+    if (/^\s+immediately\b/i.test(text.slice(at + match[0].length))) continue;
+    if (EFFECTIVE_NEGATED.test(text.slice(Math.max(0, at - 40), at))) continue;
+    count += 1;
+  }
+  return count;
+}
+
 /** The sentence ending just before `start` (the start of the current one). */
 function previousSentence(text: string, start: number): string {
   const head = text.slice(0, start).replace(/[\s.;!?]+$/, "");
@@ -639,10 +651,21 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
    * date, and two effective dates are not guessed between.
    */
   if (exitEffectiveDateEnabled() && !lastDayWorked && !ambiguities.some((entry) => "role" in entry && entry.role === "lastDayWorked")) {
-    const effective = [
-      ...new Set(tokens.filter((token) => token.iso && departureEffectiveOn(text, token.index, token.end)).map((token) => token.iso!)),
-    ];
-    if (effective.length === 1) lastDayWorked = effective[0]!;
+    const read = tokens.filter((token) => token.iso && departureEffectiveOn(text, token.index, token.end));
+    /*
+     * QA-6 / QA-4, 26 Oct 2026: "effective october 2 or 11/1" names two
+     * dates, not the first one; and when a second "effective …" phrase has a
+     * date that could not be read ("effective 2 october and effective 11/8"),
+     * the one that could is not picked. Two readable dates are asked about.
+     */
+    const alternatives = tokens.filter(
+      (token) =>
+        token.iso &&
+        read.some((first) => first.end <= token.index && /^\s*,?\s*(?:or|and|,)\s*$/i.test(text.slice(first.end, token.index))),
+    );
+    const effective = [...new Set([...read, ...alternatives].map((token) => token.iso!))].sort();
+    if (effective.length === 1 && effectivePhrases(text) <= 1) lastDayWorked = effective[0]!;
+    else if (effective.length > 1) ambiguities.push({ kind: "date_conflict", role: "lastDayWorked", dates: effective });
   }
   const noticeGiven = settle("noticeGiven");
   const noticeFulfilled = settle("noticeFulfilled");
