@@ -6,6 +6,7 @@ import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   attendanceActionPlanEnabled,
+  hideNoPolicyMatchNoticeEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
   draftNeverBlankEnabled,
@@ -2209,7 +2210,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * which is the opposite of what happened.
        */
       notice: [
-        groundingNotice(grounding),
+        // HIDE_NO_POLICY_MATCH_NOTICE_ENABLED (Pau, 26 Oct 2026): "Woven does not see a matching policy…" is not shown.
+        hideNoPolicyMatchNoticeEnabled() && (grounding.reason === null || /^Woven does not see\b/.test(grounding.reason))
+          ? null
+          : groundingNotice(grounding),
         /*
          * SAID OUT LOUD. A silently shortened observation is a change to an HR
          * record nobody signed off, and the manager may well be right that a
