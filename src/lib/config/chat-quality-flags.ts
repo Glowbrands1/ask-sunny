@@ -894,6 +894,15 @@ export function stateCodeNotAPersonEnabled(): boolean {
 }
 
 /**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
  * On an exit form, "effective october 2" fills Last Day Worked when no last
  * day was stated (QA, 26 Oct 2026). "effective immediately" names no date.
  * Off, an effective date fills nothing, as before.
