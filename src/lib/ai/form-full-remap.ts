@@ -9,6 +9,7 @@ import {
   notANameGuardEnabled,
   priorActionsParseEnabled,
   remapIncidentFixEnabled,
+  statedTitleWinsEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -58,6 +59,7 @@ import type { ChatFormProposal } from "@/types";
 import { callClaudeTool } from "./call-claude";
 import { formDateByRules, managerWords, remapEditLine, remapObservation, withoutSetAsidePolicies } from "./edit-date-rules";
 import { chatTraceDraft } from "./chat-trace-store";
+import { copularJobTitle } from "./title-words";
 
 /**
  * One structured read of the whole conversation, mapped onto the form.
@@ -580,7 +582,12 @@ function groundedTitle(turns: readonly string[]): string | null {
   let title: string | null = null;
   for (const turn of turns) {
     if (/^(?:verbal|written|yes|no|yeah|nope)[.!\s]*$/i.test(turn.trim())) continue;
-    const found = titleAfterJobTitleLabel(turn) ?? extractJobTitle(turn) ?? teamMemberTitle(turn);
+    // STATED_TITLE_WINS_ENABLED: "she is an HR assistant" states a title the list does not hold.
+    const found =
+      titleAfterJobTitleLabel(turn) ??
+      extractJobTitle(turn) ??
+      teamMemberTitle(turn) ??
+      (statedTitleWinsEnabled() ? copularJobTitle(turn) : null);
     if (!found || /^(?:verbal|written)$/i.test(found)) continue;
     title = found;
   }

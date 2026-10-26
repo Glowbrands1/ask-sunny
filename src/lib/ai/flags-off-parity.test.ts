@@ -56,6 +56,8 @@ import {
   priorActionsParseEnabled,
   keepFormEmployeeEnabled,
   titleWholeWordEnabled,
+  futureIncidentDateConfirmEnabled,
+  statedTitleWinsEnabled,
   reformatKeepsSourcesEnabled,
   frameworkGeneralSectionsEnabled,
   newestPlaceTurnEnabled,
@@ -75,6 +77,7 @@ import {
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
   followUpNotPriorEnabled,
+  correctionBothFactsEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -146,6 +149,8 @@ const NEW_FLAGS = [
   "MANUAL_NEGATED_LIST_NOTE_ENABLED",
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
+  "FUTURE_INCIDENT_DATE_CONFIRM_ENABLED",
+  "STATED_TITLE_WINS_ENABLED",
   "ACTION_PLAN_MANAGER_ONLY_ENABLED",
   "EXIT_INTAKE_FIX_ENABLED",
   "REFORMAT_KEEPS_SOURCES_ENABLED",
@@ -168,6 +173,7 @@ const NEW_FLAGS = [
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
+  "CORRECTION_BOTH_FACTS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -313,6 +319,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(manualNegatedListNoteEnabled()).toBe(false);
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
+    expect(futureIncidentDateConfirmEnabled()).toBe(false);
+    expect(statedTitleWinsEnabled()).toBe(false);
     expect(actionPlanManagerOnlyEnabled()).toBe(false);
     expect(exitIntakeFixEnabled()).toBe(false);
     expect(reformatKeepsSourcesEnabled()).toBe(false);
@@ -334,6 +342,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
+    expect(correctionBothFactsEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

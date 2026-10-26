@@ -44,6 +44,7 @@ import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
+import { withFutureDateQuestion } from "./future-incident-date";
 import { historyForRemap } from "./form-remap-scope";
 import { withRemapDraftSources } from "./remap-draft-sources";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
@@ -698,7 +699,12 @@ async function answerQuestionUntraced(
         },
       });
       // REMAP_DRAFT_SOURCES_ENABLED: the card names the turns its draft is written from.
-      if (remapped) return withRemapDraftSources(remapped, request);
+      // FUTURE_INCIDENT_DATE_CONFIRM_ENABLED: a future incident date on the card is asked about once.
+      if (remapped)
+        return withFutureDateQuestion(withRemapDraftSources(remapped, request), {
+          today: request.context.todayIso,
+          history: [...request.history, ...history],
+        });
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

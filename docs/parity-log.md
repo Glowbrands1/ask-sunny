@@ -9,6 +9,10 @@ earlier-step reader lists is never a Follow-up line. Ask Bubbles' card has no
 Follow-up lines (`enrichFormCard` does not run on its grounded path), so there
 is nothing to port.
 
+## 26 Oct 2026: BH3, both facts in one correction turn — flagged here, unflagged in Ask Bubbles
+
+BH3 ("verbal. payroll deduct is not applicable." applies both the level and the payroll answer on a correction turn) is gated here behind `CORRECTION_BOTH_FACTS_ENABLED` (default off, #207); the same fix has been on in Ask Bubbles main, unflagged, since 9530112; QA decided on 26 Oct 2026 not to add a flag in Bubbles (churn risk).
+
 ## 25 Oct 2026: two unflagged full-remap changes in integration bundle 2 — same in both apps
 
 Neither is behind its own flag, and neither changes production today: both

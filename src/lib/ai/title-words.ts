@@ -77,3 +77,46 @@ export function readsAsStatedTitle(input: {
   if (input.knownTitle(probe)) return true;
   return words.length <= 4 && !words.some((word) => CLAUSE_WORDS.has(word.replace(/[.,;:!?]+$/, "")));
 }
+
+/*
+ * A TITLE STATED AS WHAT THE EMPLOYEE IS (STATED_TITLE_WINS_ENABLED; ported
+ * from the sibling app's QA, 25 Oct 2026): "…for Test Employee at Kearney, she
+ * is an HR assistant, for being late…" — the title list has no "HR
+ * assistant", so the directory's title for the person replaced it. "she is an HR assistant", "he's a
+ * shift lead", "who is a trainer": the words after "is a/an" up to the end
+ * of the clause, when they end in a word that names a role and read as a title
+ * (`readsAsStatedTitle`). "send to HR", "she is a no-show" and "she is a great
+ * worker" are not titles.
+ */
+const ROLE_HEAD =
+  /^(?:assistant|associate|manager|lead|leader|supervisor|member|maker|consultant|director|generalist|coordinator|specialist|trainer|cashier|clerk|representative|rep|owner|operator|administrator|admin|technician|tech|keyholder|holder|partner|crew|host|hostess|stylist|attendant|analyst|recruiter|officer)$/i;
+const NOT_A_TITLE_WORD =
+  /^(?:great|good|bad|new|nice|hard|poor|excellent|terrible|strong|weak|reliable|real|very|really|the|my|our|your|their|her|his|this|that|former|ex)$/i;
+const COPULAR =
+  /\b(?:she|he|they|who)(?:\s+(?:is|are|works\s+as)|['’]s)\s+(?:a|an)\s+([a-z][a-z'’/-]*(?:\s+[a-z][a-z'’/-]*){0,3}?)(?=\s*(?:[,.;:!?\n]|$|\s(?:at|for|in|on|and|who|that|with|since|from)\b))/gi;
+
+/**
+ * STATED_TITLE_WINS_ENABLED: an initialism in a stated title reads the same
+ * however it was typed, so "an hr assistant" is HR Assistant, as "an HR
+ * assistant" is (registers, 26 Oct 2026). Any other word keeps the capitals
+ * the manager typed, or is Capitalized.
+ */
+const TITLE_INITIALISM = /^(?:hr|it|dm|gm|asd)$/i;
+
+function titleWord(word: string): string {
+  if (TITLE_INITIALISM.test(word)) return word.toUpperCase();
+  return word === word.toUpperCase() ? word : word[0]!.toUpperCase() + word.slice(1);
+}
+
+export function copularJobTitle(text: string, employeeName: string | null = null): string | null {
+  let found: string | null = null;
+  const spelled = spelledAssistant(text ?? "");
+  for (const match of spelled.matchAll(COPULAR)) {
+    const words = match[1]!.trim().split(/\s+/);
+    if (!ROLE_HEAD.test(words.at(-1)!) || words.some((word) => NOT_A_TITLE_WORD.test(word))) continue;
+    const probe = words.join(" ");
+    if (!readsAsStatedTitle({ probe, text: spelled, employeeName, knownTitle: () => null })) continue;
+    found = words.map(titleWord).join(" ");
+  }
+  return found;
+}

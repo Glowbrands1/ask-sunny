@@ -12,6 +12,7 @@ import {
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
+  statedTitleWinsEnabled,
   typedNameProceedsEnabled,
   namedFormExactEnabled,
   remapIncidentFixEnabled,
@@ -42,7 +43,7 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
-import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
+import { copularJobTitle, readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
@@ -989,6 +990,16 @@ function groundTitle(
   if (labelled) return extractJobTitle(labelled) ?? labelled;
   const stated = extractJobTitle(blob);
   if (stated) return stated;
+  /*
+   * STATED_TITLE_WINS_ENABLED (the sibling app's QA history, 22 and 25 Oct
+   * 2026): a title the manager stated as what the employee is, that the list
+   * does not hold ("she is an HR assistant"), comes before the directory's
+   * title for the person, which replaced it without a word.
+   */
+  if (statedTitleWinsEnabled()) {
+    const copular = copularJobTitle(blob, employeeName);
+    if (copular) return copular;
+  }
   if (person?.title) return person.title;
   const titles = [...new Set(people.map((row) => row.title).filter((title): title is string => Boolean(title?.trim())))];
   // TITLE_WHOLE_WORD_ENABLED: a directory title is stated only as a whole

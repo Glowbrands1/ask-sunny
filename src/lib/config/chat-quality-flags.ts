@@ -619,6 +619,45 @@ export function titleWholeWordEnabled(): boolean {
 }
 
 /**
+ * An incident date after today is asked about once ("That date is in the
+ * future — is 12-20-26 right?") and never changed. A "yes", a restatement or
+ * any other answer keeps it and the question is not asked again for that date
+ * in the conversation; a corrected date is used instead. Only the incident
+ * date the form carries, not a follow-up or review date. Same flag in the
+ * sibling app (QA history, 21 Oct 2026). Off, a future date is accepted
+ * without a question, as before.
+ */
+export function futureIncidentDateConfirmEnabled(): boolean {
+  return envFlag("FUTURE_INCIDENT_DATE_CONFIRM_ENABLED");
+}
+
+/**
+ * The job title the manager states for the employee is the form's. The intent
+ * reading keeps the title the manager's turns state — one on the title list,
+ * or one stated as what the employee is ("she is an HR assistant") — ahead of
+ * the directory's title for the matched person, which used to replace it
+ * without a word. Same flag in the sibling app (QA history, 22 and 25 Oct
+ * 2026). Off, the title is read as before.
+ */
+export function statedTitleWinsEnabled(): boolean {
+  return envFlag("STATED_TITLE_WINS_ENABLED");
+}
+
+/**
+ * One correction turn that states two facts on an open form applies both.
+ * "verbal. payroll deduct is not applicable." set payroll deduct and dropped
+ * the level: the payroll answer is written by the field readers, and the
+ * Corrective Action reader (the level, a prior step) ran only when no field
+ * reader took the turn. On, the Corrective Action reader also reads a turn a
+ * field reader wrote, and one reply names both. Same flag in the sibling app
+ * (QA history, conv_mvi94k418pzwgmn, 21 Oct 2026). Off, a correction turn is
+ * read exactly as before.
+ */
+export function correctionBothFactsEnabled(): boolean {
+  return envFlag("CORRECTION_BOTH_FACTS_ENABLED");
+}
+
+/**
  * The Corrective Action Form's Action Plan is the manager's, or blank (Pau,
  * 25 Oct 2026). A plan they typed ("action plan: …") goes on the card and the
  * form word for word. With none typed, nothing is written: no "Management
