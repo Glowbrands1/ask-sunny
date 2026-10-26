@@ -30,7 +30,7 @@ import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrat
  *      call, or left no narrative although the notes hold an account is
  *      tried again, up to twice, after 1 s and then 3 s (the route does that).
  *   3. If it is still empty, the narrative is the manager's own incident
- *      clause (`managerIncidentClause` below) under "Observed:" alone, which
+ *      account (`managerAccountClause` below) under "Observed:" alone, which
  *      is the shape the prompt asks for when no expectation can be inferred.
  *      Deterministic: never a word the manager did not type. It goes through
  *      the same guards as model text, and is recorded on a `drafted` event as
@@ -42,17 +42,15 @@ import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrat
  */
 
 /*
- * THE MANAGER'S INCIDENT CLAUSE. The request's for-clause ("a CA for <name>
- * for cash handling" → "cash handling") unless it only names the person and
- * the salon, else the latest sentences of their account that describe what
- * happened. Never a word they did not type; null when they gave no account.
+ * THE REQUEST'S OWN FOR-CLAUSE ("a CA for <name> for cash handling" → "cash
+ * handling"), unless it only names the person and the salon. Used when the
+ * manager's account (`managerAccountClause` below) gives no sentence of its
+ * own. Never a word they did not type.
  */
 const REQUEST =
   /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding|re:?)\s+([^.;!?\n]+)/gi;
 const CUT = /\s*(?:,|\s-\s|\s—\s|\band\b(?=\s+(?:a|an|the|also|then|she|he|they|i|we|please|pls)\b)|\bplease\b|\bpls\b|\bthanks?\b|\bthank you\b)/i;
 const NOT_AN_ISSUE = /^(?:her|him|them|this|that|it|the\s+employee|my\s+employee|an?\s+employee|today|tomorrow|yesterday)$/i;
-const NOT_THE_ACCOUNT =
-  /\b(?:payroll\s+deduct|previous\s+coaching|prior\s+(?:coaching|actions?)|jba\s+(?:policy\s+)?manual)\b/i;
 const PLACE = /\bat\s+[A-Za-z0-9][\w'.-]*(?:\s+[A-Za-z0-9][\w'.-]*){0,3}/gi;
 const FILLER = /^(?:location|salon|the|a|an|for|and)$/i;
 
@@ -63,9 +61,13 @@ function turnsOf(text: string): string[] {
     .filter(Boolean);
 }
 
+function nameWords(employeeName: string | null): Set<string> {
+  return new Set((employeeName ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+}
+
 /** Only the person, "at <place>" and filler: who and where, not what happened. */
 function personAndPlaceOnly(issue: string, employeeName: string | null): boolean {
-  const person = new Set((employeeName ?? "").toLowerCase().split(/\s+/).filter(Boolean));
+  const person = nameWords(employeeName);
   const rest = issue
     .replace(new RegExp(PLACE.source, "gi"), " ")
     .replace(/[^A-Za-z0-9']+/g, " ")
@@ -80,7 +82,14 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
   for (const turn of [...turnsOf(text)].reverse()) {
     let found: string | null = null;
     for (const match of turn.matchAll(REQUEST)) {
-      const issue = match[1]!.split(CUT)[0]!.trim().replace(/[\s"'”’)]+$/, "");
+      let raw = match[1]!;
+      // "a CA for <name> for cash handling", "… <name> - cash handling": the person, then the issue.
+      const words = [...nameWords(employeeName)].map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      if (words) {
+        const after = new RegExp(`^(?:(?:${words})\\s*)+(?:\\s+(?:for|about|over|regarding)\\s+|\\s*[-—–:,]\\s*)(.+)$`, "i").exec(raw.trim());
+        if (after) raw = after[1]!;
+      }
+      const issue = raw.split(CUT)[0]!.trim().replace(/[\s"'”’)]+$/, "");
       const lower = issue.toLowerCase();
       if (issue.length < 3 || issue.length > 80 || NOT_AN_ISSUE.test(issue)) continue;
       if (person && (lower === person || lower.startsWith(`${person} `))) continue;
@@ -90,36 +99,6 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
     if (found) return found;
   }
   return null;
-}
-
-function accountIssue(text: string): string | null {
-  for (const turn of [...turnsOf(text)].reverse()) {
-    const sentences = [...turn.matchAll(/[^.!?\n]+[.!?]*/g)]
-      .map((match) => match[0].trim())
-      .filter((sentence) => sentence.length >= 3 && sentence.length <= 180);
-    const hits = sentences
-      .map((sentence, index) => ({ sentence, index }))
-      .filter(
-        ({ sentence }) =>
-          !NOT_THE_ACCOUNT.test(sentence) && !new RegExp(REQUEST.source, "i").test(sentence) && describesIncident(sentence),
-      );
-    if (hits.length === 0) continue;
-    let start = hits.length - 1;
-    while (start > 0 && hits[start]!.index === hits[start - 1]!.index + 1) start -= 1;
-    let joined = "";
-    for (const hit of hits.slice(start)) {
-      const next = joined ? `${joined} ${hit.sentence}` : hit.sentence;
-      if (next.length > 180) break;
-      joined = next;
-    }
-    const issue = joined.trim().replace(/[\s"'”’)]+$/, "").replace(/\.+$/, "");
-    if (issue.length >= 3 && !NOT_AN_ISSUE.test(issue)) return issue;
-  }
-  return null;
-}
-
-export function managerIncidentClause(text: string, employeeName: string | null): string | null {
-  return issueFromRequest(text, employeeName) ?? accountIssue(text);
 }
 
 export interface DraftedCall {
@@ -247,38 +226,50 @@ export function readDraftedCall(
 }
 
 /*
- * AN ACCOUNT TOLD AS WHAT DID NOT HAPPEN. "She never opened the salon on
- * time", "he did not come in", "she didn't clock in", "no call on 10/22" —
- * QA-2, 26 Oct 2026: the incident readers above take none of these for an
- * account, so a draft whose only account is one of them got no retry and no
- * fallback. The latest such sentences, outside the request itself, read as
- * the manager wrote them.
+ * THE MANAGER'S ACCOUNT, SENTENCE BY SENTENCE (the fallback's words).
+ *
+ * Every sentence of the latest turn that tells what happened, in the order
+ * and words the manager typed — so "She never opened the salon on time. She
+ * also left early on 10/20." keeps both incidents (QA-2, 26 Oct 2026). A
+ * sentence counts when it describes an incident, or tells one as what did not
+ * happen ("never opened", "did not clock in", "didn't show", "no call").
+ *
+ * NOT AN ACCOUNT: the sentence asking for the form; payroll and prior-coaching
+ * lines; a negation that clears the employee ("she was never late", "never
+ * had a problem", "didn't do anything wrong"); and conversation ("never
+ * mind", "I never said she was late"). With no such sentence, the request's
+ * own for-clause ("a CA for <name> for cash handling") is the account.
  */
 const NEGATED_ACCOUNT = /\b(?:never|did\s+not|didn['’]?t|no[- ]call)\s+[a-z]/i;
 const ASKS_FOR_THE_FORM =
   /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding|re:?)\s/i;
 const NOT_THE_INCIDENT =
   /\b(?:payroll\s+deduct|previous\s+coaching|prior\s+(?:coaching|actions?)|jba\s+(?:policy\s+)?manual)\b/i;
+/* A negation that denies a fault: what follows it within a few words is the fault denied. */
+const EXONERATING =
+  /\b(?:never|did\s+not|didn['’]?t|was\s+not|wasn['’]?t|has\s+not|hasn['’]?t|no)\b(?:\s+[\w']+){0,4}?\s+(?:late|tardy|problems?|issues?|wrong|trouble|complaints?|mistakes?|absent|concerns?)\b/i;
+/* Talk about the conversation, not about the employee. */
+const CONVERSATIONAL =
+  /\bnever\s*mind\b|\b(?:i|we)\s+(?:never|did\s+not|didn['’]?t)\s+(?:said|say|told|tell|meant|mean|asked|ask|thought|think|knew|know)\b/i;
+const ACCOUNT_LIMIT = 400;
 
-export function negatedAccountClause(text: string): string | null {
+function isAccountSentence(sentence: string): boolean {
+  if (ASKS_FOR_THE_FORM.test(sentence) || NOT_THE_INCIDENT.test(sentence)) return false;
+  if (EXONERATING.test(sentence) || CONVERSATIONAL.test(sentence)) return false;
+  return NEGATED_ACCOUNT.test(sentence) || describesIncident(sentence);
+}
+
+export function managerAccountClause(text: string): string | null {
   const turns = (text ?? "").split(/\n\s*\n/).map((turn) => turn.trim()).filter(Boolean);
   for (const turn of [...turns].reverse()) {
-    const sentences = [...turn.matchAll(/[^.!?\n]+[.!?]*/g)]
+    const hits = [...turn.matchAll(/[^.!?\n]+[.!?]*/g)]
       .map((match) => match[0].trim())
-      .filter((sentence) => sentence.length >= 3 && sentence.length <= 180);
-    const hits = sentences
-      .map((sentence, index) => ({ sentence, index }))
-      .filter(
-        ({ sentence }) =>
-          NEGATED_ACCOUNT.test(sentence) && !ASKS_FOR_THE_FORM.test(sentence) && !NOT_THE_INCIDENT.test(sentence),
-      );
+      .filter((sentence) => sentence.length >= 3 && sentence.length <= 180 && isAccountSentence(sentence));
     if (hits.length === 0) continue;
-    let start = hits.length - 1;
-    while (start > 0 && hits[start]!.index === hits[start - 1]!.index + 1) start -= 1;
     let joined = "";
-    for (const hit of hits.slice(start)) {
-      const next = joined ? `${joined} ${hit.sentence}` : hit.sentence;
-      if (next.length > 180) break;
+    for (const sentence of hits) {
+      const next = joined ? `${joined} ${sentence}` : sentence;
+      if (next.length > ACCOUNT_LIMIT) break;
       joined = next;
     }
     const clause = joined.trim().replace(/[\s"'”’)]+$/, "").replace(/\.+$/, "");
@@ -287,9 +278,9 @@ export function negatedAccountClause(text: string): string | null {
   return null;
 }
 
-/** The incident clause, or — when the readers find none — an account told as what did not happen. */
+/** The manager's account, sentence by sentence, or — with none — the request's own for-clause. */
 function incidentClause(notes: string, employeeName: string | null): string | null {
-  return managerIncidentClause(notes, employeeName) ?? negatedAccountClause(notes);
+  return managerAccountClause(notes) ?? issueFromRequest(notes, employeeName);
 }
 
 /** True when any of `keys` holds text. */
@@ -299,7 +290,7 @@ export function holdsNarrative(values: Record<string, string>, keys: readonly st
 
 /** True when the notes give an account of what happened, so a blank narrative is a failure. */
 export function notesHoldAccount(notes: string, employeeName: string | null): boolean {
-  return incidentClause(notes, employeeName) !== null || describesIncident(notes);
+  return incidentClause(notes, employeeName) !== null;
 }
 
 /**

@@ -267,6 +267,9 @@ function joinOverview() {
 }
 
 let lastDraft: Record<string, unknown> | null = null;
+/* The draft route's own answer, kept even when it is an error. */
+let lastDraftStatus: number | null = null;
+let lastDraftBody: unknown = null;
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const request = new Request(`https://app.test${url}`, init);
@@ -279,6 +282,10 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response) throw new Error(`no route for ${url}`);
   joinOverview();
   const body = (await response.json()) as T & { error?: string };
+  if (draft) {
+    lastDraftStatus = response.status;
+    lastDraftBody = body;
+  }
   if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`);
   if (draft) lastDraft = body as Record<string, unknown>;
   return body;
@@ -291,7 +298,7 @@ async function review(id: string) {
   });
   expect(response.status).toBe(200);
   return (await response.json()) as {
-    values: { fieldKey: string; value: string | null; checked: string[]; provenance?: Record<string, unknown> }[];
+    values: { fieldKey: string; value: string | null; checked: string[]; filledBy?: string; provenance?: Record<string, unknown> }[];
   };
 }
 
@@ -962,5 +969,111 @@ describe("an account told as what did not happen", () => {
       expect(value("observation")).toBe("");
       expect(events.map((event) => event.detail)).toContainEqual({ fields: [], rejected: [] });
     });
+  });
+});
+
+/*
+ * QA-2, 26 Oct 2026, on the account the fallback is written from:
+ *   - a negation that clears the employee, or is only conversation, is NOT an
+ *     account: no retry for it, and no Observation made of it;
+ *   - two incidents in one turn are both kept, in the manager's words.
+ */
+describe("what counts as the manager's account (flag on)", () => {
+  const LEAD = {
+    lowercase: "create a ca for odalys merriweather at dodge, ne. ",
+    "Sentence case": "Create a CA for Odalys Merriweather at Dodge, NE. ",
+  } as const;
+  const lower = (text: string) => text.toLowerCase();
+
+  beforeEach(() => {
+    process.env[FLAG] = "true";
+  });
+
+  const NOT_AN_ACCOUNT = [
+    "She never had a problem with attendance, great employee.",
+    "She was never late.",
+    "She didn't do anything wrong.",
+    "Never mind.",
+    "I never said she was late.",
+  ];
+  describe.each(NOT_AN_ACCOUNT.flatMap((sentence) => [
+    { label: `lowercase: ${lower(sentence)}`, turn: `${LEAD.lowercase}${lower(sentence).replace(/\.$/, "")}` },
+    { label: `Sentence case: ${sentence}`, turn: `${LEAD["Sentence case"]}${sentence}` },
+  ]))("$label", ({ turn }) => {
+    it("is not an account: no retry, and no Observation is made of it", async () => {
+      state.drafts = [{ values: {} }];
+      const { value, outcome, draft } = await createFromTurn(turn, SHE.cap);
+      expect(state.calls).toBe(1);
+      expect(state.pauses).toEqual([]);
+      expect(value("observation")).toBe("");
+      expect(draft?.fallback).toBeUndefined();
+      /* Still not silent: the empty call is recorded. */
+      expect(outcome).toEqual({ attempts: 1, reasons: ["empty_tool_call"] });
+    });
+  });
+
+  const ACCOUNTS: { sentence: string; observed: string }[] = [
+    { sentence: "She never opened the salon on time. She also left early on 10/20.", observed: "Observed:\nOdalys never opened the salon on time. Odalys also left early on 10/20." },
+    { sentence: "She never clocked in on 10/22.", observed: "Observed:\nOdalys never clocked in on 10/22." },
+    { sentence: "She never showed up on 10/22.", observed: "Observed:\nOdalys never showed up on 10/22." },
+  ];
+  describe.each(ACCOUNTS.flatMap(({ sentence, observed }) => [
+    { label: `lowercase: ${lower(sentence)}`, turn: `${LEAD.lowercase}${lower(sentence).replace(/\.$/, "")}`, observed },
+    { label: `Sentence case: ${sentence}`, turn: `${LEAD["Sentence case"]}${sentence}`, observed },
+  ]))("$label", ({ turn, observed }) => {
+    it("is the account: retried, then the manager's words, every incident kept", async () => {
+      state.drafts = [{ values: {} }];
+      const { value, outcome } = await createFromTurn(turn, SHE.cap);
+      expect(state.calls).toBe(3);
+      expect(value("observation")).toBe(observed);
+      expect(outcome).toMatchObject({ fallback: "manager_words", field: "observation", attempts: 3 });
+    });
+  });
+});
+
+/*
+ * FLAG OFF IS MAIN, EXACTLY. The model call and the prose guards now run
+ * through closures for every draft, flag or no flag. Driven with the flag off,
+ * a filled, an empty, a malformed and a failed model call give byte for byte
+ * what origin/main (3a0d9012) gave: the route's status and body, the card's
+ * warning, every stored line with its provenance, and every event. The golden
+ * values were captured by running this same test against origin/main.
+ */
+describe("flag off is byte-identical to main", () => {
+  const c = CASES[0]!;
+  const DRAFTS: Record<string, ModelReply> = {
+    filled: { values: { observation: MODEL_OBSERVATION.ncns(c.person.first) }, checked: { offense_type: TICK.ncns } },
+    empty: { values: {}, checked: {} },
+    malformed: { values: JSON.stringify({ observation: MODEL_OBSERVATION.ncns(c.person.first) }) },
+    "model error": { throws: MODEL_ERRORS["529 overloaded"]!.error() },
+  };
+  const GOLDEN: Record<string, string> = {
+    "filled":
+      "{\"status\":200,\"body\":{\"values\":{\"observation\":\"Observed:\\nOdalys was a no call no show for the scheduled shift on 10/22.\\n\\nExpectation:\\nEmployees are expected to work every scheduled shift or notify management before it starts.\\n\\nGoing Forward:\\nOdalys should attend every scheduled shift or call before it starts.\",\"policy_violated\":\"Absenteeism\",\"policy_language\":\"It is the responsibility of each employee to know his or her work schedule and to always be on\\ntime.\\n\\nSource: JBA Policy Manual \u2014 Attendance, p. 14\",\"action_plan\":\"Management will review the Attendance policy with Odalys. Future policy violations may result in additional corrective action up to and including termination of employment.\"},\"checked\":{\"offense_type\":[\"absenteeism\"]},\"withheld\":[],\"rejected\":[],\"placeholders\":{\"cleaned\":[],\"emptied\":[]},\"narrative\":{\"adjusted\":[],\"emptied\":[]},\"policyClaims\":{\"adjusted\":[],\"emptied\":[]},\"policyRequirements\":{\"adjusted\":[],\"replaced\":[]},\"policyAttributions\":{\"adjusted\":[],\"emptied\":[]},\"datesCorrected\":[],\"policyDerived\":[\"policy_violated\",\"policy_language\"],\"timeframeEmptied\":[],\"followUpEmptied\":[],\"framingAdjusted\":[],\"employeeNamed\":[],\"priorActions\":{\"added\":[],\"removed\":[]},\"notice\":\"Woven does not see a matching policy in the knowledge base, so the policy fields are left for you to complete.\",\"sensitiveRefused\":{},\"caPolicy\":{\"applied\":false,\"reason\":\"no_suggestion\",\"ambiguous\":null},\"sources\":[],\"statedFacts\":[]},\"warning\":null,\"values\":[{\"fieldKey\":\"employee_name\",\"value\":\"Odalys Merriweather\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"form_date\",\"value\":\"2026-10-22\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"location\",\"value\":\"NE Kearney\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"observation\",\"value\":\"Observed:\\nOdalys was a no call no show for the scheduled shift on 10/22.\\n\\nExpectation:\\nEmployees are expected to work every scheduled shift or notify management before it starts.\\n\\nGoing Forward:\\nOdalys should attend every scheduled shift or call before it starts.\",\"checked\":[],\"filledBy\":\"ai\",\"provenance\":{}},{\"fieldKey\":\"policy_violated\",\"value\":\"Absenteeism\",\"checked\":[],\"filledBy\":\"ai\",\"provenance\":{\"grounded\":false,\"derived\":true,\"source\":\"offense_type\",\"verified\":true}},{\"fieldKey\":\"policy_language\",\"value\":\"It is the responsibility of each employee to know his or her work schedule and to always be on\\ntime.\\n\\nSource: JBA Policy Manual \u2014 Attendance, p. 14\",\"checked\":[],\"filledBy\":\"ai\",\"provenance\":{\"grounded\":true,\"verified\":true,\"source\":\"official_policy_manual\",\"matchedBy\":\"tag\",\"ownerConfirmed\":true,\"documentId\":\"doc-manual\",\"documentTitle\":\"JBA Policy Manual\",\"sections\":[{\"locator\":\"Attendance\",\"page\":14,\"foundBy\":\"sheet_heading\",\"chunkIndex\":33}],\"citation\":[{\"policyText\":\"It is the responsibility of each employee to know his or her work schedule and to always be on\\ntime.\",\"documentTitle\":\"JBA Policy Manual\",\"sectionTitle\":\"Attendance\",\"pageLabel\":\"14\",\"documentId\":\"doc-manual\",\"source\":\"official_policy_manual\"}]}},{\"fieldKey\":\"action_plan\",\"value\":\"Management will review the Attendance policy with Odalys. Future policy violations may result in additional corrective action up to and including termination of employment.\",\"checked\":[],\"filledBy\":\"ai\",\"provenance\":{\"source\":\"corrective_action_plan\",\"policySource\":\"direct_policy\",\"policies\":[\"Attendance\"],\"payroll\":null}},{\"fieldKey\":\"offense_type\",\"value\":null,\"checked\":[\"absenteeism\"],\"filledBy\":\"ai\",\"provenance\":{}}],\"events\":[{\"fields\":[\"observation\",\"policy_violated\",\"policy_language\",\"action_plan\"],\"rejected\":[]}],\"calls\":1}",
+    "empty":
+      "{\"status\":200,\"body\":{\"values\":{},\"checked\":{},\"withheld\":[\"policy_violated\",\"policy_language\"],\"rejected\":[],\"placeholders\":{\"cleaned\":[],\"emptied\":[]},\"narrative\":{\"adjusted\":[],\"emptied\":[]},\"policyClaims\":{\"adjusted\":[],\"emptied\":[]},\"policyRequirements\":{\"adjusted\":[],\"replaced\":[]},\"policyAttributions\":{\"adjusted\":[],\"emptied\":[]},\"datesCorrected\":[],\"policyDerived\":[],\"timeframeEmptied\":[],\"followUpEmptied\":[],\"framingAdjusted\":[],\"employeeNamed\":[],\"priorActions\":{\"added\":[],\"removed\":[]},\"notice\":\"Woven does not see a matching policy in the knowledge base, so the policy fields are left for you to complete.\",\"sensitiveRefused\":{},\"caPolicy\":{\"applied\":false,\"reason\":\"no_suggestion\",\"ambiguous\":null},\"sources\":[],\"statedFacts\":[]},\"warning\":null,\"values\":[{\"fieldKey\":\"employee_name\",\"value\":\"Odalys Merriweather\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"form_date\",\"value\":\"2026-10-22\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"location\",\"value\":\"NE Kearney\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}}],\"events\":[{\"fields\":[],\"rejected\":[]}],\"calls\":1}",
+    "malformed":
+      "{\"status\":200,\"body\":{\"values\":{},\"checked\":{},\"withheld\":[\"policy_violated\",\"policy_language\"],\"rejected\":[],\"placeholders\":{\"cleaned\":[],\"emptied\":[]},\"narrative\":{\"adjusted\":[],\"emptied\":[]},\"policyClaims\":{\"adjusted\":[],\"emptied\":[]},\"policyRequirements\":{\"adjusted\":[],\"replaced\":[]},\"policyAttributions\":{\"adjusted\":[],\"emptied\":[]},\"datesCorrected\":[],\"policyDerived\":[],\"timeframeEmptied\":[],\"followUpEmptied\":[],\"framingAdjusted\":[],\"employeeNamed\":[],\"priorActions\":{\"added\":[],\"removed\":[]},\"notice\":\"Woven does not see a matching policy in the knowledge base, so the policy fields are left for you to complete.\",\"sensitiveRefused\":{},\"caPolicy\":{\"applied\":false,\"reason\":\"no_suggestion\",\"ambiguous\":null},\"sources\":[],\"statedFacts\":[]},\"warning\":null,\"values\":[{\"fieldKey\":\"employee_name\",\"value\":\"Odalys Merriweather\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"form_date\",\"value\":\"2026-10-22\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"location\",\"value\":\"NE Kearney\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}}],\"events\":[{\"fields\":[],\"rejected\":[]}],\"calls\":1}",
+    "model error":
+      "{\"status\":500,\"body\":{\"error\":\"Something went wrong. Nothing was answered or saved.\",\"code\":\"internal\"},\"warning\":\"Your draft was created, but Sunny couldn't prefill the details. You can complete them below.\",\"values\":[{\"fieldKey\":\"employee_name\",\"value\":\"Odalys Merriweather\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"form_date\",\"value\":\"2026-10-22\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}},{\"fieldKey\":\"location\",\"value\":\"NE Kearney\",\"checked\":[],\"filledBy\":\"system\",\"provenance\":{}}],\"events\":[],\"calls\":1}",
+  };
+
+  it.each(Object.keys(DRAFTS))("%s", async (name) => {
+    state.drafts = [DRAFTS[name]!];
+    const { created, form, events } = await createFromTurn(c.turn, c.person.cap);
+    const ids = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
+    const snapshot = JSON.stringify({
+      status: lastDraftStatus,
+      body: lastDraftBody,
+      warning: created.draftWarning ?? null,
+      values: form.values.map(({ fieldKey, value, checked, filledBy, provenance }) => ({ fieldKey, value, checked, filledBy, provenance })),
+      events: events.map((event) => event.detail),
+      calls: state.calls,
+    }).replace(ids, "<id>");
+    if (process.env.NB_CAPTURE_GOLDEN) {
+      (await import("node:fs")).appendFileSync(process.env.NB_CAPTURE_GOLDEN, `${JSON.stringify([name, snapshot])}\n`);
+      return;
+    }
+    expect(snapshot).toBe(GOLDEN[name]);
   });
 });
