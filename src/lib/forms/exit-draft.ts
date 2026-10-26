@@ -69,7 +69,7 @@ const DECISION_TOPICS: RegExp[] = [
  * showing up are subjects a Details sentence may raise only when the notes did.
  */
 const ACCOUNT_TOPICS: RegExp[] = [
-  /\bworked\s+(?:through|thru|out|until|till|til|it|(?:her|his|their|the|a|an|two|2)\b)|\bfulfill(?:s|ed|ing)?\b|\bserved\s+(?:her|his|their|the|a)\b/i,
+  /\bworked\s+(?:(?:through|thru|out)\s+)?(?:it|(?:her|his|their|the|a)\s+(?:full\s+|entire\s+)?(?:notice|two weeks|2 weeks)|(?:two|2)[- ]weeks?'?\s+notice)\b|\bfulfill(?:s|ed|ing)?\b|\bserved\s+(?:her|his|their|the|a)\s+(?:notice|two weeks)\b/i,
   /\bcall(?:s|ed|ing)?\s+(?:in|out|off)\b|\bno[\s-]*call\b|\bshow(?:s|ed)?\s+up\b|\bno[\s-]*show\b|\bncns\b/i,
 ];
 
