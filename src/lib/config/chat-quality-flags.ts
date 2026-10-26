@@ -918,3 +918,15 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * The stored-slot lines put ahead of a turn ("The form is the Corrective
+ * Action Form. The employee is … Policy reference: …") are not a new request
+ * for the form (Sunny tester, 26 Oct 2026: "no payroll deduct" restarted the
+ * Corrective Action, and its card was drafted from that turn alone). On, the
+ * proposal decides whether a turn starts a new form from the manager's own
+ * words. Off, as before.
+ */
+export function storedSlotsNotARequestEnabled(): boolean {
+  return envFlag("STORED_SLOTS_NOT_A_REQUEST_ENABLED");
+}
