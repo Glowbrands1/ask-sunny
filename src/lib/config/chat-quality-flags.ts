@@ -918,3 +918,14 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * NAME_BEFORE_TITLE_ENABLED (QA, 26 Oct 2026): "ca for <first> <last>, team member at
+ * <salon>" in lowercase left the Employee unread, and "for <First> <Last> Team
+ * Member at <salon>" dropped the surname. A two-word name right before a job
+ * title is read as the name, with the title after a comma. See
+ * `ai/name-before-title.ts`. Off, the turn is read as typed.
+ */
+export function nameBeforeTitleEnabled(): boolean {
+  return envFlag("NAME_BEFORE_TITLE_ENABLED");
+}
