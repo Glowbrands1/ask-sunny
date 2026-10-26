@@ -209,8 +209,6 @@ function healthyProgression() {
   };
 }
 
-const DOWN = { ok: false, failure: { code: "role_document_not_found", detail: "x" } };
-
 async function post(notes: string) {
   const { POST } = await import("./instances/[id]/draft/route");
   const request = new Request("http://localhost/api/forms/instances/form-1/draft", {
@@ -227,13 +225,6 @@ function prompt(): string {
   const messages = state.modelInput?.messages as { content: string }[] | undefined;
   return messages?.[0]?.content ?? "";
 }
-
-function systemPrompt(): string {
-  return String(state.modelInput?.system ?? "");
-}
-
-const NOTES =
-  "She skipped the membership conversation with two eligible guests. We coached this last month and agreed to look again in two weeks.";
 
 beforeEach(() => {
   vi.resetModules();
