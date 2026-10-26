@@ -847,6 +847,15 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * The draft route keeps up to 24,000 characters of the manager's notes
+ * instead of 4,000, so a long account (CHAT_LONG_MESSAGE) is drafted whole
+ * (QA, 26 Oct 2026). Off, the 4,000-character cut stays.
+ */
+export function longDraftNotesEnabled(): boolean {
+  return envFlag("LONG_DRAFT_NOTES_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
