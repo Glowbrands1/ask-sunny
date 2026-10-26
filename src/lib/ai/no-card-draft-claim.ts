@@ -110,10 +110,12 @@ const POINTS_AT_CARD = /\bcards?\b/i;
 
 /**
  * Where one sentence holds two clauses: ", and", ", but", ", so", ";", a dash,
- * or "and I've …". A bare "and" is not split: "Test Employee and Rook".
+ * "and I've …", or "and the draft …" (QA-7 review: "The draft for Test
+ * Employee is open and the draft for … is open."). A bare "and" between names
+ * is not split: "Test Employee and Rook".
  */
 const CLAUSE_BREAK =
-  /(,\s*(?:and|but|so|while)\s+|;\s+|\s+[—–]\s+|\s+and\s+(?=I(?:['’]ve|\s+have)?\s))/i;
+  /(,\s*(?:and|but|so|while)\s+|;\s+|\s+[—–]\s+|\s+and\s+(?=I(?:['’]ve|\s+have)?\s|(?:the|a|an|another|your)\s+(?:[\w'’-]+\s+){0,4}?(?:draft|form|card)\b))/i;
 
 /** A capitalised run after "for": the person a sentence is about. */
 /* "for", "For" or "FOR": a claim in capitals names its person too (QA-6). */
@@ -348,8 +350,18 @@ export function withoutPhantomDraftClaim(
 
   let honest: string | null = null;
   if (claimed.length > 0) {
+    /*
+     * The person of the false claim: in a claim that is false because it
+     * names someone whose form is not open, that someone — not the open
+     * form's employee named beside them (QA-7 review).
+     */
     const person =
-      claimed.flatMap((clause) => peopleAfterFor(clause.text, known))[0] ??
+      claimed.flatMap((clause) => {
+        const people = peopleAfterFor(clause.text, known);
+        if (opens.length === 0 || NEW_DRAFT.test(clause.text)) return people.slice(0, 1);
+        const stranger = people.find((name) => !opens.some((form) => samePersonName(name, form.employeeName)));
+        return stranger ? [stranger] : people.slice(0, 1);
+      })[0] ??
       peopleAfterFor(context.question, known)[0] ??
       null;
     const named =

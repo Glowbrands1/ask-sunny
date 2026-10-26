@@ -366,3 +366,51 @@ describe("QA-6: claims in capitals, policy prose, and a known name that runs on 
     }
   });
 });
+
+/*
+ * QA-7 review (flag on, a reply with no card), through POST /api/chat.
+ * "Rook Pemberly" stands in for QA's second name (invented, the same in both
+ * apps). QA's exact inputs, in lowercase, sentence case and CAPS.
+ */
+describe("QA-7 review: two clauses joined by \"and\", and a claim while two forms are open (NO_CARD_NO_DRAFT_CLAIM_ENABLED)", () => {
+  const sentenceCase = (text: string) =>
+    text.toLowerCase().replace(/(^|[.!?]\s+|\n+)([a-z])/g, (_m, lead: string, first: string) => `${lead}${first.toUpperCase()}`);
+  const registers = [
+    ["all lowercase", (text: string) => text.toLowerCase()],
+    ["sentence case", sentenceCase],
+    ["CAPS", (text: string) => text.toUpperCase()],
+  ] as const;
+  const BOTH_OPEN =
+    "The draft for Test Employee is open and the draft for Rook Pemberly is open. Press Finalize on either card.";
+  const B22 =
+    "A new Corrective Action Form draft is open for Test Employee Two, Tanning Consultant, for arriving late on today's date, 2026-10-25.";
+
+  it.each(registers)("%s: the true Test Employee clause is kept, the honest line names Rook Pemberly, \"either card\" goes", async (_label, recase) => {
+    process.env.NO_CARD_NO_DRAFT_CLAIM_ENABLED = "true";
+    const { route } = await load({ content: recase(BOTH_OPEN) });
+    const payload = await (await route.POST(ask(recase("and one for Rook Pemberly, late today")))).json();
+    const kept = `${recase("The draft for Test Employee is open")}. `;
+    expect(payload.content.startsWith(kept), payload.content).toBe(true);
+    expect(payload.content.slice(kept.length)).toMatch(/^I haven't created a form for rook pemberly yet — say "create a corrective action for rook pemberly"/i);
+    expect(payload.content).not.toMatch(/either card/i);
+  });
+
+  /*
+   * This app has no several-forms-from-one-message path: the browser sends the
+   * newest created card, so the route test has Test Employee's form open.
+   */
+  it.each(registers)("%s: with Test Employee's form open, a new draft for test employee two names test employee two in full", async (_label, recase) => {
+    process.env.NO_CARD_NO_DRAFT_CLAIM_ENABLED = "true";
+    const { route } = await load({ content: recase(B22) });
+    const payload = await (await route.POST(ask(recase("is it ready?")))).json();
+    expect(payload.content).toMatch(/^I haven't created a form for test employee two yet — say "create a corrective action for test employee two"/i);
+  });
+
+  it.each(registers)("off (%s): both replies come back exactly as they came", async (_label, recase) => {
+    for (const content of [BOTH_OPEN, B22]) {
+      const { route } = await load({ content: recase(content) });
+      const payload = await (await route.POST(ask(recase("is it ready?")))).json();
+      expect(payload.content).toBe(recase(content));
+    }
+  });
+});
