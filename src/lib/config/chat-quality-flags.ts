@@ -867,3 +867,14 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * The company's own systems are never called another company's (Code 3; QA
+ * tester, 26 Oct 2026; same flag in both apps): "do employees have to
+ * acknowledge policies in woven" was answered "Woven isn't your system". On,
+ * the grounding carries one line saying the company uses Woven, and a reply
+ * sentence that still disowns it is taken out. Off, as before.
+ */
+export function ownSystemsFactEnabled(): boolean {
+  return envFlag("OWN_SYSTEMS_FACT_ENABLED");
+}

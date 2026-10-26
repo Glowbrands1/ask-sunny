@@ -167,6 +167,7 @@ import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
+import { ownSystemsNote, withoutDisownedSystems } from "./own-systems";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
@@ -1639,7 +1640,9 @@ async function answerQuestionUntraced(
     ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
     : // SENSITIVE_DEFAULTS_REDACT_ENABLED: a default password format or SSN digits are never shown to the model.
       buildGroundingBlock(grounding.map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })));
-  const joinedGrounding = [knowledgeGrounding, pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
+  // OWN_SYSTEMS_FACT_ENABLED: one line saying the company uses the system a manual brand list names beside another brand.
+  const ownSystems = ownSystemsNote(request.question, [knowledgeGrounding, pinnedPolicy].join("\n"));
+  const joinedGrounding = [knowledgeGrounding, pinnedPolicy, ownSystems].filter((part) => part && part.length > 0).join("\n\n");
   const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
   const uncachedGrounding = groundingWithoutCachedManual(joinedGrounding, manualBlock);
   /*
@@ -1739,11 +1742,13 @@ async function answerQuestionUntraced(
    * retrieved excerpts "the sources you shared" has that clause rewritten,
    * unless the manager pasted something. See `sources-not-shared.ts`.
    */
-  const prose = withoutSharedSourceClaims(stripMarkers(spoken, { tidy: reformatKeepsSourcesEnabled() }), {
-    question: request.question,
-    history: request.history,
-    attachedDocumentIds: request.attachedDocumentIds,
-  }).content;
+  const prose = withoutDisownedSystems(
+    withoutSharedSourceClaims(stripMarkers(spoken, { tidy: reformatKeepsSourcesEnabled() }), {
+      question: request.question,
+      history: request.history,
+      attachedDocumentIds: request.attachedDocumentIds,
+    }).content,
+  );
 
   return {
     content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
