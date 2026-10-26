@@ -166,6 +166,8 @@ import {
 } from "./prompts";
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
+import { appPasswordHelpFor } from "./app-password-help";
+import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
@@ -262,6 +264,25 @@ export async function answerQuestion(
   request: AskRequest,
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
+): Promise<AskResponse> {
+  /*
+   * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
+   * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
+   * 2026). SENSITIVE_DEFAULTS_REDACT_ENABLED: no reply or cited excerpt ever
+   * repeats a default password format or SSN digits (QA P0). Off, both are
+   * the turn as before.
+   */
+  const passwordHelp = appPasswordHelpFor(request.question, request.history);
+  if (passwordHelp) {
+    return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
+  }
+  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory));
+}
+
+async function answerQuestionChecked(
+  request: AskRequest,
+  actor: ChatActor,
+  memory: { memoryOwnerId?: string },
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
@@ -1619,7 +1640,8 @@ async function answerQuestionUntraced(
    */
   const knowledgeGrounding = fullManualBlock
     ? [FULL_MANUAL_GROUNDING_NOTE, frameworkAside(grounding)].filter((part) => part.length > 0).join("\n\n")
-    : buildGroundingBlock(grounding);
+    : // SENSITIVE_DEFAULTS_REDACT_ENABLED: a default password format or SSN digits are never shown to the model.
+      buildGroundingBlock(grounding.map((chunk) => ({ ...chunk, content: redactSensitiveDefaults(chunk.content) })));
   const joinedGrounding = [knowledgeGrounding, pinnedPolicy].filter((part) => part && part.length > 0).join("\n\n");
   const manualBlock = promptCacheEnabled() ? pinnedPolicy : null;
   const uncachedGrounding = groundingWithoutCachedManual(joinedGrounding, manualBlock);
