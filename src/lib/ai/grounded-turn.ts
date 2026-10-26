@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   draftDedupeEnabled,
+  draftReuseSameChatOnlyEnabled,
   fieldAccuracyEnabled,
   formStateEnabled,
   groundedEntitiesEnabled,
@@ -11,6 +12,7 @@ import {
   slotRetentionEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
+import { conversationKeyOf } from "@/lib/forms/conversation-key";
 import { formOpenedFor, openingLine } from "@/lib/forms/editable-draft";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { loadScopedRoster, readDirectoryFacts, withRosterLimit, type DirectoryFact } from "@/lib/forms/employee-roster";
@@ -285,6 +287,15 @@ async function reopenSameIncident(
       createdBy: input.actor.subject,
       locationId: proposal.locationId,
       ...(incident ? { incident, formDate: proposal.formDate ?? null } : {}),
+      /*
+       * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: only a draft this chat made, as
+       * the create route already keeps (QA B22, 25 Oct 2026: a new chat's
+       * no-call-no-show reopened another chat's tardiness draft through this
+       * lookup). No chat id keeps nothing. See `draft-same-chat.ts`.
+       */
+      ...(draftReuseSameChatOnlyEnabled()
+        ? { sameChat: { conversationKey: conversationKeyOf({ conversationId: input.request.conversationId }) } }
+        : {}),
     });
     if (!resent) return null;
     const draft = {
