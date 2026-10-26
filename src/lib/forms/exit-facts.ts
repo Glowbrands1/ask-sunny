@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
+import { exitEffectiveDateEnabled, exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -543,6 +543,9 @@ function readSeparation(text: string): SeparationReading {
  * `today` is the business day (`YYYY-MM-DD`). It supplies the year for "9/15"
  * and the anchor for "yesterday" and "last Friday".
  */
+/** "effective october 2", "effective on 10/2", "effective as of 10/2". */
+const EFFECTIVE_BEFORE = /\beffective(?:\s+(?:on|as\s+of|date(?:\s+(?:is|was|of))?))?\s*[:\-]?\s*$/i;
+
 export function readExitFacts(rawText: string, today: string): ExitFacts {
   const text = normalize(rawText);
   const ambiguities: ExitAmbiguity[] = [];
@@ -587,6 +590,23 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   };
 
   let lastDayWorked = settle("lastDayWorked");
+  /*
+   * EXIT_EFFECTIVE_DATE_ENABLED (QA, 26 Oct 2026, conv_mvon64pk28tpb3k): "exit
+   * for <name> effective october 2" filled nothing. On an exit form the date
+   * a departure is effective is the last day of employment, so it fills Last
+   * Day Worked when no last day was stated. "effective immediately" names no
+   * date, and two effective dates are not guessed between.
+   */
+  if (exitEffectiveDateEnabled() && !lastDayWorked && !ambiguities.some((entry) => "role" in entry && entry.role === "lastDayWorked")) {
+    const effective = [
+      ...new Set(
+        tokens
+          .filter((token) => token.iso && EFFECTIVE_BEFORE.test(text.slice(Math.max(0, token.index - 30), token.index)))
+          .map((token) => token.iso!),
+      ),
+    ];
+    if (effective.length === 1) lastDayWorked = effective[0]!;
+  }
   const noticeGiven = settle("noticeGiven");
   const noticeFulfilled = settle("noticeFulfilled");
   const quitDate = settle("resigned");

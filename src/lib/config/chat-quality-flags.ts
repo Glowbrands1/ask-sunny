@@ -867,3 +867,12 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * On an exit form, "effective october 2" fills Last Day Worked when no last
+ * day was stated (QA, 26 Oct 2026). "effective immediately" names no date.
+ * Off, an effective date fills nothing, as before.
+ */
+export function exitEffectiveDateEnabled(): boolean {
+  return envFlag("EXIT_EFFECTIVE_DATE_ENABLED");
+}
