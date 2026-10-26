@@ -157,3 +157,69 @@ describe("flag on: a trailing clause about another brand goes, the rule stays", 
     expect(out).not.toBe(NOTHING_LEFT);
   });
 });
+
+/*
+ * QA-5 and QA-7, 26 Oct 2026: a contrast clause about another brand goes and
+ * the true main clause stays; a prohibition that only set up the other
+ * brand's instruction goes with it; "SALON/STORE" keeps its capitals; and an
+ * ordinary answer is untouched. Original, lowercase, sentence case and CAPS.
+ */
+describe("flag on: QA-5 and QA-7, second review", () => {
+  const registers = (text: string) => [...new Set([text, text.toLowerCase(), text.charAt(0).toUpperCase() + text.slice(1).toLowerCase(), text.toUpperCase()])];
+
+  it.each(
+    [
+      ["Late opening is verbal at Sun Tan City, but at Buff City Soap it is a written warning.", /^late opening is verbal at sun tan city\.$/i],
+      ["Standards of Conduct applies to everyone except Buff City Soap employees.", /^standards of conduct applies to everyone\.$/i],
+      ["Late opening is a verbal warning, whereas at Buff City Soap it is written.", /^late opening is a verbal warning\.$/i],
+      ["Do not use Revel; use MyGLOW for Buff City Soap. Late opening is verbal.", /^late opening is verbal\.$/i],
+    ].flatMap(([text, expected]) => registers(text as string).map((typed) => [typed, expected] as const)),
+  )("%s", (reply, expected) => {
+    on();
+    const out = withoutOtherBrands(reply);
+    expect(out).toMatch(expected);
+    expect(out).not.toBe(NOTHING_LEFT);
+  });
+
+  it("a prohibition that only set up the other brand's instruction is not left as this company's rule", () => {
+    on();
+    for (const reply of registers("Do not use Revel; use MyGLOW for Buff City Soap.")) {
+      expect(withoutOtherBrands(reply)).toBe(NOTHING_LEFT);
+    }
+  });
+
+  it("a prohibition before a kept clause stays", () => {
+    on();
+    expect(withoutOtherBrands("Do not open late; call your manager first.")).toBe("Do not open late; call your manager first.");
+  });
+
+  it.each([
+    ["IF YOU CAN'T OPEN THE SALON/STORE ON TIME, CALL YOUR MANAGER.", "IF YOU CAN'T OPEN THE SALON ON TIME, CALL YOUR MANAGER."],
+    ["If you can't open the salon/store on time, call your manager.", "If you can't open the salon on time, call your manager."],
+    ["Salon/Store opening steps are on p.18.", "Salon opening steps are on p.18."],
+  ])("the location word keeps the case it was written in: %s", (reply, expected) => {
+    on();
+    expect(withoutOtherBrands(reply)).toBe(expected);
+  });
+
+  it.each(
+    registers(
+      "Per the JBA Policy Manual [p.12], every Sun Tan City salon opens on time. Sanitize each bed after every tan, and log it in Woven.",
+    ),
+  )("an ordinary answer is untouched: %s", (reply) => {
+    on();
+    expect(withoutOtherBrands(reply)).toBe(reply);
+  });
+
+  it("flag off: the contrast reply as written", () => {
+    const reply = "Late opening is verbal at Sun Tan City, but at Buff City Soap it is a written warning.";
+    expect(withoutOtherBrands(reply)).toBe(reply);
+  });
+});
+
+describe("flag on: a short reply that names no other brand is kept", () => {
+  it.each(["An answer.", "Yes.", "See p.12."])("%s", (reply) => {
+    on();
+    expect(withoutOtherBrands(reply)).toBe(reply);
+  });
+});
