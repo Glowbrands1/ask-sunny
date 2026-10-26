@@ -210,6 +210,20 @@ describe("BARE_ANSWER_BINDING_ENABLED on", () => {
     expect(bindBareAnswer({ response: no, question: answer, history })).toBe(no);
   });
 
+  // corrective-action-conversation with the flag on: "no" to the payroll question when another question follows it.
+  it.each(["no", "No", "NO", "n/a"])("keeps Payroll No from '%s' when the payroll question is not the last line", (answer) => {
+    process.env[FLAG] = "on";
+    const asked = [
+      {
+        role: "assistant",
+        content: "1. **Is payroll deduct applicable?** Yes or No? Tell me here, or tick it on the form — I won't answer it for you.\n\nAnything else to add?",
+        formProposal: null,
+      },
+    ];
+    const no = respondWith(card({ payrollDeduct: "no" }), "Is payroll deduct applicable? **No** — tell me if that should change.");
+    expect(bindBareAnswer({ response: no, question: answer, history: asked })).toBe(no);
+  });
+
   it("reads bare answers the same in lowercase and sentence case", () => {
     process.env[FLAG] = "on";
     const no = { content: "Is payroll deduct applicable? **No** — tell me if that should change.", citations: [], formProposal: card({ payrollDeduct: "no" }) } as unknown as AskResponse;
