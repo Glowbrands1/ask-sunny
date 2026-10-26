@@ -1,7 +1,25 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { REVIEWS_UPDATE_NOTE } from "@/lib/reviews/update-note";
+
+/*
+ * Each test starts with GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED unset, so the suite reads the same whether
+ * or not the environment running it turns the flag on; the flag-on cases set it
+ * themselves. The environment's own value is restored after the file.
+ */
+const ENV_FLAGS = ["GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED"];
+const ENV_SAVED = Object.fromEntries(ENV_FLAGS.map((name) => [name, process.env[name]]));
+beforeEach(() => {
+  for (const name of ENV_FLAGS) delete process.env[name];
+});
+afterAll(() => {
+  for (const name of ENV_FLAGS) {
+    const value = ENV_SAVED[name];
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
 
 /**
  * Pau, 26 Oct 2026: "API update in progress, syncing 2K reviews in batches"
