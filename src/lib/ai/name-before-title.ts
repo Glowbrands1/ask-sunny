@@ -1,4 +1,5 @@
 import { nameBeforeTitleEnabled } from "@/lib/config/chat-quality-flags";
+import { describesIncident } from "@/lib/forms/corrective-action-intake";
 import { extractJobTitle } from "@/lib/forms/proposal";
 
 import type { AskRequest } from "./types";
@@ -53,6 +54,8 @@ export function nameBeforeTitle(text: string): string {
   if (!lead) return text;
   const [whole, form, word, first, last] = lead as unknown as [string, string, string, string, string];
   if (NOT_A_NAME.test(first) || NOT_A_NAME.test(last) || extractJobTitle(first) || extractJobTitle(last)) return text;
+  // QA-5, 26 Oct 2026: "ca for dress code, associate at …" names a topic, not a person.
+  if (describesIncident(`${first} ${last}`)) return text;
   const rest = text.slice(lead.index + whole.length);
   const title = titleAhead(rest);
   if (!title) return text;

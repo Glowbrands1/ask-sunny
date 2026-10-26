@@ -48,6 +48,10 @@ describe("NAME_BEFORE_TITLE_ENABLED on", () => {
     "create a ca for her, team member at lawrence",
     "coaching for devon harlan, rory vance was late today",
     "what is a ca for a team member?",
+    // QA-5, 26 Oct 2026: a topic is not a name.
+    "ca for dress code, associate at lawrence",
+    "Ca for dress code associate at lawrence",
+    "CA FOR DRESS CODE, ASSOCIATE AT LAWRENCE",
   ])("leaves '%s' as typed", (turn) => {
     process.env[FLAG] = "on";
     expect(nameBeforeTitle(turn)).toBe(turn);
