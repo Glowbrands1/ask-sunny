@@ -303,11 +303,35 @@ describe("the app's own lines are not the manager's words (24 Oct 2026)", () => 
     expect(observation(late.content)).toBe("She opened the salon late");
   });
 
+  it("INCIDENT_CLAUSE_SPLIT_ENABLED on: the card's own lines and where she works are no Observation", () => {
+    vi.stubEnv(FLAG, "");
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true");
+    const on = holdFilledSlots({
+      response: answer("Here is what I would put on a **Coaching Form**.", proposal({
+        templateKey: "coaching",
+        templateName: "Coaching Form",
+        employeeName: "Test Employee",
+        locationId: "loc-0307",
+      })),
+      question: "The form is the Coaching Form.\nThe employee is Test Employee. It happened at NE Grand Island.\nShe works at NE Grand Island",
+      history: [{ role: "user", content: "Her name is Test Employee" }],
+      today: TODAY,
+      people: [],
+    });
+    // Changed on purpose with the flag on (QA, 26 Oct 2026): "It happened at …" is the
+    // intent read's own sentence and "She works at …" an employee fact; neither is the account.
+    expect(observation(on.content)).toBeNull();
+  });
+
   it("off, the card reads the question as main does", () => {
     vi.stubEnv(FLAG, "");
     // Main's production card: the remap fix is off there too. The bundle runs
     // this file with every flag on, and that flag reads What happened itself.
     vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    // So do INCIDENT_CLAUSE_SPLIT_ENABLED and INCIDENT_COMMAND_WORDS_ENABLED (their twins are below).
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "");
+    vi.stubEnv("INCIDENT_COMMAND_WORDS_ENABLED", "");
     const off = holdFilledSlots({
       response: answer("Here is what I would put on a **Coaching Form**.", proposal({
         templateKey: "coaching",
@@ -390,9 +414,21 @@ describe("QA 25 Oct 2026: What happened without the request, the name or the pla
   it("flag off, the sentence is printed as main prints it", () => {
     vi.stubEnv(FLAG, "");
     vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    // INCIDENT_CLAUSE_SPLIT_ENABLED and INCIDENT_COMMAND_WORDS_ENABLED off too (their twin is below).
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "");
+    vi.stubEnv("INCIDENT_COMMAND_WORDS_ENABLED", "");
     expect(observation(held("She opened the salon late at NE Grand Island", "Test Employee").content)).toBe(
       "She opened the salon late at NE Grand Island",
     );
+  });
+
+  it("INCIDENT_CLAUSE_SPLIT_ENABLED on: the salon goes from the sentence", () => {
+    vi.stubEnv(FLAG, "");
+    vi.stubEnv("REMAP_INCIDENT_FIX_ENABLED", "");
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true");
+    // Changed on purpose with the flag on (QA, 26 Oct 2026): a short act is the account
+    // in the manager's words without the place, as MANAGER_WORDS_ONLY reads it.
+    expect(observation(held("She opened the salon late at NE Grand Island", "Test Employee").content)).toBe("She opened the salon late");
   });
 });
 

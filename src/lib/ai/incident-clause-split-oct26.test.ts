@@ -132,7 +132,11 @@ describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: the intent read's own sentences", ()
 });
 
 describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: the Sunny tester's case and commas inside an account", () => {
-  beforeEach(() => vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true"));
+  // The words after "25 min" are kept by INCIDENT_COMMAND_WORDS_ENABLED's duration rule.
+  beforeEach(() => {
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true");
+    vi.stubEnv("INCIDENT_COMMAND_WORDS_ENABLED", "true");
+  });
   afterEach(() => vi.unstubAllEnvs());
 
   // QA, 26 Oct 2026, Sunny tester: first name capitalised, surname lowercase.
@@ -154,9 +158,38 @@ describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: the Sunny tester's case and commas i
   });
 });
 
-describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: commands are never the incident", () => {
-  beforeEach(() => vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true"));
+for (const both of [false, true]) describe(`INCIDENT_COMMAND_WORDS_ENABLED on${both ? ", with INCIDENT_CLAUSE_SPLIT_ENABLED" : " alone"}: commands are never the incident`, () => {
+  beforeEach(() => {
+    vi.stubEnv("INCIDENT_COMMAND_WORDS_ENABLED", "true");
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", both ? "true" : "");
+  });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("a negated or hedged command is still a command, never the incident (QA-7)", () => {
+    for (const later of [
+      "don't change it to written",
+      "Do not change it to written",
+      "actually no deduct",
+      "Actually no deduct",
+      "not verbal",
+      "never written",
+      "she was not verbal",
+      "She was not verbal",
+      "verbal not written",
+      "written, not verbal",
+      "VERBAL NOT WRITTEN",
+    ]) {
+      expect(remap(["create a ca for kira dunmore, she was late today", later].join("\n"), "kira dunmore"), later).toBe("late today");
+    }
+  });
+
+  if (both) {
+    it("a place sentence between two acts goes; both acts stay (QA-7)", () => {
+      for (const text of cased("create a ca for kira dunmore, she skipped a tour today, it happened at kearney ne and she did not clock out", ["kira dunmore"])) {
+        expect(remap(text, "kira dunmore")).toBe("skipped a tour today and did not clock out");
+      }
+    });
+  }
 
   // QA / Code 8, 26 Oct 2026, production flags: the command rode into Observation of Offense.
   it("\"no deduct\" and \"date 10/14\" after the account stay out of it", () => {
@@ -213,7 +246,10 @@ describe("the clause splitter", () => {
 });
 
 describe("INCIDENT_CLAUSE_SPLIT_ENABLED off", () => {
-  beforeEach(() => vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", ""));
+  beforeEach(() => {
+    vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "");
+    vi.stubEnv("INCIDENT_COMMAND_WORDS_ENABLED", "");
+  });
   afterEach(() => vi.unstubAllEnvs());
 
   it("the readers see the turn as typed (the reported fragments)", () => {
@@ -222,7 +258,7 @@ describe("INCIDENT_CLAUSE_SPLIT_ENABLED off", () => {
     expect(remap(PASTED.join("\n"), "jory pell")).toBe(PASTED[1]);
   });
 
-  it("a later command turn is read as the incident (the reported command bug)", () => {
+  it("a later command turn is read as the incident with INCIDENT_COMMAND_WORDS_ENABLED off (the reported command bug)", () => {
     expect(remap(["create a ca for kira dunmore, she was late today", "no deduct"].join("\n"), "kira dunmore")).toBe("no deduct");
   });
 });

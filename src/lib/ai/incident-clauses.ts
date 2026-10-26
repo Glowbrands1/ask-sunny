@@ -1,4 +1,4 @@
-import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
+import { incidentClauseSplitEnabled, incidentCommandWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * INCIDENT_CLAUSE_SPLIT_ENABLED: What happened is the incident, never a
@@ -33,7 +33,8 @@ import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
  *   the app's    the intent read's own sentences in front of the turn ("The
  *   sentences    employee is …", "Policy reference: …") are never the
  *                incident;
- *   commands     "no deduct", "date 10/14", "change it to written",
+ *   commands     (INCIDENT_COMMAND_WORDS_ENABLED, its own flag) "no deduct",
+ *                "date 10/14", "change it to written",
  *                "verbal", "salon is …" fill their own field, never What
  *                happened.
  *
@@ -143,16 +144,27 @@ export function isStateSentence(text: string): boolean {
 const GLUED_STATE = /\s+It happened (?:at|on) [^.,;]{1,40}\.?$/;
 
 /**
+ * "she skipped a tour today, it happened at kearney ne and she did not clock
+ * out": the place sentence between two acts goes, both acts stay (QA-7).
+ */
+const PLACE_AND_ACT = /,\s*it happened (?:at|on|in) [^,.;]{1,40}? and\s+(?:(?:she|he|they)\s+)?/i;
+
+/**
  * A command to the app fills a field; it is never what happened (QA, 26 Oct
  * 2026, flags on and off): "no deduct", "yes payroll deduct", "date 10/14",
  * "date is", "change it to written", "verbal", "salon is …".
  */
+/** "don't", "do not", "actually", "not", "never" in front of a command: still the command (QA-7, 26 Oct 2026). */
+const COMMAND_HEDGE = String.raw`(?:(?:actually|no|ok(?:ay)?|and|also)[,\s]+)*(?:(?:please\s+)?(?:don['’]?t|do\s+not|not|never)\s+)?`;
+const LEVEL = String.raw`(?:verbal|written|final)(?:\s+(?:warning|ca|c\/a))?`;
+
 const SLOT_COMMAND: readonly RegExp[] = [
-  /^(?:(?:yes|no)\s+)?(?:payroll\s+)?(?:deduct(?:ion|ed)?|no\s+payroll)(?:\s+(?:applies|n\/?a|not\s+applicable|\$?\d+(?:\.\d{2})?))?$/i,
-  /^(?:the\s+)?date(?:\s+(?:is|=|:|should\s+be))?(?:\s+(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|today|yesterday))?$/i,
-  /^(?:please\s+)?(?:change|make|switch|set)\s+(?:it|this|that|the\s+(?:level|warning|form))\s+to\b/i,
-  /^(?:(?:a|it'?s|its|make\s+it)\s+)?(?:verbal|written|final)(?:\s+(?:warning|ca|c\/a))?$/i,
-  /^(?:the\s+)?(?:salon|store|location)\s+(?:is|=|:)\s+/i,
+  new RegExp(String.raw`^${COMMAND_HEDGE}(?:(?:yes|no)\s+)?(?:payroll\s+)?(?:deduct(?:ion|ed)?|no\s+payroll)(?:\s+(?:applies|n\/?a|not\s+applicable|\$?\d+(?:\.\d{2})?))?$`, "i"),
+  new RegExp(String.raw`^${COMMAND_HEDGE}(?:the\s+)?date(?:\s+(?:is|=|:|should\s+be))?(?:\s+(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|today|yesterday))?$`, "i"),
+  new RegExp(String.raw`^${COMMAND_HEDGE}(?:change|make|switch|set)\s+(?:it|this|that|the\s+(?:level|warning|form))\s+to\b`, "i"),
+  // "verbal", "not verbal", "never written", "verbal not written", "she was not verbal".
+  new RegExp(String.raw`^${COMMAND_HEDGE}(?:(?:a|it'?s|its|make\s+it|(?:she|he|they)\s+(?:was|is|were|are)(?:\s+not)?)\s+)?${LEVEL}(?:,?\s+not\s+${LEVEL})?$`, "i"),
+  /^(?:the\s+)?(?:salon|location)\s+(?:is|=|:)\s+/i,
 ];
 
 export function isSlotCommand(text: string): boolean {
@@ -186,6 +198,25 @@ function actHalves(clause: string, employeeName: string | null): string {
   return acts.join(" and ");
 }
 
+/** "do verbal for …", "create a ca for …": a clause that asks for the form. */
+const ASKS_FOR_FORM = /^\s*(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:create|make|start|open|do|file|write|draft|need|i\s+need)\b|^\s*(?:ca|c\/a|coaching|corrective\s+action)\s+for\b/i;
+
+/**
+ * "do verbal for tanning consultant Test Employee at empire, sd": a request
+ * with no act in it ends at the employee's name, and the title in front of
+ * the name goes. What surrounds the name there is who they are and where
+ * they work, never what happened (QA-2, 26 Oct 2026).
+ */
+function requestUpToName(clause: string, employeeName: string | null): string {
+  if (!employeeName || statesAnAct(clause) || !ASKS_FOR_FORM.test(clause)) return clause;
+  const at = clause.toLowerCase().indexOf(employeeName.toLowerCase());
+  if (at < 0) return clause;
+  // "for tan consultant Test Employee": the title in front of the name is who they are, too.
+  return clause.slice(0, at + employeeName.length).replace(/\bfor\s+(?:\S+\s+){1,4}?(?=\S+(?:\s+\S+)?$)/i, (lead) =>
+    lead.toLowerCase().includes(employeeName.toLowerCase().split(/\s+/)[0]!) ? lead : "for ",
+  );
+}
+
 /** "she did not do …": the pronoun before the act goes, for a reader that reads the act alone. */
 function withoutSubject(clause: string): string {
   return clause.replace(/^(?:she|he|they)\s+(?=\S)/i, "");
@@ -199,40 +230,66 @@ function withoutSubject(clause: string): string {
 export function incidentOnlyText(
   turn: string,
   employeeName: string | null,
-  options: { readonly subjectless?: boolean } = {},
+  options: { readonly subjectless?: boolean; readonly split?: boolean; readonly commands?: boolean } = {},
 ): string {
+  const read = { subjectless: options.subjectless ?? false, split: options.split ?? true, commands: options.commands ?? true };
   return turn
     .split("\n")
-    .map((line) => incidentOnlyLine(line, employeeName, options.subjectless ?? false))
+    .map((line) => incidentOnlyLine(line, employeeName, read))
     .join("\n");
 }
 
-function incidentOnlyLine(line: string, employeeName: string | null, subjectless: boolean): string {
+function incidentOnlyLine(
+  line: string,
+  employeeName: string | null,
+  read: { readonly subjectless: boolean; readonly split: boolean; readonly commands: boolean },
+): string {
   if (!line.trim()) return line;
   const sentences: string[] = [];
+  let dropped = false;
   // "st. joe": the readers split at a point too, so the abbreviation's own point goes.
-  const unpointed = line.replace(ABBREVIATIONS, (match) => match.replace(/\.$/, ""));
+  const unpointed = read.split ? line.replace(ABBREVIATIONS, (match) => match.replace(/\.$/, "")) : line;
   for (const sentence of incidentSentences(unpointed)) {
     // "Issue: The employee who failed to open will then be required …": the policy's words.
     const unlabelled = sentence.replace(/^\s*(?:issue|policy|note)\s*:\s*/i, "");
-    if (isStateSentence(sentence) || isSlotCommand(sentence) || isPolicyInstruction(unlabelled) || isPolicyText(unlabelled)) continue;
-    const clauses = incidentClauses(sentence.replace(GLUED_STATE, ""))
-      .filter((clause) => !isPolicyInstruction(clause) && !isPolicyText(clause) && !isSlotCommand(clause))
-      .map((clause) => actHalves(clause, employeeName))
-      .filter((clause) => !isEmployeeFact(clause, employeeName))
-      .map((clause) => (subjectless && statesAnAct(clause) ? withoutSubject(clause) : clause));
+    if (read.split && (isStateSentence(sentence) || isPolicyInstruction(unlabelled) || isPolicyText(unlabelled))) continue;
+    // INCIDENT_COMMAND_WORDS_ENABLED: "no deduct", "date 10/14", "change it to written" fill a field.
+    if (read.commands && isSlotCommand(sentence)) {
+      dropped = true;
+      continue;
+    }
+    const body = read.commands ? sentence.replace(GLUED_STATE, "").replace(PLACE_AND_ACT, " and ") : sentence;
+    let clauses = read.split ? incidentClauses(body) : body.split(",").map((clause) => clause.trim()).filter(Boolean);
+    if (read.split) {
+      clauses = clauses
+        .filter((clause) => !isPolicyInstruction(clause) && !isPolicyText(clause))
+        .map((clause) => actHalves(clause, employeeName))
+        .map((clause) => requestUpToName(clause, employeeName))
+        .filter((clause) => !isEmployeeFact(clause, employeeName))
+        .map((clause) => (read.subjectless && statesAnAct(clause) ? withoutSubject(clause) : clause));
+    }
+    if (read.commands) {
+      const kept = clauses.filter((clause) => !isSlotCommand(clause));
+      if (kept.length !== clauses.length || body !== sentence) dropped = true;
+      clauses = kept;
+    }
     if (clauses.length > 0) sentences.push(clauses.join(", "));
   }
+  // Commands alone: a line with no command in it is handed on exactly as typed.
+  if (!read.split && !dropped) return line;
   return sentences.join(". ");
 }
 
-/** The readers' input with INCIDENT_CLAUSE_SPLIT_ENABLED on; the turn as typed with it off. */
+/** The readers' input with INCIDENT_CLAUSE_SPLIT_ENABLED or INCIDENT_COMMAND_WORDS_ENABLED on; the turn as typed with both off. */
 export function incidentTurn(
   turn: string,
   employeeName: string | null,
   options: { readonly subjectless?: boolean } = {},
 ): string {
-  return incidentClauseSplitEnabled() ? incidentOnlyText(turn, employeeName, options) : turn;
+  const split = incidentClauseSplitEnabled();
+  const commands = incidentCommandWordsEnabled();
+  if (!split && !commands) return turn;
+  return incidentOnlyText(turn, employeeName, { ...options, split, commands });
 }
 
 function escape(value: string): string {

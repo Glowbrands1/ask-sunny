@@ -913,3 +913,16 @@ export function googleReviewsInChatEnabled(): boolean {
 export function incidentClauseSplitEnabled(): boolean {
   return envFlag("INCIDENT_CLAUSE_SPLIT_ENABLED");
 }
+
+/**
+ * A command to the app ("no deduct", "date 10/14", "date is", "change it to
+ * written", "verbal", "salon is …") and the intent read's "It happened at …"
+ * glued onto the account are never What happened, and words after a
+ * duration ("… 25 min customers waiting") keep the manager's wording
+ * (`ai/incident-clauses.ts`; QA / Code 8, 26 Oct 2026). Its own flag, apart
+ * from INCIDENT_CLAUSE_SPLIT_ENABLED. Off (the default), the turn is read as
+ * typed.
+ */
+export function incidentCommandWordsEnabled(): boolean {
+  return envFlag("INCIDENT_COMMAND_WORDS_ENABLED");
+}

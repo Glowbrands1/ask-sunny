@@ -35,7 +35,7 @@ const INTENT_FLAGS = [
   "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
 ] as const;
 const REMAP_FLAGS = ["FORM_FULL_REMAP_ENABLED", "REMAP_INCIDENT_FIX_ENABLED"] as const;
-const ALL_FLAGS = [...INTENT_FLAGS, ...REMAP_FLAGS, "INCIDENT_CLAUSE_SPLIT_ENABLED"] as const;
+const ALL_FLAGS = [...INTENT_FLAGS, ...REMAP_FLAGS, "INCIDENT_CLAUSE_SPLIT_ENABLED", "INCIDENT_COMMAND_WORDS_ENABLED"] as const;
 
 const model = vi.hoisted(() => ({
   intent: {} as Record<string, unknown>,
@@ -282,9 +282,10 @@ function sentenceCase(text: string): string[] {
   return [text, first, first.replace("kira dunmore", "Kira Dunmore")];
 }
 
-describe("intent path, INCIDENT_CLAUSE_SPLIT_ENABLED on", () => {
+describe("intent path, INCIDENT_CLAUSE_SPLIT_ENABLED and INCIDENT_COMMAND_WORDS_ENABLED on", () => {
   it("the Observation of Offense carries no command and no employee fact", async () => {
-    useFlags([...INTENT_FLAGS, "INCIDENT_CLAUSE_SPLIT_ENABLED"]);
+    // The commands are INCIDENT_COMMAND_WORDS_ENABLED's; the employee facts INCIDENT_CLAUSE_SPLIT_ENABLED's.
+    useFlags([...INTENT_FLAGS, "INCIDENT_CLAUSE_SPLIT_ENABLED", "INCIDENT_COMMAND_WORDS_ENABLED"]);
     for (const [wording, leftover] of WORDINGS) {
       for (const say of sentenceCase(wording)) {
         const reply = await chat([{ say, intent: { employee: "kira dunmore" } }]);
