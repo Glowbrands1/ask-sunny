@@ -845,3 +845,12 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * A terse "ca …" line's incident sentence is the account alone, "On 10/11/26,
+ * dress code.", without the employee's name inside What happened (QA, 26 Oct
+ * 2026). Off, the expansion reads "On 10/11/26 <name> dress code." as before.
+ */
+export function terseIncidentNoNameEnabled(): boolean {
+  return envFlag("TERSE_INCIDENT_NO_NAME_ENABLED");
+}
