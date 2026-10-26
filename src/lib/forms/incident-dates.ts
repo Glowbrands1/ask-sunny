@@ -180,14 +180,22 @@ export function decideFormDate(input: {
    * neither is a date the manager gave the form itself ("dated 10/2", above).
    */
   if (futureIncidentDateAskEnabled()) {
-    const future = [
-      ...new Set(
-        listIncidentDates(input.text, input.today)
-          .filter((found) => !DUE_BEFORE.test(input.text.slice(Math.max(0, found.index - 30), found.index)))
-          .map((found) => found.iso),
-      ),
-    ].filter((iso) => iso > input.today);
-    if (future.length > 0 && !input.history.some((turn) => turn.role === "assistant" && turn.content.includes(FUTURE_DATE_TAG))) {
+    const read = listIncidentDates(input.text, input.today).filter(
+      (found) => !DUE_BEFORE.test(input.text.slice(Math.max(0, found.index - 30), found.index)),
+    );
+    const future = [...new Set(read.map((found) => found.iso))].filter((iso) => iso > input.today);
+    /*
+     * Asked only when NO past incident date was stated (coordinator, 26 Oct
+     * 2026): "late on 10-20-26, meeting is on 12-20-26" is dated 10-20, the one
+     * past incident date, and the meeting ahead is not challenged.
+     */
+    const past = incidentDates(input.text, input.today);
+    if (future.length > 0 && past.length === 1) return { formDate: past[0]! };
+    if (
+      future.length > 0 &&
+      past.length === 0 &&
+      !input.history.some((turn) => turn.role === "assistant" && turn.content.includes(FUTURE_DATE_TAG))
+    ) {
       return { formDate: null, question: futureDateQuestion(future[future.length - 1]!, input.today) };
     }
   }
