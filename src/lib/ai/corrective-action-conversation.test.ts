@@ -1970,10 +1970,13 @@ describe("'ca for <name>, team member at <salon>'", () => {
 
   it("flag off, as on main: the lowercase name is not read", async () => {
     const off = withFlags([]);
+    const saved = process.env.NAME_BEFORE_TITLE_ENABLED;
+    delete process.env.NAME_BEFORE_TITLE_ENABLED;
     try {
       expect((await ask(B10)).formProposal?.employeeName ?? null).toBeNull();
     } finally {
       off();
+      if (saved !== undefined) process.env.NAME_BEFORE_TITLE_ENABLED = saved;
     }
   });
 
