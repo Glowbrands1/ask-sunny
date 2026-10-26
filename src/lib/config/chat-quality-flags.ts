@@ -881,3 +881,17 @@ export function appPasswordHelpEnabled(): boolean {
 export function followUpNotPriorEnabled(): boolean {
   return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
 }
+
+/**
+ * A person the manager names only to say the form is not for them is not the
+ * form's person (QA-6, 26 Oct 2026; same flag in both apps). "never one for
+ * Rowan Pell" and "do not make one for Rowan Pell", with a card open for
+ * someone else, offered a card for Rowan Pell. On, a name after not / never /
+ * no / don't / do not (make|create|write …) for / without / except / instead
+ * of (`forms/negated-name.ts`) is passed over on the intent and open-form
+ * paths, and the first name not negated is read. Off, names are read as
+ * before.
+ */
+export function negatedPersonNoCardEnabled(): boolean {
+  return envFlag("NEGATED_PERSON_NO_CARD_ENABLED");
+}

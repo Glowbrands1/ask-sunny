@@ -1,5 +1,6 @@
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_NAME, NOT_A_TYPED_NAME, stripFieldLabels } from "./name-words";
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
+import { negatedPeople, withoutNegatedPeople } from "./negated-person";
 import { extractEmployeeNames } from "./proposal";
 
 /**
@@ -197,9 +198,22 @@ export function employeeNamedOnPurpose(
   roster: readonly RosterEmployee[],
   salonNames: readonly string[],
 ): string | null {
-  const next = previous
+  let next = previous
     ? renameTarget(question, roster, salonNames)
     : rosterValidatedName(question, roster, salonNames);
+  /*
+   * NEGATED_PERSON_NO_CARD_ENABLED: "never one for Rowan Pell" renames
+   * nobody. A person named only after a negation is blanked out and the turn
+   * read again, so "no, not for Rowan Pell, for Corvin Mallow" names Corvin
+   * Mallow. Off: unchanged.
+   */
+  let text = question;
+  for (let tries = 0; next && tries < 3; tries += 1) {
+    const negated = negatedPeople(text, [next]);
+    if (negated.length === 0) break;
+    text = withoutNegatedPeople(text, negated);
+    next = previous ? renameTarget(text, roster, salonNames) : rosterValidatedName(text, roster, salonNames);
+  }
   if (!next) return null;
   if (!previous) return next;
   const prior = previous.trim().toLowerCase();

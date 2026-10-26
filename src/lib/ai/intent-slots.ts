@@ -11,6 +11,7 @@ import {
   priorActionsParseEnabled,
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
+  negatedPersonNoCardEnabled,
   titleWholeWordEnabled,
   typedNameProceedsEnabled,
   namedFormExactEnabled,
@@ -40,6 +41,7 @@ import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
+import { firstUnnegatedPerson, negatedPeople, withoutNegatedPeople } from "@/lib/forms/negated-person";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
@@ -241,14 +243,29 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const reading = parseReading(input.raw);
   const blob = conversationBlob(input);
   const choice = readPriorChoice(input.history, input.question, input.people, input.salons);
+  /*
+   * NEGATED_PERSON_NO_CARD_ENABLED: "never one for Rowan Pell" names nobody
+   * for the form. A person this turn names only after a negation is blanked
+   * out of what the employee is read from, and the model's reading of them is
+   * replaced by the first person the turn names without one. Off: unchanged.
+   */
+  const candidates = negatedPersonNoCardEnabled()
+    ? [reading?.employee, ...extractEmployeeNames(input.question), ...input.people.map(displayName)]
+    : [];
+  const negated = negatedPeople(input.question, candidates);
+  const nameInput = negated.length > 0 ? { ...input, question: withoutNegatedPeople(input.question, negated) } : input;
+  const modelEmployee =
+    reading?.employee && negated.some((name) => name.toLowerCase() === reading.employee!.trim().toLowerCase())
+      ? firstUnnegatedPerson(input.question, candidates)
+      : reading?.employee ?? null;
   const grounded = choice?.person
     ? { person: choice.person, name: displayName(choice.person), ambiguous: [] as readonly GroundedPerson[], typed: null }
     : groundEmployee(
-        codeSlotsEnabled() ? null : reading?.employee ?? null,
-        blob,
+        codeSlotsEnabled() ? null : modelEmployee,
+        nameInput === input ? blob : conversationBlob(nameInput),
         input.people,
         input.salons,
-        notANameGuardEnabled() ? managerTurns(input) : null,
+        notANameGuardEnabled() ? managerTurns(nameInput) : null,
       );
   /*
    * KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" names Test Employee
