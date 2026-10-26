@@ -130,3 +130,41 @@ describe("EXIT_PROSE_FACTS_ENABLED", () => {
     });
   }
 });
+
+/* How managers type (Pau, 26 Oct 2026): all lowercase, sentence case with names capitalised, and ALL CAPS. */
+const REGISTERS: [string, (text: string) => string][] = [
+  ["all lowercase", (text) => text.toLowerCase()],
+  [
+    "sentence case",
+    (text) => {
+      const named = text.toLowerCase().split("ava pellmore").join("Ava Pellmore").split("ava ").join("Ava ");
+      return named.charAt(0).toUpperCase() + named.slice(1);
+    },
+  ],
+  ["ALL CAPS", (text) => text.toUpperCase()],
+];
+
+describe.each(REGISTERS)("EXIT_PROSE_FACTS_ENABLED in the managers' register: %s", (_register, as) => {
+  it("the Date line is the card's date; a bare name leaves Additional Details blank", () => {
+    withFlag(true);
+    expect(prose(as("Her last day is today, she is not rehireable"), { formDate: "2026-09-29" })).toContain(
+      "- **Date:** September 29, 2026",
+    );
+    expect(prose(as(BARE_NAME))).toMatch(/\*\*Left blank for you to review:\*\*[^\n]*Additional Details/);
+  });
+
+  it('"worked through it" is dropped beside "did not call in"; the manager\'s own account stays', () => {
+    withFlag(true);
+    const drafted = "Ava gave notice and worked through it. Ava did not call in for the last two shifts.";
+    expect(guardExitDetails(drafted, as("ava pellmore did not call in for her last two shifts"), TODAY).removed).toEqual([
+      "Ava gave notice and worked through it.",
+    ]);
+    const own = "Ava gave two weeks notice and worked through the last day.";
+    expect(guardExitDetails(own, as("ava gave and worked 2 week notice"), TODAY).removed).toEqual([]);
+  });
+
+  it("flag off, the prose is main's", () => {
+    withFlag(false);
+    expect(prose(as(BARE_NAME))).toContain("a short account drafted from what you've described");
+  });
+});
