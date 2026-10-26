@@ -31,12 +31,14 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  incidentClauseSplitEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutAppLines } from "./app-sentences";
+import { incidentTurn, statesAnAct } from "./incident-clauses";
 import { observationByRules } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
@@ -560,16 +562,20 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
 function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
+  const split = incidentClauseSplitEnabled();
   const sentences: string[] = [];
-  for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts, commands and policy text.
+  for (const turn of (managerOnly ? turns.map(withoutAppLines) : turns).map((said) => incidentTurn(said, employeeName))) {
     for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
-      if (said.length < 12) continue;
-      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      // INCIDENT_CLAUSE_SPLIT_ENABLED: a short act ("was late today") is an account too, without the request words.
+      const act = split && statesAnAct(managerAccount(said, employeeName));
+      if (said.length < 12 && !act) continue;
+      if (!describesMoreThanTheRequest(said, { ignore }) && !act) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
-      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      const sentence = managerOnly || act ? managerAccount(said, employeeName) : said;
       if (!sentence) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;

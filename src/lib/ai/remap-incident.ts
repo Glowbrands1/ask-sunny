@@ -1,4 +1,5 @@
 import { salonById } from "@/data/salons";
+import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
@@ -319,7 +320,8 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   if (title && title.toLowerCase() === text.toLowerCase()) return null;
   if (/^team members?$/i.test(text)) return null;
   const onDuration = /\bfor\b/i.test(text) ? null : /^on\s+(.+?)\s+(\d+\+?\s*(?:min|mins|minutes|hrs|hours))\b/i.exec(text);
-  if (onDuration) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: words after the duration ("… 25 min customers waiting") keep the manager's own wording.
+  if (onDuration && !(incidentClauseSplitEnabled() && text.slice(onDuration[0].length).trim())) {
     const thing = onDuration[1]!.replace(/\s+/g, " ").trim();
     const spaced = onDuration[2]!.replace(/\s+/g, "").replace(/(\d\+?)(?=[a-z])/i, "$1 ");
     return /\buse\b/i.test(thing) ? `${thing} ${spaced}` : `${thing} use ${spaced}`;

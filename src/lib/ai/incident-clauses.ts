@@ -5,10 +5,10 @@ import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
  * fragment of the turn around it (QA, 26 Oct 2026; both apps, names invented
  * in the tests).
  *
- *   "…for devon harlan, she works at our dodge, ne store as a team member and
- *   was late today."      cut at the comma of "dodge, ne": What happened was
- *                         "ne store as a team member and was late today" and
- *                         "she works at our dodge".
+ *   "…for devon harlan, she works at our kearney, ne salon as a tan
+ *   consultant and was late today."
+ *                         cut at the comma of "kearney, ne": What happened was
+ *                         "ne salon as a tan consultant and was late today".
  *   "employee for 7 months", "and cite the standards of conduct as the policy
  *   violated", "the policy violated is late opening, not attendance"
  *                         the last sentence overwrote the incident.
@@ -19,20 +19,23 @@ import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
  * The readers keep their own rules. This only hands them the turn without the
  * sentences and clauses that are not the incident:
  *
- *   one clause   "dodge, ne", "kearney, ne", "empire, sd" (a state after a
+ *   one clause   "kearney, ne", "lawrence, ks" (a state after a
  *                place), "$3.25", "9/25/26", "st. joe", "a.m." stay inside
  *                the clause they are in;
- *   not the      a clause that only states an employee fact (title, store,
- *   incident     tenure: "she is the store director at our kearney, ne",
- *                "primary store is dodge", "employee for 7 months"), a
+ *   not the      a clause that only states an employee fact (title, salon,
+ *   incident     tenure: "she is the salon director at our kearney, ne",
+ *                "primary salon is lawrence", "employee for 7 months"), a
  *                policy instruction ("cite … as the policy violated", "the
  *                policy violated is …") or pasted policy text ("The employee
  *                who … will then be required to …");
- *   "and"        "works at our dodge, ne store as a team member and was late
+ *   "and"        "works at our kearney, ne salon as a tan consultant and was late
  *                today": the fact half goes, the act half stays;
  *   the app's    the intent read's own sentences in front of the turn ("The
  *   sentences    employee is …", "Policy reference: …") are never the
- *                incident.
+ *                incident;
+ *   commands     "no deduct", "date 10/14", "change it to written",
+ *                "verbal", "salon is …" fill their own field, never What
+ *                happened.
  *
  * A clause that says what was done or not done stays whole, whoever it names,
  * so a story about two people keeps both. Off, the readers see the turn as
@@ -52,7 +55,7 @@ const ABBREVIATIONS = /\b(?:st|dr|mr|mrs|ms|jr|sr|rd|ave|blvd|hwy|pkwy|mt|ft|vs|
 
 const LEADER = "․";
 
-/** "dodge, ne" → "dodge ne": the comma after a place before its state is no clause break. */
+/** "kearney, ne" → "kearney ne": the comma after a place before its state is no clause break. */
 export function joinPlaceState(text: string): string {
   return text.replace(/([A-Za-z][\w'.-]*),\s*([A-Za-z]{2})(?=\s|$|[.,;!?])(?=(\s+\S+)?)/g, (whole, place: string, code: string, after?: string) => {
     if (!STATE_CODES.test(code)) return whole;
@@ -136,6 +139,27 @@ export function isStateSentence(text: string): boolean {
   return STATE_SENTENCE.test(text.trim());
 }
 
+/** "skipped a tour today It happened at KS Lawrence.": the intent read's sentence glued on without a stop. */
+const GLUED_STATE = /\s+It happened (?:at|on) [^.,;]{1,40}\.?$/;
+
+/**
+ * A command to the app fills a field; it is never what happened (QA, 26 Oct
+ * 2026, flags on and off): "no deduct", "yes payroll deduct", "date 10/14",
+ * "date is", "change it to written", "verbal", "salon is …".
+ */
+const SLOT_COMMAND: readonly RegExp[] = [
+  /^(?:(?:yes|no)\s+)?(?:payroll\s+)?(?:deduct(?:ion|ed)?|no\s+payroll)(?:\s+(?:applies|n\/?a|not\s+applicable|\$?\d+(?:\.\d{2})?))?$/i,
+  /^(?:the\s+)?date(?:\s+(?:is|=|:|should\s+be))?(?:\s+(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|today|yesterday))?$/i,
+  /^(?:please\s+)?(?:change|make|switch|set)\s+(?:it|this|that|the\s+(?:level|warning|form))\s+to\b/i,
+  /^(?:(?:a|it'?s|its|make\s+it)\s+)?(?:verbal|written|final)(?:\s+(?:warning|ca|c\/a))?$/i,
+  /^(?:the\s+)?(?:salon|store|location)\s+(?:is|=|:)\s+/i,
+];
+
+export function isSlotCommand(text: string): boolean {
+  const said = text.trim().replace(/[.!]+$/, "");
+  return said !== "" && SLOT_COMMAND.some((pattern) => pattern.test(said));
+}
+
 export function isPolicyInstruction(text: string): boolean {
   return POLICY_INSTRUCTION.some((pattern) => pattern.test(text.trim()));
 }
@@ -152,7 +176,7 @@ export function isEmployeeFact(clause: string, employeeName: string | null): boo
   return EMPLOYEE_FACT.some((pattern) => pattern.test(text));
 }
 
-/** "works at our dodge ne store as a team member and was late today": the act half. */
+/** "works at our kearney ne salon as a tan consultant and was late today": the act half. */
 function actHalves(clause: string, employeeName: string | null): string {
   const halves = clause.split(/\s+and\s+/i);
   if (halves.length < 2) return clause;
@@ -191,9 +215,9 @@ function incidentOnlyLine(line: string, employeeName: string | null, subjectless
   for (const sentence of incidentSentences(unpointed)) {
     // "Issue: The employee who failed to open will then be required …": the policy's words.
     const unlabelled = sentence.replace(/^\s*(?:issue|policy|note)\s*:\s*/i, "");
-    if (isStateSentence(sentence) || isPolicyInstruction(unlabelled) || isPolicyText(unlabelled)) continue;
-    const clauses = incidentClauses(sentence)
-      .filter((clause) => !isPolicyInstruction(clause) && !isPolicyText(clause))
+    if (isStateSentence(sentence) || isSlotCommand(sentence) || isPolicyInstruction(unlabelled) || isPolicyText(unlabelled)) continue;
+    const clauses = incidentClauses(sentence.replace(GLUED_STATE, ""))
+      .filter((clause) => !isPolicyInstruction(clause) && !isPolicyText(clause) && !isSlotCommand(clause))
       .map((clause) => actHalves(clause, employeeName))
       .filter((clause) => !isEmployeeFact(clause, employeeName))
       .map((clause) => (subjectless && statesAnAct(clause) ? withoutSubject(clause) : clause));

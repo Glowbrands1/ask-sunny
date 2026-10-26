@@ -131,13 +131,64 @@ describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: the intent read's own sentences", ()
   });
 });
 
+describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: the Sunny tester's case and commas inside an account", () => {
+  beforeEach(() => vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  // QA, 26 Oct 2026, Sunny tester: first name capitalised, surname lowercase.
+  const TESTER = "Devon harlan, ks manhattan, was on her phone 25 min customers waiting 9-29-26";
+
+  it("keeps the tester's incident whole", () => {
+    for (const text of [TESTER, TESTER.toLowerCase(), "Devon Harlan, KS Manhattan, was on her phone 25 min customers waiting 9-29-26"]) {
+      expect(intent([text], "devon harlan").join(" ")).toContain("was on her phone 25 min customers waiting");
+      expect(remap(text, "devon harlan")).toBe("on her phone 25 min customers waiting");
+    }
+  });
+
+  it("commas inside a real account still split into its acts, none dropped", () => {
+    for (const text of cased("she was late, again, and left early", [])) {
+      const clauses = incidentClauses(text);
+      expect(clauses.map((clause) => clause.toLowerCase())).toEqual(["she was late", "again", "and left early"]);
+      expect(incidentOnlyText(text, null).toLowerCase()).toBe("she was late, again, and left early");
+    }
+  });
+});
+
+describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: commands are never the incident", () => {
+  beforeEach(() => vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  // QA / Code 8, 26 Oct 2026, production flags: the command rode into Observation of Offense.
+  it("\"no deduct\" and \"date 10/14\" after the account stay out of it", () => {
+    for (const text of cased("coaching form for kira dunmore. late opening the salon today. no deduct", ["kira dunmore"])) {
+      expect(intent([text], "kira dunmore").join(" ")).not.toMatch(/deduct/i);
+      expect(remap(text, "kira dunmore")).toBe("late opening the salon today");
+    }
+    for (const text of cased("coaching form for kira dunmore. skipped a tour today. date 10/14", ["kira dunmore"])) {
+      expect(intent([text], "kira dunmore").join(" ")).not.toMatch(/date/i);
+      expect(remap(text, "kira dunmore")).toBe("skipped a tour today");
+    }
+  });
+
+  it("the intent read's \"It happened at …\" glued onto the account is not part of it", () => {
+    const text = "coaching form for kira dunmore, skipped a tour today It happened at KS Lawrence.";
+    expect(incidentOnlyText(text, "kira dunmore")).toBe("coaching form for kira dunmore, skipped a tour today");
+  });
+
+  it("a later command turn keeps the incident already given (\"no deduct\", \"date is\", \"change it to written\")", () => {
+    for (const later of ["no deduct", "No deduct", "date is 10/14", "Date is", "change it to written", "Change it to written", "verbal"]) {
+      expect(remap(["create a ca for kira dunmore, she was late today", later].join("\n"), "kira dunmore"), later).toBe("late today");
+    }
+  });
+});
+
 describe("the clause splitter", () => {
   it("keeps a place and its state, a date, an amount and an abbreviation in one clause", () => {
     expect(incidentClauses("she works at our kearney, ne salon, and was late")).toEqual([
       "she works at our kearney ne salon",
       "and was late",
     ]);
-    expect(incidentClauses("empire, sd")).toEqual(["empire sd"]);
+    expect(incidentClauses("lawrence, ks")).toEqual(["lawrence ks"]);
     expect(incidentSentences("she was short $3.25 on 9/25/26. she left at 3 p.m. on friday")).toEqual([
       "she was short $3.25 on 9/25/26",
       "she left at 3 p.m. on friday",
@@ -169,5 +220,9 @@ describe("INCIDENT_CLAUSE_SPLIT_ENABLED off", () => {
     expect(remap(DEVON, "devon harlan")).toBe("ne salon as a tan consultant and was late today");
     expect(remap(TENURE, "jory pell")).toBe("employee for 7 months");
     expect(remap(PASTED.join("\n"), "jory pell")).toBe(PASTED[1]);
+  });
+
+  it("a later command turn is read as the incident (the reported command bug)", () => {
+    expect(remap(["create a ca for kira dunmore, she was late today", "no deduct"].join("\n"), "kira dunmore")).toBe("no deduct");
   });
 });
