@@ -815,3 +815,14 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * What managers type for a salon is read as that salon: "kearney, ne" is
+ * "NE Kearney" wherever it stands, and a bare "o st" under "Which salon is
+ * this about?" is "NE Lincoln O Street". A pre-read rewrite of the request
+ * (`lib/forms/store-alias.ts`) before any reader sees it; salon-mention.ts is
+ * unchanged (QA, 26 Oct 2026). Off (the default), the request is as sent.
+ */
+export function storeAliasEnabled(): boolean {
+  return envFlag("STORE_ALIAS_ENABLED");
+}

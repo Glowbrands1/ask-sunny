@@ -152,6 +152,7 @@ import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withTerseSlots } from "./terse-slots";
+import { withStoreAliases } from "@/lib/forms/store-alias";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -262,6 +263,8 @@ export async function answerQuestion(
   actor: ChatActor,
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
+  // STORE_ALIAS_ENABLED: "kearney, ne" and a bare "o st" are read as the roster salon.
+  request = withStoreAliases(request);
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
     const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
