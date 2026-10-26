@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
@@ -12,9 +12,19 @@ import type { AskRequest } from "./types";
  */
 const FLAG = "TERSE_SLOT_READ_ENABLED";
 const saved = process.env[FLAG];
+// These pin TERSE_SLOT_READ alone. With TERSE_COMMAND_ONLY_ENABLED on as well,
+// a "ca for <name> …" sentence is left as typed on purpose (QA, 26 Oct 2026),
+// pinned in terse-command-only.test.ts, so that flag is cleared here.
+const COMMAND_ONLY = "TERSE_COMMAND_ONLY_ENABLED";
+const savedCommandOnly = process.env[COMMAND_ONLY];
+beforeEach(() => {
+  delete process.env[COMMAND_ONLY];
+});
 afterEach(() => {
   if (saved === undefined) delete process.env[FLAG];
   else process.env[FLAG] = saved;
+  if (savedCommandOnly === undefined) delete process.env[COMMAND_ONLY];
+  else process.env[COMMAND_ONLY] = savedCommandOnly;
 });
 
 const TODAY = "2026-10-25";
@@ -97,5 +107,20 @@ describe("expandTerseRequest", () => {
     ]) {
       expect(expandTerseRequest(text, TODAY)).toBe(text);
     }
+  });
+});
+
+/**
+ * The flag-on twin (coordinator rule, 26 Oct 2026). Changed on purpose with
+ * TERSE_COMMAND_ONLY_ENABLED on as well: a "ca for <name> …" sentence is left
+ * as typed, so the readers read it as the request it already is.
+ */
+describe("expandTerseRequest with TERSE_COMMAND_ONLY_ENABLED on", () => {
+  it("leaves the 'ca for' sentence as typed, in lowercase and capitals", () => {
+    process.env[COMMAND_ONLY] = "on";
+    const sentence = "ca for quenby arlott not opening salon on time and no call no show";
+    expect(expandTerseRequest(sentence, TODAY)).toBe(sentence);
+    expect(expandTerseRequest(sentence.toUpperCase(), TODAY)).toBe(sentence.toUpperCase());
+    expect(expandTerseRequest(CASES[0]![0], TODAY)).toBe(CASES[0]![1]);
   });
 });

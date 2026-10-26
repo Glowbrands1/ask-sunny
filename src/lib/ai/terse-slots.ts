@@ -1,4 +1,4 @@
-import { terseSlotReadEnabled } from "@/lib/config/chat-quality-flags";
+import { terseCommandOnlyEnabled, terseSlotReadEnabled } from "@/lib/config/chat-quality-flags";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 
@@ -81,11 +81,119 @@ export function withTerseSlots(request: AskRequest): AskRequest {
   return changed ? { ...request, question, history } : request;
 }
 
+/**
+ * TERSE_COMMAND_ONLY_ENABLED (QA, 26 Oct 2026): with TERSE_SLOT_READ on, full
+ * sentences were rewritten — "Exit for john michael doe effective october 2"
+ * lost the surname, "coaching form for Test Employee at NE Kearney, she was
+ * late on 10-5 and 10-15, I coached her on 10-16 …" was dated 10-5, and "CA
+ * for Test Employee at Kearney, out of dress code 10/11" lost "out of". A
+ * request with "for" after the form word is already read as a request, and a
+ * line that talks in sentences (she, I, was, about, effective …) is an
+ * account: both are left as typed. Only "<form word> <name> …" is written out.
+ */
+const FOR_LEAD = /^\s*(?:(?:verbal|written)\s+)?(?:ca|c\/a|dpoa|coach|coaching|exit)(?:\s+form)?\s+for\b/i;
+const SENTENCE_WORDS = /\b(?:she|he|they|i|her|his|their|was|were|is|are|has|had|have|about|because|effective|who|when|while)\b/i;
+
+/**
+ * TERSE_COMMAND_ONLY_ENABLED (QA, 26 Oct 2026, via Code 7): a bare "coach"
+ * made the Employee "Coach", and a bare "ca" a blank card. A turn that is only
+ * a form word ("ca", "coach", "exit", "coaching form") is read as the request
+ * for that form ("Create a coaching form."), so the reply asks who it is for.
+ */
+const BARE_COMMAND = /^\s*(ca|c\/a|dpoa|coach|coaching|exit)(?:\s+form)?\s*$/i;
+
+function commandLine(text: string): boolean {
+  return !FOR_LEAD.test(text) && !SENTENCE_WORDS.test(text);
+}
+
+/**
+ * TERSE_COMMAND_ONLY_ENABLED (QA live run, 26 Oct 2026): "ca <first> <middle>
+ * <last> <place> late today verbal" lost the surname. A third name word is
+ * read from the shape of the line, never from a list of allowed words (QA-4,
+ * 26 Oct 2026: "dana smith barely late" and "dana smith doesnt clock in" took
+ * "barely" / "doesnt", because any unlisted word before the account passed):
+ *   - "yes" when a place, a title, a state or a code ("nc/ns") follows it, so
+ *     the name has ended, or when the manager capitalised all three words in a
+ *     line that is not all capitals ("ca Rory Ann Kelly late today");
+ *   - "no" when it is a level, a form word, a topic, a negation
+ *     (`NOT_A_THIRD_NAME`), a word with an apostrophe, a conjunction, a place,
+ *     a title or a repeat of the name, or when the end of the line or a date
+ *     follows it ("ca <name> final 10-14", "coach <name> woven");
+ *   - before the account ("late", "opened", a topic), the surname unless it
+ *     only ever modifies the account (`modifiesTheAccount`: "barely",
+ *     "doesnt", "too"), so "ca rory ann vance late today" keeps the surname
+ *     and "ca dana smith barely late" is for "dana smith" (QA-7).
+ */
+/** Negations, degree words, levels, form words and topics: never the third word of a name. */
+const NOT_A_THIRD_NAME =
+  /^(?:never|not|no|didnt|didn't|without|except|always|also|just|still|again|really|only|does|did|ever|usually|often|final|verbal|written|first|second|third|last|warning|ca|c\/a|dpoa|coach|coaching|exit|form|write|woven|acks?|training|orientation|uniform|personal|closing|opening|sales|schedule|break|breaks|refund|deposit|theft|safety|attendance|dress|cash|phone|cell|ncns|register|drawer|cleaning|sanitize|sanitizing|customer|customers|guest|guests|policy|tardy|tardiness|conduct|standards|insubordination|performance|inventory|product|products|recipe|measuring|timecard|clock|counter|music|food|smoking|vaping|language|rude|rudeness|today|yesterday|tomorrow)$/i;
+
+function thirdNameWord(tokens: readonly string[], name: readonly string[], text: string): "yes" | "no" {
+  const [word, next, after] = tokens;
+  if (!word || !next || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || NOT_A_THIRD_NAME.test(word)) return "no";
+  if (/['’]/.test(word) || /^(?:and|or|then|but|plus)$/i.test(word)) return "no";
+  if (READERS.place(word) || READERS.title(word) || STATE.test(word) || READERS.place(`${word} ${next}`)) return "no";
+  if (name.some((part) => part.toLowerCase() === word.toLowerCase())) return "no";
+  const nameEnded =
+    READERS.place(next) ||
+    (after !== undefined && READERS.place(`${next} ${after}`)) ||
+    READERS.title(next) !== null ||
+    STATE.test(next) ||
+    /^[a-z]+\/[a-z]+$/i.test(next);
+  const capitalised = (part: string) => /^[A-Z][a-z'’-]+$/.test(part);
+  if (nameEnded || (text !== text.toUpperCase() && [...name, word].every(capitalised))) return "yes";
+  // Before the account ("late", "opened") or a topic, the word is the surname unless it is a word that
+  // only ever modifies the account ("barely", "doesnt", "too"); otherwise it is not a name.
+  const accountNext = NOT_A_THIRD_NAME.test(next) || (NOT_A_NAME_WORD.test(next) && !/^(?:on|at|for|was|is|did)$/i.test(next));
+  if (!accountNext) return "no";
+  return modifiesTheAccount(word) ? "no" : "yes";
+}
+
+/**
+ * QA-7, 26 Oct 2026: with only the shape to go on, lowercase "ca john michael
+ * doe late today" and "ca dana smith barely late" read the same, and leaving
+ * both as typed meant no card. A third word before the account is the surname
+ * unless English never uses it as one:
+ *   - an adverb in -ly (three letters or more before it: "truly", "barely";
+ *     surnames like Kelly, Holly, Kimberly, Reilly are kept);
+ *   - a verb in the past tense: -ed ("skipped", "texted"; Alfred, Ahmed kept)
+ *     or an irregular one ("quit", "stole", "slept", "wore", "ate", "lied");
+ *   - a contraction typed without its apostrophe ("doesnt");
+ *   - a degree or frequency word ("too", "already"), a weekday or a number
+ *     word ("monday", "three"), an app ("tiktok");
+ *   - a two-letter code ("sm"; surnames like Li, Wu, Ng are kept)
+ * (QA-6, 26 Oct 2026).
+ */
+const CONTRACTION =
+  /^(?:doesnt|dont|didnt|wasnt|werent|cant|wont|isnt|arent|hasnt|havent|hadnt|couldnt|wouldnt|shouldnt|aint)$/i;
+const DEGREE_OR_FREQUENCY =
+  /^(?:kinda|sorta|seldom|sometimes|twice|once|too|very|so|even|already|ever|almost|quite|rather|somewhat|yet|soon|only|then|now)$/i;
+const IRREGULAR_PAST =
+  /^(?:quit|stole|slept|swore|wore|ate|lied|came|went|took|got|ran|said|told|threw|broke|forgot|wrote|spoke|drove|fell|lost|sold|spent|sent|kept|hid|bit|hit|cut|gave|made|sat|stood|spat|swam|drank)$/i;
+const DAY_OR_NUMBER =
+  /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thurs|fri|sat|sun|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|half)$/i;
+const APP = /^(?:tiktok|instagram|insta|facebook|snapchat|snap|youtube|netflix|discord|whatsapp|texting|text|texts)$/i;
+const LY_SURNAME = /^(?:kimberly|beverly|waverly|connolly|donnelly|mcnally|shelly|reilly|oreilly|kelly|nelly|dolly|holly|molly|polly|sally|emily|lilly|lily|tally|daly|ely|bly|ashly|riley|lyly)$/i;
+const ED_SURNAME = /^(?:alfred|winifred|manfred|mildred|ahmed|mohammed|mohamed|hamed|hammed|reed|creed|ned|ted|fred|jed|med|sigfried|siegfried)$/i;
+const TWO_LETTER_SURNAME = /^(?:li|wu|ng|ho|yu|ma|le|lu|xu|an|do|vo|bo|oh|ko|go|ra)$/i;
+
+function modifiesTheAccount(word: string): boolean {
+  if (CONTRACTION.test(word) || DEGREE_OR_FREQUENCY.test(word) || IRREGULAR_PAST.test(word) || DAY_OR_NUMBER.test(word) || APP.test(word)) return true;
+  if (/^[a-z]{3,}ly$/i.test(word)) return !LY_SURNAME.test(word);
+  if (/^[a-z]{3,}ed$/i.test(word)) return !ED_SURNAME.test(word);
+  return /^[a-z]{2}$/i.test(word) && !TWO_LETTER_SURNAME.test(word);
+}
+
 /** The long form of a terse "<form word> <name> …" line, or the text as it is. */
 export function expandTerseRequest(text: string, today: string): string {
   if (/[.!?\n]/.test(text.replace(/\d\.\d/g, "")) || text.trim().split(/\s+/).length > 40) return text;
+  // TERSE_COMMAND_ONLY_ENABLED: a form word on its own asks for that form, never names anyone.
+  const bare = terseCommandOnlyEnabled() ? BARE_COMMAND.exec(text) : null;
+  if (bare) return `${SHORT_FORM_WORDS[bare[1]!.toLowerCase()]!.request}.`;
   const lead = TERSE_LEAD.exec(text);
   if (!lead) return text;
+  // TERSE_COMMAND_ONLY_ENABLED: only a command line is written out, never a sentence the readers already read.
+  if (terseCommandOnlyEnabled() && !commandLine(text)) return text;
   const form = SHORT_FORM_WORDS[lead[2]!.toLowerCase()]!;
   const tokens = lead[3]!
     .trim()
@@ -100,6 +208,7 @@ export function expandTerseRequest(text: string, today: string): string {
     if (!NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || READERS.place(word) || READERS.title(word)) break;
     name.push(tokens.shift()!);
   }
+  if (name.length === 2 && terseCommandOnlyEnabled() && thirdNameWord(tokens, name, text) === "yes") name.push(tokens.shift()!);
   if (name.length === 0) return text;
 
   let place: string | null = null;

@@ -72,6 +72,7 @@ import {
   reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
+  terseCommandOnlyEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
   followUpNotPriorEnabled,
@@ -169,6 +170,7 @@ const NEW_FLAGS = [
   "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
+  "TERSE_COMMAND_ONLY_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
@@ -339,6 +341,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
+    expect(terseCommandOnlyEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(nameBeforeTitleEnabled()).toBe(false);
