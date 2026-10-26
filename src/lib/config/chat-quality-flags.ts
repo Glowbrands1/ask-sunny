@@ -869,6 +869,15 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * "write it up for <name>" asks for the Corrective Action Form (QA, 26 Oct
+ * 2026; same flag in both apps). See `ai/write-it-up.ts`. Off, every turn is
+ * read as typed.
+ */
+export function writeItUpEnabled(): boolean {
+  return envFlag("WRITE_IT_UP_ENABLED");
+}
+
+/**
  * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
  * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
  * written on 07/28/2026" listed both under Prior actions and also as

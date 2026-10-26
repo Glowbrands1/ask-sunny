@@ -74,6 +74,7 @@ import {
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  writeItUpEnabled,
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
   googleReviewsInChatEnabled,
@@ -170,6 +171,7 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "WRITE_IT_UP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
@@ -339,6 +341,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(writeItUpEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
