@@ -35,11 +35,37 @@ const ASKS_POLICY = /\bpassword\s+polic(?:y|ies)\b|\bpolic(?:y|ies)\s+(?:on|abou
 /** A short go-ahead after a password question: "just reset it". */
 const GO_AHEAD = /^\s*(?:(?:ok(?:ay)?|please|pls|just|can\s+you|could\s+you|then)\s+)*(?:reset|do|fix|change|send)\s+(?:it|that|this|mine|my\s+password)(?:\s+(?:now|please|pls|for\s+me))*\s*[.!?]*\s*$/i;
 
+/** "default", as typed. */
+const DEFAULT_WORD = /\b(?:default|defualt|deafult|defalt|defult|dafault|temporary|temp|starting|initial)\b/i;
+
+/** This app, by its product name, its short name, or "the app". */
+function namesThisApp(text: string, productName: string): boolean {
+  const words = productName.trim().split(/\s+/);
+  const short = words[words.length - 1]!;
+  const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b(?:${words.map(escape).join("\\s*")}|${escape(short)}|(?:the|this)\\s+app)\\b`, "i").test(text);
+}
+
+/**
+ * "what is my default password for <this app>" (QA P0 follow-up, 26 Oct
+ * 2026): there is no default to give, so it is the same reset answer. It must
+ * say "my" or name this app; "the default password for managers" and another
+ * system's default go to the knowledge base as before, redacted.
+ */
+function asksOwnDefault(text: string, productName: string): boolean {
+  if (!DEFAULT_WORD.test(text) || !PASSWORD.test(text)) return false;
+  const withoutDefault = text.replace(new RegExp(DEFAULT_WORD.source, "gi"), " ");
+  if (OTHER_SYSTEM.test(withoutDefault)) return false;
+  return namesThisApp(text, productName) || /\bmy\b/i.test(text);
+}
+
 /** Whether a turn asks how to reset or change one's own sign-in password for this app. */
-export function isAppPasswordQuestion(question: string): boolean {
+export function isAppPasswordQuestion(question: string, productName: string = STC_BRAND.productName): boolean {
   const text = (question ?? "").trim();
   if (text === "" || text.split(/\s+/).length > 30) return false;
-  if (ASKS_POLICY.test(text) || OTHER_SYSTEM.test(text)) return false;
+  if (ASKS_POLICY.test(text)) return false;
+  if (asksOwnDefault(text, productName)) return true;
+  if (OTHER_SYSTEM.test(text)) return false;
   return PASSWORD.test(text) && ACTION.test(text);
 }
 

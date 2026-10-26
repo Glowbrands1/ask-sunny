@@ -39,22 +39,45 @@ export function isSensitiveSentence(sentence: string): boolean {
   return (SSN.test(sentence) && DIGIT_FORMAT.test(sentence)) || DEFAULT_PASSWORD.test(sentence) || SSN_DIGITS.test(sentence);
 }
 
-/** Said in place of what was taken out of a knowledge excerpt. */
+/**
+ * Said in place of what was taken out of a knowledge excerpt, and of a reply
+ * (QA P0 follow-up, 26 Oct 2026). Neither says what was taken out: naming
+ * Social Security digits or a default format hints at the very thing hidden.
+ */
 export const EXCERPT_NOTE =
-  "(A default sign-in detail is set here. It is never repeated in chat: the person asks their manager or HR to reset the password.)";
-/** Said in place of what was taken out of a reply. */
-export const REPLY_NOTE = "I can't share default password formats or Social Security digits here; ask your manager or HR to reset the password for you.";
+  "(Sign-in details are not shared in chat. Use Forgot your password? on the log-in screen, or ask a manager to reset it.)";
+export const REPLY_NOTE =
+  "I can't share anyone's password from here. If you're locked out, use **Forgot your password?** on the log-in screen, or ask your manager to reset it.";
+
+/** A reply sentence that already tells the person to get a reset: the note says it, so it is not said twice. */
+const RESET_ADVICE = /\b(?:ask|contact|reach\s+out\s+to|talk\s+to|check\s+with|see)\b[^.!?\n]*\b(?:manager|hr|administrator|admin)\b[^.!?\n]*\breset\b|\bforgot\s+your\s+password\b/i;
 
 /**
- * The text with every sensitive sentence replaced, once per run of them, by
- * `note`. Sentences end at . ! ? or a line break; everything else is kept as
- * written. Off, the text as given.
+ * "I don't have anything about MyGlow's default password." says nothing
+ * sensitive and is the honest answer when the knowledge base has nothing:
+ * kept, unless it also has a digit, a Social Security mention or goes on
+ * ("but", "however", ";") to say more.
+ */
+const NO_INFORMATION =
+  /\b(?:don'?t|do\s+not|doesn'?t|does\s+not|can'?t|cannot|couldn'?t|no)\b[^.!?\n]{0,40}\b(?:have|find|know|see|information|anything|details?|record|mention)\b/i;
+const SAYS_MORE = /\d|\b(?:but|however|though|although|instead)\b|;/i;
+
+function isNoInformation(sentence: string): boolean {
+  return NO_INFORMATION.test(sentence) && !SAYS_MORE.test(sentence) && !SSN.test(sentence) && !SSN_DIGITS.test(sentence);
+}
+
+/**
+ * The text with its sensitive sentences taken out and `note` said once, where
+ * the first one was; a sentence that only says nothing is known is kept, and
+ * one that already sends the person to a reset is dropped so the advice is not
+ * given twice. Sentences end at . ! ? or a line break; everything else is kept
+ * as written. Off, the text as given.
  */
 export function redactSensitiveDefaults(text: string, note: string = EXCERPT_NOTE): string {
   if (!sensitiveDefaultsRedactEnabled() || !text) return text;
   const parts = text.split(/(?<=[.!?])(\s+)|(\n)/);
   let changed = false;
-  let lastWasNote = false;
+  let noteSaid = false;
   const out: string[] = [];
   for (const part of parts) {
     if (part === undefined) continue;
@@ -62,16 +85,19 @@ export function redactSensitiveDefaults(text: string, note: string = EXCERPT_NOT
       out.push(part);
       continue;
     }
-    if (isSensitiveSentence(part)) {
+    if (isSensitiveSentence(part) && !isNoInformation(part)) {
       changed = true;
-      if (!lastWasNote) out.push(note);
-      lastWasNote = true;
+      // The note once per text, wherever the sentences were.
+      if (!noteSaid) out.push(note);
+      noteSaid = true;
       continue;
     }
-    lastWasNote = false;
     out.push(part);
   }
-  return changed ? out.join("").replace(/[ \t]{2,}/g, " ").trimEnd() : text;
+  if (!changed) return text;
+  // The model's own "ask your manager to reset it" would repeat the note.
+  const kept = out.filter((part) => part === note || !RESET_ADVICE.test(part));
+  return kept.join("").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
 }
 
 /** A response with the same redaction on its reply and on every cited excerpt. Off, the response as given. */

@@ -200,7 +200,9 @@ describe("SENSITIVE_DEFAULTS_REDACT_ENABLED", () => {
     expect(state.grounding).not.toMatch(SENSITIVE);
     expect(state.grounding).toContain("Open the employee's profile and choose Reset Password.");
     expect(answer.content).not.toMatch(SENSITIVE);
-    expect(answer.content).toMatch(/ask your manager or HR to reset the password/i);
+    // The note was reworded on 26 Oct (QA P0 follow-up): it no longer names
+    // what it hides, and points to this app's reset link.
+    expect(answer.content).toContain("use **Forgot your password?** on the log-in screen, or ask your manager to reset it");
     for (const citation of answer.citations) expect(citation.excerpt).not.toMatch(SENSITIVE);
   });
 
