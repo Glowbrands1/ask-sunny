@@ -74,6 +74,7 @@ import {
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  followUpNotPriorEnabled,
   priorActionsNoCommaEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -167,6 +168,7 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "PRIOR_ACTIONS_NO_COMMA_ENABLED",
 ] as const;
 
@@ -333,6 +335,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(followUpNotPriorEnabled()).toBe(false);
     expect(priorActionsNoCommaEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";

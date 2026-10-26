@@ -8,6 +8,7 @@ import {
   keepFormEmployeeEnabled,
   managerWordsOnlyEnabled,
   placeSpanGuardEnabled,
+  priorActionsParseEnabled,
   newestPlaceTurnEnabled,
   notANameGuardEnabled,
   titleWholeWordEnabled,
@@ -27,7 +28,7 @@ import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-nam
 import { isExitAnswerPhrase } from "@/lib/forms/exit-answer-phrase";
 import { inStatedPermanentAddress } from "@/lib/forms/exit-details";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
-import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
+import { datesInText, listFormDates, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { displayName, matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -1065,6 +1066,18 @@ function dateSaidAsToday(text: string, question: string, today: string): string 
   return live.length === 0 ? today : null;
 }
 
+/**
+ * PRIOR_ACTIONS_PARSE_ENABLED (ported from Ask Bubbles' `datesInConversation`):
+ * a date written in the conversation that the form-date reader sets aside — an
+ * earlier step's ("previous coaching. verbal (06/25/2026)"), the manual's, a
+ * follow-up's — is not a date for the form, even when the model copied it as
+ * the incident's. Live, the model's "06/25/2026" dated a form 2026-06-25.
+ */
+function notAFormDate(iso: string, blob: string, today: string): boolean {
+  if (!datesInText(blob, today).some((found) => found.iso === iso)) return false;
+  return !listFormDates(blob, today).some((found) => found.iso === iso);
+}
+
 function groundDate(
   typed: string | null,
   question: string,
@@ -1086,7 +1099,9 @@ function groundDate(
   // incident list does not. It counts only when those words are in the
   // conversation, so a date the tool invented still drops.
   const said = typed ? blob.toLowerCase().includes(typed.trim().toLowerCase()) : false;
-  if (normalized && said) return { iso: normalized, ambiguous: [] };
+  if (normalized && said && !(priorActionsParseEnabled() && notAFormDate(normalized, blob, today))) {
+    return { iso: normalized, ambiguous: [] };
+  }
   // "todays date" is the form's date. "today" without the s is the same
   // word; a later turn keeps it because the stored date is already set.
   if (inText.length === 0) {
