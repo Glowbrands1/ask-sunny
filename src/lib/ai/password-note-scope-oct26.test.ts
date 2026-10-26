@@ -27,7 +27,7 @@ import { REPLY_NOTE } from "./sensitive-defaults";
 const KB_PAGE = [
   "Password Requirements",
   "Do not use a word or phrase of special importance to you.",
-  "Do not use default passwords, i.e., example123.",
+  "Do not use default passwords, i.e., password123.",
   "The password should be 8-16 characters long.",
   "Open the employee's profile and choose Reset Password.",
   "The default password is the Example format with the store code.",
@@ -133,7 +133,7 @@ const flagsOn = () => {
 
 /** What the model wrote for each, in the shape of the live replies. */
 const POLICY_REPLY =
-  "Here's the password policy:\n\n- The password should be 8-16 characters long [S1].\n- Do not use default passwords, i.e., example123 [S1].\n- Do not use a word or phrase of special importance to you [S1].";
+  "Here's the password policy:\n\n- The password should be 8-16 characters long [S1].\n- Do not use default passwords, i.e., password123 [S1].\n- Do not use a word or phrase of special importance to you [S1].";
 const PAYCOR_REPLY =
   "Log into Paycor with your username and password. If you forgot your login credentials, click Forgot Password on the Paycor log-in page [S1].";
 const MYGLOW_REPLY =
@@ -168,7 +168,7 @@ describe("ordinary password answers read the same with the flags on and off", ()
   it.each(["whats our password policy", "What's our password policy"])("%s: the manual's own rule reaches the model", async (question) => {
     flagsOn();
     await ask(question, []);
-    expect(state.grounding).toContain("Do not use default passwords, i.e., example123.");
+    expect(state.grounding).toContain("Do not use default passwords, i.e., password123.");
     expect(state.grounding).not.toContain("The default password is the Example format");
   });
 });
