@@ -9,7 +9,9 @@ const read = (text: string) => readExitFacts(text, TODAY);
 
 describe("the dates, each on its own line", () => {
   it("reads the last day worked and the notice date from one sentence", () => {
-    const facts = read("She gave her two weeks notice on 9/1 and her last day was 9/15.");
+    const facts = read(
+      "She gave her two weeks notice on 9/1 and her last day was 9/15.",
+    );
     expect(facts.noticeGiven).toBe("2026-09-01");
     expect(facts.lastDayWorked).toBe("2026-09-15");
     expect(facts.noticeFulfilled).toBeNull();
@@ -17,41 +19,67 @@ describe("the dates, each on its own line", () => {
   });
 
   it("reads them in either order and in written-out months", () => {
-    const facts = read("Last day worked was September 15th, after giving notice Sept. 1");
+    const facts = read(
+      "Last day worked was September 15th, after giving notice Sept. 1",
+    );
     expect(facts.lastDayWorked).toBe("2026-09-15");
     expect(facts.noticeGiven).toBe("2026-09-01");
   });
 
   it("reads a date named after the fact, and ISO dates", () => {
-    expect(read("2026-09-12 was her last day").lastDayWorked).toBe("2026-09-12");
+    expect(read("2026-09-12 was her last day").lastDayWorked).toBe(
+      "2026-09-12",
+    );
     expect(read("resigned on 09/02/2026").noticeGiven).toBe("2026-09-02");
   });
 
   it("reads today, yesterday and the last or next weekday against the business day", () => {
-    expect(read("his last shift was yesterday").lastDayWorked).toBe("2026-09-27");
+    expect(read("his last shift was yesterday").lastDayWorked).toBe(
+      "2026-09-27",
+    );
     expect(read("her last day is today").lastDayWorked).toBe("2026-09-28");
-    expect(read("Her last day was last Friday").lastDayWorked).toBe("2026-09-25");
-    expect(read("put in his notice this past Monday").noticeGiven).toBe("2026-09-21");
-    expect(read("final day will be next Friday").lastDayWorked).toBe("2026-10-02");
+    expect(read("Her last day was last Friday").lastDayWorked).toBe(
+      "2026-09-25",
+    );
+    expect(read("put in his notice this past Monday").noticeGiven).toBe(
+      "2026-09-21",
+    );
+    expect(read("final day will be next Friday").lastDayWorked).toBe(
+      "2026-10-02",
+    );
   });
 
   it("reads a weekday written beside its date as that date", () => {
-    expect(read("Her last day was Friday, September 25").lastDayWorked).toBe("2026-09-25");
+    expect(read("Her last day was Friday, September 25").lastDayWorked).toBe(
+      "2026-09-25",
+    );
   });
 
   it("reads the fulfilled date only from words that say the notice was fulfilled", () => {
-    const facts = read("Gave notice 9/1. She worked out her notice through 9/15.");
+    const facts = read(
+      "Gave notice 9/1. She worked out her notice through 9/15.",
+    );
     expect(facts.noticeGiven).toBe("2026-09-01");
     expect(facts.noticeFulfilled).toBe("2026-09-15");
-    expect(read("notice was fulfilled on 9/15").noticeFulfilled).toBe("2026-09-15");
+    expect(read("notice was fulfilled on 9/15").noticeFulfilled).toBe(
+      "2026-09-15",
+    );
   });
 
   it("takes the stated fulfilled date as the last day worked when no last day was given", () => {
-    expect(read("Gave notice 9/1. She worked out her notice through 9/15.").lastDayWorked).toBe("2026-09-15");
+    expect(
+      read("Gave notice 9/1. She worked out her notice through 9/15.")
+        .lastDayWorked,
+    ).toBe("2026-09-15");
     // A last day of its own wins.
-    expect(read("Notice fulfilled 9/15, her last day was 9/14.").lastDayWorked).toBe("2026-09-14");
+    expect(
+      read("Notice fulfilled 9/15, her last day was 9/14.").lastDayWorked,
+    ).toBe("2026-09-14");
     // A notice said not to be fulfilled carries nothing across.
-    expect(read("Notice fulfilled 9/15. She didn't fulfill her notice.").lastDayWorked).toBeNull();
+    expect(
+      read("Notice fulfilled 9/15. She didn't fulfill her notice.")
+        .lastDayWorked,
+    ).toBeNull();
   });
 
   it("never computes a date from a duration", () => {
@@ -65,7 +93,9 @@ describe("the dates, each on its own line", () => {
     const facts = read("She quit on 9/20.");
     expect(facts.lastDayWorked).toBeNull();
     expect(facts.noticeGiven).toBeNull();
-    expect(read("Create an STC exit for Sarah, the incident was 9/20").lastDayWorked).toBeNull();
+    expect(
+      read("Create an STC exit for Sarah, the incident was 9/20").lastDayWorked,
+    ).toBeNull();
   });
 
   it("does not read a follow-on sentence's cue into the previous date", () => {
@@ -81,10 +111,16 @@ describe("the dates, each on its own line", () => {
 
 describe("what is genuinely ambiguous is reported, not guessed", () => {
   it("two different last days", () => {
-    const facts = read("Her last day was 9/15. Actually her last day was 9/16.");
+    const facts = read(
+      "Her last day was 9/15. Actually her last day was 9/16.",
+    );
     expect(facts.lastDayWorked).toBeNull();
     expect(facts.ambiguities).toEqual([
-      { kind: "date_conflict", role: "lastDayWorked", dates: ["2026-09-15", "2026-09-16"] },
+      {
+        kind: "date_conflict",
+        role: "lastDayWorked",
+        dates: ["2026-09-15", "2026-09-16"],
+      },
     ]);
   });
 
@@ -97,9 +133,9 @@ describe("what is genuinely ambiguous is reported, not guessed", () => {
   });
 
   it("the same date twice is one date", () => {
-    expect(read("last day 9/15 — yes, her last day was Sept 15").lastDayWorked).toBe(
-      "2026-09-15",
-    );
+    expect(
+      read("last day 9/15 — yes, her last day was Sept 15").lastDayWorked,
+    ).toBe("2026-09-15");
   });
 });
 
@@ -117,7 +153,9 @@ describe("how the person left", () => {
       "resigned effective immediately",
       "she quit without notice",
     ]) {
-      expect(read(text).typeOptions, text).toEqual([EXIT_OPTION.immediateVoluntary]);
+      expect(read(text).typeOptions, text).toEqual([
+        EXIT_OPTION.immediateVoluntary,
+      ]);
     }
   });
 
@@ -128,13 +166,18 @@ describe("how the person left", () => {
   });
 
   it("no call no show, however it is typed", () => {
-    for (const text of ["No Call No Show Saturday", "she was a no-call/no-show", "NCNS twice"]) {
+    for (const text of [
+      "No Call No Show Saturday",
+      "she was a no-call/no-show",
+      "NCNS twice",
+    ]) {
       expect(read(text).typeOptions, text).toContain(EXIT_OPTION.noCallNoShow);
     }
   });
 
   const INVOLUNTARY = EXIT_OPTION.immediateInvoluntary;
-  const ticksInvoluntary = (text: string) => read(text).typeOptions.includes(INVOLUNTARY);
+  const ticksInvoluntary = (text: string) =>
+    read(text).typeOptions.includes(INVOLUNTARY);
 
   it.each([
     "Jane was terminated today.",
@@ -174,27 +217,40 @@ describe("how the person left", () => {
   });
 
   it("naming the form supplies no fact at all", () => {
-    expect(exitFactsSupplied(read("pull up the termination/exit form"))).toBe(false);
+    expect(exitFactsSupplied(read("pull up the termination/exit form"))).toBe(
+      false,
+    );
   });
 
   it("a tenure is not a notice", () => {
-    expect(read("she only worked 2 weeks before quitting").noticeOptions).toEqual([]);
+    expect(
+      read("she only worked 2 weeks before quitting").noticeOptions,
+    ).toEqual([]);
   });
 
   it("contradictions are dropped and reported", () => {
-    const worked = read("She worked out her notice. She didn't fulfill her notice.");
+    const worked = read(
+      "She worked out her notice. She didn't fulfill her notice.",
+    );
     expect(worked.noticeOptions).toEqual([]);
     expect(worked.typeOptions).toEqual([]);
-    expect(worked.ambiguities.map((entry) => entry.kind)).toEqual(["separation_conflict"]);
+    expect(worked.ambiguities.map((entry) => entry.kind)).toEqual([
+      "separation_conflict",
+    ]);
 
     const firedAndQuit = read("He quit on the spot and we fired him");
     expect(firedAndQuit.typeOptions).toEqual([]);
-    expect(firedAndQuit.ambiguities.map((entry) => entry.kind)).toEqual(["separation_conflict"]);
+    expect(firedAndQuit.ambiguities.map((entry) => entry.kind)).toEqual([
+      "separation_conflict",
+    ]);
   });
 
   it("NCNS followed by a completed termination ticks both, and asks nothing", () => {
     const facts = read("Three no call no shows so we terminated her.");
-    expect(facts.typeOptions).toEqual([EXIT_OPTION.immediateInvoluntary, EXIT_OPTION.noCallNoShow]);
+    expect(facts.typeOptions).toEqual([
+      EXIT_OPTION.immediateInvoluntary,
+      EXIT_OPTION.noCallNoShow,
+    ]);
     expect(facts.ambiguities).toEqual([]);
   });
 
@@ -204,7 +260,10 @@ describe("how the person left", () => {
     expect(facts.ambiguities).toEqual([
       {
         kind: "separation_conflict",
-        described: ["Immediate Voluntary Resignation", "Immediate involuntary separation"],
+        described: [
+          "Immediate Voluntary Resignation",
+          "Immediate involuntary separation",
+        ],
       },
     ]);
   });
@@ -212,9 +271,14 @@ describe("how the person left", () => {
 
 describe("the values the draft carries", () => {
   it("only what was established, keyed like the stored version", () => {
-    const facts = read("She gave notice on 9/1, worked out her notice, last day 9/15.");
+    const facts = read(
+      "She gave notice on 9/1, worked out her notice, last day 9/15.",
+    );
     expect(exitFactValues(facts)).toEqual({
-      values: { notice_given_date: "2026-09-01", last_day_worked: "2026-09-15" },
+      values: {
+        notice_given_date: "2026-09-01",
+        last_day_worked: "2026-09-15",
+      },
       checked: { resignation_notice: [EXIT_OPTION.submittedFulfilledNotice] },
     });
   });
@@ -249,20 +313,27 @@ describe("HR feedback 30 Sep: the Delphine exit form", () => {
   it.each([
     ["the Production turns", PRODUCTION_TURNS],
     ["the feedback's own wording", FEEDBACK_WORDING],
-  ])("%s: notice given, Submitted & Fulfilled, last day worked", (_label, text) => {
-    const facts = read(text);
-    expect(facts.noticeGiven).toBe("2026-09-15");
-    expect(facts.resignationDate).toBe("2026-09-15");
-    expect(facts.lastDayWorked).toBe("2026-09-28");
-    expect(facts.noticeOptions).toEqual([EXIT_OPTION.submittedFulfilledNotice]);
-    expect(facts.typeOptions).toEqual([]);
-    expect(facts.ambiguities).toEqual([]);
-  });
+  ])(
+    "%s: notice given, Submitted & Fulfilled, last day worked",
+    (_label, text) => {
+      const facts = read(text);
+      expect(facts.noticeGiven).toBe("2026-09-15");
+      expect(facts.resignationDate).toBe("2026-09-15");
+      expect(facts.lastDayWorked).toBe("2026-09-28");
+      expect(facts.noticeOptions).toEqual([
+        EXIT_OPTION.submittedFulfilledNotice,
+      ]);
+      expect(facts.typeOptions).toEqual([]);
+      expect(facts.ambiguities).toEqual([]);
+    },
+  );
 
   /*
-   * UNCHANGED ON PURPOSE, pending HR: the notice-fulfilled date is never taken
-   * from the last day worked, even when the notice was worked in full. Whether
-   * it should be is HR's decision, not a parsing fix.
+   * UNCHANGED WITH THE FLAG OFF: the notice-fulfilled date is never taken
+   * from the last day worked. QA decided it (25 Oct 2026, item G4): with
+   * EXIT_NOTICE_FULFILLED_ENABLED on, a notice worked in full is fulfilled on
+   * the last day worked — see `exit-notice-fulfilled.test.ts`. This test runs
+   * with that flag unset.
    */
   it("still leaves the notice-fulfilled date to the manager", () => {
     expect(read(FEEDBACK_WORDING).noticeFulfilled).toBeNull();
@@ -280,8 +351,12 @@ describe("HR feedback 30 Sep: the Delphine exit form", () => {
   });
 
   it("the employer's act is not the employee's notice", () => {
-    expect(read("On 9/1 we gave her notice that her hours were cut.").noticeGiven).toBeNull();
-    expect(read("On 9/1 management sent her a schedule.").noticeGiven).toBeNull();
+    expect(
+      read("On 9/1 we gave her notice that her hours were cut.").noticeGiven,
+    ).toBeNull();
+    expect(
+      read("On 9/1 management sent her a schedule.").noticeGiven,
+    ).toBeNull();
   });
 
   it.each([
@@ -291,7 +366,9 @@ describe("HR feedback 30 Sep: the Delphine exit form", () => {
     "He worked a 2 weeks notice.",
     "She gave and worked her two weeks.",
   ])("ticks Submitted & Fulfilled Notice for %s", (text) => {
-    expect(read(text).noticeOptions).toEqual([EXIT_OPTION.submittedFulfilledNotice]);
+    expect(read(text).noticeOptions).toEqual([
+      EXIT_OPTION.submittedFulfilledNotice,
+    ]);
   });
 
   it.each([
