@@ -533,5 +533,36 @@ describe.each(REGISTERS)(
       ]);
       expect(details).toContain("Going Forward:");
     });
+
+    // QA-2 negation probe, 26 Oct 2026: a negated "going forward" is no plan.
+    for (const negated of [
+      "she was late 10-20-26, no going forward needed",
+      "do not add a going forward section",
+      "without a going forward plan",
+      "she is not on a plan going forward",
+      "not going forward with discipline",
+      "no action plan",
+      "action plan: none",
+    ]) {
+      it(`on: "${negated}" states no plan, so the model's Going Forward is dropped`, async () => {
+        process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
+        const { details } = await coachingDetails([as(`${COACHING}. ${negated}`)]);
+        expect(details).not.toMatch(/Going Forward|plans travel/);
+        expect(details).toContain("Expectation:");
+      });
+    }
+
+    for (const typed of [
+      // Lowercase: a capitalised "Going Forward" mid-turn is read as a second person (names reader, reported).
+      "going forward: she will leave home 20 minutes earlier",
+      "she will clock in on time going forward",
+      "she was not on time, going forward she will leave earlier",
+    ]) {
+      it(`on, NEVER-BREAK: "${typed}" is the manager's plan, so Going Forward stays`, async () => {
+        process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
+        const { details } = await coachingDetails([as(`${COACHING}. ${typed}`)]);
+        expect(details).toContain("Going Forward:");
+      });
+    }
   },
 );
