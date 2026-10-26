@@ -217,3 +217,25 @@ describe("Could this break: sentences that merely contain 'form' or 'ca' are not
     expect(answer(wording, "salon_director")).toBeNull();
   });
 });
+
+/*
+ * NEVER-BREAK (owner's order via QA, 26 Oct 2026): the short commands and the
+ * exit-process knowledge answer, confirmed live, are never read by the guide.
+ */
+describe("NEVER-BREAK: short commands and the exit-process answer are not the guide", () => {
+  it.each([
+    ...both("what is the exit process?"),
+    ...both("what is the exit process"),
+    ...both("ca Avery Holt late today"),
+    ...both("ca for Avery Holt verbal 25 deduct"),
+    ...both("coach Avery Holt"),
+    ...both("exit Avery Holt"),
+    ...both("exit for Avery Holt"),
+    ...both("ca"),
+    ...both("coach"),
+    ...both("exit"),
+  ])("%s", (wording) => {
+    expect(readFormsGuideQuestion(wording)).toBeNull();
+    expect(answer(wording, "district_manager")).toBeNull();
+  });
+});
