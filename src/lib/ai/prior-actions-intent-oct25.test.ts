@@ -385,6 +385,99 @@ describe("one incident date and one prior date", () => {
   });
 });
 
+/*
+ * The same turn the way managers type it (Pau, 26 Oct 2026): all lowercase,
+ * and sentence case with the name and levels typed lowercase or capitalized.
+ * The card must read the same in each.
+ */
+describe("QA's turn in every register (flag on)", () => {
+  it.each([
+    ["all lowercase", SAID.toLowerCase()],
+    [
+      "sentence case, name lowercase",
+      "Create a verbal corrective action for test employee, tanning consultant at test salon for missing the 10-15-26 woven deadline. Previous coaching. Verbal (06/25/2026) and written (07/28/2026). No payroll deducation",
+    ],
+    [
+      "sentence case, name and levels capitalized",
+      "Create a Verbal corrective action for Test Employee, Tanning Consultant at Test Salon for missing the 10-15-26 Woven deadline. Previous Coaching. Verbal (06/25/2026) and Written (07/28/2026). No payroll deducation",
+    ],
+  ] as const)("dated 10/15, both priors, no date question (%s)", async (register, said) => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    intentModel.reading = copiesTheManager;
+    const [first] = await chat([said], `conv-priors-register-${register.length}`);
+    expect(first!.formProposal, first!.content).toBeTruthy();
+    expect(first!.formProposal!.formDate).toBe("2026-10-15");
+    expect(priorLines(first!.content)).toEqual(PRIOR_LINES);
+    expect(first!.content).not.toMatch(ASKS_WHICH_DATE);
+    expect(statedPriorActions(said, TODAY)).toEqual(PRIOR_LINES);
+    expect(incidentDates(said, TODAY)).toEqual(["2026-10-15"]);
+  });
+});
+
+/*
+ * QA Sunny tester batch 13 (26 Oct 2026). S16, chatty: the priors were listed,
+ * and the same two dates were also printed as "Follow-up: 6/25/2026" and
+ * "Follow-up: 7/28/2026". S19 had the same with three coaching dates. With
+ * FOLLOW_UP_NOT_PRIOR_ENABLED, a prior's date is never a Follow-up line. The
+ * terse form types the priors without a year ("verbal 6/25 written 7/28").
+ */
+const S16 =
+  "create a ca for Test Employee, tanning consultant at Test Salon, late to open on 10-20-26. She already had a verbal on 06/25/2026 and a written on 07/28/2026. This should be a written warning, no payroll deduct.";
+const S19 =
+  "Test Employee, tanning consultant at Test Salon, was late to open again on 10-20-26. She was coached on 09/08/2026, 09/15/2026 and 09/25/2026 for being late. Can you do a written CA, no payroll.";
+const followUpLines = (content: string) => content.split("\n").filter((line) => line.startsWith("**Follow-up:**"));
+
+describe("a prior's date is not a follow-up (S16, S19)", () => {
+  it.each([
+    ["S16 as typed", S16],
+    ["S16 all lowercase", S16.toLowerCase()],
+    ["S16 sentence case, name lowercase", S16.replace("Test Employee", "test employee").replace("Test Salon", "test salon")],
+    ["S19 as typed", S19],
+    ["S19 all lowercase", S19.toLowerCase()],
+  ] as const)("flag on: no Follow-up line carries a prior's date (%s)", async (register, said) => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    vi.stubEnv("FOLLOW_UP_NOT_PRIOR_ENABLED", "1");
+    intentModel.reading = copiesTheManager;
+    const [first] = await chat([said], `conv-follow-up-${register.length}`);
+    expect(first!.formProposal, first!.content).toBeTruthy();
+    expect(followUpLines(first!.content)).toEqual([]);
+    expect(first!.formProposal!.formDate).toBe("2026-10-20");
+  });
+
+  it("flag off: the Follow-up lines are as before (the S16 defect, pinned)", async () => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    vi.stubEnv("FOLLOW_UP_NOT_PRIOR_ENABLED", "");
+    intentModel.reading = copiesTheManager;
+    const [first] = await chat([S16], "conv-follow-up-off");
+    expect(followUpLines(first!.content).length).toBeGreaterThan(0);
+  });
+
+  it("a follow-up the manager asked for still shows", async () => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    vi.stubEnv("FOLLOW_UP_NOT_PRIOR_ENABLED", "1");
+    intentModel.reading = copiesTheManager;
+    const said = `${S16} Follow up with her on 11/03/2026.`;
+    const [first] = await chat([said], "conv-follow-up-asked");
+    expect(followUpLines(first!.content)).toEqual(["**Follow-up:** 11/3/2026"]);
+  });
+
+  it.each([
+    ["sentence case", "Prior coaching verbal 6/25 written 7/28 no deduct"],
+    ["all lowercase", "prior coaching verbal 6/25 written 7/28 no deduct"],
+  ] as const)("year-less priors are read as priors (%s)", (_register, said) => {
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
+    const priors = statedPriorActions(said, TODAY);
+    // Both are earlier steps with this year's dates, and neither can date the form.
+    expect(priors).toHaveLength(2);
+    expect(priors[0]).toBe("Verbal warning — 06/25/2026");
+    expect(priors[1]).toMatch(/^Written warning — .*07\/28\/2026$/);
+    expect(incidentDates(said, TODAY)).toEqual([]);
+    // Known, and the same on main: with no comma between the items the second
+    // line keeps the first item's words ("Written warning — verbal 6/25 —
+    // 07/28/2026"). Reported to QA as its own item; not this PR's change.
+  });
+});
+
 describe("the readers", () => {
   it("flag on: the priors are earlier steps, and only 10/15 can date the form", () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "1");
