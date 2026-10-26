@@ -14,7 +14,7 @@ import {
  * (POLICY_SPECIFIC_TOPICS_ENABLED)
  * ============================================================================
  *
- * A live test, 26 Oct 2026: "create a ca for <name> at <salon>. <incident>"
+ * A live test, 26 Oct 2026: "create a ca for <name> at <location>. <incident>"
  * saved the Standards of Conduct, page 12, for almost every incident, whatever
  * it was. The manual has a section for most of them, and for the rest the
  * Standards of Conduct lists the infraction on page 13, not page 12.
