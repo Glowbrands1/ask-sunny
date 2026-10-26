@@ -151,6 +151,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withNameCase } from "./name-case";
 import { withTerseSlots } from "./terse-slots";
 import { withBareAnswerBinding } from "./bare-answer-guard";
 import { withManagerFormChoice } from "./manager-form-choice";
