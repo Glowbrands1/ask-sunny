@@ -935,3 +935,14 @@ export function stateCodeNotAPersonEnabled(): boolean {
 export function policySetAsideEnabled(): boolean {
   return envFlag("POLICY_SET_ASIDE_ENABLED");
 }
+
+/**
+ * An everyday one-word heading names its section only when the manager says
+ * "policy", "section" or "rule" with it (Code 3, policy reading; QA item 6,
+ * 25 Oct 2026; same flag in both apps): "it's for october promotions" (sales
+ * offers) no longer cites the HR Promotions section p.34, nor an onboarding
+ * "orientation" Orientation p.33. Off, as before.
+ */
+export function policyEverydayHeadingEnabled(): boolean {
+  return envFlag("POLICY_EVERYDAY_HEADING_ENABLED");
+}

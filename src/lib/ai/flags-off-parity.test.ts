@@ -80,6 +80,7 @@ import {
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
   policySetAsideEnabled,
+  policyEverydayHeadingEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -178,6 +179,7 @@ const NEW_FLAGS = [
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "POLICY_SET_ASIDE_ENABLED",
+  "POLICY_EVERYDAY_HEADING_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -349,6 +351,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(policySetAsideEnabled()).toBe(false);
+    expect(policyEverydayHeadingEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

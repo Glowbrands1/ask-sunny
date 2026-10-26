@@ -1,4 +1,4 @@
-import { policySetAsideEnabled } from "@/lib/config/chat-quality-flags";
+import { policyEverydayHeadingEnabled, policySetAsideEnabled } from "@/lib/config/chat-quality-flags";
 
 import { policiesSetAside, readCaPolicy, statedOffenseKeys, withoutSetAsideSections } from "./ca-policy";
 import {
@@ -126,17 +126,33 @@ const SHORTEST_HEADING = 4;
 const JOB_WORD = /^(?:consultants?|associates?|specialists?|managers?|directors?|leads?|supervisors?|team members?)\b/;
 const EVERYDAY_HEADINGS = new Set(["guidelines", "procedures", "overview", "requirements", "expectations"]);
 
+/*
+ * POLICY_EVERYDAY_HEADING_ENABLED: a one-word heading that is also an everyday word
+ * names its section only beside "policy", "section" or "rule". "it's for
+ * october promotions" (sales offers) cited the HR Promotions section p.34 on
+ * every turn of a coaching form (QA item 6, conv_mvoe0zgh20z4krm), and an
+ * onboarding "orientation" cited Orientation p.33.
+ */
+export const EVERYDAY_ONE_WORD: ReadonlySet<string> = new Set(["promotions", "promotion", "orientation", "discounting", "solicitation", "overtime", "tanning", "minors", "robberies"]);
+
+function namedAsPolicy(said: string, key: string): boolean {
+  return new RegExp(String.raw` ${key} (?:polic(?:y|ies)|section|rules?) |(?:polic(?:y|ies)|section|rules?) (?:on |for |about )?${key} `).test(said);
+}
+
 export function headingsNamedIn(text: string, headings: readonly string[]): string[] {
   const said = ` ${headingKey(text)} `;
   const matched = headings.filter((heading) => {
     const key = headingKey(heading);
     if (key.length < SHORTEST_HEADING || NOT_A_SECTION.has(key)) return false;
+    // The POLICY_SET_ASIDE and POLICY_EVERYDAY_HEADING guards below are independent, each behind its
+    // own flag; every one only drops a heading (return false), so their order does not matter.
     if (policySetAsideEnabled() && EVERYDAY_HEADINGS.has(key)) return false;
     // POLICY_SET_ASIDE_ENABLED: "tanning consultant" is a job title, not the Tanning section.
     if (policySetAsideEnabled() && !key.includes(" ")) {
       const alone = said.split(` ${key} `).slice(1).some((after) => !JOB_WORD.test(after));
       if (!alone) return false;
     }
+    if (policyEverydayHeadingEnabled() && EVERYDAY_ONE_WORD.has(key) && !namedAsPolicy(said, key)) return false;
     return said.includes(` ${key} `);
   });
   const keys = matched.map(headingKey);
