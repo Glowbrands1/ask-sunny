@@ -883,6 +883,17 @@ export function followUpNotPriorEnabled(): boolean {
 }
 
 /**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
+
+/**
  * Prior actions stated earlier in the chat stay on a Corrective Action card
  * through slot-answer turns (Sunny tester, 26 Oct 2026, 18 live runs:
  * "prior coaching JBA Policy Manual 7-29-26" was on the card, and the next
