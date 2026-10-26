@@ -1,4 +1,4 @@
-import { sensitiveDefaultsRedactEnabled } from "@/lib/config/chat-quality-flags";
+import { sensitiveDefaultRecipeRedactEnabled, sensitiveDefaultsRedactEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -173,6 +173,40 @@ function isSuspectAfterDefault(piece: string): boolean {
   return Boolean(lead && !NOT_A_VALUE.test(lead[1]!));
 }
 
+/**
+ * HOW A DEFAULT IS BUILT IS A DEFAULT (SENSITIVE_DEFAULT_RECIPE_REDACT_ENABLED;
+ * coordinator, 26 Oct 2026). "The starter code is Welcome and the year.",
+ * "It's their first name plus the year they started.", "Use your last name
+ * followed by 1.", "Sign in the first time with your birthday." hand out a
+ * password as surely as the value does. A sentence is a recipe when it names
+ * a part a person has (a name, initials, a year, a birthday, an employee or
+ * store number) joined to something ("plus", "followed by", "and the",
+ * "then", "with", "starts/ends with"), and either names a default, starter,
+ * initial or first sign-in password or code, says "sign/log in … with" it as
+ * the password or the first time, or stands in the window after a
+ * default-password sentence. A sentence that
+ * forbids ("do not use your birthday or name as a password") is kept.
+ */
+const STARTER =
+  /\b(?:default|defualt|starter|starting|initial|temporary|temp|first[- ]time|first\s+sign[- ]?in|first\s+log[- ]?in|new[- ]hire)\s+(?:pass\s?words?|passcodes?|codes?|pw|pins?|log-?\s?ins?|credentials?)\b/i;
+const SIGN_IN_WITH = /\b(?:sign|log)(?:s|ged|ging)?[- ]?(?:in|on)\b[^.!?\n]{0,40}?\b(?:with|using|as)\b/i;
+/** The part IS the secret ("… as the password"), or it is the first sign-in; "with your user name and password" names two things. */
+const SECRET_OR_FIRST = /\bas\s+(?:the|your|their|a)\s+(?:pass\s?words?|passcodes?|codes?|pins?|pw)\b|\b(?:the\s+)?first\s+(?:time|day)\b/i;
+const PERSONAL_PART =
+  /\b(?:(?:first|last|full|user|middle)\s*names?|(?:your|their|his|her|the\s+employee'?s?)\s+names?|initials|(?:birth\s*|hire\s*|start\s*)?years?|birthdays?|birth\s*dates?|dates?\s+of\s+birth|dob|hire\s+dates?|employee\s+(?:id|numbers?|#)|store\s+(?:numbers?|codes?|#)|zip\s*codes?|phone\s+numbers?)\b/i;
+const JOINED = /\b(?:plus|followed\s+by|and\s+(?:the|their|your|his|her)|then|combined\s+with|with|starts?\s+with|ends?\s+with|after|before)\b|\+/i;
+const FORBIDS_PART = /\b(?:do\s+not|don'?t|never|avoid|must\s+not|should\s+not|shouldn'?t|cannot|can'?t|no)\b[^.!?\n]{0,30}\b(?:use|include|contain|be)\b/i;
+
+/** Whether a sentence says how a default or first sign-in password is built. */
+function isRecipe(sentence: string, inWindow: boolean): boolean {
+  if (!sensitiveDefaultRecipeRedactEnabled()) return false;
+  if (!PERSONAL_PART.test(sentence) || FORBIDS_PART.test(sentence)) return false;
+  // "Log in with your employee ID." is a user name; as the password or the first time it is a recipe.
+  if (SIGN_IN_WITH.test(sentence) && SECRET_OR_FIRST.test(sentence)) return true;
+  if (!JOINED.test(sentence)) return false;
+  return inWindow || STARTER.test(sentence);
+}
+
 export function redactSensitiveDefaults(text: string, note: string | null = EXCERPT_NOTE): string {
   if (!sensitiveDefaultsRedactEnabled() || !text) return text;
   const parts = text.split(SENTENCE_BREAK);
@@ -189,7 +223,7 @@ export function redactSensitiveDefaults(text: string, note: string | null = EXCE
       out.push(part);
       continue;
     }
-    const valueAfter = afterDefault && isSuspectAfterDefault(part);
+    const valueAfter = (afterDefault && isSuspectAfterDefault(part)) || isRecipe(part, afterDefault);
     if (valueAfter || (isSensitiveSentence(part) && !isNoInformation(part))) {
       changed = true;
       // The note once per text, wherever the sentences were; none when null.
