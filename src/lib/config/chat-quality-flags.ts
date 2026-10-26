@@ -845,3 +845,14 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * With TERSE_SLOT_READ on, only a command line "<form word> <name> …" is
+ * written out as the long form; "<form word> for <name> …" and any line that
+ * talks in sentences are read as typed (QA, 26 Oct 2026: a middle name, a
+ * held-coaching date and "out of dress code" were lost). See
+ * `ai/terse-slots.ts`. Off, TERSE_SLOT_READ reads as before.
+ */
+export function terseCommandOnlyEnabled(): boolean {
+  return envFlag("TERSE_COMMAND_ONLY_ENABLED");
+}
