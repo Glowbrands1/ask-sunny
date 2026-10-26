@@ -72,6 +72,8 @@ import {
   reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
+  sensitiveDefaultsRedactEnabled,
+  appPasswordHelpEnabled,
   followUpNotPriorEnabled,
   policyHeadingStatedOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -164,6 +166,8 @@ const NEW_FLAGS = [
   "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
+  "SENSITIVE_DEFAULTS_REDACT_ENABLED",
+  "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "POLICY_HEADING_STATED_ONLY_ENABLED",
 ] as const;
@@ -329,6 +333,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
+    expect(sensitiveDefaultsRedactEnabled()).toBe(false);
+    expect(appPasswordHelpEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(policyHeadingStatedOnlyEnabled()).toBe(false);
 
