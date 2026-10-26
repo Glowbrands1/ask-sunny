@@ -1056,6 +1056,16 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * "not payroll deductible" is a No (manager, 26 Oct 2026): it was not read,
+ * and "Is payroll deduct applicable?" was asked on every turn. The reader
+ * (`forms/payroll-deduct-answer.ts`, which imports nothing) reads the same
+ * variable itself. Off, as before.
+ */
+export function notDeductibleReadEnabled(): boolean {
+  return envFlag("NOT_DEDUCTIBLE_READ_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
