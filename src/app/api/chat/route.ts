@@ -42,6 +42,7 @@ import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
 import type { AskRequest } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
+import { withUnreadDateQuestion } from "@/lib/forms/unread-date-question";
 
 /**
  * POST /api/chat
@@ -300,6 +301,8 @@ export async function POST(request: Request) {
            */
           { memoryOwnerId: context.identity.subject },
         ));
+      // DATE_READER_WIDE_ENABLED: a date no reader can place is asked about once, never dropped.
+      answer = withUnreadDateQuestion(answer, parsed.question, parsed.context.todayIso);
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row

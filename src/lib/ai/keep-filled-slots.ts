@@ -31,6 +31,7 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  dateReaderWideEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -43,6 +44,7 @@ import type { GroundedPerson } from "./grounded-entities";
 import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
+import { protectDateDots, restoreDateDots } from "@/lib/forms/date-words";
 
 /**
  * Slots the conversation already filled, put back on this turn's proposal.
@@ -562,8 +564,10 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
-    for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
-      const said = part.trim();
+    // DATE_READER_WIDE_ENABLED: "late on oct. 5" is not cut at the month's dot.
+    const wide = dateReaderWideEnabled();
+    for (const piece of (wide ? protectDateDots(turn) : turn).split(/\n+|(?<=[.!?])\s+/)) {
+      const said = (wide ? restoreDateDots(piece) : piece).trim();
       if (said.length < 12) continue;
       if (!describesMoreThanTheRequest(said, { ignore })) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;

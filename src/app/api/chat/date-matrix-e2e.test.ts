@@ -438,6 +438,13 @@ function agreed(card: string | null, draft: string | null | undefined): string |
   return `card ${card ?? "blank"} / draft ${draft ?? "blank"}`;
 }
 
+/** The profile's own flags on top of production's, set before each case. */
+const askWith = (flags: readonly string[]) => async (testCase: DateMatrixCase) => {
+  for (const name of PROD_OFF) delete process.env[name];
+  for (const name of flags) process.env[name] = "true";
+  return ask(testCase);
+};
+
 async function ask(testCase: DateMatrixCase): Promise<FormReading> {
   const today = testCase.today;
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
@@ -485,11 +492,152 @@ const OWNER = {
   OBS_SUNNY: "gap: unowned — the Observation of Offense drops the \"she was late on <date>\" clause, so the incident date is not on it",
   PSF: "gap: Code 1 PRIOR_SENTENCE_FIX — an earlier step said as its own sentence is not a Prior actions row (its date becomes the Date, or the incident clause is lost)",
   RANGE: "gap: Code 4 incident date (#237/#167) — \"from 10-5 to 10-9\" is not dated from its first day, and nothing is asked",
+  RELATIVE: "gap: unowned — \"yesterday\" and \"last Friday\" are read for the exit form only; the incident reader leaves relative days to the form's default of today (main's tests pin that), so reading them there needs a product decision",
 } as const;
+
+/**
+ * With DATE_READER_WIDE_ENABLED on: every cell that still fails, with its
+ * owner. The DATE_READER_WIDE cells it closes are gone; a date it now reads
+ * that another rule then misplaces (a prior printed as the Follow-up, a list
+ * dated from its last day) carries that rule's owner, as the same sentence
+ * with a format main reads does.
+ */
+const GAPS_WIDE: Record<string, string> = {
+  "priors-without-commas/*:formDate": OWNER.NOCOMMA,
+  "priors-without-commas/*:incidentDates": OWNER.NOCOMMA,
+  "priors-without-commas/*:priorActions": OWNER.NOCOMMA,
+  "qa3-late-open-day-month-priors/*:incidentDates": OWNER.OBS_SUNNY,
+  "qa3-late-open-day-month-priors/*:priorActions": OWNER.PSF,
+  "qa3-late-open-day-month-priors/*:followUpDate": OWNER.FU_PRIOR,
+  "live-list-dash-then-day-month/*:incidentDates": OWNER.OBS_SUNNY,
+  "exit-notice-and-fulfilled/*:noticeFulfilledDate": OWNER.C4EXIT,
+  "incident-10-16/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash16/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10-16-26/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash16slash26/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10-16-2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash16slash2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-2026-10-16/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-october_16/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-oct_16th/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-16_oct/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-the_16th/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-today/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-yesterday/*:formDate": OWNER.RELATIVE,
+  "incident-yesterday/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-last_friday/*:formDate": OWNER.RELATIVE,
+  "incident-last_friday/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-yearless_not_in_the_future_12-20/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10dot5/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash05slash26/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-5th_of_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-oct_5th/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-2_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-2nd_of_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-october_second/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-2-oct/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10-2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10dot2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-1002/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-the_2nd/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash2slash26/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10dot2dot26/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-10slash02slash2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-2026-10-02/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-october_2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-oct_2nd/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-octdot_2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-oct_2nd_2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-fri_10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-2_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-2nd_of_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-october_second/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-2-oct/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-10-2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-10dot2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-1002/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-the_2nd/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-10slash2slash26/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-10dot2dot26/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-10slash02slash2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-2026-10-02/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-october_2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-oct_2nd/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-octdot_2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-oct_2nd_2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-fri_10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-2_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-2_october/*:priorActions": OWNER.PSF,
+  "prior-2_october/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-2nd_of_october/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-2nd_of_october/*:priorActions": OWNER.PSF,
+  "prior-2nd_of_october/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-october_second/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-october_second/*:priorActions": OWNER.PSF,
+  "prior-october_second/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-2-oct/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-2-oct/*:priorActions": OWNER.PSF,
+  "prior-2-oct/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-10-2/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-10-2/*:priorActions": OWNER.PSF,
+  "prior-10-2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-10dot2/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-10dot2/*:priorActions": OWNER.PSF,
+  "prior-10dot2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-1002/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-1002/*:priorActions": OWNER.PSF,
+  "prior-1002/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-the_2nd/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-the_2nd/*:priorActions": OWNER.PSF,
+  "prior-the_2nd/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-10slash2/*:priorActions": OWNER.PSF,
+  "prior-10slash2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-10slash2slash26/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-10slash2slash26/*:priorActions": OWNER.PSF,
+  "prior-10slash2slash26/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-10dot2dot26/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-10dot2dot26/*:priorActions": OWNER.PSF,
+  "prior-10dot2dot26/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-10slash02slash2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-10slash02slash2026/*:priorActions": OWNER.PSF,
+  "prior-10slash02slash2026/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-2026-10-02/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-2026-10-02/*:priorActions": OWNER.PSF,
+  "prior-2026-10-02/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-october_2/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-october_2/*:priorActions": OWNER.PSF,
+  "prior-october_2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-oct_2nd/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-oct_2nd/*:priorActions": OWNER.PSF,
+  "prior-oct_2nd/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-octdot_2/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-octdot_2/*:priorActions": OWNER.PSF,
+  "prior-octdot_2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-oct_2nd_2026/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-oct_2nd_2026/*:priorActions": OWNER.PSF,
+  "prior-oct_2nd_2026/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-fri_10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-fri_10slash2/*:priorActions": OWNER.PSF,
+  "prior-fri_10slash2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-25_jun/*:priorActions": OWNER.PSF,
+  "prior-25_jun/*:followUpDate": OWNER.FU_PRIOR,
+  "edit-probe-with-prior/*:priorActions": OWNER.PSF,
+  "edit-probe-unread-with-prior/*:priorActions": OWNER.PSF,
+};
+
+/** The manager-words account profile below: filled from its run. */
+const GAPS_ACCOUNT: Record<string, string> = {
+};
 
 /** Every cell that fails on main today (26 Oct 2026, main 8b7a138a; unchanged on e4ff78ec). */
 const GAPS: Record<string, string> = {
-"qa-late-coached/*:incidentDates": OWNER.PSF,
+  "qa-late-coached/*:incidentDates": OWNER.PSF,
   "qa-late-coached/*:priorActions": OWNER.PSF,
   "qa-late-open-coached/*:incidentDates": OWNER.PSF,
   "qa-late-open-coached/*:priorActions": OWNER.PSF,
@@ -506,6 +654,16 @@ const GAPS: Record<string, string> = {
   "priors-without-commas/*:formDate": OWNER.NOCOMMA,
   "priors-without-commas/*:incidentDates": OWNER.NOCOMMA,
   "priors-without-commas/*:priorActions": OWNER.NOCOMMA,
+  "qa3-late-open-day-month-priors/*:formDate": OWNER.DRW,
+  "qa3-late-open-day-month-priors/*:incidentDates": OWNER.OBS_SUNNY,
+  "qa3-late-open-day-month-priors/*:priorActions": OWNER.DRW,
+  "live-dotted-date-account/*:incidentDates": OWNER.OBS_SUNNY,
+  "live-dotted-date-account/*:observation": OWNER.OBS_SUNNY,
+  "live-month-dot-account/*:incidentDates": OWNER.OBS_SUNNY,
+  "live-month-dot-account/*:observation": OWNER.OBS_SUNNY,
+  "live-month-dot-two-sentences/*:incidentDates": OWNER.OBS_SUNNY,
+  "live-month-dot-two-sentences/*:observation": OWNER.OBS_SUNNY,
+  "live-list-dash-then-day-month/*:incidentDates": OWNER.OBS_SUNNY,
   "incident-range-from-to/*:formDate": OWNER.RANGE,
   "exit-notice-and-fulfilled/*:lastDayWorked": OWNER.C4EXIT,
   "exit-notice-and-fulfilled/*:noticeFulfilledDate": OWNER.C4EXIT,
@@ -523,9 +681,9 @@ const GAPS: Record<string, string> = {
   "incident-the_16th/*:formDate": OWNER.DRW,
   "incident-the_16th/*:incidentDates": OWNER.OBS_SUNNY,
   "incident-today/*:incidentDates": OWNER.OBS_SUNNY,
-  "incident-yesterday/*:formDate": OWNER.DRW,
+  "incident-yesterday/*:formDate": OWNER.RELATIVE,
   "incident-yesterday/*:incidentDates": OWNER.OBS_SUNNY,
-  "incident-last_friday/*:formDate": OWNER.DRW,
+  "incident-last_friday/*:formDate": OWNER.RELATIVE,
   "incident-last_friday/*:incidentDates": OWNER.OBS_SUNNY,
   "incident-yearless_not_in_the_future_12-20/*:incidentDates": OWNER.OBS_SUNNY,
   "incident-10dot5/*:formDate": OWNER.DRW,
@@ -559,6 +717,8 @@ const GAPS: Record<string, string> = {
   "incident-octdot_2/*:incidentDates": OWNER.OBS_SUNNY,
   "incident-oct_2nd_2026/*:incidentDates": OWNER.OBS_SUNNY,
   "incident-fri_10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "incident-25_jun/*:formDate": OWNER.DRW,
+  "incident-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
   "list-2_october/*:incidentDates": OWNER.OBS_SUNNY,
   "list-2nd_of_october/*:incidentDates": OWNER.OBS_SUNNY,
   "list-october_second/*:incidentDates": OWNER.OBS_SUNNY,
@@ -577,6 +737,7 @@ const GAPS: Record<string, string> = {
   "list-octdot_2/*:incidentDates": OWNER.OBS_SUNNY,
   "list-oct_2nd_2026/*:incidentDates": OWNER.OBS_SUNNY,
   "list-fri_10slash2/*:incidentDates": OWNER.OBS_SUNNY,
+  "list-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
   "prior-2_october/*:incidentDates": OWNER.OBS_SUNNY,
   "prior-2_october/*:priorActions": OWNER.DRW,
   "prior-2nd_of_october/*:incidentDates": OWNER.OBS_SUNNY,
@@ -623,6 +784,8 @@ const GAPS: Record<string, string> = {
   "prior-fri_10slash2/*:incidentDates": OWNER.OBS_SUNNY,
   "prior-fri_10slash2/*:priorActions": OWNER.PSF,
   "prior-fri_10slash2/*:followUpDate": OWNER.FU_PRIOR,
+  "prior-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
+  "prior-25_jun/*:priorActions": OWNER.DRW,
   "follow-up-2_october/*:followUpDate": OWNER.DRW,
   "follow-up-2nd_of_october/*:followUpDate": OWNER.DRW,
   "follow-up-october_second/*:followUpDate": OWNER.DRW,
@@ -637,6 +800,7 @@ const GAPS: Record<string, string> = {
   "edit-10dot2/*:formDate": OWNER.DRW,
   "edit-1002/*:formDate": OWNER.DRW,
   "edit-the_2nd/*:formDate": OWNER.DRW,
+  "edit-25_jun/*:formDate": OWNER.DRW,
   "edit-probe-with-prior/*:formDate": OWNER.PSF,
   "edit-probe-with-prior/*:priorActions": OWNER.PSF,
   "edit-probe-with-prior/*:priorNotFormDate": OWNER.PSF,
@@ -652,6 +816,8 @@ const GAPS: Record<string, string> = {
   "last-day-10dot2/*:lastDayWorked": OWNER.DRW,
   "last-day-1002/*:lastDayWorked": OWNER.DRW,
   "last-day-the_2nd/*:lastDayWorked": OWNER.DRW,
+  "last-day-25_jun/*:lastDayWorked": OWNER.DRW,
+  "last-day-10-20/*:lastDayWorked": OWNER.DRW,
   "notice-2_october/*:noticeDate": OWNER.DRW,
   "notice-2nd_of_october/*:noticeDate": OWNER.DRW,
   "notice-october_second/*:noticeDate": OWNER.DRW,
@@ -660,6 +826,7 @@ const GAPS: Record<string, string> = {
   "notice-10dot2/*:noticeDate": OWNER.DRW,
   "notice-1002/*:noticeDate": OWNER.DRW,
   "notice-the_2nd/*:noticeDate": OWNER.DRW,
+  "notice-25_jun/*:noticeDate": OWNER.DRW,
   "quit-2_october/*:resignationDate": OWNER.DRW,
   "quit-2nd_of_october/*:resignationDate": OWNER.DRW,
   "quit-october_second/*:resignationDate": OWNER.DRW,
@@ -668,18 +835,6 @@ const GAPS: Record<string, string> = {
   "quit-10dot2/*:resignationDate": OWNER.DRW,
   "quit-1002/*:resignationDate": OWNER.DRW,
   "quit-the_2nd/*:resignationDate": OWNER.DRW,
-  "qa3-late-open-day-month-priors/*:formDate": OWNER.DRW,
-  "qa3-late-open-day-month-priors/*:incidentDates": OWNER.OBS_SUNNY,
-  "qa3-late-open-day-month-priors/*:priorActions": OWNER.DRW,
-  "incident-25_jun/*:formDate": OWNER.DRW,
-  "incident-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
-  "list-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
-  "prior-25_jun/*:incidentDates": OWNER.OBS_SUNNY,
-  "prior-25_jun/*:priorActions": OWNER.DRW,
-  "edit-25_jun/*:formDate": OWNER.DRW,
-  "last-day-25_jun/*:lastDayWorked": OWNER.DRW,
-  "last-day-10-20/*:lastDayWorked": OWNER.DRW,
-  "notice-25_jun/*:noticeDate": OWNER.DRW,
   "quit-25_jun/*:resignationDate": OWNER.DRW,
   "quit-10-20/*:resignationDate": OWNER.DRW,
 };
@@ -692,4 +847,41 @@ const GAPS: Record<string, string> = {
  */
 const IN_FLAGS_OFF_PARITY_CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
 
-runDateMatrix({ app: "Ask Sunny", ask, gaps: GAPS, place: PLACE, skip: IN_FLAGS_OFF_PARITY_CHILD });
+runDateMatrix({ app: "Ask Sunny", ask: askWith([]), gaps: GAPS, place: PLACE, skip: IN_FLAGS_OFF_PARITY_CHILD });
+
+/* -------------------------------------------- DATE_READER_WIDE_ENABLED -- */
+
+/**
+ * The cases a wider date reader can change: every role that reads a date,
+ * and the date-edit probes. With DATE_READER_WIDE_ENABLED on (and
+ * production's flags), the cells it closes pass, and every other cell keeps
+ * the gap it has on main (`GAPS_WIDE`). Off, the matrix above is main's.
+ */
+const WIDE_ROLES = new Set(["incident", "incident list", "prior", "follow-up", "date edit", "last day worked", "notice given", "resignation"]);
+const WIDE_CASES = (testCase: DateMatrixCase) =>
+  WIDE_ROLES.has(testCase.role) || testCase.baseId.startsWith("edit-probe") || testCase.baseId.startsWith("qa3-");
+
+runDateMatrix({
+  app: "Ask Sunny — DATE_READER_WIDE_ENABLED",
+  ask: askWith(["DATE_READER_WIDE_ENABLED"]),
+  only: WIDE_CASES,
+  gaps: GAPS_WIDE,
+  place: PLACE,
+  skip: IN_FLAGS_OFF_PARITY_CHILD,
+});
+
+/**
+ * "late on 10.5.26" → What happened "late on 10", "late on oct. 5" → "late on
+ * oct" (QA's live date run, 26 Oct 2026): the account readers behind
+ * MANAGER_WORDS_ONLY_ENABLED and REMAP_INCIDENT_FIX_ENABLED split sentences
+ * at every dot. With DATE_READER_WIDE_ENABLED a dot inside a date or after an
+ * abbreviated month ends no sentence. Pinned on the card with those readers on.
+ */
+runDateMatrix({
+  app: "Ask Sunny — DATE_READER_WIDE_ENABLED with the manager-words account readers",
+  ask: askWith(["DATE_READER_WIDE_ENABLED", "MANAGER_WORDS_ONLY_ENABLED", "REMAP_INCIDENT_FIX_ENABLED"]),
+  only: (testCase) => testCase.baseId.startsWith("live-"),
+  gaps: GAPS_ACCOUNT,
+  place: PLACE,
+  skip: IN_FLAGS_OFF_PARITY_CHILD,
+});

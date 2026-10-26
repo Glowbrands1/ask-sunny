@@ -939,3 +939,16 @@ export function draftNeverBlankEnabled(): boolean {
 export function nameBeforeTitleEnabled(): boolean {
   return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }
+
+/**
+ * Dates in every shape a manager types (Pau, 26 Oct 2026; QA-6; same flag in
+ * both apps): "2 october", "2nd of october", "october second", "2-Oct",
+ * "10-2", "10.2", "on 1002", "the 2nd", "yesterday", "next friday" are read
+ * as dates by every reader built on `datesInText`, and in a "change the date
+ * to" turn a date cued as an earlier step ("verbal was 9/15") is never the
+ * form's date. A shape still unread is asked about once. See
+ * `forms/date-words.ts`. Off, dates are read as before.
+ */
+export function dateReaderWideEnabled(): boolean {
+  return envFlag("DATE_READER_WIDE_ENABLED");
+}

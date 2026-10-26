@@ -617,6 +617,47 @@ const LIVE: DateMatrixBase[] = [
       employee: NAME,
     },
   },
+  ...(
+    [
+      ["live-dotted-date-account", "ca for Rory Vance, she was late on 10.5.26", "10.2.26", ["late on 10.5.26"], ["2026-10-05"]],
+      ["live-month-dot-account", "ca for Rory Vance, she was late on oct. 5", "oct. 2", ["late on oct. 5"], ["2026-10-05"]],
+      [
+        "live-month-dot-two-sentences",
+        "ca for Rory Vance. she was late on sept. 5. she did not call",
+        "oct. 2",
+        ["late on sept. 5", "did not call"],
+        ["2026-09-05"],
+      ],
+    ] as const
+  ).map(
+    ([id, said, format, words, dates]): DateMatrixBase => ({
+      id,
+      form: "ca",
+      role: "live",
+      source: "QA's live date run, 26 Oct 2026: What happened was cut at the date's dot",
+      today: TODAY,
+      formats: [format],
+      turns: [said],
+      typed: [said],
+      expect: { formDate: dates[0], incidentDates: [...dates], observationMustContain: [...words], employee: "Rory Vance" },
+    }),
+  ),
+  {
+    id: "live-list-dash-then-day-month",
+    form: "ca",
+    role: "incident list",
+    source: "QA's live date run (D6), 26 Oct 2026: the second date was dropped",
+    today: TODAY,
+    formats: ["10-2", "2 october"],
+    turns: [`ca for ${NAME}, she was late on 10-5, and 2 october`],
+    expect: {
+      formDate: "2026-10-05",
+      formDateOrAsk: true,
+      incidentDates: ["2026-10-05", "2026-10-02"],
+      priorActions: [],
+      employee: NAME,
+    },
+  },
   {
     id: "incident-range-from-to",
     form: "ca",

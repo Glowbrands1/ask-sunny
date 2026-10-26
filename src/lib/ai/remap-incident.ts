@@ -14,6 +14,8 @@ import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
 import { formatManualCitation } from "./policy-citation-fields";
+import { protectDateDots, restoreDateDots } from "@/lib/forms/date-words";
+import { dateReaderWideEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * REMAP_INCIDENT_FIX_ENABLED: the remap path's What happened, prior actions
@@ -143,7 +145,10 @@ function turnIncident(
   if (isEditTurn(turn)) return null;
   let found: string | null = null;
   const story: string[] = [];
-  for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
+  // DATE_READER_WIDE_ENABLED: "late on oct. 5" and "late on 10.5.26" are not cut at the date's dot.
+  const wide = dateReaderWideEnabled();
+  for (const piece of (wide ? protectDateDots(withoutPriorList(turn)) : withoutPriorList(turn)).split(/[.!?;]+(?=\s|$)/)) {
+    const raw = wide ? restoreDateDots(piece) : piece;
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
     const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
@@ -493,7 +498,10 @@ export function accountSentences(
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
     const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
-    for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
+    // DATE_READER_WIDE_ENABLED: "late on oct. 5" is not cut at the month's dot.
+    const wide = dateReaderWideEnabled();
+    for (const piece of (wide ? protectDateDots(text) : text).split(/\n+|[.!?;]+(?=\s|$)/)) {
+      const sentence = wide ? restoreDateDots(piece) : piece;
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
       if (/^it\s+happened\b/i.test(trimmed)) continue;

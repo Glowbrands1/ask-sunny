@@ -1,4 +1,6 @@
-import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { dateReaderWideEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+
+import { stepCuedInDateChange, wideDatesInText } from "./date-words";
 
 /**
  * ============================================================================
@@ -563,6 +565,8 @@ function isOtherDate(
 ): boolean {
   const before = text.slice(0, found.index);
   if (priorActionsParseEnabled() && (manualOrCoachedDate(before) || restated?.has(found.index))) return true;
+  // DATE_READER_WIDE_ENABLED: in "change the date to 10-20, verbal was 9/15" the verbal's date is not the form's.
+  if (dateReaderWideEnabled() && changesTheDate(text) && stepCuedInDateChange(text, found.index)) return true;
   return (
     FOLLOW_UP_BEFORE.test(before) ||
     PRIOR_STEP_BEFORE.test(before) ||
@@ -798,6 +802,8 @@ export function datesInText(text: string, today: string): DateInText[] {
       found.push({ iso, index, end: index + match[0].length });
     }
   }
+  // DATE_READER_WIDE_ENABLED: the shapes above miss "2 october", "10-2", "the 2nd", … (`date-words.ts`).
+  if (dateReaderWideEnabled()) return [...found, ...wideDatesInText(text ?? "", today, found)].sort((x, y) => x.index - y.index);
   return found;
 }
 
@@ -962,6 +968,10 @@ const THE_DATE_SHOULD_BE = new RegExp(
   String.raw`${THE_DATE}\s+(?:should\s+(?:be|have\s+been|say|read)|needs\s+to\s+be|is\s+actually|was\s+actually)\s+`,
   "i",
 );
+/** DATE_READER_WIDE_ENABLED: the turn changes the form's date ("change the date to …", "the date should be …"). */
+function changesTheDate(text: string): boolean {
+  return NAMES_THE_DATE_TO.test(text) || THE_DATE_SHOULD_BE.test(text);
+}
 const THE_DATE_WAS_WRONG = new RegExp(String.raw`${THE_DATE}\s+(?:is|was)\s+(?:wrong|incorrect|off|a\s+mistake)\b`, "i");
 /**
  * "follow-up date", "due date", "the previous coaching date", "the date of
@@ -989,7 +999,13 @@ export function formDateChange(text: string, today: string): string | null {
   const pointer = NAMES_THE_DATE_TO.exec(said) ?? THE_DATE_SHOULD_BE.exec(said);
   if (pointer) {
     // Two different days offered ("10-2 or 10-3") is not a date: it is asked about.
-    const offered = new Set(dates.filter((found) => found.index >= pointer.index + pointer[0].length).map((found) => found.iso));
+    const offered = new Set(
+      dates
+        .filter((found) => found.index >= pointer.index + pointer[0].length)
+        // DATE_READER_WIDE_ENABLED: "…to 10-20, verbal was 9/15" — the verbal's date is not the form's.
+        .filter((found) => !(dateReaderWideEnabled() && stepCuedInDateChange(said, found.index)))
+        .map((found) => found.iso),
+    );
     return offered.size === 1 ? [...offered][0]! : null;
   }
 
