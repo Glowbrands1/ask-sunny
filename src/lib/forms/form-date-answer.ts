@@ -366,9 +366,8 @@ const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|ye
  * PRIOR_ACTIONS_NO_COMMA_ENABLED on, a held coaching governs only the words
  * since the date before it, and `stepSpans` also reads the held coaching's
  * own date (`keepHeld`), so "I coached her on 10-16" is listed as an earlier
- * step on a Corrective Action. It is never blanked
- * (`blankYearlessStepDates` reads without `keepHeld`), and it never dates the
- * form, as before.
+ * step on a Corrective Action. `blankYearlessStepDates` blanks it only where
+ * the incident was today, and it never dates the form, as before.
  */
 /** "I coached her on 10-16", "we counseled him about attendance on 10/1": an earlier step the manager held. */
 const COACHED_HER_BEFORE =
@@ -423,9 +422,22 @@ export function blankYearlessStepDates(text: string, today: string): string {
   const read = new Set(datesInText(text, today).map((found) => found.index));
   const steps = new Set(stepSpans(text, today).map((span) => span.index));
   let out = text;
-  for (const found of withYearlessDates(text, [], today)) {
+  /*
+   * "… NO CALL NO SHOW TODAY. I COACHED HER ON 10-16 AND GAVE A VERBAL ON
+   * 10-21." With PRIOR_ACTIONS_NO_COMMA_ENABLED on, a held coaching listed as
+   * an earlier step is blanked too where the manager has already said the
+   * incident was today: it is history, never "it happened on 10/16". A
+   * Coaching Form's own coaching ("late on 10-5 and 10-15, I coached her on
+   * 10-16") has no "today" before it and is left as it was.
+   */
+  const scoped = priorActionsNoCommaEnabled();
+  const plain = withYearlessDates(text, [], today);
+  const plainAt = new Set(plain.map((found) => found.index));
+  for (const found of scoped ? withYearlessDates(text, [], today, true) : plain) {
     if (read.has(found.index)) continue;
-    if (!steps.has(found.index) && !manualOrCoachedDate(text.slice(0, found.index))) continue;
+    if (!plainAt.has(found.index)) {
+      if (!steps.has(found.index) || !/\btoday\b/i.test(text.slice(0, found.index))) continue;
+    } else if (!steps.has(found.index) && !manualOrCoachedDate(text.slice(0, found.index))) continue;
     out = out.slice(0, found.index) + " ".repeat(found.end - found.index) + out.slice(found.end);
   }
   return out;

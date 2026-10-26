@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { fieldLines } from "@/lib/ai/intake-augment";
 import { decideIntentTurn, type IntentTurnInput } from "@/lib/ai/intent-slots";
 import { blankYearlessStepDates, heldCoachingDates, listIncidentDates } from "@/lib/forms/form-date-answer";
 import { incidentDates } from "@/lib/forms/incident-dates";
@@ -243,6 +244,9 @@ const NCNS_CASINGS = [
   NCNS.toUpperCase(),
 ];
 
+/** The intake's "It happened on …" line, the date the plain proposal flow puts on the form. */
+const happened = (said: string) => fieldLines(said, TODAY).filter((line) => line.startsWith("It happened on"));
+
 describe("a prior in a short second sentence (flag on)", () => {
   for (const said of NCNS_CASINGS) {
     it(`"${said}"`, () => {
@@ -250,9 +254,9 @@ describe("a prior in a short second sentence (flag on)", () => {
       expect(statedPriorActions(said, TODAY)).toEqual(NCNS_PRIORS);
       expect(incidentDates(said, TODAY)).toEqual([]);
       expect(listIncidentDates(said, TODAY)).toEqual([]);
-      // The verbal is blanked for the yearless reader; a held coaching never is, as before.
-      expect(blankYearlessStepDates(said, TODAY)).not.toMatch(/10-21/);
-      expect(blankYearlessStepDates(said, TODAY)).toMatch(/10-16/);
+      // Neither is "it happened on …": the incident was today, and both are history.
+      expect(blankYearlessStepDates(said, TODAY)).not.toMatch(/10-16|10-21/);
+      expect(happened(said)).toEqual([]);
       for (const model of ["10-21", "10-16", null]) expect(turn(said, model).formDate).toBe(TODAY);
     });
   }
@@ -272,8 +276,9 @@ describe("a prior in a short second sentence (flag on)", () => {
     flags(true, true);
     const coaching = "coaching form for rowan pell, she was late on 10/5 and 10/15, I coached her on 10/16";
     expect(heldCoachingDates(coaching, TODAY)).toEqual(["2026-10-16"]);
-    const yearless = "coaching form for rowan pell. I coached her on 10-16";
+    const yearless = "coaching form for rowan pell, she was late on 10-5 and 10-15, I coached her on 10-16";
     expect(blankYearlessStepDates(yearless, TODAY)).toBe(yearless);
+    expect(happened(yearless)).toEqual(["It happened on 10/16/2026."]);
   });
 
   it("flag off: no prior is listed (QA's defect, pinned)", () => {
@@ -281,6 +286,8 @@ describe("a prior in a short second sentence (flag on)", () => {
     for (const said of NCNS_CASINGS) {
       expect(statedPriorActions(said, TODAY)).toEqual([]);
       expect(turn(said, null).formDate).toBe(TODAY);
+      // The yearless reader took the verbal's date for the incident.
+      expect(happened(said)).toEqual(["It happened on 10/21/2026."]);
     }
   });
 });
