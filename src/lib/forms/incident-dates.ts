@@ -2,6 +2,7 @@ import { withoutAppLines } from "@/lib/ai/app-sentences";
 import { keepFormEmployeeEnabled } from "@/lib/config/chat-quality-flags";
 
 import { explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
+import { incidentOnly, incidentOnlyOn } from "./form-date-incident-only";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -43,7 +44,7 @@ type Turn = { readonly role: string; readonly content: string };
  */
 export function incidentDates(text: string, today: string): string[] {
   const explicit = explicitFormDate(text, today);
-  return [...new Set(listIncidentDates(text, today).map((found) => found.iso))]
+  return [...new Set(incidentOnly(text, today, listIncidentDates(text, today)).map((found) => found.iso))]
     .filter((iso) => iso <= today && iso !== explicit)
     .sort();
 }
@@ -161,6 +162,16 @@ export function decideFormDate(input: {
     const held = heldCoachingDates(input.text, input.today).filter((iso) => iso >= latestIncident);
     if (held.length === 1) return { formDate: held[0]! };
     if (held.length > 1) dates = held;
+  }
+  /*
+   * FORM_DATE_INCIDENT_ONLY_ENABLED (D3): the date the card would otherwise
+   * take — the first one read, as `extractFormDate` gives it — may be a
+   * deadline, assignment or prior-action date. Then the form is dated by the
+   * one incident date left, or the day it is created when none is.
+   */
+  if (incidentOnlyOn() && dates.length <= 1) {
+    const first = listIncidentDates(input.text, input.today)[0];
+    if (first && incidentOnly(input.text, input.today, [first]).length === 0) return { formDate: dates[0] ?? null };
   }
   if (dates.length <= 1) return {};
   if (input.correctedTo && dates.includes(input.correctedTo)) return { formDate: input.correctedTo };
