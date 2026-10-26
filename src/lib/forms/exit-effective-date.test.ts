@@ -70,6 +70,32 @@ describe.each(REGISTERS)("EXIT_EFFECTIVE_DATE_ENABLED, %s", (_register, as) => {
     });
   }
 
+  // QA-6, 26 Oct 2026: a negated, undone or other-subject "effective" fills nothing.
+  it("on, an effective date that is negated, undone or about something else fills nothing", () => {
+    withFlag(true);
+    for (const text of [
+      "exit for ava pellmore not effective october 2",
+      "exit for ava pellmore, the resignation was never effective october 2",
+      "exit for ava pellmore, do not make it effective october 2",
+      "exit for ava pellmore effective october 2 was cancelled, she stayed",
+      "exit for ava pellmore not effective 11/1",
+      "not effective 11/1",
+      "exit for ava pellmore not effective until october 2",
+      "the new dress code is effective october 1, exit for ava pellmore",
+      "exit for ava pellmore, transfer to the other location effective october 2",
+    ]) {
+      expect(read(as(text)).lastDayWorked, text).toBeNull();
+    }
+  });
+
+  it("on, the working cases stay", () => {
+    withFlag(true);
+    expect(read(as("exit form for ava pellmore effective 11/1 at the other location")).lastDayWorked).toBe("2026-11-01");
+    expect(read(as("exit for ava pellmore effective 11/1 but last day 10/30")).lastDayWorked).toBe("2026-10-30");
+    expect(read(as("exit for ava pellmore effective 11/1 and effective 11/8")).lastDayWorked).toBeNull();
+    expect(read(as("ava pellmore resigned effective october 2")).lastDayWorked).toBe("2026-10-02");
+  });
+
   it("on, two different effective dates are not guessed between", () => {
     withFlag(true);
     expect(

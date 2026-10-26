@@ -545,6 +545,36 @@ function readSeparation(text: string): SeparationReading {
  */
 /** "effective october 2", "effective on 10/2", "effective as of 10/2". */
 const EFFECTIVE_BEFORE = /\beffective(?:\s+(?:on|as\s+of|date(?:\s+(?:is|was|of))?))?\s*[:\-]?\s*$/i;
+/** The departure the date is effective for: "exit for …", "resigned …", "her termination …". */
+const DEPARTURE_CUE = /\b(?:exit\w*|resign\w*|quit\w*|terminat\w*|fired|separat\w*|leav(?:e|es|ing)|last day)\b/gi;
+/** Something else the date could be effective for, between the departure and "effective". */
+const OTHER_SUBJECT = /\b(?:transfer\w*|mov(?:e|ed|es|ing)|promot\w*|policy|code|schedule|raise|pay|rate|change\w*)\b/i;
+/** "not effective", "never effective", "do not make it effective". */
+const EFFECTIVE_NEGATED = /\b(?:not|never|no longer|don't|isn't|wasn't|won't|can't|cannot)\b(?:\s+\S+){0,3}\s*$/i;
+/** "effective october 2 was cancelled, she stayed". */
+const EFFECTIVE_UNDONE = /\b(?:cancel\w*|rescind\w*|withdr[ae]wn?|revoked|stayed|is staying|no longer)\b/i;
+
+/**
+ * EXIT_EFFECTIVE_DATE_ENABLED: is the date at `index` the day a departure is
+ * effective? Within its sentence, "effective" sits right before it, a
+ * departure word comes before that with nothing else in between that the date
+ * could belong to, and nothing negates or undoes it (QA-6, 26 Oct 2026).
+ */
+function departureEffectiveOn(text: string, index: number, end: number): boolean {
+  const start = Math.max(text.lastIndexOf(".", index - 1), text.lastIndexOf(";", index - 1), text.lastIndexOf("\n", index - 1), text.lastIndexOf("!", index - 1), text.lastIndexOf("?", index - 1)) + 1;
+  const prefix = text.slice(start, index);
+  const cue = EFFECTIVE_BEFORE.exec(prefix);
+  if (!cue) return false;
+  const before = prefix.slice(0, cue.index);
+  if (EFFECTIVE_NEGATED.test(before)) return false;
+  const departures = [...before.matchAll(DEPARTURE_CUE)];
+  const departure = departures[departures.length - 1];
+  if (!departure) return false;
+  if (OTHER_SUBJECT.test(before.slice((departure.index ?? 0) + departure[0].length))) return false;
+  const stop = text.slice(end).search(/[.;!?\n]/);
+  const after = stop === -1 ? text.slice(end) : text.slice(end, end + stop);
+  return !EFFECTIVE_UNDONE.test(after);
+}
 
 export function readExitFacts(rawText: string, today: string): ExitFacts {
   const text = normalize(rawText);
@@ -599,11 +629,7 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
    */
   if (exitEffectiveDateEnabled() && !lastDayWorked && !ambiguities.some((entry) => "role" in entry && entry.role === "lastDayWorked")) {
     const effective = [
-      ...new Set(
-        tokens
-          .filter((token) => token.iso && EFFECTIVE_BEFORE.test(text.slice(Math.max(0, token.index - 30), token.index)))
-          .map((token) => token.iso!),
-      ),
+      ...new Set(tokens.filter((token) => token.iso && departureEffectiveOn(text, token.index, token.end)).map((token) => token.iso!)),
     ];
     if (effective.length === 1) lastDayWorked = effective[0]!;
   }
