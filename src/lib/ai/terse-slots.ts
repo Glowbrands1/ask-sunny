@@ -119,15 +119,16 @@ function commandLine(text: string): boolean {
  *     (`NOT_A_THIRD_NAME`), a word with an apostrophe, a conjunction, a place,
  *     a title or a repeat of the name, or when the end of the line or a date
  *     follows it ("ca <name> final 10-14", "coach <name> woven");
- *   - "unsure" otherwise ("ca rory ann vance late today" and "ca dana smith
- *     barely late" have the same shape). An unsure line is left as typed, so
- *     it is read as it is with the flag off.
+ *   - before the account ("late", "opened", a topic), the surname unless it
+ *     only ever modifies the account (`modifiesTheAccount`: "barely",
+ *     "doesnt", "too"), so "ca rory ann vance late today" keeps the surname
+ *     and "ca dana smith barely late" is for "dana smith" (QA-7).
  */
 /** Negations, degree words, levels, form words and topics: never the third word of a name. */
 const NOT_A_THIRD_NAME =
   /^(?:never|not|no|didnt|didn't|without|except|always|also|just|still|again|really|only|does|did|ever|usually|often|final|verbal|written|first|second|third|last|warning|ca|c\/a|dpoa|coach|coaching|exit|form|write|woven|acks?|training|orientation|uniform|personal|closing|opening|sales|schedule|break|breaks|refund|deposit|theft|safety|attendance|dress|cash|phone|cell|ncns|register|drawer|cleaning|sanitize|sanitizing|customer|customers|guest|guests|policy|tardy|tardiness|conduct|standards|insubordination|performance|inventory|product|products|recipe|measuring|timecard|clock|counter|music|food|smoking|vaping|language|rude|rudeness|today|yesterday|tomorrow)$/i;
 
-function thirdNameWord(tokens: readonly string[], name: readonly string[], text: string): "yes" | "no" | "unsure" {
+function thirdNameWord(tokens: readonly string[], name: readonly string[], text: string): "yes" | "no" {
   const [word, next, after] = tokens;
   if (!word || !next || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || NOT_A_THIRD_NAME.test(word)) return "no";
   if (/['’]/.test(word) || /^(?:and|or|then|but|plus)$/i.test(word)) return "no";
@@ -141,9 +142,31 @@ function thirdNameWord(tokens: readonly string[], name: readonly string[], text:
     /^[a-z]+\/[a-z]+$/i.test(next);
   const capitalised = (part: string) => /^[A-Z][a-z'’-]+$/.test(part);
   if (nameEnded || (text !== text.toUpperCase() && [...name, word].every(capitalised))) return "yes";
-  // Before the account ("late", "opened") or a topic, the word may be a surname or may not.
+  // Before the account ("late", "opened") or a topic, the word is the surname unless it is a word that
+  // only ever modifies the account ("barely", "doesnt", "too"); otherwise it is not a name.
   const accountNext = NOT_A_THIRD_NAME.test(next) || (NOT_A_NAME_WORD.test(next) && !/^(?:on|at|for|was|is|did)$/i.test(next));
-  return accountNext ? "unsure" : "no";
+  if (!accountNext) return "no";
+  return modifiesTheAccount(word) ? "no" : "yes";
+}
+
+/**
+ * QA-7, 26 Oct 2026: with only the shape to go on, lowercase "ca john michael
+ * doe late today" and "ca dana smith barely late" read the same, and leaving
+ * both as typed meant no card. A third word before the account is the surname
+ * unless English never uses it as one: an adverb in -ly (four letters or more
+ * before it; surnames like Kelly, Kimberly, Reilly are kept), a contraction
+ * typed without its apostrophe, or a word from the closed set of degree and
+ * frequency words.
+ */
+const CONTRACTION =
+  /^(?:doesnt|dont|didnt|wasnt|werent|cant|wont|isnt|arent|hasnt|havent|hadnt|couldnt|wouldnt|shouldnt|aint)$/i;
+const DEGREE_OR_FREQUENCY =
+  /^(?:kinda|sorta|seldom|sometimes|twice|once|too|very|so|even|already|ever|almost|quite|rather|somewhat|yet|soon|early|daily|badly|only|then|now)$/i;
+const LY_SURNAME = /^(?:kimberly|beverly|waverly|connolly|donnelly|mcnally|shelly|reilly|oreilly|kelly|nelly|dolly)$/i;
+
+function modifiesTheAccount(word: string): boolean {
+  if (CONTRACTION.test(word) || DEGREE_OR_FREQUENCY.test(word)) return true;
+  return /^[a-z]{4,}ly$/i.test(word) && !LY_SURNAME.test(word);
 }
 
 /** The long form of a terse "<form word> <name> …" line, or the text as it is. */
@@ -170,11 +193,7 @@ export function expandTerseRequest(text: string, today: string): string {
     if (!NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || READERS.place(word) || READERS.title(word)) break;
     name.push(tokens.shift()!);
   }
-  if (name.length === 2 && terseCommandOnlyEnabled()) {
-    const third = thirdNameWord(tokens, name, text);
-    if (third === "unsure") return text;
-    if (third === "yes") name.push(tokens.shift()!);
-  }
+  if (name.length === 2 && terseCommandOnlyEnabled() && thirdNameWord(tokens, name, text) === "yes") name.push(tokens.shift()!);
   if (name.length === 0) return text;
 
   let place: string | null = null;
