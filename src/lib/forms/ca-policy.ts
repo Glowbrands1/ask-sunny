@@ -1,6 +1,7 @@
 import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
+import { saysUndenied } from "./denied-incident";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
@@ -385,8 +386,9 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       return null;
     case "attendance": {
       const text = normalize(rawText);
-      const absent = ABSENCE.test(text) || missedEventIn(statements(text)) !== null;
-      const late = LATENESS.test(text);
+      // NEGATED_LATE_SHIFT_ENABLED: "was not late" is not a lateness.
+      const absent = saysUndenied(text, ABSENCE) || missedEventIn(statements(text)) !== null;
+      const late = saysUndenied(text, LATENESS);
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
     }
@@ -405,8 +407,8 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
  */
 export function describedAttendanceKeys(rawText: string): string[] | null {
   const text = normalize(rawText);
-  const absent = ABSENCE.test(text);
-  const late = LATENESS.test(text);
+  const absent = saysUndenied(text, ABSENCE);
+  const late = saysUndenied(text, LATENESS);
   if (!absent && !late) return null;
   if (absent && late) return ["tardiness", "absenteeism"];
   return absent ? ["absenteeism"] : ["tardiness"];
