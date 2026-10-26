@@ -847,6 +847,17 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * The Corrective Action Form's Observation carries no AI-written "Going
+ * Forward" section (QA, 25 Oct 2026, D-draft): a plan or commitment the
+ * manager never typed is not part of the HR record. What the employee does
+ * next is the Action Plan, which is the manager's own (ACTION_PLAN_MANAGER_ONLY).
+ * Off, the Observation drafts as before.
+ */
+export function draftNoInventedPlanEnabled(): boolean {
+  return envFlag("DRAFT_NO_INVENTED_PLAN_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of

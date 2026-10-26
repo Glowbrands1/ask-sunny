@@ -5,6 +5,7 @@ import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
+  draftNoInventedPlanEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
   draftNeverBlankEnabled,
@@ -67,6 +68,7 @@ import {
   OBSERVED_LABEL,
   PLAN_OF_ACTION,
   guardNarrativeDraft,
+  managerTypedGoingForward, withoutGoingForward,
 } from "@/lib/forms/narrative-draft";
 import {
   dropUngroundedPolicy,
@@ -1120,6 +1122,31 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
 
     const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);
+    /*
+     * DRAFT_NO_INVENTED_PLAN_ENABLED: on the Corrective Action Form (the one
+     * with a fixed Action Plan) the Observation keeps Observed and Expectation
+     * only. What the employee does next is the manager's Action Plan, never a
+     * "Going Forward" the model wrote. See `withoutGoingForward`.
+     */
+    if (draftNoInventedPlanEnabled() && fixedPlan !== null) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
+    /*
+     * And on the Coaching and Follow-up Coaching forms (QA, 26 Oct 2026): their
+     * "Going Forward" is the model's too, so it stays only when the manager
+     * stated a plan themselves ("going forward …", "action plan: …"); a negated
+     * "no going forward needed" is not one (`managerTypedGoingForward`).
+     */
+    const coachingForm =
+      loaded.instance.templateKey === "coaching" || loaded.instance.templateKey === "follow-up-coaching";
+    if (
+      draftNoInventedPlanEnabled() &&
+      coachingForm &&
+      !managerTypedGoingForward(notes) &&
+      managerTypedActionPlan(notes) === null
+    ) {
+      narrated.values = withoutGoingForward(narrated.values, fields);
+    }
 
     /*
      * THEN THE TIMEFRAME GUARD. A drafted "Next Follow-Up" survives only if the

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -1388,7 +1390,16 @@ describe("date corrections that are ambiguous, combined, or near other dates", (
   it("an observation the manager partly rewrote is theirs: a date correction leaves every word of it", async () => {
     const { thread, id } = await created();
     const drafted = (await form(id)).text("observation")!;
-    const edited = drafted.replace("Going Forward:", "Going Forward (manager):");
+    /*
+     * DRAFT_NO_INVENTED_PLAN_ENABLED (intended change): the draft has no model
+     * "Going Forward:" to rename, so the manager's edit renames a heading that is
+     * still there. The point is the same: an observation the manager touched is
+     * theirs.
+     */
+    const edited = draftNoInventedPlanEnabled()
+      ? drafted.replace("Expectation:", "Expectation (manager):")
+      : drafted.replace("Going Forward:", "Going Forward (manager):");
+    expect(edited).not.toBe(drafted);
     await save(id, { observation: edited });
     await thread.say("change the date to 10-2-26");
     await thread.say("change the date to 10-3-26");
@@ -1396,4 +1407,34 @@ describe("date corrections that are ambiguous, combined, or near other dates", (
     expect(f.text("form_date")).toBe("2026-10-03");
     expect(f.text("observation")).toBe(edited);
   });
+
+  /*
+   * DRAFT_NO_INVENTED_PLAN_ENABLED (dispatcher / QA-2, 26 Oct 2026): with the
+   * flag on the draft has no "Going Forward:" to rename, so the test above has
+   * no manager edit to keep. Here the manager TYPES their own Going Forward
+   * into the drafted observation: date corrections keep every word of it,
+   * flag off and on — the flag drops only what the model wrote.
+   */
+  for (const on of [false, true]) {
+    it(`NEVER-BREAK (flag ${on ? "on" : "off"}): a Going Forward the manager typed into the observation survives date corrections`, async () => {
+      const before = process.env.DRAFT_NO_INVENTED_PLAN_ENABLED;
+      if (on) process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = "true";
+      else delete process.env.DRAFT_NO_INVENTED_PLAN_ENABLED;
+      try {
+        const { thread, id } = await created();
+        const drafted = (await form(id)).text("observation")!;
+        const edited = `${drafted.replace(/\n*Going Forward:[\s\S]*$/, "")}\n\nGoing Forward:\nMarlo will arrive 30 minutes before opening and text me if running late.`;
+        await save(id, { observation: edited });
+        await thread.say("change the date to 10-2-26");
+        await thread.say("change the date to 10-3-26");
+        const f = await form(id);
+        expect(f.text("form_date")).toBe("2026-10-03");
+        expect(f.text("observation")).toBe(edited);
+        expect(f.text("observation")).toContain("Marlo will arrive 30 minutes before opening and text me if running late.");
+      } finally {
+        if (before === undefined) delete process.env.DRAFT_NO_INVENTED_PLAN_ENABLED;
+        else process.env.DRAFT_NO_INVENTED_PLAN_ENABLED = before;
+      }
+    });
+  }
 });

@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { extractText, getDocumentProxy } from "unpdf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { draftNoInventedPlanEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -370,7 +372,9 @@ describe("creating a Corrective Action from chat", () => {
     // Named once, and the possessive restructured rather than repeated.
     expect(byKey.observation).toContain("Jessica arrived 30 minutes late for the scheduled shift today.");
     expect(byKey.observation).not.toMatch(/Jessica\b[^.]*\bJessica's/);
-    expect(byKey.observation).toContain("Jessica should plan to arrive early.");
+    // DRAFT_NO_INVENTED_PLAN_ENABLED (intended change, QA 25-26 Oct 2026): on the Corrective Action Form the model's "Going Forward" is dropped — the plan is the manager's Action Plan. Off, it stays as before.
+    if (draftNoInventedPlanEnabled()) expect(byKey.observation).not.toContain("Jessica should plan to arrive early.");
+    else expect(byKey.observation).toContain("Jessica should plan to arrive early.");
     expect(byKey.observation).not.toMatch(/\b(?:she|her)\b/i);
 
     // 3. The plan, built, naming the employee and ending with the closing — exactly once.
