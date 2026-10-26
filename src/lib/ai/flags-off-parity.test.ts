@@ -75,6 +75,7 @@ import {
   policyNameTyposEnabled,
   policyAsYouSaidManagerOnlyEnabled,
   exitNoticeFulfilledEnabled,
+  exitRehireReasonEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -168,6 +169,7 @@ const NEW_FLAGS = [
   "POLICY_NAME_TYPOS_ENABLED",
   "POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED",
   "EXIT_NOTICE_FULFILLED_ENABLED",
+  "EXIT_REHIRE_REASON_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -318,6 +320,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(policyNameTyposEnabled()).toBe(false);
     expect(policyAsYouSaidManagerOnlyEnabled()).toBe(false);
     expect(exitNoticeFulfilledEnabled()).toBe(false);
+    expect(exitRehireReasonEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

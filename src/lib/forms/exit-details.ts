@@ -1,4 +1,4 @@
-import { exitIntakeFixEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+import { exitIntakeFixEnabled, exitRehireReasonEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
@@ -337,7 +337,26 @@ function bonusForfeited(clause: string): Reading {
 const REHIRE_NEGATED_BEFORE =
   /\b(?:not|never|no longer|isn't|aren't|wasn't|weren't|won't|wouldn't|can't|cannot|shouldn't|don't|doesn't)\s+(?:(?:be|ever|currently|really|actually|definitely|going to be|gonna be|to be)\s+)*$/;
 
-function rehireEligible(clause: string): Reading {
+/*
+ * EXIT_REHIRE_REASON_ENABLED (QA, 25 Oct 2026): "she is not rehireble" (conv_mvoepgw32o35rpt),
+ * "she in not eligable for rehire", and a run-on "… no deduct rehire yes"
+ * (conv_mvofngxg2xy7l11) left Eligible for Rehire blank. The misspellings
+ * read as the words they mean; "rehire yes/no" is an answer wherever it ends
+ * a clause.
+ */
+function rehireSpelling(clause: string): string {
+  if (!exitRehireReasonEnabled()) return clause;
+  return clause
+    .replace(/\b(?:eligable|elegible|elligible|eligble|elidgible|eligibile)\b/g, "eligible")
+    .replace(/\bre-?hir(?:eable|eble|ible|abel|eabel)\b/g, "rehirable");
+}
+
+function rehireEligible(rawClause: string): Reading {
+  const clause = rehireSpelling(rawClause);
+  if (exitRehireReasonEnabled()) {
+    const trailing = /\bre-?hire(?: eligib(?:le|ility))?\s+(yes|no)\s*[.!]*$/.exec(clause);
+    if (trailing) return trailing[1] === "yes" ? "yes" : "no";
+  }
   const labelled = labelledAnswer(clause, /\b(?:eligible for )?re-?hire(?: eligib(?:le|ility))?/);
   if (labelled) return labelled;
   let reading: Reading;
@@ -510,6 +529,25 @@ const REASON_EDIT: { pattern: RegExp; keep: boolean } = {
   keep: false,
 };
 
+/*
+ * EXIT_REHIRE_REASON_ENABLED (QA, 25 Oct 2026): "gave notice 9/25 fulfilled
+ * 10/9 other career options items returned" (conv_mvofngxg2xy7l11) and "she
+ * put her notice in because she doesnt have time …" (conv_mvoepgw32o35rpt)
+ * left Reason for Resignation blank.
+ */
+const MORE_REASON_STARTS: { pattern: RegExp; keep: boolean }[] = [
+  { pattern: /\b(?:other|another|better|new)\s+(?:career|job|work|employment)\s+(?:options?|opportunit(?:y|ies))\b/, keep: true },
+  {
+    pattern: /\bput (?:in )?(?:her|his|their) (?:notice|two weeks)(?: in)?\b[^.;!?\n]{0,40}?\b(?:because(?: of)?|cause|cuz|bc|due to)\s+/,
+    keep: false,
+  },
+];
+
+function reasonStarts(): { pattern: RegExp; keep: boolean }[] {
+  const starts = exitIntakeFixEnabled() ? [REASON_EDIT, ...REASON_START] : REASON_START;
+  return exitRehireReasonEnabled() ? [...starts, ...MORE_REASON_STARTS] : starts;
+}
+
 function reasonIn(turn: string): string | null {
   /*
    * LINE BREAKS ARE KEPT. A manager who types one fact per line — "Resigning
@@ -520,7 +558,7 @@ function reasonIn(turn: string): string | null {
   const text = turn.replace(/[^\S\n]+/g, " ");
   const lower = text.toLowerCase();
   if (NO_REASON.test(lower)) return "No reason given.";
-  for (const { pattern, keep } of exitIntakeFixEnabled() ? [REASON_EDIT, ...REASON_START] : REASON_START) {
+  for (const { pattern, keep } of reasonStarts()) {
     const match = pattern.exec(lower);
     if (!match) continue;
     const from = keep ? match.index : match.index + match[0].length;

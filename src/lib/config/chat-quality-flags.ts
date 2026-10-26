@@ -871,3 +871,13 @@ export function policyAsYouSaidManagerOnlyEnabled(): boolean {
 export function exitNoticeFulfilledEnabled(): boolean {
   return envFlag("EXIT_NOTICE_FULFILLED_ENABLED");
 }
+
+/**
+ * Exit form Details, as managers type them (QA, 25 Oct 2026): "not
+ * rehireble", "not eligable for rehire" and a run-on "… rehire yes" fill
+ * Eligible for Rehire; "other career options" and "put her notice in because
+ * …" fill Reason for Resignation. Off, the Details read as before.
+ */
+export function exitRehireReasonEnabled(): boolean {
+  return envFlag("EXIT_REHIRE_REASON_ENABLED");
+}
