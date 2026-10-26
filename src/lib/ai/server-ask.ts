@@ -270,13 +270,27 @@ export async function answerQuestion(
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
   const produce = async () => {
-    // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    // MANAGER_FORM_CHOICE_ENABLED: the form the manager named is the form.
-    const response = await answerQuestionUntraced(withManagerFormChoice(withTerseSlots(request)), actor, memory);
+    /*
+     * THE MANAGER'S TURN, READ IN THIS ORDER (each default off):
+     *   TERSE_SLOT_READ_ENABLED       "ca <name> …" written out as the long form;
+     *   MANAGER_FORM_CHOICE_ENABLED   "needs CA", "create a form" → the form named (sees the long form);
+     *   STORE_ALIAS_ENABLED           "dodge, ne", "o st" → the roster name (sees the final words);
+     *   NAME_CASE_INSENSITIVE_ENABLED the person in Title Case, capitals in lowercase (last, so a
+     *                                 roster name is already a place, never a person).
+     */
+    const read = withNameCase(withStoreAliases(withManagerFormChoice(withTerseSlots(request))));
+    const response = await answerQuestionUntraced(read, actor, memory);
     noteTraceOutcome(response);
+    /*
+     * THE CARD, CHECKED IN THIS ORDER against the turn as typed:
+     *   BARE_ANSWER_BINDING_ENABLED   a short answer fills only its slot (first: it restores the employee);
+     *   NAME_RESPELL_ENABLED          then the newest spelling of that employee;
+     *   (keepManagerActionPlan touches only the Action Plan line, so either side of it is the same)
+     *   CARD_NEVER_SILENT_ENABLED     last: it compares the final reply with the previous one.
+     */
+    const checked = withNameRespell(withBareAnswerBinding(await applyQuietQuality(response), request), request);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    // BARE_ANSWER_BINDING_ENABLED: a short answer fills only the slot it answers.
-    return keepManagerActionPlan(withBareAnswerBinding(await applyQuietQuality(response), request), request);
+    return withCardNeverSilent(keepManagerActionPlan(checked, request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
