@@ -847,6 +847,17 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * A name is read the same however it is typed: a turn in capitals is read in
+ * lowercase, and the person named where a form is asked for ("write up devon
+ * harlan", "ca for Rory vance") is written in Title Case before the name
+ * readers see it (QA, 25-26 Oct 2026). See `ai/name-case.ts`. Off, every turn
+ * is read as typed.
+ */
+export function nameCaseInsensitiveEnabled(): boolean {
+  return envFlag("NAME_CASE_INSENSITIVE_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of

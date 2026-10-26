@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
 import { displayTypedName } from "./roster-reply";
+import { nameCaseInsensitiveEnabled } from "@/lib/config/chat-quality-flags";
 
 /*
  * The first test pays for importing the whole answer path (`server-ask`), and
@@ -1847,7 +1848,9 @@ describe("a form's name leading the message, across the library", () => {
     expect(answer.formProposal?.formDate ?? null).toBeNull();
     expect(answer.formSelection).toBeUndefined();
     expect(answer.content).not.toMatch(/who is this/i);
-    expect(answer.content).toMatch(/I'll draft a \*\*Corrective Action Form\*\* for \*\*rosalyn co\*\*/);
+    // Changed on purpose, flag on: NAME_CASE_INSENSITIVE_ENABLED stores the name in Title Case (QA coordinator, 26 Oct 2026); flag off unchanged.
+    const shown = nameCaseInsensitiveEnabled() ? "Rosalyn Co" : "rosalyn co";
+    expect(answer.content).toContain(`I'll draft a **Corrective Action Form** for **${shown}**`);
     // What happened, the warning and the prior warning were all given: none is asked again.
     expect(answer.content).not.toMatch(/^\d\. /m);
     expect(answer.content).not.toMatch(/warning level/i);
