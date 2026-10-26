@@ -271,6 +271,19 @@ export function managerWordsObservation(notes: string, employeeName: string | nu
 /** The pauses before the second and third attempt: short, and well inside the route's budget. */
 export const DRAFT_RETRY_BACKOFF_MS: readonly number[] = [1000, 3000];
 
+/**
+ * THE TIME A DRAFT MAY SPEND BEFORE IT STOPS RETRYING, from the request's
+ * start. No new attempt — model call or framework read — begins once this
+ * much has gone; what is left is written as it is, or from the manager's
+ * words. Comfortably under the route's `maxDuration` (120 s).
+ */
+export const DRAFT_TIME_BUDGET_MS = 80_000;
+
+/** True while a new attempt may still begin. */
+export function withinDraftBudget(startedAt: number, now: number = Date.now()): boolean {
+  return now - startedAt <= DRAFT_TIME_BUDGET_MS;
+}
+
 export function pauseBeforeRetry(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -319,14 +332,24 @@ export function emptyCallReason(input: unknown, read: DraftedCall, stopReason: s
  * attempts, each failure's reason, and `{"fallback": "manager_words"}` where
  * the narrative is the manager's words. The write's event is recorded by
  * `applyAssistantDraft`, which this change does not touch.
+ *
+ * NEVER FAILS THE DRAFT. By the time this runs the draft is written; an
+ * event that could not be recorded is logged, and the manager still gets
+ * their form.
  */
 export async function recordDraftOutcome(
   instanceId: string,
   actor: string,
   detail: Record<string, unknown>,
 ): Promise<void> {
-  const { error } = await getSupabaseAdmin()
-    .from("form_instance_events")
-    .insert({ instance_id: instanceId, kind: "drafted", actor, detail });
-  if (error) throw new Error(`Could not record the drafted event: ${error.message}`);
+  try {
+    const { error } = await getSupabaseAdmin()
+      .from("form_instance_events")
+      .insert({ instance_id: instanceId, kind: "drafted", actor, detail });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error(
+      `[forms/instance/draft] could not record the drafted event for ${instanceId}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }

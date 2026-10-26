@@ -52,14 +52,25 @@ const store: FakeStore = {
 };
 
 type ToolInput = { values?: unknown; checked?: unknown };
-type ModelReply = ToolInput | { throws: unknown };
+/*
+ * One model reply: a tool call, a thrown error, a reply with no tool call at
+ * all, or any of those after the call has taken `takesMs` of the clock.
+ */
+type ModelReply = ToolInput | { throws: unknown } | { noTool: true } | { takesMs: number; then: ModelReply };
 
 const state = vi.hoisted(() => ({
   role: "salon_director",
   scope: null as unknown,
   /** What the drafting model returns, one entry per call; the last repeats. */
-  drafts: [] as ({ values?: unknown; checked?: unknown } | { throws: unknown })[],
+  drafts: [] as unknown[],
   calls: 0,
+  /** Per employee (as the prompt names them): that employee's replies, in order; the last repeats. */
+  scripts: {} as Record<string, unknown[]>,
+  scriptCalls: {} as Record<string, number>,
+  /** The drafted event that says why cannot be written. */
+  failOutcomeInsert: false,
+  /** How long the framework read takes before it fails. */
+  frameworkTakesMs: 0,
   /** The pauses the route took before each retry. */
   pauses: [] as number[],
   framework: true,
@@ -67,7 +78,31 @@ const state = vi.hoisted(() => ({
   manual: null as null | { chunks: unknown[] },
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseAdmin: () => {
+    const db = fakeSupabase(store);
+    if (!state.failOutcomeInsert) return db;
+    /* Only the outcome event fails: the write's own event still lands. */
+    return new Proxy(db, {
+      get(target, key, receiver) {
+        if (key !== "from") return Reflect.get(target, key, receiver);
+        return (table: string) => {
+          const query = target.from(table);
+          if (table !== "form_instance_events") return query;
+          return new Proxy(query, {
+            get(inner, name, innerReceiver) {
+              if (name !== "insert") return Reflect.get(inner, name, innerReceiver);
+              return (row: { detail?: Record<string, unknown> }) =>
+                row && row.detail && "reasons" in row.detail
+                  ? Promise.resolve({ data: null, error: { message: "insert refused" } })
+                  : inner.insert(row as never);
+            },
+          });
+        };
+      },
+    });
+  },
+}));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/respond")>();
@@ -106,10 +141,29 @@ vi.mock("@/lib/auth/server", async () => {
 vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({
     messages: {
-      create: async () => {
-        const reply = state.drafts[Math.min(state.calls, state.drafts.length - 1)] ?? {};
+      create: async (request: { messages?: { content?: unknown }[] }) => {
+        const prompt = String(request.messages?.[0]?.content ?? "");
+        const scripted = Object.keys(state.scripts).find((name) => prompt.includes(`EMPLOYEE: ${name}`));
+        let reply: Record<string, unknown>;
+        if (scripted) {
+          const turn = state.scriptCalls[scripted] ?? 0;
+          state.scriptCalls[scripted] = turn + 1;
+          const list = state.scripts[scripted]!;
+          reply = (list[Math.min(turn, list.length - 1)] ?? {}) as Record<string, unknown>;
+        } else {
+          reply = (state.drafts[Math.min(state.calls, state.drafts.length - 1)] ?? {}) as Record<string, unknown>;
+        }
         state.calls += 1;
+        /* Let concurrent drafts interleave, as they do against a real API. */
+        await new Promise((resolve) => setImmediate(resolve));
+        while ("takesMs" in reply) {
+          vi.setSystemTime(Date.now() + (reply.takesMs as number));
+          reply = reply.then as Record<string, unknown>;
+        }
         if ("throws" in reply) throw reply.throws;
+        if ("noTool" in reply) {
+          return { stop_reason: "end_turn", content: [{ type: "text", text: "I could not complete this form." }] };
+        }
         return { stop_reason: "tool_use", content: [{ type: "tool_use", name: "write_form_fields", input: reply }] };
       },
     },
@@ -122,6 +176,7 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       return [];
     }
     async fetchRoleGrounding() {
+      if (state.frameworkTakesMs) vi.setSystemTime(Date.now() + state.frameworkTakesMs);
       if (!state.framework) throw new Error("connection terminated");
       const row = (index: number, locator: string, content: string) => ({
         chunk_id: `pmf-${index}`,
@@ -291,12 +346,30 @@ async function createFromTurn(turn: string, employeeName: string) {
   };
 }
 
+/* The burst's six, invented too: Create pressed on all six cards in the same second. */
+const BURST_PEOPLE = [
+  { first: "Corisande", last: "Vell" },
+  { first: "Ambrose", last: "Quillet" },
+  { first: "Isaura", last: "Penhallow" },
+  { first: "Lucan", last: "Threlkeld" },
+  { first: "Ottoline", last: "Carrow" },
+  { first: "Bastian", last: "Kilcoyne" },
+];
+
 /* Invented people only; neither is on any directory. */
 const SHE = { lower: "odalys merriweather", cap: "Odalys Merriweather", first: "Odalys" };
 const HE = { lower: "thane pellingham", cap: "Thane Pellingham", first: "Thane" };
 const DIRECTORY = [
   { id: "e-1", firstName: "Odalys", lastName: "Merriweather", preferredFirstName: null, employmentStatus: "active", salonIds: [DODGE] },
   { id: "e-2", firstName: "Thane", lastName: "Pellingham", preferredFirstName: null, employmentStatus: "active", salonIds: [DODGE] },
+  ...BURST_PEOPLE.map((person, index) => ({
+    id: `e-${index + 3}`,
+    firstName: person.first,
+    lastName: person.last,
+    preferredFirstName: null,
+    employmentStatus: "active",
+    salonIds: [DODGE],
+  })),
 ];
 
 const ATTENDANCE_CHUNK = {
@@ -429,6 +502,10 @@ beforeEach(async () => {
   state.calls = 0;
   state.pauses = [];
   state.framework = true;
+  state.frameworkTakesMs = 0;
+  state.scripts = {};
+  state.scriptCalls = {};
+  state.failOutcomeInsert = false;
   state.directory = DIRECTORY;
   state.manual = MANUAL;
   sequence = 0;
@@ -647,5 +724,186 @@ describe("the governing framework's read fails", () => {
     expect(state.calls).toBe(0);
     expect(value("observation")).toBe("");
     expect(outcome).toEqual({ attempts: 3, reasons: ["framework_read_failed"] });
+  });
+});
+
+/*
+ * QA-2, 26 Oct 2026: the retries are bounded by time as well as by count; the
+ * outcome event can never fail a written draft; and the production shape — six
+ * Create presses in the same second — ends with no blank form.
+ */
+describe("the time budget (80 s from the request's start)", () => {
+  const c = CASES[0]!;
+  const GOOD = { values: { observation: MODEL_OBSERVATION.ncns(c.person.first) }, checked: { offense_type: TICK.ncns } };
+
+  beforeEach(() => {
+    process.env[FLAG] = "true";
+  });
+
+  it("a slow first call (81 s) that came back empty: no retry, the manager's words, the reason recorded", async () => {
+    state.drafts = [{ takesMs: 81_000, then: { values: {} } }, GOOD];
+    const { value, outcome } = await createFromTurn(c.turn, c.person.cap);
+    expect(state.calls).toBe(1);
+    expect(state.pauses).toEqual([]);
+    expect(value("observation")).toBe(c.observed);
+    expect(outcome).toMatchObject({ fallback: "manager_words", attempts: 1 });
+    expect(outcome!.reasons).toEqual(expect.arrayContaining(["empty_tool_call", "time_budget_exceeded"]));
+  });
+
+  it("a slow first call (81 s) that failed: no retry, the manager's words", async () => {
+    state.drafts = [{ takesMs: 81_000, then: { throws: MODEL_ERRORS["529 overloaded"]!.error() } }, GOOD];
+    const { value, outcome, created } = await createFromTurn(c.turn, c.person.cap);
+    expect(created.draftWarning).toBeNull();
+    expect(state.calls).toBe(1);
+    expect(value("observation")).toBe(c.observed);
+    expect(outcome!.reasons).toEqual(["model_error 529 overloaded_error", "time_budget_exceeded"]);
+  });
+
+  it("control: a first call of 79 s is still retried", async () => {
+    state.drafts = [{ takesMs: 79_000, then: { values: {} } }, GOOD];
+    const { value } = await createFromTurn(c.turn, c.person.cap);
+    expect(state.calls).toBe(2);
+    expect(value("observation")).toBe(MODEL_OBSERVATION.ncns(c.person.first));
+  });
+
+  it("a framework read that fails after 81 s is not read again", async () => {
+    state.framework = false;
+    state.frameworkTakesMs = 81_000;
+    const { outcome } = await createFromTurn(c.turn, c.person.cap);
+    expect(state.pauses).toEqual([]);
+    expect(outcome).toEqual({ attempts: 1, reasons: ["framework_read_failed", "time_budget_exceeded"] });
+  });
+});
+
+describe("the outcome event cannot be written", () => {
+  it("the draft already written still returns 200 with its values, and the failure is logged", async () => {
+    process.env[FLAG] = "true";
+    state.failOutcomeInsert = true;
+    state.drafts = [{ values: {} }];
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const c = CASES[0]!;
+      const { value, draft, created, outcome } = await createFromTurn(c.turn, c.person.cap);
+      expect(created.draftWarning).toBeNull();
+      expect(draft).not.toBeNull();
+      expect((draft!.values as Record<string, string>).observation).toBe(c.observed);
+      expect(value("observation")).toBe(c.observed);
+      expect(outcome).toBeNull();
+      expect(logged.mock.calls.map((args) => String(args[0]))).toEqual(
+        expect.arrayContaining([expect.stringMatching(/could not record the drafted event/)]),
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
+});
+
+describe("six Create presses at once (the production burst)", () => {
+  const turnFor = (person: { first: string; last: string }) =>
+    `create a ca for ${person.first.toLowerCase()} ${person.last.toLowerCase()} at dodge, ne. she was a no call no show on 10/22`;
+  const good = (first: string) => ({ values: { observation: MODEL_OBSERVATION.ncns(first) }, checked: { offense_type: TICK.ncns } });
+  /* What the model gives each of the six: some blank, some not; a blank that repeats stays blank. */
+  const SCRIPT = (person: { first: string }, index: number): unknown[] =>
+    [
+      [{ values: {} }, good(person.first)],
+      [{ noTool: true }, good(person.first)],
+      [good(person.first)],
+      [{ values: {} }],
+      [{ noTool: true }],
+      [good(person.first)],
+    ][index]!;
+  const BLANK_FIRST = new Set([0, 1, 3, 4]);
+
+  async function burst() {
+    const prepared = [];
+    for (const person of BURST_PEOPLE) {
+      const turn = turnFor(person);
+      const message: ChatMessage = { id: `m${(sequence += 1)}`, role: "user", content: turn, createdAt: "2026-10-26T15:00:00Z" };
+      const response = await proposeFormForTurn({
+        history: [],
+        question: turn,
+        questionMessageId: message.id,
+        actor: { role: state.role as never, scope: state.scope as AccessScope },
+        summaries: await listTemplateSummaries(),
+        today: "2026-10-26",
+        policyManual: async () => (state.manual?.chunks as never) ?? null,
+      });
+      expect(response?.formProposal?.templateKey).toBe("dpoa");
+      const messages: ChatMessage[] = [
+        message,
+        { id: `a${sequence}`, role: "assistant", content: response!.content, createdAt: "2026-10-26T15:00:01Z", formProposal: response!.formProposal } as ChatMessage,
+      ];
+      const proposal: ChatFormProposal = {
+        ...response!.formProposal!,
+        employeeName: `${person.first} ${person.last}`,
+        locationId: DODGE,
+        status: "ready",
+        supportsInlineDraft: true,
+      };
+      prepared.push({ proposal, messages });
+    }
+    const created = await Promise.all(
+      prepared.map(({ proposal, messages }) => createInlineForm({ proposal, messages, call, onCreated: () => {} })),
+    );
+    return Promise.all(
+      created.map(async (entry) => {
+        const form = await review(entry.reference.instanceId);
+        const events = (store.form_instance_events ?? [])
+          .filter((event) => event.instance_id === entry.reference.instanceId && event.kind === "drafted")
+          .map((event) => (event as { detail: Record<string, unknown> }).detail);
+        return {
+          warning: entry.draftWarning,
+          observation: (form.values.find((row) => row.fieldKey === "observation")?.value ?? "").trim(),
+          events,
+          outcome: events.find((detail) => Array.isArray(detail.reasons)) ?? null,
+        };
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    BURST_PEOPLE.forEach((person, index) => {
+      state.scripts[`${person.first} ${person.last}`] = SCRIPT(person, index);
+    });
+  });
+
+  it("flag on: none ends blank; each fills or uses the manager's words, and every blank attempt records its reason", async () => {
+    process.env[FLAG] = "true";
+    const results = await burst();
+    results.forEach((result, index) => {
+      const person = BURST_PEOPLE[index]!;
+      expect(result.warning, person.first).toBeNull();
+      expect(result.observation, person.first).not.toBe("");
+      const blankAttempts = Math.min(state.scriptCalls[`${person.first} ${person.last}`]!, index === 3 || index === 4 ? 3 : 1);
+      if (index === 2 || index === 5) {
+        expect(result.observation).toBe(MODEL_OBSERVATION.ncns(person.first));
+        expect(result.outcome).toBeNull();
+      } else if (index === 0 || index === 1) {
+        expect(result.observation).toBe(MODEL_OBSERVATION.ncns(person.first));
+      } else {
+        expect(result.observation).toBe(`Observed:\n${person.first} was a no call no show on 10/22.`);
+        expect(result.outcome).toMatchObject({ fallback: "manager_words", attempts: 3 });
+      }
+      if (BLANK_FIRST.has(index)) {
+        const recorded = (result.outcome!.reasons as string[]).filter((reason) => /^(empty_tool_call|no_tool_call)/.test(reason));
+        expect(recorded.length, person.first).toBe(blankAttempts);
+        expect(recorded[0]).toBe(index === 1 || index === 4 ? "no_tool_call stop_reason=end_turn" : "empty_tool_call");
+      }
+    });
+  });
+
+  it("flag off: the ones the model left blank are filed blank, as on main", async () => {
+    const results = await burst();
+    results.forEach((result, index) => {
+      const person = BURST_PEOPLE[index]!;
+      if (BLANK_FIRST.has(index)) {
+        expect(result.observation, person.first).toBe("");
+        expect(result.events, person.first).toContainEqual({ fields: [], rejected: [] });
+      } else {
+        expect(result.observation, person.first).toBe(MODEL_OBSERVATION.ncns(person.first));
+      }
+      expect(result.outcome).toBeNull();
+    });
+    expect(Object.values(state.scriptCalls).every((count) => count === 1)).toBe(true);
   });
 });
