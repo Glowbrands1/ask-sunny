@@ -1,4 +1,5 @@
 import { businessToday } from "@/lib/business-date";
+import { requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
@@ -262,11 +263,26 @@ function isAccountSentence(sentence: string): boolean {
   return NEGATED_ACCOUNT.test(sentence) || describesIncident(sentence);
 }
 
+/*
+ * REQUEST_LINE_ACCOUNT_ENABLED (QA, 26 Oct 2026; the sibling app's live blank
+ * draft): "create a verbal ca for <name> at kearney ne, she was late on
+ * 10-15-26" is one sentence that asks for the form, so it was no account, and
+ * a draft the model left empty was neither retried nor written from the
+ * manager's words. With the flag on, a sentence that asks for the form is
+ * read clause by clause after its first comma. Off, unchanged.
+ */
+function requestLineClauses(sentence: string): string[] {
+  if (!requestLineAccountEnabled() || !ASKS_FOR_THE_FORM.test(sentence)) return [sentence];
+  const clauses = sentence.split(/,\s*/).map((clause) => clause.trim());
+  return [sentence, ...clauses.slice(1)];
+}
+
 export function managerAccountClause(text: string): string | null {
   const turns = (text ?? "").split(/\n\s*\n/).map((turn) => turn.trim()).filter(Boolean);
   for (const turn of [...turns].reverse()) {
     const hits = [...turn.matchAll(/[^.!?\n]+[.!?]*/g)]
       .map((match) => match[0].trim())
+      .flatMap(requestLineClauses)
       .filter((sentence) => sentence.length >= 3 && sentence.length <= 180 && isAccountSentence(sentence));
     if (hits.length === 0) continue;
     let joined = "";

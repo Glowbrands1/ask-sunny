@@ -1032,3 +1032,14 @@ export function hideNoPolicyMatchNoticeEnabled(): boolean {
 export function payrollTypoNotANameEnabled(): boolean {
   return envFlag("PAYROLL_TYPO_NOT_A_NAME_ENABLED");
 }
+
+/**
+ * A one-line request carries its own account (QA, 26 Oct 2026; same flag in
+ * both apps): in "create a verbal ca for <name> at kearney ne, she was late on
+ * 10-15-26" the clause after the comma is what happened, so a draft the model
+ * left blank is retried and then written from it (DRAFT_NEVER_BLANK). See
+ * `managerAccountClause` in `forms/draft-never-blank.ts`. Off, as before.
+ */
+export function requestLineAccountEnabled(): boolean {
+  return envFlag("REQUEST_LINE_ACCOUNT_ENABLED");
+}
