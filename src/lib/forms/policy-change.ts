@@ -120,7 +120,7 @@ const SHORTEST_HEADING = 4;
  * every turn of a coaching form (QA item 6, conv_mvoe0zgh20z4krm), and an
  * onboarding "orientation" cited Orientation p.33.
  */
-const EVERYDAY_ONE_WORD = new Set(["promotions", "promotion", "orientation", "discounting", "solicitation", "overtime", "tanning", "minors", "robberies"]);
+export const EVERYDAY_ONE_WORD: ReadonlySet<string> = new Set(["promotions", "promotion", "orientation", "discounting", "solicitation", "overtime", "tanning", "minors", "robberies"]);
 
 function namedAsPolicy(said: string, key: string): boolean {
   return new RegExp(String.raw` ${key} (?:polic(?:y|ies)|section|rules?) |(?:polic(?:y|ies)|section|rules?) (?:on |for |about )?${key} `).test(said);

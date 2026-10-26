@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
 import type { ManualChunk } from "@/lib/forms/official-policy-manual";
-import { sectionsNamedIn } from "@/lib/forms/policy-change";
+import { groundConductPolicy, readCaPolicy } from "@/lib/forms/ca-policy";
+import { EVERYDAY_ONE_WORD, sectionsNamedIn } from "@/lib/forms/policy-change";
 
 import { attachFormTurnSources } from "@/lib/ai/form-card-slots";
 
@@ -76,5 +77,41 @@ describe("an onboarding orientation is not the Orientation section", () => {
   it.each([TURN, TURN.charAt(0).toUpperCase() + TURN.slice(1)])("flag on: no Orientation section (%s)", (turn) => {
     on();
     expect(cardLines([turn]).join("\n")).not.toMatch(/Orientation/);
+  });
+});
+
+/*
+ * QA-3 on this PR, 26 Oct 2026: pin what must not move. The acknowledgement
+ * account still reads as the Standards of Conduct p.12 (only the Orientation
+ * line goes), a sales "promotions" coaching cites no policy at all, and every
+ * everyday word is a heading in this app's copy of the manual.
+ */
+describe("NEVER-BREAK with the flag off and on", () => {
+  const ACKNOWLEDGEMENT = "create a coaching form for wren okafor, she didnt finish her woven policy acknowledgements from orientation";
+
+  it.each(["", "true"])("the acknowledgement account is Standards of Conduct p.12 (flag %j)", (value) => {
+    vi.stubEnv("POLICY_EVERYDAY_HEADING_ENABLED", value);
+    for (const turn of [ACKNOWLEDGEMENT, ACKNOWLEDGEMENT.charAt(0).toUpperCase() + ACKNOWLEDGEMENT.slice(1)]) {
+      const reading = readCaPolicy(turn);
+      expect(reading.suggestion).toBe("standards_of_conduct");
+      const grounded = groundConductPolicy({ reading, chunks: CHUNKS });
+      expect(grounded.ok && `${grounded.section.heading} p.${grounded.section.page}`).toBe("Standards of Conduct p.12");
+    }
+  });
+
+  it.each([PROMOTIONS, lower(PROMOTIONS), sentence(PROMOTIONS)])("flag on: the sales promotions coaching cites no policy at all (%#)", (...turns) => {
+    on();
+    expect(cardLines(turns)).toEqual([]);
+    expect(readCaPolicy(turns.join("\n")).suggestion).toBeNull();
+  });
+
+  it("every everyday word is a one-word heading in this app's manual", () => {
+    type Row = { metadata?: { sections?: { heading?: string }[] } | null };
+    const headings = new Set(
+      (rows.chunks as Row[]).flatMap((row) => row.metadata?.sections ?? []).map((entry) => (entry.heading ?? "").toLowerCase()),
+    );
+    for (const word of EVERYDAY_ONE_WORD) {
+      expect(headings.has(word) || headings.has(word.replace(/s$/, "")) || headings.has(`${word}s`), word).toBe(true);
+    }
   });
 });
