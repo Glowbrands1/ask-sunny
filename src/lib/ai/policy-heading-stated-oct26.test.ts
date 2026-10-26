@@ -5,6 +5,7 @@ import { readCaPolicy } from "@/lib/forms/ca-policy";
 import { EMPTY_FORM_STATE, prependFormState, stateSentences } from "./form-state";
 import { decideIntentTurn, type IntentTurnInput } from "./intent-slots";
 import type { GroundedPerson } from "./grounded-entities";
+import { managerPolicyHeadings } from "./policy-heading-stated";
 
 /**
  * ============================================================================
@@ -157,4 +158,29 @@ describe("flag on: what the manager named still wins", () => {
     const decision = decideIntentTurn(turn("create a coaching form for oda lindqvist", MODEL_SAYS_ATTENDANCE));
     expect(decision.state.policyHeading).toBeNull();
   });
+});
+
+/* QA-6, 26 Oct 2026: a negated mention supports no heading; a negated incident verb still does what it did. */
+describe("flag on: negated mentions support nothing", () => {
+  const HEADINGS = ["Attendance", "Dress Code for The Company", "Standards of Conduct", "Late Opening"];
+  const registers = (text: string) => [text, text.charAt(0).toUpperCase() + text.slice(1), text.toUpperCase()];
+  it.each(
+    [
+      ["never attendance", []],
+      ["she was not late, she was rude to a client", []],
+      ["attendance is not the issue, dress code is", ["Dress Code for The Company"]],
+      ["attendance isn't the problem", []],
+    ].flatMap(([text, expected]) => registers(text as string).map((typed) => [typed, expected] as const)),
+  )("%s", (text, expected) => {
+    vi.stubEnv("POLICY_HEADING_STATED_ONLY_ENABLED", "true");
+    expect(managerPolicyHeadings(text, HEADINGS)).toEqual(expected);
+  });
+
+  it.each(["ca for marlo no call no show", "she was 20 minutes late to her shift", "not standards of conduct, its attendance"])(
+    "%s still supports Attendance",
+    (text) => {
+      vi.stubEnv("POLICY_HEADING_STATED_ONLY_ENABLED", "true");
+      expect(managerPolicyHeadings(text, HEADINGS)).toContain("Attendance");
+    },
+  );
 });

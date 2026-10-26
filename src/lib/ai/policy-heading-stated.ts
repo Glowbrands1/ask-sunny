@@ -33,9 +33,29 @@ import { headingsNamedIn } from "@/lib/forms/policy-change";
  * Conduct p.12), so the same words give the same policy on every run.
  */
 
+/*
+ * A NEGATED MENTION SUPPORTS NOTHING (QA-6, 26 Oct 2026): "never attendance",
+ * "she was not late, she was rude to a client", "attendance is not the issue,
+ * dress code is". A negation right before a policy or incident word, and
+ * "<it> is not the issue", are taken out before the turn is read. A negated
+ * incident verb is what happened and stays: "did not open the salon on time",
+ * "no call no show".
+ */
+const POLICY_WORD = String.raw`(?:late(?:\s+opening)?|tardy|tardiness|attendance|absent|absences?|dress\s+code|standards?\s+of\s+conduct|conduct|harassment|cell\s+phones?|phones?|cleaning|woven)`;
+const NEGATED_MENTION = new RegExp(
+  String.raw`\b(?:not|never|isn'?t|wasn'?t|weren'?t|no)\s+(?:(?:about|the|a|an|really|even|for|her|his)\s+){0,2}${POLICY_WORD}\b`,
+  "gi",
+);
+const NOT_THE_ISSUE = /[^,.;!?\n]*\b(?:is|was|isn'?t|wasn'?t)\s+(?:not\s+)?(?:the\s+)?(?:issue|problem|reason|point|policy)\b(?<=\bnot\s+(?:the\s+)?(?:issue|problem|reason|point|policy)|n'?t\s+(?:the\s+)?(?:issue|problem|reason|point|policy))/gi;
+
+/** The manager's words with every negated policy mention taken out. */
+export function withoutNegatedMentions(text: string): string {
+  return text.replace(NOT_THE_ISSUE, " ").replace(NEGATED_MENTION, " ");
+}
+
 /** The headings the manager's own words support, the code's reading first. */
 export function managerPolicyHeadings(managerText: string, headings: readonly string[]): string[] {
-  const text = managerText ?? "";
+  const text = policyHeadingStatedOnlyEnabled() ? withoutNegatedMentions(managerText ?? "") : (managerText ?? "");
   const wanted: string[] = [];
   const add = (heading: string | null | undefined) => {
     if (!heading) return;
