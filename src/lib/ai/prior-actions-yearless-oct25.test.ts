@@ -66,6 +66,13 @@ const UNSET = [
   "POLICY_PAGE_REQUIRED_ENABLED",
   "INTENT_PAYROLL_MANAGER_ONLY_ENABLED",
   "CHAT_DATA_TOOLS_ENABLED",
+  /*
+   * QA-6, 26 Oct 2026: with LATE_OPEN_DATE_ENABLED exported in the shell, the
+   * late-open reader dates these turns first and three cases read another
+   * date. They pin the reading without it; production's profile, with it on,
+   * is pinned in `d3-card-date-live-path-oct26.test.ts`.
+   */
+  "LATE_OPEN_DATE_ENABLED",
 ] as const;
 
 const stateBag = vi.hoisted(() => ({ forms: new Map<string, unknown>() }));
