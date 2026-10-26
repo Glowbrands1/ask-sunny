@@ -15,17 +15,20 @@ import { accountSentences } from "./remap-incident";
  * it were the incident; and "she works at our kearney, ne salon" was cut at
  * the comma, so "ne salon as a tc and was late today" became the account.
  *
- * On: the request turn's account stands; a later turn counts only when the
- * request told nothing, and never pasted policy text. A turn that edits the
+ * On: pasted policy text never counts; once the request gave the account, a
+ * short correction of what the form is about ("not attendance, late opening")
+ * does not count either; any other later turn adds to the account as on main. A turn that edits the
  * Observation ("change observation of offense to: …") is always kept for the
- * edit rules. "<place>, <state>" is read without the comma. Which clauses of
+ * edit rules. "<place>, <state>" before a word is read without the comma. Which clauses of
  * a kept turn are the account is not changed here. Off, every turn is passed
  * on as it is.
  *
  * The same rule as Ask Bubbles' `forms/incident-issue.ts`.
  */
 
-const STATE_AFTER_PLACE = /\b([A-Za-z][\w'-]*),\s*(ne|ks|mo|ia|sd|nd|mn|wi|il|tx)\b/gi;
+const STATE_AFTER_PLACE = /\b([A-Za-z][\w'-]*),\s*(ne|ks|mo|ia|sd|nd|mn|wi|il|tx)\b(?=\s+[A-Za-z])/gi;
+/** A short correction of what the form is about: "not attendance, late opening". */
+const CORRECTION = /^\s*(?:no[,.]?\s+|actually,?\s+)?not\s+[\w\s'-]{1,30},\s*[\w\s'-]{1,40}[.!]?\s*$/i;
 const CREATE_REQUEST =
   /\b(?:create|make|need|needs|draft|write|do|start|prepare|issue|give)\b[^.]*?\b(?:ca|c\/a|dpoa|corrective\s+action|write[- ]?up|warning|coaching(?:\s+(?:form|document))?)\b/i;
 const POLICY_TEXT =
@@ -45,7 +48,8 @@ export function observationTurns(turns: readonly string[], employeeName: string 
   return unsplit.filter((turn, index) => {
     if (index <= start) return true;
     if (readTurnEdit(turn)) return true;
-    if (told) return false;
-    return !POLICY_TEXT.test(turn);
+    if (POLICY_TEXT.test(turn)) return false;
+    // A later fact ("i will listen to at least 10 check-ins …") still adds to the account.
+    return !(told && CORRECTION.test(turn));
   });
 }

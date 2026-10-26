@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ChatFormProposal } from "@/types";
 
 import { holdFilledSlots } from "./keep-filled-slots";
+import { observationTurns } from "./observation-turns";
 import type { AskResponse } from "./types";
 
 /**
@@ -109,5 +110,30 @@ describe("INCIDENT_SPLIT_FIX_ENABLED on", () => {
     });
     expect(out.content).not.toMatch(/\*\*Observation of Offense:\*\* ne salon/);
     expect(out.content).toMatch(/\*\*Observation of Offense:\*\* .*was late today/);
+  });
+});
+
+/**
+ * QA-2, 26 Oct 2026, with INCIDENT_SPLIT_FIX_ENABLED on alone: S12
+ * (edits-dates-replay-e2e) lost the later fact "i will listen to at least 10
+ * check-ins on the next shift we overlap.", and remap-incident-oct24 kept
+ * "tanning consultant at empire sd." in the account.
+ */
+describe("INCIDENT_SPLIT_FIX_ENABLED on: later facts and '<place>, <state>.'", () => {
+  const LATER = "ok, make the grammatical changes mentioned that CAN be made. i will listen to at least 10 check-ins on the next shift we overlap.";
+
+  it.each([LATER, LATER.toLowerCase(), LATER.toUpperCase()])("a later fact still adds to the account: %s", (later) => {
+    on();
+    process.env.INCIDENT_SPLIT_FIX_ENABLED = "on";
+    expect(observationTurns(["create a ca for avery stone. on 10-21-26 avery opened the salon 20 minutes late.", later], "Avery Stone")).toContain(later);
+  });
+
+  it.each([
+    "tanning consultant at empire, sd. on 10-22-26 Test was not scheduled to work",
+    "Tanning Consultant at Empire, SD. On 10-22-26 Test was not scheduled to work",
+    "TANNING CONSULTANT AT EMPIRE, SD. ON 10-22-26 TEST WAS NOT SCHEDULED TO WORK",
+  ])("keeps the comma when the state ends the sentence: %s", (turn) => {
+    process.env.INCIDENT_SPLIT_FIX_ENABLED = "on";
+    expect(observationTurns([turn], "Test")[0]).toBe(turn);
   });
 });
