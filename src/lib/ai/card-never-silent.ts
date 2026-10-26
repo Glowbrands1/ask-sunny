@@ -49,13 +49,25 @@ export function speakOnCardTurn(input: {
   const previous = [...input.history].reverse().find((turn) => turn.role === "assistant");
   const silent = !content.trim() || (previous !== undefined && same(previous.content, content));
   if (!silent) return input.response;
-  const line = answerLine(input.question, proposal.status === "ready" && proposal.supportsInlineDraft);
+  const line = BARE_FORM_WORD.test(input.question.trim())
+    ? bareFormLine(proposal.templateName)
+    : answerLine(input.question, proposal.status === "ready" && proposal.supportsInlineDraft);
   return { ...input.response, content: content.trim() ? `${line}\n\n${content.trim()}` : line };
 }
 
 function same(a: string, b: string): boolean {
   const flat = (text: string) => text.replace(/\s+/g, " ").trim();
   return flat(a) === flat(b);
+}
+
+/**
+ * QA, 26 Oct 2026 (both apps): "ca" alone opened a blank card with no text.
+ * A turn that is only a form word asks for the facts the form needs.
+ */
+const BARE_FORM_WORD = /^(?:(?:a|an|new)\s+)?(?:ca|c\/a|dpoa|coach|coaching|exit|write\s*up|corrective\s+action)(?:\s+form)?[.!?]*$/i;
+
+function bareFormLine(templateName: string): string {
+  return `Who is this **${templateName}** for, and what happened? Tell me their name, the date and what they did, and I'll fill in the card.`;
 }
 
 function answerLine(question: string, canCreate: boolean): string {

@@ -92,3 +92,23 @@ describe("CARD_NEVER_SILENT_ENABLED on", () => {
     expect(turn("verbal", changed)).toBe(changed);
   });
 });
+
+/** QA, 26 Oct 2026 (both apps): "ca" alone opened a blank card with no text. */
+describe("CARD_NEVER_SILENT_ENABLED on: a bare form word asks for the facts", () => {
+  const BLANK = { ...CARD, employeeName: null, status: "needs_employee", supportsInlineDraft: false } as ChatFormProposal;
+
+  it.each(["ca", "Ca", "CA", "coach", "Coaching", "EXIT", "exit form", "a ca", "write up"])("'%s' with an empty card asks who and what happened", (word) => {
+    process.env[FLAG] = "on";
+    const out = withCardNeverSilent({ content: "", citations: [], formProposal: BLANK } as unknown as AskResponse, { question: word, history: [] } as unknown as AskRequest);
+    expect(out.content).toBe(
+      "Who is this **Corrective Action Form** for, and what happened? Tell me their name, the date and what they did, and I'll fill in the card.",
+    );
+    expect(out.formProposal).toBe(BLANK);
+  });
+
+  it("a reply that already says something is left as it is", () => {
+    process.env[FLAG] = "on";
+    const response = { content: "Who is this **Corrective Action Form** for?", citations: [], formProposal: BLANK } as unknown as AskResponse;
+    expect(withCardNeverSilent(response, { question: "ca", history: [] } as unknown as AskRequest)).toBe(response);
+  });
+});
