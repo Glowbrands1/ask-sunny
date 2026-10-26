@@ -845,3 +845,12 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * The draft route keeps up to 24,000 characters of the manager's notes
+ * instead of 4,000, so a long account (CHAT_LONG_MESSAGE) is drafted whole
+ * (QA, 26 Oct 2026). Off, the 4,000-character cut stays.
+ */
+export function longDraftNotesEnabled(): boolean {
+  return envFlag("LONG_DRAFT_NOTES_ENABLED");
+}

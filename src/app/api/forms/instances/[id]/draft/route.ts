@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
+  longDraftNotesEnabled,
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   attendancePolicyCitationEnabled,
@@ -236,6 +237,9 @@ interface DraftBody {
   keepManagerValues?: boolean;
 }
 
+/** Two full-length chat messages (CHAT_LONG_MESSAGE allows 12,000 characters each). */
+const LONG_DRAFT_NOTES_LIMIT = 24_000;
+
 function fieldBrief(field: FormField, variantLabel: string | null): string {
   const label = interpolate(field.label, null).replace(/\{\{\w+\}\}/g, variantLabel ?? "the employee");
   /*
@@ -296,7 +300,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
-    const notes = String(body.notes ?? "").trim().slice(0, 4000);
+    /*
+     * LONG_DRAFT_NOTES_ENABLED (QA, 26 Oct 2026): a 12,000-character account
+     * (CHAT_LONG_MESSAGE) was drafted from its first 4,000 only. With the flag
+     * the notes keep up to LONG_DRAFT_NOTES_LIMIT; off, the 4,000 cut stays.
+     */
+    const notes = String(body.notes ?? "")
+      .trim()
+      .slice(0, longDraftNotesEnabled() ? LONG_DRAFT_NOTES_LIMIT : 4000);
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
