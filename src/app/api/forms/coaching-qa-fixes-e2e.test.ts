@@ -619,3 +619,52 @@ describe("P7 — shared and service accounts are never a name suggestion", () =>
     expect(response!.content).toMatch(/^Did you mean \*\*Kaitlyn Marsh\*\*\?/);
   });
 });
+
+/*
+ * NEGATED_LATENESS_TOPIC_ENABLED (QA tester 2, 26 Oct 2026; the employee is the
+ * harness's): "coaching form for <name>, she was not late today" came back
+ * ticked "Other: Punctuality". Off, as drafted; on, the denied topic is cleared
+ * and the Details stay as the manager put them.
+ */
+describe("a lateness that did not happen is no Punctuality topic", () => {
+  const NOT_LATE = "Create a coaching form for Kaitlyn Marsh, she was not late today.";
+  const DRAFTED = {
+    values: { coaching_details: "Observed:\nKaitlyn was not late today.", other_topic: "Punctuality" },
+    checked: { coaching_topics: ["other"] },
+  };
+
+  for (const on of [false, true]) {
+    it(`flag ${on ? "on" : "off"}: ${on ? "no" : "the drafted"} Other: Punctuality`, async () => {
+      const before = process.env.NEGATED_LATENESS_TOPIC_ENABLED;
+      if (on) process.env.NEGATED_LATENESS_TOPIC_ENABLED = "true";
+      else delete process.env.NEGATED_LATENESS_TOPIC_ENABLED;
+      try {
+        state.draft = DRAFTED;
+        const { id } = await createFrom([said(NOT_LATE)]);
+        const read = await snapshot(id);
+        expect(read.coaching_details!.value).toBe("Observed:\nKaitlyn was not late today.");
+        if (on) {
+          expect(read.other_topic?.value ?? "").toBe("");
+          expect(read.coaching_topics?.checked ?? []).not.toContain("other");
+        } else {
+          expect(read.other_topic!.value).toBe("Punctuality");
+          expect(read.coaching_topics!.checked).toEqual(["other"]);
+        }
+      } finally {
+        if (before === undefined) delete process.env.NEGATED_LATENESS_TOPIC_ENABLED;
+        else process.env.NEGATED_LATENESS_TOPIC_ENABLED = before;
+      }
+    });
+  }
+
+  it("flag on, NEVER-BREAK: a real lateness keeps its Punctuality topic", async () => {
+    process.env.NEGATED_LATENESS_TOPIC_ENABLED = "true";
+    try {
+      state.draft = DRAFTED;
+      const { id } = await createFrom([said("Create a coaching form for Kaitlyn Marsh, she was late today.")]);
+      expect((await snapshot(id)).other_topic!.value).toBe("Punctuality");
+    } finally {
+      delete process.env.NEGATED_LATENESS_TOPIC_ENABLED;
+    }
+  });
+});
