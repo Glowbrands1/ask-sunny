@@ -153,6 +153,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withNewFormOwnTurn } from "./new-form-own-turn";
 import { withTerseSlots } from "./terse-slots";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -290,7 +291,8 @@ async function answerQuestionChecked(
     const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    return keepManagerActionPlan(await applyQuietQuality(response), request);
+    // NEW_FORM_OWN_TURN_ENABLED: another form after a card is drafted from its own turns.
+    return keepManagerActionPlan(withNewFormOwnTurn(await applyQuietQuality(response), request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();

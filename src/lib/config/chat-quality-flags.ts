@@ -883,6 +883,15 @@ export function followUpNotPriorEnabled(): boolean {
 }
 
 /**
+ * A new form asked for after a card ("another coaching form for <name>, …")
+ * is drafted from the turns after that card only (QA, 26 Oct 2026; same flag
+ * in both apps). See `ai/new-form-own-turn.ts`. Off, the card is as it is.
+ */
+export function newFormOwnTurnEnabled(): boolean {
+  return envFlag("NEW_FORM_OWN_TURN_ENABLED");
+}
+
+/**
  * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
  * second person when a chat card is created (production, 26 Oct 2026: "…at
  * Dodge, NE. She did not clock in…" was refused as naming "Odalys
