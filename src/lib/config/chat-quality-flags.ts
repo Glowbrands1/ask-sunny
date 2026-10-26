@@ -847,6 +847,16 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * The way managers name a salon ("o st", "kearney ne", "lincoln o st") is
+ * written as the roster name before any reader sees the turn; the aliases are
+ * built from the salon list (25 Oct 2026). See `ai/store-alias.ts`. Off,
+ * every turn is read as typed.
+ */
+export function storeAliasEnabled(): boolean {
+  return envFlag("STORE_ALIAS_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of

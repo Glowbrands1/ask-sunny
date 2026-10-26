@@ -154,6 +154,7 @@ import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withTerseSlots } from "./terse-slots";
+import { withStoreAliases } from "./store-alias";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -287,7 +288,8 @@ async function answerQuestionChecked(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
+    // STORE_ALIAS_ENABLED: a salon named the managers' way is read as its roster name.
+    const response = await answerQuestionUntraced(withStoreAliases(withTerseSlots(request)), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     return keepManagerActionPlan(await applyQuietQuality(response), request);
