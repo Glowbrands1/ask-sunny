@@ -187,13 +187,43 @@ export function cleaningIncident(rawText: string): boolean {
   return cleaningIncidentPhrase(rawText) !== null;
 }
 
+/*
+ * NOT AN ACCOUNT OF CLEANING LEFT UNDONE (QA-6, 26 Oct 2026): "she never left
+ * the beds dirty", "the beds were not left dirty", "no dirty beds", "she did
+ * not fail to clean the beds", "it is not about cleaning, she was late", "not
+ * cleaning, attendance", "she is not responsible for cleaning". A negation
+ * just before the incident words, in the same clause, undoes them; a
+ * "failure" that is about the topic or a double negative is not one; a bare
+ * "not" counts only before what was not done ("not cleaned").
+ */
+const NEGATED_INCIDENT = /\b(?:never|not|no|no\s+one|nobody|none|did ?n[o']?t|didn't|was ?n[o']?t|wasn't|were ?n[o']?t|weren't)\s+(?:\S+\s+){0,3}$/;
+const NOT_A_FAILURE = /\b(?:about|responsible|regarding|related|fail|forget|neglect|only|just)\b/;
+const DONE_WORD = /\b(?:cleaned|san[ai]?t[ai]?[zs]ed|disinfected|wiped\s+down|mopped|swept|vacuumed|dusted)\b/;
+/** The patterns above that say what happened ("left … dirty", "dirty beds", "skipped …"), not that something failed. */
+const AFFIRMATIVE_PATTERNS = new Set([3, 4, 5]);
+
+function clauseBefore(sentence: string, index: number): string {
+  return sentence.slice(0, index).split(/[,;:–—]|\s-\s|\bbut\b/).pop() ?? "";
+}
+
+function readsAsIncident(sentence: string, match: RegExpExecArray, pattern: number): boolean {
+  const before = clauseBefore(sentence, match.index);
+  if (AFFIRMATIVE_PATTERNS.has(pattern)) return !NEGATED_INCIDENT.test(before);
+  if (pattern === 1 || pattern === 2) {
+    if (NOT_A_FAILURE.test(match[0])) return false;
+    if (NEGATED_INCIDENT.test(before)) return false;
+    if (pattern === 2 && /^not\b/.test(match[0]) && !DONE_WORD.test(match[0])) return false;
+  }
+  return true;
+}
+
 /** The manager's words that say the cleaning was left undone, as written, or null. */
 export function cleaningIncidentPhrase(rawText: string): string | null {
   if (!policyCleaningIncidentEnabled()) return null;
   for (const sentence of statements(normalize(rawText))) {
-    for (const pattern of CLEANING_UNDONE) {
+    for (const [index, pattern] of CLEANING_UNDONE.entries()) {
       const match = pattern.exec(sentence);
-      if (match) return match[0].trim();
+      if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
     }
   }
   return null;
