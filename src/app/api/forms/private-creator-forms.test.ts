@@ -22,6 +22,8 @@ const PRIVATE = "11111111-1111-4111-8111-111111111111";
 const PUBLIC = "22222222-2222-4222-8222-222222222222";
 
 let rows: { id: string; createdBy: string }[] = [];
+/** The limit each listInstances call asked for. */
+let limits: (number | undefined)[] = [];
 
 function instanceRow(row: { id: string; createdBy: string }) {
   return {
@@ -121,7 +123,10 @@ async function load(viewer: Viewer, env: { flag?: boolean; ids?: string } = {}) 
         : null;
     },
     // Honours the limit, newest (listed first) first, so a page can fill with private rows.
-    listInstances: async (_view: string, limit = 200) => rows.slice(0, limit).map(instanceRow),
+    listInstances: async (_view: string, limit?: number) => {
+      limits.push(limit);
+      return rows.slice(0, limit ?? 200).map(instanceRow);
+    },
     findDemoInstances: async () => ({ deletable: [], protected: [] }),
     saveInstanceValues: async (id: string) => {
       saved.push(id);
@@ -156,6 +161,7 @@ beforeEach(() => {
     { id: PRIVATE, createdBy: CREATOR },
     { id: PUBLIC, createdBy: "sd-1" },
   ];
+  limits = [];
   vi.resetModules();
 });
 afterEach(() => {
@@ -202,6 +208,23 @@ describe("off, or nobody listed: as today", () => {
     expect(await listed(viewer, { flag: true, ids: " , " })).toEqual([PRIVATE, PUBLIC]);
   });
 
+  it("flag off: the list read asks exactly what main asks, and the body is byte-identical to no list at all", async () => {
+    const { list } = await load("salon director", { ids: CREATOR });
+    const withIds = await (await list.GET(new Request("https://app.test/api/forms/instances"))).text();
+    expect(limits).toEqual([undefined]);
+    const plain = await load("salon director", {});
+    const without = await (await plain.list.GET(new Request("https://app.test/api/forms/instances"))).text();
+    expect(withIds).toBe(without);
+  });
+
+  it("flag on with an empty list: the same read, the same body", async () => {
+    const { list } = await load("salon director", { flag: true, ids: " , " });
+    const body = await (await list.GET(new Request("https://app.test/api/forms/instances"))).text();
+    expect(limits).toEqual([undefined]);
+    const plain = await load("salon director", {});
+    expect(body).toBe(await (await plain.list.GET(new Request("https://app.test/api/forms/instances"))).text());
+  });
+
   it("the flag reads off by default", async () => {
     delete process.env[FLAG];
     const { privateCreatorFormsEnabled } = await import("@/lib/forms/private-creators");
@@ -216,6 +239,7 @@ describe("a page of private rows does not hide visible ones", () => {
       { id: PUBLIC, createdBy: "sd-1" },
     ];
     expect(await listed("salon director", ON)).toEqual([PUBLIC]);
+    expect(limits).toEqual([800]);
   });
 
   it("trims back to the page of 200 for the creator", async () => {
