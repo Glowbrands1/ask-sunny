@@ -1030,7 +1030,10 @@ action on the form". On this app's intent path the stored slots put ahead of
 each turn read as a new request, so the proposal read the prior actions from
 the latest turn alone. On, `prior-actions-retained.ts` lists the priors the
 manager stated for this form again (and puts their turns back on the card's
-sources) until "no prior coaching" or "remove the prior". Not needed in Ask
+sources) until "no prior coaching" or "remove the prior" (QA-6: a removal
+clears only the kind it names, a negated prior or one for another person is
+never listed, and a new creation request for the same employee starts over).
+Not needed in Ask
 Bubbles: its live form path is the full remap, whose prior-actions line reads
 every turn of the form; replayed there on main (066ad62) with store wording,
 the prior stays through "no payroll deduct", "no payroll deduction",

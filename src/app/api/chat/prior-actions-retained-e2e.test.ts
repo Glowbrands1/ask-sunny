@@ -174,11 +174,17 @@ vi.mock("@/lib/reporting/read/employee-facts", () => ({
   EMPLOYEE_DATA_HEADING: "CURRENT EMPLOYEE PERFORMANCE DATA",
 }));
 
-vi.mock("@/lib/forms/employee-roster", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/forms/employee-roster")>()),
-  readDirectoryFacts: async () => [],
-  loadScopedRoster: async () => [],
-}));
+/** The directory: empty, as live (the typed name proceeds), unless a case puts Mara Quill in it. */
+const roster = vi.hoisted(() => ({ people: [] as unknown[] }));
+
+vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
+  return {
+    ...actual,
+    readDirectoryFacts: async () => roster.people,
+    loadScopedRoster: async (scope: Parameters<typeof actual.scopeRoster>[1]) => actual.scopeRoster(roster.people as never, scope),
+  };
+});
 
 vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/forms/prior-forms")>()),
@@ -299,6 +305,7 @@ const REGISTERS = [
 const saved = new Map<string, string | undefined>();
 
 beforeEach(async () => {
+  roster.people = [];
   for (const key of Object.keys(store)) store[key] = [];
   for (const name of [...PRODUCTION, ...BUNDLE, FLAG]) saved.set(name, process.env[name]);
   for (const name of PRODUCTION) process.env[name] = "1";
@@ -444,5 +451,139 @@ describe("flag off: the reader returns the response it was given", () => {
     expect(JSON.stringify(response)).toBe(before);
     process.env[FLAG] = "1";
     expect(priorLine(withRetainedPriorActions(response as never, input).content)).toMatch(STATED);
+  });
+});
+
+/*
+ * QA-6 (26 Oct 2026), probing the reader with the flag on: a negated prior, a
+ * prior for somebody else, a removal of one kind beside a stated prior, and a
+ * new form for the same employee. Each in lowercase, Sentence case and
+ * capitals, with PRIOR_ACTIONS_PARSE_ENABLED on and off.
+ */
+const CASINGS = [
+  ["lowercase", (turn: string) => turn.toLowerCase()],
+  ["Sentence case", (turn: string) => turn.charAt(0).toUpperCase() + turn.slice(1)],
+  ["CAPS", (turn: string) => turn.toUpperCase()],
+] as const;
+const PARSE = [
+  ["parse on", "1"],
+  ["parse off", ""],
+] as const;
+const EVERY = CASINGS.flatMap(([casing, cased]) => PARSE.map(([parse, value]) => [`${casing}, ${parse}`, cased, value] as const));
+const MARA = {
+  id: "mara",
+  firstName: "Mara",
+  lastName: "Quill",
+  preferredFirstName: null,
+  salonIds: ["loc-0309"],
+  title: "Tanning Consultant",
+  primarySalonId: "loc-0309",
+  primaryLocationName: "NE Kearney",
+};
+const COACHING = /^\*\*Prior actions:\*\* Coaching — (?:signed )?07\/29\/2026, as you said\./i;
+
+describe("QA-6 (flag on)", () => {
+  beforeEach(() => {
+    process.env[FLAG] = "1";
+  });
+
+  const run = async (cased: (turn: string) => string, parse: string, turns: readonly string[]) => {
+    if (parse) process.env.PRIOR_ACTIONS_PARSE_ENABLED = "1";
+    else delete process.env.PRIOR_ACTIONS_PARSE_ENABLED;
+    return (await chat(turns.map(cased))).answers;
+  };
+
+  describe("1. a negated prior is never listed on a later turn", () => {
+    it.each(EVERY)('"she did not have prior coaching on 7-29-26", then "no payroll deduct" (%s)', async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "she did not have prior coaching on 7-29-26", T3]);
+      expect(priorLine(answers[2]!.content), answers[2]!.content).toBeNull();
+    });
+
+    it.each(EVERY)("it takes back the same prior stated earlier (%s)", async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "prior coaching 7-29-26", "she did not have prior coaching on 7-29-26", T3]);
+      expect(priorLine(answers[3]!.content), answers[3]!.content).toBeNull();
+    });
+
+    it.each(EVERY)("a negation elsewhere in the sentence does not take it back (%s)", async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "she didn't finish it again and had prior coaching on 7-29-26", T3]);
+      expect(priorLine(answers[2]!.content), answers[2]!.content).toMatch(COACHING);
+    });
+  });
+
+  describe("2. a prior for somebody else is never put on this employee's card", () => {
+    it.each(EVERY)('"prior coaching for Avery Holt 7-29-26", then "no payroll deduct" (%s)', async (_label, cased, parse) => {
+      // Mara Quill on the directory keeps the card hers, as in QA's run. With an empty directory the
+      // turn names Avery Holt and the card becomes Avery Holt's (unchanged by this flag).
+      roster.people = [MARA];
+      const answers = await run(cased, parse, [T1, "prior coaching for Avery Holt 7-29-26", T3]);
+      expect(answers[2]!.formProposal?.employeeName?.toLowerCase(), answers[2]!.content).toBe("mara quill");
+      expect(priorLine(answers[2]!.content), answers[2]!.content).toBeNull();
+    });
+
+    it.each(EVERY)("the reader alone: Mara Quill's card never takes Avery Holt's prior (%s)", async (_label, cased, parse) => {
+      if (parse) process.env.PRIOR_ACTIONS_PARSE_ENABLED = "1";
+      else delete process.env.PRIOR_ACTIONS_PARSE_ENABLED;
+      const { withRetainedPriorActions } = await import("@/lib/ai/prior-actions-retained");
+      const card = { content: `I'll draft it.\n\n${PRIORS_HELD}`, formProposal: { templateKey: "dpoa", employeeName: "Mara Quill", sourceMessageIds: ["m2"] } };
+      const history = [
+        { id: "m0", role: "user", content: cased(T1) },
+        { id: "m1", role: "user", content: cased("prior coaching for Avery Holt 7-29-26") },
+      ];
+      const read = withRetainedPriorActions(card as never, { question: cased(T3), questionMessageId: "m2", history, today: TODAY });
+      expect(priorLine(read.content)).toBeNull();
+      const own = withRetainedPriorActions(card as never, {
+        question: cased(T3),
+        questionMessageId: "m2",
+        history: [history[0]!, { id: "m1", role: "user", content: cased("prior coaching 7-29-26") }],
+        today: TODAY,
+      });
+      expect(priorLine(own.content)).toMatch(COACHING);
+    });
+
+    it.each(EVERY)('"Avery Holt had a prior verbal 6-1-26", then "no payroll deduct" (%s)', async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "Avery Holt had a prior verbal 6-1-26", T3]);
+      expect(priorLine(answers[2]!.content), answers[2]!.content).toBeNull();
+    });
+
+    it.each(EVERY)("a prior for this employee by name is kept (%s)", async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "prior coaching for mara quill on 7-29-26", T3]);
+      expect(priorLine(answers[2]!.content), answers[2]!.content).toMatch(/07\/29\/2026/);
+    });
+  });
+
+  describe("3. a removal clears only the kind it names", () => {
+    it.each(EVERY)('"prior coaching 7-29-26 but no prior written" keeps the coaching (%s)', async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "prior coaching 7-29-26 but no prior written", T3]);
+      expect(priorLine(answers[2]!.content), answers[2]!.content).toMatch(COACHING);
+    });
+
+    it.each(EVERY)('"no prior written" on its own turn drops the written and keeps the coaching (%s)', async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "prior coaching 7-29-26", "prior written warning on 8-3-26", "no prior written", T3]);
+      for (const answer of answers.slice(3)) {
+        expect(priorLine(answer.content), answer.content).toMatch(COACHING);
+        expect(priorLine(answer.content)).not.toMatch(/written|08\/03/i);
+      }
+    });
+
+    it.each(EVERY)('"no priors" still clears them all (%s)', async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, "prior coaching 7-29-26", "no priors", T3]);
+      expect(priorLine(answers[3]!.content), answers[3]!.content).toBeNull();
+    });
+  });
+
+  describe("4. a new form for the same employee starts over", () => {
+    const ANOTHER = "create another corrective action for mara quill for being late 10-20-26 with a new incident";
+    it.each(EVERY)("the old form's prior is not carried onto it (%s)", async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, T2, ANOTHER, T3]);
+      for (const answer of answers.slice(2)) expect(priorLine(answer.content), answer.content).toBeNull();
+      expect(answers[3]!.formProposal?.sourceMessageIds).not.toContain("m1");
+    });
+
+    it.each(EVERY)("a prior given for the new form is kept on it (%s)", async (_label, cased, parse) => {
+      const answers = await run(cased, parse, [T1, T2, ANOTHER, "prior coaching on 9-1-26", T3]);
+      const line = priorLine(answers[4]!.content);
+      expect(line, answers[4]!.content).toMatch(/09\/01\/2026/);
+      expect(line).not.toMatch(/07\/29\/2026/);
+    });
   });
 });
