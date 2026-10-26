@@ -847,6 +847,15 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * "CA" after a place ("Sacramento, CA", "Los Angeles CA 90001") is read as
+ * California, not as a Corrective Action (Ask Sunny conv_mvokdp2c24wi9re,
+ * 26 Oct 2026). See `ai/state-ca.ts`. Off, every turn is read as typed.
+ */
+export function stateCaGuardEnabled(): boolean {
+  return envFlag("STATE_CA_GUARD_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
