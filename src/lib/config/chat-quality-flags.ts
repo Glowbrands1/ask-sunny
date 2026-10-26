@@ -867,3 +867,15 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * Two incidents in one account cite both policies (Code 3; QA, 26 Oct 2026;
+ * same flag in both apps): "not opening salon on time and no call no show"
+ * cited Attendance only. On, a late opening the manager describes without
+ * the word "late" ("not opening salon on time") ticks Tardiness and cites
+ * Late Opening, and the two sections are listed in the order the manager
+ * said the incidents. Off, as before.
+ */
+export function policyTwoIncidentsEnabled(): boolean {
+  return envFlag("POLICY_TWO_INCIDENTS_ENABLED");
+}

@@ -30,6 +30,14 @@ import { listIncidentDates } from "./form-date-answer";
 export const LATE_TO_OPEN = /\blate\s+to\s+open\b/i;
 
 /**
+ * A late opening said without "late": "not opening salon on time", "didn't
+ * open the store on time", "failed to open" (POLICY_TWO_INCIDENTS_ENABLED).
+ * A plain "opener" or "opening shift" is not one.
+ */
+export const NOT_OPENED_ON_TIME =
+  /\b(?:not|never|didn'?t|did\s+not|wasn'?t|was\s+not|failed\s+to|forgot\s+to)\s+(?:open|opening|opened)\s+(?:(?:the|her|his|their|our)\s+)?(?:(?:salon|store|location|shop)\b(?:\s+on\s+time\b)?|on\s+time\b)/i;
+
+/**
  * An account that is also about a shift or an absence, which the Attendance
  * section governs whatever else happened.
  */

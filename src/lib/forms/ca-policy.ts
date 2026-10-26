@@ -1,7 +1,7 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, policyTwoIncidentsEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
-import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
+import { LATE_TO_OPEN, lateOpenOn, NOT_OPENED_ON_TIME } from "./late-open";
 import {
   findManualSection,
   isApprovedPolicyManualTitle,
@@ -406,7 +406,8 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
 export function describedAttendanceKeys(rawText: string): string[] | null {
   const text = normalize(rawText);
   const absent = ABSENCE.test(text);
-  const late = LATENESS.test(text);
+  // POLICY_TWO_INCIDENTS_ENABLED: "not opening salon on time" is a lateness too.
+  const late = LATENESS.test(text) || (policyTwoIncidentsEnabled() && NOT_OPENED_ON_TIME.test(text));
   if (!absent && !late) return null;
   if (absent && late) return ["tardiness", "absenteeism"];
   return absent ? ["absenteeism"] : ["tardiness"];
@@ -840,4 +841,30 @@ export function caPolicyAmbiguousNotice(reading: CaPolicyReading): string | null
 export function describedPolicyChoiceNotice(choices: readonly { heading: string; page: number }[]): string {
   const listed = choices.map((choice) => `${choice.heading} (page ${choice.page})`);
   return `What you described reads as more than one policy in the manual — ${listed.slice(0, -1).join(", ")} or ${listed.at(-1)} — so the policy is left for you. Tell me which (for example "add the ${choices[0]!.heading}"), or tick Type of Offense and complete Direct policy on the form.`;
+}
+
+/**
+ * Where the account first describes each kind of attendance incident, for
+ * listing two cited sections in the order the manager said them
+ * (POLICY_TWO_INCIDENTS_ENABLED). A late opening's own "late" is not a late
+ * shift. -1 when the account does not describe it.
+ */
+export function attendanceIncidentPositions(rawText: string, lateOpening: RegExp): { lateOpening: number; attendance: number } {
+  const text = normalize(rawText);
+  const opening = [lateOpening, NOT_OPENED_ON_TIME, LATE_TO_OPEN]
+    .map((pattern) => {
+      const match = new RegExp(pattern.source, "i").exec(text);
+      return match ? { start: match.index, end: match.index + match[0].length } : null;
+    })
+    .filter((span): span is { start: number; end: number } => span !== null);
+  const insideOpening = (index: number) => opening.some((span) => index >= span.start && index < span.end + 12);
+  let attendance = -1;
+  for (const pattern of [ABSENCE, LATENESS]) {
+    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+      if (insideOpening(match.index)) continue;
+      if (attendance === -1 || match.index < attendance) attendance = match.index;
+      break;
+    }
+  }
+  return { lateOpening: opening.length > 0 ? Math.min(...opening.map((span) => span.start)) : -1, attendance };
 }
