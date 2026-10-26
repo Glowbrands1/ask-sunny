@@ -40,8 +40,21 @@ interface PlaceParts {
 
 /** This app's locations, as name, state, city and the part after a shared city. */
 const READERS = {
+  /**
+   * A whole-turn place reply is written as this app's slot answer, "the salon
+   * is NE Kearney": every reader takes it as the salon, and the incident
+   * readers never take it for what happened (QA, 26 Oct 2026: a bare "o st"
+   * became What happened and the incident given earlier was lost).
+   */
+  placeReply: (name: string): string => `the salon is ${name}`,
   /** The turn names one salon the readers read. */
   named: (text: string): boolean => readSalonMentions(text).some((mention) => mention.salonIds.length === 1),
+  /**
+   * Local shorthand that names one salon, the reviewed list `salon-mention.ts`
+   * already reads ("st joe" is St. Joseph, MO). Read with a place cue or as the
+   * whole reply, like a street alone.
+   */
+  shorthand: { "st joe": "MO St Joseph" } as Readonly<Record<string, string>>,
   places: (): PlaceParts[] => {
     const rests = PRODUCTION_SALONS.map((salon) => salon.name.slice(salon.state.length).trim());
     const cities = ["Kansas City", "Lincoln", "Omaha"].filter(
@@ -57,7 +70,8 @@ const READERS = {
   },
 };
 
-const CUE_BEFORE = /\b(?:at|in|our|the|location|salon|store)\s+$/i;
+// "the location is o st", "salon: o st" (QA, 26 Oct 2026).
+const CUE_BEFORE = /\b(?:at|in|our|the|location|salon|store)\s+$|\b(?:location|salon|store)\s*(?:is|=|:)\s*$/i;
 const CUE_AFTER = /^\s*(?:location|salon|store)\b/i;
 const SUFFIXES: readonly [string, string][] = [
   ["street", "st"],
@@ -115,6 +129,7 @@ const ALIASES: readonly Alias[] = (() => {
       add(city, true);
     }
   }
+  for (const [phrase, name] of Object.entries(READERS.shorthand)) all.push({ phrase, name, cued: true });
   // One alias, one location: a phrase two locations share is never used.
   const owners = new Map<string, Set<string>>();
   for (const alias of all) owners.set(alias.phrase, (owners.get(alias.phrase) ?? new Set()).add(alias.name));
@@ -128,7 +143,9 @@ export function withStoreAliases(request: AskRequest): AskRequest {
   if (!storeAliasEnabled()) return request;
   const asked = (index: number) => {
     const before = [...request.history.slice(0, index)].reverse().find((turn) => turn.role === "assistant");
-    return PLACE_QUESTION.test(before?.content ?? "");
+    // The app asked, or its card is still waiting on the salon.
+    const card = (before as { readonly formProposal?: { readonly locationId?: string | null; readonly locationResolution?: string } | null } | undefined)?.formProposal;
+    return PLACE_QUESTION.test(before?.content ?? "") || Boolean(card && !card.locationId && card.locationResolution === "needs_selection");
   };
   // An alias fills the first SALON the chat names; a turn that already names one the
   // readers read, and every turn after it, stays as typed, so a later place word never
@@ -182,9 +199,13 @@ export function rosterNames(text: string, placeAsked = false): string {
   // address reader's, never a salon or store.
   out = out.replace(ADDRESS, (found) => `\u0000${kept.push(found) - 1}\u0000`);
   const whole = out.trim().replace(/[.!?]+$/, "").trim().toLowerCase();
+  // "NE Kearney" typed alone under "Which salon?" is the salon answer too.
+  if (placeAsked && /^\u0000\d+\u0000$/.test(whole) && READERS.places().some((place) => place.name === kept[Number(whole.slice(1, -1))])) {
+    return READERS.placeReply(kept[Number(whole.slice(1, -1))]!);
+  }
   for (const alias of ALIASES) {
     if (whole === alias.phrase && (placeAsked || alias.phrase.includes(" "))) {
-      out = alias.name;
+      out = READERS.placeReply(alias.name);
       break;
     }
     const pattern = new RegExp(`(?<![\\w\\u0000])${escape(alias.phrase).replace(/,\\s?/g, ",?\\s*").replace(/ /g, "\\s+")}(?![\\w\\u0000])`, "gi");
