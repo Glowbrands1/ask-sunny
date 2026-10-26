@@ -198,6 +198,15 @@ const TOPICS: readonly TopicRule[] = [
     unless: /\b(?:coworkers?|co-workers?|team\s*members?|teammates?|colleagues?|staff|employees?|manager|managers|sd|asd|dm|supervisor)\b/,
     cite: { kind: "conduct_line", anchor: /Behavior that demonstrates disrespect/i },
   },
+  {
+    /* Rude to a guest is the Standards of Conduct, page 12 (Pau confirmed): the heading, not a listed line. */
+    id: "rude_guest",
+    words: [
+      /\b(?:rude|disrespectful|unprofessional|snippy|snapped|yelled|yelling|cursed|cursing|swore|swearing|argu(?:ed|ing)|attitude|short)\s+(?:\S+\s+){0,2}?(?:to|at|toward|towards|with)\s+(?:\S+\s+){0,2}?(?:guests?|customers?|clients?|members?)\b/,
+      /\b(?:guests?|customers?|clients?)\s+(?:complained|complaint)\b/,
+    ],
+    cite: { kind: "heading", heading: CONDUCT_HEADING },
+  },
 ];
 
 /* ------------------------------------------------------------- reading -- */

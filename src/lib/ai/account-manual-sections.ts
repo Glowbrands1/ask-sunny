@@ -1,4 +1,4 @@
-import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { policySpecificTopicsEnabled, printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
 import { describedManualSection, namedManualSection } from "@/lib/forms/named-policy-section";
 import {
@@ -33,7 +33,7 @@ export function accountManualSections(
   const keys =
     statedOffenseKeys(reading, text) ??
     describedAttendanceKeys(text) ??
-    (named ? [named.offenseKey] : described ? [described.offenseKey] : []);
+    (named ? [named.offenseKey] : described ? [described.offenseKey] : conductSuggestion(reading));
 
   const found: ManualSection[] = [];
   const keep = (section: ManualSection | null | undefined) => {
@@ -62,6 +62,16 @@ export function accountManualSections(
   }
 
   return withConductLinePage(found, text, chunks);
+}
+
+/**
+ * POLICY_SPECIFIC_TOPICS_ENABLED: an account the reading points at the
+ * Standards of Conduct (a direction not followed, closing duties or Woven
+ * items not done) cites it on a coaching or chat card as a Corrective Action
+ * does, instead of the nearest text. Off, nothing.
+ */
+function conductSuggestion(reading: ReturnType<typeof readCaPolicy>): string[] {
+  return policySpecificTopicsEnabled() && reading.suggestion ? [reading.suggestion] : [];
 }
 
 /** A heading printed on a chunk whose sheet has no usable page. Page 0 means "omit the page". */

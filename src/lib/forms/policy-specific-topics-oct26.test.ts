@@ -173,15 +173,21 @@ describe("flag on: gossip and negative talk are the Standards of Conduct and NEV
     expect(specificTopic(ask(incident))?.id).not.toBe("harassment");
   });
 
-  it.each(["rude to a guest", "was rude to a customer at the front desk", "talked bad about a guest"].flatMap(registers))(
-    "a guest treated rudely is unchanged (Standards of Conduct p.12, Pau confirmed): %s",
+  it.each(["rude to a guest", "was rude to a customer at the front desk"].flatMap(registers))(
+    "a guest treated rudely stays Standards of Conduct p.12, never p.13 (Pau confirmed); the card now carries it too: %s",
     (incident) => {
-      const before = cited(ask(incident));
+      expect(cited(ask(incident))).toEqual([]);
+      expect(viaBox(ask(incident), "standards_of_conduct")).toEqual(["Standards of Conduct p.12"]);
       on();
-      expect(cited(ask(incident))).toEqual(before);
-      expect(cited(ask(incident))).not.toContain(SOC13);
+      expect(cited(ask(incident))).toEqual(["Standards of Conduct p.12"]);
+      expect(viaBox(ask(incident), "standards_of_conduct")).toEqual(["Standards of Conduct p.12"]);
     },
   );
+
+  it.each(["talked bad about a guest"].flatMap(registers))("gossip about a guest is not the coworker line: %s", (incident) => {
+    on();
+    expect(cited(ask(incident))).not.toContain(SOC13);
+  });
 });
 
 /* NEVER-BREAK PINS: the readings Pau confirmed are the same flag off and flag on. */
@@ -253,5 +259,27 @@ describe("the coaching form's other topic is not primed with Punctuality (POLICY
   it("on: another topic the model wrote is left alone", () => {
     on();
     expect(withoutPrimedTopic({ other_topic: "Cell phone use" }, cellPhone)).toEqual({ other_topic: "Cell phone use" });
+  });
+});
+
+/*
+ * THE COACHING / CHAT CARD carries the same policy a Corrective Action does
+ * (QA live test: coaching cards for conduct incidents came back blank or with
+ * the nearest text, Attendance p.14 for closing duties). Off, as before.
+ */
+describe("flag on: a conduct incident the reading points at cites the Standards of Conduct on the card", () => {
+  const CONDUCT = [
+    ["did not complete her closing checklist on 10-18-26", "Standards of Conduct p.12"],
+    ["did not complete the woven policy acknowledgements", "Standards of Conduct p.12"],
+    ["missed the woven deadline", "Standards of Conduct p.12"],
+    ["refused to follow direction", SOC13],
+    ["insubordination", SOC13],
+  ] as const;
+
+  it.each(CONDUCT.flatMap(([incident, cite]) => registers(incident).map((text) => [text, cite] as const)))("%s", (incident, cite) => {
+    const before = cited(ask(incident));
+    expect(before).not.toContain(cite);
+    on();
+    expect(cited(ask(incident))).toEqual([cite]);
   });
 });
