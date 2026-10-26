@@ -63,6 +63,7 @@ describe("withoutGoingForward", () => {
 const REGISTERS: [string, (text: string) => string][] = [
   ["all lowercase", (text) => text.toLowerCase()],
   ["sentence case", (text) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase()],
+  ["ALL CAPS", (text) => text.toUpperCase()],
 ];
 
 describe.each(REGISTERS)("managerTypedGoingForward (%s)", (_register, as) => {
@@ -85,6 +86,9 @@ describe.each(REGISTERS)("managerTypedGoingForward (%s)", (_register, as) => {
       "not going forward with discipline",
       "she doesn't want going forward plan",
       "she is not on a plan going forward",
+      // QA-5, 26 Oct 2026.
+      "she isn't going forward with it",
+      "no need for a going forward",
     ]) {
       expect(managerTypedGoingForward(as(notes)), notes).toBe(false);
     }
