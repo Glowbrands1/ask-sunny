@@ -1949,3 +1949,37 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
     expect(answer.formProposal).toBeUndefined();
   });
 });
+
+/**
+ * QA live run, 26 Oct 2026 (S3/S8; names invented): the answer "<name>,
+ * <salon>, <title>, use today's date" to "Who is this form for?" left the
+ * salon unset. Flag off: as on main; flag on (NAME_PLACE_ANSWER_ENABLED): the
+ * salon named.
+ */
+describe("'<name>, <salon>, <title>' as the answer to who the form is for", () => {
+  const ANSWERS = ["rory vance, wornall, tanning consultant, use today's date", "Rory vance, wornall, tanning consultant, use today's date"];
+  const asked = {
+    continueTemplateKey: "coaching",
+    history: [
+      { id: "h1", role: "user", content: "coaching form for being late" },
+      { id: "h2", role: "assistant", content: "Who is this **Coaching Form** for?" },
+    ],
+  } as never;
+
+  it("flag off, as on main: the salon is not read from the answer", async () => {
+    delete process.env.NAME_PLACE_ANSWER_ENABLED;
+    const answer = await ask(ANSWERS[0]!, asked);
+    expect(answer.formProposal?.locationId).not.toBe("loc-0306");
+  });
+
+  it.each(ANSWERS)("flag on: '%s' is Rory Vance at Wornall", async (turn) => {
+    process.env.NAME_PLACE_ANSWER_ENABLED = "on";
+    try {
+      const answer = await ask(turn, asked);
+      expect(answer.formProposal?.employeeName?.toLowerCase()).toBe("rory vance");
+      expect(answer.formProposal?.locationId).toBe("loc-0306");
+    } finally {
+      delete process.env.NAME_PLACE_ANSWER_ENABLED;
+    }
+  });
+});

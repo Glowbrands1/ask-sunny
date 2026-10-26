@@ -883,6 +883,15 @@ export function followUpNotPriorEnabled(): boolean {
 }
 
 /**
+ * A salon or store named on its own in a comma list ("<name>, <place>,
+ * <title>") is read as where (QA, 26 Oct 2026; same flag in both apps). See
+ * `ai/name-place-answer.ts`. Off, every turn is read as typed.
+ */
+export function namePlaceAnswerEnabled(): boolean {
+  return envFlag("NAME_PLACE_ANSWER_ENABLED");
+}
+
+/**
  * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
  * second person when a chat card is created (production, 26 Oct 2026: "…at
  * Dodge, NE. She did not clock in…" was refused as naming "Odalys

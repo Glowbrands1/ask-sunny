@@ -1019,3 +1019,10 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+## 26 Oct 2026: NAME_PLACE_ANSWER_ENABLED stays Sunny-only
+
+Ask Sunny's salon reader reads a bare salon word only after "at", so "<name>,
+wornall, tanning consultant" left the salon unset (QA S3/S8). Ask Bubbles'
+store reader already reads a bare store word in a comma list ("rory vance,
+dodge, team member" → the Dodge store), so the pre-read is not needed there.
