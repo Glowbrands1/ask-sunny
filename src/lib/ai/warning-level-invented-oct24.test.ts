@@ -97,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   if (previous === undefined) delete process.env[FLAG];
   else process.env[FLAG] = previous;
+  vi.unstubAllEnvs();
 });
 
 describe("live replay, 24 Oct 2026: the level is only what the manager said", () => {
@@ -160,6 +161,8 @@ describe('live replay, 24 Oct 2026: a bare "Yes"/"No" answers the payroll questi
 
   it("flag off keeps main's reading: the stored slots bury the bare Yes", () => {
     delete process.env[FLAG];
+    // Pinned to LATE_OPEN_DATE off too, the reading this pins; the env may set it (with it on, payroll deduct is read from the manager's own Yes/No, its intended change). Restored after.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     expect(secondTurn(BARE_REQUEST, BARE_REQUEST_REPLY, "Yes").state.payrollDeduct).toBeNull();
   });
 });

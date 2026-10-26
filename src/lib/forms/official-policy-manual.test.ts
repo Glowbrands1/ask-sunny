@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   OFFENSE_MANUAL_SECTIONS,
@@ -490,13 +490,21 @@ describe("4. the offense box decides which section", () => {
    * 2026: a late opener's form was ticked Tardiness and cited Attendance, and
    * the manager pasted the Late Opening wording in by hand with no source.
    */
-  it.each([
+  const TARDY_OPENERS = [
     "Wren was scheduled to open the salon at 9:30 and did not arrive until 11:23",
     "she was the opener today and came in late",
     "late opening on 10/16",
     "opened late",
     "she didn't open the store until 10",
-  ])("cites Late Opening, then Attendance, for a tardy opener: %s", (notes) => {
+  ];
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each(TARDY_OPENERS)("cites Late Opening, then Attendance, for a tardy opener: %s", (notes) => {
+    // Pinned to LATE_OPEN_DATE off, the reading this predates; the env may set it. On: the twin below.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     const sections = manualSectionsFor({
       chunks: [...MANUAL, LEGACY_LATE_OPENING],
       offenseKeys: ["tardiness"],
@@ -506,6 +514,22 @@ describe("4. the offense box decides which section", () => {
     expect(officialManualReference(TITLE, sections)).toBe(
       "JBA Policy Manual — Late Opening — Page 15; Attendance — Page 14",
     );
+  });
+
+  /*
+   * LATE_OPEN_DATE is on in production; the pin above predates it. With it on,
+   * a late opening cites Late Opening alone (QA, 24 Oct 2026: the card cited
+   * Late Opening p.15 and Attendance p.14 for one late opening).
+   */
+  it.each(TARDY_OPENERS)("with LATE_OPEN_DATE_ENABLED on, cites Late Opening alone for a tardy opener: %s", (notes) => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    const sections = manualSectionsFor({
+      chunks: [...MANUAL, LEGACY_LATE_OPENING],
+      offenseKeys: ["tardiness"],
+      notes,
+    });
+
+    expect(officialManualReference(TITLE, sections)).toBe("JBA Policy Manual — Late Opening — Page 15");
   });
 
   it.each([

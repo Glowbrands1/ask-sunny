@@ -1,6 +1,6 @@
-import { lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
+import { lateOpenDateEnabled, lateOpenDateFixEnabled } from "@/lib/config/chat-quality-flags";
 
-import { listIncidentDates } from "./form-date-answer";
+import { explicitFormDate, heldCoachingDates, listIncidentDates } from "./form-date-answer";
 
 /**
  * ============================================================================
@@ -130,4 +130,49 @@ function singleIncidentDate(text: string, today: string): string | null {
 /** Whether LATE_OPEN_DATE_ENABLED is on. One import for the callers. */
 export function lateOpenOn(): boolean {
   return lateOpenDateEnabled();
+}
+
+/**
+ * LATE_OPEN_DATE_FIX_ENABLED (QA, 25 Oct 2026): "coaching form for …, she was
+ * late on 10-5 and 10-15, I coached her on 10-16" was dated 10/5 with
+ * LATE_OPEN_DATE_ENABLED on: the "on" in "late on 10-5" made 10-5 the one date
+ * the turn stated (`newestStatedDate`), ahead of the coaching the manager
+ * held. With the fix, on a Coaching Form, the held coaching wins; nothing else
+ * changes, so no stated date is ever dropped (QA-6, 26 Oct 2026).
+ */
+export function lateOpenFixOn(): boolean {
+  return lateOpenDateEnabled() && lateOpenDateFixEnabled();
+}
+
+const COACHING_FORMS: ReadonlySet<string> = new Set(["coaching", "follow-up-coaching"]);
+
+/** "… on 10/16/2026 and 10-18": a yearless day listed straight after a held coaching's date. */
+const LISTED_AFTER = /^\s*(?:,\s*(?:and\s+|&\s*)?|and\s+|&\s*)(\d{1,2})-(\d{1,2})(?![\d/-])/i;
+
+/**
+ * LATE_OPEN_DATE_FIX_ENABLED: on a Coaching Form, the coachings the manager
+ * says they HELD ("I coached her on 10-16", "… on 10-16 and 10-18") dated on
+ * or after everything she did, oldest first — none when a date was given to
+ * the form. One dates the form; two are a question, never a pick. The rule
+ * `decideFormDate` applies to written dates (`incident-dates.ts`), here for
+ * the yearless ones `withYearlessDatesWritten` has written out.
+ */
+export function heldCoachingFormDates(text: string, templateKey: string | null, today: string): string[] {
+  if (!templateKey || !COACHING_FORMS.has(templateKey)) return [];
+  if (explicitFormDate(text, today)) return [];
+  const incidents = listIncidentDates(text, today)
+    .map((found) => found.iso)
+    .filter((iso) => iso <= today)
+    .sort();
+  const latestIncident = incidents[incidents.length - 1] ?? "";
+  const held = new Set(heldCoachingDates(text, today));
+  for (const iso of [...held]) {
+    const written = slashed(iso);
+    for (let at = text.indexOf(written); at >= 0; at = text.indexOf(written, at + 1)) {
+      const listed = LISTED_AFTER.exec(text.slice(at + written.length));
+      const next = listed ? mostRecent(Number(listed[1]), Number(listed[2]), today) : null;
+      if (next) held.add(next);
+    }
+  }
+  return [...held].filter((iso) => iso >= latestIncident).sort();
 }

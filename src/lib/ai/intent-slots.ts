@@ -19,7 +19,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
-import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
+import { heldCoachingFormDates, lateOpenFixOn, lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
@@ -356,6 +356,24 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         ? saved.policyPage
         : pageForHeading(policyHeading, input.headingPages);
   const formTurn = Boolean(input.formInProgress || reading?.formTurn || formType.key || saved.templateKey);
+  /*
+   * LATE_OPEN_DATE_FIX_ENABLED (QA, 25 Oct 2026): on a Coaching Form the
+   * coaching the manager says they held ("I coached her on 10-16") is its
+   * date, ahead of "she was late on 10-5", as with LATE_OPEN_DATE_ENABLED off.
+   * Two held coachings are a question, and the manager's pick among them
+   * answers it. See `heldCoachingFormDates`.
+   */
+  const heldCoaching =
+    lateOpen && lateOpenFixOn() ? heldCoachingFormDates(dateText, formType.key ?? saved.templateKey, input.today) : [];
+  const heldChosen = choice?.date ? normalizeIncidentDate(choice.date, input.today) : null;
+  const formDate =
+    heldChosen && heldCoaching.includes(heldChosen)
+      ? { iso: heldChosen, ambiguous: [] as readonly string[] }
+      : choice?.date || heldCoaching.length === 0
+        ? date
+        : heldCoaching.length === 1
+          ? { iso: heldCoaching[0]!, ambiguous: [] as readonly string[] }
+          : { iso: null, ambiguous: heldCoaching };
 
   const salonForMerge = codeSlotsEnabled() && salon.ambiguous.length > 1
     ? { id: salon.id, name: salon.name, ambiguous: [] as readonly SalonRow[] }
@@ -369,7 +387,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     salon: salonForMerge,
     title,
     incidentType,
-    date: date.iso,
+    date: formDate.iso,
     payrollAmount,
     payrollAnswer,
     managerOnly,
@@ -414,7 +432,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     salon: salonForMerge,
     title,
     incidentType,
-    date,
+    date: formDate,
     payrollAmount,
     warningLevel,
     formType,
@@ -433,6 +451,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
   if (clarification && formType.together) return { question, state, clarification, formTurn: false };
+  // LATE_OPEN_DATE_FIX_ENABLED: two held coachings are asked about, not left for the card to drop.
+  if (clarification && formDate.ambiguous.length > 1 && heldCoaching.length > 1) {
+    return { question, state, clarification, formTurn: false };
+  }
   if (clarification) return { question, state, clarification, formTurn };
   if (!formTurn) return { question, state, clarification: null, formTurn: false };
   return { question, state, clarification: null, formTurn: true };
