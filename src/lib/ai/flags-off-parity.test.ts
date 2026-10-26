@@ -94,6 +94,8 @@ import {
   formRevisionsUiEnabled,
   nameCaseInsensitiveEnabled,
   terseCommandOnlyEnabled,
+  sensitiveDefaultsRedactEnabled,
+  appPasswordHelpEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -206,6 +208,8 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "NAME_CASE_INSENSITIVE_ENABLED",
   "TERSE_COMMAND_ONLY_ENABLED",
+  "SENSITIVE_DEFAULTS_REDACT_ENABLED",
+  "APP_PASSWORD_HELP_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -393,6 +397,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(nameCaseInsensitiveEnabled()).toBe(false);
     expect(terseCommandOnlyEnabled()).toBe(false);
+    expect(sensitiveDefaultsRedactEnabled()).toBe(false);
+    expect(appPasswordHelpEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
