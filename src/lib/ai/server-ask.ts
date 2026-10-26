@@ -154,6 +154,7 @@ import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withTerseSlots } from "./terse-slots";
 import { withManagerFormChoice } from "./manager-form-choice";
+import { withNameRespell } from "./name-respell";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -271,7 +272,8 @@ export async function answerQuestion(
     const response = await answerQuestionUntraced(withManagerFormChoice(withTerseSlots(request)), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    return keepManagerActionPlan(await applyQuietQuality(response), request);
+    // NAME_RESPELL_ENABLED: the manager's newest spelling of the employee wins.
+    return keepManagerActionPlan(withNameRespell(await applyQuietQuality(response), request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
