@@ -341,3 +341,24 @@ describe.each(NEGATED_REGISTERS)("EXIT_NOTICE_FULFILLED_ENABLED, left without gi
     expect(readExitFacts(as("ava pellmore gave notice 9/25, last day 10/9"), TODAY).noticeGiven).toBe("2026-09-25");
   });
 });
+
+/* QA-5, 26 Oct 2026: ALL CAPS and Title Case read the worked notice too. */
+describe.each([
+  ["ALL CAPS", (text: string) => text.toUpperCase()],
+  ["Title Case", (text: string) => text.replace(/\b[a-z]/g, (c) => c.toUpperCase())],
+] as [string, (text: string) => string][])("EXIT_NOTICE_FULFILLED_ENABLED, worked notice in %s", (_register, as) => {
+  it("on, \"gave notice 9/25 worked it til 10/9\" ticks the box and is fulfilled on 10/9", () => {
+    withFlag(true);
+    expect(readExitFacts(as("gave notice 9/25 worked it til 10/9"), TODAY)).toMatchObject({
+      noticeGiven: "2026-09-25",
+      lastDayWorked: "2026-10-09",
+      noticeFulfilled: "2026-10-09",
+      noticeOptions: ["submitted_fulfilled_notice"],
+    });
+  });
+
+  it("on, a negated worked notice stays unticked", () => {
+    withFlag(true);
+    expect(readExitFacts(as("exit for ava pellmore no 2 wk notice worked"), TODAY).noticeOptions).toEqual([]);
+  });
+});

@@ -472,7 +472,9 @@ const NOTICE_NOUN_SEEN = new RegExp(String.raw`\b${NOTICE_NOUN}`, "i");
  * worked (QA-5, 26 Oct 2026): "worked it til" counts only after a notice was
  * named earlier in its sentence ("gave notice worked it til 10/9").
  */
-function noticeWorked(text: string): boolean {
+function noticeWorked(rawText: string): boolean {
+  // In any register: "GAVE NOTICE 9/25 WORKED IT TIL 10/9" (QA-5, 26 Oct 2026). Same length, same offsets.
+  const text = rawText.toLowerCase();
   for (const match of text.matchAll(NOTICE_WORKED)) {
     const at = match.index ?? 0;
     const before = text.slice(0, at);
