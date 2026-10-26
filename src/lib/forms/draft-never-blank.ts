@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { JOIN } from "./bounded-context";
 import { describesIncident } from "./corrective-action-intake";
 import { withoutPriorStepClauses } from "./form-date-answer";
+import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrative-draft";
 
 /**
@@ -287,7 +288,7 @@ export function managerAccountClause(text: string): string | null {
  * account (`withoutPriorStepClauses`, unchanged with the flag off).
  */
 function incidentClause(notes: string, employeeName: string | null): string | null {
-  const own = withoutPriorStepClauses(notes, businessToday(), notes).text;
+  const own = priorSentenceFixFor(notes) ? withoutPriorStepClauses(notes, businessToday(), notes).text : notes;
   return managerAccountClause(own) ?? issueFromRequest(own, employeeName);
 }
 

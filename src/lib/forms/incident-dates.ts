@@ -11,6 +11,7 @@ import {
   yearlessWrittenOut,
 } from "./form-date-answer";
 import { incidentOnly, incidentOnlyOn } from "./form-date-incident-only";
+import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -54,7 +55,7 @@ export function incidentDates(text: string, today: string, coaching = false): st
   const explicit = explicitFormDate(text, today);
   // PRIOR_SENTENCE_FIX_ENABLED: yearless "10-5 and 10-15" are two incident dates too, a range is one
   // (`statedIncidentDates`). Not on a Coaching Form, whose date is the coaching held.
-  const read = priorSentenceFixEnabled() && !coaching ? statedIncidentDates(text, today) : listIncidentDates(text, today);
+  const read = priorSentenceFixFor(text) && !coaching ? statedIncidentDates(text, today) : listIncidentDates(text, today);
   return [...new Set(incidentOnly(text, today, read).map((found) => found.iso))]
     .filter((iso) => iso <= today && iso !== explicit)
     .sort();
@@ -261,7 +262,7 @@ export interface StatedFormDate {
 }
 
 export function statedFormDate(conversation: readonly Turn[], today: string): StatedFormDate | null {
-  if (!priorSentenceFixEnabled()) return null;
+  if (!priorSentenceFixFor(conversation.filter((turn) => turn.role === "user").map((turn) => String(turn.content)).join("\n"))) return null;
   // The manager's own words: the lines the app writes onto a question ("It happened on 10/5/2026.") are not.
   const said = conversation.map((turn) => (turn.role === "user" ? { ...turn, content: withoutAppLines(String(turn.content)).trim() } : turn));
   const answers = dateAnswerTurns(said);

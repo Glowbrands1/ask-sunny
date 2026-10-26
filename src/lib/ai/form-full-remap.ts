@@ -180,9 +180,9 @@ export function groundFormSlots(input: {
    * own, with every earlier step's date ("coached her 10-16", "written
    * warning on 10-20") blanked first.
    */
-  const sentenceFix = priorSentenceFixEnabled();
   // Corrective Action only: on a Coaching Form the coaching held is its date.
-  const stated = sentenceFix && templateKey === "dpoa" ? statedFormDate(conversation, input.today) : null;
+  const sentenceFix = priorSentenceFixEnabled() && templateKey === "dpoa";
+  const stated = sentenceFix ? statedFormDate(conversation, input.today) : null;
   const incidentDateIso = stated
     ? stated.iso
     : groundedDate(sentenceFix ? blankPriorStepDates(said, input.today) : said, input.today);

@@ -1,4 +1,4 @@
-import { priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { priorSentenceFixFor } from "./prior-sentence-scope";
 
 import {
   datesInText,
@@ -172,7 +172,8 @@ export function formDateBrief(resolved: ResolvedFormDate, givenDates: readonly s
  */
 function noteDateSpellings(notes: string, year: string): string[] {
   // PRIOR_SENTENCE_FIX_ENABLED: "10-15" and "i coached her on 10-16" are dates the manager gave too.
-  return managerDatesForDraft(notes, `${year}-01-01`).flatMap((found) => resolveFormDate(found.iso)?.spellings ?? []);
+  const read = priorSentenceFixFor(notes) ? managerDatesForDraft : datesInText;
+  return read(notes, `${year}-01-01`).flatMap((found) => resolveFormDate(found.iso)?.spellings ?? []);
 }
 
 /**
@@ -266,7 +267,7 @@ export function correctDraftedDates(
    */
   const year = resolved.iso.slice(0, 4);
   // PRIOR_SENTENCE_FIX_ENABLED: with the yearless "10-5", "10-15" and the coaching's "10-16" (QA, 26 Oct 2026).
-  const sentenceFix = priorSentenceFixEnabled();
+  const sentenceFix = priorSentenceFixFor(notes);
   const noted = sentenceFix ? managerDatesForDraft(notes, `${year}-01-01`) : datesInText(notes, `${year}-01-01`);
   const given = new Set(noted.map((found) => found.iso));
   const isoOf = (token: string) => datesInText(token, `${year}-01-01`)[0]?.iso ?? null;
@@ -382,7 +383,7 @@ export function correctDraftedDates(
  * form's date for both latenesses.
  */
 export function draftBriefDates(notes: string, today: string): string[] {
-  if (!priorSentenceFixEnabled()) return listFormDates(notes, today).map((found) => found.iso);
+  if (!priorSentenceFixFor(notes)) return listFormDates(notes, today).map((found) => found.iso);
   const noted = managerDatesForDraft(notes, today);
   const incident = draftIncidentOffsets(notes, noted, today);
   return noted.filter((found) => incident.has(found.index)).map((found) => found.iso);

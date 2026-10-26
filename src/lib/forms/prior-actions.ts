@@ -2,6 +2,7 @@ import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
+import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { OFFICIAL_POLICY_MANUAL } from "./official-policy-manual";
 
 /**
@@ -204,7 +205,7 @@ export function groundPriorActions(input: {
   const onFile = input.onFile ?? [];
   const stated = new Set([
     // PRIOR_SENTENCE_FIX_ENABLED: a yearless "10-16" the manager typed is a date they gave (`datesInText` with it off).
-    ...managerDatesForDraft(input.notes, input.today).map((found) => found.iso),
+    ...(priorSentenceFixFor(input.notes) ? managerDatesForDraft : datesInText)(input.notes, input.today).map((found) => found.iso),
     ...onFile.map((form) => form.formDate),
   ]);
   const removed: string[] = [];

@@ -217,7 +217,7 @@ export function holdFilledSlots(input: {
      */
     if (next.templateKey !== "stc-exit") {
       const build = (given: string, account: readonly string[]) =>
-        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, input.today);
+        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, next.templateKey === "dpoa" ? input.today : undefined);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
