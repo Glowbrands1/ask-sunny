@@ -4332,6 +4332,10 @@ export function templateOutlineFieldsEnabled(): boolean {
  * "verbal" before the label is this form's level (`intent-slots.ts`,
  * `lib/forms/warning-level.ts`). Read as on only with
  * PRIOR_ACTIONS_PARSE_ENABLED, which it extends.
+ *
+ * QA, 26 Oct 2026 (both apps): "… no call no show today. I coached her on
+ * 10-16 and gave a verbal on 10-21" lists both as prior actions, and neither
+ * is "it happened on" (`lib/forms/form-date-answer.ts`).
  */
 export function priorActionsNoCommaEnabled(): boolean {
   return envFlag("PRIOR_ACTIONS_NO_COMMA_ENABLED") && envFlag("PRIOR_ACTIONS_PARSE_ENABLED");
