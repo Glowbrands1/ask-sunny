@@ -34,18 +34,37 @@ const DEFAULT_PASSWORD =
 /** Written-out SSN digits. */
 const SSN_DIGITS = /\b\d{3}-\d{2}-\d{4}\b|\b(?:x{3}|\*{3})-(?:x{2}|\*{2})-\d{4}\b/i;
 
+/**
+ * "Do not use default passwords, i.e., password123." is the manual's own
+ * password guidance, not a default to hand out (QA live, 26 Oct 2026: every
+ * "whats our password policy" answer lost it and got the note instead).
+ */
+const FORBIDS_DEFAULTS = /\b(?:do\s+not|don'?t|never|avoid(?:ing)?|no)\s+(?:use\s+|using\s+)?(?:a\s+|the\s+|any\s+)?(?:default|generic|standard)\s+pass\s?words?\b/i;
+
 /** Whether a sentence would hand out a default password or SSN digits. */
 export function isSensitiveSentence(sentence: string): boolean {
-  return (SSN.test(sentence) && DIGIT_FORMAT.test(sentence)) || DEFAULT_PASSWORD.test(sentence) || SSN_DIGITS.test(sentence);
+  if (SSN.test(sentence) && DIGIT_FORMAT.test(sentence)) return true;
+  if (SSN_DIGITS.test(sentence)) return true;
+  return DEFAULT_PASSWORD.test(sentence) && !FORBIDS_DEFAULTS.test(sentence);
+}
+
+/** "what is the default password", "temp password for a new hire", "defualt login". */
+const ASKS_DEFAULT =
+  /\b(?:default|defualt|deafult|defalt|defult|dafault|temporary|temp|initial|starting|first[- ]time|generic|universal|master)\s+(?:pass\s?words?|passwrds?|paswords?|passcodes?|pw|pins?|log-?\s?ins?|credentials?)\b/i;
+
+/** Whether the question asks for a default, temporary or starting password. */
+export function asksForDefaultPassword(question: string | null | undefined): boolean {
+  return ASKS_DEFAULT.test(question ?? "");
 }
 
 /**
  * Said in place of what was taken out of a knowledge excerpt, and of a reply
  * (QA P0 follow-up, 26 Oct 2026). Neither says what was taken out: naming
  * Social Security digits or a default format hints at the very thing hidden.
+ * The excerpt's note names no system, so an answer about another system's
+ * password never picks up this app's reset link from it.
  */
-export const EXCERPT_NOTE =
-  "(Sign-in details are not shared in chat. Use Forgot your password? on the log-in screen, or ask a manager to reset it.)";
+export const EXCERPT_NOTE = "(This line is not shared in chat.)";
 export const REPLY_NOTE =
   "I can't share anyone's password from here. If you're locked out, use **Forgot your password?** on the log-in screen, or ask your manager to reset it.";
 
@@ -73,7 +92,7 @@ function isNoInformation(sentence: string): boolean {
  * given twice. Sentences end at . ! ? or a line break; everything else is kept
  * as written. Off, the text as given.
  */
-export function redactSensitiveDefaults(text: string, note: string = EXCERPT_NOTE): string {
+export function redactSensitiveDefaults(text: string, note: string | null = EXCERPT_NOTE): string {
   if (!sensitiveDefaultsRedactEnabled() || !text) return text;
   const parts = text.split(/(?<=[.!?])(\s+)|(\n)/);
   let changed = false;
@@ -87,8 +106,8 @@ export function redactSensitiveDefaults(text: string, note: string = EXCERPT_NOT
     }
     if (isSensitiveSentence(part) && !isNoInformation(part)) {
       changed = true;
-      // The note once per text, wherever the sentences were.
-      if (!noteSaid) out.push(note);
+      // The note once per text, wherever the sentences were; none when null.
+      if (!noteSaid && note !== null) out.push(note);
       noteSaid = true;
       continue;
     }
@@ -96,14 +115,25 @@ export function redactSensitiveDefaults(text: string, note: string = EXCERPT_NOT
   }
   if (!changed) return text;
   // The model's own "ask your manager to reset it" would repeat the note.
-  const kept = out.filter((part) => part === note || !RESET_ADVICE.test(part));
-  return kept.join("").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
+  const kept = note === null ? out : out.filter((part) => part === note || !RESET_ADVICE.test(part));
+  const joined = kept.join("").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
+  // Nothing left but whitespace: the note after all, never an empty text.
+  return joined.length > 0 ? joined : (note ?? REPLY_NOTE);
 }
 
-/** A response with the same redaction on its reply and on every cited excerpt. Off, the response as given. */
-export function withoutSensitiveDefaults<T extends { content: string; citations?: readonly { excerpt: string }[] }>(response: T): T {
+/**
+ * A response with the same redaction on its reply and on every cited excerpt.
+ * The reply says the note only when the question asked for a default or
+ * starting password (QA live, 26 Oct 2026): a Paycor, Revel, myGLOW or
+ * password-policy answer that loses a sentence just loses that sentence.
+ * Off, the response as given.
+ */
+export function withoutSensitiveDefaults<T extends { content: string; citations?: readonly { excerpt: string }[] }>(
+  response: T,
+  question?: string | null,
+): T {
   if (!sensitiveDefaultsRedactEnabled()) return response;
-  const content = redactSensitiveDefaults(response.content, REPLY_NOTE);
+  const content = redactSensitiveDefaults(response.content, asksForDefaultPassword(question) ? REPLY_NOTE : null);
   const citations = response.citations?.map((citation) => {
     const excerpt = redactSensitiveDefaults(citation.excerpt);
     return excerpt === citation.excerpt ? citation : { ...citation, excerpt };

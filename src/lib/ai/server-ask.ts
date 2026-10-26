@@ -275,7 +275,7 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory));
+  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
 }
 
 async function answerQuestionChecked(

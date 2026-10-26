@@ -200,9 +200,14 @@ describe("SENSITIVE_DEFAULTS_REDACT_ENABLED", () => {
     expect(state.grounding).not.toMatch(SENSITIVE);
     expect(state.grounding).toContain("Open the employee's profile and choose Reset Password.");
     expect(answer.content).not.toMatch(SENSITIVE);
-    // The note was reworded on 26 Oct (QA P0 follow-up): it no longer names
-    // what it hides, and points to this app's reset link.
-    expect(answer.content).toContain("use **Forgot your password?** on the log-in screen, or ask your manager to reset it");
+    // 26 Oct (QA live): the reworded note, and only when the question asks for
+    // a default password; a reset question just loses the sentence.
+    if (/default/i.test(question)) {
+      expect(answer.content).toContain("use **Forgot your password?** on the log-in screen, or ask your manager to reset it");
+    } else {
+      expect(answer.content).not.toContain("I can't share anyone's password");
+      expect(answer.content).toContain("To reset it, open the employee's profile.");
+    }
     for (const citation of answer.citations) expect(citation.excerpt).not.toMatch(SENSITIVE);
   });
 
