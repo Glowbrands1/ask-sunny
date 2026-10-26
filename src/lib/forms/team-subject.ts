@@ -1,3 +1,5 @@
+import { cardNeverSilentEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * COACHING THAT IS FOR THE WHOLE TEAM, NOT ONE PERSON
@@ -52,9 +54,49 @@ const TEAM_PHRASES: readonly RegExp[] = [
   /\b(?:coaching|form|training)\s+(?:\w+\s+){0,3}?for\s+(?:everyone|everybody|all)\b/i,
 ];
 
+/**
+ * CARD_NEVER_SILENT_ENABLED: the chatty way of asking for the same thing (Ask
+ * Sunny conv_mvofsdg92obw8px, 25 Oct 2026): "I want a coaching form I can
+ * reuse for any team member, so please leave the employee name blank and make
+ * it generic for the whole team" got no card, while "need a coaching form for
+ * team not signing documents" did.
+ */
+const CHATTY_TEAM_PHRASES: readonly RegExp[] = [
+  /\b(?:reuse|re-use|use)\s+(?:it\s+)?(?:for|with)\s+any\s+(?:team\s+member|employee|staff\s+member|associate|team\s?mate)\b/i,
+  /\b(?:generic|general)\s+for\s+(?:the\s+|my\s+|our\s+)?(?:whole\s+|entire\s+)?(?:team|staff|crew)\b/i,
+  /\bleave\s+(?:the\s+)?(?:employee(?:'s|s)?\s+)?name\s+(?:blank|empty|off)\b/i,
+];
+
 /** Whether the manager's words make this coaching about the team. */
 export function readsAsTeamSubject(text: string): boolean {
-  return TEAM_PHRASES.some((pattern) => pattern.test(text ?? ""));
+  if (TEAM_PHRASES.some((pattern) => pattern.test(text ?? ""))) return true;
+  return cardNeverSilentEnabled() && chattyTeam(text ?? "");
+}
+
+/**
+ * QA-6 negation probes, 26 Oct 2026: "do not make it generic for the whole
+ * team", "never reuse for any team member", "do not leave the employee name
+ * blank", "leave the name blank for Rowan Pell" and "generic for the whole
+ * team except Rowan Pell" made the team card. A chatty phrase counts only when
+ * nothing before it in its clause negates it, and never in a turn that names a
+ * person or says "except".
+ */
+const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|doesn'?t|without|instead\s+of)\b/i;
+const NAMED_PERSON = /\b[A-Z][a-z'’-]+\s+[A-Z][a-z'’-]+\b/;
+/** QA-4, 26 Oct 2026: "coaching form for avery stone, generic for the team" (or "… for avery, …") names a person in lowercase. */
+const FORM_FOR_PERSON =
+  /\b(?:form|coaching|ca|c\/a|write\s*up)\s+for\s+(?!(?:the|my|our|a|an|any|all|every\w*|team|staff|crew|whole|entire|it|this|that|them|someone|anyone)\b)[a-z][a-z'’-]+(?:\s*(?:[,.;]|$)|\s+(?!(?:team|staff|crew|members?|not|who|that|and|or|for|to|at|on|in|with|because|since|so)\b)[a-z][a-z'’-]+)/i;
+
+function chattyTeam(text: string): boolean {
+  // A sentence's capitalised first word is not a name unless a capitalised word follows it ("Rowan Pell was late").
+  const unopened = text.replace(/(^\s*|[.!?]\s+)[A-Z][a-z]+(?=\s+[a-z]|\s*$)/g, "$1");
+  if (/\bexcept\b/i.test(text) || NAMED_PERSON.test(unopened) || FORM_FOR_PERSON.test(text)) return false;
+  return text.split(/[,.;!?]+/).some((clause) =>
+    CHATTY_TEAM_PHRASES.some((pattern) => {
+      const hit = pattern.exec(clause);
+      return hit !== null && !NEGATED.test(clause.slice(0, hit.index));
+    }),
+  );
 }
 
 /**
@@ -86,10 +128,14 @@ const TEAM_DESCRIPTOR_SPANS: readonly RegExp[] = [
   /\b(?:group|team|general|staff)\s+(?:training|coaching|huddle|meeting|refresher|reminder)s?\b/gi,
 ];
 
+/** CARD_NEVER_SILENT_ENABLED: "for any team member" is the team, not an employee called "any". */
+const CHATTY_TEAM_SPANS: readonly RegExp[] = [/\bany\s+(?:team\s+member|employee|staff\s+member|associate|team\s?mate)s?\b/gi];
+
 /** The sentence with every team descriptor replaced by "the team". Pure. */
 export function maskTeamSubjectPhrases(text: string): string {
   let masked = text ?? "";
-  for (const pattern of TEAM_DESCRIPTOR_SPANS) masked = masked.replace(pattern, "the team");
+  const spans = cardNeverSilentEnabled() ? [...TEAM_DESCRIPTOR_SPANS, ...CHATTY_TEAM_SPANS] : TEAM_DESCRIPTOR_SPANS;
+  for (const pattern of spans) masked = masked.replace(pattern, "the team");
   return masked;
 }
 

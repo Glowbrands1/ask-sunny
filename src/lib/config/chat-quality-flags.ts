@@ -847,6 +847,17 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * A form turn always answers the manager: when the card reply would be empty
+ * or word for word the previous one, a line in front of it answers the turn
+ * (press Create draft to edit; Finalize is a button on the form). Ask Sunny
+ * conv_mvoenhk42lu3cxo, 25 Oct 2026. See `ai/card-never-silent.ts`. Off, the
+ * reply is returned as it is.
+ */
+export function cardNeverSilentEnabled(): boolean {
+  return envFlag("CARD_NEVER_SILENT_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
