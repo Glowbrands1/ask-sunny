@@ -50,9 +50,9 @@ const SSN_DIGITS = /\b\d{3}-\d{2}-\d{4}\b|\b(?:x{3}|\*{3})-(?:x{2}|\*{2})-\d{4}\
  */
 const FORBIDS_DEFAULTS =
   /\b(?:do\s+not|don'?t|never|avoid(?:ing)?|no)\s+(?:use\s+|using\s+)?(?:a\s+|the\s+|any\s+)?(?:default|generic|standard)\s+pass\s?words?\b/i;
-/** What may follow a pure forbid, up to the end of the sentence. */
+/** What may follow a pure forbid, up to the end of the sentence. The example is the placeholder only ("password###"); a digit run is a value. */
 const FORBID_TAIL_OK =
-  /^\s*(?:,?\s*(?:i\.e\.|e\.g\.|like|such\s+as)\s*,?\s*["“']?password[\d#*x]*["”']?|(?:are|is)\s+(?:not\s+)?(?:allowed|permitted|acceptable)|(?:for|on|at|in|with|anywhere|ever|again|when)\b[^.!?;:,"“”'()\d]*)?\s*[.!?]?\s*$/i;
+  /^\s*(?:,?\s*(?:i\.e\.|e\.g\.|like|such\s+as)\s*,?\s*["“']?password(?:#+|x+|\*+)?["”']?|(?:are|is)\s+(?:not\s+)?(?:allowed|permitted|acceptable)|(?:for|on|at|in|with|anywhere|ever|again|when)\b[^.!?;:,"“”'()\d]*)?\s*[.!?]?\s*$/i;
 /** What may come before it: a plain lead-in, no value. */
 const FORBID_LEAD_OK = /^[^\d:;"“”()]*$/;
 const VALUE_WORD = /\b(?:is|are|was|were|=)\s+\S/i;
@@ -117,11 +117,33 @@ function isNoInformation(sentence: string): boolean {
  * given twice. Sentences end at . ! ? or a line break; everything else is kept
  * as written. Off, the text as given.
  */
+/** A sentence ends at . ! ? and a line break, never at "e.g.", "i.e.", "etc." or "vs.". */
+const SENTENCE_BREAK = /(?<=[.!?])(?<!\b(?:e\.g|i\.e|etc|vs)\.)(\s+)|(\n)/i;
+
+/**
+ * A value on its own right after a default-password sentence: "It is
+ * Welcome2024.", "The password is X.", "Use X.", a bare "Winter2024" line or
+ * bullet (QA-3/QA-5, 26 Oct 2026). It is removed with the sentence before it.
+ */
+const VALUE_AFTER =
+  /^\s*(?:[-*•]\s*)?((?:it\s+is|it'?s|that\s+is|the\s+(?:default\s+|temporary\s+|temp\s+|starting\s+|initial\s+)?pass\s?word\s+is|use|try|enter)\s+)?(["“'(]?)([^\s"”')]+)["”')]?\s*[.!?]?\s*$/i;
+
+/** Whether a piece is only a value: a token with a digit, a quoted token, or a capitalised one after "is/use". */
+function isValueAfter(piece: string): boolean {
+  const match = VALUE_AFTER.exec(piece);
+  if (!match) return false;
+  const [, lead, quote, token] = match;
+  if (/\d/.test(token!) || quote) return true;
+  return Boolean(lead) && /^[A-Z]/.test(token!);
+}
+const NAMES_DEFAULT = /\b(?:default|defualt|temporary|temp|initial|starting|first[- ]time)\s+(?:pass\s?words?|passcodes?|pw|pins?|log-?\s?ins?)\b/i;
+
 export function redactSensitiveDefaults(text: string, note: string | null = EXCERPT_NOTE): string {
   if (!sensitiveDefaultsRedactEnabled() || !text) return text;
-  const parts = text.split(/(?<=[.!?])(\s+)|(\n)/);
+  const parts = text.split(SENTENCE_BREAK);
   let changed = false;
   let noteSaid = false;
+  let afterDefault = false;
   const out: string[] = [];
   for (const part of parts) {
     if (part === undefined) continue;
@@ -129,13 +151,16 @@ export function redactSensitiveDefaults(text: string, note: string | null = EXCE
       out.push(part);
       continue;
     }
-    if (isSensitiveSentence(part) && !isNoInformation(part)) {
+    const valueAfter = afterDefault && isValueAfter(part);
+    if (valueAfter || (isSensitiveSentence(part) && !isNoInformation(part))) {
       changed = true;
       // The note once per text, wherever the sentences were; none when null.
       if (!noteSaid && note !== null) out.push(note);
       noteSaid = true;
+      afterDefault = true;
       continue;
     }
+    afterDefault = NAMES_DEFAULT.test(part);
     out.push(part);
   }
   if (!changed) return text;

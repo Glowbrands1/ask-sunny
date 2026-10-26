@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { appPasswordHelpFor, isAppPasswordQuestion } from "./app-password-help";
 import { EXCERPT_NOTE, REPLY_NOTE, redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
@@ -21,6 +21,12 @@ import { EXCERPT_NOTE, REPLY_NOTE, redactSensitiveDefaults, withoutSensitiveDefa
  */
 
 afterEach(() => vi.unstubAllEnvs());
+// Each test sets the flags it needs; flag-off pins hold whatever the environment has on.
+beforeEach(() => {
+  vi.stubEnv("SENSITIVE_DEFAULTS_REDACT_ENABLED", "");
+  vi.stubEnv("APP_PASSWORD_HELP_ENABLED", "");
+});
+
 
 const lower = (text: string) => text.toLowerCase();
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();

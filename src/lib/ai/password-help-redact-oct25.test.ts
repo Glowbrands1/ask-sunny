@@ -125,6 +125,12 @@ beforeEach(() => {
   state.rewrites = [];
 });
 afterEach(() => vi.unstubAllEnvs());
+// Each test sets the flags it needs; flag-off pins hold whatever the environment has on.
+beforeEach(() => {
+  vi.stubEnv("SENSITIVE_DEFAULTS_REDACT_ENABLED", "");
+  vi.stubEnv("APP_PASSWORD_HELP_ENABLED", "");
+});
+
 
 const SENSITIVE = /default password is|default is built|social security number/i;
 
