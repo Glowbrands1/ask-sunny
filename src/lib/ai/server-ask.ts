@@ -1678,6 +1678,8 @@ async function answerQuestionUntraced(
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
     manualBlock,
     fullManualBlock,
+    // ANSWER_LENGTH_GUARD_ENABLED reads this; off, the request is main's.
+    answerLengthGuard: true,
   });
   /*
    * THE BACKSTOP to the labelled block above: with the guard on and no refer-back

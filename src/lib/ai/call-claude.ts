@@ -2,6 +2,7 @@ import "server-only";
 
 import { CLAUDE_EFFORT, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
+import { answerLengthGuard, settleCollectedAnswer } from "./answer-length-guard";
 import { getAnthropicClient } from "./anthropic";
 import { AiError } from "./errors";
 import { selectLongContext } from "./long-context";
@@ -114,6 +115,12 @@ export interface CallClaudeInput {
    * the system prompt is exactly what `cachedSystem` already returns.
    */
   readonly fullManualBlock?: string | null;
+  /**
+   * Set by the chat answer only. With ANSWER_LENGTH_GUARD_ENABLED on, a reply
+   * cut at max_tokens is asked for once more or ends on a whole sentence (see
+   * `answer-length-guard.ts`). Other callers, and the flag off, are unchanged.
+   */
+  readonly answerLengthGuard?: boolean;
 }
 
 export interface CollectedModelResult {
@@ -233,6 +240,8 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
   // The API requires the first message to be a user turn.
   while (history.length > 0 && history[0]!.role === "assistant") history.shift();
 
+  // ANSWER_LENGTH_GUARD_ENABLED, chat answer only: null otherwise, and then nothing below differs from main.
+  const guard = answerLengthGuard(input);
   const started = Date.now();
   const userText = [
     input.grounding,
@@ -245,7 +254,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
   ].join("\n\n");
   const params = {
     model: CLAUDE_MODEL,
-    max_tokens: input.maxTokens,
+    max_tokens: guard?.maxTokens ?? input.maxTokens,
     thinking: { type: "adaptive" as const },
     output_config: { effort: CLAUDE_EFFORT },
     // Static rules take cache_control { type: "ephemeral" }. The tail after
@@ -273,15 +282,21 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       : await client.messages.create(streamed);
     const response = await collectModelResult(created, started);
 
+    // A reply cut at max_tokens: once more within the turn's time, else up to its last whole sentence.
+    const answer = guard
+      ? await settleCollectedAnswer(guard, response, async (signal) =>
+          collectModelResult(await client.messages.create(streamed, { ...options, maxRetries: 0, signal }), started),
+        )
+      : response;
     const noted = {
       model: CLAUDE_MODEL,
-      maxTokens: input.maxTokens,
+      maxTokens: guard?.maxTokens ?? input.maxTokens,
       stopReason: response.stopReason,
       latencyMs: Date.now() - started,
       firstTokenMs: response.firstTokenMs,
       usage: response.usage,
     };
-    if (response.stopReason === "refusal") {
+    if (answer.stopReason === "refusal") {
       noteModelCall({ ...noted, subtype: "refused" });
       throw new AiError(
         "refused",
@@ -290,13 +305,18 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       );
     }
 
-    if (!response.text) {
+    if (!answer.text) {
       noteModelCall({ ...noted, subtype: "empty_answer" });
       throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
     }
 
-    noteModelCall(noted);
-    return response.text;
+    // The trace records the reply that is shown; `answer` is `response` unless the guard settled it.
+    noteModelCall(
+      answer === response
+        ? noted
+        : { ...noted, stopReason: answer.stopReason, firstTokenMs: answer.firstTokenMs, usage: answer.usage },
+    );
+    return answer.text;
   } catch (error) {
     if (error instanceof AiError) throw error;
     if (error instanceof MissingConfigurationError) {
@@ -307,7 +327,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     // and subtype are recorded for the trace before this object is discarded.
     noteModelCall({
       model: CLAUDE_MODEL,
-      maxTokens: input.maxTokens,
+      maxTokens: guard?.maxTokens ?? input.maxTokens,
       stopReason: null,
       latencyMs: Date.now() - started,
       firstTokenMs: null,

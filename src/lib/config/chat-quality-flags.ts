@@ -867,3 +867,16 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * A long chat answer is not cut mid-sentence (conv_mvonyx9pzg7948, 26 Oct
+ * 2026: "can you make a weekly coaching for how to get efts" stopped at
+ * max_tokens on "…can copy it [S5"; same flag in both apps). The answer call
+ * gets 3584 tokens instead of 2048; a reply still cut is asked once more
+ * while the turn is under 35 s, and otherwise ends at its last complete
+ * sentence or list item, never past 60 s. See `ai/answer-length-guard.ts`.
+ * Off, the request and the reply are exactly what main ships.
+ */
+export function answerLengthGuardEnabled(): boolean {
+  return envFlag("ANSWER_LENGTH_GUARD_ENABLED");
+}
