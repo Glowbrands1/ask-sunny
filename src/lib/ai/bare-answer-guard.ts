@@ -1,4 +1,5 @@
 import { bareAnswerBindingEnabled } from "@/lib/config/chat-quality-flags";
+import { payrollDeductReply } from "@/lib/forms/payroll-deduct";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
@@ -156,7 +157,8 @@ function payrollAnswered(question: string, lastAsked: string): boolean {
   // Only a short turn is read this way; a numbered intake or an account is the readers' as before.
   if (SAYS_PAYROLL.test(question) || question.trim().split(/\s+/).length > SHORT_TURN_WORDS) return true;
   if (!BARE_YES_NO.test(question.trim()) && !NOT_APPLICABLE.test(question.trim())) return false;
-  return /payroll\s+deduct/i.test(lastQuestion(lastAsked));
+  // Payroll is the question: the last one asked, or the payroll reader finds it (a numbered intake, or asked alone).
+  return /payroll\s+deduct/i.test(lastQuestion(lastAsked)) || payrollDeductReply(question, lastAsked) !== null;
 }
 
 /** An earlier manager turn already answered payroll ("no payroll deduct", or "no" to the payroll question). */
