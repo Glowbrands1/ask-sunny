@@ -1,5 +1,14 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 26 Oct 2026: FOLLOW_UP_NOT_PRIOR_ENABLED — Sunny-only
+
+QA Sunny tester batch 13 (S16, S19): a prior action's date was also printed
+as a "**Follow-up:**" card line (`form-card-slots.ts` `followUpDates` counts
+every date that is not an incident date). With the flag on, a date the
+earlier-step reader lists is never a Follow-up line. Ask Bubbles' card has no
+Follow-up lines (`enrichFormCard` does not run on its grounded path), so there
+is nothing to port.
+
 ## 26 Oct 2026: the six EPP templates are hidden in Ask Bubbles — Sunny keeps them (Bubbles-only)
 
 Ask Bubbles hid the SDIT, TSD, ASD-SDIT and FTTC EPPs and both DMIT EPP
