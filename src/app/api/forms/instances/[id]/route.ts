@@ -13,9 +13,9 @@ import {
   UnverifiedPolicyError,
   InstanceProtectedError,
   loadInstance,
-  reviseInstance,
   saveInstanceValues,
 } from "@/lib/forms/instances";
+import { reviseFinalizedForm, RevisionReasonRequiredError } from "@/lib/forms/revision-chain";
 
 /**
  * One form.
@@ -98,6 +98,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * cannot obtain it any other way, and the server never defaults it.
        */
       acknowledgeUnverifiedPolicy?: boolean;
+      /**
+       * Why a finalized form is being edited. Required with
+       * `FORM_REVISIONS_ENABLED` on, recorded on the revision's `created`
+       * event; ignored with it off. See `reviseFinalizedForm`.
+       */
+      reason?: string;
     } | null;
 
     if (body?.action === "finalize") {
@@ -107,10 +113,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ instance });
     }
     if (body?.action === "revise" || body?.action === "reevaluate") {
-      const instance = await reviseInstance(
+      const instance = await reviseFinalizedForm(
         id,
         actor.id,
         body.action === "reevaluate" ? "reevaluated" : "revised",
+        body.reason,
       );
       return NextResponse.json({ instance });
     }
@@ -126,6 +133,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * message is for a person, and a client that matched on prose would break
      * the first time the wording improved.
      */
+    /*
+     * 400 WITH A CODE: the edit needs a reason (`FORM_REVISIONS_ENABLED`).
+     * The message tells the manager why, and that the new printout is signed
+     * again; the code is what the reason dialog keys off.
+     */
+    if (error instanceof RevisionReasonRequiredError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+    }
     if (error instanceof UnverifiedPolicyError) {
       return NextResponse.json(
         {
