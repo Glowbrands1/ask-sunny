@@ -118,6 +118,8 @@ describe("INTENT_PAYROLL_MANAGER_ONLY_ENABLED", () => {
   });
 
   it("off, reads the assistant's $25 as before (the Ask Bubbles state on 24 Oct)", () => {
+    // Pinned to LATE_OPEN_DATE off, the state this pins; the env may set it (with it on, payroll is read from the manager's own Yes/No, its intended change). Restored by unstubAllEnvs.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     const state = replay();
     expect(state.payrollAmount).toBe("25");
     expect(state.payrollDeduct).toBe("yes");

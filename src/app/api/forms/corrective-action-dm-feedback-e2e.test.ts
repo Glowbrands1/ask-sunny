@@ -925,7 +925,13 @@ const LATE_OPENER_DRAFT = {
 };
 
 describe("a late opening with a payroll deduction", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("reads the date, Verbal, the history and the $25, and the Action Plan states the $25", async () => {
+    // Pinned to LATE_OPEN_DATE off, the profile this was recorded under; the env may set it (production has it on). On: see the twin below.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     const { last, proposal, create } = await conversation([G1]);
 
     expect(proposal.warningLevel).toBe("verbal");
@@ -1038,7 +1044,13 @@ describe("Policy Violated names a cited section beside any box", () => {
  * plan said only "A payroll deduction applies."
  */
 describe("the payroll amount the quoted section states", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("with no amount stated, states the $25.00 the quoted Late Opening section gives", async () => {
+    // Pinned to LATE_OPEN_DATE off, the profile this was recorded under; the env may set it (production has it on). On: see the twin below.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     const { create } = await conversation([
       "create verbal ca for tess varga for opening the salon late on 10-1-26. payroll deduct applies",
     ]);
@@ -1080,6 +1092,8 @@ describe("the payroll amount the quoted section states", () => {
   });
 
   it("on No, the section's figure is not stated", async () => {
+    // Pinned to LATE_OPEN_DATE off, the profile this was recorded under; the env may set it (production has it on). On: see the twin below.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     const { create } = await conversation([
       "create verbal ca for tess varga for opening the salon late on 10-1-26. no payroll deduct",
     ]);
@@ -1088,6 +1102,75 @@ describe("the payroll amount the quoted section states", () => {
     const { reference } = await create();
     expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
       `Management will review the Late Opening and Attendance policies with Tess. ${CLOSING}`,
+    );
+  });
+});
+
+/*
+ * LATE_OPEN_DATE is on in production; the three pins above predate it. With it
+ * on, a late opening cites Late Opening, p. 15 alone (QA, 24 Oct 2026, see
+ * "LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening only"), so the
+ * Action Plan reviews the Late Opening policy, not "Late Opening and
+ * Attendance". Everything else those tests read is the same.
+ */
+describe("with LATE_OPEN_DATE_ENABLED on, as in production: the late opening's plan and payroll", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads the date, Verbal, the history and the $25, and the Action Plan states the $25", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    const { last, proposal, create } = await conversation([G1]);
+
+    expect(proposal.warningLevel).toBe("verbal");
+    expect(last.content).toMatch(/\*\*Type of Warning:\*\* Verbal Warning, as you said/);
+    expect(proposal.formDate).toBe("2026-10-01");
+    expect(proposal.payrollDeduct).toBe("yes");
+    expect(last.content).toMatch(/Is payroll deduct applicable\? \*\*Yes\*\*/);
+
+    state.draft = LATE_OPENER_DRAFT;
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    const policy = field(form, "policy_language")!.value!;
+
+    expect(field(form, "form_date")!.value).toBe("2026-10-01");
+    expect(field(form, "prior_actions")!.value).toBe("Coaching — JBA Policy Manual — signed 01/01/2026");
+    expect(field(form, "warning_type")!.checked).toEqual(["verbal"]);
+    expect(field(form, "payroll_deduct")!.checked).toEqual(["yes"]);
+    expect(field(form, "offense_type")!.checked).toEqual(["tardiness"]);
+    expect(policy).toContain("Source: JBA Policy Manual — Late Opening, p. 15");
+    expect(policy).not.toMatch(/Attendance/);
+    expect(field(form, "action_plan")!.value).toBe(
+      `Management will review the Late Opening policy with Tess. $25 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+  });
+
+  it("with no amount stated, states the $25.00 the quoted Late Opening section gives", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    const { create } = await conversation([
+      "create verbal ca for tess varga for opening the salon late on 10-1-26. payroll deduct applies",
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    const form = await review(reference.instanceId);
+    expect(field(form, "policy_language")!.value).toContain("$25.00 via payroll deduction");
+    expect(field(form, "action_plan")!.value).toBe(
+      `Management will review the Late Opening policy with Tess. $25.00 will be deducted from Tess's pay. ${CLOSING}`,
+    );
+    expect(field(form, "action_plan")!.provenance).toMatchObject({ payroll: "$25.00", payrollAmountFrom: "manual" });
+  });
+
+  it("on No, the section's figure is not stated", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    const { create } = await conversation([
+      "create verbal ca for tess varga for opening the salon late on 10-1-26. no payroll deduct",
+    ]);
+    state.draft = LATE_OPENER_DRAFT;
+
+    const { reference } = await create();
+    expect(field(await review(reference.instanceId), "action_plan")!.value).toBe(
+      `Management will review the Late Opening policy with Tess. ${CLOSING}`,
     );
   });
 });

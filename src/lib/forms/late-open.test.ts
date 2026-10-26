@@ -22,6 +22,11 @@ function on() {
   vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
 }
 
+/** Pinned to flag-off; the env may set it (production runs with it on). Restored by `unstubAllEnvs` above. */
+function off() {
+  vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+}
+
 describe("a yearless dashed month-day after a date cue", () => {
   it.each([
     ["late to open 10-19, verbal, no payroll", "2026-10-19"],
@@ -64,6 +69,7 @@ describe("late to open is the Late Opening section", () => {
   });
 
   it("is Attendance with the flag off, as before", () => {
+    off();
     expect(readCaPolicy("late to open 10-19, verbal, no payroll").stated).toBeNull();
     expect(sectionHeadingsFor({ offenseKeys: ["tardiness"], notes: "late to open 10-19" })).toEqual([["Attendance"]]);
   });
@@ -110,6 +116,7 @@ describe("the intent read (this app's live path)", () => {
   });
 
   it("F5 with the flag off reads no date and Attendance, as live", () => {
+    off();
     const decision = decideIntentTurn(turn(F5));
     expect(decision.state.formDate).toBeNull();
     expect(decision.state.incidentType).toBe("Attendance");
