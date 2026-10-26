@@ -847,6 +847,18 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * A short answer fills the slot it answers and nothing else: Employee is
+ * never a title, place, warning level or yes/no; Job title is never a place,
+ * level or yes/no; Payroll changes only when the turn says payroll or is a
+ * bare yes/no to the payroll question asked last (25 Oct 2026, Ask Sunny
+ * conv_mvoehonm2pfrkng, conv_mvofnrm5217ss9v). See `ai/bare-answer-guard.ts`.
+ * Off, the card is as before.
+ */
+export function bareAnswerBindingEnabled(): boolean {
+  return envFlag("BARE_ANSWER_BINDING_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of

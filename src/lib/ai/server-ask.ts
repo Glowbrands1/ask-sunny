@@ -154,6 +154,7 @@ import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
 import { withTerseSlots } from "./terse-slots";
+import { withBareAnswerBinding } from "./bare-answer-guard";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -290,7 +291,8 @@ async function answerQuestionChecked(
     const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    return keepManagerActionPlan(await applyQuietQuality(response), request);
+    // BARE_ANSWER_BINDING_ENABLED: a short answer fills only the slot it answers.
+    return keepManagerActionPlan(withBareAnswerBinding(await applyQuietQuality(response), request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
