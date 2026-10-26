@@ -123,3 +123,41 @@ describe("what the plain wording does not read", () => {
     expect(readCaPolicy(text).topics).toEqual([]);
   });
 });
+
+/*
+ * HOW MANAGERS TYPE (Pau, 26 Oct 2026): every wording also in all lowercase and
+ * in sentence case, names lowercase or capitalised, plus the terse, rude
+ * register from the chat history. The reading is the same in each.
+ */
+const lower = (text: string) => text.toLowerCase();
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+
+describe("flag on: the same Standards of Conduct reading in every register", () => {
+  const REGISTER = [
+    ...ACCOUNTS.flatMap((text) => [lower(text), sentence(text)]),
+    "didnt complete the policy acknowledgments",
+    "Didnt complete the policy acknowledgments",
+    "marlo failed to have new hire do policy acknowledgements in woven",
+    "talking bad about coworkers",
+    "Talking bad about coworkers",
+    "shes always gossiping",
+    "she refused to do what i asked her to do and walked off",
+    "She talked back to me again",
+    "was disrespectful to her manager",
+  ];
+
+  it.each(REGISTER)("%s", (text) => {
+    on();
+    expect(readCaPolicy(text).suggestion).toBe("standards_of_conduct");
+    expect(accountManualSections(text, CHUNKS).map((section) => `${section.heading} p.${section.page}`)).toEqual([
+      "Standards of Conduct p.12",
+    ]);
+  });
+
+  it.each(ACCOUNTS)("never harassment in lowercase or sentence case: %s", (text) => {
+    on();
+    for (const typed of [lower(text), sentence(text)]) {
+      expect(accountManualSections(typed, CHUNKS).some((section) => /harassment/i.test(section.heading))).toBe(false);
+    }
+  });
+});
