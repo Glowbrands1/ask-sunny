@@ -881,3 +881,20 @@ export function appPasswordHelpEnabled(): boolean {
 export function followUpNotPriorEnabled(): boolean {
   return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
 }
+
+/**
+ * A Corrective Action or coaching draft is never filed blank (found in the
+ * sibling app's production, 26 Oct 2026: `drafted` with no fields and nothing
+ * rejected, from Create clicks fired several at once). The model's tool call
+ * is read when its `values` / `checked` came back JSON-encoded, one object per
+ * section, keyed by label, or with a single option as text; a model call that
+ * threw (429, 529, overloaded), answered with no tool call, or left no
+ * narrative although the notes hold an account is tried again up to twice
+ * (after 1 s, then 3 s), as is a failed framework read; if it is still empty,
+ * the Observation is the manager's own incident clause. Every reason goes on
+ * a drafted event, with `{"fallback": "manager_words"}` where used. See
+ * `forms/draft-never-blank.ts`. Off, the draft route is unchanged.
+ */
+export function draftNeverBlankEnabled(): boolean {
+  return envFlag("DRAFT_NEVER_BLANK_ENABLED");
+}
