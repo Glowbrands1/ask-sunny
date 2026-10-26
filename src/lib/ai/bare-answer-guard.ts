@@ -102,7 +102,7 @@ export function bindBareAnswer(input: {
 
   const payroll = next.payrollDeduct ?? null;
   const before = previous?.payrollDeduct ?? null;
-  if (payroll !== before && !payrollAnswered(input.question, lastAsked)) {
+  if (payroll !== before && !payrollAnswered(input.question, lastAsked) && !payrollSaidEarlier(input.history)) {
     next = { ...next, payrollDeduct: before };
     content = withPayroll(content, before);
   }
@@ -157,6 +157,15 @@ function payrollAnswered(question: string, lastAsked: string): boolean {
   if (SAYS_PAYROLL.test(question) || question.trim().split(/\s+/).length > SHORT_TURN_WORDS) return true;
   if (!BARE_YES_NO.test(question.trim()) && !NOT_APPLICABLE.test(question.trim())) return false;
   return /payroll\s+deduct/i.test(lastQuestion(lastAsked));
+}
+
+/** An earlier manager turn already answered payroll ("no payroll deduct", or "no" to the payroll question). */
+function payrollSaidEarlier(history: readonly Turn[]): boolean {
+  return history.some((turn, index) => {
+    if (turn.role !== "user" || typeof turn.content !== "string") return false;
+    const asked = [...history.slice(0, index)].reverse().find((before) => before.role === "assistant")?.content ?? "";
+    return payrollAnswered(turn.content, asked) && (SAYS_PAYROLL.test(turn.content) || /payroll\s+deduct/i.test(lastQuestion(asked)));
+  });
 }
 
 function lastQuestion(reply: string): string {
