@@ -409,6 +409,55 @@ describe("a non-retryable 400 is not retried", () => {
   });
 });
 
+/*
+ * QA-2 follow-up (26 Oct 2026): with MODEL_RETRY_ENABLED on, main answers a
+ * 529 with the "busy" 503, not the 502. The retry throws the last attempt's
+ * error unchanged, so a final 529 is still that 503. What differs with
+ * CHAT_UPSTREAM_RETRY_ENABLED on is only how many attempts came first, and
+ * both are pinned.
+ */
+describe("a final 529 under MODEL_RETRY_ENABLED stays the busy 503", () => {
+  const OVERLOADED = FAILURES[1]![1];
+  const BUSY = {
+    error: "Sunny is busy right now and could not finish that answer. Please send it again in a moment.",
+    code: "model_failed",
+    missing: [],
+  };
+
+  it("CHAT_UPSTREAM_RETRY_ENABLED on: three attempts, the last a 529, then the busy 503", async () => {
+    process.env.MODEL_RETRY_ENABLED = "on";
+    flagOn();
+    state.script = [FAILURES[0]![1], FAILURES[3]![1], OVERLOADED, { kind: "answer" }];
+    const result = await ask();
+    expect(result.status, result.text).toBe(503);
+    expect(result.body).toEqual(BUSY);
+    expect(state.modelCalls).toHaveLength(3);
+    expect(state.waits).toEqual([1_000, 3_000]);
+    expect(state.modelCalls.every((call) => (call.options as { maxRetries?: number }).maxRetries === 0)).toBe(true);
+    expect(warnings.join("\n")).toMatch(/model call failed after 3 attempts: upstream 529/);
+    expect(store.chat_traces.at(-1)).toMatchObject({
+      succeeded: false,
+      error_status: 529,
+      error_subtype: "overloaded",
+      retried: true,
+    });
+  });
+
+  it("CHAT_UPSTREAM_RETRY_ENABLED off (main): one call, MODEL_RETRY's own options, the same busy 503", async () => {
+    process.env.MODEL_RETRY_ENABLED = "on";
+    state.script = [OVERLOADED, { kind: "answer" }];
+    const result = await ask();
+    expect(result.status, result.text).toBe(503);
+    expect(result.body).toEqual(BUSY);
+    expect(state.modelCalls).toHaveLength(1);
+    // Off, the SDK keeps MODEL_RETRY's own retries and timeout.
+    expect(state.modelCalls[0]!.options).toEqual({ timeout: 45_000, maxRetries: 2 });
+    expect(state.waits).toEqual([]);
+    expect(warnings.join("\n")).not.toMatch(/model call/);
+    expect(store.chat_traces.at(-1)).toMatchObject({ succeeded: false, error_status: 529, retried: false });
+  });
+});
+
 describe("CHAT_UPSTREAM_RETRY_ENABLED off is main", () => {
   for (const [label, failure] of FAILURES) {
     it(`returns the old error on the first ${label}, with no retry and no new log`, async () => {
