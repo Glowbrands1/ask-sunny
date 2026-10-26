@@ -91,6 +91,8 @@ export function readDateChoice(reply: string, dates: readonly string[], today: s
    * Oct 2026, round 3 — the form was dated 1/1).
    */
   const typed = listFormDates(reply, today).filter((found) => found.iso <= today);
+  // DATE_ANSWER_APPLIED_ENABLED: "10/5 and 10/15" repeats the dates; it does not pick one.
+  if (dateAnswerAppliedEnabled() && new Set(typed.map((found) => found.iso)).size > 1) return null;
   if (typed.length > 0) return { kind: "date", iso: typed[typed.length - 1]!.iso };
   // DATE_ANSWER_APPLIED_ENABLED: "10-15", "the 15th" pick the date asked about with that day.
   const picked = dateAnswerAppliedEnabled() ? askedDayIn(text, dates) : null;
