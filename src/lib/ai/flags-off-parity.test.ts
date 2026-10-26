@@ -408,7 +408,13 @@ describe("new flags default off and wrappers are inert", () => {
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
-      expect(changedLines(diff(uiBase, [REVIEWS_PAGE])).filter((line) => !REVIEWS_NOTE_MOUNT.includes(line))).toEqual([]);
+      /*
+       * Exactly the mount, each line once and in order, or nothing at all
+       * (once main carries the note, a branch's diff of the page is empty).
+       * A duplicated, moved or extra line fails (QA-7, 26 Oct 2026).
+       */
+      const reviewsPageLines = changedLines(diff(uiBase, [REVIEWS_PAGE]));
+      expect(reviewsPageLines.length === 0 ? REVIEWS_NOTE_MOUNT : reviewsPageLines).toEqual(REVIEWS_NOTE_MOUNT);
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",
