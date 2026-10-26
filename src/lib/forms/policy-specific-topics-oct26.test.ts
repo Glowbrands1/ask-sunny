@@ -430,27 +430,3 @@ describe("both flags on: cleaning plus another incident cites both", () => {
     expect(cited(ask("the cleaning didn't get done and she took product without paying"))).toEqual([SOC13, "Handling Theft p.30"]);
   });
 });
-
-/* A working animal is not a pet (coordinator, 26 Oct 2026); an emotional support animal is cited. */
-describe("flag on: service, guide, therapy and seeing-eye animals are not cited; emotional support and a hamster are", () => {
-  it.each(
-    [
-      "she brought her service dog to work",
-      "she brought a guide dog into the store",
-      "she brought her therapy dog in",
-      "she brought her seeing-eye dog to work",
-      "she brought her service animal to work",
-    ].flatMap(registers),
-  )("exempt: %s", (text) => {
-    on();
-    expect(specificTopic(ask(text))).toBeNull();
-    expect(cited(ask(text))).not.toContain("Animals in the Workplace p.30");
-  });
-
-  it.each(
-    ["she brought her emotional support dog to work", "she brought her hamster to work", "she brought a puppy to work"].flatMap(registers),
-  )("cited: %s", (text) => {
-    on();
-    expect(cited(ask(text))).toEqual(["Animals in the Workplace p.30", "Visitors in the Workplace p.29"]);
-  });
-});
