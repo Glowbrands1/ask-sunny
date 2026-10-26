@@ -1,4 +1,5 @@
 import { shiftDays } from "@/lib/business-date";
+import { exitProseFactsEnabled } from "@/lib/config/chat-quality-flags";
 
 import { EXIT_DERIVED_KEYS, exitFactValues, readExitFacts, type ExitFacts } from "./exit-facts";
 import { datesInText } from "./form-date-answer";
@@ -61,6 +62,21 @@ const DECISION_TOPICS: RegExp[] = [
   /\bfired\b|\bterminat(?:e|ed|ion)\b|\blet (?:her|him|them) go\b|\blet go\b|\binvoluntar(?:y|ily)\b|\bdismiss(?:ed|al)?\b|\bdischarged\b/i,
 ];
 
+/*
+ * EXIT_PROSE_FACTS_ENABLED (QA, 25 Oct 2026): Additional Details said the
+ * employee "worked through it" next to "did not call in" — a notice worked
+ * that the manager never described. Working the notice and calling in or
+ * showing up are subjects a Details sentence may raise only when the notes did.
+ */
+const ACCOUNT_TOPICS: RegExp[] = [
+  /\bworked\s+(?:through|thru|out|until|till|til|it|(?:her|his|their|the|a|an|two|2)\b)|\bfulfill(?:s|ed|ing)?\b|\bserved\s+(?:her|his|their|the|a)\b/i,
+  /\bcall(?:s|ed|ing)?\s+(?:in|out|off)\b|\bno[\s-]*call\b|\bshow(?:s|ed)?\s+up\b|\bno[\s-]*show\b|\bncns\b/i,
+];
+
+function guardedTopics(): RegExp[] {
+  return exitProseFactsEnabled() ? [...DECISION_TOPICS, ...ACCOUNT_TOPICS] : DECISION_TOPICS;
+}
+
 export interface ExitDetailsGuard {
   value: string;
   /** Sentences removed, for the response. */
@@ -88,7 +104,7 @@ export function guardExitDetails(value: string, notes: string, today: string): E
   const kept: string[] = [];
   const removed: string[] = [];
   for (const sentence of sentences) {
-    const unraised = DECISION_TOPICS.some(
+    const unraised = guardedTopics().some(
       (topic) => topic.test(sentence) && !topic.test(notes),
     );
     const undated = datesInText(sentence, today).some((found) => !allowedDates.has(found.iso));
