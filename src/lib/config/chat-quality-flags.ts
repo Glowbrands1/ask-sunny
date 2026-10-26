@@ -815,3 +815,13 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * The way managers name a salon ("o st", "kearney ne", "lincoln o st") is
+ * written as the roster name before any reader sees the turn; the aliases are
+ * built from the salon list (25 Oct 2026). See `ai/store-alias.ts`. Off,
+ * every turn is read as typed.
+ */
+export function storeAliasEnabled(): boolean {
+  return envFlag("STORE_ALIAS_ENABLED");
+}
