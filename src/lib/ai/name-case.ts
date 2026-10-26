@@ -3,7 +3,7 @@ import { describesIncident } from "@/lib/forms/corrective-action-intake";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 
-import type { AskRequest } from "./types";
+import type { AskRequest, AskResponse } from "./types";
 
 /**
  * NAME_CASE_INSENSITIVE_ENABLED: a name is read the same however it is typed.
@@ -85,9 +85,6 @@ function nameWord(word: string): boolean {
   return /^[a-z][a-z'’-]*$/.test(lower) && lower.length >= 2 && !FUNCTION_WORDS.has(lower) && !TOPIC_WORDS.has(lower) && !READERS.title(word) && !READERS.place(word);
 }
 
-function titleCase(word: string): string {
-  return word.replace(/^([a-z])|([-'’][a-z])/g, (letter) => letter.toUpperCase());
-}
 
 /** The turn with capitals read as lowercase and the named person in Title Case. */
 export function humanCase(text: string): string {
@@ -127,7 +124,38 @@ export function humanCase(text: string): string {
   let out = source;
   for (const span of spans.sort((a, b) => b.start - a.start)) {
     const segment = out.slice(span.start, span.end);
-    out = out.slice(0, span.start) + segment.replace(/[A-Za-z][A-Za-z'’-]*/g, (word) => titleCase(word.toLowerCase())) + out.slice(span.end);
+    // A word with a capital inside it ("rOsAlYn", "McDonald") is kept as typed; titleCaseName says how.
+    out = out.slice(0, span.start) + titleCaseName(segment) + out.slice(span.end);
   }
   return out;
+}
+
+/**
+ * The card's name in Title Case, word by word (QA coordinator, 26 Oct 2026: a
+ * form goes to HR, and "rory vance" on it looks wrong). A word typed all in
+ * lowercase or all in capitals is written in Title Case, with its hyphen and
+ * apostrophe parts ("mary-jane" → "Mary-Jane", "o'brien" → "O'Brien"); a word
+ * with a capital inside it ("McDonald", "DeShawn", "rOsAlYn") is kept as
+ * typed. The same name is changed where the reply shows it. Off, the reply is
+ * as it is.
+ */
+export function withNameTitleCase(response: AskResponse): AskResponse {
+  if (!nameCaseInsensitiveEnabled()) return response;
+  const name = response.formProposal?.employeeName;
+  if (!name) return response;
+  const titled = titleCaseName(name);
+  if (titled === name) return response;
+  return {
+    ...response,
+    content: response.content.split(name).join(titled),
+    formProposal: { ...response.formProposal!, employeeName: titled },
+  };
+}
+
+export function titleCaseName(name: string): string {
+  return name.replace(/[A-Za-z][A-Za-z'’-]*/g, (word) => {
+    const plain = word === word.toLowerCase() || word === word.toUpperCase();
+    if (!plain) return word;
+    return word.toLowerCase().replace(/(^|[-'’])([a-z])/g, (_, mark: string, letter: string) => `${mark}${letter.toUpperCase()}`);
+  });
 }
