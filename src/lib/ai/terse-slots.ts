@@ -101,23 +101,27 @@ function commandLine(text: string): boolean {
 /**
  * TERSE_COMMAND_ONLY_ENABLED (QA live run, 26 Oct 2026): "ca <first> <middle>
  * <last> <place> late today verbal" lost the surname. A third name word is
- * taken when what follows it closes the name: a place, a title, a state, a
- * date, a level, the start of the account ("late", "opened", never "on" or
- * "was"), or the end of the line. "coach <first> <last> woven acks" and
- * "coaching <first> <last> tanned on clock" stay two words.
+ * taken only when a place, a title, a state or the start of the account
+ * ("late", "opened", never "on" or "was") follows it, and never when it is a
+ * level, a form word or a topic (`NOT_A_THIRD_NAME`), a place, a title or a
+ * repeat of the name. The end of the line or a date never makes a name:
+ * "ca <name> final 10-14", "coach <name> woven", "coaching <name> tanned on
+ * clock" stay two words (QA-4, 26 Oct 2026).
  */
-function thirdNameWord(tokens: readonly string[]): boolean {
+/** Levels, form words and topics: never the third word of a name. */
+const NOT_A_THIRD_NAME =
+  /^(?:final|verbal|written|first|second|third|last|warning|ca|c\/a|dpoa|coach|coaching|exit|form|write|woven|acks?|training|orientation|uniform|personal|closing|opening|sales|schedule|break|breaks|refund|deposit|theft|safety|attendance|dress|cash|phone|cell|ncns|register|drawer|cleaning|sanitize|sanitizing|customer|customers|guest|guests|policy|tardy|tardiness|conduct|standards|insubordination|performance|inventory|product|products|recipe|measuring|timecard|clock|counter|music|food|smoking|vaping|language|rude|rudeness|today|yesterday|tomorrow)$/i;
+
+function thirdNameWord(tokens: readonly string[], name: readonly string[]): boolean {
   const [word, next, after] = tokens;
-  if (!word || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || READERS.place(word) || READERS.title(word)) return false;
-  if (STATE.test(word) || (next !== undefined && READERS.place(`${word} ${next}`))) return false;
-  if (!next) return true;
+  if (!word || !next || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || NOT_A_THIRD_NAME.test(word)) return false;
+  if (READERS.place(word) || READERS.title(word) || STATE.test(word) || READERS.place(`${word} ${next}`)) return false;
+  if (name.some((part) => part.toLowerCase() === word.toLowerCase())) return false;
   return (
     READERS.place(next) ||
     (after !== undefined && READERS.place(`${next} ${after}`)) ||
     READERS.title(next) !== null ||
     STATE.test(next) ||
-    DATE.test(next) ||
-    LEVEL.test(next) ||
     (NOT_A_NAME_WORD.test(next) && !/^(?:on|at|for|was|is|did)$/i.test(next))
   );
 }
@@ -143,7 +147,7 @@ export function expandTerseRequest(text: string, today: string): string {
     if (!NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || READERS.place(word) || READERS.title(word)) break;
     name.push(tokens.shift()!);
   }
-  if (name.length === 2 && terseCommandOnlyEnabled() && thirdNameWord(tokens)) name.push(tokens.shift()!);
+  if (name.length === 2 && terseCommandOnlyEnabled() && thirdNameWord(tokens, name)) name.push(tokens.shift()!);
   if (name.length === 0) return text;
 
   let place: string | null = null;

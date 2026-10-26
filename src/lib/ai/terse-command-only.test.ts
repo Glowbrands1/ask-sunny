@@ -114,3 +114,57 @@ describe("TERSE_COMMAND_ONLY_ENABLED on: the live command lines", () => {
     for (const variant of cases(turn)) expect(expandTerseRequest(variant, TODAY)).toBe(variant);
   });
 });
+
+/**
+ * QA-4, 26 Oct 2026 (both terse flags on): a level, topic or form word after
+ * the name, or the name repeated, was glued into it ("ca avery stone final
+ * 10-14" → "avery stone final"). Live tester G19 (conv_mvon4qqu27bu4in,
+ * invented name): "written ca mara quill 10/5 didnt do 10 min sanitize at
+ * <place>" read "Ca Mara Quill" with the terse reader off.
+ */
+describe("TERSE_COMMAND_ONLY_ENABLED on: a third name word is never a level, topic or form word", () => {
+  const TWO_WORDS = [
+    "ca avery stone final 10-14",
+    "ca avery stone warning",
+    "ca avery stone uniform",
+    "ca avery stone personal",
+    "ca avery stone second",
+    "ca avery stone closing",
+    "ca avery stone sales",
+    "ca avery stone training",
+    "ca avery stone schedule",
+    "ca avery stone break",
+    "ca avery stone refund",
+    "ca avery stone deposit",
+    "ca avery stone theft",
+    "ca avery stone safety",
+    "coach avery stone woven",
+    "coach avery stone acks",
+    "coach avery stone coaching 10-14",
+    "exit avery stone final",
+    "ca avery stone stone",
+  ];
+  it.each(TWO_WORDS)("'%s' keeps the name 'avery stone', in any case", (command) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) {
+      expect(expandTerseRequest(variant, TODAY).toLowerCase()).toMatch(/ form for avery stone(?:[.,]| at )/);
+    }
+  });
+
+  it.each(["ca john michael doe late 10-14", "ca john michael doe late today"])("'%s' keeps the three-part name, in any case", (command) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase()).toContain("form for john michael doe.");
+  });
+
+  it.each(["written ca mara quill 10/5 didnt do 10 min sanitize at lawrence", "verbal ca mara quill 10/5 didnt do 10 min sanitize at lawrence"])(
+    "G19 '%s' is a form for mara quill, never 'ca mara quill', in any case",
+    (command) => {
+      process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+      for (const variant of cases(command)) {
+        const out = expandTerseRequest(variant, TODAY).toLowerCase();
+        expect(out).toMatch(/^create a corrective action form for mara quill[ .,]/);
+        expect(out).not.toContain("for ca ");
+      }
+    },
+  );
+});

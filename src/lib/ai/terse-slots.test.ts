@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
@@ -12,9 +12,19 @@ import type { AskRequest } from "./types";
  */
 const FLAG = "TERSE_SLOT_READ_ENABLED";
 const saved = process.env[FLAG];
+// These pin TERSE_SLOT_READ alone. With TERSE_COMMAND_ONLY_ENABLED on as well,
+// a "ca for <name> …" sentence is left as typed on purpose (QA, 26 Oct 2026),
+// pinned in terse-command-only.test.ts, so that flag is cleared here.
+const COMMAND_ONLY = "TERSE_COMMAND_ONLY_ENABLED";
+const savedCommandOnly = process.env[COMMAND_ONLY];
+beforeEach(() => {
+  delete process.env[COMMAND_ONLY];
+});
 afterEach(() => {
   if (saved === undefined) delete process.env[FLAG];
   else process.env[FLAG] = saved;
+  if (savedCommandOnly === undefined) delete process.env[COMMAND_ONLY];
+  else process.env[COMMAND_ONLY] = savedCommandOnly;
 });
 
 const TODAY = "2026-10-25";
