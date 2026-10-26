@@ -170,6 +170,7 @@ import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
+import { withoutOtherBrands } from "./brand-reply-guard";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 
@@ -1752,11 +1753,13 @@ async function answerQuestionUntraced(
    * retrieved excerpts "the sources you shared" has that clause rewritten,
    * unless the manager pasted something. See `sources-not-shared.ts`.
    */
-  const prose = withoutSharedSourceClaims(stripMarkers(spoken, { tidy: reformatKeepsSourcesEnabled() }), {
-    question: request.question,
-    history: request.history,
-    attachedDocumentIds: request.attachedDocumentIds,
-  }).content;
+  const prose = withoutOtherBrands(
+    withoutSharedSourceClaims(stripMarkers(spoken, { tidy: reformatKeepsSourcesEnabled() }), {
+      question: request.question,
+      history: request.history,
+      attachedDocumentIds: request.attachedDocumentIds,
+    }).content,
+  );
 
   return {
     content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
