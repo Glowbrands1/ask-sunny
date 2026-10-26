@@ -869,6 +869,20 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
+ * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
+ * written on 07/28/2026" listed both under Prior actions and also as
+ * "Follow-up: 6/25/2026" and "Follow-up: 7/28/2026": the card counted every
+ * date that was not the incident's as a follow-up, and PRIOR_ACTIONS_PARSE
+ * takes the earlier steps' dates out of the incident dates. On, a date the
+ * earlier-step reader lists is never a Follow-up line. Off, the card's
+ * Follow-up lines are exactly as before.
+ */
+export function followUpNotPriorEnabled(): boolean {
+  return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
+}
+
+/**
  * A full-remap card is shown only to a role that may create its form (QA, 25
  * Oct 2026). The remap returned its card before the proposal path's role
  * check, so a role with no create rights was offered a form the server then
