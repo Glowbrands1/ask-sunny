@@ -278,6 +278,13 @@ describe("a generic form request is explained from the template", () => {
     ...both("create a coaching form for Avery Holt using the template"),
     ...both("create a ca for everyone at the salon"),
     ...both("make a policy review for Avery Holt"),
+    // QA-2 probes: a negation, or a generic word beside a real name, is never the guide.
+    ...both("don't make a generic form"),
+    ...both("never create a policy review"),
+    ...both("make a generic policy review for Avery Holt"),
+    ...both("make a generic policy review form for Avery Holt"),
+    ...both("create a template coaching form for Avery Holt"),
+    ...both("can you make a coaching form for Avery Holt that works for any employee"),
   ])("NEVER-BREAK: %s still creates", (wording) => {
     expect(readFormsGuideQuestion(wording)).toBeNull();
   });
