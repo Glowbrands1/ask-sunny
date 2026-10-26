@@ -120,3 +120,24 @@ describe("flag on: not an account of cleaning left undone", () => {
     expect(describedManualSection({ text, chunks: CHUNKS })?.section.heading).not.toBe(CARE);
   });
 });
+
+/* HOW MANAGERS TYPE (Pau, 26 Oct 2026): the same reading in all lowercase and in sentence case. */
+const lower = (text: string) => text.toLowerCase();
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+
+describe("flag on: every register reads the same", () => {
+  it.each([...CLEANING, ...DUTIES].flatMap((text) => [lower(text), sentence(text)]))("%s", (text) => {
+    on();
+    const original = [...CLEANING, ...DUTIES].find((entry) => entry.toLowerCase() === text.toLowerCase())!;
+    expect(cited(text)).toEqual(cited(original));
+    expect(readCaPolicy(text).suggestion).toBe(readCaPolicy(original).suggestion);
+  });
+
+  it.each(["cleaning duties werent done", "the cleaning didnt get done", "left the rooms dirty", "Didnt sanitize the beds"])(
+    "terse: %s is Care and Cleaning p.21",
+    (text) => {
+      on();
+      expect(cited(text)).toEqual([`${CARE} p.21`]);
+    },
+  );
+});
