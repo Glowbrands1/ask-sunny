@@ -59,3 +59,27 @@ describe("NAME_PLACE_ANSWER_ENABLED on", () => {
     expect(out.history[0]!.content).toBe("rory vance, at lawrence, tanning consultant");
   });
 });
+
+/** QA-6 probes, 26 Oct 2026: only "<name>, <salon>", once, and never over a salon already named. */
+describe("NAME_PLACE_ANSWER_ENABLED on: the salon after the name only", () => {
+  const variants = (text: string) => [text.toLowerCase(), text[0]!.toUpperCase() + text.slice(1).toLowerCase(), text.toUpperCase()];
+
+  it.each([
+    ...variants("rory vance, wornall, tc, late at lawrence"),
+    ...variants("rory vance, lawrence, was late at kearney"),
+    ...variants("she was late, lawrence, because of traffic"),
+  ])("'%s' is left as typed", (turn) => {
+    process.env[FLAG] = "on";
+    expect(placesMarked(turn)).toBe(turn);
+  });
+
+  it("two people: only the first one's salon is marked", () => {
+    process.env[FLAG] = "on";
+    expect(placesMarked("rory vance, lawrence, avery holt, wornall")).toBe("rory vance, at lawrence, avery holt, wornall");
+  });
+
+  it.each(variants("rory vance, lawrence, tanning consultant"))("'%s' still names the salon", (turn) => {
+    process.env[FLAG] = "on";
+    expect(placesMarked(turn)).toMatch(/, at lawrence,/i);
+  });
+});

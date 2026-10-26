@@ -20,6 +20,8 @@ import type { AskRequest } from "./types";
 
 /** This app's reader of one salon named on its own. */
 const READERS = {
+  /** The turn already names one salon the reader reads. */
+  named: (text: string): boolean => readSalonMentions(text).some((mention) => mention.salonIds.length === 1),
   place: (text: string): boolean => readSalonMentions(`at ${text}`).some((mention) => mention.salonIds.length === 1),
 };
 
@@ -37,17 +39,26 @@ export function withNamePlaceAnswer(request: AskRequest): AskRequest {
   return changed ? { ...request, question, history } : request;
 }
 
-/** The turn with each bare salon comma part written as "at <salon>". */
+/** "rory vance" or "employee name: rory vance": the first comma part names the person. */
+const NAME_FIRST = /^\s*(?:(?:employee(?:'s)?\s+)?name(?:\s+is)?\s*:?\s*)?[A-Za-z][A-Za-z'’-]+\s+[A-Za-z][A-Za-z'’-]+\s*$/i;
+/** One to three plain words, none of them a preposition, a verb or an account word. */
+const PLAIN_PLACE = /^[A-Za-z][A-Za-z.'’-]*(?:\s+[A-Za-z][A-Za-z.'’-]*){0,2}$/;
+const NOT_A_PLACE_WORD = /\b(?:at|in|on|from|to|was|is|were|late|early|today|yesterday|because|of|she|he|they|her|his)\b/i;
+
+/**
+ * The turn with the salon after the name written as "at <salon>": only in
+ * "<name>, <salon>[, …]", only the part right after the name, and never when
+ * the turn already names a salon (QA-6, 26 Oct 2026: "…, late at lawrence"
+ * became "at late at lawrence", a second salon was added, and "she was late,
+ * lawrence, because of traffic" was read as the salon). With two people in
+ * one turn only the first one's salon is marked.
+ */
 export function placesMarked(text: string): string {
-  if (typeof text !== "string" || !text.includes(",")) return text;
+  if (typeof text !== "string" || !text.includes(",") || READERS.named(text)) return text;
   const parts = text.split(/(,\s*)/);
-  let changed = false;
-  for (let index = 2; index < parts.length; index += 2) {
-    const part = parts[index]!;
-    const bare = part.trim();
-    if (!bare || /^(?:at|in|from)\b/i.test(bare) || bare.split(/\s+/).length > 3 || !READERS.place(bare)) continue;
-    parts[index] = part.replace(bare, `at ${bare}`);
-    changed = true;
-  }
-  return changed ? parts.join("") : text;
+  if (parts.length < 3 || !NAME_FIRST.test(parts[0]!)) return text;
+  const bare = parts[2]!.trim();
+  if (!PLAIN_PLACE.test(bare) || NOT_A_PLACE_WORD.test(bare) || !READERS.place(bare)) return text;
+  parts[2] = parts[2]!.replace(bare, `at ${bare}`);
+  return parts.join("");
 }
