@@ -66,6 +66,9 @@ import {
   resignMethodFollowupEnabled,
   chatLongMessageEnabled,
   namedFormExactEnabled,
+  remapDraftSourcesClientEnabled,
+  remapDraftSourcesEnabled,
+  reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -152,6 +155,9 @@ const NEW_FLAGS = [
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
   "NAMED_FORM_EXACT_ENABLED",
+  "REMAP_DRAFT_SOURCES_ENABLED",
+  "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
+  "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
 ] as const;
@@ -311,6 +317,9 @@ describe("new flags default off and wrappers are inert", () => {
     expect(resignMethodFollowupEnabled()).toBe(false);
     expect(chatLongMessageEnabled()).toBe(false);
     expect(namedFormExactEnabled()).toBe(false);
+    expect(remapDraftSourcesEnabled()).toBe(false);
+    expect(remapDraftSourcesClientEnabled()).toBe(false);
+    expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
 
