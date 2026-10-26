@@ -815,3 +815,13 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * The manager's newest spelling of the card's employee wins: "mara quill"
+ * after "mara quil" puts "Mara Quill" on the card (Ask Sunny
+ * conv_mvofjlco271mr0t, 25 Oct 2026). See `ai/name-respell.ts`. Off, the
+ * first spelling stays.
+ */
+export function nameRespellEnabled(): boolean {
+  return envFlag("NAME_RESPELL_ENABLED");
+}
