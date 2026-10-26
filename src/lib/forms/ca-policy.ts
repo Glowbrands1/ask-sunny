@@ -193,13 +193,36 @@ const PLAIN_CONDUCT: { topic: ConductTopic; pattern: RegExp; unless?: RegExp }[]
   },
 ];
 
+/*
+ * A DENIED CONDUCT IS NOT ONE (QA-7, 26 Oct 2026): "she did not talk back",
+ * "she never gossips", "she was not disrespectful to her manager" cited the
+ * Standards of Conduct. A plain-wording match counts only when no negation
+ * stands just before it in its clause (a clause ends at , ; : a dash, "but"
+ * or "and"). "tom gossips but dana does not" says one person did and another
+ * did not: which one the form is about is not in the words, so it reads
+ * nothing. The task wording carries its own negation and is read as before.
+ */
+const DENIED_CONDUCT =
+  /\b(?:not|never|no\s+longer|no\s+one|nobody|did ?n[o']?t|didn't|does ?n[o']?t|doesn't|do ?n[o']?t|don't|was ?n[o']?t|wasn't|is ?n[o']?t|isn't|has ?n[o']?t|hasn't|have ?n[o']?t|haven't|wo ?n[o']?t|won't)\s+(?:\S+\s+){0,3}$/;
+const ANOTHER_DENIES = /\b(?:but|and|while|whereas)\s+(?:\S+\s+){1,3}?(?:does|did|is|was|has|do)\s+not\b|\b(?:but|and|while|whereas)\s+(?:\S+\s+){1,3}?(?:doesn't|didn't|isn't|wasn't|hasn't|don't|never\s+does)\b/;
+
+function saysConduct(sentence: string, pattern: RegExp, topic: ConductTopic): boolean {
+  if (topic === "task") return pattern.test(sentence);
+  if (ANOTHER_DENIES.test(sentence)) return false;
+  const all = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+  return [...sentence.matchAll(all)].some((match) => {
+    const clause = sentence.slice(0, match.index).split(/[,;:–—]|\s-\s|\bbut\b|\band\b/).pop() ?? "";
+    return !DENIED_CONDUCT.test(clause);
+  });
+}
+
 /** The conduct topics an account describes, with the plain words read under POLICY_CONDUCT_WORDING_ENABLED. */
 function conductTopicsIn(sentences: readonly string[]): ConductTopic[] {
   const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(({ topic }) => topic);
   if (!policyConductWordingEnabled()) return topics;
   for (const { topic, pattern, unless } of PLAIN_CONDUCT) {
     if (topics.includes(topic) || (unless && sentences.some((s) => unless.test(s)))) continue;
-    if (sentences.some((s) => pattern.test(s))) topics.push(topic);
+    if (sentences.some((s) => saysConduct(s, pattern, topic))) topics.push(topic);
   }
   return topics;
 }
