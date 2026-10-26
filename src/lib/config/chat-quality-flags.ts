@@ -869,6 +869,20 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
+ * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
+ * written on 07/28/2026" listed both under Prior actions and also as
+ * "Follow-up: 6/25/2026" and "Follow-up: 7/28/2026": the card counted every
+ * date that was not the incident's as a follow-up, and PRIOR_ACTIONS_PARSE
+ * takes the earlier steps' dates out of the incident dates. On, a date the
+ * earlier-step reader lists is never a Follow-up line. Off, the card's
+ * Follow-up lines are exactly as before.
+ */
+export function followUpNotPriorEnabled(): boolean {
+  return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
+}
+
+/**
  * NO_CARD_NO_DRAFT_CLAIM_ENABLED: an answer that comes with no card (no
  * proposal, no form choices, no form changed or opened) never says a new
  * draft is open or was created, never says a draft is open for somebody
