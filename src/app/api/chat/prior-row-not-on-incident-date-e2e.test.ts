@@ -12,8 +12,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * NAMED
  * ============================================================================
  *
- * Live in the sibling app (draft 07d43157); the same mechanism here: "create a ca for <name> at omaha
- * ne, she was late on 10-5 and 10-15. i coached her on 10-16 about being late",
+ * Live in the sibling app (draft 07d43157); the same mechanism here: "create a ca for <name> at <store>, she was late on 10-5 and 10-15. i coached her on 10-16 about being late",
  * "verbal", "no payroll deduct", "10-15". The drafting model wrote an extra
  * Prior actions row "Verbal coaching on lateness — 10/15/2026" — "verbal" (the
  * new warning's level) and "10-15" (the incident) — and it was kept because
