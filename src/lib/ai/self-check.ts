@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { codeSlotsEnabled, printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
+import { codeSlotsEnabled, printedPageCitationEnabled, selfCheckNeverBlankEnabled } from "@/lib/config/chat-quality-flags";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { actionPlanSentenceCount, collapseToTwoSentences } from "@/lib/forms/action-plan-sentences";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
@@ -198,6 +198,17 @@ function keepGoodReply(draft: OutgoingDraft, settled: SettledDraft): SettledDraf
     const restored = scrubRosterBlock(draft.content);
     if (restored.trim() && !repairSpeaksAsValidator(restored)) content = restored;
     else if (draft.content.trim() && !repairSpeaksAsValidator(draft.content)) content = draft.content;
+  }
+  /*
+   * SELF_CHECK_NEVER_BLANK_ENABLED (QA G1, 25 Oct 2026): a repair never sends
+   * an empty reply. Every sentence of a 1,388-token answer cited a document
+   * other than the manual, the citation fallback dropped them all, and the
+   * manager saw "No answer was produced" for an answer the model had written.
+   * Blank, the reply the model wrote goes out as it was.
+   */
+  if (selfCheckNeverBlankEnabled() && !content.trim() && draft.content.trim()) {
+    const kept = scrubRosterBlock(draft.content);
+    content = kept.trim() ? kept : draft.content;
   }
   return { ...settled, content, employeeName };
 }

@@ -78,6 +78,7 @@ import {
   followUpNotPriorEnabled,
   draftReuseOwnDraftsOnlyEnabled,
   noCardNoDraftClaimEnabled,
+  selfCheckNeverBlankEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -174,6 +175,7 @@ const NEW_FLAGS = [
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED",
   "NO_CARD_NO_DRAFT_CLAIM_ENABLED",
+  "SELF_CHECK_NEVER_BLANK_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -343,6 +345,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(draftReuseOwnDraftsOnlyEnabled()).toBe(false);
     expect(noCardNoDraftClaimEnabled()).toBe(false);
+    expect(selfCheckNeverBlankEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
