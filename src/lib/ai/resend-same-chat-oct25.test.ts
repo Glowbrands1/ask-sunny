@@ -15,6 +15,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TURN = "Draft a corrective action for Test Employee at the Test Salon. She was a no call no show today.";
 
+/*
+ * The same request in the register managers really use (Pau, 26 Oct 2026):
+ * all lowercase with no punctuation, ALL CAPS, and terse and impatient. The
+ * outcome must not depend on capitals or punctuation.
+ */
+const REGISTERS = [
+  ["as typed", TURN],
+  ["lowercase, no punctuation", "draft a corrective action for test employee at the test salon she was a no call no show today"],
+  ["uppercase", TURN.toUpperCase()],
+  ["terse and impatient", "just draft a ca for test employee no call no show today"],
+] as const;
+
 const lookups = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }));
 
 /* The other chat's draft: found unless the lookup is kept to a different chat. */
@@ -50,16 +62,16 @@ const proposal = {
   },
 };
 
-const turn = (conversationId: string) =>
+const turn = (conversationId: string, question: string = TURN) =>
   deliverFormProposal({
     request: {
-      question: TURN,
+      question,
       history: [],
       context: { todayIso: "2026-10-25" },
       conversationId,
     } as never,
     actor: { role: "salon_director", scope: null, subject: "user-1", verified: true } as never,
-    question: TURN,
+    question,
     propose: async () => structuredClone(proposal) as never,
     decorate: async (response) => response,
   });
@@ -73,24 +85,24 @@ afterEach(() => vi.unstubAllEnvs());
 describe("DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED on", () => {
   beforeEach(() => vi.stubEnv("DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED", "true"));
 
-  it("a new chat gets its own card, never another chat's draft", async () => {
-    const response = await turn("conv_new_chat");
+  it.each(REGISTERS)("a new chat gets its own card, never another chat's draft (%s)", async (_register, question) => {
+    const response = await turn("conv_new_chat", question);
     expect(lookups.calls[0]!.sameChat).toEqual({ conversationKey: "conv_new_chat" });
     expect(response!.formOpened).toBeUndefined();
     expect(response!.formProposal!.employeeName).toBe("Test Employee");
     expect(response!.content).not.toContain("is still a draft");
   });
 
-  it("the same chat sending it again still reopens its own draft", async () => {
-    const response = await turn("conv_other_chat");
+  it.each(REGISTERS)("the same chat sending it again still reopens its own draft (%s)", async (_register, question) => {
+    const response = await turn("conv_other_chat", question);
     expect(response!.formOpened!.instanceId).toBe("ca-other-chat");
     expect(response!.content).toContain("is still a draft, so it's open to edit");
   });
 });
 
 describe("DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED off: as production today", () => {
-  it("the lookup spans the account and reopens the other chat's draft", async () => {
-    const response = await turn("conv_new_chat");
+  it.each(REGISTERS)("the lookup spans the account and reopens the other chat's draft (%s)", async (_register, question) => {
+    const response = await turn("conv_new_chat", question);
     expect(lookups.calls[0]!.sameChat).toBeUndefined();
     expect(response!.formOpened!.instanceId).toBe("ca-other-chat");
   });
