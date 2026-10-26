@@ -16,6 +16,7 @@ import {
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
+  policyHeadingStatedOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -45,6 +46,7 @@ import { isDocumentName, isRosterStateName } from "./not-a-person";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
+import { statedPolicyHeading } from "./policy-heading-stated";
 import { headingKey, sectionHeadingsFor } from "@/lib/forms/official-policy-manual";
 import { namesHeading } from "@/lib/forms/named-policy-section";
 
@@ -347,8 +349,16 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
-  const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
-  const policyPage = codeSlotsEnabled()
+  // POLICY_HEADING_STATED_ONLY_ENABLED: only a heading the manager's own words support; else the code's reading.
+  const statedOnly = policyHeadingStatedOnlyEnabled();
+  const policyHeading = statedPolicyHeading({
+    offered: [modelPolicy, saved.policyHeading, incidentType],
+    managerText: managerBlob(input),
+    headings: input.headings,
+  });
+  const policyPage = statedOnly
+    ? (pageForHeading(policyHeading, input.headingPages) ?? printedPageForPolicy(policyHeading))
+    : codeSlotsEnabled()
     ? pageForHeading(policyHeading, input.headingPages) ?? saved.policyPage ?? printedPageForPolicy(policyHeading)
     : modelPolicy
       ? pageForHeading(modelPolicy, input.headingPages)
@@ -379,6 +389,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     policyHeading,
     policyPage,
   });
+  // POLICY_HEADING_STATED_ONLY_ENABLED: a saved heading the manager's words do not support is not carried forward.
+  if (statedOnly && state.policyHeading !== policyHeading) {
+    state = { ...state, policyHeading, policyPage: policyHeading ? policyPage : null };
+  }
   if (choiceStated) state = firstCoachingUnlessEarlier(state, managerSaidTurns(input), input.templates);
   if (namedFormExact && state.templateKey && !formAgreesWithNaming(state.templateKey, naming, input.templates)) {
     state = { ...state, templateKey: null };
