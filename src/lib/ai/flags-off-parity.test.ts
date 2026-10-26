@@ -78,6 +78,7 @@ import {
   stateCodeNotAPersonEnabled,
   googleReviewsInChatEnabled,
   draftNeverBlankEnabled,
+  nameBeforeTitleEnabled,
   lateOpenDateFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -175,6 +176,7 @@ const NEW_FLAGS = [
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
+  "NAME_BEFORE_TITLE_ENABLED",
   "LATE_OPEN_DATE_FIX_ENABLED",
 ] as const;
 
@@ -341,6 +343,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(nameBeforeTitleEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
