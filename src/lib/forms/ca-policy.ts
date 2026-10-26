@@ -1,7 +1,7 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, negatedLateShiftEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
-import { saysUndenied } from "./denied-incident";
+import { deniedAt, saysUndenied } from "./denied-incident";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
@@ -215,10 +215,12 @@ const MISSED_EVENT_AFTER = new RegExp(
 /** Leading words that place the event rather than name it: "the", "her", "last", "tuesday's". */
 const EVENT_LEAD = /^(?:(?:the|a|an|her|his|their|our|this|that|last|next|yesterday['’]?s|today['’]?s|[a-z]+day['’]?s|[a-z]+day|todays|yesterdays)\s+)+/;
 
-function missedEventIn(sentences: readonly string[]): string | null {
+function missedEventIn(sentences: readonly string[], skipDenied = true): string | null {
   for (const sentence of sentences) {
     for (const clause of sentence.split(/;|:\s|\s+(?:but|however)\s+/)) {
       const match = MISSED_EVENT_BEFORE.exec(clause) ?? MISSED_EVENT_AFTER.exec(clause);
+      // NEGATED_LATE_SHIFT_ENABLED: "she did not miss the monthly meeting" missed nothing.
+      if (match && skipDenied && negatedLateShiftEnabled() && deniedAt(clause, match.index)) continue;
       if (match) return match[1]!.replace(EVENT_LEAD, "").trim();
     }
   }
@@ -386,9 +388,16 @@ export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): st
       return null;
     case "attendance": {
       const text = normalize(rawText);
-      // NEGATED_LATE_SHIFT_ENABLED: "was not late" is not a lateness.
-      const absent = saysUndenied(text, ABSENCE) || missedEventIn(statements(text)) !== null;
-      const late = saysUndenied(text, LATENESS);
+      // NEGATED_LATE_SHIFT_ENABLED: "was not late" is not a lateness. When the
+      // manager denies every one ("she has never been absent"), the box is
+      // what it was before, never a Tardiness nobody described (QA-6).
+      const missed = missedEventIn(statements(text)) !== null;
+      let absent = saysUndenied(text, ABSENCE) || missed;
+      let late = saysUndenied(text, LATENESS);
+      if (!absent && !late) {
+        absent = ABSENCE.test(text) || missedEventIn(statements(text), false) !== null;
+        late = LATENESS.test(text);
+      }
       if (absent && late) return ["tardiness", "absenteeism"];
       return absent ? ["absenteeism"] : ["tardiness"];
     }

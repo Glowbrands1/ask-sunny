@@ -4,7 +4,7 @@ import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { accountManualSections } from "@/lib/ai/account-manual-sections";
 import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
 
-import { describedAttendanceKeys } from "./ca-policy";
+import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "./ca-policy";
 import { describesAttendanceToo } from "./late-open";
 import type { ManualChunk } from "./official-policy-manual";
 
@@ -70,5 +70,53 @@ describe("flag off: main's reading, unchanged", () => {
 
   it("still reads both for 'late, not absent'", () => {
     expect(describedAttendanceKeys("Devon Harlan was late, not absent, on 10-12-26.")).toEqual(["tardiness", "absenteeism"]);
+  });
+});
+
+/*
+ * QA-6, 26 Oct 2026: "no one/nobody was late" deny too; a denied missed event
+ * is not one; and when the manager states Attendance but denies every
+ * lateness and absence, the box is what it was before the flag, never a
+ * Tardiness nobody described.
+ */
+describe("flag on: QA-6's denials", () => {
+  const stated = (text: string) => {
+    const reading = readCaPolicy(text);
+    return { stated: reading.stated, keys: statedOffenseKeys(reading, text) };
+  };
+
+  it.each(["No one was late on 10-12-26.", "Nobody was late to the shift.", "Devon Harlan did not miss the monthly meeting but was not late."].flatMap(registers))(
+    "reads no attendance: %s",
+    (text) => {
+      on();
+      expect(describedAttendanceKeys(text)).toBeNull();
+      expect(sections(text)).not.toContain("Attendance p.14");
+      expect(stated(text).stated).toBeNull();
+    },
+  );
+
+  it.each(
+    [
+      "Attendance. Devon Harlan has never been absent.",
+      "Attendance: Devon Harlan was not late nor absent.",
+      "Attendance policy. Devon Harlan did not miss the monthly meeting.",
+    ].flatMap(registers),
+  )("a stated Attendance with every match denied keeps the box it had off: %s", (text) => {
+    const off = stated(text);
+    on();
+    expect(stated(text)).toEqual(off);
+  });
+
+  it.each(["Attendance. Devon Harlan missed the monthly meeting.", "Attendance. Devon Harlan was late on 10-12-26."].flatMap(registers))(
+    "an undenied stated Attendance reads as before: %s",
+    (text) => {
+      const off = stated(text);
+      on();
+      expect(stated(text)).toEqual(off);
+    },
+  );
+
+  it.each(["No one was late on 10-12-26.", "Devon Harlan did not miss the monthly meeting but was not late."])("flag off: main reads it (the bug): %s", (text) => {
+    expect(describedAttendanceKeys(text) ?? readCaPolicy(text).stated).not.toBeNull();
   });
 });
