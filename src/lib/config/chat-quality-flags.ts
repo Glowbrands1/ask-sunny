@@ -815,3 +815,12 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * "CA" after a place ("Sacramento, CA", "Los Angeles CA 90001") is read as
+ * California, not as a Corrective Action (Ask Sunny conv_mvokdp2c24wi9re,
+ * 26 Oct 2026). See `ai/state-ca.ts`. Off, every turn is read as typed.
+ */
+export function stateCaGuardEnabled(): boolean {
+  return envFlag("STATE_CA_GUARD_ENABLED");
+}
