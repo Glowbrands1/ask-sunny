@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
+import { humanPhrases } from "@/lib/ai/human-replies";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -365,6 +366,7 @@ function useProfile(flags: readonly string[], fix = true) {
 
 const CA_OPENER =
   "I'll draft a **Corrective Action Form** for **Avery Testperson** from what you've described, and check the applicable company policy before anything policy-related goes on it.";
+const HUMAN_CA_OPENER = "Here's the **Corrective Action Form** for **Avery Testperson**. I'll check the policy manual before citing anything.";
 const COACHING_OPENER = "Here is what I would put on a **Coaching Form**.";
 const LONG_NOTICE = "nothing is saved to anyone's file until you do.";
 const SHORT_NOTICE = "Nothing's saved until you tap **Create draft**.";
@@ -411,11 +413,12 @@ describe.each(PROFILES)("(1) the opener is said once (%s)", (_label, flags) => {
         expect(reply.content).toContain(LONG_NOTICE);
       }
 
-      // After: turn 1 is unchanged, and the opener is said once in the chat.
-      expect(after[0]!.content).toBe(before[0]!.content);
+      // After: turn 1 is main's, in the phrase table's words, and its opener is said once in the chat.
+      expect(after[0]!.content).toBe(humanPhrases(before[0]!.content));
       const chat = after.map((reply) => reply.content).join("\n\n");
-      expect(count(chat, CA_OPENER)).toBe(1);
-      expect(count(chat, LONG_NOTICE)).toBe(1);
+      expect(count(chat, CA_OPENER)).toBe(0);
+      expect(count(chat, HUMAN_CA_OPENER)).toBe(1);
+      expect(count(chat, LONG_NOTICE)).toBe(0);
       expect(after[1]!.content.split("\n")[0]).toBe("Got it — no payroll deduct.");
       expect(after[2]!.content.split("\n")[0]).toBe("Got it — the date's 10/14.");
       expect(after[3]!.content.split("\n")[0]).toBe("Got it — it's a written warning.");
@@ -424,8 +427,8 @@ describe.each(PROFILES)("(1) the opener is said once (%s)", (_label, flags) => {
         // (2) Answered, so not asked again, and not read back again either.
         expect(reply.content).not.toContain("I won't answer it for you");
       }
-      expect(after[2]!.content).not.toContain("Is payroll deduct applicable?");
-      expect(after[3]!.content).not.toContain("Is payroll deduct applicable?");
+      expect(after[2]!.content).not.toMatch(/payroll deduct/i);
+      expect(after[3]!.content).not.toMatch(/payroll deduct/i);
       // The policy line is read once, on the first card.
       expect(count(chat, "**Policy:** Late Opening")).toBe(1);
 
@@ -444,7 +447,8 @@ describe.each(PROFILES)("(1) the opener is said once (%s)", (_label, flags) => {
       expect(before[1]!.content.startsWith(COACHING_OPENER)).toBe(true);
       expect(before[1]!.content).toContain("Everything I need is here, drawn from your messages above.");
 
-      expect(after[0]!.content).toBe(before[0]!.content);
+      expect(after[0]!.content).toBe(humanPhrases(before[0]!.content));
+      expect(after[0]!.content.startsWith("Here's the **Coaching Form**.")).toBe(true);
       expect(after[1]!.content.split("\n")[0]).toBe("Got it — the date's 10/14.");
       expect(after[1]!.content).not.toContain(COACHING_OPENER);
       expect(after[1]!.content).not.toContain("Everything I need is here");
@@ -452,4 +456,46 @@ describe.each(PROFILES)("(1) the opener is said once (%s)", (_label, flags) => {
       after.forEach((reply, index) => expect(card(reply.formProposal)).toEqual(card(before[index]!.formProposal)));
     });
   });
+});
+
+/*
+ * QA's hard requirement: the rewritten question is still read on the next turn.
+ * The browser keeps the humanized reply, so the next turn's readers see it.
+ */
+describe.each(PROFILES)("the next turn still reads the rewritten question (%s)", (_label, flags) => {
+  describe.each(typed(["create verbal CA for Avery Testperson, late opening the salon today", "no"]))(
+    "a bare answer to the payroll question, %s",
+    (_case, turns) => {
+      it("the card reads No with the flag on, as with it off", async () => {
+        useProfile(flags, false);
+        const before = await run(turns);
+        useProfile(flags, true);
+        const after = await run(turns);
+        expect(after[0]!.content).toContain("**Is payroll deduct applicable?** Yes or no — here or on the form.");
+        // The same reading as main's, whatever it is. On production flags main
+        // does not read a bare "no" here and asks again (reported to QA for the
+        // slot readers, 26 Oct); with the bundle's flags it reads No.
+        expect(card(after[1]!.formProposal)).toEqual(card(before[1]!.formProposal));
+        if (before[1]!.formProposal?.payrollDeduct === "no") {
+          expect(after[1]!.content.split("\n")[0]).toBe("Got it — no payroll deduct.");
+        } else {
+          expect(after[1]!.content).toContain("**Is payroll deduct applicable?** Yes or no — here or on the form.");
+        }
+      });
+    },
+  );
+
+  describe.each(typed(["create a corrective action form", "Avery Testperson, late opening the salon today"]))(
+    "the name after \"Who is this … for?\", %s",
+    (_case, turns) => {
+      it("the name lands on the card with the flag on, as with it off", async () => {
+        useProfile(flags, false);
+        const before = await run(turns);
+        useProfile(flags, true);
+        const after = await run(turns);
+        expect(after[0]!.content).toBe(humanPhrases(before[0]!.content));
+        after.forEach((reply, index) => expect(card(reply.formProposal)).toEqual(card(before[index]!.formProposal)));
+      });
+    },
+  );
 });

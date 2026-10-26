@@ -26,6 +26,7 @@ import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
 import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
+import { humanRepliesClientEnabled } from "@/lib/config/chat-quality-flags";
 
 import { DRAFT_FAILED_WARNING, createInlineForm } from "./create-inline-form";
 import { InlineForm, type PrefillState } from "./inline-form";
@@ -619,7 +620,13 @@ function FormProposalCard({
         </span>
         <p className="text-[13px] font-semibold text-foreground">{proposal.templateName}</p>
         <Badge tone="outline" size="sm">
-          {superseded ? "Superseded — nothing created" : "Proposal — nothing created"}
+          {humanRepliesClientEnabled()
+            ? superseded
+              ? "Replaced by the card below"
+              : "Draft preview — not saved yet"
+            : superseded
+              ? "Superseded — nothing created"
+              : "Proposal — nothing created"}
         </Badge>
       </div>
 

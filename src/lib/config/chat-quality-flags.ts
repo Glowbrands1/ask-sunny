@@ -821,9 +821,27 @@ export function terseSlotReadEnabled(): boolean {
  * card turn for the same form and employee, the opener becomes one line on
  * what changed ("Got it — the date's 10/14."), lines the manager already read
  * are left out, and the save notice is "Nothing's saved until you tap Create
- * draft." Questions and the card are unchanged (owner, 26 Oct 2026: "humanize
- * it"). See `lib/ai/human-replies.ts`. Off, every reply is as built.
+ * draft." The form flow's robotic sentences are rewritten from a phrase
+ * table; questions keep the words their readers match, and the card is
+ * unchanged (owner, 26 Oct 2026: "humanize it"). See `lib/ai/human-replies.ts`.
+ * The server reads either spelling, like CHAT_LONG_MESSAGE_ENABLED. Off, every
+ * reply is as built.
  */
 export function humanRepliesEnabled(): boolean {
-  return envFlag("HUMAN_REPLIES_ENABLED");
+  return (
+    envFlag("HUMAN_REPLIES_ENABLED") ||
+    envFlag("NEXT_PUBLIC_HUMAN_REPLIES_ENABLED") ||
+    flagOn(process.env.NEXT_PUBLIC_HUMAN_REPLIES_ENABLED)
+  );
+}
+
+/**
+ * The card's reading of HUMAN_REPLIES_ENABLED: its badge says "Draft preview —
+ * not saved yet" instead of "Proposal — nothing created". Only a statically
+ * written `process.env.NEXT_PUBLIC_*` name reaches a client bundle. Off, the
+ * badge is as it was.
+ */
+export function humanRepliesClientEnabled(): boolean {
+  const inlined = process.env.NEXT_PUBLIC_HUMAN_REPLIES_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
 }
