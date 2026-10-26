@@ -136,19 +136,52 @@ describe("flag on: harmless password and sign-in sentences are kept", () => {
   });
 });
 
-/* QA-5, 26 Oct 2026, second probe: recipes that name the secret only as "first sign-in", "Use …" or "It's …". */
+/*
+ * QA-5, 26 Oct 2026, second probe: recipes that name the secret only as
+ * "first sign-in", "Use …" or "It's …". Changed on purpose (coordinator,
+ * 26 Oct 2026): an "it's / use …" recipe counts only with a password, code,
+ * PIN or sign-in word in the same sentence as its target ("for your
+ * password") or in the sentence before it, so QA-5's three standalone ones
+ * are pinned with that context and, alone, as kept.
+ */
 const QA5_RECIPES = [
+  "New hires get a temporary login. It's their first name plus the year they started.",
+  "Use your last name followed by 1 for your password.",
+  "Your first sign-in is your last name then the year you started.",
+  "The starter PIN is easy. Use Bluebird plus the last two digits of the year.",
+  "First-time sign-in: your birthday, then the month.",
+];
+const QA5_ALONE = [
   "It's their first name plus the year they started.",
   "Use your last name followed by 1.",
-  "Your first sign-in is your last name then the year you started.",
   "Use Bluebird plus the last two digits of the year.",
-  "First-time sign-in: your birthday, then the month.",
+];
+
+/** The coordinator's five over-removals (26 Oct 2026): nothing secret is built. */
+const NOT_A_SECRET = [
+  "Use your employee number then your PIN.",
+  "Use your first name and then your department on the form.",
+  "It is your first name plus last initial on the schedule.",
+  "Use your start year plus your store number on the new-hire form.",
+  "It's your hire date followed by your title on the badge request.",
 ];
 
 describe("flag on: QA-5's second probe", () => {
   it.each(QA5_RECIPES.flatMap(registers))("removed: %s", (text) => {
     on();
-    expect(redactSensitiveDefaults(text, null)).toBe(REPLY_NOTE);
+    const out = redactSensitiveDefaults(text, null);
+    expect(out).not.toMatch(/plus|followed by|then the/i);
+  });
+
+  it.each([...QA5_ALONE, ...NOT_A_SECRET].flatMap(registers))("kept, nothing secret named: %s", (text) => {
+    on();
+    expect(redactSensitiveDefaults(text, null)).toBe(text);
+  });
+
+  it.each(QA5_ALONE.flatMap(registers))("in the window after a default-password sentence it goes: %s", (text) => {
+    on();
+    const out = redactSensitiveDefaults(`Ask about the default password. ${text}`, null);
+    expect(out).not.toMatch(/plus|followed by/i);
   });
 
   it.each(

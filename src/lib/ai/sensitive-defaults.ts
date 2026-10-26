@@ -213,14 +213,32 @@ const JOINED = /\b(?:plus|followed\s+by|and\s+(?:the|their|your|his|her)|then|co
 const FORBIDS_PART = /\b(?:do\s+not|don'?t|never|avoid|must\s+not|should\s+not|shouldn'?t|cannot|can'?t|no)\b[^.!?\n]{0,30}\b(?:use|include|contain|be)\b/i;
 
 /** Whether a sentence says how a default or first sign-in password is built. */
-function isRecipe(sentence: string, inWindow: boolean): boolean {
+/**
+ * WHAT THE RECIPE IS FOR (coordinator, 26 Oct 2026): "Use your employee number
+ * then your PIN.", "It is your first name plus last initial on the schedule.",
+ * "Use your start year plus your store number on the new-hire form." build
+ * nothing secret. An "it's / use …" sentence is a recipe only when it says it
+ * is for the password, code, PIN or sign-in ("… for your password", "the
+ * code is …"), says the first time or first day, follows a sentence that
+ * names a password, code, PIN, sign-in or credential, or stands in the window
+ * after a default-password sentence. A secret named as one of the joined
+ * items ("… then your PIN") is a second thing, not what the parts build.
+ */
+const SECRET_TARGET =
+  /\b(?:for|as)\s+(?:the|your|their|a|his|her)\s+(?:first[- ]time\s+)?(?:pass\s?words?|passcodes?|codes?|pins?|pw|log-?\s?ins?|sign[- ]?ins?|credentials?)\b|\b(?:pass\s?word|passcode|pin|code|log-?\s?in|sign[- ]?in)\s+(?:is|will\s+be)\b|\bfirst\s+(?:time|day)\b/i;
+const SECRET_WORD = /\b(?:pass\s?words?|passcodes?|pins?|pw|log-?\s?ins?|sign[- ]?ins?|credentials?|(?:access|door|alarm|starter|login)\s+codes?)\b/i;
+
+function isRecipe(sentence: string, inWindow: boolean, previous = ""): boolean {
   if (!sensitiveDefaultRecipeRedactEnabled()) return false;
   if (!PERSONAL_PART.test(sentence) || FORBIDS_PART.test(sentence)) return false;
   // "Log in with your employee ID." is a user name; as the password or the first time it is a recipe.
   if (SIGN_IN_WITH.test(sentence) && SECRET_OR_FIRST.test(sentence) && (AS_THE_SECRET.test(sentence) || !LOGIN_NAME.test(sentence))) {
     return true;
   }
-  if ((VALUE_LEAD.test(sentence) || FIRST_SIGN_IN.test(sentence)) && RECIPE_JOIN.test(sentence)) return true;
+  if (FIRST_SIGN_IN.test(sentence) && RECIPE_JOIN.test(sentence)) return true;
+  if (VALUE_LEAD.test(sentence) && RECIPE_JOIN.test(sentence)) {
+    if (inWindow || SECRET_TARGET.test(sentence) || SECRET_WORD.test(previous)) return true;
+  }
   if (!JOINED.test(sentence)) return false;
   return inWindow || STARTER.test(sentence);
 }
@@ -234,6 +252,7 @@ export function redactSensitiveDefaults(text: string, note: string | null = EXCE
   // blank line, a heading or a "Note:" line is no safe boundary in a
   // knowledge excerpt (QA-3, QA-5, coordinator, 26 Oct 2026).
   let afterDefault = false;
+  let previous = "";
   const out: string[] = [];
   for (const part of parts) {
     if (part === undefined) continue;
@@ -241,7 +260,8 @@ export function redactSensitiveDefaults(text: string, note: string | null = EXCE
       out.push(part);
       continue;
     }
-    const valueAfter = (afterDefault && isSuspectAfterDefault(part)) || isRecipe(part, afterDefault);
+    const valueAfter = (afterDefault && isSuspectAfterDefault(part)) || isRecipe(part, afterDefault, previous);
+    previous = part;
     if (valueAfter || (isSensitiveSentence(part) && !isNoInformation(part))) {
       changed = true;
       // The note once per text, wherever the sentences were; none when null.
