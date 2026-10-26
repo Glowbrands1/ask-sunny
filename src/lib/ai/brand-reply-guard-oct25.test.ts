@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NOTHING_LEFT, withoutOtherBrands } from "./brand-reply-guard";
 
@@ -17,6 +17,8 @@ import { NOTHING_LEFT, withoutOtherBrands } from "./brand-reply-guard";
  */
 
 afterEach(() => vi.unstubAllEnvs());
+// Flag-off pins hold whatever the environment has on; flag-on tests set it.
+beforeEach(() => vi.stubEnv("BRAND_REPLY_GUARD_ENABLED", ""));
 const on = () => vi.stubEnv("BRAND_REPLY_GUARD_ENABLED", "true");
 
 const REPLIES = {
@@ -135,5 +137,23 @@ describe("flag on: QA-5 wording defects", () => {
       expect(out).toMatch(expected);
       expect(out).not.toBe(NOTHING_LEFT);
     }
+  });
+});
+
+/* QA-5, 26 Oct 2026, second probe: a true rule that ends "including <another brand>…" keeps its rule. */
+describe("flag on: a trailing clause about another brand goes, the rule stays", () => {
+  const registers = (text: string) => [text, text.toLowerCase(), text.toUpperCase()];
+  it.each(
+    [
+      ["Standards of Conduct (p.12) applies to every employee, including Buff City Soap employees.", /^standards of conduct \(p\.12\) applies to every employee\.$/i],
+      ["Standards of Conduct applies to every employee, including Buff City Soap employees.", /^standards of conduct applies to every employee\.$/i],
+      ["Late opening is a verbal warning, including at Buff City Soap.", /^late opening is a verbal warning\.$/i],
+      ["Sun Tan City uses Revel; Buff City Soap uses Square. Late opening is verbal.", /^sun tan city uses revel\. late opening is verbal\.$/i],
+    ].flatMap(([text, expected]) => registers(text as string).map((typed) => [typed, expected] as const)),
+  )("%s", (reply, expected) => {
+    on();
+    const out = withoutOtherBrands(reply);
+    expect(out).toMatch(expected);
+    expect(out).not.toBe(NOTHING_LEFT);
   });
 });

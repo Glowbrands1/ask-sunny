@@ -95,6 +95,8 @@ beforeEach(() => {
     "The attendance policy applies across all brands (Buff City Soap, Crunch, Sun Tan City, JB & Associates office) [S1]. A no call no show may result in termination [S1].";
 });
 afterEach(() => vi.unstubAllEnvs());
+// Flag-off pins hold whatever the environment has on; flag-on tests set it.
+beforeEach(() => vi.stubEnv("BRAND_REPLY_GUARD_ENABLED", ""));
 
 const QUESTIONS = [
   "what does our policy say about attendance?",

@@ -65,6 +65,15 @@ function withoutBrandParentheticals(sentence: string): string {
   return sentence.replace(/\s*\(([^()]*)\)/g, (whole, inner: string) => (OTHER_BRAND.test(inner) ? "" : whole));
 }
 
+/** "… applies to every employee, including <another brand> employees.": only the trailing clause goes. */
+function withoutTrailingBrandClause(sentence: string): string {
+  const trailing = new RegExp(
+    String.raw`,?\s+(?:including|incl\.|as\s+well\s+as|plus|even)\s+(?:at\s+|for\s+|in\s+)?(?:the\s+)?(?:${anyOf(WORDS.otherCompany)})\b[^.!?;]*`,
+    "gi",
+  );
+  return sentence.replace(trailing, "");
+}
+
 /** "<another brand> staff and <ours> staff both …": the other company's conjunct goes, and its "both". */
 function withoutBrandConjunct(sentence: string): string {
   const conjunct = new RegExp(String.raw`\b(?:${anyOf(WORDS.otherCompany)})\s+(?:\w+\s+)?and\s+`, "gi");
@@ -133,6 +142,8 @@ function guardSentence(sentence: string): string | null {
   if (!OTHER_BRAND.test(text)) return text;
   text = withoutBrandParentheticals(text);
   if (!OTHER_BRAND.test(text)) return text;
+  text = withoutTrailingBrandClause(text);
+  if (!OTHER_BRAND.test(text)) return text;
   text = withoutBrandConjunct(text);
   if (!OTHER_BRAND.test(text)) return text;
   text = withoutBrandListItems(text);
@@ -156,6 +167,9 @@ export function withoutOtherBrands(content: string): string {
       const kept = guardSentence(sentence);
       if (kept === null || kept.trim() === "" || /^\s*[-*•]\s*$/.test(kept) || /^\s*\d+\.\s*$/.test(kept)) {
         dropped = true;
+        // The clause before it no longer runs on: "… uses Revel; <dropped>" ends "… uses Revel."
+        const last = out.length - 2;
+        if (last >= 0 && /;\s*$/.test(out[last]!)) out[last] = out[last]!.replace(/;\s*$/, ".");
         continue;
       }
       out.push(kept, space);
