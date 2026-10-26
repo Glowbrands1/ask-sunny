@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { exitNoticeFulfilledEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isExitAnswerPhrase } from "./exit-answer-phrase";
 import { exitCorrectionValues, exitDetailValues, inStatedPermanentAddress, readExitDetails, readPermanentAddress } from "./exit-details";
@@ -129,8 +130,14 @@ describe("flag off: read as before", () => {
   });
 
   it("no yearless date, no bare fulfilled date, no address, no no-call, no reason edit, no answer phrase", () => {
-    expect(readExitFacts("she resigned, last day 10-24", TODAY).lastDayWorked).toBeNull();
-    expect(readExitFacts("Gave notice 9/25/26 – fulfilled 10/9/26", TODAY).noticeFulfilled).toBeNull();
+    /*
+     * EXIT_NOTICE_FULFILLED_ENABLED also turns these two readings on (changed
+     * on purpose, QA G4): with it on, the year-less last day and the bare
+     * fulfilled date are read even with this flag off.
+     */
+    const noticeFlag = exitNoticeFulfilledEnabled();
+    expect(readExitFacts("she resigned, last day 10-24", TODAY).lastDayWorked).toBe(noticeFlag ? "2026-10-24" : null);
+    expect(readExitFacts("Gave notice 9/25/26 – fulfilled 10/9/26", TODAY).noticeFulfilled).toBe(noticeFlag ? "2026-10-09" : null);
     expect(readPermanentAddress("permanent address 123 Main St, Lawrence, KS 66044")).toBeNull();
     expect(readExitFacts("She did not call in for her last two shifts.", TODAY).typeOptions).toEqual([]);
     expect(readExitDetails("I need to edit the reason for resignation to: going back to school", TODAY).resignationReason).toBeNull();

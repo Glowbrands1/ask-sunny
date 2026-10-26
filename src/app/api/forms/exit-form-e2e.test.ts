@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { extractText, getDocumentProxy } from "unpdf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { exitNoticeFulfilledEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
@@ -291,7 +292,10 @@ describe("a populated draft", () => {
       "Jane Smith gave two weeks notice on 9/14 and worked out the notice. Jane's last day was Sept 26.",
     );
     // Nothing a person decides was written, whatever the model sent.
-    for (const key of [...YES_NO, "permanent_address", "notice_fulfilled_date", "resignation_type"]) {
+    // EXIT_NOTICE_FULFILLED_ENABLED (changed on purpose, G4): a worked notice is fulfilled on the last day worked.
+    const noticeFlag = exitNoticeFulfilledEnabled();
+    if (noticeFlag) expect(byKey.notice_fulfilled_date?.value).toBe(byKey.last_day_worked?.value);
+    for (const key of [...YES_NO, "permanent_address", ...(noticeFlag ? [] : ["notice_fulfilled_date"]), "resignation_type"]) {
       expect(byKey[key], key).toBeUndefined();
     }
 
