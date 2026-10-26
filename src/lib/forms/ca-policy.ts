@@ -1,4 +1,4 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, policySetAsideEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
@@ -264,6 +264,49 @@ const NEGATED_BEFORE = /\b(?:not|never|isn't|is not|wasn't|was not|no)\s+(?:\S+\
  */
 const SET_ASIDE_BEFORE = /\b(?:instead\s+of|rather\s+than|in\s+place\s+of|replac(?:e|ing)|remov(?:e|ing)|swap\s+out)\s+(?:the\s+|our\s+|that\s+)?$/;
 
+/*
+ * POLICY_SET_ASIDE_ENABLED. A negation reaches back only to the last comma or
+ * dash: in "not attendance, late opening" the "not" is attendance's, and late
+ * opening is the answer. A leading "no no" or "nope" is the manager
+ * correcting the reply, not negating the policy ("no no late opening policy
+ * only"). Both were read as no policy at all (QA F1/M3, 25 Oct 2026).
+ */
+const INTERJECTION_ONLY = /^\s*(?:(?:no|nope|nah|wait|sorry|actually|oops)[,.!\s]+)+$/;
+
+/**
+ * "not only attendance but also late opening", "not just attendance, late
+ * opening too", "not attendance only": the manager names both (QA-5/QA-6, 26
+ * Oct 2026). "but" ends a negation like a comma does: "not attendance but
+ * late opening" sets only Attendance aside.
+ */
+const ADDITIVE_NOT = /\bnot\s+(?:only|just|merely|simply|solely)\s+(?:(?:about|for|the|a|an)\s+)*$/;
+const NOT_BEFORE_ONLY = /\bnot\s+(?:(?:about|for|the|a|an)\s+)*$/;
+const ONLY_AFTER = /^\s*(?:only|alone)\b/;
+
+/** The clause a negation before a policy name could reach: it ends at a comma, a dash or "but". */
+function clauseBefore(before: string): string {
+  return before.split(/[,;:–—]|\s-\s|\bbut\b/).pop() ?? "";
+}
+
+/** "not only X", "not X only": X is named alongside another, never set aside and never the only one. */
+function additiveNot(before: string, after: string): boolean {
+  if (!policySetAsideEnabled()) return false;
+  const clause = clauseBefore(before);
+  return ADDITIVE_NOT.test(clause) || (NOT_BEFORE_ONLY.test(clause) && ONLY_AFTER.test(after));
+}
+
+function negatedBefore(before: string, after = ""): boolean {
+  if (!policySetAsideEnabled()) return NEGATED_BEFORE.test(before);
+  const clause = clauseBefore(before);
+  if (INTERJECTION_ONLY.test(clause)) return false;
+  if (additiveNot(before, after)) return false;
+  return NEGATED_BEFORE.test(clause);
+}
+
+function setAsideBefore(before: string): boolean {
+  return (formEditDateRulesEnabled() || policySetAsideEnabled()) && SET_ASIDE_BEFORE.test(before);
+}
+
 function statedIn(turn: string): CaPolicyName | null {
   let found: { name: CaPolicyName; at: number } | null = null;
   const short = turn.split(/\s+/).filter(Boolean).length <= 8;
@@ -272,8 +315,8 @@ function statedIn(turn: string): CaPolicyName | null {
       if (enabled && !enabled()) continue;
       const match = pattern.exec(sentence);
       if (!match) continue;
-      if (NEGATED_BEFORE.test(sentence.slice(0, match.index))) continue;
-      if (formEditDateRulesEnabled() && SET_ASIDE_BEFORE.test(sentence.slice(0, match.index))) continue;
+      if (negatedBefore(sentence.slice(0, match.index), sentence.slice(match.index + match[0].length))) continue;
+      if (setAsideBefore(sentence.slice(0, match.index))) continue;
       if (!alwaysAPolicy && !short && !POLICY_FRAME.test(sentence) && !AGAINST_BEFORE.test(sentence.slice(0, match.index))) {
         continue;
       }
@@ -283,6 +326,78 @@ function statedIn(turn: string): CaPolicyName | null {
     }
   }
   return found?.name ?? null;
+}
+
+/**
+ * ============================================================================
+ * POLICIES THE MANAGER SET ASIDE (POLICY_SET_ASIDE_ENABLED)
+ * ============================================================================
+ *
+ * QA F1/M3, 25 Oct 2026 (conv_mvoflsoo26q7iig): after "not attendance, late
+ * opening" and "no no late opening policy only" the card still cited
+ * Attendance Policy p.14 beside Late Opening p.15. A policy named after
+ * "not", "instead of", "rather than" or "in place of" is set aside; one named
+ * with "only" sets aside every other. The later turn wins: a policy set aside
+ * and then named again is back. Off, nothing is set aside.
+ */
+export interface PolicySetAside {
+  readonly setAside: readonly CaPolicyName[];
+  /** "late opening policy only": the one policy kept. */
+  readonly only: CaPolicyName | null;
+}
+
+const ONLY_AROUND = (index: number, end: number, sentence: string) =>
+  /\bonly\s+(?:the\s+|our\s+)?$/.test(sentence.slice(0, index)) ||
+  /^(?:\s+polic(?:y|ies))?\s+only\b/.test(sentence.slice(end));
+
+export function policiesSetAside(rawText: string): PolicySetAside {
+  if (!policySetAsideEnabled()) return { setAside: [], only: null };
+  const turns = normalize(rawText).split(JOIN).map((turn) => turn.trim()).filter(Boolean);
+  const aside = new Set<CaPolicyName>();
+  let only: CaPolicyName | null = null;
+  for (const turn of turns) {
+    for (const sentence of statements(turn)) {
+      for (const { name, pattern, enabled } of NAMED) {
+        if (enabled && !enabled()) continue;
+        const match = pattern.exec(sentence);
+        if (!match) continue;
+        const before = sentence.slice(0, match.index);
+        if (negatedBefore(before, sentence.slice(match.index + match[0].length)) || setAsideBefore(before)) {
+          aside.add(name);
+          if (only === name) only = null;
+          continue;
+        }
+        aside.delete(name);
+        if (additiveNot(before, sentence.slice(match.index + match[0].length))) continue;
+        if (ONLY_AROUND(match.index, match.index + match[0].length, sentence)) only = name;
+      }
+    }
+  }
+  if (only) aside.delete(only);
+  return { setAside: [...aside], only };
+}
+
+/** The manual headings each policy name is cited under. */
+const POLICY_HEADING: Partial<Record<CaPolicyName, RegExp>> = {
+  standards_of_conduct: /^standards? of conduct\b/i,
+  attendance: /^attendance\b/i,
+  late_opening: /^late open/i,
+  dress_code: /^dress code\b/i,
+};
+
+/**
+ * The sections with every policy the manager set aside taken out, and with
+ * "X only" kept to X where X is among them. Never adds a section. Off, the
+ * sections as given.
+ */
+export function withoutSetAsideSections<T extends { readonly heading: string }>(sections: readonly T[], rawText: string): T[] {
+  const { setAside, only } = policiesSetAside(rawText);
+  let kept = sections.filter((section) => !setAside.some((name) => POLICY_HEADING[name]?.test(section.heading.trim())));
+  const onlyHeading = only ? POLICY_HEADING[only] : undefined;
+  if (onlyHeading && kept.some((section) => onlyHeading.test(section.heading.trim()))) {
+    kept = kept.filter((section) => onlyHeading.test(section.heading.trim()));
+  }
+  return kept.length === sections.length ? [...sections] : kept;
 }
 
 /* ------------------------------------------------------------- reading -- */
