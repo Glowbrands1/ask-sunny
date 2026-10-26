@@ -854,3 +854,25 @@ export function terseSlotReadEnabled(): boolean {
 export function longDraftNotesEnabled(): boolean {
   return envFlag("LONG_DRAFT_NOTES_ENABLED");
 }
+
+/**
+ * Chat answers never repeat a default-password format or Social Security
+ * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
+ * apps). The sentence is taken out of the excerpts the model is given and of
+ * the reply and its cited excerpts, and the person is told to ask their
+ * manager or HR to reset it. Knowledge rows are not changed. Off, the text is
+ * as retrieved.
+ */
+export function sensitiveDefaultsRedactEnabled(): boolean {
+  return envFlag("SENSITIVE_DEFAULTS_REDACT_ENABLED");
+}
+
+/**
+ * "I forgot my password" (any spelling) is answered about this app first:
+ * click "Forgot your password?" on the log-in screen (QA and Pau, 25 Oct
+ * 2026; same flag in both apps). Another system is talked about only when
+ * the manager names it. Off, the turn is answered as before.
+ */
+export function appPasswordHelpEnabled(): boolean {
+  return envFlag("APP_PASSWORD_HELP_ENABLED");
+}

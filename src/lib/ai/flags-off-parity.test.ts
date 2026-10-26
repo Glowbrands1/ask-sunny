@@ -73,6 +73,8 @@ import {
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   longDraftNotesEnabled,
+  sensitiveDefaultsRedactEnabled,
+  appPasswordHelpEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -164,6 +166,8 @@ const NEW_FLAGS = [
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "LONG_DRAFT_NOTES_ENABLED",
+  "SENSITIVE_DEFAULTS_REDACT_ENABLED",
+  "APP_PASSWORD_HELP_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -328,6 +332,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(longDraftNotesEnabled()).toBe(false);
+    expect(sensitiveDefaultsRedactEnabled()).toBe(false);
+    expect(appPasswordHelpEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
