@@ -1,3 +1,5 @@
+import { policyEverydayHeadingEnabled } from "@/lib/config/chat-quality-flags";
+
 import { readCaPolicy, statedOffenseKeys } from "./ca-policy";
 import {
   boxSectionNames,
@@ -111,11 +113,25 @@ const SHORTEST_HEADING = 4;
  * The manual's headings this text names, longest first, with a heading that
  * is only part of a longer one dropped ("Opening" inside "Late Opening").
  */
+/*
+ * POLICY_EVERYDAY_HEADING_ENABLED: a one-word heading that is also an everyday word
+ * names its section only beside "policy", "section" or "rule". "it's for
+ * october promotions" (sales offers) cited the HR Promotions section p.34 on
+ * every turn of a coaching form (QA item 6, conv_mvoe0zgh20z4krm), and an
+ * onboarding "orientation" cited Orientation p.33.
+ */
+const EVERYDAY_ONE_WORD = new Set(["promotions", "promotion", "orientation", "discounting", "solicitation", "overtime", "tanning", "minors", "robberies"]);
+
+function namedAsPolicy(said: string, key: string): boolean {
+  return new RegExp(String.raw` ${key} (?:polic(?:y|ies)|section|rules?) |(?:polic(?:y|ies)|section|rules?) (?:on |for |about )?${key} `).test(said);
+}
+
 export function headingsNamedIn(text: string, headings: readonly string[]): string[] {
   const said = ` ${headingKey(text)} `;
   const matched = headings.filter((heading) => {
     const key = headingKey(heading);
     if (key.length < SHORTEST_HEADING || NOT_A_SECTION.has(key)) return false;
+    if (policyEverydayHeadingEnabled() && EVERYDAY_ONE_WORD.has(key) && !namedAsPolicy(said, key)) return false;
     return said.includes(` ${key} `);
   });
   const keys = matched.map(headingKey);
