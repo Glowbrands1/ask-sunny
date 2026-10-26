@@ -75,6 +75,8 @@ import {
   terseIncidentNoNameEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  followUpNotPriorEnabled,
+  stateCodeNotAPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -168,6 +170,8 @@ const NEW_FLAGS = [
   "TERSE_INCIDENT_NO_NAME_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "FOLLOW_UP_NOT_PRIOR_ENABLED",
+  "STATE_CODE_NOT_A_PERSON_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -334,6 +338,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(terseIncidentNoNameEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(followUpNotPriorEnabled()).toBe(false);
+    expect(stateCodeNotAPersonEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
