@@ -444,7 +444,7 @@ export function withoutGoingForward(
  * she must call" negate something else (QA-5, 26 Oct 2026).
  */
 const GOING_FORWARD_NEGATED_BEFORE =
-  /\b(?:no|not|without|never|don't|dont|do not|won't|doesn't|didn't)\s+(?:(?:a|an|the|any|add|adding|need|needed|want|wants|write|include|put|make)\s+){0,2}$/i;
+  /\b(?:no|not|without|never|don't|dont|do not|won't|doesn't|didn't|isn't|aren't|wasn't|weren't)\s+(?:(?:a|an|the|any|add|adding|need|needed|want|wants|write|include|put|make|for)\s+){0,3}$/i;
 const PLAN_NEGATED_BEFORE = /\b(?:no|not|never|without)\b(?:\s+[\w']+){0,3}\s+plan\s+$/i;
 
 export function managerTypedGoingForward(notes: string): boolean {
