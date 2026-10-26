@@ -68,9 +68,20 @@ export function hasCard(response: AskResponse): boolean {
   );
 }
 
-/** "… draft is open", "the form has been created", "card is ready". */
+/**
+ * "… draft is open", "the form has been created", "card is ready". "Open to
+ * review by the manager" is what a form allows, not that one is open (QA-6).
+ */
 const DRAFT_STATE =
-  /\b(?:draft|form|card)\b[^.!?\n]{0,80}?\b(?:is|are|has\s+been|have\s+been|was|were)\s+(?:now\s+)?(?:open|opened|created|ready|started|drafted|up|on\s+screen|in\s+progress|filled\s+in)\b/i;
+  /\b(?:draft|form|card)\b[^.!?\n]{0,80}?\b(?:is|are|has\s+been|have\s+been|was|were)\s+(?:now\s+)?(?:open(?!\s+to\b)|opened|created|ready|started|drafted|up|on\s+screen|in\s+progress|filled\s+in)\b/i;
+
+/**
+ * What a policy, the manual or a rule says is policy prose, not a claim about
+ * this chat: "The policy says a draft form is open to review by the manager."
+ * (QA-6).
+ */
+const REPORTED =
+  /\b(?:policy|policies|manual|handbook|procedures?|guidelines?|rules?)\s+(?:says?|states?|requires?|notes?|explains?|allows?|reads?)\b/i;
 
 /** "I've created a new draft", "I drafted the form for …". */
 const SAID_I_MADE =
@@ -105,7 +116,8 @@ const CLAUSE_BREAK =
   /(,\s*(?:and|but|so|while)\s+|;\s+|\s+[—–]\s+|\s+and\s+(?=I(?:['’]ve|\s+have)?\s))/i;
 
 /** A capitalised run after "for": the person a sentence is about. */
-const FOR_PERSON = /\bfor\s+((?:[A-Z][\w'’-]*)(?:\s+[A-Z][\w'’-]*){0,3})/g;
+/* "for", "For" or "FOR": a claim in capitals names its person too (QA-6). */
+const FOR_PERSON = /\b(?:for|For|FOR)\s+((?:[A-Z][\w'’-]*)(?:\s+[A-Z][\w'’-]*){0,3})/g;
 
 /** Capitalised words after "for" that are not a person: a form, a day, a button. */
 const NOT_A_PERSON =
@@ -116,7 +128,7 @@ const FORM_NAME = /\b((?:[A-Z][\w-]*\s+){0,3}[A-Z][\w-]*)\s+Form\b/;
 
 /** Words that end a name typed without a comma: "for test employee two late today". */
 const NOT_A_NAME_WORD =
-  /^(?:late|tardy|absent|early|again|no|call|show|missed|left|was|is|were|did|didn['’]t|who|at|on|in|from|to|with|because|and|or|but|about|since|after|before)$/i;
+  /^(?:late|tardy|absent|early|again|no|call|show|missed|left|was|is|were|are|has|have|had|been|did|didn['’]t|who|at|on|in|from|to|with|as|by|per|under|so|because|and|or|but|about|since|after|before)$/i;
 
 /** What follows "for" in the manager's turn, up to a comma or a stop. */
 const FOR_SPAN = /\bfor\s+([^,.;:!?\n]+)/gi;
@@ -172,15 +184,24 @@ function peopleAfterFor(text: string, known: readonly string[] = []): string[] {
    * A name the turn is about, after "for", in any case (longest first), where
    * the capitalised reading found nobody: "for test employee two" typed or
    * echoed lowercase. One that runs on into a capitalised word is left to the
-   * capitalised reading above.
+   * capitalised reading above. One that runs on into more lowercase words
+   * that are not a verb, a preposition or a day is a longer name: with Test
+   * Employee's form open, "created for test employee two late today" is
+   * about "test employee two" (QA-6).
    */
   for (const name of [...known].sort((a, b) => b.length - a.length)) {
     const pattern = new RegExp(`\\bfor\\s+(${escapeRegExp(name).replace(/\s+/g, "\\s+")})(?![\\w'’-])`, "gi");
     for (const match of text.matchAll(pattern)) {
       if (taken.has(match.index)) continue;
-      if (/^\s+[A-Z]/.test(text.slice(match.index + match[0].length))) continue;
+      const rest = text.slice(match.index + match[0].length);
+      if (/^\s+[A-Z]/.test(rest)) continue;
+      const words = match[1]!.split(/\s+/);
+      for (const word of rest.match(/^(?:\s+[a-z][\w'’-]*)*/)![0].trim().split(/\s+/).filter(Boolean)) {
+        if (words.length >= 4 || NOT_A_PERSON.test(word) || NOT_A_NAME_WORD.test(word)) break;
+        words.push(word);
+      }
       taken.add(match.index);
-      found.push({ at: match.index, name: match[1]! });
+      found.push({ at: match.index, name: words.join(" ") });
     }
   }
   return found.sort((a, b) => a.at - b.at).map((person) => person.name);
@@ -225,12 +246,15 @@ type Claim = "state" | "made" | "press-finalize" | "press-create";
 /** What one clause claims or instructs. */
 function claimsIn(clause: string): Claim[] {
   const claims: Claim[] = [];
+  const reported = REPORTED.test(clause);
   if (
     (DRAFT_STATE.test(clause) || HERE_IS.test(clause)) &&
-    !HEDGED.test(clause)
+    !HEDGED.test(clause) &&
+    !reported
   )
     claims.push("state");
   if (
+    !reported &&
     SAID_I_MADE.test(clause) &&
     !/\b(?:not|never|haven['’]t|hasn['’]t|didn['’]t)\b/i.test(clause) &&
     !/\b(?:if|once|would)\b/i.test(clause)
