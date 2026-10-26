@@ -29,7 +29,10 @@ import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
  *                policy violated is …") or pasted policy text ("The employee
  *                who … will then be required to …");
  *   "and"        "works at our dodge, ne store as a team member and was late
- *                today": the fact half goes, the act half stays.
+ *                today": the fact half goes, the act half stays;
+ *   the app's    the intent read's own sentences in front of the turn ("The
+ *   sentences    employee is …", "Policy reference: …") are never the
+ *                incident.
  *
  * A clause that says what was done or not done stays whole, whoever it names,
  * so a story about two people keeps both. Off, the readers see the turn as
@@ -120,6 +123,19 @@ const POLICY_TEXT: readonly RegExp[] = [
   /\b(?:the|an|any)\s+employees?\s+who\b.*\b(?:will|shall|must|may)\b/i,
 ];
 
+/**
+ * The sentences the intent read writes in front of the manager's turn ("The
+ * employee is Kira Dunmore.", "It happened at NE Kearney.", "Policy
+ * reference: …"). They are the app's, never the incident: a bare salon reply
+ * left them as What happened (QA, 26 Oct 2026).
+ */
+const STATE_SENTENCE =
+  /^(?:The form is the |The employee is |Job title:|Warning level:|Payroll deduct applies|No payroll deduction|Policy reference:|Incident:|Payroll amount:|The account continues)|^It happened (?:at|on) [^,]{1,40}$/;
+
+export function isStateSentence(text: string): boolean {
+  return STATE_SENTENCE.test(text.trim());
+}
+
 export function isPolicyInstruction(text: string): boolean {
   return POLICY_INSTRUCTION.some((pattern) => pattern.test(text.trim()));
 }
@@ -175,7 +191,7 @@ function incidentOnlyLine(line: string, employeeName: string | null, subjectless
   for (const sentence of incidentSentences(unpointed)) {
     // "Issue: The employee who failed to open will then be required …": the policy's words.
     const unlabelled = sentence.replace(/^\s*(?:issue|policy|note)\s*:\s*/i, "");
-    if (isPolicyInstruction(unlabelled) || isPolicyText(unlabelled)) continue;
+    if (isStateSentence(sentence) || isPolicyInstruction(unlabelled) || isPolicyText(unlabelled)) continue;
     const clauses = incidentClauses(sentence)
       .filter((clause) => !isPolicyInstruction(clause) && !isPolicyText(clause))
       .map((clause) => actHalves(clause, employeeName))

@@ -113,6 +113,24 @@ describe("INCIDENT_CLAUSE_SPLIT_ENABLED on", () => {
   });
 });
 
+describe("INCIDENT_CLAUSE_SPLIT_ENABLED on: the intent read's own sentences", () => {
+  beforeEach(() => vi.stubEnv("INCIDENT_CLAUSE_SPLIT_ENABLED", "true"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("a bare salon reply with the intent read's sentences in front keeps the incident already given", () => {
+    for (const first of cased("create a ca for kira dunmore, she was late today", ["kira dunmore"])) {
+      const turns = [first, "The employee is Kira Dunmore. Policy reference: Attendance, JBA Policy Manual p.14. the salon is NE Kearney"];
+      expect(remap(turns.join("\n"), "kira dunmore")).toBe("late today");
+    }
+  });
+
+  it("a manager's own \"it happened at 3 when she …\" is still the account", () => {
+    expect(incidentOnlyText("it happened at 3 when she left the front desk empty", null)).toBe(
+      "it happened at 3 when she left the front desk empty",
+    );
+  });
+});
+
 describe("the clause splitter", () => {
   it("keeps a place and its state, a date, an amount and an abbreviation in one clause", () => {
     expect(incidentClauses("she works at our kearney, ne salon, and was late")).toEqual([
