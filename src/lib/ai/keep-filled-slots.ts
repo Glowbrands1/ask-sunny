@@ -595,7 +595,9 @@ function withObservation(content: string, turns: readonly string[], employeeName
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
       if (said.length < 12) continue;
-      const incident = read.dropped && !isAppLine(said) && describesIncident(said);
+      // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
+      // however few words it has beyond the request, with a prior clause beside it or not.
+      const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
       if (!incident && !describesMoreThanTheRequest(said, { ignore })) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the

@@ -859,7 +859,8 @@ export function withoutPriorStepClauses(text: string, today: string, context: st
   for (const index of steps) {
     const opening = ends.filter((at) => at < index).at(-1) ?? -1;
     const closing = ends.find((at) => at > index) ?? text.length;
-    if (dates.some((found) => found.index > opening && found.index < closing && !stepSet.has(found.index))) continue;
+    // (Another person's step in the same clause — "and <a name> on 10-17" — is no incident date either.)
+    if (dates.some((found) => found.index > opening && found.index < closing && !stepSet.has(found.index) && !afterHeldStep(text, found))) continue;
     const comma = opening >= 0 && text[opening] === ",";
     const from = comma ? opening : opening + 1;
     const to = !comma && text[closing] === "," ? closing + 1 : closing;
