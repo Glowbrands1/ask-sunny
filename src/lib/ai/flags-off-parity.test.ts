@@ -72,6 +72,8 @@ import {
   reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
+  humanRepliesEnabled,
+  humanRepliesClientEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -162,6 +164,8 @@ const NEW_FLAGS = [
   "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
+  "HUMAN_REPLIES_ENABLED",
+  "NEXT_PUBLIC_HUMAN_REPLIES_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -325,6 +329,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
+    expect(humanRepliesEnabled()).toBe(false);
+    expect(humanRepliesClientEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
