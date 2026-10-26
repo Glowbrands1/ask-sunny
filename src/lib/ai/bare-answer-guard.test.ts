@@ -193,6 +193,23 @@ describe("BARE_ANSWER_BINDING_ENABLED on", () => {
     expect(bindBareAnswer({ response: set, question: answer, history: asked })).toBe(set);
   });
 
+  // qa-oct21-audit-e2e with the flag on: "no payroll deduct", then "verbal" — the earlier answer stays.
+  it.each([
+    ["no payroll deduct", "verbal"],
+    ["No payroll deduct", "Verbal warning"],
+    ["NO PAYROLL DEDUCT", "IT'S A VERBAL"],
+  ])("keeps Payroll No said in an earlier turn ('%s'), then '%s'", (earlier, answer) => {
+    process.env[FLAG] = "on";
+    const history = [
+      { role: "user", content: "ca for rhea dunmore, late 10-12" },
+      { role: "assistant", content: "Is this a **verbal** or **written** warning?" },
+      { role: "user", content: earlier },
+      { role: "assistant", content: "Is this a **verbal** or **written** warning?" },
+    ];
+    const no = respondWith(card({ payrollDeduct: "no" }), "Is payroll deduct applicable? **No** — tell me if that should change.");
+    expect(bindBareAnswer({ response: no, question: answer, history })).toBe(no);
+  });
+
   it("reads bare answers the same in lowercase and sentence case", () => {
     process.env[FLAG] = "on";
     const no = { content: "Is payroll deduct applicable? **No** — tell me if that should change.", citations: [], formProposal: card({ payrollDeduct: "no" }) } as unknown as AskResponse;
