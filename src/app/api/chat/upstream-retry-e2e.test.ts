@@ -266,6 +266,10 @@ beforeEach(() => {
     warnings.push(args.map(String).join(" "));
   });
   delete process.env[FLAG];
+  // This file pins the retry with ANSWER_LENGTH_GUARD_ENABLED off (#281's
+  // behaviour, 45 s attempts), even when the suite runs with it set; the
+  // guard-on twin is at the end of this file.
+  delete process.env.ANSWER_LENGTH_GUARD_ENABLED;
   process.env.CHAT_TRACE_ENABLED = "on";
 });
 
@@ -657,6 +661,58 @@ describe("each attempt has its own deadline: min(45 s, what is left of the 120 s
     const pending = post(QUESTION);
     await until(() => state.modelCalls.length === 1);
     await vi.advanceTimersByTimeAsync(45_000);
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { content?: string }).content).toBe(ANSWER);
+    expect(state.modelCalls).toHaveLength(2);
+  });
+});
+
+/*
+ * Flag-on twin of the deadline suite above: with ANSWER_LENGTH_GUARD_ENABLED
+ * on too, each attempt is capped at min(60 s, what is left of the 120 s
+ * budget), because 3584 tokens can need about 45-50 s. Two attempts fill the
+ * budget, and the turn still ends inside it with the plain card.
+ */
+describe("ANSWER_LENGTH_GUARD_ENABLED on: each attempt's deadline is min(60 s, what is left of the 120 s budget)", () => {
+  for (const kind of ["hang", "hang-midstream"] as const) {
+    it(`attempts that ${kind === "hang" ? "hang before the headers" : "stall after the headers"} end at 120 s with the plain card, not a 504`, async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      flagOn();
+      process.env.ANSWER_LENGTH_GUARD_ENABLED = "on";
+      state.script = [{ kind }, { kind }, { kind }];
+      const started = Date.now();
+      let endedAt: number | null = null;
+      const seen = managerSees(() => post(QUESTION)).finally(() => {
+        endedAt = Date.now();
+      });
+
+      await until(() => state.modelCalls.length === 1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await until(() => state.modelCalls.length === 2);
+      expect(endedAt).toBeNull();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await until(() => endedAt !== null);
+
+      expect(await seen).toEqual(PLAIN_CARD);
+      expect(endedAt! - started).toBeLessThanOrEqual(120_000);
+      expect(state.modelCalls.map((call) => (call.options as { timeout?: number }).timeout)).toEqual([60_000, 60_000]);
+      expect(state.modelCalls.every((call) => (call.options as { maxRetries?: number }).maxRetries === 0)).toBe(true);
+      expect(warnings.join("\n")).toMatch(/model call failed after 2 attempts: upstream timeout/);
+      expect(store.chat_traces.at(-1)).toMatchObject({ succeeded: false, error_subtype: "timeout", retried: true });
+    });
+  }
+
+  it("an attempt that hangs once, then an answer, 60 s later", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    flagOn();
+    process.env.ANSWER_LENGTH_GUARD_ENABLED = "on";
+    state.script = [{ kind: "hang" }, { kind: "answer" }];
+    const pending = post(QUESTION);
+    await until(() => state.modelCalls.length === 1);
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(state.modelCalls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
     const response = await pending;
     expect(response.status).toBe(200);
     expect(((await response.json()) as { content?: string }).content).toBe(ANSWER);
