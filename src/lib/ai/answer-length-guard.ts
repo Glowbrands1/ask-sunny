@@ -23,7 +23,8 @@ import { UpstreamAttemptTimeout } from "./upstream-retry";
  *      and that attempt is abandoned when the turn reaches 60 s.
  *   3. Otherwise, or when the second reply is cut too, the reply ends at its
  *      last complete sentence or list item. A half-written bullet, heading or
- *      table row is dropped whole, and an unclosed "[S5" never survives.
+ *      table row is dropped whole, and an unclosed "[S5" never survives. A
+ *      reply with no whole sentence shows a fixed line, never half a sentence.
  *   4. One console line records stop_reason=max_tokens and the elapsed ms.
  *
  * WITH CHAT_UPSTREAM_RETRY_ENABLED ON TOO, the guard sits outside and the
@@ -117,7 +118,15 @@ function finished<T>(result: T, adapter: LengthAdapter<T>): boolean {
   return stop !== "max_tokens" && stop !== "refusal" && adapter.text(result).trim().length > 0;
 }
 
-/** The longest clean cut among the cut replies; the first reply when none has a whole sentence. */
+/**
+ * Shown in place of a cut reply with not one whole sentence or item in it (a
+ * single run-on sentence, or only an unfinished code block), so a half
+ * sentence never shows.
+ */
+export const NO_WHOLE_SENTENCE_REPLY =
+  "That answer was too long to finish. Please ask again, or ask for a shorter answer.";
+
+/** The longest clean cut among the cut replies; the fixed line when none has a whole sentence. */
 function cleanestCut<T>(results: readonly T[], adapter: LengthAdapter<T>): T {
   let best: { result: T; text: string } | null = null;
   for (const result of results) {
@@ -125,8 +134,7 @@ function cleanestCut<T>(results: readonly T[], adapter: LengthAdapter<T>): T {
     if (text.length > 0 && (best === null || text.length > best.text.length)) best = { result, text };
   }
   if (best) return adapter.withText(best.result, best.text);
-  const first = results[0]!;
-  return adapter.withText(first, withoutUnclosedCitation(adapter.text(first)).trimEnd());
+  return adapter.withText(results[0]!, NO_WHOLE_SENTENCE_REPLY);
 }
 
 /** The second attempt, or null when it fails or the turn reaches the ceiling first. */
@@ -169,13 +177,21 @@ const RULE = /^\s*(?:[-*_]\s*){3,}$/;
 const TERMINATOR = /[.!?]["'”’)*_]*(?:\s*\[S\d+\])*(?=\s|$)/g;
 /** Words whose full stop is not the end of a sentence ("p. 19", "e.g. the"). */
 const ABBREVIATION = /(?:^|[\s(])(?:p|pp|e\.g|i\.e|vs|no|approx|mr|mrs|ms|dr|st|jr|sr)$/i;
+/** "… on time. 2." — an item number at a line start or after a sentence, not a sentence of its own. */
+const ITEM_NUMBER_BEFORE = /(?:^|[.!?]["'”’)\]]*\s+)\d{1,3}$/;
+/** "1. Open …" — the next item of a list written on one line. */
+const ITEM_NUMBER_AFTER = /^\d{1,3}[.)](?:\s|$)/;
+/** A closed [S#] marker at the stop: "… open [S2]." ends a sentence whatever follows. */
+const CITED = /\[S\d+\]/;
 
 /**
  * The text up to its last complete sentence or list item. The last line is
  * where the stop fell: a list item, heading or table row there is dropped
  * whole, and a paragraph keeps its sentences up to the last full stop. A
  * heading, bold label or "…:" lead-in left with nothing under it goes too.
- * Empty when not one complete sentence or item was written.
+ * An unclosed code fence is dropped whole, with the text before it kept.
+ * Empty when not one complete sentence or item was written; the caller then
+ * shows `NO_WHOLE_SENTENCE_REPLY`, never the unfinished text.
  */
 export function cutAtLastComplete(text: string): string {
   const lines = text.replace(/\s+$/, "").split("\n");
@@ -199,9 +215,11 @@ function completeSentences(line: string): string {
   let end = 0;
   for (const match of line.matchAll(TERMINATOR)) {
     const at = match.index ?? 0;
-    if (ABBREVIATION.test(line.slice(0, at))) continue;
+    const before = line.slice(0, at);
+    if (ABBREVIATION.test(before) || ITEM_NUMBER_BEFORE.test(before)) continue;
     const after = line.slice(at + match[0].length).trimStart();
-    if (after.length > 0 && /^[a-z0-9]/.test(after)) continue;
+    const cited = CITED.test(match[0]) || /\[S\d+\]$/.test(before);
+    if (after.length > 0 && /^[a-z0-9]/.test(after) && !cited && !ITEM_NUMBER_AFTER.test(after)) continue;
     end = at + match[0].length;
   }
   return line.slice(0, end).trimEnd();
