@@ -77,3 +77,27 @@ why-comment in its own file:
 - "write up <name>, i gave her a verbal on 10-21 for being late" is dated 10-21.
 - A typed Action Plan with "by <date>" keeps the intake open
   (`action-plan-manager-only-e2e`).
+
+## The live card path (rollback of 26 Oct 2026)
+
+The flag was switched on in production at 08:45Z and rolled back at 08:51Z.
+The live card test (invented names) showed "coached her 10-16, written
+warning on 10-20" dated 10/20, "late on 10-5 and 10-15. i coached her on
+10-16" dated 10/16 (the coaching), and "missing the woven deadline of
+11-1-26" dated 11/1. The unit probes had passed because they did not run
+production's flags; `FIELD_ACCURACY_ENABLED` was the one that mattered.
+
+- `src/lib/ai/intake-augment.ts` `fieldLines`: the intake added "It happened
+  on <the last month-day date>" to the intent question, and the card dates
+  the form by that line. On, the line names the one incident date left once
+  earlier steps and deadlines are set aside (on a Coaching Form, the one
+  coaching held), and is not written for none or several.
+- `src/lib/ai/intent-slots.ts` `groundDate`: the slot model's date, typed by
+  the manager, was taken as the incident's. On, a date every mention of which
+  is a deadline, assignment or earlier step is not.
+- `form-date-incident-only.ts`: "deadline of / is / was <date>". "missed the
+  woven deadline on 10/15/26" is still the incident's day.
+
+Pinned through `answerQuestion` with production's flag profile:
+`src/lib/ai/d3-card-date-live-path-oct26.test.ts` (lowercase, sentence case,
+ALL CAPS; fails before, passes after).
