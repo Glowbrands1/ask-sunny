@@ -11,8 +11,9 @@ import { ownSystemsFactEnabled } from "@/lib/config/chat-quality-flags";
  * acknowledge policies in woven" was answered "Short answer: Woven isn't your
  * system — it's Crunch Fitness's." The manual's lists of where each brand
  * keeps personnel files name Woven beside another brand, and the model read
- * that as Woven not being this company's. It is: managers here assign
- * training and policy acknowledgements in Woven, and this app syncs with it.
+ * that as Woven not being this company's. It is: the company uses Woven and
+ * this app syncs with it. The fact line says only that (QA: nothing the
+ * sources do not say).
  *
  * Two parts, the same in both apps (each with its own company's systems):
  *
@@ -30,13 +31,11 @@ interface OwnSystem {
   readonly name: string;
   /** Matches the name as typed. */
   readonly pattern: RegExp;
-  /** What the company uses it for, in the fact line. */
-  readonly usedFor: string;
 }
 
 /** This company's systems that the manual also lists beside other brands. */
 const OWN_SYSTEMS: readonly OwnSystem[] = [
-  { name: "Woven", pattern: /\bwoven\b/i, usedFor: "training, assigned learning paths and policy acknowledgements" },
+  { name: "Woven", pattern: /\bwoven\b/i },
 ];
 
 /** The fact line for every own system the question or the excerpts name, or null. */
@@ -70,7 +69,7 @@ function namesAnotherOwner(sentence: string): boolean {
 }
 
 function factLine(system: OwnSystem): string {
-  return `${STC_BRAND.brandName} uses ${system.name} for ${system.usedFor}.`;
+  return `${STC_BRAND.brandName} uses ${system.name}.`;
 }
 
 /** The reply without a sentence saying one of the company's own systems is not its own. Off, the reply as given. */
