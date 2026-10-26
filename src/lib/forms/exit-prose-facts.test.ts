@@ -178,6 +178,23 @@ describe.each(REGISTERS)("EXIT_PROSE_FACTS_ENABLED in the managers' register: %s
     expect(guardExitDetails(negated, as("exit for ava pellmore she never worked her notice, did not call in"), TODAY).removed).toEqual([]);
   });
 
+  // QA-3, 26 Oct 2026: "no call" is itself a negation; a negation stops at "but" or a comma.
+  it('on, "no call no show" notes never keep "called in"; a negation does not reach past "but" or a comma', () => {
+    withFlag(true);
+    const called = "Ava resigned. Ava called in to resign.";
+    for (const notes of ["exit for ava pellmore no call no show", "exit for ava pellmore, no call"]) {
+      expect(guardExitDetails(called, as(notes), TODAY).removed, notes).toContain("Ava called in to resign.");
+    }
+    const worked = "Ava resigned. Ava worked her two weeks notice.";
+    for (const notes of [
+      "exit for ava pellmore she did not give notice but worked it",
+      "exit for ava pellmore she never worked her notice but she did work through it",
+      "exit for ava pellmore, never late, worked her notice",
+    ]) {
+      expect(guardExitDetails(worked, as(notes), TODAY).removed, notes).toEqual([]);
+    }
+  });
+
   it("flag off, the prose is main's", () => {
     withFlag(false);
     expect(prose(as(BARE_NAME))).toContain("a short account drafted from what you've described");
