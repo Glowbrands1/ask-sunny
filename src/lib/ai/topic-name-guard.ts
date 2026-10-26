@@ -33,6 +33,28 @@ const TOPIC_WORDS = new Set(
   ).split(" "),
 );
 const FOR_THE_TEAM = /\bfor\s+(?:my|our|the)(?:\s+(?:whole|entire|full))?\s+(?:team|staff|crew)\b|\b(?:whole|entire)\s+team\b|\ball\s+(?:of\s+)?(?:my|our|the)\s+team\b/i;
+/** "not", "never", "don't", "except" … earlier in the same clause turn the team phrase around. */
+const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|doesn'?t|isn'?t|without|except|instead\s+of)\b/i;
+
+/**
+ * QA-2 negation probes, 26 Oct 2026: "coaching form efts, not for my team",
+ * "it is not for the whole team", "don't make it for the whole team", and a
+ * later "no, not for my team, just for efts" after "for my team" made the team
+ * card. The latest turn that mentions the team decides, and a team phrase
+ * with a negation before it in its clause is a no.
+ */
+function forTheTeam(said: readonly string[]): boolean {
+  let team = false;
+  for (const turn of said) {
+    for (const clause of turn.split(/[,.;!?]+/)) {
+      const hit = FOR_THE_TEAM.exec(clause);
+      if (!hit) continue;
+      team = !NEGATED.test(clause.slice(0, hit.index));
+    }
+  }
+  return team;
+}
+
 const WHO_ASK = "Who is this form for — one employee, or the whole team? Tell me here.";
 
 export function withTopicNotAName(response: AskResponse, request: AskRequest): AskResponse {
@@ -51,7 +73,7 @@ export function guardTopicName(response: AskResponse, said: readonly string[]): 
   const name = proposal?.employeeName?.trim();
   if (!proposal || !name || proposal.subject === "team" || !topicOnly(name)) return response;
   const shown = new RegExp(`\\*\\*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\*\\*`, "gi");
-  if (allowsTeamSubject(proposal.templateKey) && said.some((turn) => FOR_THE_TEAM.test(turn))) {
+  if (allowsTeamSubject(proposal.templateKey) && forTheTeam(said)) {
     const next: ChatFormProposal = {
       ...proposal,
       employeeName: TEAM_SUBJECT_LABEL,

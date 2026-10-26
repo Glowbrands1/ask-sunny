@@ -129,3 +129,38 @@ describe("TOPIC_NOT_A_NAME_ENABLED on: lowercase, sentence case and capitals", (
     expect(guardTopicName(response, [turn])).toBe(response);
   });
 });
+
+/** QA-2 negation probes, 26 Oct 2026: a negated team phrase is never the team card. */
+describe("TOPIC_NOT_A_NAME_ENABLED on: 'not for my team' is not the team", () => {
+  const twins = (text: string) => [text.toLowerCase(), text[0]!.toUpperCase() + text.slice(1).toLowerCase(), text.toUpperCase()];
+
+  it.each([
+    ...twins("coaching form efts, not for my team"),
+    ...twins("coaching for efts, it is not for the whole team"),
+    ...twins("coaching for efts. don't make it for the whole team"),
+  ])("'%s' leaves Employee blank and asks who", (turn) => {
+    process.env[FLAG] = "on";
+    const out = guardTopicName(respond("efts"), [turn]);
+    expect(out.formProposal?.subject).not.toBe("team");
+    expect(out.formProposal?.employeeName).toBeNull();
+  });
+
+  it.each(twins("no, not for my team, just for efts"))("a later '%s' undoes an earlier 'for my team'", (later) => {
+    process.env[FLAG] = "on";
+    const out = guardTopicName(respond("efts"), ["coaching for efts for my team", later]);
+    expect(out.formProposal?.subject).not.toBe("team");
+  });
+
+  it("a later 'for the whole team' after a negation is the team", () => {
+    process.env[FLAG] = "on";
+    expect(guardTopicName(respond("efts"), ["coaching form efts, not for my team", "actually yes, for the whole team"]).formProposal?.subject).toBe("team");
+  });
+});
+
+describe("TOPIC_NOT_A_NAME_ENABLED on: a real name is kept in any case", () => {
+  it.each(["coaching for mara quill", "Coaching for Mara Quill", "COACHING FOR MARA QUILL"])("'%s' keeps the person", (turn) => {
+    process.env[FLAG] = "on";
+    const response = respond(turn.replace(/^coaching for /i, ""));
+    expect(guardTopicName(response, [turn])).toBe(response);
+  });
+});
