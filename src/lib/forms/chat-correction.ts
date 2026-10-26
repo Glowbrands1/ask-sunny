@@ -19,7 +19,7 @@ import { isExitDocumentKeys } from "./exit-draft";
 import { formDateChange, formDateChangeUnclear, formDateReply } from "./form-date-answer";
 import { resolveFormDate, withDateMoved } from "./form-date-grounding";
 import { authorizeInstance } from "./instance-scope";
-import { payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
+import { correctionBothFactsEnabled, payrollAmountFieldEnabled } from "@/lib/config/chat-quality-flags";
 
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import {
@@ -81,16 +81,18 @@ const FORM_DATE_IS_INCIDENT_DATE: ReadonlySet<string> = new Set(["dpoa"]);
  * limited to fields a person may edit. A finalized form is never written: the
  * correction is made on a new draft of it (`editable-draft.ts`).
  *
- * BOTH FACTS IN ONE TURN (the sibling app's QA history, conv_mvi94k418pzwgmn,
+ * BOTH FACTS IN ONE TURN (CORRECTION_BOTH_FACTS_ENABLED; the sibling app's QA history, conv_mvi94k418pzwgmn,
  * 21 Oct 2026): "verbal. payroll deduct is not applicable." set payroll deduct
  * and dropped the level, because the payroll answer was written by the field
  * readers below and the level is read only by the Corrective Action reader,
  * which ran only when no field reader took the turn. Where a field reader
  * wrote the turn, the Corrective Action reader also reads it, so the level
  * (and any prior step) the same words state is applied, and one reply names
- * both.
+ * both. Off, the field readers and the Corrective Action reader run exactly
+ * as before (`correctFormFields`).
  */
 export async function correctActiveForm(input: CorrectionInput): Promise<AskResponse | null> {
+  if (!correctionBothFactsEnabled()) return correctFormFields(input);
   const first = await correctFormFields(input);
   if (!first?.formUpdate) return first;
   const facts = await correctCorrectiveActionFacts({ ...input, instanceId: first.formUpdate.instanceId });

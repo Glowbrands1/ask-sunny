@@ -121,51 +121,8 @@ function payrollQuestionIn(
   const hit = numbered.find((match) =>
     PAYROLL_IN_QUESTION.test(match[2] ?? ""),
   );
-  if (!hit) return asksPayrollLast(assistant) ? { number: null, alone: true } : null;
+  if (!hit) return { number: null, alone: true };
   return { number: Number(hit[1]), alone: numbered.length === 1 };
-}
-
-/*
- * THE QUESTION BEING ANSWERED (QA, 25 Oct 2026). Outside a numbered list, a
- * bare yes or no answers the payroll question only when the reply asked it,
- * and asked no other yes/no question after it. A mention that is not a
- * question does not count: the card's own "**Payroll deduct:** No, as you
- * said" line made "yes" to "That date is in the future — is 12-20-26 right?",
- * or to "Which store?", set payroll deduct to Yes. A question the reply
- * answers itself ("Is payroll deduct applicable? **No** — tell me if that
- * should change.") is a read-back, not a question, and "Yes or No?" belongs to
- * the question before it. An either/or ("a Verbal Warning or a Written
- * Warning?") or an open question ("What is their job title?") cannot be
- * answered by a bare yes, so it does not take the answer away.
- */
-const ANSWERED_IN_PLACE = /^\s*\*\*(?:yes|no)\*\*/i;
-const YES_OR_NO = /^\(?\s*(?:yes\s+or\s+no|y\s*\/\s*n)\s*\)?\s*\?$/i;
-const YES_NO_QUESTION =
-  /^(?:is|are|was|were|am|do|does|did|can|could|should|would|will|has|have|had|shall|may|might|isn't|aren't|doesn't|don't|didn't)\b/i;
-
-function questionsAsked(assistant: string): string[] {
-  const asked: string[] = [];
-  for (const match of assistant.matchAll(/[^?.!\n]*\?/g)) {
-    const end = (match.index ?? 0) + match[0].length;
-    if (ANSWERED_IN_PLACE.test(assistant.slice(end))) continue;
-    const question = match[0].replace(/\*\*/g, "").trim();
-    if (question === "" || question === "?") continue;
-    if (YES_OR_NO.test(question) && asked.length > 0) continue;
-    asked.push(question);
-  }
-  return asked;
-}
-
-/** "That date is in the future — is 12-20-26 right?": the clause the question mark ends, yes/no, and not an either/or. */
-function isYesNoQuestion(question: string): boolean {
-  const clause = question.split(/\s[—–-]\s|[:;,]\s/).at(-1)!.trim();
-  return YES_NO_QUESTION.test(clause) && !/\bor\b/i.test(clause);
-}
-
-function asksPayrollLast(assistant: string): boolean {
-  const asked = questionsAsked(assistant);
-  const at = asked.findLastIndex((question) => PAYROLL_IN_QUESTION.test(question));
-  return at >= 0 && !asked.slice(at + 1).some(isYesNoQuestion);
 }
 
 /** The answer a manager's numbered line gives to item `number`, if it is there. */

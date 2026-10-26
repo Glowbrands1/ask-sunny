@@ -644,6 +644,20 @@ export function statedTitleWinsEnabled(): boolean {
 }
 
 /**
+ * One correction turn that states two facts on an open form applies both.
+ * "verbal. payroll deduct is not applicable." set payroll deduct and dropped
+ * the level: the payroll answer is written by the field readers, and the
+ * Corrective Action reader (the level, a prior step) ran only when no field
+ * reader took the turn. On, the Corrective Action reader also reads a turn a
+ * field reader wrote, and one reply names both. Same flag in the sibling app
+ * (QA history, conv_mvi94k418pzwgmn, 21 Oct 2026). Off, a correction turn is
+ * read exactly as before.
+ */
+export function correctionBothFactsEnabled(): boolean {
+  return envFlag("CORRECTION_BOTH_FACTS_ENABLED");
+}
+
+/**
  * The Corrective Action Form's Action Plan is the manager's, or blank (Pau,
  * 25 Oct 2026). A plan they typed ("action plan: …") goes on the card and the
  * form word for word. With none typed, nothing is written: no "Management

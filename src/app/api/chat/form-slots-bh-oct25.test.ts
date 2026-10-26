@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
-import { futureIncidentDateConfirmEnabled, statedTitleWinsEnabled } from "@/lib/config/chat-quality-flags";
+import { correctionBothFactsEnabled, futureIncidentDateConfirmEnabled, statedTitleWinsEnabled } from "@/lib/config/chat-quality-flags";
 import { withFutureDateQuestion } from "@/lib/ai/future-incident-date";
 import { copularJobTitle } from "@/lib/ai/title-words";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -28,7 +28,9 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *       directory's (STATED_TITLE_WINS_ENABLED for a title off the list).
  *   B16 "…she is an HR assistant…" is the stated title; "send to HR" is none.
  *   BH3 "verbal. payroll deduct is not applicable." with the form open, or on
- *       the card: both facts are applied.
+ *       the card: both facts are applied (CORRECTION_BOTH_FACTS_ENABLED for
+ *       the open form; off, the open form takes only the payroll answer, as
+ *       on main).
  *   BH5 an incident date in the future (12-20-26 typed on 10-21-26) is asked
  *       about once (FUTURE_INCIDENT_DATE_CONFIRM_ENABLED).
  */
@@ -370,7 +372,8 @@ function slotModel(manager: string): Record<string, unknown> {
 const PRODUCTION = ["INTENT_EXTRACTION_ENABLED"] as const;
 const TITLE_FLAG = "STATED_TITLE_WINS_ENABLED";
 const DATE_FLAG = "FUTURE_INCIDENT_DATE_CONFIRM_ENABLED";
-const TOUCHED = [...PRODUCTION, TITLE_FLAG, DATE_FLAG, "FORM_FULL_REMAP_ENABLED"] as const;
+const BOTH_FLAG = "CORRECTION_BOTH_FACTS_ENABLED";
+const TOUCHED = [...PRODUCTION, TITLE_FLAG, DATE_FLAG, BOTH_FLAG, "FORM_FULL_REMAP_ENABLED"] as const;
 const saved = new Map<string, string | undefined>();
 
 function at(day: string) {
@@ -418,10 +421,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the two new flags", () => {
+describe("the new flags", () => {
   it("are off unless set", () => {
     expect(statedTitleWinsEnabled()).toBe(false);
     expect(futureIncidentDateConfirmEnabled()).toBe(false);
+    expect(correctionBothFactsEnabled()).toBe(false);
   });
 });
 
@@ -486,7 +490,8 @@ const BH3_REQUEST = "create ca form for sela brandt for violating attendance on 
 const BH3 = "verbal. payroll deduct is not applicable.";
 
 describe(`BH3: "${BH3}" applies both facts`, () => {
-  it("with the created form open: Type of Warning and payroll deduct", async () => {
+  it(`${BOTH_FLAG}: with the created form open, Type of Warning and payroll deduct`, async () => {
+    process.env[BOTH_FLAG] = "true";
     at("2026-10-21");
     const thread = new Thread();
     await thread.say(BH3_REQUEST);
@@ -495,6 +500,16 @@ describe(`BH3: "${BH3}" applies both facts`, () => {
     expect(checked(id, "payroll_deduct")).toEqual(["no"]);
     expect(checked(id, "warning_type")).toEqual(["verbal"]);
     expect(answer.content).toMatch(/Is payroll deduct applicable\? → No; Type of Warning → Verbal Warning\./);
+  });
+
+  it(`flag off: with the created form open, the payroll answer only, as on main`, async () => {
+    at("2026-10-21");
+    const thread = new Thread();
+    await thread.say(BH3_REQUEST);
+    const { id } = await thread.create();
+    await thread.say(BH3);
+    expect(checked(id, "payroll_deduct")).toEqual(["no"]);
+    expect(checked(id, "warning_type")).not.toEqual(["verbal"]);
   });
 
   it("on the card, before it is created", async () => {
@@ -540,7 +555,8 @@ describe(`BH5 (${DATE_FLAG}): an incident date in the future is asked about once
     expect(later.content).not.toContain("in the future");
   });
 
-  it('flags off: "yes" after the card is not read as the payroll answer (payroll-deduct.ts, QA 25 Oct 2026)', async () => {
+  // Holds on main's payroll reader; this PR no longer edits payroll-deduct.ts (the bare yes/no binding is #247).
+  it('flags off: "yes" after the card is not read as the payroll answer', async () => {
     const thread = new Thread();
     const card = await thread.say(BH5);
     expect(card.formProposal?.payrollDeduct).toBe("no");
@@ -646,7 +662,8 @@ describe("registers: B16", () => {
 });
 
 describe("registers: BH3", () => {
-  it.each(REGISTERS)("%s: with the created form open, both facts", async (_label, type) => {
+  it.each(REGISTERS)(`%s: ${BOTH_FLAG}: with the created form open, both facts`, async (_label, type) => {
+    process.env[BOTH_FLAG] = "true";
     at("2026-10-21");
     const thread = new Thread();
     await thread.say(type(BH3_REQUEST, BH3_NAMES));
