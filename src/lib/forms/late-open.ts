@@ -61,7 +61,7 @@ function isoOf(year: number, month: number, day: number): string | null {
 }
 
 /** The most recent `month`-`day` on or before `today`. */
-function mostRecent(month: number, day: number, today: string): string | null {
+export function mostRecent(month: number, day: number, today: string): string | null {
   const year = Number(/^(\d{4})-/.exec(today)?.[1]);
   if (!Number.isFinite(year)) return null;
   const thisYear = isoOf(year, month, day);

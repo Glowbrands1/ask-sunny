@@ -14,6 +14,8 @@ import {
   MANAGER_NOTE_SHORT,
 } from "@/data/answer-modes";
 import { cn } from "@/lib/utils/cn";
+import { LONG_MESSAGE_LIMIT, messageLengthStatus } from "@/lib/chat/message-limit";
+import { chatLongMessageClientEnabled } from "@/lib/config/chat-quality-flags";
 import type { AnswerMode } from "@/types";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
@@ -117,8 +119,18 @@ export function Composer({
     node.style.height = `${Math.min(200, node.scrollHeight)}px`;
   }, [value]);
 
+  /*
+   * CHAT_LONG_MESSAGE_ENABLED (QA approved, 25 Oct 2026): the limit is
+   * 12,000 characters. From 90% of it a line under the field says how many
+   * are left; over it, the line says how long the message is and send is
+   * disabled. The text is never cut. Off, `length` is null and the composer
+   * renders and sends exactly as before.
+   */
+  const length = chatLongMessageClientEnabled() ? messageLengthStatus(value, LONG_MESSAGE_LIMIT) : null;
+  const overLimit = length !== null && !length.canSend;
+
   const submit = () => {
-    if (!value.trim() || busy) return;
+    if (!value.trim() || busy || overLimit) return;
     onSubmit();
   };
 
@@ -135,6 +147,7 @@ export function Composer({
         value={value}
         disabled={busy}
         autoFocus={autoFocus}
+        aria-describedby={length?.notice ? "chat-input-length" : undefined}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
@@ -152,7 +165,7 @@ export function Composer({
     <button
       type="button"
       onClick={submit}
-      disabled={!value.trim() || busy}
+      disabled={!value.trim() || busy || overLimit}
       aria-label="Send message"
       /*
         THE ROUND YELLOW SEND. Yellow is a fill here rather than an encoded
@@ -177,6 +190,17 @@ export function Composer({
         <div className="flex min-w-0 flex-1 items-center">{field}</div>
         {sendButton}
       </div>
+
+      {length?.notice ? (
+        <p
+          id="chat-input-length"
+          role={length.state === "over" ? "alert" : "status"}
+          data-state={length.state}
+          className={cn("mt-2 text-[11.5px] leading-snug", length.state === "over" ? "font-semibold text-brand-yellow" : "text-band-label")}
+        >
+          {length.notice}
+        </p>
+      ) : null}
 
       {/*
         THE `.under` ROW: the mode control and one line of disclaimer, side by
