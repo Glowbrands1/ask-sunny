@@ -3,6 +3,8 @@ import { authorizeInstance, InstanceNotVisibleError } from "@/lib/forms/instance
 import { markExported } from "@/lib/forms/instances";
 import { parseFormVariants } from "@/lib/forms/document";
 import { pdfFileName, renderFormPdf } from "@/lib/forms/pdf-render";
+import { formRevisionsEnabled } from "@/lib/config/chat-quality-flags";
+import { loadRevisionHistory, marksFor } from "@/lib/forms/revision-chain";
 
 /**
  * GET /api/forms/instances/[id]/pdf
@@ -48,7 +50,17 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       status: loaded.instance.status,
     };
 
-    const bytes = renderFormPdf(loaded.version.document, variant, { values, checked }, meta);
+    /*
+     * REVISED AND SUPERSEDED, ON PAPER (`FORM_REVISIONS_ENABLED`). The marks
+     * name only references; a record in the chain the caller could not open
+     * is still named by its reference, which is what a filed page needs to
+     * be matched up, and nothing else about it is printed.
+     */
+    const history = formRevisionsEnabled() ? await loadRevisionHistory(id) : null;
+    const marks = history ? marksFor(history) : [];
+    const printed = marks.length > 0 ? { ...meta, revisionMarks: marks } : meta;
+
+    const bytes = renderFormPdf(loaded.version.document, variant, { values, checked }, printed);
     await markExported(id, actor.id);
 
     return new Response(bytes as BodyInit, {
