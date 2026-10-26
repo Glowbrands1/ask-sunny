@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { decideIntentTurn, type IntentTurnInput } from "@/lib/ai/intent-slots";
-import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { blankYearlessStepDates, heldCoachingDates, listIncidentDates } from "@/lib/forms/form-date-answer";
 import { incidentDates } from "@/lib/forms/incident-dates";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { managerStatedWarningLevel, statedWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
@@ -211,6 +211,77 @@ describe("(2c) the level before the history label (warning-level.ts, asked for b
   it("not asked for, it reads as before (pinned)", () => {
     expect(statedWarningLevel(QA_TWO)).toBeNull();
     expect(warningLevelFromTurns([QA_TWO])).toBeNull();
+  });
+});
+
+/*
+ * ============================================================================
+ * SUNNY TESTER, 26 OCT 2026 — A PRIOR IN A SHORT SECOND SENTENCE
+ * ============================================================================
+ *
+ * Word for word but for the employee, who is invented ("Rowan Pell"):
+ *
+ *   "Write up Rowan Pell, Tanning Consultant, KS Manhattan, no call no show
+ *    today. I coached her on 10-16 and gave a verbal on 10-21."
+ *
+ * The form was dated today (right), but no prior action was listed, in any
+ * casing: the held coaching was skipped as the form's date should be, and the
+ * held-coaching reader ran back across "10-16 and gave a verbal on" and took
+ * the verbal for the coaching too. With PRIOR_ACTIONS_NO_COMMA_ENABLED on,
+ * both are listed, and neither dates the form.
+ */
+const NCNS =
+  "Write up Rowan Pell, Tanning Consultant, KS Manhattan, no call no show today. I coached her on 10-16 and gave a verbal on 10-21.";
+const NCNS_PRIORS = ["Coaching — 10/16/2026", "Verbal warning — 10/21/2026"];
+
+/** QA's casings: all lowercase, sentence case, ALL CAPS, the name typed lowercase or Capitalized. */
+const NCNS_CASINGS = [
+  NCNS.toLowerCase(),
+  NCNS,
+  NCNS.replace("Rowan Pell", "rowan pell"),
+  NCNS.replace("Rowan Pell", "rowan pell").replace("Tanning Consultant", "tanning consultant"),
+  NCNS.toUpperCase(),
+];
+
+describe("a prior in a short second sentence (flag on)", () => {
+  for (const said of NCNS_CASINGS) {
+    it(`"${said}"`, () => {
+      flags(true, true);
+      expect(statedPriorActions(said, TODAY)).toEqual(NCNS_PRIORS);
+      expect(incidentDates(said, TODAY)).toEqual([]);
+      expect(listIncidentDates(said, TODAY)).toEqual([]);
+      // The verbal is blanked for the yearless reader; a held coaching never is, as before.
+      expect(blankYearlessStepDates(said, TODAY)).not.toMatch(/10-21/);
+      expect(blankYearlessStepDates(said, TODAY)).toMatch(/10-16/);
+      for (const model of ["10-21", "10-16", null]) expect(turn(said, model).formDate).toBe(TODAY);
+    });
+  }
+
+  it.each([
+    ["write up rowan pell, no call no show today. I coached her on 10-16.", ["Coaching — 10/16/2026"]],
+    ["write up rowan pell, no call no show today. she already got a verbal on 10-21.", ["Verbal warning — 10/21/2026"]],
+    ["write up rowan pell, no call no show today. had a written on 10-21.", ["Written warning — 10/21/2026"]],
+    ["write up rowan pell, no call no show today. I coached her on 10/16 and gave a verbal on 10/21.", NCNS_PRIORS],
+  ])("%s", (said, priors) => {
+    flags(true, true);
+    expect(statedPriorActions(said, TODAY)).toEqual(priors);
+    expect(incidentDates(said, TODAY)).toEqual([]);
+  });
+
+  it("a Coaching Form's own coaching is still its date, and is never blanked", () => {
+    flags(true, true);
+    const coaching = "coaching form for rowan pell, she was late on 10/5 and 10/15, I coached her on 10/16";
+    expect(heldCoachingDates(coaching, TODAY)).toEqual(["2026-10-16"]);
+    const yearless = "coaching form for rowan pell. I coached her on 10-16";
+    expect(blankYearlessStepDates(yearless, TODAY)).toBe(yearless);
+  });
+
+  it("flag off: no prior is listed (QA's defect, pinned)", () => {
+    flags(true, false);
+    for (const said of NCNS_CASINGS) {
+      expect(statedPriorActions(said, TODAY)).toEqual([]);
+      expect(turn(said, null).formDate).toBe(TODAY);
+    }
   });
 });
 
