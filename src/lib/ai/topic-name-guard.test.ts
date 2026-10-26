@@ -101,3 +101,31 @@ describe("TOPIC_NOT_A_NAME_ENABLED on", () => {
     expect(out.formProposal?.employeeName).toBeNull();
   });
 });
+
+/** The same QA turns in lowercase, sentence case and capitals. */
+describe("TOPIC_NOT_A_NAME_ENABLED on: lowercase, sentence case and capitals", () => {
+  const twins = (text: string) => {
+    const lower = text.toLowerCase();
+    return [lower, lower[0]!.toUpperCase() + lower.slice(1), text.toUpperCase()];
+  };
+
+  it.each([...twins("coaching form efts spa"), ...twins("coaching for efts"), ...twins("weekly")])("'%s' leaves Employee blank and asks who", (turn) => {
+    process.env[FLAG] = "on";
+    const name = turn.replace(/^coaching (?:form|for) /i, "");
+    const out = withTopicNotAName(respond(name), { question: turn, history: [] } as unknown as AskRequest);
+    expect(out.formProposal?.employeeName).toBeNull();
+    expect(out.content).toContain("Who is this form for — one employee, or the whole team?");
+  });
+
+  it.each([...twins("can u creat a coachng form for efts and the spa for my team"), ...twins("I already told you for the whole team")])("'%s' is a team coaching form", (turn) => {
+    process.env[FLAG] = "on";
+    const out = guardTopicName(respond("efts"), ["coaching for efts", turn]);
+    expect(out.formProposal?.subject).toBe("team");
+  });
+
+  it.each(twins("coaching for avery stone"))("'%s' keeps the person", (turn) => {
+    process.env[FLAG] = "on";
+    const response = respond(turn.replace(/^coaching for /i, ""));
+    expect(guardTopicName(response, [turn])).toBe(response);
+  });
+});
