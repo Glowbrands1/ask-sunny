@@ -20,6 +20,19 @@ import { waitBeforeRetry } from "./retry-wait";
  * this loop owns the count: up to two more attempts, about 1 s and then 3 s
  * apart, never starting one past the turn's budget.
  *
+ * EVERY ATTEMPT HAS ITS OWN DEADLINE: the lesser of 45 s and what is left of
+ * the turn's budget. It is passed to the SDK as `timeout`, and the attempt is
+ * also abandoned (its request aborted) when it runs out, because the SDK's
+ * timeout stops at the response headers and a stream can stall after them.
+ * So a retry that starts late cannot hang into the platform's 300 s 504: the
+ * turn ends with the usual `model_failed` error inside the budget.
+ *
+ * ONLY THE CHAT ANSWER ASKS FOR THIS (`upstreamRetry` on `callClaude`). The
+ * Sales Totals analysis and the forms ingest refinement also call
+ * `callClaude`; they keep the SDK's own retries and its timeout, because a
+ * 45 s deadline and the chat turn's budget would turn their slow successes
+ * into failures.
+ *
  * Retried: 429, 529 and any other 5xx, an `overloaded_error`, `api_error` or
  * `rate_limit_error` streamed after the 200, and a dropped connection.
  * Never retried: 400 and every other request error, a refusal or empty
@@ -43,6 +56,30 @@ export const UPSTREAM_RETRY_AFTER_CAP_MS = 10_000;
  */
 export const UPSTREAM_RETRY_BUDGET_MS = 120_000;
 
+/** The most one attempt may take. */
+export const UPSTREAM_ATTEMPT_TIMEOUT_MS = 45_000;
+
+/**
+ * The least an attempt is given. A retry starts only when this much budget is
+ * left after its wait, so only a first attempt that begins in the budget's
+ * last few seconds can run past it, and then by at most this.
+ */
+export const UPSTREAM_MIN_ATTEMPT_MS = 5_000;
+
+/** What one attempt is given: its deadline, for the SDK and for the abort. */
+export interface UpstreamAttempt {
+  readonly timeout: number;
+  readonly signal: AbortSignal;
+}
+
+/** Thrown when an attempt reaches its deadline. Retryable, like a timeout. */
+export class UpstreamAttemptTimeout extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`The model call did not finish within ${timeoutMs} ms.`);
+    this.name = "UpstreamAttemptTimeout";
+  }
+}
+
 const RETRYABLE_TYPES = new Set(["overloaded_error", "api_error", "rate_limit_error"]);
 const SOCKET_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_SOCKET"]);
 
@@ -57,6 +94,9 @@ export interface UpstreamFailure {
 }
 
 export function describeUpstreamError(error: unknown): UpstreamFailure {
+  if (error instanceof UpstreamAttemptTimeout) {
+    return { code: "timeout", retryable: true, subtype: "timeout", retryAfterMs: null };
+  }
   if (error instanceof AiError || error instanceof MissingConfigurationError || error instanceof APIUserAbortError) {
     return { code: error instanceof AiError ? error.code : "not_upstream", retryable: false, subtype: null, retryAfterMs: null };
   }
@@ -93,20 +133,22 @@ export function newUpstreamRetryRecord(): UpstreamRetryRecord {
 
 /**
  * Runs `attempt` until it succeeds, a failure is not retryable, its two
- * retries are spent, or the next one would start more than the budget after
- * `startedAt`. The last error is thrown unchanged, so the caller's error
- * mapping is what it was.
+ * retries are spent, or the next one would not have its minimum before the
+ * budget after `startedAt` runs out. Each attempt gets its own deadline (see
+ * above). The last error is thrown unchanged, so the caller's error mapping
+ * is what it was.
  */
 export async function withUpstreamRetry<T>(
   record: UpstreamRetryRecord,
   startedAt: number,
-  attempt: () => Promise<T>,
+  attempt: (limits: UpstreamAttempt) => Promise<T>,
 ): Promise<T> {
   const deadline = startedAt + UPSTREAM_RETRY_BUDGET_MS;
   for (let tries = 1; ; tries += 1) {
     record.attempts += 1;
+    const timeout = Math.max(UPSTREAM_MIN_ATTEMPT_MS, Math.min(UPSTREAM_ATTEMPT_TIMEOUT_MS, deadline - Date.now()));
     try {
-      return await attempt();
+      return await runWithDeadline(timeout, attempt);
     } catch (error) {
       const failure = describeUpstreamError(error);
       record.last = failure;
@@ -115,7 +157,7 @@ export async function withUpstreamRetry<T>(
         backoff === undefined
           ? null
           : Math.max(backoff, Math.min(failure.retryAfterMs ?? 0, UPSTREAM_RETRY_AFTER_CAP_MS));
-      if (failure.retryable && wait !== null && Date.now() + wait < deadline) {
+      if (failure.retryable && wait !== null && Date.now() + wait + UPSTREAM_MIN_ATTEMPT_MS <= deadline) {
         console.warn(`[chat] model call attempt ${tries} failed: upstream ${failure.code}; retrying in ${wait} ms`);
         record.retried = true;
         await waitBeforeRetry(wait);
@@ -126,6 +168,29 @@ export async function withUpstreamRetry<T>(
       console.warn(`[chat] model call failed after ${attempts}: upstream ${failure.code}${why}`);
       throw error;
     }
+  }
+}
+
+/**
+ * One attempt, abandoned at `timeout`: the deadline rejects first, then the
+ * request is aborted so its socket does not linger. Whatever the abandoned
+ * attempt settles with afterwards is ignored.
+ */
+async function runWithDeadline<T>(timeout: number, attempt: (limits: UpstreamAttempt) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new UpstreamAttemptTimeout(timeout));
+      controller.abort();
+    }, timeout);
+  });
+  const running = attempt({ timeout, signal: controller.signal });
+  running.catch(() => undefined);
+  try {
+    return await Promise.race([running, expired]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

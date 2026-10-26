@@ -117,6 +117,13 @@ export interface CallClaudeInput {
    * the system prompt is exactly what `cachedSystem` already returns.
    */
   readonly fullManualBlock?: string | null;
+  /**
+   * The chat answer only. With CHAT_UPSTREAM_RETRY_ENABLED on, a retryable
+   * upstream failure is tried again inside the chat turn's budget, each
+   * attempt with its own deadline. Omitted — the Sales Totals analysis and
+   * the forms ingest refinement — the call is exactly what it was.
+   */
+  readonly upstreamRetry?: boolean;
 }
 
 export interface CollectedModelResult {
@@ -266,8 +273,9 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       },
     ],
   };
-  // CHAT_UPSTREAM_RETRY_ENABLED: null when off, and then nothing below differs from main.
-  const retry = chatUpstreamRetryEnabled() ? newUpstreamRetryRecord() : null;
+  // CHAT_UPSTREAM_RETRY_ENABLED, chat answer only: null when off or not asked for,
+  // and then nothing below differs from main.
+  const retry = input.upstreamRetry && chatUpstreamRetryEnabled() ? newUpstreamRetryRecord() : null;
   try {
     const options = modelRequestOptions();
     // Stream so the first text delta can be timed. A caller that returns a
@@ -277,8 +285,16 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     // overloaded error can arrive after the 200; the SDK's own retries are
     // off so `withUpstreamRetry` alone decides how many attempts there are.
     const response = retry
-      ? await withUpstreamRetry(retry, chatRequestReceivedAt(), async () =>
-          collectModelResult(await client.messages.create(streamed, { ...options, maxRetries: 0 }), started),
+      ? await withUpstreamRetry(retry, chatRequestReceivedAt(), async (attempt) =>
+          collectModelResult(
+            await client.messages.create(streamed, {
+              ...options,
+              maxRetries: 0,
+              timeout: Math.min(options?.timeout ?? attempt.timeout, attempt.timeout),
+              signal: attempt.signal,
+            }),
+            started,
+          ),
         )
       : await collectModelResult(
           options ? await client.messages.create(streamed, options) : await client.messages.create(streamed),

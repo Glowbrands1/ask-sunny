@@ -11,8 +11,11 @@ vi.mock("./retry-wait", () => ({
 }));
 
 const {
+  UPSTREAM_ATTEMPT_TIMEOUT_MS,
+  UPSTREAM_MIN_ATTEMPT_MS,
   UPSTREAM_RETRY_AFTER_CAP_MS,
   UPSTREAM_RETRY_BUDGET_MS,
+  UpstreamAttemptTimeout,
   describeUpstreamError,
   newUpstreamRetryRecord,
   withUpstreamRetry,
@@ -142,5 +145,61 @@ describe("withUpstreamRetry", () => {
     expect(await withUpstreamRetry(record, Date.now(), attempt)).toBe("ok");
     expect(record).toMatchObject({ attempts: 6, retried: true });
     expect(waits).toEqual([1_000, 3_000, 1_000, 3_000]);
+  });
+});
+
+describe("each attempt's deadline", () => {
+  it("is min(45 s, what is left of the budget), passed to the attempt with an abort signal", async () => {
+    const record = newUpstreamRetryRecord();
+    const seen: { timeout: number; aborted: boolean }[] = [];
+    const startedAt = Date.now() - (UPSTREAM_RETRY_BUDGET_MS - 20_000);
+    await withUpstreamRetry(record, startedAt, async (limits) => {
+      seen.push({ timeout: limits.timeout, aborted: limits.signal.aborted });
+      return "ok";
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.timeout).toBeLessThanOrEqual(20_000);
+    expect(seen[0]!.timeout).toBeGreaterThan(19_000);
+    expect(seen[0]!.aborted).toBe(false);
+
+    await withUpstreamRetry(newUpstreamRetryRecord(), Date.now(), async (limits) => {
+      seen.push({ timeout: limits.timeout, aborted: false });
+      return "ok";
+    });
+    expect(seen[1]!.timeout).toBe(UPSTREAM_ATTEMPT_TIMEOUT_MS);
+  });
+
+  it("abandons a hanging attempt at its deadline, aborts it, and reads that as a retryable timeout", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const record = newUpstreamRetryRecord();
+      const signals: AbortSignal[] = [];
+      const pending = withUpstreamRetry(record, Date.now(), (limits) => {
+        signals.push(limits.signal);
+        return new Promise<string>(() => {});
+      });
+      const settled = pending.catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(UPSTREAM_RETRY_BUDGET_MS);
+      const error = await settled;
+      expect(error).toBeInstanceOf(UpstreamAttemptTimeout);
+      expect(describeUpstreamError(error)).toMatchObject({ code: "timeout", retryable: true, subtype: "timeout" });
+      expect(record).toMatchObject({ attempts: 3, retried: true });
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts no retry that would get less than the minimum before the budget ends", async () => {
+    const record = newUpstreamRetryRecord();
+    const startedAt = Date.now() - (UPSTREAM_RETRY_BUDGET_MS - UPSTREAM_MIN_ATTEMPT_MS - 500);
+    const error = http(529, "overloaded_error");
+    await expect(
+      withUpstreamRetry(record, startedAt, async () => {
+        throw error;
+      }),
+    ).rejects.toBe(error);
+    expect(record.attempts).toBe(1);
+    expect(waits).toEqual([]);
   });
 });
