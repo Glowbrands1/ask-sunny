@@ -891,3 +891,14 @@ export function nextPersonFormEnabled(): boolean {
 export function followUpNotPriorEnabled(): boolean {
   return envFlag("FOLLOW_UP_NOT_PRIOR_ENABLED");
 }
+
+/**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
