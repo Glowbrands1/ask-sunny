@@ -20,6 +20,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
+import { incidentOnly, incidentOnlyOn, onlyNotTheIncident } from "@/lib/forms/form-date-incident-only";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
@@ -1102,8 +1103,16 @@ function groundDate(
 ): { iso: string | null; ambiguous: readonly string[] } {
   // Follow-up dates stay off this list. One incident date is the form's date
   // even when a follow-up date is written beside it.
-  const inText = [...new Set(listIncidentDates(blob, today).map((item) => item.iso))];
-  const normalized = typed ? normalizeIncidentDate(typed, today) : null;
+  const inText = [...new Set(incidentOnly(blob, today, listIncidentDates(blob, today)).map((item) => item.iso))];
+  /*
+   * FORM_DATE_INCIDENT_ONLY_ENABLED (live card test, 26 Oct 2026): "missing
+   * the woven deadline of 11-1-26" — the model copied the deadline as the
+   * incident's date and, typed by the manager, it dated the card. On, a date
+   * every mention of which is a deadline, assignment or earlier step is not
+   * the incident's.
+   */
+  const read = typed ? normalizeIncidentDate(typed, today) : null;
+  const normalized = read && incidentOnlyOn() && onlyNotTheIncident(blob, today, read) ? null : read;
   if (normalized && inText.includes(normalized)) return { iso: normalized, ambiguous: [] };
   if (inText.length === 1) return { iso: inText[0]!, ambiguous: [] };
   if (inText.length > 1) {

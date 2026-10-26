@@ -33,6 +33,12 @@ const ASSIGNED_BEFORE = /\b(?:assigned|given\s+out|handed\s+out)\s+(?:on\s+)?$/i
  */
 const DEADLINE_NEAR_AFTER =
   /^\s*(?:(?!(?:and|for|the|but|or|then|after|before|so|to|was|were|is|are|of|on|at|with|because|when|while|she|he|they|her|his|it)\b)[a-z]+\s+){0,2}(?:deadline|due\s+date)\b/i;
+/*
+ * "missing the woven deadline of 11-1-26", "the deadline is 10/15": the
+ * deadline word before the date (live card test, 26 Oct 2026). Not "missed the
+ * woven deadline on 10/15/26": that is the day it was missed, the incident.
+ */
+const DEADLINE_BEFORE = /\b(?:deadline|due\s+date)\s+(?:of|is|was)\s+(?:the\s+)?$/i;
 const PRIOR_LEVEL_PAREN_BEFORE =
   /\b(?:verbal|written|final|coachings?|coached|warnings?|ca|c\/a|corrective\s+action|write[- ]?up)\s*\(\s*$/i;
 
@@ -44,6 +50,7 @@ export function notTheIncident(text: string, index: number, end: number): boolea
     ANY_BY_BEFORE.test(before) ||
     ASSIGNED_BEFORE.test(before) ||
     DEADLINE_NEAR_AFTER.test(after) ||
+    DEADLINE_BEFORE.test(before) ||
     PRIOR_LEVEL_PAREN_BEFORE.test(before)
   );
 }
@@ -53,6 +60,12 @@ export function incidentOnly<T extends { readonly index: number }>(text: string,
   if (!formDateIncidentOnlyEnabled()) return [...found];
   const ends = new Map(datesInText(text, today).map((date) => [date.index, date.end]));
   return found.filter((date) => !notTheIncident(text, date.index, ends.get(date.index) ?? date.index));
+}
+
+/** Whether every mention of `iso` in `text` is a deadline, assignment or prior-action date. */
+export function onlyNotTheIncident(text: string, today: string, iso: string): boolean {
+  const mentions = datesInText(text, today).filter((date) => date.iso === iso);
+  return mentions.length > 0 && mentions.every((date) => notTheIncident(text, date.index, date.end));
 }
 
 /** Whether FORM_DATE_INCIDENT_ONLY_ENABLED is on. One import for the callers. */

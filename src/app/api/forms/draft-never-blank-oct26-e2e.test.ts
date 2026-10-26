@@ -1077,3 +1077,46 @@ describe("flag off is byte-identical to main", () => {
     expect(snapshot).toBe(GOLDEN[name]);
   });
 });
+
+/*
+ * FORM_DATE_INCIDENT_ONLY_ENABLED (coordinator, 26 Oct 2026, the sibling
+ * app's live card test; invented names): the created draft of "late to open on
+ * 10-5 and 10-15. i coached her on 10-16 about being late" read "On October
+ * 16, 2026, <name> was coached regarding these instances of lateness" — the
+ * stated late dates were not in the Observation. On, every stated incident
+ * date is kept, in the manager's own clause. Lowercase, sentence case, ALL CAPS.
+ */
+describe.each([
+  ["all lowercase", (text: string) => text.toLowerCase()],
+  ["sentence case", (text: string) => {
+    const named = text.toLowerCase().split(SHE.lower).join(SHE.cap).split("dodge, ne").join("Dodge, NE");
+    return named.charAt(0).toUpperCase() + named.slice(1);
+  }],
+  ["ALL CAPS", (text: string) => text.toUpperCase()],
+] as const)("the created draft keeps every stated incident date (%s)", (_register, as) => {
+  const TURN = `create a ca for ${SHE.lower} at dodge, ne. she was late to open on 10-5 and 10-15. i coached her on 10-16 about being late`;
+  const DROPPED = `Observed:\nOn October 16, 2026, ${SHE.first} was coached regarding these instances of lateness.\n\nExpectation:\n${SHE.first} is expected to arrive on time.`;
+
+  for (const on of [false, true]) {
+    it(`flag ${on ? "on" : "off"}: ${on ? "the late dates are kept" : "the drafted Observation stands, as today"}`, async () => {
+      const name = "FORM_DATE_INCIDENT_ONLY_ENABLED";
+      const before = process.env[name];
+      if (on) process.env[name] = "true";
+      else delete process.env[name];
+      try {
+        state.drafts = [{ values: { observation: DROPPED }, checked: {} }];
+        const { value } = await createFromTurn(as(TURN), SHE.cap);
+        const observation = value("observation");
+        if (on) {
+          // The manager's clause, with the employee's first name for "she" as the draft writes it.
+          expect(observation.toLowerCase()).toMatch(/^observed:\n(?:she|odalys) was late to open on 10-5 and 10-15\. on october /);
+        } else {
+          expect(observation).not.toMatch(/10-5|10-15/);
+        }
+      } finally {
+        if (before === undefined) delete process.env[name];
+        else process.env[name] = before;
+      }
+    });
+  }
+});
