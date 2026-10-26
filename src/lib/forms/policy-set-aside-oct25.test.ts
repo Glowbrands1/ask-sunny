@@ -120,3 +120,67 @@ describe("flag on: what is not a correction", () => {
     expect(headings(next)).toEqual(["Late Opening p.15", "Dress Code for The Company p.15"]);
   });
 });
+
+/* HOW MANAGERS TYPE (Pau, 26 Oct 2026): the same reading in all lowercase and in sentence case. */
+const lower = (text: string) => text.toLowerCase();
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+
+describe("flag on: every register reads the same", () => {
+  it.each(CORRECTIONS.flatMap((turns) => [turns.map(lower), turns.map(sentence)]))("%s", (...turns) => {
+    on();
+    const sections = headings(accountManualSections(notesOf(turns), CHUNKS));
+    expect(sections).toContain("Late Opening p.15");
+    expect(sections).not.toContain("Attendance p.14");
+  });
+
+  it.each(["late opening not attendance", "Late opening not attendance", "not standards of conduct, its attendance"])("terse: %s", (turn) => {
+    on();
+    const aside = policiesSetAside(turn);
+    expect(aside.setAside.length).toBeGreaterThan(0);
+  });
+});
+
+/*
+ * QA batch 11, 25 Oct 2026 (Sunny tester, name invented): "write ca for <name>
+ * tc ks manhattan missed the woven deadline 10-15-26" / "verbal" / "no
+ * payroll" / "not standards of conduct, its attendance". The card showed both
+ * Attendance p.14 and Standards of Conduct p.12; only Attendance applies.
+ */
+describe("batch 11: \"not standards of conduct, its attendance\" replaces", () => {
+  const TURNS = [
+    "write ca for nell tarrant tc ks manhattan missed the woven deadline 10-15-26",
+    "verbal",
+    "no payroll",
+    "not standards of conduct, its attendance",
+  ];
+
+  it("flag off: Standards of Conduct stays beside Attendance (the bug)", () => {
+    const shown = attachFormTurnSources({
+      content: "",
+      citations: [],
+      notes: TURNS.join(JOIN),
+      chunks: CHUNKS,
+      documentId: "manual",
+      documentTitle: "JBA Policy Manual",
+      modelHeading: "Standards of Conduct",
+    }).content;
+    expect(shown).toMatch(/Standards of Conduct/);
+  });
+
+  it.each([TURNS, TURNS.map(sentence)])("flag on: Attendance p.14 only (%s)", (...turns) => {
+    on();
+    const notes = turns.join(JOIN);
+    expect(readCaPolicy(notes).stated).toBe("attendance");
+    expect(cardLines(notes)).toEqual(["Attendance Policy, JBA Policy Manual p.14"]);
+    const shown = attachFormTurnSources({
+      content: "",
+      citations: [],
+      notes,
+      chunks: CHUNKS,
+      documentId: "manual",
+      documentTitle: "JBA Policy Manual",
+      modelHeading: "Standards of Conduct",
+    }).content;
+    expect(shown).not.toMatch(/Standards of Conduct/);
+  });
+});
