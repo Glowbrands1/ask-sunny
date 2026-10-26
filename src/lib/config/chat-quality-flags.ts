@@ -950,3 +950,15 @@ export function policySetAsideEnabled(): boolean {
 export function policyCarryRetrievalEnabled(): boolean {
   return envFlag("POLICY_CARRY_RETRIEVAL_ENABLED");
 }
+
+/**
+ * DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED: a create from chat reopens an open
+ * draft only when the calling manager made it (`created_by`). Another
+ * manager's matching draft is never handed to this caller; a new draft is
+ * filed instead (QA, 25 Oct 2026). Same family as
+ * DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED. Server only. Off (the default), every
+ * lookup is as it was.
+ */
+export function draftReuseOwnDraftsOnlyEnabled(): boolean {
+  return envFlag("DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED");
+}
