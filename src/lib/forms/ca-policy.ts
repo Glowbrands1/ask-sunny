@@ -197,7 +197,7 @@ export function cleaningIncident(rawText: string): boolean {
  * "not" counts only before what was not done ("not cleaned").
  */
 const NEGATED_INCIDENT = /\b(?:never|not|no|no\s+one|nobody|none|did ?n[o']?t|didn't|was ?n[o']?t|wasn't|were ?n[o']?t|weren't)\s+(?:\S+\s+){0,3}$/;
-const NOT_A_FAILURE = /\b(?:about|responsible|regarding|related|fail|forget|neglect|only|just)\b/;
+const NOT_A_FAILURE = /\b(?:about|responsible|regarding|related|fail|forget|neglect|skip|miss|only|just)\b/;
 const DONE_WORD = /\b(?:cleaned|san[ai]?t[ai]?[zs]ed|disinfected|wiped\s+down|mopped|swept|vacuumed|dusted)\b/;
 /** The patterns above that say what happened ("left … dirty", "dirty beds", "skipped …"), not that something failed. */
 const AFFIRMATIVE_PATTERNS = new Set([3, 4, 5]);
