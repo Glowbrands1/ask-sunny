@@ -10,8 +10,8 @@ import { ownSystemsNote, withoutDisownedSystems } from "./own-systems";
  * QA tester, 26 Oct 2026 (conv_mvolizr326baln0): "do employees have to
  * acknowledge policies in woven" was answered "Short answer: Woven isn't your
  * system — it's <another brand>'s." from the manual's list of where each brand
- * keeps personnel files. The page and the other brand below are INVENTED;
- * the question is the tester's own. Through `answerQuestion`.
+ * keeps personnel files. The page below is INVENTED and the other brand is
+ * one the manual lists; the question is the tester's own. Through `answerQuestion`.
  */
 
 /** An invented records page with the same shape: a brand-by-brand systems list. */
@@ -19,12 +19,12 @@ const RECORDS_PAGE = [
   "Employee Records",
   "All personnel files are kept in the Personnel Platform Systems via the systems below:",
   "o Example Brand – MyGlow",
-  "o Example Fitness – Woven",
+  "o Crunch Fitness – Woven",
 ].join("\n");
 
 /** The reply's shape on 26 Oct, with the other brand invented. */
 const DISOWNING_REPLY =
-  "Short answer: Woven isn't your system — it's Example Fitness's. Personnel files run through MyGlow (Employee Records, JBA Policy Manual p.35 [p.35]).\n\nOn the acknowledgement itself: an Acknowledgement of Receipt and Understanding is included in the New Hire Paperwork (Orientation, JBA Policy Manual p.33 [p.33]).";
+  "Short answer: Woven isn't your system — it's Crunch Fitness's. Personnel files run through MyGlow (Employee Records, JBA Policy Manual p.35 [p.35]).\n\nOn the acknowledgement itself: an Acknowledgement of Receipt and Understanding is included in the New Hire Paperwork (Orientation, JBA Policy Manual p.33 [p.33]).";
 
 const state = vi.hoisted(() => ({
   queries: [] as string[],
@@ -122,7 +122,7 @@ afterEach(() => vi.unstubAllEnvs());
 const on = () => vi.stubEnv("OWN_SYSTEMS_FACT_ENABLED", "true");
 const QUESTION = "do employees have to acknowledge policies in woven";
 const QUESTIONS = [QUESTION, "Do employees have to acknowledge policies in woven?", "DO EMPLOYEES HAVE TO ACKNOWLEDGE POLICIES IN WOVEN", "do employees have to acknowledge policies in Woven"];
-const DISOWNS = /woven (?:isn'?t|is not) your|example fitness'?s/i;
+const DISOWNS = /woven (?:isn'?t|is not) your|crunch fitness'?s/i;
 
 describe("conv_mvolizr326baln0: Woven is never called another company's", () => {
   it("flag off: the reply says Woven isn't your system, and no fact line (the bug)", async () => {
@@ -148,7 +148,14 @@ describe("the backstop keeps every other sentence", () => {
     "Woven belongs to Sun Tan City's training setup, and the manual covers the rest.",
     "Yes, it's Woven, and the acknowledgement is part of onboarding.",
     "MyGlow isn't your training system; use Woven for that.",
-  ])("flag on: %s", (reply) => {
+    // QA-5, 26 Oct 2026: true sentences that only mention Woven.
+    "Woven doesn't handle payroll; it's Paycor's.",
+    "Woven belongs to HR.",
+    "Paycor is not your system for scheduling; Woven is.",
+    "Woven is not used for payroll.",
+    "Woven is not your payroll tool, use Paycor.",
+    "Employees must acknowledge policies in Woven, not on paper.",
+  ].flatMap((reply) => [reply, reply.toLowerCase(), reply.charAt(0) + reply.slice(1).toLowerCase()]))("flag on: %s", (reply) => {
     on();
     expect(withoutDisownedSystems(reply)).toBe(reply);
   });
@@ -156,7 +163,7 @@ describe("the backstop keeps every other sentence", () => {
   it.each([
     "Woven isn't your system.",
     "Woven is not this company's platform.",
-    "Woven belongs to Example Fitness.",
+    "Woven belongs to Crunch Fitness.",
     "woven is another brand's tool.",
     "WOVEN IS NOT USED HERE.",
   ])("flag on, the whole reply is the claim: %s -> the fact", (reply) => {
