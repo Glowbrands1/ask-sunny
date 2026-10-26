@@ -152,6 +152,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withNameCase } from "./name-case";
 import { withTerseSlots } from "./terse-slots";
 import { withManagerFormChoice } from "./manager-form-choice";
 import { withNameRespell } from "./name-respell";
@@ -271,29 +272,27 @@ export async function answerQuestion(
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
   const produce = async () => {
-    // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    // STORE_ALIAS_ENABLED: a salon named the managers' way is read as its roster name.
-    // MANAGER_FORM_CHOICE_ENABLED: the form the manager named is the form.
-    // Order (bundle 3): terse lines are written out first, then salon aliases, then the form choice.
-    const response = await answerQuestionUntraced(
-      withManagerFormChoice(withStoreAliases(withTerseSlots(request))),
-      actor,
-      memory,
-    );
+    /*
+     * THE MANAGER'S TURN, READ IN THIS ORDER (each default off):
+     *   TERSE_SLOT_READ_ENABLED       "ca <name> …" written out as the long form;
+     *   MANAGER_FORM_CHOICE_ENABLED   "needs CA", "create a form" → the form named (sees the long form);
+     *   STORE_ALIAS_ENABLED           "dodge, ne", "o st" → the roster name (sees the final words);
+     *   NAME_CASE_INSENSITIVE_ENABLED the person in Title Case, capitals in lowercase (last, so a
+     *                                 roster name is already a place, never a person).
+     */
+    const read = withNameCase(withStoreAliases(withManagerFormChoice(withTerseSlots(request))));
+    const response = await answerQuestionUntraced(read, actor, memory);
     noteTraceOutcome(response);
+    /*
+     * THE CARD, CHECKED IN THIS ORDER against the turn as typed:
+     *   BARE_ANSWER_BINDING_ENABLED   a short answer fills only its slot (first: it restores the employee);
+     *   NAME_RESPELL_ENABLED          then the newest spelling of that employee;
+     *   (keepManagerActionPlan touches only the Action Plan line, so either side of it is the same)
+     *   CARD_NEVER_SILENT_ENABLED     last: it compares the final reply with the previous one.
+     */
+    const checked = withNameRespell(withBareAnswerBinding(await applyQuietQuality(response), request), request);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    // BARE_ANSWER_BINDING_ENABLED: a short answer fills only the slot it answers.
-    // NAME_RESPELL_ENABLED: the manager's newest spelling of the employee wins.
-    // CARD_NEVER_SILENT_ENABLED: a card turn always answers what the manager asked.
-    // Order (bundle 3): the bare-answer guard first puts back the employee a stray word took, then the
-    // respelling; the never-silent line goes on last, over the finished card reply.
-    return withCardNeverSilent(
-      keepManagerActionPlan(
-        withNameRespell(withBareAnswerBinding(await applyQuietQuality(response), request), request),
-        request,
-      ),
-      request,
-    );
+    return withCardNeverSilent(keepManagerActionPlan(checked, request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
