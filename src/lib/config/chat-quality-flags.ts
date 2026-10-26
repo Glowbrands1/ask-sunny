@@ -847,6 +847,16 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * The manager's newest spelling of the card's employee wins: "mara quill"
+ * after "mara quil" puts "Mara Quill" on the card (Ask Sunny
+ * conv_mvofjlco271mr0t, 25 Oct 2026). See `ai/name-respell.ts`. Off, the
+ * first spelling stays.
+ */
+export function nameRespellEnabled(): boolean {
+  return envFlag("NAME_RESPELL_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
