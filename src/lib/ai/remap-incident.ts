@@ -12,6 +12,7 @@ import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
+import { incidentTurn } from "./incident-clauses";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -142,7 +143,8 @@ function turnIncident(
   if (isEditTurn(turn)) return null;
   let found: string | null = null;
   const story: string[] = [];
-  for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts and policy text, "dodge, ne" kept whole.
+  for (const raw of withoutPriorList(incidentTurn(turn, employeeName, { subjectless: true })).split(/[.!?;]+(?=\s|$)/)) {
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
     const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
@@ -491,7 +493,8 @@ export function accountSentences(
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
-    const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
+    // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts and policy text, "dodge, ne" kept whole.
+    const text = withoutPriorList(incidentTurn(turn.replace(/\bThe account continues\.\s*/g, ""), employeeName));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
