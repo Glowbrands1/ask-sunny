@@ -442,9 +442,12 @@ export function describedManualSection(input: {
  * else must decide the policy first: a policy the manager named wins.
  * Off (`cleaningIncidentPhrase` reads nothing), this returns null.
  */
+/** "she was not late, but she left the beds dirty": a lateness the manager denies decides nothing here. */
+const DENIED_LATENESS = /\b(?:not|never|was ?n[o']?t|wasn't|is ?n[o']?t|isn't)\s+(?:\S+\s+){0,1}?late\b/gi;
+
 function cleaningSection(text: string, chunks: readonly ManualChunk[]): NamedManualSection | null {
   const phrase = cleaningIncidentPhrase(text);
-  if (!phrase || !mayDescribeSection(text)) return null;
+  if (!phrase || !mayDescribeSection(text.replace(DENIED_LATENESS, " "))) return null;
   const headings = [...new Set(manualSectionHeadings(chunks).filter((heading) => /^care and cleaning\b/i.test(heading.trim())))];
   if (headings.length !== 1) return null;
   const section = findManualSection(chunks, headings);
