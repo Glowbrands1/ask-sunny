@@ -202,3 +202,87 @@ describe("noCardNoDraftClaim", () => {
     ).toBe(response);
   });
 });
+
+/*
+ * QA-7 (flag on, a reply with no card). Conditional and instructional truths
+ * were rewritten as if they claimed a draft; a sentence with a true clause and
+ * a false one was replaced whole, naming the wrong person. Only a claim that a
+ * draft IS open or created NOW is rewritten, clause by clause, and the honest
+ * line names the person of the false claim. QA's sentences, in lowercase,
+ * sentence case and CAPS. "Rook Pemberly" stands in for QA's second name: an
+ * invented name, the same in both apps.
+ */
+const QA7_REGISTERS = [
+  ["as typed", (text: string) => text],
+  ["all lowercase", lower],
+  ["sentence case", sentenceCase],
+  ["CAPS", (text: string) => text.toUpperCase()],
+] as const;
+
+const NAMES_NOBODY =
+  "I haven't created a new form yet — say which form and who it's for (for example \"create a corrective action for\" and their name) and I'll put a card here.";
+
+describe("QA-7: only a claim that a draft IS open or created now is rewritten", () => {
+  it.each(QA7_REGISTERS)("%s: \"Once you press Create, the draft for Test Employee Two will open.\" is kept", (_label, recase) => {
+    const content = recase("Once you press Create, the draft for Test Employee Two will open.");
+    for (const context of [{ question: recase(QUESTION), openForm: OPEN }, { question: recase(QUESTION) }]) {
+      expect(withoutPhantomDraftClaim(content, context)).toBe(content);
+    }
+  });
+
+  it.each(QA7_REGISTERS)("%s: \"The form was not created because the salon was missing. Press Create after you add it.\" is kept", (_label, recase) => {
+    const content = recase("The form was not created because the salon was missing. Press Create after you add it.");
+    for (const context of [{ question: recase(QUESTION), openForm: OPEN }, { question: recase(QUESTION) }]) {
+      expect(withoutPhantomDraftClaim(content, context)).toBe(content);
+    }
+  });
+
+  it.each(QA7_REGISTERS)("%s: a policy answer's closing \"Press Create draft on the card below.\" with no card is dropped, naming nobody", (_label, recase) => {
+    const policy = "Arriving late three times in 30 days is an attendance concern under the JBA Policy Manual.";
+    const question = recase("Test Employee Two was late again, what does the policy say?");
+    for (const context of [{ question, openForm: OPEN }, { question }]) {
+      const out = withoutPhantomDraftClaim(recase(`${policy} Press Create draft on the card below.`), context);
+      expect(out).toBe(recase(policy));
+      expect(out).not.toMatch(/test employee two|press create/i);
+    }
+  });
+
+  it.each(QA7_REGISTERS)("%s: a reply that is only a phantom-card instruction gets a line that names nobody", (_label, recase) => {
+    const out = withoutPhantomDraftClaim(recase("Press Create draft on the card below."), {
+      question: recase("Test Employee Two was late again, what does the policy say?"),
+    });
+    expect(out).toBe(NAMES_NOBODY);
+  });
+
+  it.each(QA7_REGISTERS)("%s: two clauses — the true one is kept and the honest line names Rook Pemberly", (_label, recase) => {
+    const out = withoutPhantomDraftClaim(
+      recase("The draft for Test Employee is open, and I've created a new draft for Rook Pemberly."),
+      { question: recase("and one for Rook Pemberly, late today"), openForm: OPEN },
+    );
+    const kept = `${recase("The draft for Test Employee is open")}. `;
+    expect(out.startsWith(kept), out).toBe(true);
+    expect(out.slice(kept.length)).toMatch(
+      /^I haven't created a form for rook pemberly yet — say "create a corrective action for rook pemberly" and I'll put a card here\.$/i,
+    );
+    expect(out).not.toMatch(/new form for test employee|I've created/i);
+  });
+
+  it("the false clause first: the honest line, then the true clause", () => {
+    const out = withoutPhantomDraftClaim(
+      "I've created a new draft for Rook Pemberly, and the draft for Test Employee is open.",
+      { question: "and one for Rook Pemberly, late today", openForm: OPEN },
+    );
+    expect(out).toBe(
+      "I haven't created a form for Rook Pemberly yet — say \"create a corrective action for Rook Pemberly\" and I'll put a card here. The draft for Test Employee is open.",
+    );
+  });
+
+  it("several forms open from one message: a line about either is true, another person's is not", () => {
+    const openForms: OpenFormSummary[] = [OPEN, { ...OPEN, employeeName: "Test Employee Two" }];
+    const content = "The draft for Test Employee Two is open on the card above. When it's right, press Finalize on the card.";
+    expect(withoutPhantomDraftClaim(content, { question: "is it ready?", openForms })).toBe(content);
+    expect(
+      withoutPhantomDraftClaim("The draft for Rook Pemberly is open.", { question: "is it ready?", openForms }),
+    ).toMatch(/^I haven't created a form for Rook Pemberly yet/);
+  });
+});

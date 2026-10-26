@@ -24,6 +24,18 @@ import type { AskResponse, OpenFormSummary } from "./types";
  * Those sentences are replaced, once, with an honest line that says how to get
  * the card; the rest of the reply is kept as written. Off, or with a card,
  * the response is returned as it came.
+ *
+ * ONLY A CLAIM IS REWRITTEN (QA-7, 26 Oct 2026). A claim says a draft IS open
+ * or was created now, asserted. A conditional, future or instructional
+ * sentence is not one and is kept: "Once you press Create, the draft for … will
+ * open.", "Press Create after you add it." Claims are read clause by clause,
+ * so "The draft for Test Employee is open, and I've created a new draft for
+ * …" keeps its true first clause, and the honest line names the person of the
+ * false claim. A bare "press Create on the card below" with no card on screen
+ * and no proposal waiting points at a card that is not there (the B22-2 bug):
+ * on its own it is dropped and names nobody — the turn's person is not the
+ * person of an instruction — and only where nothing else is left is the
+ * no-person honest line said instead.
  */
 
 export interface NoCardClaimContext {
@@ -33,6 +45,12 @@ export interface NoCardClaimContext {
   readonly openForm?: OpenFormSummary | null;
   /** A proposal card from an earlier turn is still waiting for Create. */
   readonly proposalPending?: boolean;
+  /**
+   * Every form open on screen when several are and the turn named none (two
+   * cards from one message): `openForm` is null then, and a true line about
+   * either card is still true.
+   */
+  readonly openForms?: readonly OpenFormSummary[] | null;
 }
 
 /**
@@ -72,6 +90,20 @@ const HEDGED =
 
 const NEW_DRAFT = /\b(?:new|another|second|separate)\b/i;
 
+/** A clause that says what will or would happen, or on what condition. */
+const CONDITIONAL =
+  /\b(?:once|when|whenever|if|until|before|after|will|would|can|could|should)\b|['’]ll\b/i;
+
+/** "on the card", "the card below": an instruction that points at a card. */
+const POINTS_AT_CARD = /\bcards?\b/i;
+
+/**
+ * Where one sentence holds two clauses: ", and", ", but", ", so", ";", a dash,
+ * or "and I've …". A bare "and" is not split: "Test Employee and Rook".
+ */
+const CLAUSE_BREAK =
+  /(,\s*(?:and|but|so|while)\s+|;\s+|\s+[—–]\s+|\s+and\s+(?=I(?:['’]ve|\s+have)?\s))/i;
+
 /** A capitalised run after "for": the person a sentence is about. */
 const FOR_PERSON = /\bfor\s+((?:[A-Z][\w'’-]*)(?:\s+[A-Z][\w'’-]*){0,3})/g;
 
@@ -100,6 +132,13 @@ function escapeRegExp(text: string): string {
  * read the same as "Test Employee Two" (Pau's register rule): the capitalised
  * run alone missed it, and a claim for another employee went out.
  */
+/** The form open on screen, or every one of several. */
+function openFormsOf(context: NoCardClaimContext): OpenFormSummary[] {
+  return [context.openForm ?? null, ...(context.openForms ?? [])].filter(
+    (form): form is OpenFormSummary => form !== null,
+  );
+}
+
 function knownNames(context: NoCardClaimContext): string[] {
   const names: string[] = [];
   for (const match of context.question.matchAll(FOR_SPAN)) {
@@ -110,8 +149,10 @@ function knownNames(context: NoCardClaimContext): string[] {
     const shortest = words.length === 1 ? 1 : 2;
     for (let size = words.length; size >= shortest; size -= 1) names.push(words.slice(0, size).join(" "));
   }
-  const employee = context.openForm?.employeeName?.trim();
-  if (employee) names.push(employee);
+  for (const form of openFormsOf(context)) {
+    const employee = form.employeeName?.trim();
+    if (employee) names.push(employee);
+  }
   return names;
 }
 
@@ -119,8 +160,11 @@ function peopleAfterFor(text: string, known: readonly string[] = []): string[] {
   const found: { at: number; name: string }[] = [];
   const taken = new Set<number>();
   for (const match of text.matchAll(FOR_PERSON)) {
-    const words = match[1]!.split(/\s+/);
-    if (NOT_A_PERSON.test(words[0]!)) continue;
+    const all = match[1]!.split(/\s+/);
+    if (NOT_A_PERSON.test(all[0]!)) continue;
+    /* "FOR TEST EMPLOYEE IS OPEN" in capitals: the name ends before "IS". */
+    const stop = all.findIndex((word, index) => index > 0 && (NOT_A_PERSON.test(word) || NOT_A_NAME_WORD.test(word)));
+    const words = stop < 0 ? all : all.slice(0, stop);
     taken.add(match.index);
     found.push({ at: match.index, name: words.join(" ") });
   }
@@ -166,22 +210,34 @@ function sentencesOf(line: string): string[] {
   return line.match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)\s*/g) ?? [line];
 }
 
+/** A sentence's clauses, each with the break that follows it. */
+function clausesOf(sentence: string): { text: string; tail: string }[] {
+  const parts = sentence.split(CLAUSE_BREAK);
+  const clauses: { text: string; tail: string }[] = [];
+  for (let index = 0; index < parts.length; index += 2) {
+    clauses.push({ text: parts[index]!, tail: parts[index + 1] ?? "" });
+  }
+  return clauses;
+}
+
 type Claim = "state" | "made" | "press-finalize" | "press-create";
 
-function claimsIn(sentence: string): Claim[] {
+/** What one clause claims or instructs. */
+function claimsIn(clause: string): Claim[] {
   const claims: Claim[] = [];
   if (
-    (DRAFT_STATE.test(sentence) || HERE_IS.test(sentence)) &&
-    !HEDGED.test(sentence)
+    (DRAFT_STATE.test(clause) || HERE_IS.test(clause)) &&
+    !HEDGED.test(clause)
   )
     claims.push("state");
   if (
-    SAID_I_MADE.test(sentence) &&
-    !/\b(?:not|never|haven['’]t|hasn['’]t|didn['’]t)\b/i.test(sentence)
+    SAID_I_MADE.test(clause) &&
+    !/\b(?:not|never|haven['’]t|hasn['’]t|didn['’]t)\b/i.test(clause) &&
+    !/\b(?:if|once|would)\b/i.test(clause)
   ) {
     claims.push("made");
   }
-  const press = sentence.match(PRESS);
+  const press = clause.match(PRESS);
   if (press)
     claims.push(
       press[1]!.toLowerCase() === "finalize"
@@ -191,6 +247,17 @@ function claimsIn(sentence: string): Claim[] {
   return claims;
 }
 
+/** The honest line when nobody is named: it never guesses a person. */
+const NAMES_NOBODY = `I haven't created a new form yet — say which form and who it's for (for example "create a corrective action for" and their name) and I'll put a card here.`;
+
+interface Clause {
+  readonly text: string;
+  readonly tail: string;
+  readonly claims: Claim[];
+}
+
+const isPress = (claim: Claim): boolean => claim.startsWith("press-");
+
 /**
  * The reply with any claim of a draft that is not on screen replaced by one
  * honest line. Returns the content unchanged when it makes no such claim.
@@ -199,65 +266,121 @@ export function withoutPhantomDraftClaim(
   content: string,
   context: NoCardClaimContext,
 ): string {
-  const open = context.openForm ?? null;
+  const opens = openFormsOf(context);
   const known = knownNames(context);
-  const lines = content
-    .split("\n")
-    .map((line) =>
-      sentencesOf(line).map((text) => ({ text, claims: claimsIn(text) })),
-    );
-  const claimed = lines.flat().filter((sentence) => sentence.claims.length > 0);
-  if (claimed.length === 0) return content;
+  const lines = content.split("\n").map((line) =>
+    sentencesOf(line).map((text) => ({
+      text,
+      clauses: clausesOf(text).map(
+        (clause): Clause => ({ ...clause, claims: claimsIn(clause.text) }),
+      ),
+    })),
+  );
+  const clauses = lines.flat().flatMap((sentence) => sentence.clauses);
+  if (!clauses.some((clause) => clause.claims.length > 0)) return content;
 
-  /** Whether a claim sentence speaks of a draft that does not exist. */
-  const phantom = (sentence: { text: string; claims: Claim[] }): boolean =>
-    sentence.claims.some((claim) => {
-      if (claim === "press-create") return !context.proposalPending;
-      if (claim === "press-finalize") return open?.status !== "draft";
-      if (!open) return true;
-      if (NEW_DRAFT.test(sentence.text)) return true;
-      return peopleAfterFor(sentence.text, known).some(
-        (person) => !samePersonName(person, open.employeeName),
+  /**
+   * Whether a clause CLAIMS a draft that does not exist: one said to be open
+   * or created now that is new, or for somebody whose form is not open.
+   */
+  const falseClaim = (clause: Clause): boolean =>
+    clause.claims.some((claim) => {
+      if (isPress(claim)) return false;
+      if (opens.length === 0) return true;
+      if (NEW_DRAFT.test(clause.text)) return true;
+      return peopleAfterFor(clause.text, known).some(
+        (person) => !opens.some((form) => samePersonName(person, form.employeeName)),
       );
     });
-  const phantoms = claimed.filter(phantom);
-  if (phantoms.length === 0) return content;
-
-  const person =
-    phantoms.flatMap((sentence) => peopleAfterFor(sentence.text, known))[0] ??
-    peopleAfterFor(context.question, known)[0] ??
-    null;
-  const named =
-    phantoms
-      .map((sentence) => sentence.text.match(FORM_NAME)?.[1])
-      .find(Boolean) ?? null;
-  const formWords = (
-    named ?? (open ? open.templateName.replace(/\s+Form$/i, "") : "form")
-  ).toLowerCase();
-  const honest = person
-    ? `I haven't created ${open && samePersonName(person, open.employeeName) ? "a new form" : "a form"} for ${person} yet — say "create a ${formWords} for ${person}" and I'll put a card here.`
-    : `I haven't created a new form yet — say which form and who it's for (for example "create a corrective action for" and their name) and I'll put a card here.`;
+  /**
+   * Whether a clause tells the manager to press a button on a card that is
+   * not there: Create with no proposal waiting, Finalize with no draft open.
+   * "Press Create after you add it" points at no card and is kept.
+   */
+  const phantomCard = (clause: Clause): boolean =>
+    POINTS_AT_CARD.test(clause.text) &&
+    clause.claims.some((claim) =>
+      claim === "press-create"
+        ? !context.proposalPending
+        : claim === "press-finalize"
+          ? !opens.some((form) => form.status === "draft")
+          : false,
+    );
+  const claimed = clauses.filter(falseClaim);
 
   /*
-   * Once a reply speaks of a draft that is not there, its "press Finalize on
-   * the card" is about that same draft, so it goes too. A true line about the
-   * form already open is kept.
+   * Once a reply claims a draft that is not there, its "press Finalize on the
+   * card" is about that same draft, so it goes too — and so does a plain
+   * "press Create", but not one that only says what will happen ("once you
+   * press Create, …") or when ("press Create after you add it").
    */
-  const goes = (sentence: { text: string; claims: Claim[] }): boolean =>
-    phantom(sentence) ||
-    sentence.claims.some((claim) => claim.startsWith("press-"));
+  const goes = (clause: Clause): boolean =>
+    falseClaim(clause) ||
+    phantomCard(clause) ||
+    (claimed.length > 0 &&
+      clause.claims.some(isPress) &&
+      (POINTS_AT_CARD.test(clause.text) || !CONDITIONAL.test(clause.text)));
+  if (!clauses.some(goes)) return content;
+
+  let honest: string | null = null;
+  if (claimed.length > 0) {
+    const person =
+      claimed.flatMap((clause) => peopleAfterFor(clause.text, known))[0] ??
+      peopleAfterFor(context.question, known)[0] ??
+      null;
+    const named =
+      claimed.map((clause) => clause.text.match(FORM_NAME)?.[1]).find(Boolean) ??
+      null;
+    const formWords = (
+      named ?? (opens[0] ? opens[0].templateName.replace(/\s+Form$/i, "") : "form")
+    ).toLowerCase();
+    const another = person !== null && opens.some((form) => samePersonName(person, form.employeeName));
+    honest = person
+      ? `I haven't created ${another ? "a new form" : "a form"} for ${person} yet — say "create a ${formWords} for ${person}" and I'll put a card here.`
+      : NAMES_NOBODY;
+  }
   let placed = false;
   const kept = lines.map((sentences) => {
     const parts: string[] = [];
     for (const sentence of sentences) {
-      if (sentence.claims.length === 0 || !goes(sentence)) {
+      if (!sentence.clauses.some(goes)) {
         parts.push(sentence.text);
         continue;
       }
-      if (!placed) {
-        parts.push(`${honest}${/\s$/.test(sentence.text) ? " " : ""}`);
+      /*
+       * A true claim in the same sentence is kept, by the clause; the words
+       * around a false one go with it.
+       */
+      const trueClauses = sentence.clauses.filter(
+        (clause) => clause.claims.length > 0 && !goes(clause),
+      );
+      const trailing = /\s$/.test(sentence.text) ? " " : "";
+      const stop = sentence.text.trimEnd().match(/[.!?]+$/)?.[0] ?? ".";
+      const keptText = trueClauses.length
+        ? capitalisedLike(
+            sentence.text,
+            `${trueClauses
+              .map((clause, index) =>
+                index < trueClauses.length - 1 ? clause.text + clause.tail : clause.text,
+              )
+              .join("")
+              .trim()
+              .replace(/[.!?,;:]+$/, "")}${stop}`,
+          )
+        : null;
+      const honestFirst =
+        keptText !== null && goes(sentence.clauses[0]!) && !placed && honest;
+      const pieces: string[] = [];
+      if (honestFirst) {
+        pieces.push(honest!);
         placed = true;
       }
+      if (keptText !== null) pieces.push(keptText);
+      if (!placed && honest) {
+        pieces.push(honest);
+        placed = true;
+      }
+      if (pieces.length) parts.push(`${pieces.join(" ")}${trailing}`);
     }
     return {
       text: parts.join("").trimEnd(),
@@ -265,12 +388,21 @@ export function withoutPhantomDraftClaim(
         sentences.some((s) => s.text.trim() !== "") && parts.length === 0,
     };
   });
-  return kept
+  const out = kept
     .filter((line) => !line.emptied)
     .map((line) => line.text)
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+  /* Nothing left once a phantom-card instruction went: say so, naming nobody. */
+  return out === "" ? NAMES_NOBODY : out;
+}
+
+/** A kept clause opens as its sentence did: capitalised, or not. */
+function capitalisedLike(sentence: string, text: string): string {
+  const first = sentence.trimStart()[0] ?? "";
+  if (first !== first.toUpperCase() || first === first.toLowerCase()) return text;
+  return text.replace(/^(\s*)([a-z])/, (_m, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
 }
 
 /**
