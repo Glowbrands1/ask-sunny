@@ -50,3 +50,26 @@ describe("CARD_NEVER_SILENT_ENABLED on: a person named in a later sentence", () 
     expect(readsAsTeamSubject(turn)).toBe(false);
   });
 });
+
+/** QA-4, 26 Oct 2026: a person named in lowercase in the request is not the team. Names invented. */
+describe("CARD_NEVER_SILENT_ENABLED on: a lowercase name in the request", () => {
+  it.each([
+    "coaching form for avery stone, generic for the team",
+    "Coaching form for avery stone, generic for the team",
+    "COACHING FORM FOR AVERY STONE, GENERIC FOR THE TEAM",
+  ])("'%s' is not the team", (turn) => {
+    process.env[FLAG] = "on";
+    expect(readsAsTeamSubject(turn)).toBe(false);
+  });
+
+  it.each(["coaching form for my team, generic for the whole team", "Coaching form for the team, generic for the whole team"])("'%s' is still the team", (turn) => {
+    process.env[FLAG] = "on";
+    expect(readsAsTeamSubject(turn)).toBe(true);
+  });
+
+  // Known gap, documented in the PR: no person is named, so these still read as the team.
+  it.each(["leave the name blank", "leave the name blank for the other one"])("known gap: '%s' reads as the team", (turn) => {
+    process.env[FLAG] = "on";
+    expect(readsAsTeamSubject(turn)).toBe(true);
+  });
+});
