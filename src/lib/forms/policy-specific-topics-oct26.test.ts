@@ -318,3 +318,63 @@ describe("flag on: the policy quotes the infraction the page is cited for", () =
     expect(withConductLineWording([{ sectionTitle: "Standards of Conduct", pageLabel: "13", policyText: "x" }], ask("drawer short"), CHUNKS)[0]!.policyText).toBe("x");
   });
 });
+
+/*
+ * A DENIAL IS NOT THE INCIDENT (QA-3, 26 Oct 2026): the manager says the act
+ * did not happen. The positive cases above are unchanged; none of these cites
+ * the section its trigger words would otherwise name.
+ */
+const DENIALS = [
+  "she did not steal anything",
+  "did not steal",
+  "she was not rude to the guest",
+  "not rude to the guest",
+  "she was not rude to a guest, she was late",
+  "this is not insubordination",
+  "she was not insubordinate",
+  "she did not walk off the job",
+  "the drawer was not short",
+  "she did not bring her dog",
+  "no dog was in the salon",
+  "no sexual comments were made",
+  "she never took an hour lunch",
+  "she did not post on tiktok",
+  "never posted about a guest on social media",
+  "she did not gossip",
+  "no negative talk about coworkers",
+  "she never stole product",
+  "no one brought a puppy in",
+  "she was not talking bad about her coworkers",
+  "she did not refuse",
+  "she never took cash from the drawer",
+];
+const POSITIVES_AFTER_DENIAL = [
+  ["she was not rude, she brought her dog to work", "Animals in the Workplace p.30"],
+  ["she did not close, she took product without paying", SOC13],
+] as const;
+
+describe("flag on: a denial is not the incident", () => {
+  it.each(DENIALS.flatMap(registers))("%s", (text) => {
+    on();
+    expect(specificTopic(ask(text))).toBeNull();
+    expect(cited(ask(text)).filter((entry) => entry !== SAFETY)).toEqual(
+      cited(ask(text)).filter((entry) => entry !== SAFETY && !/p\.(?:9|13|29|30|38|22|23)$/.test(entry)),
+    );
+  });
+
+  it.each(["no wet floor sign", "there was no wet floor sign out", "she did not put out a wet floor sign", "never put a wet floor sign out"].flatMap(registers))(
+    "the absence IS the incident: %s",
+    (text) => {
+      on();
+      expect(cited(ask(text))[0]).toBe(SAFETY);
+    },
+  );
+
+  it.each(POSITIVES_AFTER_DENIAL.flatMap(([text, cite]) => registers(text).map((entry) => [entry, cite] as const)))(
+    "a later clause that happened still counts: %s",
+    (text, cite) => {
+      on();
+      expect(cited(ask(text))).toContain(cite);
+    },
+  );
+});

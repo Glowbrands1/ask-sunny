@@ -65,6 +65,8 @@ interface TopicRule {
   readonly not?: RegExp;
   readonly unless?: RegExp;
   readonly cite: Cite;
+  /** The words ARE the incident when negated ("no wet floor sign"): not read as a denial. */
+  readonly negationIsTheIncident?: boolean;
   /** Further sections the same incident is cited under, in order. */
   readonly also?: readonly { readonly heading: string; readonly when?: RegExp }[];
 }
@@ -157,13 +159,14 @@ const TOPICS: readonly TopicRule[] = [
       /\b(?:mopp?ed|mopping|spill\w*|cleaned\s+up)\b[^.;!?\n]{0,40}?\b(?:no|without|did ?n[o']?t\s+(?:put|set|place)\s+(?:out\s+)?(?:a\s+)?)\s*(?:wet\s+)?(?:floor\s+)?sign\b/,
     ],
     cite: { kind: "heading", heading: "Safety in the Workplace" },
+    negationIsTheIncident: true,
     also: [{ heading: "Wet Floor Sign", when: /\bwet\s*(?:flr|flo+r|fl\.?|floors?)\s*signs?\b|\bwet\s+signs?\b|\bcaution\s+signs?\b/ }],
   },
   {
     id: "meal_rest",
     words: [
       /\b(?:\d+(?:\.\d+)?|an?|one|two|three|half(?:\s+an?)?)[\s-]*(?:hours?|hrs?|h|minutes?|mins?)\s+(?:long\s+)?(?:lunch|break|brake|meal)s?\b/,
-      /\b(?:extended|extending|stretched|skipp?(?:ed|ing)|missed|miss|no|without|didn'?t\s+take|did\s+not\s+take|never\s+took|over|past|long|longer|extra|unauthorized|unpaid)\s+(?:\S+\s+){0,2}?(?:lunch|breaks?|brakes?|meal\s+(?:breaks?|periods?)|rest\s+(?:breaks?|periods?))\b/,
+      /\b(?:extended|extending|stretched|skipp?(?:ed|ing)|missed|miss|no|without|didn'?t\s+take|did\s+not\s+take|over|past|long|longer|extra|unauthorized|unpaid)\s+(?:\S+\s+){0,2}?(?:lunch|breaks?|brakes?|meal\s+(?:breaks?|periods?)|rest\s+(?:breaks?|periods?))\b/,
       /\b(?:lunch|breaks?|brakes?)\s+(?:was|were|ran|went|lasted)\s+(?:\S+\s+){0,2}?(?:long|over|past|too long|an hour|\d+)/,
       /\bmeal\s+(?:and\s+rest|break|period)\b/,
     ],
@@ -238,6 +241,37 @@ export interface SpecificTopic {
  * The incident the account describes, or null. Off, never. The first rule of
  * the table that any sentence of the account matches.
  */
+/*
+ * A DENIAL IS NOT THE INCIDENT: "she did not steal anything", "no sexual
+ * comments were made", "the drawer was not short", "she was not rude to the
+ * guest" name the act to say it did not happen. A match is read as a denial
+ * where a negation stands within three words before it (in the same clause),
+ * or a copula + "not" sits inside it ("drawer was not short"). The one rule
+ * whose incident IS an absence ("no wet floor sign") is exempt.
+ */
+const NEGATION_WORD = /^(?:no|not|never|nor|neither|none|nothing|nobody|cannot|n't|(?:did|do|does|was|were|is|are|has|had|have|can|would|could)n'?t)$/;
+const COPULA_NOT = /\b(?:(?:was|is|were|are)\s+not|wasn'?t|isn'?t|weren'?t|aren'?t)\s+(?!balanc|accurate|right|correct|there|enough|matching)/;
+
+function denied(sentence: string, index: number, matched: string, rule: TopicRule): boolean {
+  if (rule.negationIsTheIncident) return false;
+  if (COPULA_NOT.test(matched)) return true;
+  const clause = sentence.slice(0, index).split(/[,;:]|\b(?:but|and|so|because|then|although|though)\b/).pop() ?? "";
+  const before = clause.trim().split(/\s+/).filter(Boolean).slice(-3);
+  return before.some((word) => NEGATION_WORD.test(word.replace(/[.!"]/g, "")));
+}
+
+function positiveMatch(pattern: RegExp, sentence: string, rule: TopicRule): RegExpExecArray | null {
+  const every = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+  for (let match = every.exec(sentence); match; match = every.exec(sentence)) {
+    if (match[0] === "") {
+      every.lastIndex += 1;
+      continue;
+    }
+    if (!denied(sentence, match.index, match[0], rule)) return match;
+  }
+  return null;
+}
+
 export function specificTopic(text: string): SpecificTopic | null {
   if (!policySpecificTopicsEnabled()) return null;
   const sentences = sentencesOf(text);
@@ -245,7 +279,7 @@ export function specificTopic(text: string): SpecificTopic | null {
     for (const sentence of sentences) {
       if (rule.not?.test(sentence) && !rule.unless?.test(sentence)) continue;
       for (const pattern of rule.words) {
-        const match = pattern.exec(sentence);
+        const match = positiveMatch(pattern, sentence, rule);
         if (!match) continue;
         const also = (rule.also ?? []).filter((entry) => entry.when === undefined || sentences.some((s) => entry.when!.test(s))).map((entry) => entry.heading);
         return { id: rule.id, phrase: match[0].trim(), cite: rule.cite, also };
