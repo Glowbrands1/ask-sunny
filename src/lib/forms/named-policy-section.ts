@@ -1,4 +1,5 @@
 import { readCaPolicy } from "./ca-policy";
+import { correctPolicyTypos } from "./policy-typos";
 import {
   OFFENSE_MANUAL_SECTIONS,
   findManualSection,
@@ -142,7 +143,8 @@ const NOT_A_NAME =
 
 export function namedPolicies(text: string): NamedPolicy[] {
   const found: NamedPolicy[] = [];
-  for (const sentence of (text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
+  // POLICY_NAME_TYPOS_ENABLED: "violating attendence policy" names Attendance. The index only orders what was named.
+  for (const sentence of correctPolicyTypos(text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0])) continue;
     // A line that is only the name — not "violation of company policy", which names none.
     const line = /\b(?:violat|breach|broke|against|follow)/i.test(sentence[0]) ? null : POLICY_LINE.exec(sentence[0]);
