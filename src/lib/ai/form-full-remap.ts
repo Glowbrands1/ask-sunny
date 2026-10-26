@@ -11,6 +11,7 @@ import {
   remapIncidentFixEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  policyAsYouSaidManagerOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
@@ -275,6 +276,8 @@ export function groundFormSlots(input: {
           titleSaid: slots.jobTitle ? saidInWords(slots.jobTitle, said) : false,
         }
       : null,
+    // POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED: the model's section is "as you said" only when the manager named a policy.
+    !policyAsYouSaidManagerOnlyEnabled() || namedPolicy(said) !== null,
   );
   // FORM_EDIT_DATE_RULES_ENABLED: the reply says what an edit did.
   const editLine = formEditDateRulesEnabled() ? remapEditLine(managerWords(input.question)) : null;
@@ -1054,6 +1057,7 @@ function renderReply(
   slots: FormRemapSlots,
   questions: readonly string[],
   fixed: { readonly policyLine: string | null; readonly storeSaid: boolean; readonly titleSaid: boolean } | null = null,
+  policySaid = true,
 ): string {
   const lines: string[] = [];
   if (slots.templateKey) {
@@ -1075,7 +1079,7 @@ function renderReply(
   if (fixed && slots.priorActions) lines.push(`**Prior actions:** ${slots.priorActions.split("\n").join("; ")}`);
   if (fixed) {
     if (fixed.policyLine) lines.push(fixed.policyLine);
-  } else if (slots.policySection) lines.push(`**Policy:** ${slots.policySection}, as you said`);
+  } else if (slots.policySection) lines.push(`**Policy:** ${slots.policySection}${policySaid ? ", as you said" : ""}`);
   if (slots.warningLevel) {
     const label = slots.warningLevel === "verbal" ? "Verbal Warning" : "Written Warning";
     lines.push(`**Type of warning:** ${label}, as you said`);
