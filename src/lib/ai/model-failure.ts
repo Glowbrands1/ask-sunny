@@ -40,10 +40,13 @@ export interface ModelCallSnapshot {
   readonly errorSubtype: ErrorSubtype | null;
   readonly errorClass: string | null;
   readonly errorStatus: number | null;
-  /** True when a later attempt could succeed. This path does not retry. */
+  /** True when a later attempt could succeed. */
   readonly retryable: boolean;
-  /** Always false: the answer path does not retry a failed model call. */
-  readonly retried: false;
+  /**
+   * True only when CHAT_UPSTREAM_RETRY_ENABLED tried the call again. Off, the
+   * answer path does not retry and this is always false.
+   */
+  readonly retried: boolean;
 }
 
 const RETRYABLE = new Set<ErrorSubtype>(["timeout", "rate_limit", "overloaded", "5xx"]);
@@ -82,6 +85,8 @@ export function noteModelCall(input: {
   readonly usage: unknown;
   readonly error?: unknown;
   readonly subtype?: ErrorSubtype | null;
+  /** Passed only by CHAT_UPSTREAM_RETRY_ENABLED. */
+  readonly retried?: boolean;
 }): void {
   try {
     const discarded = input.error === undefined ? null : classifyDiscardedError(input.error);
@@ -102,7 +107,7 @@ export function noteModelCall(input: {
       errorClass: discarded?.errorClass ?? (errorSubtype ? "AiError" : null),
       errorStatus: discarded?.errorStatus ?? null,
       retryable: errorSubtype !== null && RETRYABLE.has(errorSubtype),
-      retried: false,
+      retried: input.retried ?? false,
     };
     updateChatTrace({
       modelCall: snapshot,

@@ -1,13 +1,16 @@
 import "server-only";
 
+import { chatUpstreamRetryEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_EFFORT, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
 import { getAnthropicClient } from "./anthropic";
 import { AiError } from "./errors";
 import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
+import { chatRequestReceivedAt } from "./chat-trace-store";
 import { modelRequestOptions, modelUnavailable } from "./model-retry";
 import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
+import { newUpstreamRetryRecord, withUpstreamRetry } from "./upstream-retry";
 
 /**
  * ============================================================================
@@ -114,6 +117,13 @@ export interface CallClaudeInput {
    * the system prompt is exactly what `cachedSystem` already returns.
    */
   readonly fullManualBlock?: string | null;
+  /**
+   * The chat answer only. With CHAT_UPSTREAM_RETRY_ENABLED on, a retryable
+   * upstream failure is tried again inside the chat turn's budget, each
+   * attempt with its own deadline. Omitted — the Sales Totals analysis and
+   * the forms ingest refinement — the call is exactly what it was.
+   */
+  readonly upstreamRetry?: boolean;
 }
 
 export interface CollectedModelResult {
@@ -263,15 +273,33 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       },
     ],
   };
+  // CHAT_UPSTREAM_RETRY_ENABLED, chat answer only: null when off or not asked for,
+  // and then nothing below differs from main.
+  const retry = input.upstreamRetry && chatUpstreamRetryEnabled() ? newUpstreamRetryRecord() : null;
   try {
     const options = modelRequestOptions();
     // Stream so the first text delta can be timed. A caller that returns a
     // finished message is still accepted, with first_token_ms left empty.
     const streamed = { ...params, stream: true as const };
-    const created = options
-      ? await client.messages.create(streamed, options)
-      : await client.messages.create(streamed);
-    const response = await collectModelResult(created, started);
+    // With the retry on, the stream is read inside the attempt, because an
+    // overloaded error can arrive after the 200; the SDK's own retries are
+    // off so `withUpstreamRetry` alone decides how many attempts there are.
+    const response = retry
+      ? await withUpstreamRetry(retry, chatRequestReceivedAt(), async (attempt) =>
+          collectModelResult(
+            await client.messages.create(streamed, {
+              ...options,
+              maxRetries: 0,
+              timeout: Math.min(options?.timeout ?? attempt.timeout, attempt.timeout),
+              signal: attempt.signal,
+            }),
+            started,
+          ),
+        )
+      : await collectModelResult(
+          options ? await client.messages.create(streamed, options) : await client.messages.create(streamed),
+          started,
+        );
 
     const noted = {
       model: CLAUDE_MODEL,
@@ -280,6 +308,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       latencyMs: Date.now() - started,
       firstTokenMs: response.firstTokenMs,
       usage: response.usage,
+      ...(retry?.retried ? { retried: true } : {}),
     };
     if (response.stopReason === "refusal") {
       noteModelCall({ ...noted, subtype: "refused" });
@@ -313,6 +342,9 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       firstTokenMs: null,
       usage: null,
       error,
+      // With the retry on: whether it was tried again, and the subtype read
+      // from the SDK's own type field (a streamed overloaded error has no status).
+      ...(retry ? { retried: retry.retried, subtype: retry.last?.subtype ?? null } : {}),
     });
     throw modelUnavailable(error);
   }

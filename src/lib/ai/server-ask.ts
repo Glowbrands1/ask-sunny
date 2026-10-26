@@ -1691,6 +1691,8 @@ async function answerQuestionUntraced(
     maxTokens: CLAUDE_MAX_TOKENS[request.mode],
     manualBlock,
     fullManualBlock,
+    // CHAT_UPSTREAM_RETRY_ENABLED applies to this call only; see `ai/upstream-retry.ts`.
+    upstreamRetry: true,
   });
   /*
    * THE BACKSTOP to the labelled block above: with the guard on and no refer-back
