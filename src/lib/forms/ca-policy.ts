@@ -22,6 +22,7 @@ import {
 import { JOIN } from "./bounded-context";
 import { namesPerformance } from "./epp-policy";
 import { FAILURE_TO_OPEN, LATE_TO_OPEN, failureToOpenOn, lateOpenOn } from "./late-open";
+import { correctPolicyTypos } from "./policy-typos";
 import {
   findManualSection,
   isApprovedPolicyManualTitle,
@@ -145,7 +146,8 @@ export interface CaPolicyReading {
 /* ------------------------------------------------------------ the words -- */
 
 function normalize(text: string): string {
-  return (text ?? "").replace(/[‘’‛]/g, "'").replace(/[“”]/g, '"').toLowerCase();
+  // POLICY_NAME_TYPOS_ENABLED: "attendence" is Attendance. Off, the text as typed.
+  return correctPolicyTypos(text ?? "").replace(/[‘’‛]/g, "'").replace(/[“”]/g, '"').toLowerCase();
 }
 
 /**

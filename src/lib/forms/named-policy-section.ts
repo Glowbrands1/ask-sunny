@@ -1,6 +1,7 @@
 import { animalAnywhereEnabled, wovenTrainingConductEnabled } from "@/lib/config/chat-quality-flags";
 
 import { cleaningIncidentPhrase, groundConductPolicy, isWovenWorkReading, readCaPolicy, STANDARDS_OF_CONDUCT } from "./ca-policy";
+import { correctPolicyTypos } from "./policy-typos";
 import {
   OFFENSE_MANUAL_SECTIONS,
   findManualSection,
@@ -169,7 +170,8 @@ export function namedPolicies(text: string): NamedPolicy[] {
 
 function namedPolicyPhrases(text: string): NamedPolicy[] {
   const found: NamedPolicy[] = [];
-  for (const sentence of (text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
+  // POLICY_NAME_TYPOS_ENABLED: "violating attendence policy" names Attendance. The index only orders what was named.
+  for (const sentence of correctPolicyTypos(text ?? "").matchAll(/[^.!?\n]+[.!?]*/g)) {
     if (/\?\s*$/.test(sentence[0])) continue;
     // A line that is only the name — not "violation of company policy", which names none.
     const line = /\b(?:violat|breach|broke|against|follow)/i.test(sentence[0]) ? null : POLICY_LINE.exec(sentence[0]);

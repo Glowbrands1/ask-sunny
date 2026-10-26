@@ -12,6 +12,7 @@ import {
 } from "@/lib/forms/official-policy-manual";
 import { sectionsNamedIn } from "@/lib/forms/policy-change";
 import { withConductLinePage } from "@/lib/forms/specific-policy-topics";
+import { correctPolicyTypos } from "@/lib/forms/policy-typos";
 
 /**
  * The manual sections a manager's account resolves, using the same readers
@@ -24,7 +25,8 @@ export function accountManualSections(
   chunks: readonly ManualChunk[],
   jobTitle?: string | null,
 ): ManualSection[] {
-  const text = notes ?? "";
+  // POLICY_NAME_TYPOS_ENABLED: "openning salon late" is read as "opening salon late". Off, as typed.
+  const text = correctPolicyTypos(notes ?? "");
   if (!text.trim() || chunks.length === 0) return [];
 
   const reading = readCaPolicy(text);
