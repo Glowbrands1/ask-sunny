@@ -98,6 +98,30 @@ function commandLine(text: string): boolean {
   return !FOR_LEAD.test(text) && !SENTENCE_WORDS.test(text);
 }
 
+/**
+ * TERSE_COMMAND_ONLY_ENABLED (QA live run, 26 Oct 2026): "ca <first> <middle>
+ * <last> <place> late today verbal" lost the surname. A third name word is
+ * taken when what follows it closes the name: a place, a title, a state, a
+ * date, a level, the start of the account ("late", "opened", never "on" or
+ * "was"), or the end of the line. "coach <first> <last> woven acks" and
+ * "coaching <first> <last> tanned on clock" stay two words.
+ */
+function thirdNameWord(tokens: readonly string[]): boolean {
+  const [word, next, after] = tokens;
+  if (!word || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || READERS.place(word) || READERS.title(word)) return false;
+  if (STATE.test(word) || (next !== undefined && READERS.place(`${word} ${next}`))) return false;
+  if (!next) return true;
+  return (
+    READERS.place(next) ||
+    (after !== undefined && READERS.place(`${next} ${after}`)) ||
+    READERS.title(next) !== null ||
+    STATE.test(next) ||
+    DATE.test(next) ||
+    LEVEL.test(next) ||
+    (NOT_A_NAME_WORD.test(next) && !/^(?:on|at|for|was|is|did)$/i.test(next))
+  );
+}
+
 /** The long form of a terse "<form word> <name> …" line, or the text as it is. */
 export function expandTerseRequest(text: string, today: string): string {
   if (/[.!?\n]/.test(text.replace(/\d\.\d/g, "")) || text.trim().split(/\s+/).length > 40) return text;
@@ -119,6 +143,7 @@ export function expandTerseRequest(text: string, today: string): string {
     if (!NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || READERS.place(word) || READERS.title(word)) break;
     name.push(tokens.shift()!);
   }
+  if (name.length === 2 && terseCommandOnlyEnabled() && thirdNameWord(tokens)) name.push(tokens.shift()!);
   if (name.length === 0) return text;
 
   let place: string | null = null;

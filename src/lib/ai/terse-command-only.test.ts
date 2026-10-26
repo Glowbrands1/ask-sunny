@@ -65,3 +65,52 @@ describe("TERSE_COMMAND_ONLY_ENABLED on", () => {
     for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase().startsWith(start.toLowerCase())).toBe(true);
   });
 });
+
+/**
+ * QA live runs, 26 Oct 2026 (Sunny tester 1, TERSE off and on; names invented,
+ * "rory ann vance" stands in for the tester's three-part name).
+ */
+describe("TERSE_COMMAND_ONLY_ENABLED on: the live command lines", () => {
+  const THREE: readonly [string, string][] = [
+    ["ca rory ann vance ks manhattan late today verbal", "Create a corrective action form for rory ann vance at ks manhattan."],
+    ["ca john michael doe late today", "Create a corrective action form for john michael doe."],
+    ["ca rory ann vance opened late 10-12", "Create a corrective action form for rory ann vance."],
+  ];
+  it.each(THREE)("keeps a three-part name whole: '%s', in any case", (command, start) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase().startsWith(start.toLowerCase())).toBe(true);
+  });
+
+  it.each([
+    ["ca devon harlan opened late 15 min 9-20 verbal 25 deduct", "Create a corrective action form for devon harlan."],
+    ["coach devon harlan woven acks 10-16", "Create a coaching form for devon harlan."],
+    ["exit devon harlan tc ks manhattan nc/ns last day 9/20 called 9/27 no answer", "Create an exit form for devon harlan at ks manhattan"],
+  ])("writes out the tester's line '%s' with the form word never in the name", (command, start) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) {
+      const out = expandTerseRequest(variant, TODAY);
+      expect(out.toLowerCase().startsWith(start.toLowerCase())).toBe(true);
+      expect(out.toLowerCase()).not.toContain("for ca ");
+    }
+  });
+
+  it("stays two words when the third is the account ('woven acks', 'tanned on clock')", () => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    expect(expandTerseRequest("coach devon harlan woven acks 10-16", TODAY)).toMatch(/^Create a coaching form for devon harlan\. /);
+    expect(expandTerseRequest("coaching quenby arlott tanned on clock 9-28-26 tc ks manhattan", TODAY)).toMatch(/^Create a coaching form for quenby arlott at ks manhattan, /);
+  });
+
+  it.each([
+    "coaching form for rory ann vance, she was late today",
+    "Create a coaching form for Test Employee at KS Manhattan, she was late on 10-5 and 10-15, I coached her on 10-16.",
+    "coaching form for rory vance and a ca for devon harlan",
+    "Exit for rory ann vance effective october 2",
+    "Sacramento, CA",
+    "ca",
+    "coach",
+    "exit",
+  ])("leaves '%s' as typed, in any case", (turn) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(turn)) expect(expandTerseRequest(variant, TODAY)).toBe(variant);
+  });
+});
