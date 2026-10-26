@@ -70,6 +70,8 @@ import {
   remapDraftSourcesEnabled,
 } from "@/lib/config/chat-quality-flags";
 
+import { staleBannerEnabled } from "@/lib/reviews/sync-health";
+
 import { augmentIntakeQuestion } from "./intake-augment";
 import { flaggedCitationWrite } from "./policy-citation-fields";
 
@@ -154,6 +156,7 @@ const NEW_FLAGS = [
   "NAMED_FORM_EXACT_ENABLED",
   "REMAP_DRAFT_SOURCES_ENABLED",
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
+  "GOOGLE_REVIEWS_STALE_BANNER_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -297,6 +300,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(namedFormExactEnabled()).toBe(false);
     expect(remapDraftSourcesEnabled()).toBe(false);
     expect(remapDraftSourcesClientEnabled()).toBe(false);
+    expect(staleBannerEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
