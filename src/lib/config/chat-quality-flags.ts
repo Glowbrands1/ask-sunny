@@ -867,3 +867,12 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * "write it up for <name>" asks for the Corrective Action Form (QA, 26 Oct
+ * 2026; same flag in both apps). See `ai/write-it-up.ts`. Off, every turn is
+ * read as typed.
+ */
+export function writeItUpEnabled(): boolean {
+  return envFlag("WRITE_IT_UP_ENABLED");
+}
