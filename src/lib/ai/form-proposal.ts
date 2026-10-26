@@ -113,7 +113,12 @@ import {
   settledNameQuestions,
 } from "@/lib/forms/employee-match";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
-import { payrollAmountFieldEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  payrollAmountFieldEnabled,
+  storedSlotsNotARequestEnabled,
+  typedNameProceedsEnabled,
+} from "@/lib/config/chat-quality-flags";
+import { managerWords } from "./edit-date-rules";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { allowsTeamSubject } from "@/lib/forms/team-subject";
 import type { EmployeeResolution } from "@/lib/forms/proposal";
@@ -1674,7 +1679,9 @@ function turnsAboutThisForm(
   /* Whether the turns kept so far start just after a turn about somebody else. */
   let afterAnotherPerson = false;
   context.messages.forEach((message, index) => {
-    const intent = detectTemplateIntent(message.content);
+    // STORED_SLOTS_NOT_A_REQUEST_ENABLED: the app's reminder lines are not the manager's request.
+    const said = storedSlotsNotARequestEnabled() ? managerWords(message.content) : message.content;
+    const intent = detectTemplateIntent(said);
     /*
      * "CREATE VERBAL CA FOR …" IS A REQUEST FOR THIS FORM when this form is
      * the Corrective Action Form: a corrective action to be started is what
@@ -1692,11 +1699,11 @@ function turnsAboutThisForm(
     const aboutThisForm =
       options.correctiveActionForm === true &&
       ((intent.kind === "corrective_action" && !intent.requestedCreation) ||
-        statesHistoryOnly(message.content, businessToday()));
+        statesHistoryOnly(said, businessToday()));
     const otherForm =
       (intent.kind === "explicit" && intent.templateKey !== templateKey && !aboutThisForm) ||
       (intent.kind === "corrective_action" && !thisForm && !aboutThisForm);
-    const names = options.answers?.has(message.content.trim()) ? [] : extractEmployeeNames(message.content);
+    const names = options.answers?.has(message.content.trim()) ? [] : extractEmployeeNames(said);
     const otherPerson = names.length > 0 && !names.some(same);
     if (otherForm || otherPerson) {
       start = index + 1;
@@ -1714,7 +1721,7 @@ function turnsAboutThisForm(
      * another person starts this form's turns. A correction of the person
      * ("actually it's for …") is not a new request, and keeps the account.
      */
-    if (forThisEmployee && requestAt < 0 && afterAnotherPerson && start < index && !correctsTheEmployee(message.content)) {
+    if (forThisEmployee && requestAt < 0 && afterAnotherPerson && start < index && !correctsTheEmployee(said)) {
       start = index;
     }
     /*
@@ -1729,8 +1736,8 @@ function turnsAboutThisForm(
       options.correctiveActionForm === true &&
       forThisEmployee &&
       requestAt >= 0 &&
-      (describesIncident(message.content) ||
-        describesMoreThanTheRequest(message.content, { ignore: [employeeName ?? ""] }))
+      (describesIncident(said) ||
+        describesMoreThanTheRequest(said, { ignore: [employeeName ?? ""] }))
     ) {
       start = index;
     }
