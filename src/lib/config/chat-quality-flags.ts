@@ -867,3 +867,14 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * A coaching card for a named person with no account ("coaching for <name>")
+ * asks what happened, in the same words as the Corrective Action ("You
+ * haven't told me what happened yet"), instead of saying everything is there
+ * (`ai/coaching-what-happened.ts`; QA, 26 Oct 2026). Off (the default), the
+ * reply is as built.
+ */
+export function coachingAsksWhatHappenedEnabled(): boolean {
+  return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
+}
