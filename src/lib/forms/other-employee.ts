@@ -42,19 +42,45 @@ const NOT_A_PERSON = /^(?:the|a|an|her|him|them|this|that|my|our|being|not|no|mo
  * surname a manager gives a test person ("test employee two"), as
  * `typed-employee-name.ts` reads it with capitals.
  *
- * Without a capital, nothing in the word itself says "name", so the POSITION
- * has to: a name the conversation already knows (the open form's employee, or
- * somebody typed earlier), "test employee", or a request for a form ("one
- * for", "another one for", "the same for", "a CA for", ", for" correcting a
- * "not for"). "she was written up for rudeness" and "now one for the closing
- * shift" name nobody.
+ * Without a capital, nothing in the word itself says "name", so it counts only
+ * as a name the conversation already knows (the open form's employee, or
+ * somebody typed after "for" earlier in the chat), as "<first> employee", or
+ * after a lead that asks for a NEW one: "now one for", "another (one) for",
+ * "a second one for", "another CA for". A bare "one for rowan pell" or "a CA
+ * for rowan pell" is left to the open form.
+ *
+ * QA-6 RE-PROBE: AN INCIDENT IS NOT A PERSON. "one for rudeness", "a CA for
+ * cash handling" and "another CA for insubordination" opened a new card for
+ * "rudeness" / "cash handling" / "insubordination". What a form is ABOUT never
+ * opens a name, in any case and after any lead: the incident words below, and
+ * (without capitals) the topic words every typed-name reader already refuses
+ * (NOT_A_TYPED_NAME in `name-words.ts`: "no call no show", "dress code" …).
+ * The capitalised reading checks only the incident words, so a first name
+ * that is also a common word ("Will", "Grant") is still a person.
  */
 const ANY_FOR = /\bfor\s+/gi;
 const NAME_PARTS = 3;
 const GERUND = /^[a-z]{3,}ing$/i;
 const PLACEHOLDER_SURNAME = "employee";
-const ASKS_FOR_A_FORM =
-  /\b(?:one|another(?:\s+one)?|(?:the\s+)?same(?:\s+thing)?|ca|form|card|write-?up|corrective\s+action(?:\s+form)?)\s*$/i;
+const ASKS_FOR_A_NEW_ONE =
+  /\b(?:(?:now|next|second)\s+(?:one|another(?:\s+one)?)|another(?:\s+one)?|second\s+one|another\s+(?:ca|form|card|write-?up|corrective\s+action(?:\s+form)?))\s*$/i;
+
+/** Incidents a form is written about, never the first word of a person's name. */
+const INCIDENT_WORDS = new Set([
+  "attendance", "absence", "absences", "tardiness", "tardy", "lateness", "late", "theft", "dress",
+  "uniform", "conduct", "behavior", "behaviour", "attitude", "safety", "harassment", "violation",
+  "violations", "sales", "cleaning", "cleanliness", "punctuality", "performance", "rudeness", "rude", "insubordination", "insubordinate", "disrespect", "disrespectful", "cash",
+  "handling", "drawer", "till", "register", "shortage", "overage", "refund", "refunds", "discount",
+  "discounts", "phone", "texting", "gossip", "gossiping", "harassing", "bullying", "fighting",
+  "stealing", "tardies", "ncns", "no-call", "timecard", "punch", "punches", "overtime", "break",
+  "breaks", "lunch", "schedule", "scheduling", "shift", "shifts", "grooming", "appearance",
+  "unprofessional", "unprofessionalism", "negligence", "misconduct", "dishonesty", "falsification",
+]);
+
+/** An incident, typed in any case, where a name would start. */
+function isIncidentWord(word: string): boolean {
+  return INCIDENT_WORDS.has(word.toLowerCase());
+}
 
 /*
  * QA-6: A PERSON THE MANAGER RULED OUT IS NOT ANOTHER EMPLOYEE. "never one for
@@ -91,7 +117,7 @@ function uncapitalisedName(after: string): string[] {
       word.length > 1 &&
       !NOT_A_NAME.has(lower) &&
       !NOT_A_TYPED_NAME.has(lower) &&
-      (parts.length > 0 || (!NOT_A_PERSON.test(lower) && !GERUND.test(lower))) &&
+      (parts.length > 0 || (!NOT_A_PERSON.test(lower) && !GERUND.test(lower) && !isIncidentWord(lower))) &&
       (!isFormVocabulary(lower) || (parts.length > 0 && lower === PLACEHOLDER_SURNAME));
     if (!usable) break;
     parts.push(word);
@@ -108,17 +134,14 @@ function uncapitalisedName(after: string): string[] {
 export function typedPeopleAfterFor(question: string, known: readonly string[] = []): string[] {
   const people: string[] = [];
   const knownNames = known.map((name) => name.trim().toLowerCase().split(/\s+/).join(" ")).filter(Boolean);
-  let ruledOutBefore = false;
   for (const match of question.matchAll(ANY_FOR)) {
     const clause = clauseBefore(question, match.index);
     const ruledOut = RULED_OUT.test(clause);
-    const correcting = ruledOutBefore && clause.trim() === "";
-    if (ruledOut) ruledOutBefore = true;
     TYPED_FOR.lastIndex = match.index;
     const capitalised = TYPED_FOR.exec(question);
     if (capitalised) {
       const words = capitalised[1]!.split(/\s+/);
-      if (!ruledOut && !NOT_A_PERSON.test(words[0]!)) people.push(words.join(" "));
+      if (!ruledOut && !NOT_A_PERSON.test(words[0]!) && !isIncidentWord(words[0]!)) people.push(words.join(" "));
       continue;
     }
     if (ruledOut) continue;
@@ -128,8 +151,7 @@ export function typedPeopleAfterFor(question: string, known: readonly string[] =
     const placed =
       knownNames.some((name) => read === name || read.startsWith(`${name} `) || read === name.split(" ")[0]) ||
       words[1]?.toLowerCase() === PLACEHOLDER_SURNAME ||
-      ASKS_FOR_A_FORM.test(clause) ||
-      correcting;
+      ASKS_FOR_A_NEW_ONE.test(clause);
     if (placed) people.push(words.join(" "));
   }
   return people;

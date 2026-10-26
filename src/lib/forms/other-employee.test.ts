@@ -115,3 +115,61 @@ describe("QA-6: a name the conversation knows is read whole, never from its firs
     expect(namesAnotherEmployee("she was late for test prep", "Test Employee")).toBe(false);
   });
 });
+
+/*
+ * QA-6 re-probe, 26 Oct 2026: an incident after "for" is not a person. With
+ * the flag on, "one for rudeness" and "a CA for cash handling" opened a NEW
+ * card for "rudeness" / "cash handling" instead of redrafting the open form.
+ * QA's exact wordings, in lower case, Sentence case and ALL CAPS.
+ */
+describe("QA-6 re-probe: an incident or topic after 'for' is never another employee", () => {
+  const OPEN = "Test Employee";
+  const threeWays = (sentence: string) => [
+    sentence.toLowerCase(),
+    sentence[0]!.toUpperCase() + sentence.slice(1).toLowerCase(),
+    sentence.toUpperCase(),
+  ];
+
+  it.each([
+    ...threeWays("one for rudeness"),
+    ...threeWays("a CA for rudeness"),
+    ...threeWays("a CA for cash handling"),
+    ...threeWays("another CA for insubordination"),
+  ])('"%s" is about the open form, not a person called that', (sentence) => {
+    expect(typedPeopleAfterFor(sentence, [OPEN])).toEqual([]);
+    expect(namesAnotherEmployee(sentence, OPEN)).toBe(false);
+  });
+
+  it.each([
+    "now one for theft",
+    "another one for attendance",
+    "now one for tardiness",
+    "another one for lateness",
+    "now one for dress code",
+    "another one for phone use",
+    "now one for no call no show",
+    "another one for Rudeness",
+  ])('"%s": every incident word, after any lead', (sentence) => {
+    expect(namesAnotherEmployee(sentence, OPEN)).toBe(false);
+  });
+
+  it.each([
+    ...threeWays("now one for Rowan Pell"),
+    ...threeWays("another one for Rowan Pell"),
+    ...threeWays("now one for Test Employee Two"),
+  ])('"%s" is still another employee', (sentence) => {
+    expect(namesAnotherEmployee(sentence, OPEN)).toBe(true);
+  });
+
+  it("a bare lower-case 'one for <words>' counts only for a known name or a test employee", () => {
+    expect(namesAnotherEmployee("one for rowan pell", OPEN)).toBe(false);
+    expect(namesAnotherEmployee("one for rowan pell", OPEN, ["Rowan Pell"])).toBe(true);
+    expect(namesAnotherEmployee("one for test employee two", OPEN)).toBe(true);
+  });
+});
+
+describe("QA-6 re-probe: a capitalised first name that is also a common word is still a person", () => {
+  it('"now one for Will Testerly" is another employee', () => {
+    expect(namesAnotherEmployee("now one for Will Testerly", "Test Employee")).toBe(true);
+  });
+});
