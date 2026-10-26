@@ -113,6 +113,8 @@ describe("EXIT_PROSE_FACTS_ENABLED", () => {
       const drafted =
         "Ava gave two weeks notice and worked through the last day. Ava sent the resignation through Woven.";
       expect(guardExitDetails(drafted, notes, TODAY).value).toBe(drafted);
+      const lastDay = "Ava gave two weeks notice on 9/1 and worked through the last day.";
+      expect(guardExitDetails(lastDay, "Ava gave two weeks notice on 9/1 and her last day was 9/15.", TODAY).removed).toEqual([]);
       const text = prose(
         "tanning consultant. on 9-15-26 ava provided her resignation to management and her last day worked was 9-28-26",
         {
