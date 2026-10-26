@@ -450,6 +450,38 @@ interface SeparationReading {
 }
 
 /** True when a match of `pattern` in `text` is not negated just before it. */
+/*
+ * EXIT_NOTICE_FULFILLED_ENABLED: "no 2 wk notice worked" is not a notice
+ * worked (QA-3, 26 Oct 2026). A "no" — or any negation — up to three words
+ * before the cue reverses it.
+ */
+const NOTICE_WORKED_NEGATED = /\b(?:no|not|never|didn't|didnt|did not|wasn't|was not)\s+(?:[\w'-]+\s+){0,3}$/i;
+
+/** "without notice", "no 2 wk notice": in the same sentence, nothing was a notice worked. */
+const WITHOUT_NOTICE = /\b(?:without|no)\s+(?:[\w'-]+\s+){0,2}notice\b/i;
+const NOTICE_NOUN_SEEN = new RegExp(String.raw`\b${NOTICE_NOUN}`, "i");
+
+/*
+ * And "she worked it til 10/9 without notice" is a last day, not a notice
+ * worked (QA-5, 26 Oct 2026): "worked it til" counts only after a notice was
+ * named earlier in its sentence ("gave notice worked it til 10/9").
+ */
+function noticeWorked(text: string): boolean {
+  for (const match of text.matchAll(NOTICE_WORKED)) {
+    const at = match.index ?? 0;
+    const before = text.slice(0, at);
+    if (NEGATED_BEFORE.test(before) || NOTICE_WORKED_NEGATED.test(before)) continue;
+    const start = Math.max(...[".", ";", "!", "?", "\n"].map((mark) => before.lastIndexOf(mark))) + 1;
+    const rest = text.slice(at);
+    const stop = rest.search(/[.;!?\n]/);
+    const sentence = text.slice(start, stop === -1 ? text.length : at + stop);
+    if (WITHOUT_NOTICE.test(sentence)) continue;
+    if (!/notice/i.test(match[0]) && !NOTICE_NOUN_SEEN.test(text.slice(start, at))) continue;
+    return true;
+  }
+  return false;
+}
+
 function affirmed(text: string, pattern: RegExp): boolean {
   for (const match of text.matchAll(pattern)) {
     if (!NEGATED_BEFORE.test(text.slice(0, match.index ?? 0))) return true;
@@ -649,7 +681,7 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   let { fulfilled, notFulfilled, voluntary } = reading;
   // EXIT_NOTICE_FULFILLED_ENABLED: a notice worked, or fulfilled on a stated day, is a fulfilled notice.
   if (exitNoticeFulfilledEnabled() && !fulfilled && !notFulfilled) {
-    fulfilled = affirmed(text, NOTICE_WORKED) || (noticeFulfilled !== null && noticeGiven !== null);
+    fulfilled = noticeWorked(text) || (noticeFulfilled !== null && noticeGiven !== null);
   }
   const conflict = (described: string[]) =>
     ambiguities.push({ kind: "separation_conflict", described });

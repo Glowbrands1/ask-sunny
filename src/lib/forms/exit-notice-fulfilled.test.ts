@@ -229,3 +229,90 @@ describe.each(REGISTERS)(
     }
   },
 );
+
+/*
+ * QA-3, 26 Oct 2026 (flag on only): "no 2 wk notice worked" ticked Submitted &
+ * Fulfilled Notice, and "last day 9-28, no 2 wk notice worked" invented a
+ * fulfilled date of 9-28. A negation before the cue reverses it.
+ */
+const NEGATED_REGISTERS: [string, (text: string) => string][] = [
+  ...REGISTERS,
+  ["ALL CAPS", (text) => text.toUpperCase()],
+];
+
+describe.each(NEGATED_REGISTERS)("EXIT_NOTICE_FULFILLED_ENABLED, a negated worked notice: %s", (_register, as) => {
+  for (const on of [false, true]) {
+    it(`NEVER-BREAK (flag ${on ? "on" : "off"}): "no 2 wk notice worked" is no fulfilled notice and no fulfilled date`, () => {
+      withFlag(on);
+      for (const text of [
+        "exit for ava pellmore no 2 wk notice worked",
+        "exit for ava pellmore last day 9-28, no 2 wk notice worked",
+      ]) {
+        const facts = readExitFacts(as(text), TODAY);
+        expect(facts.noticeOptions, text).toEqual([]);
+        expect(facts.noticeFulfilled, text).toBeNull();
+      }
+    });
+
+    it(`NEVER-BREAK (flag ${on ? "on" : "off"}): the already-correct negations stay`, () => {
+      withFlag(on);
+      expect(readExitFacts(as("ava pellmore did not work her notice"), TODAY).noticeOptions).toEqual([]);
+      expect(readExitFacts(as("ava pellmore never gave notice"), TODAY).noticeOptions).toEqual([]);
+      expect(readExitFacts(as("ava pellmore gave notice 9/25 did not fulfill 10/9"), TODAY).noticeOptions).toEqual([]);
+    });
+  }
+});
+
+// ALL CAPS is not among these: the exit reader's cues are lowercase, as on main.
+describe.each(REGISTERS)("EXIT_NOTICE_FULFILLED_ENABLED, a worked notice without a negation: %s", (_register, as) => {
+  it("on, still ticks the box", () => {
+    withFlag(true);
+    expect(readExitFacts(as("exit for ava pellmore last day 9-28, 2 wk notice worked"), TODAY).noticeOptions).toEqual([
+      "submitted_fulfilled_notice",
+    ]);
+  });
+});
+
+/*
+ * QA-5, 26 Oct 2026 (flag on only): "she worked it til 10/9 without notice"
+ * ticked Submitted & Fulfilled Notice with a fulfilled date of 10/9. Without a
+ * notice, "worked it til" is only the last day. And the year-less dashed last
+ * day ("last day 10-5") this flag also reads (dispatcher, 26 Oct 2026).
+ */
+describe.each(REGISTERS)("EXIT_NOTICE_FULFILLED_ENABLED, worked without a notice: %s", (_register, as) => {
+  it("on, \"worked it til 10/9 without notice\" is a last day, no notice fulfilled", () => {
+    withFlag(true);
+    const facts = readExitFacts(as("exit for ava pellmore, she worked it til 10/9 without notice"), TODAY);
+    expect(facts.noticeOptions).toEqual([]);
+    expect(facts.noticeFulfilled).toBeNull();
+  });
+
+  for (const on of [false, true]) {
+    it(`NEVER-BREAK (flag ${on ? "on" : "off"}): an unworked or missing notice is never fulfilled`, () => {
+      withFlag(on);
+      for (const text of [
+        "ava pellmore gave notice 9/25 but did not work it, last day 9/28",
+        "ava pellmore never worked her notice, last day 9/28",
+        "ava pellmore no notice given, last day 10/9",
+      ]) {
+        const facts = readExitFacts(as(text), TODAY);
+        expect(facts.noticeOptions, text).toEqual([]);
+        expect(facts.noticeFulfilled, text).toBeNull();
+      }
+    });
+  }
+
+  it("on, a notice named before \"worked it til\" is still a notice worked", () => {
+    withFlag(true);
+    expect(readExitFacts(as(WORKED_IT_TIL), TODAY).noticeOptions).toEqual(["submitted_fulfilled_notice"]);
+  });
+
+  it("on, a year-less dashed last day is read", () => {
+    withFlag(true);
+    expect(readExitFacts(as("exit for ava pellmore last day 10-5"), TODAY).lastDayWorked).toBe("2026-10-05");
+    expect(readExitFacts(as("exit for ava pellmore, resigned 9-15, last day 10-5"), TODAY)).toMatchObject({
+      lastDayWorked: "2026-10-05",
+      resignationDate: "2026-09-15",
+    });
+  });
+});

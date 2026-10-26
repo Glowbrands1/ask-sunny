@@ -839,8 +839,9 @@ export function chatLongMessageEnabled(): boolean {
  * A notice the manager says was worked fills "Date that notice was
  * fulfilled" with the last day worked and ticks Submitted & Fulfilled Notice;
  * "9/25 gave notice worked it til 10/9" is notice 9/25, last day 10/9 (QA,
- * 25 Oct 2026). Never a date the manager did not give. Off, the exit form
- * reads as before.
+ * 25 Oct 2026). Never a date the manager did not give. On, it ALSO turns on
+ * the year-less exit-date reading ("last day 9-28", "resigned 9-15") that
+ * EXIT_INTAKE_FIX_ENABLED already enables. Off, the exit form reads as before.
  */
 export function exitNoticeFulfilledEnabled(): boolean {
   return envFlag("EXIT_NOTICE_FULFILLED_ENABLED");
