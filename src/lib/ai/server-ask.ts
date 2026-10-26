@@ -151,6 +151,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withNextPersonForm } from "./next-person";
 import { withTerseSlots } from "./terse-slots";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -285,7 +286,8 @@ async function answerQuestionChecked(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
+    // NEXT_PERSON_FORM_ENABLED: "now one for <name> …" is a new form for that person.
+    const response = await answerQuestionUntraced(withTerseSlots(withNextPersonForm(request)), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     return keepManagerActionPlan(await applyQuietQuality(response), request);
