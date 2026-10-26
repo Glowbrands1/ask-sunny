@@ -434,12 +434,23 @@ export function withoutGoingForward(
  * going forward with discipline". "going forward she will …" and "she will
  * clock in on time going forward" are.
  */
+/*
+ * The negation must govern "going forward" itself: right before it, with at
+ * most two filler words between ("no going forward", "without a going
+ * forward", "do not add a going forward", "doesn't want going forward"), or
+ * negating a plan named just before it ("not on a plan going forward").
+ * "No call no show on 10/11 going forward she needs to call", "she wasn't on
+ * time going forward I expect on time" and "she was never told going forward
+ * she must call" negate something else (QA-5, 26 Oct 2026).
+ */
 const GOING_FORWARD_NEGATED_BEFORE =
-  /\b(?:no|not|without|never|don't|dont|do not|won't|isn't|aren't|wasn't|doesn't|didn't)\b[^.,;:!?\n]{0,30}$/i;
+  /\b(?:no|not|without|never|don't|dont|do not|won't|doesn't|didn't)\s+(?:(?:a|an|the|any|add|adding|need|needed|want|wants|write|include|put|make)\s+){0,2}$/i;
+const PLAN_NEGATED_BEFORE = /\b(?:no|not|never|without)\b(?:\s+[\w']+){0,3}\s+plan\s+$/i;
 
 export function managerTypedGoingForward(notes: string): boolean {
   for (const match of notes.matchAll(/\bgoing forward\b/gi)) {
-    if (!GOING_FORWARD_NEGATED_BEFORE.test(notes.slice(0, match.index))) return true;
+    const before = notes.slice(0, match.index);
+    if (!GOING_FORWARD_NEGATED_BEFORE.test(before) && !PLAN_NEGATED_BEFORE.test(before)) return true;
   }
   return false;
 }

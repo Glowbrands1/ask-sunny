@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { withoutGoingForward } from "./narrative-draft";
+import { managerTypedGoingForward, withoutGoingForward } from "./narrative-draft";
 
 /**
  * DRAFT_NO_INVENTED_PLAN_ENABLED scope (coordinator ruling, 26 Oct 2026): only
@@ -52,5 +52,41 @@ describe("withoutGoingForward", () => {
     const out = withoutGoingForward({ observation: as(NARRATIVE) }, FIELDS).observation!;
     expect(out.toLowerCase()).not.toContain("going forward");
     expect(out.toLowerCase()).toContain("expectation:");
+  });
+});
+
+/*
+ * QA-5, 26 Oct 2026: the negation must govern "going forward" itself. A
+ * negation earlier in the sentence about something else leaves the manager's
+ * plan typed. Lowercase and sentence case.
+ */
+const REGISTERS: [string, (text: string) => string][] = [
+  ["all lowercase", (text) => text.toLowerCase()],
+  ["sentence case", (text) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase()],
+];
+
+describe.each(REGISTERS)("managerTypedGoingForward (%s)", (_register, as) => {
+  it("a negation about something else does not undo the plan", () => {
+    for (const notes of [
+      "No call no show on 10/11 going forward she needs to call",
+      "She is not happy with the schedule and going forward will arrive early",
+      "She wasn't on time going forward I expect on time",
+      "She was never told going forward she must call",
+    ]) {
+      expect(managerTypedGoingForward(as(notes)), notes).toBe(true);
+    }
+  });
+
+  it("a negated going forward is no plan", () => {
+    for (const notes of [
+      "no going forward needed",
+      "do not add a going forward section",
+      "without a going forward plan",
+      "not going forward with discipline",
+      "she doesn't want going forward plan",
+      "she is not on a plan going forward",
+    ]) {
+      expect(managerTypedGoingForward(as(notes)), notes).toBe(false);
+    }
   });
 });
