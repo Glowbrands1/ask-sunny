@@ -26,6 +26,12 @@ export interface ResentDraftWanted {
   readonly formDate?: string | null;
   /** DRAFT_REUSE_SAME_CHAT_ONLY_ENABLED: only a draft this chat made. See `draft-same-chat.ts`. */
   readonly sameChat?: SameChat;
+  /**
+   * DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED: only a draft `createdBy` made. Read
+   * by `findOpenIncidentDraft` and `pickOpenIncidentDraft`; `findResentDraft`
+   * already reads only the caller's drafts.
+   */
+  readonly ownDraftsOnly?: boolean;
 }
 
 export interface ResentDraftRow {
@@ -35,6 +41,8 @@ export interface ResentDraftRow {
   readonly createdAt: string;
   readonly narrative?: string | null;
   readonly formDate?: string | null;
+  /** The draft's `created_by`, read only when DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED is on. */
+  readonly createdBy?: string | null;
 }
 
 export function sameEmployee(left: string, right: string): boolean {
@@ -144,11 +152,18 @@ export async function findResentDraft(input: ResentDraftWanted): Promise<Instanc
  *
  * A new conversation used to file another draft. This returns the open one
  * so the create route can reopen it. A different form date, or a narrative
- * that is a different incident, stays a new draft. Another manager's draft
- * counts: the edit check still decides whether this caller may change it.
+ * that is a different incident, stays a new draft.
+ *
+ * WHOSE DRAFT. With DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED off (the default),
+ * another manager's draft counts: the edit check still decides whether this
+ * caller may change it. With it on (`ownDraftsOnly`), only a draft whose
+ * `created_by` is the caller (`createdBy`) counts, so one manager's create is
+ * never handed another manager's draft (QA, 25 Oct 2026). A row whose
+ * creator was not read does not count either.
  */
 export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: ResentDraftWanted): string | null {
   const matches = rows.filter((row) => {
+    if (wanted.ownDraftsOnly && row.createdBy !== wanted.createdBy) return false;
     if (!sameEmployee(row.employeeName, wanted.employeeName)) return false;
     if (wanted.formDate && row.formDate && wanted.formDate !== row.formDate) return false;
     if (wanted.formDate && row.formDate === wanted.formDate) {
@@ -162,6 +177,12 @@ export function pickOpenIncidentDraft(rows: readonly ResentDraftRow[], wanted: R
   return [...matches].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]!.id;
 }
 
+/**
+ * The open draft `pickOpenIncidentDraft` chooses, read from the database.
+ * With `ownDraftsOnly` (DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED) the query reads
+ * only the caller's drafts and the picker checks each row's creator again.
+ * Without it, the query and the rows are exactly as before.
+ */
 export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<InstanceRow | null> {
   const supabase = getSupabaseAdmin();
   const { data: template, error: templateError } = await supabase
@@ -171,26 +192,41 @@ export async function findOpenIncidentDraft(input: ResentDraftWanted): Promise<I
     .maybeSingle();
   if (templateError || !template) return null;
 
+  const ownOnly = input.ownDraftsOnly === true;
   let query = supabase
     .from("form_instances")
-    .select("id, employee_name, location_id, created_at, form_date")
+    .select(
+      ownOnly
+        ? "id, employee_name, location_id, created_at, form_date, created_by"
+        : "id, employee_name, location_id, created_at, form_date",
+    )
     .eq("template_id", template.id)
     .eq("status", "draft")
     .ilike("employee_name", input.employeeName.trim())
     .order("created_at", { ascending: false })
     .limit(20);
+  if (ownOnly) query = query.eq("created_by", input.createdBy);
   if (input.formDate) query = query.eq("form_date", input.formDate);
   const { data, error } = await query;
   if (error || !Array.isArray(data)) return null;
 
+  // The select is one of two literal column lists, which the typed client cannot parse as a union.
   let rows: ResentDraftRow[] = (
-    data as { id: unknown; employee_name: unknown; location_id: unknown; created_at: unknown; form_date: unknown }[]
+    data as unknown as {
+      id: unknown;
+      employee_name: unknown;
+      location_id: unknown;
+      created_at: unknown;
+      form_date: unknown;
+      created_by?: unknown;
+    }[]
   ).map((row) => ({
     id: String(row.id),
     employeeName: String(row.employee_name ?? ""),
     locationId: (row.location_id as string | null) ?? null,
     createdAt: String(row.created_at ?? ""),
     formDate: typeof row.form_date === "string" ? row.form_date : null,
+    ...(ownOnly ? { createdBy: typeof row.created_by === "string" ? row.created_by : null } : {}),
   }));
   rows = await keepSameChat(rows, input.sameChat);
 
