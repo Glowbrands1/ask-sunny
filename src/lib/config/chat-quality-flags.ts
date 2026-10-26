@@ -1056,6 +1056,18 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * A drafted Prior actions row dated on an incident date is invented (QA BT4,
+ * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
+ * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
+ * 10/15. Such a row is removed unless the manager named a step on that day or
+ * a form on file has it. See `groundPriorActions` in `forms/prior-actions.ts`.
+ * Off, as before.
+ */
+export function priorRowNotOnIncidentDateEnabled(): boolean {
+  return envFlag("PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED");
+}
+
+/**
  * On top of DATE_ANSWER_APPLIED_ENABLED (QA BT4, 26 Oct 2026; same flag in both
  * apps): the date question stays on every card until answered, the answer
  * counts after other answers (the app's own lines around it are skipped), and

@@ -1,7 +1,8 @@
-import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
+import { incidentDates } from "./incident-dates";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { OFFICIAL_POLICY_MANUAL } from "./official-policy-manual";
 
@@ -209,6 +210,11 @@ export function groundPriorActions(input: {
     ...onFile.map((form) => form.formDate),
   ]);
   const removed: string[] = [];
+  // PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED: a step on the incident's own date that nobody named is invented.
+  const incidentDays = priorRowNotOnIncidentDateEnabled() ? new Set(incidentDates(input.notes, input.today)) : new Set<string>();
+  // The kinds of step the manager named without a date ("On the first shift I verbally coached her"): such a row may be theirs.
+  const undatedKinds = priorRowNotOnIncidentDateEnabled() ? undatedStepKinds(input.notes, input.today) : new Set<string>();
+  const stepOrFile = new Set([...priorSteps(input.notes, input.today).map((step) => step.iso), ...onFile.map((form) => form.formDate)]);
 
   // A date the manager corrected ("9-2-26 not 9-1-26") is no longer one they gave.
   for (const retracted of correctedDates(input.notes, input.today).keys()) stated.delete(retracted);
@@ -219,6 +225,14 @@ export function groundPriorActions(input: {
       if (line === "") return false;
       const dates = datesInText(line, input.today);
       if (dates.some((found) => !stated.has(found.iso))) {
+        removed.push(line);
+        return false;
+      }
+      if (
+        dates.length > 0 &&
+        dates.every((found) => incidentDays.has(found.iso) && !stepOrFile.has(found.iso)) &&
+        !undatedKinds.has(stepKind(line) ?? "")
+      ) {
         removed.push(line);
         return false;
       }
@@ -292,4 +306,35 @@ export function legacyPriorActions(
   if (date === "") return action;
   const step = action === "" ? "Previous corrective action" : action;
   return `${step} — signed ${signedDate(date)}`;
+}
+
+/*
+ * PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED (QA live pass 7, 26 Oct 2026): a row on
+ * an incident date is the manager's when they named that kind of step without
+ * a date ("On the first shift I verbally coached her on our policy" → the
+ * coaching on 10/5, the first shift). It is invented only when every step of
+ * that kind they named has its own date ("i coached her on 10-16"), as with
+ * "Verbal coaching on lateness — 10/15/2026" built from "verbal" and "10-15".
+ */
+const STEP_WORDS =
+  /\b(?:coach(?:ed|ing)?|talked\s+(?:to|with)|spoke\s+(?:to|with)|counsel(?:ed|ing)?|warn(?:ed|ing)|(?:verbal|written)\s+(?:warning|ca|corrective)|wrote\s+(?:her|him|them)\s+up|write[- ]?up)\b/i;
+
+/* A yearless day the date reader may skip: "10-16", "10/1", "oct 1st", "October 1st". */
+const HAS_A_DAY =
+  /\b\d{1,2}[-/.]\d{1,2}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?\b/i;
+
+function stepKind(text: string): "warning" | "coaching" | null {
+  if (/\b(?:warn(?:ed|ing)?|written|write[- ]?up|wrote\s+\w+\s+up|corrective|c\/?a)\b/i.test(text)) return "warning";
+  if (/\b(?:coach(?:ed|ing)?|talked|spoke|counsel(?:ed|ing)?)\b/i.test(text)) return "coaching";
+  return null;
+}
+
+function undatedStepKinds(notes: string, today: string): Set<string> {
+  const kinds = new Set<string>();
+  for (const sentence of notes.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!STEP_WORDS.test(sentence) || datesInText(sentence, today).length > 0 || HAS_A_DAY.test(sentence)) continue;
+    const kind = stepKind(sentence.replace(/\b(?:create|make|need|issue|write)\b.*?\b(?:ca|c\/a|corrective\s+action)(?:\s+form)?\b/gi, " "));
+    if (kind) kinds.add(kind);
+  }
+  return kinds;
 }

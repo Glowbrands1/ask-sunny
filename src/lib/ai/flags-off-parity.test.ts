@@ -91,6 +91,7 @@ import {
   dateAnswerAppliedEnabled,
   dateAnswerKeepsOpenEnabled,
   requestLineAccountEnabled,
+  priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -200,6 +201,7 @@ const NEW_FLAGS = [
   "DATE_ANSWER_APPLIED_ENABLED",
   "DATE_ANSWER_KEEPS_OPEN_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
+  "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -395,6 +397,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(dateAnswerAppliedEnabled()).toBe(false);
     expect(dateAnswerKeepsOpenEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
+    expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
