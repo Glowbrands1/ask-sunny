@@ -1,4 +1,6 @@
 import { salonById } from "@/data/salons";
+import { priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
@@ -13,6 +15,7 @@ import { US_STATE_CODE } from "@/lib/forms/state-code-place";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
+import { withoutAppLines } from "./app-sentences";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -122,14 +125,27 @@ export function requestIncident(input: {
   readonly text: string;
   readonly employeeName: string | null;
   readonly slotClause: (clause: string) => boolean;
+  /**
+   * PRIOR_SENTENCE_FIX_ENABLED, passed by its callers only with the flag on:
+   * each clause holding only earlier steps' dates ("coached her 10-16",
+   * "written warning on 10-20") is taken out first, and an incident clause
+   * keeps every date it holds ("late on 10-5 and 10-15", "from 10-5 to 10-9").
+   */
+  readonly today?: string;
 }): string | null {
   let found: string | null = null;
+  // The app's own lines ("The employee is …. Warning level: written.") are no account either.
+  const text =
+    input.today !== undefined && priorSentenceFixEnabled()
+      ? withoutPriorStepClauses(withoutAppLines(input.text), input.today, input.text).text
+      : input.text;
+  const keepDates = input.today !== undefined && priorSentenceFixEnabled();
   // One turn at a time. An edit or a command ("change the date to 10-22",
   // "name is …", "show draft", "cite standards of conduct …") changes its own
   // field and never What happened; the newest turn that describes an
   // incident is the incident.
-  for (const turn of input.text.split("\n")) {
-    const offense = turnIncident(turn, input.employeeName, input.slotClause);
+  for (const turn of text.split("\n")) {
+    const offense = turnIncident(turn, input.employeeName, input.slotClause, keepDates);
     if (offense) found = offense;
   }
   return found;
@@ -139,6 +155,7 @@ function turnIncident(
   turn: string,
   employeeName: string | null,
   slotClause: (clause: string) => boolean,
+  keepDates = false,
 ): string | null {
   if (isEditTurn(turn)) return null;
   let found: string | null = null;
@@ -148,11 +165,11 @@ function turnIncident(
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
     const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
     let kept = false;
-    for (const clause of sentence.split(",")) {
+    for (const clause of keepDates ? withDateListsJoined(sentence.split(",")) : sentence.split(",")) {
       const text = clause.trim();
       if (!text || slotClause(text) || STORE_CLAUSE.test(text) || PAYROLL_STATEMENT.test(text) || POLICY_ASK.test(text)) continue;
       kept = true;
-      const offense = clauseOffense(text, employeeName);
+      const offense = clauseOffense(text, employeeName, keepDates);
       if (offense) found = offense;
     }
     if (kept && !requested && sentence.split(/\s+/).length >= 3) story.push(sentence);
@@ -274,7 +291,19 @@ export function placeSpans(text: string): string[] {
 /** A letter or a digit: anything else on its own is punctuation, not words. */
 export const HAS_WORD = /[\p{L}\p{N}]/u;
 
-function clauseOffense(clause: string, employeeName: string | null): string | null {
+/** PRIOR_SENTENCE_FIX_ENABLED: "late 10/5", " 10/15 and 10/16" — a clause that is only more dates belongs to the one before it. */
+const DATES_ONLY = new RegExp(String.raw`^\s*(?:and\s+|&\s+)?${DATE}(?:\s*(?:,|and|&)\s*${DATE})*\s*$`, "i");
+
+function withDateListsJoined(clauses: readonly string[]): string[] {
+  const joined: string[] = [];
+  for (const clause of clauses) {
+    if (joined.length > 0 && DATES_ONLY.test(clause)) joined[joined.length - 1] += `,${clause}`;
+    else joined.push(clause);
+  }
+  return joined;
+}
+
+function clauseOffense(clause: string, employeeName: string | null, keepDates = false): string | null {
   let text = clause.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
   // "violation is that on 10-16-26 Testy was not measuring and weighing product"
   text = text.replace(/^\s*(?:the\s+)?(?:violation|incident|issue|offen[cs]e|what\s+happened|reason)\s+(?:is|was)(?:\s+that)?\s*[:-]?\s*/i, "");
@@ -294,7 +323,9 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   text = text.replace(/\bno payroll\b/gi, " ");
   text = text.replace(/\s+/g, " ").trim();
   text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");
-  text = text.replace(new RegExp(String.raw`\s*,?\s*(?:on|at|dated)?\s*${DATE}$`, "i"), "");
+  // PRIOR_SENTENCE_FIX_ENABLED: the end date of "late on 10-5 and 10-15" or "from 10-5 to 10-9" is not the clause's own date.
+  const trailing = text.replace(new RegExp(String.raw`\s*,?\s*(?:on|at|dated)?\s*${DATE}$`, "i"), "");
+  if (!keepDates || !new RegExp(DATE).test(trailing)) text = trailing;
   text = text.replace(/^(?:for|about|regarding|re:?)\s+/i, "");
   // "regarding On 10-16-26 Test Employee did not …": the date the lead-in left.
   text = text.replace(new RegExp(String.raw`^(?:on\s+)?${DATE}\s*,?\s*`, "i"), "");

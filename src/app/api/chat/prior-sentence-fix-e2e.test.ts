@@ -314,7 +314,14 @@ const PRODUCTION = [
   "PRIOR_ACTIONS_PARSE_ENABLED",
 ] as const;
 const FLAG = "PRIOR_SENTENCE_FIX_ENABLED";
-const ALL_FLAGS = [...PRODUCTION, FLAG, "CODE_SLOTS_ENABLED", "FORM_FULL_REMAP_ENABLED", "MANAGER_WORDS_ONLY_ENABLED"];
+/**
+ * FORM_DATE_INCIDENT_ONLY_ENABLED (D3, on main since e4ff78ec, off in
+ * production) is pinned by each case, never read from the shell: it changes
+ * which incident date a two-date message is dated by on main, so a run with it
+ * set would test another profile. Unset everywhere except the "D3 on" runs.
+ */
+const FIO = "FORM_DATE_INCIDENT_ONLY_ENABLED";
+const ALL_FLAGS = [...PRODUCTION, FLAG, FIO, "CODE_SLOTS_ENABLED", "FORM_FULL_REMAP_ENABLED", "MANAGER_WORDS_ONLY_ENABLED"];
 
 type Answer = {
   content: string;
@@ -437,11 +444,14 @@ const READINGS = [
   ["a reading that copies the first date", "copy"],
 ] as const;
 
-function useProfile(fix: boolean) {
+function useProfile(fix: boolean, fio = false) {
   for (const name of ALL_FLAGS) delete process.env[name];
   for (const name of PRODUCTION) process.env[name] = "true";
   if (fix) process.env[FLAG] = "true";
+  if (fio) process.env[FIO] = "true";
 }
+
+const DATE_QUESTION = /You mentioned more than one date \(\*\*10\/5\*\*, \*\*10\/15\*\*\)\. Which date goes on the form\?/;
 
 /** The card's "Prior actions" line, without its confirmation. */
 function priorLine(content: string): string | null {
@@ -459,17 +469,25 @@ async function card(said: string) {
   return { thread, answer, proposal: answer.formProposal ?? null };
 }
 
-describe.each(READINGS)("flag on, with %s", (_label, reading) => {
+const FIO_RUNS = [
+  ["D3 unset", false],
+  ["D3 on", true],
+] as const;
+
+describe.each(FIO_RUNS.flatMap(([fioLabel, fio]) => READINGS.map(([label, reading]) => [`${label}, ${fioLabel}`, reading, fio] as const)))("flag on, with %s", (_label, reading, fio) => {
   beforeEach(() => {
-    useProfile(true);
+    useProfile(true, fio);
     state.slotReading = reading;
   });
 
   describe.each(CASINGS)("%s", (_casing, cased) => {
-    it("T1: dated 10/5, the lateness is the Observation, the coaching is the prior action", async () => {
+    // Coordinator's ruling, 26 Oct 2026: two incident dates are asked once, and dated the day of creation until answered.
+    it("T1: asks which of 10/5 and 10/15, never the coaching; the lateness is the Observation, the coaching is the prior action", async () => {
       const { answer, proposal } = await card(cased(LIVE.T1));
       expect(proposal?.templateKey).toBe("dpoa");
-      expect(proposal?.formDate).toBe("2026-10-05");
+      expect(proposal?.formDate ?? null).toBeNull();
+      expect(answer.content).toMatch(DATE_QUESTION);
+      expect(answer.content).not.toMatch(/\*\*Date:\*\*/);
       expect(observation(answer.content)).toMatch(/she was late on 10-5 and 10-15/i);
       expect(observation(answer.content)).not.toMatch(/coach/i);
       expect(priorLine(answer.content)).toBe("Coaching about being late — 10/16/2026");
@@ -619,7 +637,8 @@ describe.each(CASINGS)("the created draft from T1 (%s)", (_casing, cased) => {
   it("flag on: both lateness dates and the coaching's 10/16 stay, and the coaching is the prior action", async () => {
     useProfile(true);
     const draft = await createdDraft(cased(LIVE.T1), MODEL_OBSERVATION);
-    expect(draft.formDate).toBe("2026-10-05");
+    // The date is asked, so the form is dated the day it is created.
+    expect(draft.formDate).toBe(TODAY);
     expect(draft.observation).toContain("on October 5, 2026, and again on October 15, 2026.");
     expect(draft.observation).toContain("coached about being late on October 16, 2026.");
     expect(draft.priorActions).toBe("Coaching about being late — 10/16/2026");

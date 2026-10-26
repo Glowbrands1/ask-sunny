@@ -1,6 +1,6 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { payrollAmountFieldEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
-import { blankYearlessStepDates, extractFormDate } from "@/lib/forms/form-date-answer";
+import { payrollAmountFieldEnabled, priorActionsParseEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { blankYearlessStepDates, extractFormDate, statedIncidentDates } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, yearlessCuedDates } from "@/lib/forms/late-open";
 import {
   payrollAmountFromConversation,
@@ -167,7 +167,12 @@ function rankSalons(phrase: string): { name: string; score: number } | null {
 export function fieldLines(question: string, today: string, earlier = ""): string[] {
   const lines: string[] = [];
   const corpus = earlier.trim() ? `${earlier}\n${question}` : question;
-  if (!extractFormDate(question, today)) {
+  if (!extractFormDate(question, today) && priorSentenceFixEnabled()) {
+    // PRIOR_SENTENCE_FIX_ENABLED: one incident date is written out; two or more are asked about
+    // ("Which date goes on the form?"), never picked here; an earlier step's date never is one.
+    const stated = [...new Set(statedIncidentDates(corpus, today).map((found) => found.iso))];
+    if (stated.length === 1) lines.push(`It happened on ${slashDate(stated[0]!)}.`);
+  } else if (!extractFormDate(question, today)) {
     const known = extractFormDate(corpus, today);
     // "she was coached on 9-15": an earlier step's yearless date is not the incident (PRIOR_ACTIONS_PARSE_ENABLED).
     const slash = lastUnyearDated(priorActionsParseEnabled() ? blankYearlessStepDates(corpus, today) : corpus, today);

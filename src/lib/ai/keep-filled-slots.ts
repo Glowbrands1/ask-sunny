@@ -1,6 +1,6 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
-import { datesInTextWithYearless, listIncidentDates, priorStepDateOffsets } from "@/lib/forms/form-date-answer";
+import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { matchEmployeeName } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
@@ -31,7 +31,9 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { statedFormDate } from "@/lib/forms/incident-dates";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
@@ -172,6 +174,16 @@ export function holdFilledSlots(input: {
     };
   }
   if (formDate && formDate !== next.formDate) next = { ...next, formDate };
+  /*
+   * PRIOR_SENTENCE_FIX_ENABLED (coordinator's ruling, 26 Oct 2026): the date
+   * the manager's incident dates settle (`statedFormDate`) — two are asked
+   * about, and the form is dated the day it is created until they answer —
+   * over the intent read's "It happened on …" line, which took one of them.
+   */
+  const stated = priorSentenceFixEnabled() && next.templateKey === "dpoa"
+    ? statedFormDate([...input.history, { role: "user", content: input.question }], input.today)
+    : null;
+  if (stated && (stated.iso ?? null) !== (next.formDate ?? null)) next = { ...next, formDate: stated.iso };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
   if (warningLevel && warningLevel !== next.warningLevel) next = { ...next, warningLevel };
   if (warningLevelManagerOnlyEnabled() && !warningLevel && next.warningLevel) next = { ...next, warningLevel: null };
@@ -191,6 +203,7 @@ export function holdFilledSlots(input: {
     if (prior.trim()) content = prior;
   }
   content = dropWarningLines(content);
+  if (stated) content = withDateLine(content, stated.iso);
   if (next.templateKey === "stc-exit" && next.employeeName) {
     content = exitContent(content, next, turns.join("\n"), input.today);
   }
@@ -556,6 +569,17 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
   return person ? [...person.salonIds] : [];
 }
 
+/** PRIOR_SENTENCE_FIX_ENABLED: the reply's "**Date:**" line says the settled date, or is gone while it is asked. */
+function withDateLine(content: string, iso: string | null): string {
+  const line = iso ? `**Date:** ${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}/${iso.slice(0, 4)}` : null;
+  const lines = content.split("\n");
+  const at = lines.findIndex((entry) => entry.startsWith("**Date:**"));
+  if (at < 0) return content;
+  if (line) lines[at] = line;
+  else lines.splice(at, lines[at + 1] === "" && lines[at - 1] === "" ? 2 : 1);
+  return lines.join("\n");
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
@@ -563,8 +587,11 @@ function withObservation(content: string, turns: readonly string[], employeeName
   const sentences: string[] = [];
   const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
-    // PRIOR_SENTENCE_FIX_ENABLED: a prior step's clause is no account, and the incident beside it stays.
-    const read = today === undefined ? { text: turn, dropped: false } : withoutPriorClauses(turn, today, conversation);
+    // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
+    // 10-16 about being late" put only the coaching here — the short incident sentence failed
+    // `describesMoreThanTheRequest`. A prior step's clause is no account, and a manager sentence
+    // left beside it that describes an incident is kept however short.
+    const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
       if (said.length < 12) continue;
@@ -582,42 +609,6 @@ function withObservation(content: string, turns: readonly string[], employeeName
   }
   if (sentences.length === 0) return content;
   return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
-}
-
-/*
- * PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026, Ask Sunny production): "…she
- * was late on 10-5 and 10-15. i coached her on 10-16 about being late" put
- * only the coaching on the Observation of Offense — the incident sentence has
- * too few words beyond the request to pass `describesMoreThanTheRequest`, and
- * the coaching sentence has plenty. With the flag on, each clause whose dates
- * are all earlier steps (`priorStepDateOffsets`) is taken out of the turn,
- * and a manager sentence left beside it that describes an incident is kept
- * however short. Off (or with no prior step in the turn), the turn is read as
- * before.
- */
-const CLAUSE_END = /\.(?=\s|$)|(?<!\d)\.(?!\d)|[;!?\n]|,(?!\s*\d{4})/g;
-
-function withoutPriorClauses(turn: string, today: string, conversation: string): { text: string; dropped: boolean } {
-  const steps = priorStepDateOffsets(turn, today, conversation);
-  if (steps.length === 0) return { text: turn, dropped: false };
-  const stepSet = new Set(steps);
-  const ends = [...turn.matchAll(CLAUSE_END)].map((match) => match.index ?? 0);
-  const dates = datesInTextWithYearless(turn, today);
-  const cuts: [number, number][] = [];
-  for (const index of steps) {
-    const opening = ends.filter((at) => at < index).at(-1) ?? -1;
-    const closing = ends.find((at) => at > index) ?? turn.length;
-    // A clause that also dates something that is not an earlier step stays whole.
-    if (dates.some((found) => found.index > opening && found.index < closing && !stepSet.has(found.index))) continue;
-    const comma = opening >= 0 && turn[opening] === ",";
-    const from = comma ? opening : opening + 1;
-    const to = !comma && turn[closing] === "," ? closing + 1 : closing;
-    if (!cuts.some(([start, end]) => start === from && end === to)) cuts.push([from, to]);
-  }
-  if (cuts.length === 0) return { text: turn, dropped: false };
-  let text = turn;
-  for (const [from, to] of [...cuts].sort((left, right) => right[0] - left[0])) text = text.slice(0, from) + text.slice(to);
-  return { text, dropped: true };
 }
 
 /**
