@@ -204,6 +204,12 @@ export const QA6_READ_FORMATS: readonly FormatSpec[] = [
   on("fri 10/2", "fri 10/2", "2026-10-02"),
 ];
 
+/** QA-3 (26 Oct 2026): a day and a short month name ("25 jun", "28 jul", "20 oct") is read nowhere. */
+export const QA3_FORMATS: readonly FormatSpec[] = [unread(on("25 jun", "25 jun", "2026-06-25"))];
+
+/** QA-3: a yearless dashed date for the exit form's last day and resigned date. */
+const QA3_EXIT_FORMATS: readonly FormatSpec[] = [on("10-20", "10-20", "2026-10-20")];
+
 const RELATIVE_FORMATS: readonly FormatSpec[] = [
   bare("today", "today", TODAY),
   bare("yesterday", "yesterday", "2026-10-25"),
@@ -234,7 +240,7 @@ export const FOLLOW_UP_FORMATS: readonly FormatSpec[] = [
   unread(on("1002", "1102", "2026-11-02")),
 ];
 
-const QA6_FORMATS = [...QA6_UNREAD_FORMATS, ...QA6_READ_FORMATS];
+const QA6_FORMATS = [...QA6_UNREAD_FORMATS, ...QA6_READ_FORMATS, ...QA3_FORMATS];
 
 /** An id part that keeps the separator: "10/16", "10-16" and "10.16" are different formats. */
 const slug = (text: string) =>
@@ -347,7 +353,7 @@ const DATE_EDIT_PROBES: DateMatrixBase[] = [
   },
 ];
 
-const LAST_DAY = byFormat("last day worked", "last-day", "exit", [...QA6_FORMATS, ...RELATIVE_FORMATS], (f) => ({
+const LAST_DAY = byFormat("last day worked", "last-day", "exit", [...QA6_FORMATS, ...QA3_EXIT_FORMATS, ...RELATIVE_FORMATS], (f) => ({
   turns: [`create an exit form for ${NAME}, she resigned and her last day was ${f.when.replace(/^on /, "")}`],
   expect: { lastDayWorked: f.iso, dateOrAsk: f.askOk, employee: NAME },
 }));
@@ -357,7 +363,7 @@ const NOTICE = byFormat("notice given", "notice", "exit", [...QA6_FORMATS, ...RE
   expect: { noticeDate: f.iso, dateOrAsk: f.askOk, employee: NAME },
 }));
 
-const RESIGNED = byFormat("resignation", "quit", "exit", [...QA6_FORMATS, ...RELATIVE_FORMATS], (f) => ({
+const RESIGNED = byFormat("resignation", "quit", "exit", [...QA6_FORMATS, ...QA3_EXIT_FORMATS, ...RELATIVE_FORMATS], (f) => ({
   turns: [`create an exit form for ${NAME}, she quit ${f.when}`],
   expect: { resignationDate: f.iso, dateOrAsk: f.askOk, employee: NAME },
 }));
@@ -586,6 +592,26 @@ const LIVE: DateMatrixBase[] = [
       priorActions: [
         { kind: "verbal", date: "2026-09-15" },
         { kind: "coaching", date: "2026-08-01" },
+      ],
+      followUpDate: null,
+      employee: NAME,
+    },
+  },
+  {
+    id: "qa3-late-open-day-month-priors",
+    form: "ca",
+    role: "live",
+    source: "QA-3, 26 Oct 2026 (day and short month name; a prior's date must never date the form)",
+    today: TODAY,
+    formats: ["16 Oct"],
+    turns: [`written ca for ${NAME}, late to open 20 oct. prior verbal 25 jun, written 28 jul`],
+    expect: {
+      formDate: "2026-10-20",
+      formDateOrAsk: true,
+      incidentDates: ["2026-10-20"],
+      priorActions: [
+        { kind: "verbal", date: "2026-06-25" },
+        { kind: "written", date: "2026-07-28" },
       ],
       followUpDate: null,
       employee: NAME,
