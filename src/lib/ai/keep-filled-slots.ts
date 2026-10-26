@@ -55,6 +55,7 @@ import {
   dateQuestionKeptEnabled,
   secondRequestOwnAccountEnabled,
   observationOwnPersonOnlyEnabled,
+  priorActionsNoCommaEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { turnsMadeAbout, withObservationMadeAbout } from "./make-it-about";
 import { NOTHING_SET_ASIDE, citationSetAside, policiesSetAside, setAsideAnything, withPolicySetAside, withoutPolicyAsks } from "@/lib/forms/policy-set-aside";
@@ -760,6 +761,18 @@ function onlyAGlossaryTerm(sentence: string): boolean {
   return caSalesPolicyEnabled() && foldsToGlossaryTerm(sentence.replace(/[.!?]+$/, ""));
 }
 
+/**
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED (Sunny tester, 26 Oct 2026): "… no call no
+ * show today. I coached her on 10-16 and gave a verbal on 10-21." The second
+ * sentence was dropped from the Observation: without its dates and the words
+ * a request uses, only "coached" and "gave" were left, too few to be an
+ * account. A sentence that names a dated earlier step is the manager's
+ * account too, and is kept.
+ */
+function namesAnEarlierStep(sentence: string, today: string | undefined): boolean {
+  return today !== undefined && priorActionsNoCommaEnabled() && statedPriorActions(sentence, today).length > 0;
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
@@ -783,7 +796,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
       // however few words it has beyond the request, with a prior clause beside it or not.
       const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
-      if (!incident && !describesMoreThanTheRequest(said, { ignore })) continue;
+      // PRIOR_ACTIONS_NO_COMMA_ENABLED: a short sentence naming a dated earlier step is the manager's account too.
+      if (!incident && !describesMoreThanTheRequest(said, { ignore }) && !namesAnEarlierStep(said, today)) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
