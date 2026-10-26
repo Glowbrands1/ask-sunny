@@ -443,3 +443,39 @@ describe("what is never changed", () => {
     expect(humanizeFormReply(built, { history: firstCa(), question: "no deduct", today: TODAY })).toBe(built);
   });
 });
+
+/*
+ * QA, 26 Oct 2026 (the owner: "do not touch the successful green fixes"): the
+ * humanizer is wording only. A card's content, a policy citation, a date, a
+ * name, the Action Plan and the notes the confirmed-live fixes added pass
+ * through unchanged, flag on.
+ */
+describe("confirmed-live content passes through unchanged", () => {
+  it.each([
+    ["the Action Plan left blank", "**Action Plan:** left blank for you to complete on the form."],
+    ["Late Opening cited at p.15 only", "Late Opening Policy, JBA Policy Manual p.15"],
+    ["the Observation of Offense", "**Observation of Offense:** Opened the salon 15 minutes late on 10/14/2026."],
+    ["the date", "**Date:** 10/14/2026"],
+    ["the employee and salon", "**Employee:** Avery Testperson\n**Salon:** KS Lawrence"],
+    ["a note the draft added", "Note: the break room is not a client area, so the incident stays under Standards of Conduct."],
+  ])("%s", (_label, content) => {
+    expect(humanPhrases(content)).toBe(content);
+    const reply = humanizeFormReply(answer(content, undefined), { history: [], question: "ca avery testperson late 10/14", today: TODAY });
+    expect(reply.content).toBe(content);
+  });
+
+  it.each(cases("ca avery testperson opened late 15 min 10/14 verbal no deduct"))(
+    "a short-command card: every name, date and policy in the reply is kept (%s)",
+    (question) => {
+      const built = answer(
+        [CA_OPENER, POLICY, VERBAL, "**Date:** 10/14/2026", "Late Opening Policy, JBA Policy Manual p.15", PAYROLL_NO, SALON_NOTICE].join("\n\n"),
+        proposal({ warningLevel: "verbal", payrollDeduct: "no", formDate: "2026-10-14" }),
+      );
+      const reply = humanizeFormReply(built, { history: [], question, today: TODAY });
+      for (const kept of ["**Corrective Action Form**", "**Avery Testperson**", "Late Opening", "Verbal Warning", "**Date:** 10/14/2026", "JBA Policy Manual p.15", "**No**"]) {
+        expect(reply.content).toContain(kept);
+      }
+      expect(reply.formProposal).toBe(built.formProposal);
+    },
+  );
+});
