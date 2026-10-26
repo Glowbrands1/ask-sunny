@@ -92,3 +92,28 @@ describe("flag on: QA-2 review", () => {
     },
   );
 });
+
+/*
+ * HOW REPLIES ARE TYPED (QA-5, 26 Oct 2026): the same replies all lowercase
+ * and in sentence case, brand names included. The sibling company is taken
+ * out in each, and the reply keeps its policy and its citations.
+ */
+describe("flag on: the same result in lowercase and sentence case", () => {
+  const lower = (text: string) => text.toLowerCase();
+  const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+  const SIBLING = /buff\s+city|\bbcs\b/i;
+
+  it.each([
+    ["attendance", REPLIES.attendance, /no call no show/i],
+    ["availability", REPLIES.availability, /myglow/i],
+    ["onlyOther", REPLIES.onlyOther, /late opening applies/i],
+  ] as const)("%s", (_name, reply, kept) => {
+    on();
+    for (const typed of [lower(reply), sentence(reply)]) {
+      const out = withoutOtherBrands(typed);
+      expect(out).not.toMatch(SIBLING);
+      expect(out).toMatch(kept);
+      expect(out).toMatch(/\[p\.\d+\]/);
+    }
+  });
+});

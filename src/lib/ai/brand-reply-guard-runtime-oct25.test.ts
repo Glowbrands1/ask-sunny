@@ -72,14 +72,7 @@ vi.mock("./call-claude", () => ({
 
 const ACTOR = { role: "salon_director" as never, scope: { level: "salon", primaryAreaId: "loc-0314", alsoCoversAreaIds: [] } };
 
-const turn = (id: string, role: "user" | "assistant", content: string) => ({
-  id,
-  role,
-  content,
-  createdAt: "2026-10-25T08:59:00Z",
-});
-
-async function ask(question: string, history: ReturnType<typeof turn>[]) {
+async function ask(question: string, history: readonly never[]) {
   const { answerQuestion } = await import("./server-ask");
   return answerQuestion(
     {
@@ -110,6 +103,7 @@ const QUESTIONS = [
   "Late opening policy",
   "whats policy say about changing availabilty",
   "Whats policy say about changing availabilty",
+  "WHAT DOES OUR POLICY SAY ABOUT ATTENDANCE",
 ];
 
 describe("the attendance answer", () => {
