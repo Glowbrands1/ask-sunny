@@ -224,6 +224,13 @@ describe("BARE_ANSWER_BINDING_ENABLED on", () => {
     expect(bindBareAnswer({ response: no, question: answer, history: asked })).toBe(no);
   });
 
+  // QA-2, 26 Oct 2026: "never", "none", "not really" to the payroll question saved "no" with the flag off.
+  it.each(["never", "Never", "none", "None", "not really", "Not really", "NONE"])("keeps Payroll No from '%s' to the payroll question", (answer) => {
+    process.env[FLAG] = "on";
+    const no = respondWith(card({ payrollDeduct: "no" }), "Is payroll deduct applicable? **No** — tell me if that should change.");
+    expect(bindBareAnswer({ response: no, question: answer, history: HISTORY })).toBe(no);
+  });
+
   it("reads bare answers the same in lowercase and sentence case", () => {
     process.env[FLAG] = "on";
     const no = { content: "Is payroll deduct applicable? **No** — tell me if that should change.", citations: [], formProposal: card({ payrollDeduct: "no" }) } as unknown as AskResponse;
