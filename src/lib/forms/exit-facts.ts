@@ -407,6 +407,10 @@ function nearestCue(
 
 const CLAUSE_END = /[.!?;\n]/;
 
+/** "without giving notice", "never gave notice", "no notice given": the notice cue before a date, negated. */
+const NO_NOTICE_GIVEN_BEFORE =
+  /\b(?:without|never|no|didn't|didnt|did not)\s+(?:[\w']+\s+){0,2}?(?:(?:giving|give|gave|providing|provide|putting in|put in|submitting|submit)\s+(?:[\w']+\s+){0,2}?)?(?:notice|two weeks|2 weeks)\b(?:\s+given)?[^.;!?\n]*$/i;
+
 function roleFor(
   text: string,
   tokens: DateToken[],
@@ -424,6 +428,8 @@ function roleFor(
   const sentence = [...before].reverse().findIndex((char) => CLAUSE_END.test(char));
   if (sentence >= 0) before = before.slice(before.length - sentence);
   const fromBefore = nearestCue(before.toLowerCase(), cues);
+  // EXIT_NOTICE_FULFILLED_ENABLED (QA-3, 26 Oct 2026): "left without giving notice 10-5" gave no notice; 10-5 is the day she left.
+  if (fromBefore === "noticeGiven" && exitNoticeFulfilledEnabled() && NO_NOTICE_GIVEN_BEFORE.test(before)) return "lastDayWorked";
   if (fromBefore) return fromBefore;
   // EXIT_INTAKE_FIX_ENABLED: "gave notice 9/25/26 – fulfilled 10/9/26".
   if ((exitIntakeFixEnabled() || exitNoticeFulfilledEnabled()) && nearestCue(before.toLowerCase(), [BARE_FULFILLED])) {

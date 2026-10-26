@@ -316,3 +316,28 @@ describe.each(REGISTERS)("EXIT_NOTICE_FULFILLED_ENABLED, worked without a notice
     });
   });
 });
+
+/*
+ * QA-3, 26 Oct 2026 (flag on): "left without giving notice 10-5" invented a
+ * notice date of 10-5 (the year-less reading this flag turns on). Without a
+ * notice, the date is the day she left.
+ */
+describe.each(NEGATED_REGISTERS)("EXIT_NOTICE_FULFILLED_ENABLED, left without giving notice: %s", (_register, as) => {
+  it("on, the date after \"without giving notice\" is the last day, never a notice date", () => {
+    withFlag(true);
+    for (const text of [
+      "exit for ava pellmore, left without giving notice 10-5",
+      "exit for ava pellmore, she quit without giving notice on 10/5",
+    ]) {
+      const facts = readExitFacts(as(text), TODAY);
+      expect(facts.noticeGiven, text).toBeNull();
+      expect(facts.lastDayWorked, text).toBe("2026-10-05");
+      expect(facts.noticeOptions, text).toEqual([]);
+    }
+  });
+
+  it("on, a notice that was given keeps its date", () => {
+    withFlag(true);
+    expect(readExitFacts(as("ava pellmore gave notice 9/25, last day 10/9"), TODAY).noticeGiven).toBe("2026-09-25");
+  });
+});
