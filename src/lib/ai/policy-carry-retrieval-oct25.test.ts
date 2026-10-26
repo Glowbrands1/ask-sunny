@@ -178,3 +178,18 @@ describe("which turns only say to go ahead", () => {
     expect(carriedPolicyTopic("do it", [{ role: "assistant", content: "the visitors policy" }])).toBeNull();
   });
 });
+
+/* HOW MANAGERS TYPE (Pau, 26 Oct 2026): the same reading in all lowercase and in sentence case. */
+const lower = (text: string) => text.toLowerCase();
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+
+describe("every register of a go-ahead", () => {
+  it.each(["just make it", "Just make it", "JUST MAKE IT", "do it", "Do it", "make it already", "Ok go ahead"])("%s", (turn) => {
+    expect(isGoAheadTurn(turn)).toBe(true);
+  });
+
+  it.each([T2, lower(T2), sentence(T2)])("flag on: the policy turn in any case is the one searched (%s)", (policyTurn) => {
+    vi.stubEnv("POLICY_CARRY_RETRIEVAL_ENABLED", "true");
+    expect(carriedPolicyTopic("just make it", [{ role: "user", content: policyTurn }])).toBe(policyTurn);
+  });
+});
