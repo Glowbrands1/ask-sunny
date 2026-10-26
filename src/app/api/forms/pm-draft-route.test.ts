@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
@@ -1583,6 +1582,8 @@ describe("the approved-policy search", () => {
  * the Production manual's text, below — lists the infraction.
  */
 describe("HR feedback 30 Sep — the Corrective Action's policy, from the manager's words", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   const SOC_OPENING =
     "The Company expects Employees to follow rules of conduct that will protect the interests and\n" +
     "safety of all customers, Employees, and The Company.\n" +
@@ -1683,6 +1684,18 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   });
 
   it("rests a direction not followed on the manual's insubordination line", async () => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "");
+    const payload = await post("Delphine was told to restock the lotion wall before close and refused.");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
+    expect(state.persisted[0]!.values.policy_language).toBe(CITED);
+    expect(payload.caPolicy).toMatchObject({
+      applied: true,
+      anchor: "o Insubordination -the refusal to follow the directions of the manager.",
+    });
+  });
+
+  it("POLICY_SPECIFIC_TOPICS_ENABLED on: rests a direction not followed on the manual's insubordination line, quoting the bullet", async () => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
     const payload = await post("Delphine was told to restock the lotion wall before close and refused.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
     /*
@@ -1690,13 +1703,10 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
      * 26 Oct 2026): the policy quotes the manual's insubordination bullet, not
      * the top of the section, and cites the printed page that bullet is on. In
      * this fixture manual the bullet is on p. 12 (in the production manual it
-     * is p. 13: policy-specific-topics-oct26.test.ts). Off, the section's
-     * opening as before.
+     * is p. 13: policy-specific-topics-oct26.test.ts).
      */
     expect(state.persisted[0]!.values.policy_language).toBe(
-      policySpecificTopicsEnabled()
-        ? "Insubordination -the refusal to follow the directions of the manager.\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12"
-        : CITED,
+      "Insubordination -the refusal to follow the directions of the manager.\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12",
     );
     expect(payload.caPolicy).toMatchObject({
       applied: true,

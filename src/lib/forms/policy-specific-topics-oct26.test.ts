@@ -345,6 +345,7 @@ const DENIALS = [
   "she never stole product",
   "no one brought a puppy in",
   "she was not talking bad about her coworkers",
+  "she worked a full shift without stealing",
   "she did not refuse",
   "she never took cash from the drawer",
 ];

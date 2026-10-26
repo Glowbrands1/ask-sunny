@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -695,13 +694,19 @@ const CLOSING =
 const DRAWER_PLAN =
   "Tess Varga is expected to adhere to the Sun Tan City cash handling policy by keeping the register accurate. Moving forward, Tess should count the drawer at every shift change. Management will monitor compliance and provide coaching as needed.";
 
-/* No offense box is ticked and no manual section cited for a register shortage here, so the plan names the applicable company policy. */
-/* POLICY_SPECIFIC_TOPICS_ENABLED: a register shortage is the Standards of Conduct, so the plan names it (as the Standards of Conduct plans in qa-oct21-audit-e2e do). */
-const REVIEW_APPLICABLE = policySpecificTopicsEnabled()
-  ? "Management will review the Standards of Conduct policy with Tess."
-  : "Management will review the applicable company policy with Tess.";
+/* Flag off: no offense box is ticked and no manual section cited for a register shortage, so the plan names the applicable company policy. Flag on: a register shortage is the Standards of Conduct, so the plan names it (as the Standards of Conduct plans in qa-oct21-audit-e2e do). */
+const REVIEW_OFF = "Management will review the applicable company policy with Tess.";
+const REVIEW_ON = "Management will review the Standards of Conduct policy with Tess.";
 
-describe("a payroll deduction with an amount", () => {
+describe.each([
+  ["off", "", REVIEW_OFF],
+  ["on", "true", REVIEW_ON],
+])("a payroll deduction with an amount (POLICY_SPECIFIC_TOPICS_ENABLED %s)", (_flag, value, REVIEW_APPLICABLE) => {
+  beforeEach(() => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", value);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   it("is read as Yes, not asked, and the Action Plan states the amount before the closing", async () => {
     const { last, proposal, create } = await conversation([C1]);
 
@@ -1590,7 +1595,15 @@ const ROUND3_CASES: Round3Case[] = [
 ];
 
 describe("QA 22 Oct, round 3: everyday wording, single messages and multi-turn, through to the saved form", () => {
-  it.each(ROUND3_CASES.map((c) => [c.turns.join(" ⏎ "), c] as const))("%s", async (_label, c) => {
+  /*
+   * Each case runs with the flag OFF (the expectation main has always had) and,
+   * where POLICY_SPECIFIC_TOPICS_ENABLED changes it on purpose, again with it ON:
+   * a register or drawer shortage is the Standards of Conduct (page 13), ticked
+   * where the model ticked nothing. The flag is set explicitly either way.
+   */
+  afterEach(() => vi.unstubAllEnvs());
+  const round3 = async (c: Round3Case, on: boolean) => {
+    vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", on ? "true" : "");
     const { taken, replied, proposal, create } = await chatTurns(c.turns);
     // Once the form is asked for, every later turn stays with it.
     const first = taken.indexOf(true);
@@ -1612,13 +1625,20 @@ describe("QA 22 Oct, round 3: everyday wording, single messages and multi-turn, 
     expect(field(form, "payroll_deduct")!.checked).toEqual([c.payroll]);
     if (c.date) expect(field(form, "form_date")!.value).toBe(c.date);
     else expect(field(form, "form_date")?.value ?? "").not.toMatch(/^2026-10-1[256]$/);
-    const offense = policySpecificTopicsEnabled() && c.offenseOn ? c.offenseOn : c.offense;
+    const offense = on && c.offenseOn ? c.offenseOn : c.offense;
     expect(field(form, "offense_type")?.checked ?? []).toEqual(offense ? [offense] : []);
     const prior = field(form, "prior_actions")?.value ?? "";
     if (c.prior === "none") expect(prior).toBe("None — first occurrence");
     else if (c.prior === "") expect(prior).toBe("");
     else expect(prior).toMatch(c.prior);
-  });
+  };
+
+  it.each(ROUND3_CASES.map((c) => [c.turns.join(" ⏎ "), c] as const))("%s", (_label, c) => round3(c, false));
+
+  it.each(ROUND3_CASES.filter((c) => c.offenseOn).map((c) => [c.turns.join(" ⏎ "), c] as const))(
+    "POLICY_SPECIFIC_TOPICS_ENABLED on: %s",
+    (_label, c) => round3(c, true),
+  );
 
   it.each([
     "What's our policy on missing meetings?",

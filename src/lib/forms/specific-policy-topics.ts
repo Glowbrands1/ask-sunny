@@ -249,7 +249,7 @@ export interface SpecificTopic {
  * or a copula + "not" sits inside it ("drawer was not short"). The one rule
  * whose incident IS an absence ("no wet floor sign") is exempt.
  */
-const NEGATION_WORD = /^(?:no|not|never|nor|neither|none|nothing|nobody|cannot|n't|(?:did|do|does|was|were|is|are|has|had|have|can|would|could)n'?t)$/;
+const NEGATION_WORD = /^(?:no|not|never|nor|neither|none|nothing|nobody|without|cannot|n't|(?:did|do|does|was|were|is|are|has|had|have|can|would|could)n'?t)$/;
 const COPULA_NOT = /\b(?:(?:was|is|were|are)\s+not|wasn'?t|isn'?t|weren'?t|aren'?t)\s+(?!balanc|accurate|right|correct|there|enough|matching)/;
 
 function denied(sentence: string, index: number, matched: string, rule: TopicRule): boolean {
