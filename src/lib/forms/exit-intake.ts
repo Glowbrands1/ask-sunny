@@ -1,4 +1,5 @@
 import { salonById } from "@/data/salons";
+import { exitProseFactsEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatFormProposal } from "@/types";
 
 import { answerStatementText } from "./document";
@@ -135,7 +136,13 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
    */
   const salon = proposal.locationId ? salonById(proposal.locationId) : undefined;
   if (salon) filled.push(`- **Location:** ${salon.name}`);
-  filled.push("- **Date:** the day the draft is created");
+  /*
+   * EXIT_PROSE_FACTS_ENABLED (QA, 25 Oct 2026, F2): the prose said "Date: the
+   * day the draft is created" while the card showed 9/29/2026
+   * (conv_mvoepgw32o35rpt). The card's date, when it has one, is the Date.
+   */
+  const cardDate = exitProseFactsEnabled() && proposal.formDate ? exitDateInWords(proposal.formDate) : null;
+  filled.push(`- **Date:** ${cardDate ?? "the day the draft is created"}`);
   // EXIT_INTAKE_FIX_ENABLED: the address the manager typed (`readPermanentAddress`).
   if (details.permanentAddress) filled.push(`- **Permanent Address:** ${details.permanentAddress}`);
   for (const role of ROLE_ORDER) {
@@ -164,7 +171,18 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
     const sentence = answerStatementText(line, checked);
     if (sentence) filled.push(`- **${line.label}:** ${sentence}`);
   }
-  filled.push("- **Additional Details:** a short account drafted from what you've described");
+  /*
+   * EXIT_PROSE_FACTS_ENABLED: "a short account drafted from what you've
+   * described" was promised after a bare name (conv_mvofnrm5217ss9v). With
+   * nothing described the line is blank for the manager; otherwise it says
+   * what it will hold — their facts, nothing added.
+   */
+  const described = exitFactsSupplied(facts) || exitDetailsSupplied(details);
+  if (!exitProseFactsEnabled()) {
+    filled.push("- **Additional Details:** a short account drafted from what you've described");
+  } else if (described) {
+    filled.push("- **Additional Details:** only the facts you've given about the departure — nothing added");
+  }
 
   /*
    * LOCATION IS BLANK UNLESS AN AUTHORIZED ROSTER SALON SETTLED IT. A salon
@@ -180,6 +198,7 @@ export function exitReady({ proposal, facts, details }: ExitReadyInput): string 
   blank.push(...unsetDates);
   if (ticks.length === 0) blank.push("the Resignation Details boxes");
   blank.push(...blankDetailLines(facts, details));
+  if (exitProseFactsEnabled() && !described) blank.push("Additional Details");
   blank.push("written notice attached");
   blank.push("all three signature lines");
 

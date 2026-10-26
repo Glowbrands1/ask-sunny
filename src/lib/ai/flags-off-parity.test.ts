@@ -90,6 +90,7 @@ import {
   bareAnswerBindingEnabled,
   crossPersonIncidentGuardEnabled,
   cardNeverSilentEnabled,
+  exitProseFactsEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   nameCaseInsensitiveEnabled,
@@ -207,6 +208,7 @@ const NEW_FLAGS = [
   "BARE_ANSWER_BINDING_ENABLED",
   "CROSS_PERSON_INCIDENT_GUARD_ENABLED",
   "CARD_NEVER_SILENT_ENABLED",
+  "EXIT_PROSE_FACTS_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "NAME_CASE_INSENSITIVE_ENABLED",
@@ -399,6 +401,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(bareAnswerBindingEnabled()).toBe(false);
     expect(crossPersonIncidentGuardEnabled()).toBe(false);
     expect(cardNeverSilentEnabled()).toBe(false);
+    expect(exitProseFactsEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(nameCaseInsensitiveEnabled()).toBe(false);
