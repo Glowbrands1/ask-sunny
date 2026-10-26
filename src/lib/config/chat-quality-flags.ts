@@ -847,6 +847,15 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * A terse "ca …" line's incident sentence is the account alone, "On 10/11/26,
+ * dress code.", without the employee's name inside What happened (QA, 26 Oct
+ * 2026). Off, the expansion reads "On 10/11/26 <name> dress code." as before.
+ */
+export function terseIncidentNoNameEnabled(): boolean {
+  return envFlag("TERSE_INCIDENT_NO_NAME_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
