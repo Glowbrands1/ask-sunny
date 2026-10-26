@@ -883,6 +883,17 @@ export function followUpNotPriorEnabled(): boolean {
 }
 
 /**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
+
+/**
  * A person the manager names only to say the form is not for them is not the
  * form's person (QA-6, 26 Oct 2026; same flag in both apps). "never one for
  * Rowan Pell" and "do not make one for Rowan Pell", with a card open for
