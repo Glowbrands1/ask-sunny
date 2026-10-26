@@ -1027,3 +1027,14 @@ export function bareAnswerBindingEnabled(): boolean {
 export function crossPersonIncidentGuardEnabled(): boolean {
   return envFlag("CROSS_PERSON_INCIDENT_GUARD_ENABLED");
 }
+
+/**
+ * A form turn always answers the manager: when the card reply would be empty
+ * or word for word the previous one, a line in front of it answers the turn
+ * (press Create draft to edit; Finalize is a button on the form). Ask Sunny
+ * conv_mvoenhk42lu3cxo, 25 Oct 2026. See `ai/card-never-silent.ts`. Off, the
+ * reply is returned as it is.
+ */
+export function cardNeverSilentEnabled(): boolean {
+  return envFlag("CARD_NEVER_SILENT_ENABLED");
+}

@@ -158,6 +158,7 @@ import { withNameRespell } from "./name-respell";
 import { withStoreAliases } from "./store-alias";
 import { withBareAnswerBinding } from "./bare-answer-guard";
 import { withCrossPersonGuard } from "./cross-person-guard";
+import { withCardNeverSilent } from "./card-never-silent";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -283,9 +284,14 @@ export async function answerQuestion(
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // BARE_ANSWER_BINDING_ENABLED: a short answer fills only the slot it answers.
     // NAME_RESPELL_ENABLED: the manager's newest spelling of the employee wins.
-    // Order (bundle 3): the bare-answer guard first puts back the employee a stray word took, then the respelling.
-    return keepManagerActionPlan(
-      withNameRespell(withBareAnswerBinding(await applyQuietQuality(response), request), request),
+    // CARD_NEVER_SILENT_ENABLED: a card turn always answers what the manager asked.
+    // Order (bundle 3): the bare-answer guard first puts back the employee a stray word took, then the
+    // respelling; the never-silent line goes on last, over the finished card reply.
+    return withCardNeverSilent(
+      keepManagerActionPlan(
+        withNameRespell(withBareAnswerBinding(await applyQuietQuality(response), request), request),
+        request,
+      ),
       request,
     );
   };

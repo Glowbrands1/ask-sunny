@@ -502,6 +502,32 @@ describe("individual and team-wide coaching", () => {
     );
   });
 
+  // Ask Sunny conv_mvofsdg92obw8px, 25 Oct 2026, the manager's words exactly.
+  const CHATTY_TEAM =
+    "I have a few team members that arent making sure the NCR forms, Fitzpatrick skin type chart and EFT agreements are signed before they tan the client. I want a coaching form I can reuse for any team member, so please leave the employee name blank and make it generic for the whole team";
+
+  it("CARD_NEVER_SILENT_ENABLED off: the chatty team request still asks for an employee, as on main", async () => {
+    state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
+    delete process.env.CARD_NEVER_SILENT_ENABLED;
+    const response = await propose([said(CHATTY_TEAM)]);
+    expect(response!.formProposal?.subject).toBeUndefined();
+    expect(response!.formProposal?.status).toBe("needs_employee");
+  });
+
+  it("CARD_NEVER_SILENT_ENABLED on: the chatty team request gets the team card with Create draft", async () => {
+    state.scope = { level: "salon", primaryAreaId: "loc-0310", alsoCoversAreaIds: [] };
+    process.env.CARD_NEVER_SILENT_ENABLED = "on";
+    try {
+      const response = await propose([said(CHATTY_TEAM)]);
+      expect(response!.formProposal?.subject).toBe("team");
+      expect(response!.formProposal?.employeeName).toBe("All team members");
+      expect(response!.formProposal?.supportsInlineDraft).toBe(true);
+      expect(response!.content).toContain("This one is for the whole team");
+    } finally {
+      delete process.env.CARD_NEVER_SILENT_ENABLED;
+    }
+  });
+
   it("refuses a team subject on a form that is about one person", async () => {
     const response = await instancesRoute.POST(
       new Request("https://app.test/api/forms/instances", {
