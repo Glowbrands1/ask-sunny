@@ -19,15 +19,30 @@ import type { AskRequest } from "./types";
 const LEAD = String.raw`(?:(?:ok(?:ay)?|yes|great|thanks|and|also|now|so)\b[,.!]?\s*)*(?:(?:please|pls)\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:please|pls)\s+)?`;
 const FIELD = String.raw`(?:the\s+)?(?:observation(?:\s+of\s+(?:the\s+)?offen[cs]e)?|what\s+happened|offen[cs]e\s+description|description(?:\s+of\s+(?:the\s+)?offen[cs]e)?|narrative|issue)`;
 
-const INSTRUCTION = new RegExp(
-  String.raw`^(\s*${LEAD})((?:change|update|set|edit|make|rewrite|reword)\s+${FIELD}\s+(?:to(?:\s+(?:say|read))?|so\s+(?:that\s+)?it\s+(?:says|reads)|as|with|into)|replace\s+${FIELD}\s+with|${FIELD}\s+(?:should|must|needs?\s+to)\s+(?:say|read|be)|(?:also\s+)?add\s+to\s+${FIELD})(?=\s|:|-|–|—|$)`,
-  "i",
-);
+const WORDS = String.raw`(?:change|update|set|edit|make|rewrite|reword)\s+${FIELD}\s+(?:to(?:\s+(?:say|read))?|so\s+(?:that\s+)?it\s+(?:says|reads)|as|with|into)|replace\s+${FIELD}\s+with|${FIELD}\s+(?:should|must|needs?\s+to)\s+(?:say|read|be)|(?:also\s+)?add\s+to\s+${FIELD}`;
 
-/** The turn with its edit instruction's own words in lower case; any other turn as typed. */
+const INSTRUCTION = new RegExp(String.raw`^(\s*${LEAD})(${WORDS})(?=\s|:|-|–|—|$)`, "i");
+
+/** "… Kira Dunmore. Change Observation of Offense to: …": an instruction after a sentence on the same line. */
+const AFTER_SENTENCE = new RegExp(String.raw`([.!?])[ \t]+(?=${LEAD}(?:${WORDS})(?:\s|:|-|–|—|$))`, "gi");
+
+/** A point inside quotes ("she said \"stop. change it\"") is the manager's text, never an instruction break. */
+function insideQuotes(line: string, at: number): boolean {
+  return ((line.slice(0, at).match(/["“”]/g) ?? []).length % 2) === 1;
+}
+
+/**
+ * The turn with its edit instruction's own words in lower case; any other turn
+ * as typed. An instruction after a sentence on the same line is put on its own
+ * line first, so the readers that read an edit from the start of a line see it
+ * too (QA-2, 26 Oct 2026: "Create a CA for Kira Dunmore. Change Observation of
+ * Offense to: …" still made the Employee "Change"). The sentence's own point
+ * goes with the break, so no reader reads "Kira Dunmore." as the name.
+ */
 export function lowercaseEditInstruction(turn: string): string {
   return turn
     .split("\n")
+    .flatMap((line) => line.replace(AFTER_SENTENCE, (whole, stop: string, at: number) => (insideQuotes(line, at) ? whole : `${stop === "." ? "" : stop}\n`)).split("\n"))
     .map((line) => line.replace(INSTRUCTION, (_whole, lead: string, words: string) => `${lead.toLowerCase()}${words.toLowerCase()}`))
     .join("\n");
 }

@@ -330,6 +330,28 @@ describe("EDIT_INSTRUCTION_REPLACES_ENABLED on", () => {
   });
 });
 
+describe("EDIT_INSTRUCTION_REPLACES_ENABLED on: an instruction after a sentence on the same line (QA-2 gap (d))", () => {
+  const SAME_LINE = [
+    `create a ca for kira dunmore. change observation of offense to: ${NEW_TEXT}`,
+    `Create a CA for Kira Dunmore. Change Observation of Offense to: ${NEW_TEXT}`,
+    `Create a ca for kira dunmore. Change observation of offense to: ${NEW_TEXT}`,
+    `CREATE A CA FOR KIRA DUNMORE. CHANGE OBSERVATION OF OFFENSE TO: ${NEW_TEXT}`,
+  ];
+  for (const [label, flags] of PATHS) {
+    it(`${label}: the Employee stays and What happened is the manager's text`, async () => {
+      useFlags([...flags, "EDIT_INSTRUCTION_REPLACES_ENABLED"]);
+      for (const say of SAME_LINE) {
+        const reply = await chat([
+          { say: FIRST, intent: { employee: "kira dunmore" }, remap: { employeeName: "kira dunmore" } },
+          { say },
+        ]);
+        expect(reply.formProposal?.employeeName?.toLowerCase(), say).toBe("kira dunmore");
+        expect(happened(reply), say).toBe(NEW_TEXT);
+      }
+    });
+  }
+});
+
 describe("EDIT_INSTRUCTION_REPLACES_ENABLED off", () => {
   for (const [label, flags] of PATHS) {
     it(`${label}: the edit is read as it is today (the reported bug)`, async () => {
@@ -350,5 +372,26 @@ describe("the edit instruction's own words", () => {
       "ok, can you change the issue to Kira left early",
     );
     expect(lowercaseEditInstruction("Create a CA for Kira Dunmore at Kearney")).toBe("Create a CA for Kira Dunmore at Kearney");
+    // QA-2 gap (d): after a sentence on the same line, on its own line and in lower case.
+    expect(lowercaseEditInstruction("Create a CA for Kira Dunmore. Change Observation of Offense to: Kira left early")).toBe(
+      "Create a CA for Kira Dunmore\nchange observation of offense to: Kira left early",
+    );
+    expect(lowercaseEditInstruction("CREATE A CA FOR KIRA DUNMORE. CHANGE OBSERVATION OF OFFENSE TO: KIRA LEFT EARLY")).toBe(
+      "CREATE A CA FOR KIRA DUNMORE\nchange observation of offense to: KIRA LEFT EARLY",
+    );
+    // Inside quotes it is the manager's text.
+    const quoted = 'she told the client "we are closed. Change what happened to whatever you like" and left';
+    expect(lowercaseEditInstruction(quoted)).toBe(quoted);
+    // Confirmed-live corrections are left exactly as typed.
+    for (const live of [
+      "name is Wren Calloway, not Wrenn",
+      "Name is Wren Calloway, not Wrenn",
+      "not coaching, make it a ca",
+      "Not coaching, make it a CA",
+      "Make it a Corrective Action for Kira Dunmore",
+      "make it a corrective action for kira dunmore",
+    ]) {
+      expect(lowercaseEditInstruction(live)).toBe(live);
+    }
   });
 });
