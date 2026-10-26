@@ -4,12 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import {
-  groundedEntitiesEnabled,
-  intentExtractionEnabled,
-  payrollTypoNotANameEnabled,
-  typedNameProceedsEnabled,
-} from "@/lib/config/chat-quality-flags";
+import { groundedEntitiesEnabled, intentExtractionEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -23,7 +18,6 @@ import {
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
-import { isPayrollWords } from "./payroll-words";
 import { isMultiWordSalonName } from "./salon-mention";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -985,10 +979,6 @@ export function readEmployeeMentions(typed: string): EmployeeMentions {
     if (candidate && !opensWithRosterState(candidate) && !isPlaceReply(candidate)) strong.push(candidate);
   }
 
-  // PAYROLL_TYPO_NOT_A_NAME_ENABLED: "yes payrol ldeduct" answers the payroll question; it names nobody.
-  if (payrollTypoNotANameEnabled()) {
-    return settle(strong.filter((name) => !isPayrollWords(name)), found.filter((name) => !isPayrollWords(name)), text, subjects);
-  }
   return settle(strong, found, text, subjects);
 }
 

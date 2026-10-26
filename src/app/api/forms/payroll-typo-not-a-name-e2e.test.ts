@@ -22,7 +22,8 @@ import type { AccessScope, ChatMessage } from "@/types";
  * proposal." — the typed-name reader took the reply after "yes" as a name.
  * These tests drive `POST /api/forms/instances` with the body
  * `createInlineForm` sends. PAYROLL_TYPO_NOT_A_NAME_ENABLED is the fix; off,
- * the refusal is pinned as it is on main.
+ * the refusal is pinned as it is on main. The fix lives in the currency
+ * check (`proposal-currency.ts`); the protected name reader is unchanged.
  */
 
 const CARD = "I'll draft a **Corrective Action Form** for **quinn marlowe** from what you've described.";
@@ -171,10 +172,15 @@ describe(`${FLAG} on: a payroll answer never names the employee`, () => {
     expect(result.body.error).toBe(STALE("corvin mallow", "quinn marlowe"));
   });
 
-  it("a person whose name only looks like payroll is still a person", async () => {
-    const { readEmployeeMentions } = await import("@/lib/forms/proposal");
-    expect(readEmployeeMentions("create a ca for payton rolls").names).toEqual(["payton rolls"]);
-    expect(readEmployeeMentions("yes payrol ldeduct").names).toEqual([]);
+  it("a person whose name only looks like payroll is still a person; only a payroll answer is skipped", async () => {
+    const { isPayrollAnswer } = await import("@/lib/forms/payroll-words");
+    for (const variant of VARIANTS) expect(isPayrollAnswer(variant)).toBe(true);
+    for (const turn of ["payton rolls", "roll", "yes", "quinn marlowe", "i dont know the amount", "actually it's for corvin mallow"]) {
+      expect(isPayrollAnswer(turn)).toBe(false);
+    }
+    const result = await createFor("payton rolls", "create a ca for payton rolls, she was late on 10/20");
+    expect(result.status).toBe(200);
+    expect(result.created).toEqual(["payton rolls"]);
   });
 });
 
