@@ -1,4 +1,5 @@
 import { salonById } from "@/data/salons";
+import { incidentClauseSplitEnabled } from "@/lib/config/chat-quality-flags";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
   findManualSection,
@@ -12,6 +13,7 @@ import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
+import { incidentTurn } from "./incident-clauses";
 import { formatManualCitation } from "./policy-citation-fields";
 
 /**
@@ -142,7 +144,8 @@ function turnIncident(
   if (isEditTurn(turn)) return null;
   let found: string | null = null;
   const story: string[] = [];
-  for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts and policy text, "dodge, ne" kept whole.
+  for (const raw of withoutPriorList(incidentTurn(turn, employeeName, { subjectless: true })).split(/[.!?;]+(?=\s|$)/)) {
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
     const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
@@ -317,7 +320,8 @@ function clauseOffense(clause: string, employeeName: string | null): string | nu
   if (title && title.toLowerCase() === text.toLowerCase()) return null;
   if (/^team members?$/i.test(text)) return null;
   const onDuration = /\bfor\b/i.test(text) ? null : /^on\s+(.+?)\s+(\d+\+?\s*(?:min|mins|minutes|hrs|hours))\b/i.exec(text);
-  if (onDuration) {
+  // INCIDENT_CLAUSE_SPLIT_ENABLED: words after the duration ("… 25 min customers waiting") keep the manager's own wording.
+  if (onDuration && !(incidentClauseSplitEnabled() && text.slice(onDuration[0].length).trim())) {
     const thing = onDuration[1]!.replace(/\s+/g, " ").trim();
     const spaced = onDuration[2]!.replace(/\s+/g, "").replace(/(\d\+?)(?=[a-z])/i, "$1 ");
     return /\buse\b/i.test(thing) ? `${thing} ${spaced}` : `${thing} use ${spaced}`;
@@ -491,7 +495,8 @@ export function accountSentences(
   const start = currentRequestStart({ turns, employeeName, slotClause: accountSlot });
   for (const turn of turns.slice(start)) {
     if (isEditTurn(turn)) continue;
-    const text = withoutPriorList(turn.replace(/\bThe account continues\.\s*/g, ""));
+    // INCIDENT_CLAUSE_SPLIT_ENABLED: without the employee facts and policy text, "dodge, ne" kept whole.
+    const text = withoutPriorList(incidentTurn(turn.replace(/\bThe account continues\.\s*/g, ""), employeeName));
     for (const sentence of text.split(/\n+|[.!?;]+(?=\s|$)/)) {
       const trimmed = sentence.trim();
       if (STATE_SENTENCE.test(trimmed) || isEditTurn(trimmed) || TALKS_TO_THE_APP.test(trimmed) || ASKS_FOR_HELP.test(trimmed)) continue;
