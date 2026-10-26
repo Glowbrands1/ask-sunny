@@ -552,7 +552,8 @@ const OTHER_SUBJECT = /\b(?:transfer\w*|mov(?:e|ed|es|ing)|promot\w*|policy|code
 /** "not effective", "never effective", "do not make it effective". */
 const EFFECTIVE_NEGATED = /\b(?:not|never|no longer|don't|isn't|wasn't|won't|can't|cannot)\b(?:\s+\S+){0,3}\s*$/i;
 /** "effective october 2 was cancelled, she stayed". */
-const EFFECTIVE_UNDONE = /\b(?:cancel\w*|rescind\w*|withdr[ae]wn?|revoked|stayed|is staying|no longer)\b/i;
+const EFFECTIVE_UNDONE =
+  /\b(?:cancel\w*|rescind\w*|withdr[ae]wn?|withdraws?|withdrawing|revoked|stayed|is staying|no longer|changed (?:her|his|their) mind|scratch that|never ?mind|wrong)\b/i;
 
 /**
  * EXIT_EFFECTIVE_DATE_ENABLED: is the date at `index` the day a departure is
@@ -567,13 +568,23 @@ function departureEffectiveOn(text: string, index: number, end: number): boolean
   if (!cue) return false;
   const before = prefix.slice(0, cue.index);
   if (EFFECTIVE_NEGATED.test(before)) return false;
-  const departures = [...before.matchAll(DEPARTURE_CUE)];
-  const departure = departures[departures.length - 1];
-  if (!departure) return false;
-  if (OTHER_SUBJECT.test(before.slice((departure.index ?? 0) + departure[0].length))) return false;
+  if (EFFECTIVE_UNDONE.test(before)) return false;
   const stop = text.slice(end).search(/[.;!?\n]/);
   const after = stop === -1 ? text.slice(end) : text.slice(end, end + stop);
-  return !EFFECTIVE_UNDONE.test(after);
+  if (EFFECTIVE_UNDONE.test(after)) return false;
+  // "Exit form for <name>. Effective 11/1.": a sentence that opens with "effective" belongs to the one before it.
+  const said = before.trim() === "" ? previousSentence(text, start) : before;
+  const departures = [...said.matchAll(DEPARTURE_CUE)];
+  const departure = departures[departures.length - 1];
+  if (!departure) return false;
+  return !OTHER_SUBJECT.test(said.slice((departure.index ?? 0) + departure[0].length)) && !EFFECTIVE_UNDONE.test(said);
+}
+
+/** The sentence ending just before `start` (the start of the current one). */
+function previousSentence(text: string, start: number): string {
+  const head = text.slice(0, start).replace(/[\s.;!?]+$/, "");
+  const from = Math.max(...[".", ";", "!", "?", "\n"].map((mark) => head.lastIndexOf(mark))) + 1;
+  return head.slice(from);
 }
 
 export function readExitFacts(rawText: string, today: string): ExitFacts {

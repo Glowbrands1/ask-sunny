@@ -83,6 +83,16 @@ describe.each(REGISTERS)("EXIT_EFFECTIVE_DATE_ENABLED, %s", (_register, as) => {
       "exit for ava pellmore not effective until october 2",
       "the new dress code is effective october 1, exit for ava pellmore",
       "exit for ava pellmore, transfer to the other location effective october 2",
+      // QA-6 round 2: withdrawn before the date, and undo phrases after it.
+      "resignation withdrawn effective october 2",
+      "resignation for ava pellmore, withdrawn, it was effective october 2",
+      "exit for ava pellmore effective october 2 but she changed her mind",
+      "exit for ava pellmore effective october 2, scratch that",
+      "exit for ava pellmore effective october 2 is wrong",
+      "exit for ava pellmore effective october 2 was rescinded",
+      // No departure word in the sentence or the one before: not read.
+      "effective as of 10/2",
+      "effective date: october 2",
     ]) {
       expect(read(as(text)).lastDayWorked, text).toBeNull();
     }
@@ -94,6 +104,9 @@ describe.each(REGISTERS)("EXIT_EFFECTIVE_DATE_ENABLED, %s", (_register, as) => {
     expect(read(as("exit for ava pellmore effective 11/1 but last day 10/30")).lastDayWorked).toBe("2026-10-30");
     expect(read(as("exit for ava pellmore effective 11/1 and effective 11/8")).lastDayWorked).toBeNull();
     expect(read(as("ava pellmore resigned effective october 2")).lastDayWorked).toBe("2026-10-02");
+    // A sentence that opens with "effective" belongs to the exit named in the one before it.
+    expect(read(as("Exit form for Ava Pellmore. Effective 11/1.")).lastDayWorked).toBe("2026-11-01");
+    expect(read(as("exit form for ava pellmore\n\neffective 11/1")).lastDayWorked).toBe("2026-11-01");
   });
 
   it("on, two different effective dates are not guessed between", () => {
