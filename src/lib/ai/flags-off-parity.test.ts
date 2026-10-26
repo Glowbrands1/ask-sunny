@@ -78,6 +78,7 @@ import {
   stateCodeNotAPersonEnabled,
   googleReviewsInChatEnabled,
   draftNeverBlankEnabled,
+  priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -174,6 +175,7 @@ const NEW_FLAGS = [
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
+  "PRIOR_SENTENCE_FIX_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -200,7 +202,9 @@ const PROTECTED = [
 /*
  * The user (Pau) approved, via QA on 25 Oct 2026, editing
  * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
- * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
+ * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged, and on
+ * 26 Oct 2026 again for the incident date behind PRIOR_SENTENCE_FIX_ENABLED
+ * (a prior step's date is never the form's Date). It stays
  * on the PROTECTED list; only the diff check leaves it out. No other
  * protected file is excepted.
  */
@@ -343,6 +347,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
     expect(draftNeverBlankEnabled()).toBe(false);
+    expect(priorSentenceFixEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

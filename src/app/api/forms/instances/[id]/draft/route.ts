@@ -131,7 +131,7 @@ import {
   withConductOffense,
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
-import { listFormDates, priorStepDate } from "@/lib/forms/form-date-answer";
+import { priorStepDate } from "@/lib/forms/form-date-answer";
 import {
   SPECIFIC_SECTION_BOXES,
   describedManualChoices,
@@ -207,6 +207,7 @@ import { exitDetailValues, exitStatedKeys, readExitDetails } from "@/lib/forms/e
 import { businessToday } from "@/lib/business-date";
 import {
   correctDraftedDates,
+  draftBriefDates,
   formDateBrief,
   groundedSourceWithFormDate,
   resolveFormDate,
@@ -818,7 +819,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * and the model was told the form's date was the only one to write.
        */
       ...(resolvedFormDate
-        ? [formDateBrief(resolvedFormDate, listFormDates(notes, businessToday()).map((found) => found.iso))]
+        ? [formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday()))]
         : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
@@ -1117,6 +1118,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       narrativeKeys,
       notes,
       resolvedFormDate,
+      businessToday(),
     );
 
     const narrated = guardNarrativeDraft(dated.values, fields, groundingSource);

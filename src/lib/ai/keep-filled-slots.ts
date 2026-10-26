@@ -1,6 +1,6 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
-import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { datesInTextWithYearless, listIncidentDates, priorStepDateOffsets } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { matchEmployeeName } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
@@ -9,7 +9,7 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
-import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
+import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -36,7 +36,7 @@ import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
-import { withoutAppLines } from "./app-sentences";
+import { isAppLine, withoutAppLines } from "./app-sentences";
 import { observationByRules } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
@@ -204,7 +204,7 @@ export function holdFilledSlots(input: {
      */
     if (next.templateKey !== "stc-exit") {
       const build = (given: string, account: readonly string[]) =>
-        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
+        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, input.today);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
@@ -557,15 +557,19 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
 }
 
 /** The account already given, copied onto the card so the offense is not asked again. */
-function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
+function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
+  const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
-    for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
+    // PRIOR_SENTENCE_FIX_ENABLED: a prior step's clause is no account, and the incident beside it stays.
+    const read = today === undefined ? { text: turn, dropped: false } : withoutPriorClauses(turn, today, conversation);
+    for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
       if (said.length < 12) continue;
-      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      const incident = read.dropped && !isAppLine(said) && describesIncident(said);
+      if (!incident && !describesMoreThanTheRequest(said, { ignore })) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
@@ -578,6 +582,42 @@ function withObservation(content: string, turns: readonly string[], employeeName
   }
   if (sentences.length === 0) return content;
   return `${content}\n\n**Observation of Offense:** ${sentences.join(" ")}`.trim();
+}
+
+/*
+ * PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026, Ask Sunny production): "…she
+ * was late on 10-5 and 10-15. i coached her on 10-16 about being late" put
+ * only the coaching on the Observation of Offense — the incident sentence has
+ * too few words beyond the request to pass `describesMoreThanTheRequest`, and
+ * the coaching sentence has plenty. With the flag on, each clause whose dates
+ * are all earlier steps (`priorStepDateOffsets`) is taken out of the turn,
+ * and a manager sentence left beside it that describes an incident is kept
+ * however short. Off (or with no prior step in the turn), the turn is read as
+ * before.
+ */
+const CLAUSE_END = /\.(?=\s|$)|(?<!\d)\.(?!\d)|[;!?\n]|,(?!\s*\d{4})/g;
+
+function withoutPriorClauses(turn: string, today: string, conversation: string): { text: string; dropped: boolean } {
+  const steps = priorStepDateOffsets(turn, today, conversation);
+  if (steps.length === 0) return { text: turn, dropped: false };
+  const stepSet = new Set(steps);
+  const ends = [...turn.matchAll(CLAUSE_END)].map((match) => match.index ?? 0);
+  const dates = datesInTextWithYearless(turn, today);
+  const cuts: [number, number][] = [];
+  for (const index of steps) {
+    const opening = ends.filter((at) => at < index).at(-1) ?? -1;
+    const closing = ends.find((at) => at > index) ?? turn.length;
+    // A clause that also dates something that is not an earlier step stays whole.
+    if (dates.some((found) => found.index > opening && found.index < closing && !stepSet.has(found.index))) continue;
+    const comma = opening >= 0 && turn[opening] === ",";
+    const from = comma ? opening : opening + 1;
+    const to = !comma && turn[closing] === "," ? closing + 1 : closing;
+    if (!cuts.some(([start, end]) => start === from && end === to)) cuts.push([from, to]);
+  }
+  if (cuts.length === 0) return { text: turn, dropped: false };
+  let text = turn;
+  for (const [from, to] of [...cuts].sort((left, right) => right[0] - left[0])) text = text.slice(0, from) + text.slice(to);
+  return { text, dropped: true };
 }
 
 /**
