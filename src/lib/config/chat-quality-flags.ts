@@ -901,3 +901,14 @@ export function stateCodeNotAPersonEnabled(): boolean {
 export function googleReviewsInChatEnabled(): boolean {
   return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
 }
+
+/**
+ * A coaching card for a named person with no account ("coaching for <name>")
+ * asks what happened, in the same words as the Corrective Action ("You
+ * haven't told me what happened yet"), instead of saying everything is there
+ * (`ai/coaching-what-happened.ts`; QA, 26 Oct 2026). Off (the default), the
+ * reply is as built.
+ */
+export function coachingAsksWhatHappenedEnabled(): boolean {
+  return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
+}
