@@ -88,6 +88,7 @@ import {
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
   payrollTypoNotANameEnabled,
+  answerNotANameEnabled,
   dateAnswerAppliedEnabled,
   requestLineAccountEnabled,
   notDeductibleReadEnabled,
@@ -198,6 +199,7 @@ const NEW_FLAGS = [
   "ATTENDANCE_ACTION_PLAN_ENABLED",
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
   "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
+  "ANSWER_NOT_A_NAME_ENABLED",
   "DATE_ANSWER_APPLIED_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "NOT_DEDUCTIBLE_READ_ENABLED",
@@ -241,8 +243,15 @@ const PROTECTED = [
  * (a prior step's date is never the form's Date). It stays
  * on the PROTECTED list; only the diff check leaves it out. No other
  * protected file is excepted.
+ *
+ * The user (Pau) approved, in the Code session on 26 Oct 2026, editing
+ * src/lib/forms/proposal.ts behind ANSWER_NOT_A_NAME_ENABLED: one import and
+ * readEmployeeMentions' return filters its candidates through `namesSomebody`,
+ * which keeps every one with the flag off. It stays on the PROTECTED list;
+ * only the diff check leaves it out.
  */
 const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/proposal.ts",
   ":(exclude)src/lib/forms/form-date-answer.ts",
   ":(exclude)src/lib/ai/form-proposal.ts",
 ];
@@ -394,6 +403,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(attendanceActionPlanEnabled()).toBe(false);
     expect(hideNoPolicyMatchNoticeEnabled()).toBe(false);
     expect(payrollTypoNotANameEnabled()).toBe(false);
+    expect(answerNotANameEnabled()).toBe(false);
     expect(dateAnswerAppliedEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
     expect(notDeductibleReadEnabled()).toBe(false);
