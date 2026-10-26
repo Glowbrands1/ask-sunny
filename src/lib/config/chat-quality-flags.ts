@@ -869,6 +869,16 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * Once a card is open, "now one for <name> …" (also "another one for",
+ * "next one is for") is read as a new request for that person, with the open
+ * card's form (QA, 26 Oct 2026; same flag in both apps). See
+ * `ai/next-person.ts`. Off, the turn is read as typed.
+ */
+export function nextPersonFormEnabled(): boolean {
+  return envFlag("NEXT_PERSON_FORM_ENABLED");
+}
+
+/**
  * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
  * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
  * written on 07/28/2026" listed both under Prior actions and also as
