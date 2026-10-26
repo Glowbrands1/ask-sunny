@@ -937,6 +937,9 @@ const DESCRIBED_SECTIONS: readonly {
 
 const LATE_OPENING = "Late Opening";
 
+/** The manager's words that describe a late opening (the rule above), for ordering two incidents. */
+export const LATE_OPENING_DESCRIBED: RegExp = DESCRIBED_SECTIONS.find((rule) => rule.headings.includes(LATE_OPENING))!.describes;
+
 /**
  * "late to open" describes the Late Opening section too, with
  * LATE_OPEN_DATE_ENABLED (QA, 24 Oct 2026). See `late-open.ts`.
