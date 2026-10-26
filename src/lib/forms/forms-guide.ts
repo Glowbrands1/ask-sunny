@@ -225,6 +225,8 @@ function readGeneric(text: string): { kind: "generic"; phrase: string } | null {
   rest = rest.replace(GENERIC_WORDS, " ").replace(/\s+/g, " ").trim();
   const phrase = trimPhrase(rest);
   if (!phrase) return null;
+  // Anything still said about someone ("for Avery Holt", "about her") is a real request.
+  if (/\b(?:for|about|regarding|re|to|with|on)\b/.test(phrase)) return null;
   if (phrase === "form" || phrase === "forms") return { kind: "generic", phrase };
   return plausibleFormPhrase(rest, phrase) ? { kind: "generic", phrase } : null;
 }
