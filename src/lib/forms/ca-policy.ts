@@ -1,6 +1,7 @@
 import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
+import { correctPolicyTypos } from "./policy-typos";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
@@ -101,7 +102,8 @@ export interface CaPolicyReading {
 /* ------------------------------------------------------------ the words -- */
 
 function normalize(text: string): string {
-  return (text ?? "").replace(/[‘’‛]/g, "'").replace(/[“”]/g, '"').toLowerCase();
+  // POLICY_NAME_TYPOS_ENABLED: "attendence" is Attendance. Off, the text as typed.
+  return correctPolicyTypos(text ?? "").replace(/[‘’‛]/g, "'").replace(/[“”]/g, '"').toLowerCase();
 }
 
 /**

@@ -839,3 +839,14 @@ export function priorActionsNoCommaEnabled(): boolean {
 export function incidentSplitFixEnabled(): boolean {
   return envFlag("INCIDENT_SPLIT_FIX_ENABLED");
 }
+
+/**
+ * A misspelled policy name is still that policy (Code 3, policy reading; QA
+ * item 8, 25 Oct 2026): "attendence", "standerds of conduct", "verbl warning".
+ * One slip (two for a long word) from a word a policy is named by is read as
+ * that word, never changing the first letter or a real word one slip away.
+ * Off, the words are read exactly as typed.
+ */
+export function policyNameTyposEnabled(): boolean {
+  return envFlag("POLICY_NAME_TYPOS_ENABLED");
+}
