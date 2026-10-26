@@ -318,3 +318,48 @@ describe("COACHING_ASKS_WHAT_HAPPENED_ENABLED off", () => {
     expect(reply.content).not.toContain(ASK);
   });
 });
+
+describe("COACHING_ASKS_WHAT_HAPPENED_ENABLED on: once per card, and what counts as an account (QA-4 / QA-6, 26 Oct 2026)", () => {
+  const twins = (text: string) => [text, text.charAt(0).toUpperCase() + text.slice(1), text.toUpperCase()];
+
+  it("after the app has asked, no reply makes it ask again", async () => {
+    useFlags(ON);
+    for (const reply of ["ok", "yes", "idk", "nothing", "no", "Ok", "IDK"]) {
+      const card = await chat([coach("coaching for devon harlan"), coach(reply)]);
+      expect(card.content, reply).not.toContain(ASK);
+    }
+  });
+
+  it("a clause that only says what did not happen is not an account: it asks", async () => {
+    useFlags(ON);
+    for (const wording of [
+      "coaching for devon harlan, she was not late",
+      "coaching for devon harlan, she was never late",
+      "coaching for devon harlan, she didn't do anything wrong",
+      "coaching for devon harlan, nothing happened",
+      "coaching for devon harlan, no incident",
+    ]) {
+      for (const say of twins(wording)) expect((await chat([coach(say)])).content, say).toContain(ASK);
+    }
+  });
+
+  // On the card itself the employee reader currently joins the two names ("Devon Harlan Rory Vance";
+  // the name readers' own fix), so the rule is pinned on the step with the card's employee as intended.
+  it("an account about somebody else is not this employee's: it asks", async () => {
+    const { askWhatHappened } = await import("./coaching-what-happened");
+    const card = { content: "Here is what I would put on a **Coaching Form**.", citations: [], recommendedVideoIds: [], formProposal: { templateKey: "coaching", employeeName: "Devon Harlan" } };
+    for (const wording of ["coaching for devon harlan, rory vance was late today", "coaching for devon harlan and rory vance was late today"]) {
+      for (const say of twins(wording)) {
+        expect(askWhatHappened(card as never, say, []).content, say).toContain(ASK);
+      }
+    }
+    expect(askWhatHappened(card as never, "coaching for devon harlan, she was late today", []).content).not.toContain(ASK);
+  });
+
+  it("this employee's own account still never asks, in every case", async () => {
+    useFlags(ON);
+    for (const say of twins("coaching for devon harlan, she was late today")) {
+      expect((await chat([coach(say)])).content, say).not.toContain(ASK);
+    }
+  });
+});
