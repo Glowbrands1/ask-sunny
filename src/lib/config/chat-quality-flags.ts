@@ -847,6 +847,16 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * What a coaching is about is never who it is for: an Employee made only of
+ * topic words ("efts spa", "weekly") is not kept; "for my team" / "the whole
+ * team" on a coaching form makes it the team's, otherwise the card asks who
+ * (QA, 25-26 Oct 2026). See `ai/topic-name-guard.ts`. Off, the card is as it is.
+ */
+export function topicNotANameEnabled(): boolean {
+  return envFlag("TOPIC_NOT_A_NAME_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
