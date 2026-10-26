@@ -1010,3 +1010,12 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+## 26 Oct 2026: STATE_CA_GUARD_ENABLED known gap (both apps)
+
+"CA" is written as "California" only before a ZIP code or after a California
+city. A word that is both a California city and a name ("Avery Davis CA",
+"Orange CA", "richmond ca") is therefore still read as the state and the form
+is lost. Accepted by the coordinator as a known gap; pinned in
+`src/lib/ai/state-ca.test.ts`; the flag stays off in production until these
+are run live.
