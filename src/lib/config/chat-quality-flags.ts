@@ -847,6 +847,17 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * A new employee on the card starts a new account: the Observation, prior
+ * actions, Date, warning level, payroll answer and the draft's source turns
+ * are read only from the turns since the manager named that person (Ask
+ * Sunny conv_mvoetxo92fraflz, 25 Oct 2026). See `ai/cross-person-guard.ts`.
+ * Off, the card carries the earlier account as before.
+ */
+export function crossPersonIncidentGuardEnabled(): boolean {
+  return envFlag("CROSS_PERSON_INCIDENT_GUARD_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
