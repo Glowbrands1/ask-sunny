@@ -117,3 +117,10 @@ describe("NEXT_PERSON_FORM_ENABLED on: 'now one for friday' is not a new form", 
     );
   });
 });
+
+describe("NEXT_PERSON_FORM_ENABLED on: a person's team is not a person", () => {
+  it.each(["now one for rory vance's team", "Now one for Rory Vance's team"])("leaves '%s' as typed", (turn) => {
+    process.env[FLAG] = "on";
+    expect(nextPersonRequest(turn, "Coaching Form")).toBe(turn);
+  });
+});

@@ -56,7 +56,8 @@ export function nextPersonRequest(text: string, openForm: string | null): string
   const lead = NEXT_ONE.exec(text);
   if (!lead) return text;
   const rest = text.slice(lead[0].length);
-  if (NOT_A_PERSON.test(rest) || !PERSON.test(rest)) return text;
+  // QA-6, 26 Oct 2026: "one for rory vance's team" is the team, not a person.
+  if (NOT_A_PERSON.test(rest) || !PERSON.test(rest) || /^\S+\s+\S+['’]s\s+(?:team|staff|crew|salon|store|shift)\b/i.test(rest)) return text;
   const article = /^[aeiou]/i.test(openForm) ? "an" : "a";
   return `create ${article} ${openForm} for ${rest}`;
 }
