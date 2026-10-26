@@ -1002,3 +1002,12 @@ export function storedSlotsNotARequestEnabled(): boolean {
 export function priorSentenceFixEnabled(): boolean {
   return envFlag("PRIOR_SENTENCE_FIX_ENABLED");
 }
+
+/**
+ * A Corrective Action whose policy is Attendance gets Pau's attendance Action
+ * Plan, with no follow-up date (26 Oct 2026; same flag in both apps). See
+ * `forms/attendance-action-plan.ts`. Off, the plan is built as before.
+ */
+export function attendanceActionPlanEnabled(): boolean {
+  return envFlag("ATTENDANCE_ACTION_PLAN_ENABLED");
+}

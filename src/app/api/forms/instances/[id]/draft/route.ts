@@ -5,6 +5,7 @@ import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
+  attendanceActionPlanEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
   draftNeverBlankEnabled,
@@ -159,6 +160,7 @@ import {
   type ActionPlanInput,
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
+import { attendanceActionPlan, isAttendancePlan } from "@/lib/forms/attendance-action-plan";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import {
   citeAttendanceForTardiness,
@@ -1992,9 +1994,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? {
             values: {
               ...named.values,
-              [fixedPlan.key]: actionPlanSentencesEnabled()
-                ? twoSentenceActionPlan(planInput)
-                : correctiveActionPlan(planInput),
+              [fixedPlan.key]:
+                attendanceActionPlanEnabled() && isAttendancePlan(planInput)
+                  ? attendanceActionPlan(planInput)
+                  : actionPlanSentencesEnabled()
+                    ? twoSentenceActionPlan(planInput)
+                    : correctiveActionPlan(planInput),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
