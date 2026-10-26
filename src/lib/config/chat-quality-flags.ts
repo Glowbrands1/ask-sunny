@@ -939,3 +939,13 @@ export function draftNeverBlankEnabled(): boolean {
 export function nameBeforeTitleEnabled(): boolean {
   return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }
+
+/**
+ * A raw source marker ("[S6]", "[S6][S10]") never reaches the manager (Code
+ * 3; QA live, 26 Oct 2026; same flag in both apps). On, the finished reply
+ * has every [S#] left in it taken out; cards, excerpts and [p.N] citations
+ * are unchanged. Off, as before.
+ */
+export function rawMarkerBackstopEnabled(): boolean {
+  return envFlag("RAW_MARKER_BACKSTOP_ENABLED");
+}

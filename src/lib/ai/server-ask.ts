@@ -168,6 +168,7 @@ import {
 import { retrievalQueryFor } from "./retrieval-query";
 import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import { appPasswordHelpFor } from "./app-password-help";
+import { withoutRawMarkers } from "./raw-markers";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import { withNameBeforeTitle } from "./name-before-title";
@@ -278,7 +279,8 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  // RAW_MARKER_BACKSTOP_ENABLED: last, so no pass before it can leave an [S#] in the reply.
+  return withoutRawMarkers(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question));
 }
 
 async function answerQuestionChecked(
