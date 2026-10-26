@@ -1,5 +1,5 @@
 import { isAppLine, withoutAppLines } from "@/lib/ai/app-sentences";
-import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, formDateSaidSettlesEnabled, futureIncidentDateAskEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
 
 /** DATE_ANSWER_KEEPS_OPEN_ENABLED, on top of the live DATE_ANSWER_APPLIED_ENABLED. */
 const keepsOpen = () => dateAnswerAppliedEnabled() && dateAnswerKeepsOpenEnabled();
@@ -219,6 +219,21 @@ export interface FormDateDecision {
   readonly question?: string;
 }
 
+export const FUTURE_DATE_TAG = "is after today";
+
+/** "finish it by 12-20-26", "due 12/1": a date something is owed by, which may well be ahead. */
+const DUE_BEFORE = /\b(?:by|due(?:\s+(?:on|by))?|until|till|til|before|deadline(?:\s+(?:of|is|on))?)\s+(?:the\s+)?$/i;
+
+function longDate(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return `${Number(month)}/${Number(day)}/${year}`;
+}
+
+/** Asked once when the account dates the incident after today. */
+export function futureDateQuestion(iso: string, today: string): string {
+  return `The date you gave, **${longDate(iso)}**, ${FUTURE_DATE_TAG} (${longDate(today)}), and a form records something that already happened. What date did it happen? Say "today" for today — until you do, the form is dated the day it is created.`;
+}
+
 export function decideFormDate(input: {
   readonly text: string;
   readonly templateKey: string;
@@ -239,6 +254,28 @@ export function decideFormDate(input: {
   // FORM_DATE_SAID_SETTLES_ENABLED: "make the date for 10/14/26" is the form's Date; no question is asked (`form-date-said.ts`).
   const said = formDateSaidSettlesEnabled() ? saidFormDate(input.text, input.today) : null;
   if (said) return { formDate: said };
+  /*
+   * FUTURE_INCIDENT_DATE_ASK_ENABLED (QA, 26 Oct 2026, sibling tester U4): a
+   * written CA "for not attending the monthly meeting on 12-20-26", written on
+   * 10/25, was accepted in full wording and challenged only in the terse
+   * typo version. A form documents something that already happened: an
+   * incident date after today is asked about once, in every register, and
+   * the form is never dated by it. A deadline or a follow-up in the future is
+   * not an incident date and is not asked about (`listIncidentDates`), and
+   * neither is a date the manager gave the form itself ("dated 10/2", above).
+   */
+  if (futureIncidentDateAskEnabled()) {
+    const future = [
+      ...new Set(
+        listIncidentDates(input.text, input.today)
+          .filter((found) => !DUE_BEFORE.test(input.text.slice(Math.max(0, found.index - 30), found.index)))
+          .map((found) => found.iso),
+      ),
+    ].filter((iso) => iso > input.today);
+    if (future.length > 0 && !input.history.some((turn) => turn.role === "assistant" && turn.content.includes(FUTURE_DATE_TAG))) {
+      return { formDate: null, question: futureDateQuestion(future[future.length - 1]!, input.today) };
+    }
+  }
 
   let dates = incidentDates(input.text, input.today, COACHING_TEMPLATES.has(input.templateKey));
   if (COACHING_TEMPLATES.has(input.templateKey)) {
