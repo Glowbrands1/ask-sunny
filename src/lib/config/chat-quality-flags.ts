@@ -836,6 +836,16 @@ export function chatLongMessageEnabled(): boolean {
 }
 
 /**
+ * The form's date is the incident date the manager stated, or the day the
+ * form is created — never a deadline, due date, assignment date, prior-action
+ * date or a "by <date>" (Pau's coordinator, 25 Oct 2026, D3). Off, the date
+ * readers keep main's reading.
+ */
+export function formDateIncidentOnlyEnabled(): boolean {
+  return envFlag("FORM_DATE_INCIDENT_ONLY_ENABLED");
+}
+
+/**
  * A terse "ca <name> <what happened> <date> verbal 25 deduct" line is written
  * out as the long form before it is read, so the name, salon, date, warning
  * level and payroll amount are read as they are from a full sentence (Ask
@@ -917,6 +927,17 @@ export function googleReviewsInChatEnabled(): boolean {
  */
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
+}
+
+/**
+ * NAME_BEFORE_TITLE_ENABLED (QA, 26 Oct 2026): "ca for <first> <last>, team member at
+ * <salon>" in lowercase left the Employee unread, and "for <First> <Last> Team
+ * Member at <salon>" dropped the surname. A two-word name right before a job
+ * title is read as the name, with the title after a comma. See
+ * `ai/name-before-title.ts`. Off, the turn is read as typed.
+ */
+export function nameBeforeTitleEnabled(): boolean {
+  return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }
 
 /**

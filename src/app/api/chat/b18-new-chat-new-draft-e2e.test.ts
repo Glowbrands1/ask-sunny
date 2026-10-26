@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formDateIncidentOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { ChatFormProposal, ChatMessage } from "@/types";
 
@@ -381,7 +383,13 @@ describe("B18: a new chat about a different incident files a new draft (full rem
       expect(row(late.id)?.form_date).toBe("2026-10-20");
 
       const woven = await chatThenCreate([WOVEN]);
-      expect(woven.proposal.formDate).toBe("2026-10-15");
+      /*
+       * FORM_DATE_INCIDENT_ONLY_ENABLED (D3, changed on purpose; QA ruled D3 wins over
+       * "dated 10/15", 26 Oct 2026): a date written as the deadline ("the 10-15-26
+       * woven deadline", "by 10-15-26") never dates the form, so with the flag on
+       * the card is dated the day it is created (null). Flag off keeps 10-15.
+       */
+      expect(woven.proposal.formDate ?? null).toBe(formDateIncidentOnlyEnabled() ? null : "2026-10-15");
       expect(woven.proposal.warningLevel).toBe("written");
       // Before the fix: the late-open draft came back, `reused`.
       expect(woven.id).not.toBe(late.id);
@@ -390,8 +398,10 @@ describe("B18: a new chat about a different incident files a new draft (full rem
 
       // The Woven card's facts are on the new form; the late-open draft is as it was.
       expect(row(woven.id)?.status).toBe("draft");
-      expect(row(woven.id)?.form_date).toBe("2026-10-15");
-      expect(valueOf(woven.id, "form_date")?.value).toBe("2026-10-15");
+      // D3 (see above): with the flag on the stored form is dated the day it is created.
+      const wovenDate = formDateIncidentOnlyEnabled() ? "2026-10-25" : "2026-10-15";
+      expect(row(woven.id)?.form_date).toBe(wovenDate);
+      expect(valueOf(woven.id, "form_date")?.value).toBe(wovenDate);
       expect(valueOf(woven.id, "warning_type")?.checked).toEqual(["written"]);
       expect(valueOf(woven.id, "payroll_deduct")?.checked ?? []).toEqual([]);
       expect(row(late.id)?.form_date).toBe("2026-10-20");
