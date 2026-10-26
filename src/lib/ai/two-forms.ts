@@ -30,11 +30,20 @@ interface Asked {
 }
 
 /** The distinct forms one turn asks for, in order, with the manager's own words for each. */
+/** QA-2, 26 Oct 2026: "don't create …", "I already did …", "never create …" ask for nothing … */
+const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|already|without|instead\s+of|rather\s+than)\b/i;
+/** … until "just", "but", "instead", "now" or "only" turns it around. */
+const TURNED = /^(?:just|but|instead|now|only|then)\b|\b(?:just|instead|only)\b/i;
+
 export function formsAskedFor(question: string): Asked[] {
   const asked: Asked[] = [];
+  let negated = false;
   for (const segment of question.split(BETWEEN)) {
-    const part = segment.trim();
+    const part = segment.trim().replace(/\s+(?:and|also|plus|then|&)$/i, "");
     if (!part) continue;
+    if (TURNED.test(part)) negated = false;
+    if (NEGATED.test(part)) negated = true;
+    if (negated) continue;
     const intent = detectTemplateIntent(part);
     if (intent.kind !== "explicit" || asked.some((form) => form.templateKey === intent.templateKey)) continue;
     // "a coaching form" → "coaching form"; terse "coaching form" as typed.

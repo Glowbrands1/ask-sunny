@@ -84,3 +84,32 @@ describe("TWO_FORMS_ASK_ENABLED on", () => {
     expect(withTwoFormsAsk(once, request)).toBe(once);
   });
 });
+
+/**
+ * QA-2, 26 Oct 2026: a negated or finished form is not asked for; the phrase
+ * keeps no connector. The flag-on twins of the reported lines.
+ */
+describe("TWO_FORMS_ASK_ENABLED on: negated and finished forms", () => {
+  const variants = (text: string) => [text.toLowerCase(), text[0]!.toUpperCase() + text.slice(1).toLowerCase(), text.toUpperCase()];
+
+  it.each([
+    ...variants("don't create a policy review, just a coaching form"),
+    ...variants("do not make a coaching form and a policy review"),
+    ...variants("never create a coaching form and a policy review"),
+  ])("'%s' adds no line", (question) => {
+    process.env[FLAG] = "on";
+    const response = reply("coaching", "Coaching Form");
+    expect(withTwoFormsAsk(response, { question, history: [] } as unknown as AskRequest)).toBe(response);
+  });
+
+  it.each(variants("I already did a coaching form, now create a policy review"))("'%s' asks for the policy review only", (question) => {
+    process.env[FLAG] = "on";
+    expect(formsAskedFor(question).map((form) => form.templateKey)).toEqual(["policy-review"]);
+  });
+
+  it("'create a policy review and also a coaching form' names the policy review without the connector", () => {
+    process.env[FLAG] = "on";
+    const out = withTwoFormsAsk(reply("coaching", "Coaching Form"), { question: "create a policy review and also a coaching form", history: [] } as unknown as AskRequest);
+    expect(out.content).toContain('say **"now the policy review"**');
+  });
+});
