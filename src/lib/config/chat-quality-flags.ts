@@ -1045,6 +1045,17 @@ export function dateAnswerAppliedEnabled(): boolean {
 }
 
 /**
+ * ANSWER_NOT_A_NAME_ENABLED (default off): the employee-name reader in
+ * `proposal.ts` skips a payroll answer ("yes payrol ldeduct") and a date answer
+ * ("most recent"), so the card's sources do not restart at it. Reads through
+ * PAYROLL_TYPO_NOT_A_NAME_ENABLED and DATE_ANSWER_APPLIED_ENABLED, which must
+ * also be on. See `forms/answer-not-a-name.ts`.
+ */
+export function answerNotANameEnabled(): boolean {
+  return envFlag("ANSWER_NOT_A_NAME_ENABLED");
+}
+
+/**
  * A one-line request carries its own account (QA, 26 Oct 2026; same flag in
  * both apps): in "create a verbal ca for <name> at kearney ne, she was late on
  * 10-15-26" the clause after the comma is what happened, so a draft the model
