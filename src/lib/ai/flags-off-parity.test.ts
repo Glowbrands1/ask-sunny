@@ -76,6 +76,7 @@ import {
   appPasswordHelpEnabled,
   policyCleaningIncidentEnabled,
   policySpecificTopicsEnabled,
+  followUpNotPriorEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -170,6 +171,7 @@ const NEW_FLAGS = [
   "APP_PASSWORD_HELP_ENABLED",
   "POLICY_CLEANING_INCIDENT_ENABLED",
   "POLICY_SPECIFIC_TOPICS_ENABLED",
+  "FOLLOW_UP_NOT_PRIOR_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -337,6 +339,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(policyCleaningIncidentEnabled()).toBe(false);
     expect(policySpecificTopicsEnabled()).toBe(false);
+    expect(followUpNotPriorEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
