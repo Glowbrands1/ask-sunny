@@ -38,14 +38,39 @@ const SSN_DIGITS = /\b\d{3}-\d{2}-\d{4}\b|\b(?:x{3}|\*{3})-(?:x{2}|\*{2})-\d{4}\
  * "Do not use default passwords, i.e., password123." is the manual's own
  * password guidance, not a default to hand out (QA live, 26 Oct 2026: every
  * "whats our password policy" answer lost it and got the note instead).
+ *
+ * ONLY A PURE FORBID IS KEPT (QA-3, QA-5): the sentence forbids default
+ * passwords and says nothing else about one. Before the forbid there is no
+ * value; after it there is only the end of the sentence, the manual's own
+ * "i.e., password###" example, "are not allowed", or a plain "for/on/in …"
+ * phrase. A value anywhere ("…, which is Welcome2024.", "… password
+ * Welcome2024.", "(it is Welcome1)"), a second default-password mention ("…
+ * but the first-time password is Temp123.") or SSN wording, and the sentence
+ * is removed as before.
  */
-const FORBIDS_DEFAULTS = /\b(?:do\s+not|don'?t|never|avoid(?:ing)?|no)\s+(?:use\s+|using\s+)?(?:a\s+|the\s+|any\s+)?(?:default|generic|standard)\s+pass\s?words?\b/i;
+const FORBIDS_DEFAULTS =
+  /\b(?:do\s+not|don'?t|never|avoid(?:ing)?|no)\s+(?:use\s+|using\s+)?(?:a\s+|the\s+|any\s+)?(?:default|generic|standard)\s+pass\s?words?\b/i;
+/** What may follow a pure forbid, up to the end of the sentence. */
+const FORBID_TAIL_OK =
+  /^\s*(?:,?\s*(?:i\.e\.|e\.g\.|like|such\s+as)\s*,?\s*["“']?password[\d#*x]*["”']?|(?:are|is)\s+(?:not\s+)?(?:allowed|permitted|acceptable)|(?:for|on|at|in|with|anywhere|ever|again|when)\b[^.!?;:,"“”'()\d]*)?\s*[.!?]?\s*$/i;
+/** What may come before it: a plain lead-in, no value. */
+const FORBID_LEAD_OK = /^[^\d:;"“”()]*$/;
+const VALUE_WORD = /\b(?:is|are|was|were|=)\s+\S/i;
+
+function isPureForbid(sentence: string): boolean {
+  const match = FORBIDS_DEFAULTS.exec(sentence);
+  if (!match) return false;
+  const lead = sentence.slice(0, match.index);
+  const tail = sentence.slice(match.index + match[0].length);
+  if (!FORBID_LEAD_OK.test(lead) || VALUE_WORD.test(lead) || DEFAULT_PASSWORD.test(lead)) return false;
+  return FORBID_TAIL_OK.test(tail);
+}
 
 /** Whether a sentence would hand out a default password or SSN digits. */
 export function isSensitiveSentence(sentence: string): boolean {
   if (SSN.test(sentence) && DIGIT_FORMAT.test(sentence)) return true;
   if (SSN_DIGITS.test(sentence)) return true;
-  return DEFAULT_PASSWORD.test(sentence) && !FORBIDS_DEFAULTS.test(sentence);
+  return DEFAULT_PASSWORD.test(sentence) && !isPureForbid(sentence);
 }
 
 /** "what is the default password", "temp password for a new hire", "defualt login". */
