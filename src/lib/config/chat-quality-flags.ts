@@ -775,6 +775,36 @@ export function sendAfterHydrateEnabled(): boolean {
 }
 
 /**
+ * Finalized-form edits carry a reason and a revision number, and the
+ * revision chain shows: "Revised <date> (supersedes <ref>)" on a revision and
+ * "Superseded <date> by <ref>" on the original, on the PDF and the form view,
+ * plus "Revision N of <ref>" with a link to the previous version.
+ *
+ * Off (the default) leaves the shipped revise flow exactly as it is: no
+ * reason is asked for or recorded, the history route answers 404, and the
+ * PDF footer is byte-identical. On, the server refuses an edit of a
+ * finalized form that gives no reason.
+ *
+ * The browser reads `NEXT_PUBLIC_FORM_REVISIONS_ENABLED` (see
+ * `formRevisionsUiEnabled`). Turn both on together: the server refuses an
+ * edit without a reason, and only the browser flag shows the reason dialog.
+ * Either spelling turns the server side on.
+ */
+export function formRevisionsEnabled(): boolean {
+  return envFlag("FORM_REVISIONS_ENABLED") || envFlag("NEXT_PUBLIC_FORM_REVISIONS_ENABLED");
+}
+
+/**
+ * The browser half of `formRevisionsEnabled`: the reason dialog, the marks
+ * and the history on the form card, the form page and the register row.
+ * Next inlines only a statically written `process.env.NEXT_PUBLIC_*` name
+ * into a client bundle, so the name is written out here.
+ */
+export function formRevisionsUiEnabled(): boolean {
+  return flagOn(process.env.NEXT_PUBLIC_FORM_REVISIONS_ENABLED);
+}
+
+/**
  * The composer's reading of CHAT_LONG_MESSAGE_ENABLED. Only a statically
  * written `process.env.NEXT_PUBLIC_*` name reaches a client bundle, so the
  * browser reads the public twin and nothing else. Off, the composer renders
