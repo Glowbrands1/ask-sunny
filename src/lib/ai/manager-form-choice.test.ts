@@ -67,3 +67,29 @@ describe("on", () => {
     expect(chosenFormQuestion(BUTTON, ["create a coaching form for avery stone"])).toBe("Create a Coaching Form from this conversation.");
   });
 });
+
+/** QA-6 negation probes, 26 Oct 2026: a negated "needs / write ca" asks for nothing. */
+describe("on: a negated 'needs CA' is read as typed", () => {
+  const NEGATED = [
+    "he never needs CA",
+    "she does not need CA",
+    "doesn't need ca",
+    "no need to write ca",
+    "do not write ca, just coach",
+    "needs CA? no, coaching",
+  ];
+  const sentence = (text: string) => text[0]!.toUpperCase() + text.slice(1);
+
+  it.each(NEGATED)("'%s' is left as typed, in lowercase and sentence case", (turn) => {
+    for (const variant of [turn, sentence(turn)]) expect(chosenFormQuestion(variant, [])).toBe(variant);
+  });
+
+  it.each(["do not write ca", "he never needs CA"])("after '%s', 'Create a form from this conversation.' names no form", (earlier) => {
+    expect(chosenFormQuestion(BUTTON, [earlier])).toBe(BUTTON);
+  });
+
+  it("a plain 'needs CA' and 'write ca' still ask for the Corrective Action Form", () => {
+    expect(chosenFormQuestion(NEEDS, [])).toBe(`Create a Corrective Action Form. ${NEEDS}`);
+    expect(chosenFormQuestion(BUTTON, [WRITE])).toBe("Create a Corrective Action Form from this conversation.");
+  });
+});

@@ -25,6 +25,25 @@ import type { AskRequest } from "./types";
  */
 
 const NEEDS_CA = /\b(?:needs?|write|do|file)\s+(?:an?\s+|the\s+)?(?:ca|c\/a|corrective\s+actions?)\b(?!\s+(?:policy|process|step))/i;
+/**
+ * QA-6 negation probes, 26 Oct 2026: "he never needs CA", "she does not need
+ * CA", "doesn't need ca", "no need to write ca", "do not write ca, just coach"
+ * and "needs CA? no, coaching" were read as asking for one. A "needs / write
+ * ca" with not / never / no / don't before it in its clause, or answered "no"
+ * right after, asks for nothing.
+ */
+const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|doesn'?t|does\s+not|without)\b/i;
+
+function needsCa(text: string): boolean {
+  for (const clause of text.split(/[,.;!]+/)) {
+    const hit = NEEDS_CA.exec(clause);
+    if (!hit) continue;
+    const after = clause.slice(hit.index + hit[0].length);
+    if (!NEGATED.test(clause.slice(0, hit.index)) && !/^\s*\?\s*(?:no|nope|nah)\b/i.test(after)) return true;
+  }
+  return false;
+}
+
 const GENERIC_FORM =
   /^\s*(?:please\s+)?(?:create|make|build|draft|start|generate|do)\s+(?:me\s+)?(?:a|the)\s+form(?:\s+(?:from|out\s+of|with)\s+(?:this|the)\s+(?:conversation|chat))?\s*[.!]?\s*$/i;
 
@@ -45,7 +64,7 @@ export function withManagerFormChoice(request: AskRequest): AskRequest {
 /** The turn as the request for the form the manager chose, or as typed. */
 export function chosenFormQuestion(question: string, earlier: readonly string[]): string {
   const reading = detectTemplateIntent(question);
-  if (reading.kind === "corrective_action" && !reading.requestedCreation && NEEDS_CA.test(question)) {
+  if (reading.kind === "corrective_action" && !reading.requestedCreation && needsCa(question)) {
     return `Create a Corrective Action Form. ${question}`;
   }
   if (reading.kind === "ambiguous" && GENERIC_FORM.test(question)) {
@@ -59,7 +78,7 @@ function lastNamedForm(turns: readonly string[]): string | null {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const reading = detectTemplateIntent(turns[index]!);
     if (reading.kind === "explicit" && NAMED[reading.templateKey]) return reading.templateKey;
-    if (reading.kind === "corrective_action" && (reading.requestedCreation || NEEDS_CA.test(turns[index]!))) return "dpoa";
+    if (reading.kind === "corrective_action" && (reading.requestedCreation || needsCa(turns[index]!))) return "dpoa";
   }
   return null;
 }
