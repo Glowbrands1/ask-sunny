@@ -502,10 +502,7 @@ async function coachingDetails(turns: string[]) {
   const { create } = await conversation(turns);
   const { reference } = await create();
   const form = await review(reference.instanceId);
-  return {
-    templateKey: form.templateKey as string | undefined,
-    details: field(form, "coaching_details")?.value ?? "",
-  };
+  return { details: field(form, "coaching_details")?.value ?? "" };
 }
 
 const REGISTERS: [string, (text: string) => string][] = [
