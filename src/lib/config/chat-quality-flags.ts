@@ -894,6 +894,15 @@ export function stateCodeNotAPersonEnabled(): boolean {
 }
 
 /**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
  * An incident date after today is asked about once, in every register, and
  * never dates the form (QA, 26 Oct 2026, U4). A deadline or a follow-up in
  * the future is not asked about. Off, a future date is dropped silently, as
