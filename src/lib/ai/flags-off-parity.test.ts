@@ -72,6 +72,8 @@ import {
   reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
+  sensitiveDefaultsRedactEnabled,
+  appPasswordHelpEnabled,
   formsGuideEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -163,6 +165,8 @@ const NEW_FLAGS = [
   "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
+  "SENSITIVE_DEFAULTS_REDACT_ENABLED",
+  "APP_PASSWORD_HELP_ENABLED",
   "FORMS_GUIDE_ENABLED",
 ] as const;
 
@@ -327,6 +331,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
+    expect(sensitiveDefaultsRedactEnabled()).toBe(false);
+    expect(appPasswordHelpEnabled()).toBe(false);
     expect(formsGuideEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
