@@ -47,6 +47,7 @@ import { useSession } from "@/lib/session/session-context";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
 import { downloadFormPdf, formsFetch } from "./forms-fetch";
+import { RegisterRowActions } from "@/form-revisions/register-row-actions";
 
 /**
  * FORM MONITORING — the system of record, and the screen follow-ups are worked
@@ -680,6 +681,7 @@ export function MonitoringTable({
 
                         <td className={cn(PINNED, "px-2.5 py-2")}>
                           <div className="flex items-center justify-end gap-2">
+                            <RegisterRowActions form={form} />
                             <button
                               type="button"
                               onClick={() => download(form.id)}
