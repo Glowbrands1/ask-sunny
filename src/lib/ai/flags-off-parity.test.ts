@@ -87,6 +87,7 @@ import {
   priorSentenceFixEnabled,
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
+  payrollTypoNotANameEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -192,6 +193,7 @@ const NEW_FLAGS = [
   "PRIOR_SENTENCE_FIX_ENABLED",
   "ATTENDANCE_ACTION_PLAN_ENABLED",
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
+  "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -383,6 +385,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(priorSentenceFixEnabled()).toBe(false);
     expect(attendanceActionPlanEnabled()).toBe(false);
     expect(hideNoPolicyMatchNoticeEnabled()).toBe(false);
+    expect(payrollTypoNotANameEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
