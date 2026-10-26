@@ -69,7 +69,7 @@ const DECISION_TOPICS: RegExp[] = [
  * showing up are subjects a Details sentence may raise only when the notes did.
  */
 const ACCOUNT_TOPICS: RegExp[] = [
-  /\bworked\s+(?:(?:through|thru|out)\s+)?(?:it|(?:her|his|their|the|a)\s+(?:full\s+|entire\s+)?(?:notice|two weeks|2 weeks)|(?:two|2)[- ]weeks?'?\s+notice)\b|\bfulfill(?:s|ed|ing)?\b|\bserved\s+(?:her|his|their|the|a)\s+(?:notice|two weeks)\b/i,
+  /\bwork(?:ed|s|ing)?\s+(?:(?:through|thru|out)\s+)?(?:it|(?:her|his|their|the|a)\s+(?:full\s+|entire\s+)?(?:notice|two weeks|2 weeks)|(?:two|2)[- ]weeks?'?\s+notice)\b|\bfulfill(?:s|ed|ing)?\b|\bserved\s+(?:her|his|their|the|a)\s+(?:notice|two weeks)\b/i,
   /\bcall(?:s|ed|ing)?\s+(?:in|out|off)\b|\bno[\s-]*call\b|\bshow(?:s|ed)?\s+up\b|\bno[\s-]*show\b|\bncns\b/i,
 ];
 
@@ -80,9 +80,23 @@ const ACCOUNT_TOPICS: RegExp[] = [
  */
 const ACCOUNT_NEGATED_BEFORE = /\b(?:no|not|never|didn't|didnt|did not|wasn't|was not|hasn't|has not)\s+(?:[\w'-]+\s+){0,3}$/i;
 
+/*
+ * The negation is read in the match's own clause: "she did not give notice
+ * but worked it" affirms the second half (QA-3, 26 Oct 2026). And "no call",
+ * "no show" and "ncns" are themselves the negation: notes saying "no call no
+ * show" never affirm that she called in.
+ */
+const CLAUSE_BREAK = /,|;|\bbut\b/gi;
+const SELF_NEGATED = /^(?:no\b|ncns\b)/i;
+
 function affirms(text: string, topic: RegExp): boolean {
   for (const match of text.matchAll(new RegExp(topic.source, "gi"))) {
-    if (!ACCOUNT_NEGATED_BEFORE.test(text.slice(0, match.index ?? 0))) return true;
+    if (SELF_NEGATED.test(match[0])) continue;
+    const before = text.slice(0, match.index ?? 0);
+    const breaks = [...before.matchAll(CLAUSE_BREAK)];
+    const last = breaks[breaks.length - 1];
+    const clause = last ? before.slice((last.index ?? 0) + last[0].length) : before;
+    if (!ACCOUNT_NEGATED_BEFORE.test(clause)) return true;
   }
   return false;
 }
