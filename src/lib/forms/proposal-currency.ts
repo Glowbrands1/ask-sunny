@@ -5,6 +5,7 @@ import { isQuestion } from "./employment-change";
 import { employeeState, managerContext, samePerson } from "./proposal";
 import { detectTemplateIntent } from "./template-intent";
 import { dateAnswerTurns } from "./incident-dates";
+import { stateCodePlaceContext } from "./state-code-place";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -55,7 +56,11 @@ export function checkProposalIsCurrent(input: {
   // An id is provenance only; one the history arrived without is simply absent.
   const prior = turns.slice(0, -1).map((turn) => ({ id: turn.id ?? "", role: turn.role, content: turn.content }));
   const context = managerContext(prior, { id: last.id, content: last.content });
-  const { resolution, excluded } = employeeState(context);
+  let state = employeeState(context);
+  // STATE_CODE_NOT_A_PERSON_ENABLED: "at Dodge, NE" is a place; the turns are read again without it.
+  const placed = stateCodePlaceContext(context, state.resolution);
+  if (placed) state = employeeState(placed);
+  const { resolution, excluded } = state;
 
   if (resolution.kind === "ambiguous") {
     return {
