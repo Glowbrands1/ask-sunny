@@ -340,3 +340,40 @@ describe("QA-6: claims in capitals, policy prose, and a known name that runs on"
     }
   });
 });
+
+/*
+ * QA-7 review of the fix (flag on, a reply with no card). "Rook Pemberly"
+ * stands in for QA's second name (invented, the same in both apps). QA's
+ * exact inputs, in lowercase, sentence case and CAPS.
+ */
+describe("QA-7 review: two clauses joined by \"and\", and a claim while two forms are open", () => {
+  const BOTH_OPEN =
+    "The draft for Test Employee is open and the draft for Rook Pemberly is open. Press Finalize on either card.";
+  const B22 =
+    "A new Corrective Action Form draft is open for Test Employee Two, Tanning Consultant, for arriving late on today's date, 2026-10-25.";
+
+  it.each(QA6_REGISTERS)("%s: \"…Test Employee is open and the draft for Rook Pemberly is open. Press Finalize on either card.\" keeps the true clause and names Rook Pemberly", (_label, recase) => {
+    const out = withoutPhantomDraftClaim(recase(BOTH_OPEN), {
+      question: recase("and one for Rook Pemberly, late today"),
+      openForm: OPEN,
+    });
+    const kept = `${recase("The draft for Test Employee is open")}. `;
+    expect(out.startsWith(kept), out).toBe(true);
+    expect(out.slice(kept.length)).toMatch(
+      /^I haven't created a form for rook pemberly yet — say "create a corrective action for rook pemberly" and I'll put a card here\.$/i,
+    );
+    expect(out).not.toMatch(/either card|new form for test employee/i);
+  });
+
+  it.each(QA6_REGISTERS)("%s: two forms open, a new draft claimed for test employee two names test employee two in full", (_label, recase) => {
+    const question = recase("is it ready?");
+    const others: OpenFormSummary[] = [OPEN, { ...OPEN, employeeName: "Rook Pemberly" }];
+    expect(withoutPhantomDraftClaim(recase(B22), { question, openForms: others })).toMatch(
+      /^I haven't created a form for test employee two yet — say "create a corrective action for test employee two" and I'll put a card here\.$/i,
+    );
+    const withTwo: OpenFormSummary[] = [OPEN, { ...OPEN, employeeName: "Test Employee Two" }];
+    expect(withoutPhantomDraftClaim(recase(B22), { question, openForms: withTwo })).toMatch(
+      /^I haven't created a new form for test employee two yet — say "create a corrective action for test employee two" and I'll put a card here\.$/i,
+    );
+  });
+});
