@@ -1,5 +1,14 @@
 # Parity log: Ask Sunny ↔ Ask Bubbles
 
+## 26 Oct 2026: FOLLOW_UP_NOT_PRIOR_ENABLED — Sunny-only
+
+QA Sunny tester batch 13 (S16, S19): a prior action's date was also printed
+as a "**Follow-up:**" card line (`form-card-slots.ts` `followUpDates` counts
+every date that is not an incident date). With the flag on, a date the
+earlier-step reader lists is never a Follow-up line. Ask Bubbles' card has no
+Follow-up lines (`enrichFormCard` does not run on its grounded path), so there
+is nothing to port.
+
 ## 26 Oct 2026: BH3, both facts in one correction turn — flagged here, unflagged in Ask Bubbles
 
 BH3 ("verbal. payroll deduct is not applicable." applies both the level and the payroll answer on a correction turn) is gated here behind `CORRECTION_BOTH_FACTS_ENABLED` (default off, #207); the same fix has been on in Ask Bubbles main, unflagged, since 9530112; QA decided on 26 Oct 2026 not to add a flag in Bubbles (churn risk).
