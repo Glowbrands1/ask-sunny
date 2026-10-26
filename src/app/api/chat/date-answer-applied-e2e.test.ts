@@ -535,6 +535,44 @@ describe(`${DA_FLAG} on: not an answer`, () => {
 });
 
 /*
+ * QA BT4, live 26 Oct 2026 (conv_mvpnbveu27l2dv3): the date question, then
+ * two answers to the other questions, then the date. The question vanished
+ * from the card after the first answer, and "10-15" did not date the form:
+ * the app's own lines added to the reply ("No payroll deduction. Warning
+ * level: verbal.") made it more than a short answer. With the flag on the
+ * answer dates it.
+ */
+const BT4 = [
+  "create a ca for rory vance at kearney, she was late on 10-5 and 10-15. i coached her on 10-16 about being late",
+  "verbal",
+  "no payroll deduct",
+  "10-15",
+];
+
+describe(`${DA_FLAG} on: BT4`, () => {
+  beforeEach(() => useProduction(true));
+
+  it.each(CASINGS)("%s", async (_casing, cased) => {
+    const thread = new Thread();
+    const asked: boolean[] = [];
+    let last: Answer | null = null;
+    for (const turn of BT4) {
+      last = await thread.say(cased(turn));
+      asked.push(/Which date goes on the form\?/.test(last.content));
+    }
+    /*
+     * Here the intent reader writes the first date onto each later turn ("It
+     * happened on 10/5/2026."), so the middle cards do not ask again; that is
+     * the stored-slot date (D3), not this flag. The answer still dates it.
+     */
+    expect(asked).toEqual([true, false, false, false]);
+    expect(last!.formProposal?.formDate).toBe("2026-10-15");
+    expect(last!.formProposal?.employeeName).toBe("Rory Vance");
+    expect(await createdDate(thread, "Observed: Rory Vance arrived late on October 5, 2026, and again on October 15, 2026.")).toBe("2026-10-15");
+  });
+});
+
+/*
  * NEVER-BREAK: with the flag off, main today (this app's production env).
  * Straight after the question every typed date and "most recent" already
  * date it here; "the 15th" does not. After a turn in between, no answer dates
@@ -573,6 +611,18 @@ describe(`${DA_FLAG} off: as main`, () => {
     await expect(answered([T1, T2, "most recent"])).rejects.toThrow(
       "This proposal is out of date: the conversation now says the form is for most recent, not Rory Vance. Use the newest proposal.",
     );
+  });
+
+  it("BT4: the question is asked once and \"10-15\" after two other answers leaves the form undated", async () => {
+    const thread = new Thread();
+    const asked: boolean[] = [];
+    let last: Answer | null = null;
+    for (const turn of BT4) {
+      last = await thread.say(turn);
+      asked.push(/Which date goes on the form\?/.test(last.content));
+    }
+    expect(asked).toEqual([true, false, false, false]);
+    expect(last!.formProposal?.formDate ?? null).toBeNull();
   });
 
   it("the flag reads off by default", async () => {
