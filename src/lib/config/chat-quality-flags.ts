@@ -860,3 +860,14 @@ export function policyNameTyposEnabled(): boolean {
 export function policyAsYouSaidManagerOnlyEnabled(): boolean {
   return envFlag("POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED");
 }
+
+/**
+ * A notice the manager says was worked fills "Date that notice was
+ * fulfilled" with the last day worked and ticks Submitted & Fulfilled Notice;
+ * "9/25 gave notice worked it til 10/9" is notice 9/25, last day 10/9 (QA,
+ * 25 Oct 2026). Never a date the manager did not give. Off, the exit form
+ * reads as before.
+ */
+export function exitNoticeFulfilledEnabled(): boolean {
+  return envFlag("EXIT_NOTICE_FULFILLED_ENABLED");
+}

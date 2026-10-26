@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
+import { exitIntakeFixEnabled, exitNoticeFulfilledEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -216,6 +216,39 @@ const RESIGNED_AFTER: { role: ExitDateRole; pattern: RegExp } = {
     /^\s*(?:,\s*)?(?:that|when|and said|saying|to say)\s+(?:she|he|they)\s+(?:was\s+|were\s+|is\s+|had\s+)?(?:quit|quitting|resigned|resigning|done|walking out|not coming back)\b|^\s*(?:is|was)\s+when\s+(?:she|he|they)\s+(?:quit|resigned|walked out)\b/,
 };
 
+/*
+ * ============================================================================
+ * "9/25 GAVE NOTICE WORKED IT TIL 10/9" (EXIT_NOTICE_FULFILLED_ENABLED)
+ * ============================================================================
+ *
+ * QA, 25 Oct 2026 (conv_mvofnrm5217ss9v): the last day was read as the
+ * notice date, because "worked it til" is not "worked until" and the date
+ * before "gave notice" had no subject. "worked it til 10/9" is a last day,
+ * and "9/25 gave notice" is the day notice was given.
+ */
+const WORKED_IT_TIL: { role: ExitDateRole; pattern: RegExp } = {
+  role: "lastDayWorked",
+  pattern: /\bworked\s+(?:it\s+|(?:her|his|their|the)\s+notice\s+)?(?:out\s+)?(?:through|thru|until|till|til|to)\b/g,
+};
+const DATE_THEN_GAVE_NOTICE: { role: ExitDateRole; pattern: RegExp } = {
+  role: "noticeGiven",
+  pattern: new RegExp(
+    String.raw`^\s*,?\s*(?:gave|put in|submitted|turned in|handed in)\s+(?:in\s+)?(?:her|his|their|a|an|the)?\s*(?:written\s+)?${NOTICE_NOUN}`,
+  ),
+};
+
+function beforeCues(): { role: ExitDateRole; pattern: RegExp }[] {
+  return exitNoticeFulfilledEnabled() ? [...BEFORE_CUES, WORKED_IT_TIL] : BEFORE_CUES;
+}
+
+function afterCues(): { role: ExitDateRole; pattern: RegExp }[] {
+  return exitNoticeFulfilledEnabled() ? [...AFTER_CUES, DATE_THEN_GAVE_NOTICE] : AFTER_CUES;
+}
+
+/** "gave notice worked it til 10/9", "worked her notice through 10/9": the notice was worked. */
+const NOTICE_WORKED =
+  /\bnotice\b[^.;!?\n]{0,15}?\b(?:and\s+)?worked\s+it\b|\bworked\s+(?:it|(?:her|his|their)\s+notice)\s+(?:out|through|thru|until|till|til)\b/g;
+
 /* ---------------------------------------------------------- the dates -- */
 
 /*
@@ -374,8 +407,8 @@ function roleFor(
   text: string,
   tokens: DateToken[],
   position: number,
-  cues: readonly { role: ExitDateRole; pattern: RegExp }[] = BEFORE_CUES,
-  afterCues: readonly { role: ExitDateRole; pattern: RegExp }[] = AFTER_CUES,
+  cues: readonly { role: ExitDateRole; pattern: RegExp }[] = beforeCues(),
+  afterCuesRead: readonly { role: ExitDateRole; pattern: RegExp }[] = afterCues(),
 ): ExitDateRole | null {
   const token = tokens[position]!;
   const previousEnd = position > 0 ? tokens[position - 1]!.end : 0;
@@ -389,14 +422,14 @@ function roleFor(
   const fromBefore = nearestCue(before.toLowerCase(), cues);
   if (fromBefore) return fromBefore;
   // EXIT_INTAKE_FIX_ENABLED: "gave notice 9/25/26 – fulfilled 10/9/26".
-  if (exitIntakeFixEnabled() && nearestCue(before.toLowerCase(), [BARE_FULFILLED])) {
+  if ((exitIntakeFixEnabled() || exitNoticeFulfilledEnabled()) && nearestCue(before.toLowerCase(), [BARE_FULFILLED])) {
     const sentenceStart = Math.max(...[".", "!", "?", ";", "\n"].map((mark) => text.lastIndexOf(mark, token.index - 1)));
     if (/\bnotice\b/i.test(text.slice(sentenceStart + 1, token.index))) return "noticeFulfilled";
   }
 
   // AFTER: only an anchored phrase, only up to the next date.
   const after = text.slice(token.end, nextStart).toLowerCase();
-  for (const cue of afterCues) {
+  for (const cue of afterCuesRead) {
     if (cue.pattern.test(after)) return cue.role;
   }
   return null;
@@ -566,8 +599,8 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
      * three lines above: "her last day was when she quit on 9/15" is still a
      * last day, and is ALSO the day she quit.
      */
-    const resigned = roleFor(text, tokens, position, [...BEFORE_CUES, RESIGNED_CUE], [
-      ...AFTER_CUES,
+    const resigned = roleFor(text, tokens, position, [...beforeCues(), RESIGNED_CUE], [
+      ...afterCues(),
       RESIGNED_AFTER,
     ]);
     if (resigned === "resigned") place(resigned, token);
@@ -610,6 +643,10 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
    */
   const reading = readSeparation(text);
   let { fulfilled, notFulfilled, voluntary } = reading;
+  // EXIT_NOTICE_FULFILLED_ENABLED: a notice worked, or fulfilled on a stated day, is a fulfilled notice.
+  if (exitNoticeFulfilledEnabled() && !fulfilled && !notFulfilled) {
+    fulfilled = affirmed(text, NOTICE_WORKED) || (noticeFulfilled !== null && noticeGiven !== null);
+  }
   const conflict = (described: string[]) =>
     ambiguities.push({ kind: "separation_conflict", described });
 
@@ -656,11 +693,29 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
   ) {
     lastDayWorked = noticeFulfilled;
   }
+  /*
+   * EXIT_NOTICE_FULFILLED_ENABLED (QA, 25 Oct 2026; conv_mvodv9bh26p0jf4,
+   * conv_mvofngxg2xy7l11): the other way round. A notice the manager says was
+   * worked, with a last day worked, was fulfilled on that last day. No last
+   * day, no date: nothing is invented.
+   */
+  let fulfilledOn = noticeFulfilled;
+  if (
+    exitNoticeFulfilledEnabled() &&
+    fulfilled &&
+    !fulfilledOn &&
+    lastDayWorked &&
+    !lastDayUnclear &&
+    !separationUnclear &&
+    !ambiguities.some((entry) => entry.kind !== "separation_conflict" && entry.role === "noticeFulfilled")
+  ) {
+    fulfilledOn = lastDayWorked;
+  }
 
   return {
     lastDayWorked,
     noticeGiven,
-    noticeFulfilled,
+    noticeFulfilled: fulfilledOn,
     resignationDate,
     noticeOptions: fulfilled ? [EXIT_OPTION.submittedFulfilledNotice] : [],
     typeOptions: [
