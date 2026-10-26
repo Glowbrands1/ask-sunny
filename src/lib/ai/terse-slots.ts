@@ -94,6 +94,14 @@ export function withTerseSlots(request: AskRequest): AskRequest {
 const FOR_LEAD = /^\s*(?:(?:verbal|written)\s+)?(?:ca|c\/a|dpoa|coach|coaching|exit)(?:\s+form)?\s+for\b/i;
 const SENTENCE_WORDS = /\b(?:she|he|they|i|her|his|their|was|were|is|are|has|had|have|about|because|effective|who|when|while)\b/i;
 
+/**
+ * TERSE_COMMAND_ONLY_ENABLED (QA, 26 Oct 2026, via Code 7): a bare "coach"
+ * made the Employee "Coach", and a bare "ca" a blank card. A turn that is only
+ * a form word ("ca", "coach", "exit", "coaching form") is read as the request
+ * for that form ("Create a coaching form."), so the reply asks who it is for.
+ */
+const BARE_COMMAND = /^\s*(ca|c\/a|dpoa|coach|coaching|exit)(?:\s+form)?\s*$/i;
+
 function commandLine(text: string): boolean {
   return !FOR_LEAD.test(text) && !SENTENCE_WORDS.test(text);
 }
@@ -101,41 +109,49 @@ function commandLine(text: string): boolean {
 /**
  * TERSE_COMMAND_ONLY_ENABLED (QA live run, 26 Oct 2026): "ca <first> <middle>
  * <last> <place> late today verbal" lost the surname. A third name word is
- * taken only when a place, a title, a state, a topic, a level, a code
- * ("nc/ns") or the start of the account ("late", "opened", never "on" or
- * "was") follows it, and never when it is a
- * level, a form word or a topic (`NOT_A_THIRD_NAME`), a place, a title or a
- * repeat of the name. The end of the line or a date never makes a name:
- * "ca <name> final 10-14", "coach <name> woven", "coaching <name> tanned on
- * clock" stay two words (QA-4, 26 Oct 2026).
+ * read from the shape of the line, never from a list of allowed words (QA-4,
+ * 26 Oct 2026: "dana smith barely late" and "dana smith doesnt clock in" took
+ * "barely" / "doesnt", because any unlisted word before the account passed):
+ *   - "yes" when a place, a title, a state or a code ("nc/ns") follows it, so
+ *     the name has ended, or when the manager capitalised all three words in a
+ *     line that is not all capitals ("ca Rory Ann Kelly late today");
+ *   - "no" when it is a level, a form word, a topic, a negation
+ *     (`NOT_A_THIRD_NAME`), a word with an apostrophe, a conjunction, a place,
+ *     a title or a repeat of the name, or when the end of the line or a date
+ *     follows it ("ca <name> final 10-14", "coach <name> woven");
+ *   - "unsure" otherwise ("ca rory ann vance late today" and "ca dana smith
+ *     barely late" have the same shape). An unsure line is left as typed, so
+ *     it is read as it is with the flag off.
  */
 /** Negations, degree words, levels, form words and topics: never the third word of a name. */
 const NOT_A_THIRD_NAME =
   /^(?:never|not|no|didnt|didn't|without|except|always|also|just|still|again|really|only|does|did|ever|usually|often|final|verbal|written|first|second|third|last|warning|ca|c\/a|dpoa|coach|coaching|exit|form|write|woven|acks?|training|orientation|uniform|personal|closing|opening|sales|schedule|break|breaks|refund|deposit|theft|safety|attendance|dress|cash|phone|cell|ncns|register|drawer|cleaning|sanitize|sanitizing|customer|customers|guest|guests|policy|tardy|tardiness|conduct|standards|insubordination|performance|inventory|product|products|recipe|measuring|timecard|clock|counter|music|food|smoking|vaping|language|rude|rudeness|today|yesterday|tomorrow)$/i;
 
-function thirdNameWord(tokens: readonly string[], name: readonly string[]): boolean {
+function thirdNameWord(tokens: readonly string[], name: readonly string[], text: string): "yes" | "no" | "unsure" {
   const [word, next, after] = tokens;
-  if (!word || !next || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || NOT_A_THIRD_NAME.test(word)) return false;
-  // QA-7, 26 Oct 2026: "repeatedly", "constantly", "doesn't", "and" are never a name word.
-  // Names that end in "ly" are kept: "Kelly", "Emily", "Holly", "Kimberly", "Beverly".
-  if ((/^[a-z]{5,}ly$/i.test(word) && !/^(?:kimberly|beverly|waverly|connolly|donnelly|mcnally)$/i.test(word)) || /['’]/.test(word) || /^(?:and|or|then|but|plus)$/i.test(word)) return false;
-  if (READERS.place(word) || READERS.title(word) || STATE.test(word) || READERS.place(`${word} ${next}`)) return false;
-  if (name.some((part) => part.toLowerCase() === word.toLowerCase())) return false;
-  return (
+  if (!word || !next || !NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || NOT_A_PERSON.test(word) || NOT_A_THIRD_NAME.test(word)) return "no";
+  if (/['’]/.test(word) || /^(?:and|or|then|but|plus)$/i.test(word)) return "no";
+  if (READERS.place(word) || READERS.title(word) || STATE.test(word) || READERS.place(`${word} ${next}`)) return "no";
+  if (name.some((part) => part.toLowerCase() === word.toLowerCase())) return "no";
+  const nameEnded =
     READERS.place(next) ||
     (after !== undefined && READERS.place(`${next} ${after}`)) ||
     READERS.title(next) !== null ||
     STATE.test(next) ||
-    // "rory ann vance woven acks", "rory ann vance nc/ns": a topic, a level or a code closes the name.
-    NOT_A_THIRD_NAME.test(next) ||
-    /^[a-z]+\/[a-z]+$/i.test(next) ||
-    (NOT_A_NAME_WORD.test(next) && !/^(?:on|at|for|was|is|did)$/i.test(next))
-  );
+    /^[a-z]+\/[a-z]+$/i.test(next);
+  const capitalised = (part: string) => /^[A-Z][a-z'’-]+$/.test(part);
+  if (nameEnded || (text !== text.toUpperCase() && [...name, word].every(capitalised))) return "yes";
+  // Before the account ("late", "opened") or a topic, the word may be a surname or may not.
+  const accountNext = NOT_A_THIRD_NAME.test(next) || (NOT_A_NAME_WORD.test(next) && !/^(?:on|at|for|was|is|did)$/i.test(next));
+  return accountNext ? "unsure" : "no";
 }
 
 /** The long form of a terse "<form word> <name> …" line, or the text as it is. */
 export function expandTerseRequest(text: string, today: string): string {
   if (/[.!?\n]/.test(text.replace(/\d\.\d/g, "")) || text.trim().split(/\s+/).length > 40) return text;
+  // TERSE_COMMAND_ONLY_ENABLED: a form word on its own asks for that form, never names anyone.
+  const bare = terseCommandOnlyEnabled() ? BARE_COMMAND.exec(text) : null;
+  if (bare) return `${SHORT_FORM_WORDS[bare[1]!.toLowerCase()]!.request}.`;
   const lead = TERSE_LEAD.exec(text);
   if (!lead) return text;
   // TERSE_COMMAND_ONLY_ENABLED: only a command line is written out, never a sentence the readers already read.
@@ -154,7 +170,11 @@ export function expandTerseRequest(text: string, today: string): string {
     if (!NAME_WORD.test(word) || NOT_A_NAME_WORD.test(word) || READERS.place(word) || READERS.title(word)) break;
     name.push(tokens.shift()!);
   }
-  if (name.length === 2 && terseCommandOnlyEnabled() && thirdNameWord(tokens, name)) name.push(tokens.shift()!);
+  if (name.length === 2 && terseCommandOnlyEnabled()) {
+    const third = thirdNameWord(tokens, name, text);
+    if (third === "unsure") return text;
+    if (third === "yes") name.push(tokens.shift()!);
+  }
   if (name.length === 0) return text;
 
   let place: string | null = null;
