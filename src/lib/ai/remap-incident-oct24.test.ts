@@ -833,8 +833,40 @@ describe("remap path: a late opening with LATE_OPEN_DATE_ENABLED on too", () => 
     useFlags(["FORM_FULL_REMAP_ENABLED"]);
     process.env.LATE_OPEN_DATE_ENABLED = "true";
     const response = await chat(LATE);
-    expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening, as you said/);
+    /*
+     * POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED (intended change, QA D4, 26 Oct
+     * 2026): "late to open" names no policy, so with that flag on the line is
+     * "**Policy:** Late Opening" without ", as you said". The policy and the
+     * date are the same either way. This is the REMAP_INCIDENT_FIX-off branch
+     * of form-full-remap.ts.
+     */
+    if (process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED === "true") {
+      expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening\n/);
+      expect(response.content).not.toMatch(/Late Opening, as you said/);
+    } else {
+      expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening, as you said/);
+    }
+    expect(response.formProposal?.formDate).toBe("2026-10-19");
   });
+
+  for (const on of [false, true]) {
+    it(`NEVER-BREAK (POLICY_AS_YOU_SAID_MANAGER_ONLY ${on ? "on" : "off"}): a manager who names the late opening policy gets "as you said"`, async () => {
+      useFlags(["FORM_FULL_REMAP_ENABLED"]);
+      process.env.LATE_OPEN_DATE_ENABLED = "true";
+      const before = process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED;
+      if (on) process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED = "true";
+      else delete process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED;
+      try {
+        const named = LATE.map((turn) => ({ ...turn, say: `${turn.say}, late opening policy` }));
+        const response = await chat(named);
+        expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening, as you said/);
+        expect(response.formProposal?.formDate).toBe("2026-10-19");
+      } finally {
+        if (before === undefined) delete process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED;
+        else process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED = before;
+      }
+    });
+  }
 
   it("REMAP_INCIDENT_FIX alone: no policy read from a description, as before", async () => {
     useFlags(REMAP_FLAGS);
