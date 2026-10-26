@@ -94,7 +94,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       form_in_progress: draft.formInProgress,
       slots: draft.slots ?? {},
       retryable: model?.retryable ?? false,
-      retried: false,
+      retried: model?.retried ?? false,
       succeeded: draft.succeeded === true,
     });
     const error = inserted && typeof inserted === "object" && "error" in inserted ? inserted.error : null;
