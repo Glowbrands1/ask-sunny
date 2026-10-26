@@ -175,6 +175,32 @@ function clauseLevelAfterRequest(sentence: string): StatedWarningLevel | null {
   return null;
 }
 
+/*
+ * "… VERBAL PRIOR COACHINGS 9/8 9/15 9/25" — THE LEVEL, THEN THE HISTORY. QA,
+ * Sunny round 3 (26 Oct 2026): "perf ca <name> … cc spa verbal prior
+ * coachings 9/8 9/15 9/25 no deduct tc" stated a verbal, and Type of Warning
+ * was left blank: the level is mid-sentence, with no "warning" or "ca" of its
+ * own, so no reader above takes it. A bare level straight before a history
+ * label ("prior coachings", "previous warnings", "prior ca") in a sentence
+ * that asks for the form, with no words of history before it, is the level
+ * of the form asked for; the label after it opens the history. Read only when
+ * a caller asks (`levelBeforeHistoryLabel`, behind
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED in `intent-slots.ts`); this module reads no
+ * flags.
+ */
+const LEVEL_BEFORE_HISTORY_LABEL =
+  /\b(verbal|written)\s+(?=(?:prior|previous|past|earlier)\s+(?:actions?|warnings?|coachings?|cas?|c\/a|corrective\s+actions?|write[- ]?ups?|discipline)\b)/g;
+
+function levelBeforeHistoryLabel(sentence: string): StatedWarningLevel | null {
+  for (const match of sentence.matchAll(LEVEL_BEFORE_HISTORY_LABEL)) {
+    const before = sentence.slice(0, match.index);
+    if (!REQUEST_CLAUSE.test(before) || LEVEL_HISTORY_BEFORE.test(before)) continue;
+    if (CLAUSE_HISTORY.test(before.replace(new RegExp(REQUEST_CLAUSE.source, "g"), " "))) continue;
+    return match[1] as StatedWarningLevel;
+  }
+  return null;
+}
+
 /**
  * "verbal, payroll deduct no." — a bare level in a clause of its own, beside
  * clauses that only answer the payroll question. HR, 21 Oct 2026 (ported from
@@ -194,7 +220,7 @@ function levelBesidePayrollAnswer(body: string): RegExpExecArray | null {
 /** The level one manager turn states for this form, or null. */
 export function statedWarningLevel(
   text: string,
-  options: { readonly undecidedStatesNothing?: boolean } = {},
+  options: { readonly undecidedStatesNothing?: boolean; readonly levelBeforeHistoryLabel?: boolean } = {},
 ): StatedWarningLevel | null {
   const levels = new Set<StatedWarningLevel>();
   // Only `managerStatedWarningLevel` asks for this; it is reached behind WARNING_LEVEL_MANAGER_ONLY_ENABLED.
@@ -209,6 +235,8 @@ export function statedWarningLevel(
     if (bare) levels.add(bare[1] as StatedWarningLevel);
     const clause = clauseLevelAfterRequest(body);
     if (clause) levels.add(clause);
+    const ahead = options.levelBeforeHistoryLabel ? levelBeforeHistoryLabel(body) : null;
+    if (ahead) levels.add(ahead);
 
     for (const match of body.matchAll(LEVEL_LABELLED)) levels.add(match[1] as StatedWarningLevel);
     for (const match of body.matchAll(LEVEL_AS_DOCUMENT)) levels.add((match[1] ?? match[2]) as StatedWarningLevel);
@@ -346,11 +374,14 @@ export interface WarningLevelTurn {
  * replays, 24 Oct 2026: "for Test Employee" and a bare "Yes" (answering the
  * payroll question) were each read as "Written Warning, as you said".
  */
-export function managerStatedWarningLevel(turns: readonly WarningLevelTurn[]): StatedWarningLevel | null {
+export function managerStatedWarningLevel(
+  turns: readonly WarningLevelTurn[],
+  options: { readonly levelBeforeHistoryLabel?: boolean } = {},
+): StatedWarningLevel | null {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index]!;
     if (turn.role !== "user" || typeof turn.content !== "string") continue;
-    const level = clauseStatedLevel(turn.content) ?? statedWarningLevel(turn.content, { undecidedStatesNothing: true });
+    const level = clauseStatedLevel(turn.content) ?? statedWarningLevel(turn.content, { ...options, undecidedStatesNothing: true });
     if (level) return level;
     const before = turns[index - 1];
     if (BARE_YES.test(turn.content) && before?.role === "assistant") {
@@ -365,9 +396,12 @@ export function managerStatedWarningLevel(turns: readonly WarningLevelTurn[]): S
  * The level the manager's turns state, the latest that states one winning —
  * "verbal" and then "actually written" is written.
  */
-export function warningLevelFromTurns(turns: readonly string[]): StatedWarningLevel | null {
+export function warningLevelFromTurns(
+  turns: readonly string[],
+  options: { readonly levelBeforeHistoryLabel?: boolean } = {},
+): StatedWarningLevel | null {
   for (const turn of [...turns].reverse()) {
-    const level = statedWarningLevel(turn);
+    const level = statedWarningLevel(turn, options);
     if (level) return level;
   }
   return null;

@@ -497,6 +497,31 @@ function spacedStepItem(text: string, dates: readonly DateInText[], date: DateIn
   return words && NAMES_A_STEP_PARSE.test(words) ? words : null;
 }
 
+/*
+ * "PRIOR COACHINGS 9/8 9/15 9/25" — A LABEL AND A BARE LIST OF DATES. QA,
+ * Sunny round 3 (26 Oct 2026): "… verbal prior coachings 9/8 9/15 9/25 no
+ * deduct" read "Coaching — 09/08/2026; Coaching — 9/8 — 09/15/2026; Coaching
+ * — 9/8 9/15 — 09/25/2026": each later date was no list item, and the label
+ * reader took the dates before it as its topic. With
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED on, a date with no words of its own straight
+ * after a labelled step's date is one more step under the same label, with
+ * only its own date: set off by spaces alone, or, under a plural label
+ * ("prior coachings 9/8, 9/15 and 9/25"), by a comma or "and" too. Off,
+ * nothing here runs.
+ */
+const BARE_DATE_GAP = /^\s+$/;
+const BARE_DATE_LIST_GAP = /^\s*(?:,\s*(?:(?:and|&)\s+)?|\s+(?:and|&)\s+)$/i;
+const PLURAL_LABEL = /\b(?:coachings|warnings|write[- ]?ups|actions|cas|c\/as)\b/i;
+
+/** Whether `date` is a bare date continuing the labelled list `list` (flag on only). */
+function bareDateItem(text: string, dates: readonly DateInText[], date: DateInText, list: string): boolean {
+  if (!priorActionsNoCommaEnabled() || !list) return false;
+  const at = dates.indexOf(date);
+  if (at < 1) return false;
+  const gap = text.slice(dates[at - 1]!.end, date.index);
+  return BARE_DATE_GAP.test(gap) || (PLURAL_LABEL.test(list) && BARE_DATE_LIST_GAP.test(gap));
+}
+
 /**
  * `labelledSteps` with PRIOR_ACTIONS_PARSE_ENABLED on: the level alone names
  * a step, the topic drops its article, "on" may precede the date, and a step
@@ -525,6 +550,11 @@ function labelledStepsParsed(text: string, dates: readonly DateInText[], today?:
         named: listNeedsStep ? spaced : `${list}${spaced}`,
         topic: listNeedsStep ? "" : spaced.replace(TOPIC_ARTICLE, "").trim(),
       });
+      continue;
+    }
+    // "prior coachings 9/8 9/15 9/25": a bare date after a labelled step's date is one more, with only its own date.
+    if (list && bareDateItem(text, dates, date, list)) {
+      found.set(date.index, { named: list, topic: "" });
       continue;
     }
     list = null;

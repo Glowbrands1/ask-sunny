@@ -15,6 +15,7 @@ import {
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
+  priorActionsNoCommaEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -287,7 +288,12 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     lateOpen && !choice?.date ? newestStatedDate(input.question, input.today, explicitIncidentIso) : null;
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
-    : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
+    : groundDate(
+        choice?.date ?? modelIncidentDate(reading?.incidentDate ?? null, dateText, input.today),
+        dateQuestion,
+        dateText,
+        input.today,
+      );
   const date = codeSlotsEnabled()
     ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
     : groundedDate;
@@ -339,7 +345,8 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const warningLevel = warningManagerOnly
     ? {
         value:
-          choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
+          choice?.warning ??
+          managerStatedWarningLevel([...input.history, { role: "user", content: input.question }], levelReading()),
         ambiguous: false,
       }
     : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
@@ -1089,6 +1096,30 @@ function groundDate(
   return { iso: null, ambiguous: [] };
 }
 
+/**
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED (QA, Sunny round 3): "perf ca … verbal prior
+ * coachings 9/8 9/15 9/25 no deduct" names no incident date, and the slot
+ * model's "9/25" was taken as the form's because those words are in the
+ * conversation. A date the readers read as an earlier step, and not as an
+ * incident, is never the model's incident date; the form then stays dated the
+ * day it is created. Off, the model's date is passed on as before.
+ */
+function modelIncidentDate(typed: string | null, blob: string, today: string): string | null {
+  if (!typed || !priorActionsNoCommaEnabled()) return typed;
+  const iso = normalizeIncidentDate(typed, today);
+  if (!iso || listIncidentDates(blob, today).some((found) => found.iso === iso)) return typed;
+  return priorSteps(blob, today).some((step) => step.iso === iso) ? null : typed;
+}
+
+/**
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED (QA, Sunny round 3): "… cc spa verbal prior
+ * coachings 9/8 9/15 9/25" states a verbal; the level straight before the
+ * history label is this form's (`warning-level.ts`). Off, read as before.
+ */
+function levelReading(): { levelBeforeHistoryLabel: boolean } {
+  return { levelBeforeHistoryLabel: priorActionsNoCommaEnabled() };
+}
+
 function groundPayroll(typed: string | null, blob: string): string | null {
   const found = payrollAmounts(blob);
   if (typed) {
@@ -1118,7 +1149,7 @@ function groundWarning(
   // A prior "Verbal CA" beside the level being issued is history. Both words
   // in the account are not a question, and the card is not held for one.
   const turns = blob.split("\n").map((line) => line.trim()).filter(Boolean);
-  const stated = warningLevelFromTurns(turns);
+  const stated = warningLevelFromTurns(turns, levelReading());
   if (stated) return { value: stated, ambiguous: false };
   if (typed === "verbal" || typed === "written") return { value: typed, ambiguous: false };
   const verbal = /\bverbal\b/i.test(blob);

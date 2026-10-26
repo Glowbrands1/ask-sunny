@@ -824,7 +824,14 @@ export function terseSlotReadEnabled(): boolean {
  * list, as a comma or "and" does, and keeps only its own words
  * (`lib/forms/form-date-answer.ts`). Server-only. Off (the default), prior
  * actions read exactly as before.
+ *
+ * QA, Sunny round 3: "… verbal prior coachings 9/8 9/15 9/25" — a label and a
+ * bare list of dates is one step per date, each with only its own date; none
+ * of them dates the form, even when the slot model copied one; and the
+ * "verbal" before the label is this form's level (`intent-slots.ts`,
+ * `lib/forms/warning-level.ts`). Read as on only with
+ * PRIOR_ACTIONS_PARSE_ENABLED, which it extends.
  */
 export function priorActionsNoCommaEnabled(): boolean {
-  return envFlag("PRIOR_ACTIONS_NO_COMMA_ENABLED");
+  return envFlag("PRIOR_ACTIONS_NO_COMMA_ENABLED") && envFlag("PRIOR_ACTIONS_PARSE_ENABLED");
 }
