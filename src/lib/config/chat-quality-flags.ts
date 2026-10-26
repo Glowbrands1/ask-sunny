@@ -826,3 +826,18 @@ export function terseSlotReadEnabled(): boolean {
 export function policyCleaningIncidentEnabled(): boolean {
   return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
 }
+
+/**
+ * Specific incidents cite their own manual section, chosen by the code (Code 9,
+ * policy reading; QA, 26 Oct 2026): no wet floor sign -> Safety in the
+ * Workplace, a long break -> Meal and Rest Policy, a social media post ->
+ * Social Media Policy, sexual comments -> Sexual and Other Forms of
+ * Harassment, a pet at work -> Animals in the Workplace, theft, cash
+ * shortages, insubordination and talking badly about coworkers -> the page of
+ * the Standards of Conduct that lists them. A coaching form's "other" topic
+ * is no longer primed with "Punctuality". Off, the policy and the topic are
+ * read exactly as before.
+ */
+export function policySpecificTopicsEnabled(): boolean {
+  return envFlag("POLICY_SPECIFIC_TOPICS_ENABLED");
+}

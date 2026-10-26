@@ -11,6 +11,7 @@ import {
   type ManualSection,
 } from "@/lib/forms/official-policy-manual";
 import { sectionsNamedIn } from "@/lib/forms/policy-change";
+import { withConductLinePage } from "@/lib/forms/specific-policy-topics";
 
 /**
  * The manual sections a manager's account resolves, using the same readers
@@ -44,6 +45,7 @@ export function accountManualSections(
 
   if (named) keep(named.section);
   if (described) keep(described.section);
+  for (const section of described?.also ?? []) keep(section);
   for (const section of manualSectionsFor({ chunks, offenseKeys: keys, jobTitle, notes: text })) keep(section);
   for (const section of sectionsNamedIn({ text, chunks, jobTitle })) keep(section);
 
@@ -59,7 +61,7 @@ export function accountManualSections(
     }
   }
 
-  return found;
+  return withConductLinePage(found, text, chunks);
 }
 
 /** A heading printed on a chunk whose sheet has no usable page. Page 0 means "omit the page". */

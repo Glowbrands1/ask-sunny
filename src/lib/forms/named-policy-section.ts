@@ -7,6 +7,7 @@ import {
   type ManualChunk,
   type ManualSection,
 } from "./official-policy-manual";
+import { specificTopicSection } from "./specific-policy-topics";
 
 /**
  * ============================================================================
@@ -165,6 +166,8 @@ export interface NamedManualSection {
   readonly section: ManualSection;
   /** The offense box that section is cited under: its own box where it has one, otherwise Violation of Company Policies. */
   readonly offenseKey: string;
+  /** Further sections the same incident is cited under (POLICY_SPECIFIC_TOPICS_ENABLED): Animals, then Visitors. */
+  readonly also?: readonly ManualSection[];
 }
 
 /**
@@ -414,6 +417,8 @@ export function describedManualSection(input: {
   if (!chunks || chunks.length === 0) return null;
   const cleaning = cleaningSection(input.text ?? "", chunks);
   if (cleaning) return cleaning;
+  const specific = specificSection(input.text ?? "", chunks);
+  if (specific) return specific;
   let byText = describedResultCache.get(chunks);
   if (!byText) {
     byText = new Map();
@@ -449,6 +454,21 @@ function cleaningSection(text: string, chunks: readonly ManualChunk[]): NamedMan
   if (headings.length !== 1) return null;
   const section = findManualSection(chunks, headings);
   return section ? { phrase, section, offenseKey: offenseKeyForManualHeading(section.heading) } : null;
+}
+
+/**
+ * POLICY_SPECIFIC_TOPICS_ENABLED: the incident the manager's words name — no
+ * wet floor sign, a long break, a social media post, sexual comments, a pet,
+ * theft, a shortage, insubordination, talking badly about coworkers — is the
+ * section of the pinned manual `specific-policy-topics.ts` finds for it, and
+ * not the model's catch-all. Nothing else must decide the policy first: a
+ * policy the manager named wins, and so do attendance, a late opening and
+ * dress code. Off, `specificTopicSection` reads nothing and this returns null.
+ */
+function specificSection(text: string, chunks: readonly ManualChunk[]): NamedManualSection | null {
+  const found = specificTopicSection({ text, chunks });
+  if (!found || !mayDescribeSection(text)) return null;
+  return { phrase: found.phrase, section: found.section, offenseKey: found.offenseKey, also: found.also };
 }
 
 const candidateCache = new WeakMap<readonly string[], Candidate[]>();

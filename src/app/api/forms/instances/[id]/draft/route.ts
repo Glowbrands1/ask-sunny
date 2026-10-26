@@ -10,6 +10,7 @@ import {
   payrollAmountFieldEnabled,
   policyCitationEnabled,
   policyPageRequiredEnabled,
+  policySpecificTopicsEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -95,6 +96,7 @@ import {
   isApprovedPolicyManualTitle,
   manualSectionsFor,
   officialManualProvenance,
+  type ManualSection,
   unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
@@ -137,6 +139,7 @@ import {
   describedManualSection,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
+import { OTHER_WRITE_IN_INSTRUCTION, withConductLinePage, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -937,7 +940,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * prints a ticked box with no label beside it.
        */
       promptGroups.some((group) => group.options.some((option) => option.key === "other"))
-        ? 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
+        ? policySpecificTopicsEnabled()
+          ? OTHER_WRITE_IN_INSTRUCTION
+          : 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
       offersConductPolicy
         ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
@@ -1342,7 +1347,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     })();
 
     const enforced = enforceResponsibilities(document, variantKey, {
-      values: priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+      values: withoutPrimedTopic(
+        priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+        `${body.topic ?? ""} ${notes}`,
+      ),
       checked: exit?.checked ?? sensitive.checked,
     });
 
@@ -1561,9 +1569,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           notes: `${body.topic ?? ""} ${notes}`,
         })
       : [];
-    const manualSections = namedManual
-      ? [namedManual, ...tickedSections.filter((section) => section.heading !== namedManual.heading)]
-      : tickedSections;
+    /* POLICY_SPECIFIC_TOPICS_ENABLED: the further sections the same incident is cited under (Animals, then Visitors). */
+    const alsoManual: readonly ManualSection[] = namedManual && policySection && "also" in policySection ? (policySection.also ?? []) : [];
+    const manualSections = withConductLinePage(
+      namedManual
+        ? [
+            namedManual,
+            ...alsoManual.filter((section) => section.heading !== namedManual.heading),
+            ...tickedSections.filter(
+              (section) => section.heading !== namedManual.heading && !alsoManual.some((also) => also.heading === section.heading),
+            ),
+          ]
+        : tickedSections,
+      `${body.topic ?? ""} ${notes}`,
+      manual.ok ? manual.chunks : [],
+    );
 
     const derivedPolicy = applyDerivedPolicyFields({
       document,
