@@ -19,9 +19,12 @@ import { namesCaPolicy, readCaPolicy, type CaPolicyReading } from "./ca-policy";
  *   leaving early is the Attendance section's (the sibling app's own guard,
  *   `describesAttendanceToo`, already skips it there).
  *
- * Both now read as main reads them. The guard sits on the new pattern only:
- * every reading main already gives is pinned below, whole, flag on and off.
- * Each QA sentence is read lowercase, in Sentence case and in ALL CAPS.
+ * Both now read as main reads them. The new reading, and its guard, sit
+ * behind LATE_OPEN_PLACE_ENABLED (default off) as well as
+ * LATE_OPEN_DATE_ENABLED: with the new flag off the reader is main's, even
+ * with LATE_OPEN_DATE_ENABLED on as in production. Every reading main
+ * already gives is pinned below, whole. Each QA sentence is read lowercase,
+ * in Sentence case and in ALL CAPS.
  */
 
 const NONE: CaPolicyReading = {
@@ -41,15 +44,17 @@ const cases = (sentence: string) => [
   sentence.toUpperCase(),
 ];
 
-function flag(on: boolean) {
+/** LATE_OPEN_DATE_ENABLED (on in production), and this PR's LATE_OPEN_PLACE_ENABLED with it unless said otherwise. */
+function flag(on: boolean, place: boolean = on) {
   vi.stubEnv("LATE_OPEN_DATE_ENABLED", on ? "1" : "");
+  vi.stubEnv("LATE_OPEN_PLACE_ENABLED", place ? "1" : "");
 }
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("QA-6 false positives, flag on: not Late Opening (main's reading, unchanged)", () => {
+describe("QA-6 false positives, flags on: not Late Opening (main's reading, unchanged)", () => {
   it.each([
     ...cases("opening the salon late was approved by the manager"),
     ...cases("she opened the location late and also left early"),
@@ -90,8 +95,8 @@ describe("the guard is narrow: an unapproved late opening, alone, is still Late 
     expect(readCaPolicy(sentence)).toEqual(LATE_OPENING);
   });
 
-  it("flag off: the new reading is not there at all", () => {
-    flag(false);
+  it("LATE_OPEN_DATE_ENABLED off: the new reading is not there at all", () => {
+    flag(false, true);
     for (const sentence of cases("she opened the salon late on 10-1-26")) expect(readCaPolicy(sentence)).toEqual(NONE);
   });
 });
@@ -127,5 +132,30 @@ describe("main's existing late-opening readings are unchanged", () => {
     expect(readCaPolicy(sentence)).toEqual(off);
     flag(true);
     expect(readCaPolicy(sentence)).toEqual(on);
+    flag(true, false);
+    expect(readCaPolicy(sentence)).toEqual(on);
+  });
+});
+
+/*
+ * PRODUCTION AS IT IS: LATE_OPEN_DATE_ENABLED on, LATE_OPEN_PLACE_ENABLED off
+ * (its default). Every sentence reads exactly as origin/main reads it —
+ * B1 and "she opened the salon late" included, which name no policy on main.
+ */
+describe("LATE_OPEN_DATE on, LATE_OPEN_PLACE off: main's readings, byte for byte", () => {
+  it.each([
+    ...cases("opening the salon late was approved by the manager"),
+    ...cases("she opened the location late and also left early"),
+    ...cases("late for shift at the salon"),
+    ...cases("she was late for her shift at the salon"),
+    ...cases(
+      "create verbal ca for Test Employee for opening salon late on 10-1-26. previous coaching is jba policy manual 1-1-26. payroll deduct DOES apply and state $25 will be payroll deducted",
+    ),
+    ...cases("she opened the salon late on 10-1-26"),
+    ...cases("opening the salon late was not approved"),
+  ])("%s", (sentence) => {
+    flag(true, false);
+    expect(readCaPolicy(sentence)).toEqual(NONE);
+    expect(namesCaPolicy(sentence)).toBe(false);
   });
 });

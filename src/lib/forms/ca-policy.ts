@@ -1,4 +1,4 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, lateOpenPlaceEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { LATE_TO_OPEN, describesAttendanceToo, lateOpenOn } from "./late-open";
@@ -279,13 +279,14 @@ const NAMED: {
   /*
    * "opening salon late", "opened the salon late" (QA, 25 Oct 2026; the
    * sibling app's B1, conv_mvifqra017j15ld8): the place between the verb and
-   * "late" is still a late opening (LATE_OPEN_DATE_ENABLED).
+   * "late" is still a late opening (LATE_OPEN_PLACE_ENABLED, with
+   * LATE_OPEN_DATE_ENABLED).
    */
   {
     name: "late_opening",
     pattern: /\bopen(?:ed|ing|s)?\s+(?:the\s+|our\s+|her\s+|his\s+|their\s+)?(?:salon|location|shop)\s+late\b/,
     alwaysAPolicy: true,
-    enabled: lateOpenOn,
+    enabled: () => lateOpenOn() && lateOpenPlaceEnabled(),
     setAside: lateOpeningSetAside,
   },
   { name: "attendance", pattern: /\b(?:attendance|tardiness|absenteeism)\b/, alwaysAPolicy: false },

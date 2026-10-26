@@ -246,6 +246,8 @@ const PROD_FLAGS = [
   "DRAFT_MERGE_ENABLED",
 ] as const;
 const FLAG = "LATE_OPEN_DATE_ENABLED";
+/** This PR's flag (default off). The new reading needs it and LATE_OPEN_DATE_ENABLED. */
+const PLACE = "LATE_OPEN_PLACE_ENABLED";
 
 /** The drafting model's fields for the earlier form on file (S21). */
 const LATE_OPENING_MODEL = {
@@ -284,9 +286,10 @@ class JoiningRows extends Array<Record<string, unknown>> {
 beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
-  for (const name of [...PROD_FLAGS, FLAG, "FORM_FULL_REMAP_ENABLED"]) saved.set(name, process.env[name]);
+  for (const name of [...PROD_FLAGS, FLAG, PLACE, "FORM_FULL_REMAP_ENABLED"]) saved.set(name, process.env[name]);
   for (const name of PROD_FLAGS) process.env[name] = "true";
   process.env[FLAG] = "true";
+  process.env[PLACE] = "true";
   state.role = "district_manager";
   state.raw = {};
   state.draft = LATE_OPENING_MODEL;
@@ -485,6 +488,28 @@ describe("B1 in this app's words: a late opening with the salon named is Late Op
     const answer = await new Thread().say(B1, READING);
     expect(policy(answer)).not.toMatch(/^Late Opening\b/);
   });
+  /*
+   * PRODUCTION AS IT IS: LATE_OPEN_DATE_ENABLED on, LATE_OPEN_PLACE_ENABLED
+   * off. The card, its sources and the created draft are origin/main's.
+   */
+  it.each([["proposal flow"], ["intent path"]])(
+    "LATE_OPEN_PLACE off, LATE_OPEN_DATE on: B1 reads as on main (%s)",
+    async (path) => {
+      delete process.env[PLACE];
+      if (path === "proposal flow") delete process.env.INTENT_EXTRACTION_ENABLED;
+      const thread = new Thread();
+      const answer = await thread.say(B1, READING);
+      if (path === "proposal flow") {
+        expect(line(answer.content, "Policy")).toBeNull();
+        expect(answer.content).toMatch(/Late Opening Policy, JBA Policy Manual p\.15/);
+      } else {
+        expect(policy(answer)).toMatch(/^Late Opening, as you said\b/);
+      }
+      expect((answer.citations ?? []).map((item) => item.locator)).toEqual(["Page 15"]);
+      const fields = await thread.createDraft();
+      expect(fields.get("policy_violated")?.value).toBe("Tardiness/Leaving Early — Late Opening");
+    },
+  );
 });
 
 /*
