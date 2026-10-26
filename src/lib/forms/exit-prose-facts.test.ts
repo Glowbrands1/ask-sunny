@@ -163,6 +163,21 @@ describe.each(REGISTERS)("EXIT_PROSE_FACTS_ENABLED in the managers' register: %s
     expect(guardExitDetails(own, as("ava gave and worked 2 week notice"), TODAY).removed).toEqual([]);
   });
 
+  // Dispatcher, 26 Oct 2026: notes that say it did NOT happen do not let a sentence say it did.
+  it("on, a sentence saying the opposite of the notes is dropped; the notes' own negation stays", () => {
+    withFlag(true);
+    const drafted = "Ava resigned. Ava worked her two weeks notice. Ava called in to resign.";
+    expect(guardExitDetails(drafted, as("exit for ava pellmore she never worked her notice"), TODAY).removed).toContain(
+      "Ava worked her two weeks notice.",
+    );
+    expect(guardExitDetails(drafted, as("exit for ava pellmore she did not call in"), TODAY).removed).toContain(
+      "Ava called in to resign.",
+    );
+    expect(guardExitDetails(drafted, as("exit for ava pellmore no 2 wk notice worked"), TODAY).value).toBe("Ava resigned.");
+    const negated = "Ava did not work her notice. Ava never called in.";
+    expect(guardExitDetails(negated, as("exit for ava pellmore she never worked her notice, did not call in"), TODAY).removed).toEqual([]);
+  });
+
   it("flag off, the prose is main's", () => {
     withFlag(false);
     expect(prose(as(BARE_NAME))).toContain("a short account drafted from what you've described");

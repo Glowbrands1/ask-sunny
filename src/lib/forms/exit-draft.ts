@@ -73,6 +73,25 @@ const ACCOUNT_TOPICS: RegExp[] = [
   /\bcall(?:s|ed|ing)?\s+(?:in|out|off)\b|\bno[\s-]*call\b|\bshow(?:s|ed)?\s+up\b|\bno[\s-]*show\b|\bncns\b/i,
 ];
 
+/*
+ * And the notes' own polarity (QA / dispatcher, 26 Oct 2026): "she never worked
+ * her notice" or "she did not call in" raises the subject but says it did not
+ * happen, so a sentence saying it did is still not the manager's.
+ */
+const ACCOUNT_NEGATED_BEFORE = /\b(?:no|not|never|didn't|didnt|did not|wasn't|was not|hasn't|has not)\s+(?:[\w'-]+\s+){0,3}$/i;
+
+function affirms(text: string, topic: RegExp): boolean {
+  for (const match of text.matchAll(new RegExp(topic.source, "gi"))) {
+    if (!ACCOUNT_NEGATED_BEFORE.test(text.slice(0, match.index ?? 0))) return true;
+  }
+  return false;
+}
+
+/** The sentence says it happened; the notes only ever say it did not. */
+function affirmedAgainstNotes(sentence: string, notes: string): boolean {
+  return exitProseFactsEnabled() && ACCOUNT_TOPICS.some((topic) => affirms(sentence, topic) && !affirms(notes, topic));
+}
+
 function guardedTopics(): RegExp[] {
   return exitProseFactsEnabled() ? [...DECISION_TOPICS, ...ACCOUNT_TOPICS] : DECISION_TOPICS;
 }
@@ -104,9 +123,9 @@ export function guardExitDetails(value: string, notes: string, today: string): E
   const kept: string[] = [];
   const removed: string[] = [];
   for (const sentence of sentences) {
-    const unraised = guardedTopics().some(
-      (topic) => topic.test(sentence) && !topic.test(notes),
-    );
+    const unraised =
+      guardedTopics().some((topic) => topic.test(sentence) && !topic.test(notes)) ||
+      affirmedAgainstNotes(sentence, notes);
     const undated = datesInText(sentence, today).some((found) => !allowedDates.has(found.iso));
     if (unraised || undated) removed.push(sentence);
     else kept.push(sentence);
