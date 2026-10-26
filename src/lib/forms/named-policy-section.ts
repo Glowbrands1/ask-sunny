@@ -1,4 +1,4 @@
-import { readCaPolicy } from "./ca-policy";
+import { cleaningIncidentPhrase, readCaPolicy } from "./ca-policy";
 import {
   OFFENSE_MANUAL_SECTIONS,
   findManualSection,
@@ -7,6 +7,7 @@ import {
   type ManualChunk,
   type ManualSection,
 } from "./official-policy-manual";
+import { specificTopicSection } from "./specific-policy-topics";
 
 /**
  * ============================================================================
@@ -165,6 +166,8 @@ export interface NamedManualSection {
   readonly section: ManualSection;
   /** The offense box that section is cited under: its own box where it has one, otherwise Violation of Company Policies. */
   readonly offenseKey: string;
+  /** Further sections the same incident is cited under (POLICY_SPECIFIC_TOPICS_ENABLED): Animals, then Visitors. */
+  readonly also?: readonly ManualSection[];
 }
 
 /**
@@ -412,6 +415,15 @@ export function describedManualSection(input: {
 }): NamedManualSection | null {
   const chunks = input.chunks;
   if (!chunks || chunks.length === 0) return null;
+  const cleaning = cleaningSection(input.text ?? "", chunks);
+  const specific = specificSection(input.text ?? "", chunks);
+  /* Two incidents in one account: cleaning leads, and the other is offered beside it, never dropped. */
+  if (cleaning) {
+    return specific && specific.section.heading !== cleaning.section.heading
+      ? { ...cleaning, also: [specific.section, ...(specific.also ?? [])] }
+      : cleaning;
+  }
+  if (specific) return specific;
   let byText = describedResultCache.get(chunks);
   if (!byText) {
     byText = new Map();
@@ -430,6 +442,41 @@ export function describedManualSection(input: {
   const section = citable(chunks, heading, phrase);
   byText.set(text, section);
   return section;
+}
+
+/**
+ * POLICY_CLEANING_INCIDENT_ENABLED: cleaning left undone ("the cleaning
+ * duties weren't done", "left the beds dirty") is the manual's Care and
+ * Cleaning of Equipment and Facilities section, found by its own heading on
+ * the pinned manual, and only where exactly one heading answers. Nothing
+ * else must decide the policy first: a policy the manager named wins.
+ * Off (`cleaningIncidentPhrase` reads nothing), this returns null.
+ */
+/** "she was not late, but she left the beds dirty": a lateness the manager denies decides nothing here. */
+const DENIED_LATENESS = /\b(?:not|never|was ?n[o']?t|wasn't|is ?n[o']?t|isn't)\s+(?:\S+\s+){0,1}?late\b/gi;
+
+function cleaningSection(text: string, chunks: readonly ManualChunk[]): NamedManualSection | null {
+  const phrase = cleaningIncidentPhrase(text);
+  if (!phrase || !mayDescribeSection(text.replace(DENIED_LATENESS, " "))) return null;
+  const headings = [...new Set(manualSectionHeadings(chunks).filter((heading) => /^care and cleaning\b/i.test(heading.trim())))];
+  if (headings.length !== 1) return null;
+  const section = findManualSection(chunks, headings);
+  return section ? { phrase, section, offenseKey: offenseKeyForManualHeading(section.heading) } : null;
+}
+
+/**
+ * POLICY_SPECIFIC_TOPICS_ENABLED: the incident the manager's words name — no
+ * wet floor sign, a long break, a social media post, sexual comments, a pet,
+ * theft, a shortage, insubordination, talking badly about coworkers — is the
+ * section of the pinned manual `specific-policy-topics.ts` finds for it, and
+ * not the model's catch-all. Nothing else must decide the policy first: a
+ * policy the manager named wins, and so do attendance, a late opening and
+ * dress code. Off, `specificTopicSection` reads nothing and this returns null.
+ */
+function specificSection(text: string, chunks: readonly ManualChunk[]): NamedManualSection | null {
+  const found = specificTopicSection({ text, chunks });
+  if (!found || !mayDescribeSection(text)) return null;
+  return { phrase: found.phrase, section: found.section, offenseKey: found.offenseKey, also: found.also };
 }
 
 const candidateCache = new WeakMap<readonly string[], Candidate[]>();

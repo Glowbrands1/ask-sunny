@@ -879,6 +879,32 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * Cleaning left undone cites the manual's Care and Cleaning of Equipment and
+ * Facilities section, chosen by the code (Code 3, policy reading; QA T5,
+ * 25 Oct 2026): "cleaning duties not being completed", "weren't done",
+ * "didn't get done", "left dirty". Other duties left undone in those words are
+ * the Standards of Conduct. Off, the policy is read exactly as before.
+ */
+export function policyCleaningIncidentEnabled(): boolean {
+  return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
+}
+
+/**
+ * Specific incidents cite their own manual section, chosen by the code (Code 9,
+ * policy reading; QA, 26 Oct 2026): no wet floor sign -> Safety in the
+ * Workplace, a long break -> Meal and Rest Policy, a social media post ->
+ * Social Media Policy, sexual comments -> Sexual and Other Forms of
+ * Harassment, a pet at work -> Animals in the Workplace, theft, cash
+ * shortages, insubordination and talking badly about coworkers -> the page of
+ * the Standards of Conduct that lists them. A coaching form's "other" topic
+ * is no longer primed with "Punctuality". Off, the policy and the topic are
+ * read exactly as before.
+ */
+export function policySpecificTopicsEnabled(): boolean {
+  return envFlag("POLICY_SPECIFIC_TOPICS_ENABLED");
+}
+
+/**
  * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
  * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
  * written on 07/28/2026" listed both under Prior actions and also as
@@ -938,6 +964,30 @@ export function draftNeverBlankEnabled(): boolean {
  */
 export function nameBeforeTitleEnabled(): boolean {
   return envFlag("NAME_BEFORE_TITLE_ENABLED");
+}
+
+/**
+ * With LATE_OPEN_DATE_ENABLED on, payroll deduct is read from this form only
+ * (QA, 26 Oct 2026; same flag in both apps): what the manager's own turns
+ * state, and a bare Yes/No only as the reply to the payroll question just
+ * asked on a Corrective Action Form. A bare "Yes" after an exit form, a
+ * resignation or a Coaching Form is never stored as payroll deduct. See
+ * `latePayrollFromForm` in `ai/intent-slots.ts`. Off, exactly as before.
+ */
+export function latePayrollFromFormEnabled(): boolean {
+  return envFlag("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED");
+}
+
+/**
+ * The stored-slot lines put ahead of a turn ("The form is the Corrective
+ * Action Form. The employee is … Policy reference: …") are not a new request
+ * for the form (Sunny tester, 26 Oct 2026: "no payroll deduct" restarted the
+ * Corrective Action, and its card was drafted from that turn alone). On, the
+ * proposal decides whether a turn starts a new form from the manager's own
+ * words. Off, as before.
+ */
+export function storedSlotsNotARequestEnabled(): boolean {
+  return envFlag("STORED_SLOTS_NOT_A_REQUEST_ENABLED");
 }
 
 /**
