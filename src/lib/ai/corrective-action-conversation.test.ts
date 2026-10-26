@@ -1949,3 +1949,46 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
     expect(answer.formProposal).toBeUndefined();
   });
 });
+
+/**
+ * QA live run in Ask Bubbles, 26 Oct 2026 (tester 1, B10/B12; the tester's wording, names
+ * invented), with the production flags: a lowercase name before ", team member
+ * at <salon>" left the Employee unread; a capitalised name with no comma
+ * before "Team Member" lost the surname. NAME_BEFORE_TITLE_ENABLED reads the
+ * two words as the name.
+ */
+describe("'ca for <name>, team member at <salon>'", () => {
+  const PROD = "ACTION_PLAN_MANAGER_ONLY_ENABLED=1 ACTION_PLAN_SENTENCES_ENABLED=1 ATTENDANCE_POLICY_CITATION_ENABLED=1 CA_TEMPLATE_MAP_ENABLED=1 CROSS_CHAT_REPLY_GUARD_ENABLED=1 CURRENT_MANUAL_SCOPE_ENABLED=1 DRAFT_DEDUPE_ENABLED=1 DRAFT_MERGE_ENABLED=1 FIELD_ACCURACY_ENABLED=1 FORM_CHOICE_STATED_ENABLED=1 GLOBAL_SALON_ASK_ENABLED=1 GROUNDED_ENTITIES_ENABLED=1 INTENT_EXTRACTION_ENABLED=1 KEEP_FORM_EMPLOYEE_ENABLED=1 LATE_OPEN_DATE_ENABLED=1 MANAGER_PAYROLL_AMOUNT_ONLY_ENABLED=1 MANAGER_WORDS_ONLY_ENABLED=1 NOT_A_NAME_GUARD_ENABLED=1 PAYROLL_AMOUNT_FIELD_ENABLED=1 PLACE_SPAN_GUARD_ENABLED=1 POLICY_CITATION_ENABLED=1 PRIOR_ACTIONS_PARSE_ENABLED=1 SECOND_FORM_ENABLED=1 SLOT_RETENTION_ENABLED=1 TITLE_WHOLE_WORD_ENABLED=1 TYPED_NAME_PROCEEDS_ENABLED=1 WARNING_LEVEL_MANAGER_ONLY_ENABLED=1 EXIT_INTAKE_FIX_ENABLED=1 REOPEN_VERB_GUARD_ENABLED=1";
+  const withFlags = (extra: string[]) => {
+    const names = [...PROD.split(" ").map((pair) => pair.split("=")[0]!), ...extra];
+    for (const name of names) process.env[name] = "1";
+    return () => {
+      for (const name of names) delete process.env[name];
+    };
+  };
+  const B10 = "create a verbal ca for wren halvorsen, team member at lawrence, standards of conduct, she was rude to a guest on 10-7-26. payroll deduct not applicable";
+
+  it("flag off, as on main: the lowercase name is not read", async () => {
+    const off = withFlags([]);
+    try {
+      expect((await ask(B10)).formProposal?.employeeName ?? null).toBeNull();
+    } finally {
+      off();
+    }
+  });
+
+  it.each([
+    B10,
+    "Create a verbal ca for wren halvorsen, team member at lawrence, standards of conduct, she was rude to a guest on 10-7-26. payroll deduct not applicable",
+    "create a verbal ca for wren halvorsen team member at lawrence, standards of conduct, she was rude to a guest on 10-7-26. payroll deduct not applicable",
+    "create a verbal ca for Wren Halvorsen Team Member at Lawrence, standards of conduct, she was rude to a guest on 10-7-26. payroll deduct not applicable",
+    "written ca for wren halvorsen, team member at lawrence, attendance, she was a no call no show on 10-21-26 and 10-22-26",
+  ])("flag on: '%s' is for Wren Halvorsen", async (turn) => {
+    const off = withFlags(["NAME_BEFORE_TITLE_ENABLED"]);
+    try {
+      expect((await ask(turn)).formProposal?.employeeName).toBe("Wren Halvorsen");
+    } finally {
+      off();
+    }
+  });
+});

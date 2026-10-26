@@ -170,6 +170,7 @@ import { slotOnlyRetrievalTopic } from "./slot-only-turn";
 import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
+import { withNameBeforeTitle } from "./name-before-title";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 
@@ -277,7 +278,7 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory));
+  return withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
 }
 
 async function answerQuestionChecked(
@@ -287,7 +288,8 @@ async function answerQuestionChecked(
 ): Promise<AskResponse> {
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
-    const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
+    // NAME_BEFORE_TITLE_ENABLED: a two-word name right before a job title is the name.
+    const response = await answerQuestionUntraced(withTerseSlots(withNameBeforeTitle(request)), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     return keepManagerActionPlan(await applyQuietQuality(response), request);
