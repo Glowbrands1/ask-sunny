@@ -75,6 +75,7 @@ import {
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
   followUpNotPriorEnabled,
+  stateCodeNotAPersonEnabled,
   answerLengthGuardEnabled,
   chatUpstreamRetryEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -170,6 +171,7 @@ const NEW_FLAGS = [
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
+  "STATE_CODE_NOT_A_PERSON_ENABLED",
   "ANSWER_LENGTH_GUARD_ENABLED",
   "CHAT_UPSTREAM_RETRY_ENABLED",
 ] as const;
@@ -338,6 +340,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
+    expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(answerLengthGuardEnabled()).toBe(false);
     expect(chatUpstreamRetryEnabled()).toBe(false);
 

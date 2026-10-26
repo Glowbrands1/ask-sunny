@@ -883,6 +883,17 @@ export function followUpNotPriorEnabled(): boolean {
 }
 
 /**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
+
+/**
  * A long chat answer is not cut mid-sentence (conv_mvonyx9pzg7948, 26 Oct
  * 2026: "can you make a weekly coaching for how to get efts" stopped at
  * max_tokens on "…can copy it [S5"; same flag in both apps). The answer call
