@@ -19,7 +19,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
-import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
+import { heldCoachingFormDate, lateOpenFixOn, lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
@@ -282,10 +282,13 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * the form ahead of the saved one. See `late-open.ts`.
    */
   const lateOpen = lateOpenOn();
-  const dateQuestion = lateOpen ? withYearlessDatesWritten(input.question, input.today) : input.question;
-  const dateText = lateOpen ? withYearlessDatesWritten(userText, input.today) : userText;
+  // LATE_OPEN_DATE_FIX_ENABLED: "she was late on 10-5" is not a late opening's date. See `late-open.ts`.
+  const lateOpenFix = lateOpen && lateOpenFixOn();
+  const yearless = lateOpenFix ? { plainLateIsNotACue: true } : {};
+  const dateQuestion = lateOpen ? withYearlessDatesWritten(input.question, input.today, yearless) : input.question;
+  const dateText = lateOpen ? withYearlessDatesWritten(userText, input.today, yearless) : userText;
   const statedNow =
-    lateOpen && !choice?.date ? newestStatedDate(input.question, input.today, explicitIncidentIso) : null;
+    lateOpen && !choice?.date ? newestStatedDate(input.question, input.today, explicitIncidentIso, yearless) : null;
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
     : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
@@ -356,6 +359,14 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         ? saved.policyPage
         : pageForHeading(policyHeading, input.headingPages);
   const formTurn = Boolean(input.formInProgress || reading?.formTurn || formType.key || saved.templateKey);
+  /*
+   * LATE_OPEN_DATE_FIX_ENABLED (QA, 25 Oct 2026): on a Coaching Form the
+   * coaching the manager says they held ("I coached her on 10-16") is its
+   * date, as it is with LATE_OPEN_DATE_ENABLED off. See `heldCoachingFormDate`.
+   */
+  const heldCoaching =
+    lateOpenFix && !choice?.date ? heldCoachingFormDate(dateText, formType.key ?? saved.templateKey, input.today) : null;
+  const formDate = heldCoaching ? { iso: heldCoaching, ambiguous: [] as readonly string[] } : date;
 
   const salonForMerge = codeSlotsEnabled() && salon.ambiguous.length > 1
     ? { id: salon.id, name: salon.name, ambiguous: [] as readonly SalonRow[] }
@@ -369,7 +380,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     salon: salonForMerge,
     title,
     incidentType,
-    date: date.iso,
+    date: formDate.iso,
     payrollAmount,
     payrollAnswer,
     managerOnly,
@@ -414,7 +425,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     salon: salonForMerge,
     title,
     incidentType,
-    date,
+    date: formDate,
     payrollAmount,
     warningLevel,
     formType,

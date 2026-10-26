@@ -918,3 +918,16 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * Two LATE_OPEN_DATE_ENABLED readings put right (QA, 25-26 Oct 2026; same
+ * flag in both apps). "she was late on 10-5" is not a late opening, so a
+ * plain "late on <date>" is not read as the date this turn states — only
+ * "late to open"-type wording is. And on a Coaching Form the coaching the
+ * manager says they held ("I coached her on 10-16") dates the form, as it
+ * does with LATE_OPEN_DATE_ENABLED off. See `forms/late-open.ts`. Off,
+ * exactly as before.
+ */
+export function lateOpenDateFixEnabled(): boolean {
+  return envFlag("LATE_OPEN_DATE_FIX_ENABLED");
+}

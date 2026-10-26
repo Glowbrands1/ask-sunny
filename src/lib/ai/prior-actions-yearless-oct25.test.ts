@@ -334,6 +334,8 @@ describe("conv_mvnoiw8n2kfbcvc, word for word", () => {
 
   it("with the flag off it is dated 9/15 with no prior action, as live", async () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    // Pinned to LATE_OPEN_DATE off, the profile this was recorded under; the env may set it. On: see the twin below.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     intentModel.reading = reading(null);
     const [first] = await chat([SAID], "conv-yearless-off");
     expect(first!.formProposal?.formDate).toBe("2026-09-15");
@@ -344,6 +346,8 @@ describe("conv_mvnoiw8n2kfbcvc, word for word", () => {
 describe("a coaching the manager held is read as before", () => {
   it.each([[""], ["1"]])('"I coached her on 10-16" dates the Coaching Form 10/16 (flag "%s")', async (flag) => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", flag);
+    // Pinned to LATE_OPEN_DATE off; the env may set it. On, see "LATE_OPEN_DATE_FIX_ENABLED" below.
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
     intentModel.reading = (manager: string) => ({ ...copiesTheManager(manager), formType: "coaching", formTurn: true, incidentDate: null });
     const [first] = await chat(
       ["coaching form for Test Employee at NE Kearney, she was late on 10-5 and 10-15, I coached her on 10-16 about being late"],
@@ -352,6 +356,122 @@ describe("a coaching the manager held is read as before", () => {
     expect(first!.formProposal?.templateKey).toBe("coaching");
     expect(first!.formProposal?.formDate).toBe("2026-10-16");
     expect(priorLine(first!.content)).toBeNull();
+  });
+});
+
+/*
+ * LATE_OPEN_DATE is on in production; the 9/15 pin above predates it. With it
+ * on, "late to open on 10-20" is read as the incident's date, and 9/15 — a
+ * coaching she was given — is not: the card is dated 10/20 whether or not the
+ * earlier-step reader is on, and LATE_OPEN_DATE_FIX_ENABLED leaves that alone.
+ */
+describe("conv_mvnoiw8n2kfbcvc with LATE_OPEN_DATE_ENABLED on, as in production", () => {
+  it.each([[""], ["1"]])("with the earlier-step flag off it is dated 10/20 (LATE_OPEN_DATE_FIX \"%s\")", async (fix) => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", fix);
+    vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
+    intentModel.reading = reading(null);
+    const [first] = await chat([SAID], `conv-yearless-lo-${fix}`);
+    expect(first!.formProposal?.formDate).toBe("2026-10-20");
+  });
+});
+
+/*
+ * ============================================================================
+ * LATE_OPEN_DATE_FIX_ENABLED (QA, 25 Oct 2026): "LATE ON 10-5" IS NO LATE
+ * OPENING, AND THE COACHING SHE WAS GIVEN DATES THE COACHING FORM
+ * ============================================================================
+ *
+ * With LATE_OPEN_DATE_ENABLED on (production), the Coaching Form above was
+ * dated 10/5: the "on" in "she was late on 10-5" made 10-5 the one date the
+ * turn stated (`newestStatedDate`), and it went on the form ahead of the
+ * coaching the manager held. With the fix, a plain "late on <date>" is not
+ * that date, and the held coaching is the Coaching Form's date. A late
+ * OPENING ("late to open on 10-20") is still read. "Test Employee" is the QA
+ * account's placeholder; every other name is invented.
+ */
+describe("LATE_OPEN_DATE_FIX_ENABLED, with LATE_OPEN_DATE_ENABLED on as in production", () => {
+  const COACHING = "coaching form for Test Employee at NE Kearney, she was late on 10-5 and 10-15, I coached her on 10-16 about being late";
+  const COACHING_SENTENCES = "Coaching form for Test Employee at NE Kearney. She was late on 10-5 and 10-15. I coached her on 10-16 about being late.";
+  const coachingReading = (manager: string) => ({ ...copiesTheManager(manager), formType: "coaching", formTurn: true, incidentDate: null });
+
+  async function coachingDate(words: string, id: string): Promise<string | null | undefined> {
+    intentModel.reading = coachingReading;
+    const [first] = await chat([words], id);
+    expect(first!.formProposal?.templateKey).toBe("coaching");
+    return first!.formProposal?.formDate;
+  }
+
+  async function caDate(words: string, id: string): Promise<string | null | undefined> {
+    intentModel.reading = reading(null);
+    const [first] = await chat([words], id);
+    expect(first!.formProposal?.templateKey).toBe("dpoa");
+    return first!.formProposal?.formDate;
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+    vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", "1");
+  });
+
+  it.each([
+    ["lowercase", COACHING.toLowerCase()],
+    ["as typed", COACHING],
+    ["Sentence case", COACHING_SENTENCES],
+  ])('"I coached her on 10-16" dates the Coaching Form 10/16 (%s)', async (label, words) => {
+    for (const prior of ["", "1"]) {
+      vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", prior);
+      expect(await coachingDate(words, `conv-fix-${label}-${prior}`), `PRIOR_ACTIONS_PARSE "${prior}"`).toBe("2026-10-16");
+    }
+  });
+
+  it.each([
+    ["negation", "coaching form for Test Employee at NE Kearney, she was not late on 10-5, I coached her on 10-16"],
+    ["negation, Sentence case", "Coaching form for Test Employee at NE Kearney. She was not late on 10-5. I coached her on 10-16."],
+    ["another person", "coaching form for Test Employee at NE Kearney, Rowan Pell was late on 10-5, I coached Test Employee on 10-16"],
+    ["another person, Sentence case", "Coaching form for Test Employee at NE Kearney. Rowan Pell was late on 10-5. I coached Test Employee on 10-16."],
+  ])("probe, %s: the Coaching Form is dated 10/16", async (label, words) => {
+    expect(await coachingDate(words, `conv-fix-probe-${label}`)).toBe("2026-10-16");
+  });
+
+  it.each([
+    ["lowercase", "create a verbal ca for test employee at ne kearney, she was late to open on 10-5 and i coached her on 10-16"],
+    ["Sentence case", "Create a verbal CA for Test Employee at NE Kearney. She was late to open on 10-5 and I coached her on 10-16."],
+  ])("probe, two clauses on a CA (%s): the late opening's 10/5 is still read", async (label, words) => {
+    expect(await caDate(words, `conv-fix-two-${label}`)).toBe("2026-10-05");
+  });
+
+  it.each([
+    ["lowercase", "create a verbal ca for test employee at ne kearney for being late to open on 10-20, no payroll"],
+    ["Sentence case", "Create a verbal CA for Test Employee at NE Kearney for being late to open on 10-20. No payroll."],
+  ])("probe, a real late opening (%s): still dated 10/20", async (label, words) => {
+    expect(await caDate(words, `conv-fix-real-${label}`)).toBe("2026-10-20");
+  });
+
+  it.each([
+    ["lowercase", "create a verbal ca for test employee at ne kearney, she was late on 10-20, no payroll"],
+    ["Sentence case", "Create a verbal CA for Test Employee at NE Kearney. She was late on 10-20. No payroll."],
+  ])("a plain \"late on 10-20\" on a CA is still the incident's date (%s), fix on or off", async (label, words) => {
+    for (const fix of ["1", ""]) {
+      vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", fix);
+      expect(await caDate(words, `conv-fix-plain-${label}-${fix}`), `LATE_OPEN_DATE_FIX "${fix}"`).toBe("2026-10-20");
+    }
+  });
+
+  it("never-break: with the fix off and LATE_OPEN_DATE on, the Coaching Form is dated 10/5, exactly as main", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", "");
+    for (const prior of ["", "1"]) {
+      vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", prior);
+      expect(await coachingDate(COACHING, `conv-fix-off-${prior}`)).toBe("2026-10-05");
+    }
+  });
+
+  it("never-break: with LATE_OPEN_DATE off the fix changes nothing (10/16, as main)", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "");
+    for (const fix of ["", "1"]) {
+      vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", fix);
+      expect(await coachingDate(COACHING, `conv-fix-lo-off-${fix}`)).toBe("2026-10-16");
+    }
   });
 });
 

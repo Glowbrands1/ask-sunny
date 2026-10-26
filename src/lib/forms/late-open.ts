@@ -1,6 +1,6 @@
-import { lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
+import { lateOpenDateEnabled, lateOpenDateFixEnabled } from "@/lib/config/chat-quality-flags";
 
-import { listIncidentDates } from "./form-date-answer";
+import { explicitFormDate, heldCoachingDates, listIncidentDates } from "./form-date-answer";
 
 /**
  * ============================================================================
@@ -75,14 +75,27 @@ export interface YearlessDate {
   readonly end: number;
 }
 
+/**
+ * "she was late on 10-5": late, but not late to OPEN. Its "on" is a date cue,
+ * and the date is a lateness, not a late opening (QA, 25 Oct 2026).
+ */
+const PLAIN_LATE_ON = /\blate\s+(?:again\s+)?on\s*$/i;
+
+export interface YearlessOptions {
+  /** LATE_OPEN_DATE_FIX_ENABLED: a plain "late on <date>" is not cued. See `PLAIN_LATE_ON`. */
+  readonly plainLateIsNotACue?: boolean;
+}
+
 /** Every yearless dashed month-day in the text that follows a date cue, in order. */
-export function yearlessCuedDates(text: string, today: string): YearlessDate[] {
+export function yearlessCuedDates(text: string, today: string, options: YearlessOptions = {}): YearlessDate[] {
   const found: YearlessDate[] = [];
   const source = text ?? "";
   for (const match of source.matchAll(YEARLESS_DASHED)) {
     const index = match.index ?? 0;
     const end = index + match[0].length;
-    if (!DATE_CUE_BEFORE.test(source.slice(Math.max(0, index - 60), index))) continue;
+    const before = source.slice(Math.max(0, index - 60), index);
+    if (!DATE_CUE_BEFORE.test(before)) continue;
+    if (options.plainLateIsNotACue && PLAIN_LATE_ON.test(before)) continue;
     if (RANGE_AFTER.test(source.slice(end, end + 12))) continue;
     const iso = mostRecent(Number(match[1]), Number(match[2]), today);
     if (iso) found.push({ iso, index, end });
@@ -96,8 +109,8 @@ function slashed(iso: string): string {
 }
 
 /** The same text with each cued yearless "10-19" written "10/19/2026", a shape the date readers accept. */
-export function withYearlessDatesWritten(text: string, today: string): string {
-  const dates = yearlessCuedDates(text, today);
+export function withYearlessDatesWritten(text: string, today: string, options: YearlessOptions = {}): string {
+  const dates = yearlessCuedDates(text, today, options);
   if (dates.length === 0) return text;
   let out = "";
   let at = 0;
@@ -118,8 +131,9 @@ export function newestStatedDate(
   question: string,
   today: string,
   read: (text: string, today: string) => string | null = singleIncidentDate,
+  options: YearlessOptions = {},
 ): string | null {
-  return read(withYearlessDatesWritten(question, today), today);
+  return read(withYearlessDatesWritten(question, today, options), today);
 }
 
 function singleIncidentDate(text: string, today: string): string | null {
@@ -130,4 +144,36 @@ function singleIncidentDate(text: string, today: string): string | null {
 /** Whether LATE_OPEN_DATE_ENABLED is on. One import for the callers. */
 export function lateOpenOn(): boolean {
   return lateOpenDateEnabled();
+}
+
+/**
+ * LATE_OPEN_DATE_FIX_ENABLED (QA, 25 Oct 2026): "coaching form for …, she was
+ * late on 10-5 and 10-15, I coached her on 10-16" was dated 10/5 with
+ * LATE_OPEN_DATE_ENABLED on — the "on" before 10-5 made it the one date the
+ * turn stated. With the fix a plain "late on <date>" is not read as that
+ * date (`plainLateIsNotACue`); "late to open on 10-20" still is.
+ */
+export function lateOpenFixOn(): boolean {
+  return lateOpenDateEnabled() && lateOpenDateFixEnabled();
+}
+
+const COACHING_FORMS: ReadonlySet<string> = new Set(["coaching", "follow-up-coaching"]);
+
+/**
+ * LATE_OPEN_DATE_FIX_ENABLED: on a Coaching Form, the one coaching the manager
+ * says they HELD ("I coached her on 10-16") — when nothing she did is dated
+ * after it and no date was given to the form — or null. The rule
+ * `decideFormDate` applies to written dates (`incident-dates.ts`), here for
+ * the yearless ones `withYearlessDatesWritten` has written out.
+ */
+export function heldCoachingFormDate(text: string, templateKey: string | null, today: string): string | null {
+  if (!templateKey || !COACHING_FORMS.has(templateKey)) return null;
+  if (explicitFormDate(text, today)) return null;
+  const incidents = listIncidentDates(text, today)
+    .map((found) => found.iso)
+    .filter((iso) => iso <= today)
+    .sort();
+  const latestIncident = incidents[incidents.length - 1] ?? "";
+  const held = heldCoachingDates(text, today).filter((iso) => iso >= latestIncident);
+  return held.length === 1 ? held[0]! : null;
 }
