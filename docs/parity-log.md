@@ -1019,3 +1019,18 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+## 26 Oct 2026: the stored-slot lines are not a new request — Sunny-only (STORED_SLOTS_NOT_A_REQUEST_ENABLED)
+
+`STORED_SLOTS_NOT_A_REQUEST_ENABLED` defaults off (Pau-approved edit to the
+protected form-proposal.ts). On this app's intent path the stored slots put
+ahead of a slot answer ("The form is the Corrective Action Form. The employee
+is … Policy reference: …") made `turnsAboutThisForm` read "no payroll deduct"
+as a new request, so the card dropped the prior and its sources were that
+turn alone. Not needed in Ask Bubbles: replayed through POST /api/chat on its
+main (39f2df1d) with the same three turns, its live form path (the full
+remap) never reaches `turnsAboutThisForm`; the card keeps the prior coaching
+through "no payroll deduct", and with REMAP_INCIDENT_FIX_ENABLED and
+REMAP_DRAFT_SOURCES_ENABLED its sources are every turn. Its intent path does
+not draft a card from these turns. Test:
+`src/app/api/chat/stored-slots-not-a-request-e2e.test.ts`.
