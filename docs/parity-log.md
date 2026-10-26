@@ -1019,3 +1019,24 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+## 26 Oct 2026: a prior stated in turn 2 stays on the card through a slot answer — Sunny-only
+
+`PRIOR_ACTIONS_RETAINED_ENABLED` defaults off, same name in both apps. Sunny
+tester, 18 live runs (conv_mvopmg322bsgexf): "prior coaching JBA Policy Manual
+7-29-26" was on the Corrective Action card, and the next turn ("no payroll
+deduct") dropped it and said "You'll set any prior coaching or corrective
+action on the form". On this app's intent path the stored slots put ahead of
+each turn read as a new request, so the proposal read the prior actions from
+the latest turn alone. On, `prior-actions-retained.ts` lists the priors the
+manager stated for this form again (and puts their turns back on the card's
+sources) until "no prior coaching" or "remove the prior" (QA-6: a removal
+clears only the kind it names, a negated prior or one for another person is
+never listed, and a new creation request for the same employee starts over).
+Not needed in Ask
+Bubbles: its live form path is the full remap, whose prior-actions line reads
+every turn of the form; replayed there on main (066ad62) with store wording,
+the prior stays through "no payroll deduct", "no payroll deduction",
+"verbal", "written warning please", "yes 25 dollars", a position and a date
+answer. It has no `holdFilledSlots` step to port the reader into. Test:
+`src/app/api/chat/prior-actions-retained-e2e.test.ts`.

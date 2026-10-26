@@ -918,3 +918,18 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * Prior actions stated earlier in the chat stay on a Corrective Action card
+ * through slot-answer turns (Sunny tester, 26 Oct 2026, 18 live runs:
+ * "prior coaching JBA Policy Manual 7-29-26" was on the card, and the next
+ * turn, "no payroll deduct", dropped it). The stored slots put ahead of each
+ * turn read as a new request, so the card's priors were read from the latest
+ * turn alone. On, the priors the manager stated for this form are listed
+ * again, and the turns they came from go back on the card's sources, until
+ * the manager says "no prior coaching" or "remove the prior". Off, the card
+ * is exactly as before. Same flag in both apps.
+ */
+export function priorActionsRetainedEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_RETAINED_ENABLED");
+}

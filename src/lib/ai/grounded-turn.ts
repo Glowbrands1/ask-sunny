@@ -27,6 +27,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { withRetainedPriorActions } from "./prior-actions-retained";
 import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
@@ -81,13 +82,16 @@ export async function deliverFormProposal(input: {
     // KEEP_FORM_EMPLOYEE_ENABLED: "for Test Employee" stays Test Employee on the card. See `withTypedEmployeeOnCard`.
     return withEditDateRules(
       withTypedEmployeeOnCard(
-        holdFilledSlots({
-          response: enriched,
-          question: input.question,
-          history: input.request.history,
-          today: input.request.context.todayIso,
-          people: [],
-        }),
+        withRetainedPriorActions(
+          holdFilledSlots({
+            response: enriched,
+            question: input.question,
+            history: input.request.history,
+            today: input.request.context.todayIso,
+            people: [],
+          }),
+          retainedPriorsInput(input),
+        ),
         input.request.question,
       ),
       input,
@@ -137,13 +141,16 @@ export async function deliverFormProposal(input: {
   const settled = withVisibleSalon(enriched, input);
   const held = withEditDateRules(
     withTypedEmployeeOnCard(
-      holdFilledSlots({
-        response: settled,
-        question: input.question,
-        history: input.request.history,
-        today: input.request.context.todayIso,
-        people,
-      }),
+      withRetainedPriorActions(
+        holdFilledSlots({
+          response: settled,
+          question: input.question,
+          history: input.request.history,
+          today: input.request.context.todayIso,
+          people,
+        }),
+        retainedPriorsInput(input),
+      ),
       input.request.question,
     ),
     input,
@@ -155,6 +162,16 @@ export async function deliverFormProposal(input: {
   }
   await writeSaved(stateOn, input, saved, held, prep);
   return held;
+}
+
+/** PRIOR_ACTIONS_RETAINED_ENABLED: the manager's own words, never the stored-slot lines. See `prior-actions-retained.ts`. */
+function retainedPriorsInput(input: { readonly request: AskRequest }) {
+  return {
+    question: input.request.question,
+    questionMessageId: input.request.questionMessageId,
+    history: input.request.history,
+    today: input.request.context.todayIso,
+  };
 }
 
 /** FORM_EDIT_DATE_RULES_ENABLED: read from the manager's own turns, not the state sentences. See `edit-date-rules.ts`. */
