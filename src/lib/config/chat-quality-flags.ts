@@ -815,3 +815,14 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * A reply speaks for this company only (Code 3; QA testers G21/U1/U6, 25 Oct
+ * 2026, reported in the sibling app; same flag in both apps): the sibling
+ * company named in the model's prose (its parenthetical, its list item, or a
+ * sentence only about it) is taken out. The manual's title and page citations
+ * are untouched. Off, the reply as written.
+ */
+export function brandReplyGuardEnabled(): boolean {
+  return envFlag("BRAND_REPLY_GUARD_ENABLED");
+}
