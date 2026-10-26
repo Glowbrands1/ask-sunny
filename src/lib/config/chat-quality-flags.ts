@@ -920,13 +920,14 @@ export function draftNeverBlankEnabled(): boolean {
 }
 
 /**
- * Two LATE_OPEN_DATE_ENABLED readings put right (QA, 25-26 Oct 2026; same
- * flag in both apps). "she was late on 10-5" is not a late opening, so a
- * plain "late on <date>" is not read as the date this turn states — only
- * "late to open"-type wording is. And on a Coaching Form the coaching the
- * manager says they held ("I coached her on 10-16") dates the form, as it
- * does with LATE_OPEN_DATE_ENABLED off. See `forms/late-open.ts`. Off,
- * exactly as before.
+ * A LATE_OPEN_DATE_ENABLED reading put right (QA, 25-26 Oct 2026; same flag
+ * in both apps). With it on, "coaching form for …, she was late on 10-5 and
+ * 10-15, I coached her on 10-16" was dated 10/5: "late on 10-5" is a
+ * lateness, not a late opening, yet its "on" made it the date the turn
+ * stated. On a Coaching Form the coaching the manager says they held dates
+ * the form, as with LATE_OPEN_DATE_ENABLED off; two held coachings are asked
+ * about. No other stated date is read differently. See `forms/late-open.ts`.
+ * Off, exactly as before.
  */
 export function lateOpenDateFixEnabled(): boolean {
   return envFlag("LATE_OPEN_DATE_FIX_ENABLED");

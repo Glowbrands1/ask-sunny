@@ -19,7 +19,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
-import { heldCoachingFormDate, lateOpenFixOn, lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
+import { heldCoachingFormDates, lateOpenFixOn, lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { printedPageForPolicy } from "@/lib/forms/printed-policy-pages";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { stripFieldLabels } from "@/lib/forms/name-words";
@@ -282,13 +282,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * the form ahead of the saved one. See `late-open.ts`.
    */
   const lateOpen = lateOpenOn();
-  // LATE_OPEN_DATE_FIX_ENABLED: "she was late on 10-5" is not a late opening's date. See `late-open.ts`.
-  const lateOpenFix = lateOpen && lateOpenFixOn();
-  const yearless = lateOpenFix ? { plainLateIsNotACue: true } : {};
-  const dateQuestion = lateOpen ? withYearlessDatesWritten(input.question, input.today, yearless) : input.question;
-  const dateText = lateOpen ? withYearlessDatesWritten(userText, input.today, yearless) : userText;
+  const dateQuestion = lateOpen ? withYearlessDatesWritten(input.question, input.today) : input.question;
+  const dateText = lateOpen ? withYearlessDatesWritten(userText, input.today) : userText;
   const statedNow =
-    lateOpen && !choice?.date ? newestStatedDate(input.question, input.today, explicitIncidentIso, yearless) : null;
+    lateOpen && !choice?.date ? newestStatedDate(input.question, input.today, explicitIncidentIso) : null;
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
     : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
@@ -362,11 +359,21 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   /*
    * LATE_OPEN_DATE_FIX_ENABLED (QA, 25 Oct 2026): on a Coaching Form the
    * coaching the manager says they held ("I coached her on 10-16") is its
-   * date, as it is with LATE_OPEN_DATE_ENABLED off. See `heldCoachingFormDate`.
+   * date, ahead of "she was late on 10-5", as with LATE_OPEN_DATE_ENABLED off.
+   * Two held coachings are a question, and the manager's pick among them
+   * answers it. See `heldCoachingFormDates`.
    */
   const heldCoaching =
-    lateOpenFix && !choice?.date ? heldCoachingFormDate(dateText, formType.key ?? saved.templateKey, input.today) : null;
-  const formDate = heldCoaching ? { iso: heldCoaching, ambiguous: [] as readonly string[] } : date;
+    lateOpen && lateOpenFixOn() ? heldCoachingFormDates(dateText, formType.key ?? saved.templateKey, input.today) : [];
+  const heldChosen = choice?.date ? normalizeIncidentDate(choice.date, input.today) : null;
+  const formDate =
+    heldChosen && heldCoaching.includes(heldChosen)
+      ? { iso: heldChosen, ambiguous: [] as readonly string[] }
+      : choice?.date || heldCoaching.length === 0
+        ? date
+        : heldCoaching.length === 1
+          ? { iso: heldCoaching[0]!, ambiguous: [] as readonly string[] }
+          : { iso: null, ambiguous: heldCoaching };
 
   const salonForMerge = codeSlotsEnabled() && salon.ambiguous.length > 1
     ? { id: salon.id, name: salon.name, ambiguous: [] as readonly SalonRow[] }
@@ -444,6 +451,10 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
   if (clarification && formType.together) return { question, state, clarification, formTurn: false };
+  // LATE_OPEN_DATE_FIX_ENABLED: two held coachings are asked about, not left for the card to drop.
+  if (clarification && formDate.ambiguous.length > 1 && heldCoaching.length > 1) {
+    return { question, state, clarification, formTurn: false };
+  }
   if (clarification) return { question, state, clarification, formTurn };
   if (!formTurn) return { question, state, clarification: null, formTurn: false };
   return { question, state, clarification: null, formTurn: true };

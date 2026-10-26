@@ -75,6 +75,17 @@ const intentModel = vi.hoisted(() => ({
 }));
 
 const PEOPLE: DirectoryFact[] = [
+  /* Invented, for QA-6's pins (26 Oct 2026). */
+  {
+    id: "rowan-pell",
+    firstName: "Rowan",
+    lastName: "Pell",
+    preferredFirstName: null,
+    salonIds: ["loc-0309"],
+    title: "Tanning Consultant",
+    primarySalonId: "loc-0309",
+    primaryLocationName: "NE Kearney",
+  },
   {
     id: "wren",
     firstName: "Wren",
@@ -285,7 +296,7 @@ async function chat(turns: readonly string[], conversationId: string): Promise<A
 function copiesTheManager(manager: string): Record<string, unknown> {
   const date = /\b\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?\b/.exec(manager)?.[0] ?? null;
   return {
-    employee: /test employee/i.test(manager) ? "Test Employee" : null,
+    employee: /test employee/i.test(manager) ? "Test Employee" : /rowan pell/i.test(manager) ? "Rowan Pell" : null,
     salon: /kearney/i.test(manager) ? "NE Kearney" : null,
     title: null,
     incidentType: /late to open/i.test(manager) ? "late to open" : null,
@@ -472,6 +483,85 @@ describe("LATE_OPEN_DATE_FIX_ENABLED, with LATE_OPEN_DATE_ENABLED on as in produ
       vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", fix);
       expect(await coachingDate(COACHING, `conv-fix-lo-off-${fix}`)).toBe("2026-10-16");
     }
+  });
+});
+
+/*
+ * ============================================================================
+ * QA-6, 26 OCT 2026: THE FIX NEVER DROPS A STATED DATE
+ * ============================================================================
+ *
+ * An earlier version of LATE_OPEN_DATE_FIX_ENABLED stopped reading every
+ * plain "late on <date>", and these turns lost their date silently: the form
+ * fell back to the day it was created and nothing was asked. With the fix on
+ * (and LATE_OPEN_DATE on, as in production) each is read exactly as main
+ * reads it, except two coachings the manager held, which are asked about
+ * rather than picked. Each sentence in lowercase and Sentence case; Rowan
+ * Pell is invented. The twin pins main: the same turns with the fix off.
+ */
+describe("QA-6: with LATE_OPEN_DATE_FIX_ENABLED on, a stated date is never dropped", () => {
+  /** The card's Date (or "asked": the date question instead of a card), and the date the turn's read stored. */
+  type Expected = readonly [card: string | "asked", slot: string | null];
+  const PINS: readonly (readonly [string, "ca" | "coaching", string, string, Expected, Expected])[] = [
+    ["opened late on", "ca", "create a ca for Rowan Pell, opened late on 10-5", "Create a CA for Rowan Pell. She opened late on 10-5.", ["2026-10-05", "2026-10-05"], ["2026-10-05", "2026-10-05"]],
+    ["opening the salon late on", "ca", "create a ca for Rowan Pell, for opening the salon late on 10-5", "Create a CA for Rowan Pell for opening the salon late on 10-5.", ["2026-10-05", "2026-10-05"], ["2026-10-05", "2026-10-05"]],
+    ["late on, a CA", "ca", "create a ca for Rowan Pell, she was late on 10-5", "Create a CA for Rowan Pell. She was late on 10-5.", ["2026-10-05", "2026-10-05"], ["2026-10-05", "2026-10-05"]],
+    ["late on, then a held coaching, a CA", "ca", "create a ca for Rowan Pell, she was late on 10-5, I coached her on 10-16", "Create a CA for Rowan Pell. She was late on 10-5. I coached her on 10-16.", ["2026-10-05", "2026-10-05"], ["2026-10-05", "2026-10-05"]],
+    // Two dates of hers: main's read stores none and the card carries the later; the fix reads it the same.
+    ["late on and opened late on, a CA", "ca", "create a ca for Rowan Pell, she was late on 10-5 and opened late on 10-9", "Create a CA for Rowan Pell. She was late on 10-5 and opened late on 10-9.", ["2026-10-09", null], ["2026-10-09", null]],
+    ["late on, a Coaching Form", "coaching", "coaching form for Rowan Pell, she was late on 10-5", "Coaching form for Rowan Pell. She was late on 10-5.", ["2026-10-05", "2026-10-05"], ["2026-10-05", "2026-10-05"]],
+    ["late again on, a Coaching Form", "coaching", "coaching form for Rowan Pell, she was late again on 10-5", "Coaching form for Rowan Pell. She was late again on 10-5.", ["2026-10-05", "2026-10-05"], ["2026-10-05", "2026-10-05"]],
+    // Main takes the first of two held coachings; the fix asks which.
+    ["two held coachings", "coaching", "coaching form for Rowan Pell, I coached her on 10-16 and 10-18", "Coaching form for Rowan Pell. I coached her on 10-16 and 10-18.", ["asked", null], ["2026-10-16", null]],
+  ];
+  const CASES = PINS.flatMap(([label, kind, lower, sentence, on, main]) => [
+    [`${label} (lowercase)`, kind, lower.toLowerCase(), on, main] as const,
+    [`${label} (Sentence case)`, kind, sentence, on, main] as const,
+  ]);
+
+  async function read(kind: "ca" | "coaching", words: string, id: string) {
+    intentModel.reading = (manager: string) => ({
+      ...copiesTheManager(manager),
+      formType: kind === "coaching" ? "coaching" : "corrective action",
+      formTurn: true,
+      incidentDate: null,
+    });
+    const [first] = await chat([words], id);
+    return { answer: first!, slots: stateBag.forms.get(`manager-late-open:${id}`) as { formDate?: string | null } | undefined };
+  }
+
+  /* The card's Date, and the date the turn's read stored (what chat_traces.slots records): neither is dropped. */
+  function expectRead({ answer, slots }: Awaited<ReturnType<typeof read>>, kind: "ca" | "coaching", [expected, slot]: Expected) {
+    expect(slots?.formDate ?? null).toBe(slot);
+    if (expected === "asked") {
+      expect(answer.content).toMatch(/Which date should go on the form\? Reply with the number\.\n1\. \*\*10\/16\/2026\*\*\n2\. \*\*10\/18\/2026\*\*/);
+      expect(answer.formProposal?.formDate ?? null).toBeNull();
+      return;
+    }
+    expect(answer.formProposal?.templateKey).toBe(kind === "coaching" ? "coaching" : "dpoa");
+    expect(answer.formProposal?.formDate).toBe(expected);
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+  });
+
+  it.each(CASES)("fix on: %s", async (label, kind, words, on) => {
+    vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", "1");
+    expectRead(await read(kind, words, `conv-qa6-on-${label}`), kind, on);
+  });
+
+  it.each(CASES)("fix off reads it as main: %s", async (label, kind, words, _on, main) => {
+    vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", "");
+    expectRead(await read(kind, words, `conv-qa6-off-${label}`), kind, main);
+  });
+
+  it("the date question is answered by its number, and the Coaching Form is dated 10/18", async () => {
+    vi.stubEnv("LATE_OPEN_DATE_FIX_ENABLED", "1");
+    intentModel.reading = (manager: string) => ({ ...copiesTheManager(manager), formType: "coaching", formTurn: true, incidentDate: null });
+    const [, second] = await chat(["coaching form for Rowan Pell, I coached her on 10-16 and 10-18", "2"], "conv-qa6-answer");
+    expect(second!.formProposal?.templateKey).toBe("coaching");
+    expect(second!.formProposal?.formDate).toBe("2026-10-18");
   });
 });
 
