@@ -918,3 +918,13 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * A Coaching draft whose notes mention lateness only to deny it ("she was not
+ * late today", "never late", "was on time") does not keep a "Other:
+ * Punctuality" topic (QA, 26 Oct 2026). See `forms/negated-lateness.ts`. Off,
+ * the draft is unchanged.
+ */
+export function negatedLatenessTopicEnabled(): boolean {
+  return envFlag("NEGATED_LATENESS_TOPIC_ENABLED");
+}
