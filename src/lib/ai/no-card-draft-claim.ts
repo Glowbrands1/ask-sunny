@@ -82,14 +82,64 @@ const NOT_A_PERSON =
 /** A form's own name in a sentence: "Corrective Action Form" → "corrective action". */
 const FORM_NAME = /\b((?:[A-Z][\w-]*\s+){0,3}[A-Z][\w-]*)\s+Form\b/;
 
-function peopleAfterFor(text: string): string[] {
-  const people: string[] = [];
+/** Words that end a name typed without a comma: "for test employee two late today". */
+const NOT_A_NAME_WORD =
+  /^(?:late|tardy|absent|early|again|no|call|show|missed|left|was|is|were|did|didn['’]t|who|at|on|in|from|to|with|because|and|or|but|about|since|after|before)$/i;
+
+/** What follows "for" in the manager's turn, up to a comma or a stop. */
+const FOR_SPAN = /\bfor\s+([^,.;:!?\n]+)/gi;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The names this turn is about, in any case: what the manager typed after
+ * "for" (a full name, or a first name typed alone) and the open form's
+ * employee. A manager or a model writing "test employee two" all lowercase is
+ * read the same as "Test Employee Two" (Pau's register rule): the capitalised
+ * run alone missed it, and a claim for another employee went out.
+ */
+function knownNames(context: NoCardClaimContext): string[] {
+  const names: string[] = [];
+  for (const match of context.question.matchAll(FOR_SPAN)) {
+    const all = match[1]!.trim().split(/\s+/);
+    const stop = all.findIndex((word, index) => index > 0 && (NOT_A_PERSON.test(word) || NOT_A_NAME_WORD.test(word)));
+    const words = (stop < 0 ? all : all.slice(0, stop)).slice(0, 4);
+    if (words.length === 0 || NOT_A_PERSON.test(words[0]!) || NOT_A_NAME_WORD.test(words[0]!)) continue;
+    const shortest = words.length === 1 ? 1 : 2;
+    for (let size = words.length; size >= shortest; size -= 1) names.push(words.slice(0, size).join(" "));
+  }
+  const employee = context.openForm?.employeeName?.trim();
+  if (employee) names.push(employee);
+  return names;
+}
+
+function peopleAfterFor(text: string, known: readonly string[] = []): string[] {
+  const found: { at: number; name: string }[] = [];
+  const taken = new Set<number>();
   for (const match of text.matchAll(FOR_PERSON)) {
     const words = match[1]!.split(/\s+/);
     if (NOT_A_PERSON.test(words[0]!)) continue;
-    people.push(words.join(" "));
+    taken.add(match.index);
+    found.push({ at: match.index, name: words.join(" ") });
   }
-  return people;
+  /*
+   * A name the turn is about, after "for", in any case (longest first), where
+   * the capitalised reading found nobody: "for test employee two" typed or
+   * echoed lowercase. One that runs on into a capitalised word is left to the
+   * capitalised reading above.
+   */
+  for (const name of [...known].sort((a, b) => b.length - a.length)) {
+    const pattern = new RegExp(`\\bfor\\s+(${escapeRegExp(name).replace(/\s+/g, "\\s+")})(?![\\w'’-])`, "gi");
+    for (const match of text.matchAll(pattern)) {
+      if (taken.has(match.index)) continue;
+      if (/^\s+[A-Z]/.test(text.slice(match.index + match[0].length))) continue;
+      taken.add(match.index);
+      found.push({ at: match.index, name: match[1]! });
+    }
+  }
+  return found.sort((a, b) => a.at - b.at).map((person) => person.name);
 }
 
 function normalName(name: string): string {
@@ -150,6 +200,7 @@ export function withoutPhantomDraftClaim(
   context: NoCardClaimContext,
 ): string {
   const open = context.openForm ?? null;
+  const known = knownNames(context);
   const lines = content
     .split("\n")
     .map((line) =>
@@ -165,7 +216,7 @@ export function withoutPhantomDraftClaim(
       if (claim === "press-finalize") return open?.status !== "draft";
       if (!open) return true;
       if (NEW_DRAFT.test(sentence.text)) return true;
-      return peopleAfterFor(sentence.text).some(
+      return peopleAfterFor(sentence.text, known).some(
         (person) => !samePersonName(person, open.employeeName),
       );
     });
@@ -173,8 +224,8 @@ export function withoutPhantomDraftClaim(
   if (phantoms.length === 0) return content;
 
   const person =
-    phantoms.flatMap((sentence) => peopleAfterFor(sentence.text))[0] ??
-    peopleAfterFor(context.question)[0] ??
+    phantoms.flatMap((sentence) => peopleAfterFor(sentence.text, known))[0] ??
+    peopleAfterFor(context.question, known)[0] ??
     null;
   const named =
     phantoms
