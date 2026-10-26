@@ -883,6 +883,17 @@ export function followUpNotPriorEnabled(): boolean {
 }
 
 /**
+ * A US state code after a place ("Dodge, NE", "lawrence, ks") is never a
+ * second person when a chat card is created (production, 26 Oct 2026: "…at
+ * Dodge, NE. She did not clock in…" was refused as naming "Odalys
+ * Merriweather, NE"; same flag in both apps). See
+ * `forms/state-code-place.ts`. Off, the conversation is read as typed.
+ */
+export function stateCodeNotAPersonEnabled(): boolean {
+  return envFlag("STATE_CODE_NOT_A_PERSON_ENABLED");
+}
+
+/**
  * The answer's model call is tried again, up to two more times about 1 s and
  * then 3 s apart, when it fails with a retryable upstream error (429, 529 or
  * overloaded, 5xx, a dropped connection), and only while the turn is inside
