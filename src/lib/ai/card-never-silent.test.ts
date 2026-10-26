@@ -130,3 +130,35 @@ describe("CARD_NEVER_SILENT_ENABLED on: a negated finalize / make / edit", () =>
     expect(turn(question).content).not.toContain("Nothing on the card changed with that message.");
   });
 });
+
+/** QA-4, 26 Oct 2026: negation is read per clause, so a positive request in the same turn is still answered. */
+describe("CARD_NEVER_SILENT_ENABLED on: a negated clause next to a positive one", () => {
+  const CREATE = "Press **Create draft** on the card below.";
+  const EDIT = "To edit it, press **Create draft**";
+  it.each([
+    ["don't edit it, finalize it", CREATE],
+    ["Don't edit it, finalize it", CREATE],
+    ["DON'T EDIT IT, FINALIZE IT", CREATE],
+    ["finalize it, don't edit it", CREATE],
+    ["Finalize it, don't edit it", CREATE],
+    ["I haven't verified it yet but finalize it", CREATE],
+    ["i haven't verified it yet but finalize it", CREATE],
+    ["I did not verify it, finalize it anyway", CREATE],
+    ["I DID NOT VERIFY IT, FINALIZE IT ANYWAY", CREATE],
+    ["Don't finalize it, I'll edit it first", EDIT],
+    ["don't finalize it, i'll edit it first", EDIT],
+    ["not yet, i need to edit it first", EDIT],
+    ["Not yet, I need to edit it first", EDIT],
+    ["NOT YET, I NEED TO EDIT IT FIRST", EDIT],
+  ])("'%s'", (question, line) => {
+    process.env[FLAG] = "on";
+    const out = turn(question);
+    expect(out.content).toContain(line);
+    expect(out.content).not.toContain("Nothing on the card changed with that message.");
+  });
+
+  it.each(["don't edit it, don't finalize it", "Not yet, do not finalize"])("'%s' is still nothing changed", (question) => {
+    process.env[FLAG] = "on";
+    expect(turn(question).content).toContain("Nothing on the card changed with that message.");
+  });
+});

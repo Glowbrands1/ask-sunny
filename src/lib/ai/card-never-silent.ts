@@ -73,13 +73,25 @@ function bareFormLine(templateName: string): string {
 /** QA-6/QA-7, 26 Oct 2026: "don't finalize", "do not make it", "no edit please", "I haven't verified it yet". */
 const NEGATED = /\b(?:not|never|no|don'?t|do\s+not|haven'?t|have\s+not|isn'?t|without)\b/i;
 
+/**
+ * QA-4, 26 Oct 2026: "don't edit it, finalize it", "I haven't verified it yet
+ * but finalize it", "not yet, i need to edit it first". Negation is read per
+ * clause: a negated verb never counts, a positive verb in another clause of
+ * the same turn still does.
+ */
+const CLAUSE = /\s*(?:[,;.!?]+|\s-\s|\b(?:but|and|then|so)\b)\s*/i;
+
 function answerLine(question: string, canCreate: boolean): string {
   if (!canCreate) return NEEDS_LINE;
-  const said = question.trim();
-  // A turn that says not to finalize, make or edit is answered as a change that did not happen.
-  if (NEGATED.test(said) && (FINALIZE.test(said) || EDIT.test(said) || MAKE.test(said))) return UNCHANGED_LINE;
-  if (FINALIZE.test(said)) return CREATE_DRAFT_LINE;
-  if (EDIT.test(said)) return EDIT_LINE;
-  if (MAKE.test(said)) return CREATE_DRAFT_LINE;
+  const clauses = question
+    .trim()
+    .split(CLAUSE)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  // A clause that says not to finalize, make or edit is a change that did not happen.
+  const asked = clauses.filter((clause) => !NEGATED.test(clause));
+  if (asked.some((clause) => FINALIZE.test(clause))) return CREATE_DRAFT_LINE;
+  if (asked.some((clause) => EDIT.test(clause))) return EDIT_LINE;
+  if (asked.some((clause) => MAKE.test(clause))) return CREATE_DRAFT_LINE;
   return UNCHANGED_LINE;
 }
