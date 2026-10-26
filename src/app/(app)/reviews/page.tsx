@@ -52,14 +52,7 @@ export default async function ReviewsPage({
 
   return (
     <PermissionGate permission="view_google_reviews">
-      {/* GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED; see `lib/reviews/update-note.ts`. */}
-      {reviewsUpdateNoteEnabled() ? (
-        <div className="px-5 pt-5 sm:px-6">
-          <Notice tone="attention">
-            <p>{REVIEWS_UPDATE_NOTE}</p>
-          </Notice>
-        </div>
-      ) : null}
+      {reviewsUpdateNoteEnabled() ? <div className="px-5 pt-5 sm:px-6"><Notice tone="attention"><p>{REVIEWS_UPDATE_NOTE}</p></Notice></div> : null}
       <Suspense fallback={null}>
         {props.mode === "live" ? (
           <ReviewsScreen {...props} />
