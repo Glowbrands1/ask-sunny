@@ -355,7 +355,13 @@ function rehireEligible(rawClause: string): Reading {
   const clause = rehireSpelling(rawClause);
   if (exitRehireReasonEnabled()) {
     const trailing = /\bre-?hire(?: eligib(?:le|ility))?\s+(yes|no)\s*[.!]*$/.exec(clause);
-    if (trailing) return trailing[1] === "yes" ? "yes" : "no";
+    /*
+     * Not after a negation: "never rehire yes" / "do not rehire yes" are read
+     * as before (no) by the negation checks below (QA-5, 26 Oct 2026).
+     */
+    const negatedTrailing =
+      trailing !== null && REHIRE_NEGATED_BEFORE.test(clause.slice(0, trailing.index));
+    if (trailing && !negatedTrailing) return trailing[1] === "yes" ? "yes" : "no";
   }
   const labelled = labelledAnswer(clause, /\b(?:eligible for )?re-?hire(?: eligib(?:le|ility))?/);
   if (labelled) return labelled;

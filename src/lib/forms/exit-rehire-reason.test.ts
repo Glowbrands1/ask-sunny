@@ -148,6 +148,10 @@ describe.each(REGISTERS)(
         expect(details(as("Rehire yes")).answers.eligible_for_rehire).toBe(
           "yes",
         );
+        // QA-5, 26 Oct 2026: a trailing "yes" after a negation stays "no".
+        expect(details(as("never rehire yes")).answers.eligible_for_rehire).toBe("no");
+        expect(details(as("do not rehire yes")).answers.eligible_for_rehire).toBe("no");
+        expect(details(as("exit for ava pellmore, never rehire yes")).answers.eligible_for_rehire).toBe("no");
         expect(
           details(
             as("All salon items were returned and she is eligible for rehire"),
