@@ -14,6 +14,7 @@ import {
 import { LEADING, PAGE, SIZE, pageLayout, type PageLayout } from "./paper";
 import { decodePng } from "./png";
 import { closingForDisplay } from "./required-closing";
+import { revisionMarkText, type RevisionMark } from "./revision-history";
 
 /**
  * THE STRUCTURED RENDERER — the document engine that produces the actual PDF.
@@ -364,6 +365,13 @@ export interface RenderMeta {
   /** Printed in the footer so a filed page can be traced to its record. */
   reference?: string | null;
   status: "draft" | "finalized" | "revised";
+  /**
+   * What this record supersedes and what superseded it
+   * (`FORM_REVISIONS_ENABLED`), printed under the footer on every page so a
+   * superseded original never prints like a current record. Absent, the
+   * footer is exactly what it always was.
+   */
+  revisionMarks?: readonly RevisionMark[];
 }
 
 /* SIZE and LEADING come from `paper.ts` too — see the note above PAGE. */
@@ -1047,6 +1055,9 @@ function drawBlock(
 
 function drawFooter(sheet: Sheet, meta: RenderMeta): void {
   const total = sheet.pages.length;
+  const marks = (meta.revisionMarks ?? [])
+    .map((mark) => asciiOnly(revisionMarkText(mark, sheet.layout.date)))
+    .join("  |  ");
   sheet.pages.forEach((page, index) => {
     /*
      * The separator is an ASCII bar, not a middot. No font is embedded, so a
@@ -1073,6 +1084,15 @@ function drawFooter(sheet: Sheet, meta: RenderMeta): void {
     page.ops.push({
       draw: `0.8 G 0.5 w ${sheet.layout.margin.left} 48 m ${PAGE.width - sheet.layout.margin.right} 48 l S`,
     });
+    /*
+     * THE REVISION MARK, below the footer line and in bold, on every page: a
+     * page separated from the rest in a binder still says it was replaced.
+     */
+    if (marks) {
+      page.ops.push({
+        draw: `BT 0.15 0.15 0.15 rg /F2 ${SIZE.footer} Tf 1 0 0 1 ${sheet.layout.margin.left} 24 Tm (${escapeText(marks)}) Tj ET`,
+      });
+    }
   });
 }
 
