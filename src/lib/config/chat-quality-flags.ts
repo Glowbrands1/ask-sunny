@@ -894,6 +894,15 @@ export function stateCodeNotAPersonEnabled(): boolean {
 }
 
 /**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
  * The answer's model call is tried again, up to two more times about 1 s and
  * then 3 s apart, when it fails with a retryable upstream error (429, 529 or
  * overloaded, 5xx, a dropped connection), and only while the turn is inside
