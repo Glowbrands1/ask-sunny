@@ -939,3 +939,14 @@ export function draftNeverBlankEnabled(): boolean {
 export function nameBeforeTitleEnabled(): boolean {
   return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }
+
+/**
+ * A sentence that says how a default, starter or first sign-in password or
+ * code is built (a name, a year, a birthday, "followed by") never reaches a
+ * chat answer (Code 3; coordinator, 26 Oct 2026; same flag in both apps). See
+ * `lib/ai/sensitive-defaults.ts`. Needs SENSITIVE_DEFAULTS_REDACT_ENABLED.
+ * Off, those sentences are judged as before.
+ */
+export function sensitiveDefaultRecipeRedactEnabled(): boolean {
+  return envFlag("SENSITIVE_DEFAULT_RECIPE_REDACT_ENABLED");
+}
