@@ -804,3 +804,14 @@ export function chatLongMessageEnabled(): boolean {
     flagOn(process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED)
   );
 }
+
+/**
+ * "What is a ca?", "difference between coaching and ca", "which forms can I
+ * create here?" are answered from the app's own published form templates and
+ * role matrix (`lib/forms/forms-guide.ts`), never from model memory or a
+ * knowledge-base miss. Off (the default), those turns are answered exactly as
+ * before.
+ */
+export function formsGuideEnabled(): boolean {
+  return envFlag("FORMS_GUIDE_ENABLED");
+}
