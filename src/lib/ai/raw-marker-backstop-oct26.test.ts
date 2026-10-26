@@ -168,4 +168,13 @@ describe("the text pass", () => {
     const text = "Dress Code [p.15]. Use the [Submit] button.";
     expect(withoutRawMarkerText(text)).toBe(text);
   });
+
+  it.each([
+    ["Set it up:\n```\nconfig[S1]\n```\nDone [S2].", "Set it up:\n```\nconfig[S1]\n```\nDone."],
+    ['The manual says "see [S2]" for details.', 'The manual says "see" for details.'],
+  ])("QA-5 leftovers: a fenced block is code; a quoted marker is still a marker: %s", (input, output) => {
+    expect(withoutRawMarkerText(input)).toBe(output);
+    expect(withoutRawMarkerText(input.toLowerCase())).toBe(output.toLowerCase());
+    expect(withoutRawMarkerText(input.toUpperCase())).toBe(output.toUpperCase());
+  });
 });

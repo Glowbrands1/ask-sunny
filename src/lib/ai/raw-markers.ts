@@ -23,8 +23,13 @@ import { rawMarkerBackstopEnabled } from "@/lib/config/chat-quality-flags";
 const MARKER = String.raw`\[\s*S\s*\d{1,3}\s*\]`;
 const RUN = new RegExp(String.raw`[^\S\n]*${MARKER}(?:[^\S\n]*(?:,|;|&|\band\b|\bor\b)?[^\S\n]*${MARKER})*`, "gi");
 
-/** Code spans are left as written: "`arr[S1]`" is code, not a marker. */
-const CODE_SPAN = /`[^`\n]*`/g;
+/**
+ * Code is left as written: a "`arr[S1]`" span, and a fenced ``` block
+ * (QA-5, 26 Oct 2026: "config[S1]" inside a fence lost its "[S1]"). A
+ * marker inside a quoted phrase ("see [S2]") is still the model's handle,
+ * not the manager's words, and is taken out.
+ */
+const CODE_SPAN = /```[^\n]*\n[\s\S]*?```|`[^`\n]*`/g;
 
 /** The text with every raw [S#] taken out. Indentation, code spans and the brackets the text already had are kept. */
 export function withoutRawMarkerText(text: string): string {
