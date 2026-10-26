@@ -6,6 +6,7 @@ import {
   formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
   keepFormEmployeeEnabled,
+  latePayrollFromFormEnabled,
   managerWordsOnlyEnabled,
   placeSpanGuardEnabled,
   priorActionsParseEnabled,
@@ -292,21 +293,6 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const date = codeSlotsEnabled()
     ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
     : groundedDate;
-  const managerOnly = intentPayrollManagerOnlyEnabled();
-  // The manager's Yes/No, never an assistant turn's: "payroll deduct is not
-  // applicable" is No in the saved state too (LATE_OPEN_DATE_ENABLED).
-  const payrollAnswer =
-    managerOnly || lateOpen
-      ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
-      : null;
-  const payrollAmount = !managerOnly
-    ? lateOpen && payrollAnswer === "no"
-      ? null
-      : groundPayroll(reading?.payrollAmount ?? null, blob)
-    : payrollAnswer === "no"
-      ? null
-      : (payrollClauseAmount(input) ??
-        (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
   const formType: { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean } = choiceStated
     ? groundStatedForm(
         choice?.form ?? null,
@@ -322,6 +308,23 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
         question: input.question,
         managerText: managerBlob(input),
       });
+  const managerOnly = intentPayrollManagerOnlyEnabled();
+  // The manager's Yes/No, never an assistant turn's: "payroll deduct is not
+  // applicable" is No in the saved state too (LATE_OPEN_DATE_ENABLED).
+  const payrollAnswer =
+    lateOpen && !managerOnly && latePayrollFromFormEnabled()
+      ? latePayrollFromForm(input, formType.key ?? saved.templateKey)
+      : managerOnly || lateOpen
+        ? payrollDeductFromConversation([...input.history, { role: "user", content: input.question }])
+        : null;
+  const payrollAmount = !managerOnly
+    ? lateOpen && payrollAnswer === "no"
+      ? null
+      : groundPayroll(reading?.payrollAmount ?? null, blob)
+    : payrollAnswer === "no"
+      ? null
+      : (payrollClauseAmount(input) ??
+        (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
   // NAMED_FORM_EXACT_ENABLED: a numbered choice the manager just made is their
   // naming; otherwise their own latest naming bounds the form.
   const namedFormExact = namedFormExactEnabled();
@@ -470,6 +473,26 @@ function asksForAForm(question: string): boolean {
 
 /** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
 const HISTORY_CAP = 20;
+
+/**
+ * LATE_OPEN_PAYROLL_FROM_FORM_ENABLED (QA, 26 Oct 2026). With
+ * LATE_OPEN_DATE_ENABLED on, the payroll answer was read over the whole thread,
+ * so a bare "Yes" after a card that only listed the exit form's "Payroll
+ * Deduction" box — or after another app's Corrective Action reply — was stored
+ * as payroll deduct Yes on an exit form. Now, as WARNING_LEVEL_MANAGER_ONLY
+ * reads it: what the manager's own turns state ("no payroll", "payroll deduct
+ * is not applicable"), and a bare Yes/No only as the reply to the payroll
+ * question just asked (`payrollAnsweredNow`), and only on a form that asks it
+ * — the Corrective Action Form.
+ */
+function latePayrollFromForm(input: IntentTurnInput, templateKey: string | null): PayrollDeductAnswer | null {
+  const said = payrollDeductFromConversation(
+    [...input.history, { role: "user", content: input.question }].filter((turn) => turn.role === "user"),
+  );
+  const template = input.templates.find((row) => row.key === templateKey) ?? (templateKey ? { key: templateKey } : null);
+  const replied = templateHasWarningLevel(template) ? payrollAnsweredNow(input.history, input.question) : null;
+  return replied ?? said;
+}
 
 /** Another yes/no question beside the payroll one: "Did you mean **Rowan Testo**?". */
 const OTHER_YES_NO =

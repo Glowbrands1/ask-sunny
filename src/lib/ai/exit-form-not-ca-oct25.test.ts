@@ -208,7 +208,7 @@ let answerQuestion: typeof import("./server-ask").answerQuestion;
 
 beforeAll(async () => {
   ({ answerQuestion } = await import("./server-ask"));
-});
+}, 60_000);
 
 beforeEach(() => {
   for (const flag of PROFILE) vi.stubEnv(flag, "true");
@@ -289,6 +289,13 @@ describe.each(PATHS)("an exit form request gets the exit form — %s", (_name, r
     expect(reply!.proposal?.payrollDeduct ?? null).toBeNull();
   });
 
+  /*
+   * The two T2 tests fail with LATE_OPEN_DATE_ENABLED=1 in the env (production)
+   * unless LATE_OPEN_PAYROLL_FROM_FORM_ENABLED is on too: LATE_OPEN_DATE reads
+   * the payroll answer over the whole thread and stores the bare "Yes" as
+   * payroll deduct Yes. That is the live bug, kept here as main has it; the
+   * pins at the end of this file set both flags.
+   */
   it('T2: "Yes" sets no payroll deduct and keeps the exit form', async () => {
     const turns = await converse([EXIT_REQUEST, "Yes"]);
     const last = turns.at(-1)!;
@@ -381,5 +388,89 @@ describe("remapShouldRun reads only the manager's words", () => {
         continueTemplateKey: "dpoa",
       }),
     ).toBe(true);
+  });
+});
+
+/*
+ * ============================================================================
+ * LATE_OPEN_PAYROLL_FROM_FORM_ENABLED (QA, 26 Oct 2026): A BARE YES OR NO IS
+ * PAYROLL DEDUCT ONLY WHERE THE FORM ASKED IT
+ * ============================================================================
+ *
+ * With LATE_OPEN_DATE_ENABLED on (production), a bare "yes" or "no" after an
+ * exit form, a resignation or — after another app's Corrective Action reply —
+ * was stored as payroll deduct: a wrong fact on an exit form. With the fix,
+ * payroll deduct is read from this form only: the manager's own statement, or
+ * a bare reply to the payroll question just asked on a Corrective Action
+ * Form. Each turn in lowercase, Sentence case and CAPS; the twin pins main
+ * (the fix off) exactly. Jordan Hale and Test Employee are synthetic.
+ */
+describe("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED, with LATE_OPEN_DATE_ENABLED on as in production", () => {
+  type Answer = "yes" | "no" | null;
+  const RESIGNATION = "Create a resignation form for Test Employee at Lawrence, her last day was 10-20";
+  const COACHING = "Create a coaching form for Test Employee at Lawrence about her cell phone use";
+  const LATE_CA = "create a verbal ca for Jordan Hale at Manhattan for being late to open on 10-20";
+  /* [label, request, reply, the reply recorded before it, main (lowercase, Sentence case, CAPS), with the fix]. */
+  const PINS: readonly (readonly [string, string, string, string | null, readonly [Answer, Answer, Answer], Answer])[] = [
+    ["an exit form, then yes", EXIT_REQUEST, "Yes", null, [null, "yes", null], null],
+    ["an exit form, then no", EXIT_REQUEST, "No", null, [null, "no", null], null],
+    ["an exit form after the sibling's CA reply, then yes", EXIT_REQUEST, "Yes", RECORDED_CA_REPLY, ["yes", "yes", "yes"], null],
+    ["an exit form after the sibling's CA reply, then no", EXIT_REQUEST, "No", RECORDED_CA_REPLY, ["no", "no", "no"], null],
+    ["a resignation, then yes", RESIGNATION, "Yes", null, [null, "yes", "yes"], null],
+    ["a resignation, then no", RESIGNATION, "No", null, [null, "no", "no"], null],
+    ["a Coaching Form, then yes", COACHING, "Yes", null, [null, null, null], null],
+    ["a Coaching Form, then no", COACHING, "No", null, [null, null, null], null],
+  ];
+  const CASES = PINS.flatMap(([label, request, reply, recorded, main, fixed]) => [
+    [`${label} (lowercase)`, request.toLowerCase(), reply.toLowerCase(), recorded, main[0], fixed] as const,
+    [`${label} (Sentence case)`, request, reply, recorded, main[1], fixed] as const,
+    [`${label} (CAPS)`, request.toUpperCase(), reply.toUpperCase(), recorded, main[2], fixed] as const,
+  ]);
+
+  async function payrollAfter(request: string, reply: string, recorded: string | null): Promise<Answer> {
+    const turns = await converse([request, reply], recorded ? { 0: recorded } : {});
+    return (turns.at(-1)!.proposal?.payrollDeduct ?? null) as Answer;
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("LATE_OPEN_DATE_ENABLED", "1");
+  });
+
+  it.each(CASES)("fix on, %s: not stored", async (_label, request, reply, recorded, _main, fixed) => {
+    vi.stubEnv("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED", "1");
+    expect(await payrollAfter(request, reply, recorded)).toBe(fixed);
+  });
+
+  it.each(CASES)("fix off reads it as main, %s", async (_label, request, reply, recorded, main) => {
+    vi.stubEnv("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED", "");
+    expect(await payrollAfter(request, reply, recorded)).toBe(main);
+  });
+
+  const CA_CASES = (["Yes", "No"] as const).flatMap((reply) => [
+    [`${reply} (lowercase)`, LATE_CA.toLowerCase(), reply.toLowerCase(), reply.toLowerCase()] as const,
+    [`${reply} (Sentence case)`, LATE_CA.replace(/^c/, "C").replace(" ca ", " CA "), reply, reply.toLowerCase()] as const,
+    [`${reply} (CAPS)`, LATE_CA.toUpperCase(), reply.toUpperCase(), reply.toLowerCase()] as const,
+  ]);
+
+  it.each(CA_CASES)("a late-opening CA asks the payroll question, and the reply %s is stored, fix on or off", async (_label, request, reply, stored) => {
+    for (const fix of ["1", ""]) {
+      vi.stubEnv("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED", fix);
+      const [first, second] = await converse([request, reply]);
+      expect(first!.content).toMatch(/Is payroll deduct applicable\?/);
+      expect(second!.proposal?.templateKey).toBe("dpoa");
+      expect(second!.proposal?.payrollDeduct ?? null, `fix "${fix}"`).toBe(stored);
+    }
+  });
+
+  it.each([
+    ["lowercase", `${LATE_CA}, no payroll`.toLowerCase()],
+    ["Sentence case", "Create a verbal CA for Jordan Hale at Manhattan for being late to open on 10-20. No payroll."],
+    ["CAPS", `${LATE_CA}, no payroll`.toUpperCase()],
+  ])("\"no payroll\" stated in the CA request is stored as No, fix on or off (%s)", async (_label, request) => {
+    for (const fix of ["1", ""]) {
+      vi.stubEnv("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED", fix);
+      const [first] = await converse([request]);
+      expect(first!.proposal?.payrollDeduct ?? null, `fix "${fix}"`).toBe("no");
+    }
   });
 });
