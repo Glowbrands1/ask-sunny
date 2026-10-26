@@ -62,11 +62,13 @@ describe("NAME_RESPELL_ENABLED", () => {
 
 /** QA-6 negation probes, 26 Oct 2026: a negated mention is not the newest spelling. */
 describe("NAME_RESPELL_ENABLED on: a negated spelling is never taken", () => {
-  it.each(["never Mara Quill", "not Mara Quill but Brenn Calloway", "not for mara quill", "No, not Mara Quill"])("'%s' leaves the card's spelling", (turn) => {
+  it.each(["never Mara Quill", "not Mara Quill but Brenn Calloway", "not for mara quill", "No, not Mara Quill", "without mara quill", "mara quil, not mara quill", "its mara quil never mara quill", "it is not mara quill"])("'%s' leaves the card's spelling", (turn) => {
     expect(respelling("Mara Quil", turn)).toBeNull();
   });
 
-  it("a plain respelling is still taken", () => {
+  it("a plain respelling, and the correction 'no, mara quill', are still taken", () => {
     expect(respelling("Mara Quil", "it's Mara Quill")).toBe("Mara Quill");
+    expect(respelling("Mara Quil", "no, mara quill")).toBe("mara quill");
+    expect(respelling("Mara Quil", "No, Mara Quill")).toBe("Mara Quill");
   });
 });
