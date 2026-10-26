@@ -970,6 +970,22 @@ describe("the mini-skirt case, end to end", () => {
     expect(state.persisted[0]!.values.prior_actions).toBe("None - first occurrence");
   });
 
+  it("HIDE_NO_POLICY_MATCH_NOTICE_ENABLED (Pau, 26 Oct 2026): the \"Woven does not see a matching policy\" note is not shown, the other notes still are", async () => {
+    const before = process.env.HIDE_NO_POLICY_MATCH_NOTICE_ENABLED;
+    process.env.HIDE_NO_POLICY_MATCH_NOTICE_ENABLED = "1";
+    try {
+      const payload = await post(NOTES);
+
+      expect(String(payload.notice)).not.toMatch(/Woven does not see a matching policy/);
+      expect(String(payload.notice)).toMatch(/removed the statement that a policy was breached/i);
+      // The policy fields stay blank for the manager, as with the note.
+      expect(payload.withheld).toEqual(["policy_language"]);
+    } finally {
+      if (before === undefined) delete process.env.HIDE_NO_POLICY_MATCH_NOTICE_ENABLED;
+      else process.env.HIDE_NO_POLICY_MATCH_NOTICE_ENABLED = before;
+    }
+  });
+
   it("tells the manager everything it removed and why", async () => {
     const payload = await post(NOTES);
 

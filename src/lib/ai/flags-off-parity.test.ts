@@ -86,6 +86,7 @@ import {
   storedSlotsNotARequestEnabled,
   priorSentenceFixEnabled,
   attendanceActionPlanEnabled,
+  hideNoPolicyMatchNoticeEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -190,6 +191,7 @@ const NEW_FLAGS = [
   "STORED_SLOTS_NOT_A_REQUEST_ENABLED",
   "PRIOR_SENTENCE_FIX_ENABLED",
   "ATTENDANCE_ACTION_PLAN_ENABLED",
+  "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -380,6 +382,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(storedSlotsNotARequestEnabled()).toBe(false);
     expect(priorSentenceFixEnabled()).toBe(false);
     expect(attendanceActionPlanEnabled()).toBe(false);
+    expect(hideNoPolicyMatchNoticeEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

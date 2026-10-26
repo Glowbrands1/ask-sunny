@@ -1011,3 +1011,14 @@ export function priorSentenceFixEnabled(): boolean {
 export function attendanceActionPlanEnabled(): boolean {
   return envFlag("ATTENDANCE_ACTION_PLAN_ENABLED");
 }
+
+/**
+ * The yellow note "Woven does not see a matching policy in the knowledge base,
+ * so the policy fields are left for you to complete." is not shown on the form
+ * (Pau, 26 Oct 2026; same flag in both apps). The policy fields still stay
+ * blank for the manager as before; only the note goes. A real failure, such as
+ * the manual not being searchable, still says so. Off, the note shows.
+ */
+export function hideNoPolicyMatchNoticeEnabled(): boolean {
+  return envFlag("HIDE_NO_POLICY_MATCH_NOTICE_ENABLED");
+}
