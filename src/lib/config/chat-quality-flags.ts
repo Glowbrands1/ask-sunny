@@ -1034,6 +1034,17 @@ export function payrollTypoNotANameEnabled(): boolean {
 }
 
 /**
+ * The manager's answer to "Which date goes on the form?" sets the form's date
+ * (QA, 26 Oct 2026; same flag in both apps): "10-15", "the 15th" and "most
+ * recent" are answers, also after a turn in between ("She is at Kearney"),
+ * and "most recent" is never read as a person. See `incident-dates.ts`. Off,
+ * read as before.
+ */
+export function dateAnswerAppliedEnabled(): boolean {
+  return envFlag("DATE_ANSWER_APPLIED_ENABLED");
+}
+
+/**
  * A one-line request carries its own account (QA, 26 Oct 2026; same flag in
  * both apps): in "create a verbal ca for <name> at kearney ne, she was late on
  * 10-15-26" the clause after the comma is what happened, so a draft the model

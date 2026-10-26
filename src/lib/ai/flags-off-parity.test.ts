@@ -88,6 +88,7 @@ import {
   attendanceActionPlanEnabled,
   hideNoPolicyMatchNoticeEnabled,
   payrollTypoNotANameEnabled,
+  dateAnswerAppliedEnabled,
   requestLineAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -195,6 +196,7 @@ const NEW_FLAGS = [
   "ATTENDANCE_ACTION_PLAN_ENABLED",
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
   "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
+  "DATE_ANSWER_APPLIED_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
 ] as const;
 
@@ -388,6 +390,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(attendanceActionPlanEnabled()).toBe(false);
     expect(hideNoPolicyMatchNoticeEnabled()).toBe(false);
     expect(payrollTypoNotANameEnabled()).toBe(false);
+    expect(dateAnswerAppliedEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
