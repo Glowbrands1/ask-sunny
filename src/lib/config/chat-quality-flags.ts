@@ -1016,3 +1016,14 @@ export function storeAliasEnabled(): boolean {
 export function bareAnswerBindingEnabled(): boolean {
   return envFlag("BARE_ANSWER_BINDING_ENABLED");
 }
+
+/**
+ * A new employee on the card starts a new account: the Observation, prior
+ * actions, Date, warning level, payroll answer and the draft's source turns
+ * are read only from the turns since the manager named that person (Ask
+ * Sunny conv_mvoetxo92fraflz, 25 Oct 2026). See `ai/cross-person-guard.ts`.
+ * Off, the card carries the earlier account as before.
+ */
+export function crossPersonIncidentGuardEnabled(): boolean {
+  return envFlag("CROSS_PERSON_INCIDENT_GUARD_ENABLED");
+}

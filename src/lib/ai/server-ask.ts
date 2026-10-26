@@ -157,6 +157,7 @@ import { withManagerFormChoice } from "./manager-form-choice";
 import { withNameRespell } from "./name-respell";
 import { withStoreAliases } from "./store-alias";
 import { withBareAnswerBinding } from "./bare-answer-guard";
+import { withCrossPersonGuard } from "./cross-person-guard";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
@@ -698,7 +699,8 @@ async function answerQuestionUntraced(
       // REMAP_ROLE_CHECK_ENABLED: a role that may not create the form falls through to the proposal path's refusal.
       const refused = remapped ? remapCardNotPermitted({ response: remapped, role: actor.role, summaries }) : false;
       // REMAP_DRAFT_SOURCES_ENABLED: the card names the turns its draft is written from.
-      if (remapped && !refused) return withRemapDraftSources(remapped, request);
+      // CROSS_PERSON_INCIDENT_GUARD_ENABLED: a new employee does not inherit the earlier account.
+      if (remapped && !refused) return withCrossPersonGuard(withRemapDraftSources(remapped, request), request);
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

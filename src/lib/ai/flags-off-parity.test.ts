@@ -88,6 +88,7 @@ import {
   nameRespellEnabled,
   storeAliasEnabled,
   bareAnswerBindingEnabled,
+  crossPersonIncidentGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -194,6 +195,7 @@ const NEW_FLAGS = [
   "NAME_RESPELL_ENABLED",
   "STORE_ALIAS_ENABLED",
   "BARE_ANSWER_BINDING_ENABLED",
+  "CROSS_PERSON_INCIDENT_GUARD_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -359,6 +361,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(nameRespellEnabled()).toBe(false);
     expect(storeAliasEnabled()).toBe(false);
     expect(bareAnswerBindingEnabled()).toBe(false);
+    expect(crossPersonIncidentGuardEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
