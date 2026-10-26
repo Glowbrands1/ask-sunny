@@ -2,6 +2,7 @@ import { answerLengthGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS } from "@/lib/config/models";
 
 import { chatRequestReceivedAt } from "./chat-trace-store";
+import { UpstreamAttemptTimeout } from "./upstream-retry";
 
 /**
  * ============================================================================
@@ -25,6 +26,14 @@ import { chatRequestReceivedAt } from "./chat-trace-store";
  *      table row is dropped whole, and an unclosed "[S5" never survives.
  *   4. One console line records stop_reason=max_tokens and the elapsed ms.
  *
+ * WITH CHAT_UPSTREAM_RETRY_ENABLED ON TOO, the guard sits outside and the
+ * retry inside each call: the first call and the length retry each go through
+ * `withUpstreamRetry`, on the one turn budget (120 s from request receipt),
+ * each attempt capped at 60 s instead of 45 s. The length retry still starts
+ * only before 35 s and is still abandoned at 60 s. When every attempt at the
+ * first call runs out of time after streaming a whole sentence, that text is
+ * shown cut clean (`timedOutAsCut`) instead of the error card.
+ *
  * A reply that did not stop at max_tokens is returned as the same object, so
  * an end_turn answer is byte-identical with the flag on and off. Off, no guard
  * exists and the request is exactly main's.
@@ -36,6 +45,12 @@ export const ANSWER_GUARD_MAX_TOKENS = 3584;
 export const LENGTH_RETRY_BEFORE_MS = 35_000;
 /** The second attempt is abandoned when the turn reaches this. */
 export const TURN_CEILING_MS = 60_000;
+/**
+ * With CHAT_UPSTREAM_RETRY_ENABLED on too, each attempt's deadline is the
+ * lesser of this and what is left of the turn's 120 s budget, instead of
+ * 45 s: 3584 tokens can need about 45-50 s. The guard off keeps 45 s.
+ */
+export const GUARDED_ATTEMPT_TIMEOUT_MS = 60_000;
 
 export interface AnswerLengthGuard {
   /** The max_tokens the answer call sends. */
@@ -206,6 +221,19 @@ function dropDanglingTail(lines: string[]): void {
 /** A trailing "[S5", "[S" or "[" that was never closed. */
 export function withoutUnclosedCitation(text: string): string {
   return text.replace(/\s*\[[^\]\n]{0,40}$/, "");
+}
+
+/**
+ * Guard and retry on, when every attempt at the first call ran out of time:
+ * the longest text an attempt streamed, to be shown cut clean like a reply
+ * cut at max_tokens, so the manager never sees less than a cut answer. Null,
+ * and the error card as before, for any other failure or when that text has
+ * no whole sentence or item.
+ */
+export function timedOutAsCut(error: unknown, streamed: string): string | null {
+  if (!(error instanceof UpstreamAttemptTimeout) || cutAtLastComplete(streamed).length === 0) return null;
+  console.warn(`[answer-length-guard] every attempt timed out; showing the streamed text cut clean (${streamed.length} chars)`);
+  return streamed.trim();
 }
 
 /** Sunny's collected stream result: `text` is the reply. */

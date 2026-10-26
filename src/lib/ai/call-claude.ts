@@ -1,14 +1,24 @@
 import "server-only";
 
+import { APIUserAbortError } from "@anthropic-ai/sdk";
+
+import { chatUpstreamRetryEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_EFFORT, CLAUDE_MODEL } from "@/lib/config/models";
 import { MissingConfigurationError } from "@/lib/config/server-env";
-import { answerLengthGuard, settleCollectedAnswer } from "./answer-length-guard";
+import {
+  answerLengthGuard,
+  GUARDED_ATTEMPT_TIMEOUT_MS,
+  settleCollectedAnswer,
+  timedOutAsCut,
+} from "./answer-length-guard";
 import { getAnthropicClient } from "./anthropic";
 import { AiError } from "./errors";
 import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
+import { chatRequestReceivedAt } from "./chat-trace-store";
 import { modelRequestOptions, modelUnavailable } from "./model-retry";
 import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
+import { newUpstreamRetryRecord, withUpstreamRetry, type UpstreamAttempt } from "./upstream-retry";
 
 /**
  * ============================================================================
@@ -121,6 +131,13 @@ export interface CallClaudeInput {
    * `answer-length-guard.ts`). Other callers, and the flag off, are unchanged.
    */
   readonly answerLengthGuard?: boolean;
+  /**
+   * The chat answer only. With CHAT_UPSTREAM_RETRY_ENABLED on, a retryable
+   * upstream failure is tried again inside the chat turn's budget, each
+   * attempt with its own deadline. Omitted — the Sales Totals analysis and
+   * the forms ingest refinement — the call is exactly what it was.
+   */
+  readonly upstreamRetry?: boolean;
 }
 
 export interface CollectedModelResult {
@@ -170,7 +187,11 @@ function mergeUsage(previous: unknown, next: unknown): unknown {
  * Message — what the tests return — has no delta, so first-token time stays
  * empty rather than being filled with the whole-call latency.
  */
-export async function collectModelResult(response: unknown, started: number): Promise<CollectedModelResult> {
+export async function collectModelResult(
+  response: unknown,
+  started: number,
+  onText?: (text: string) => void,
+): Promise<CollectedModelResult> {
   if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
     const message = response as {
       stop_reason?: string | null;
@@ -207,6 +228,7 @@ export async function collectModelResult(response: unknown, started: number): Pr
       const delta = typed.delta.text ?? "";
       if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
       text += delta;
+      onText?.(text);
     } else if (typed.type === "message_delta") {
       if (typeof typed.delta?.stop_reason === "string") stopReason = typed.delta.stop_reason;
       usage = mergeUsage(usage, typed.usage);
@@ -272,20 +294,69 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       },
     ],
   };
+  // CHAT_UPSTREAM_RETRY_ENABLED, chat answer only: null when off or not asked for,
+  // and then nothing below differs from main.
+  const retry = input.upstreamRetry && chatUpstreamRetryEnabled() ? newUpstreamRetryRecord() : null;
   try {
     const options = modelRequestOptions();
     // Stream so the first text delta can be timed. A caller that returns a
     // finished message is still accepted, with first_token_ms left empty.
     const streamed = { ...params, stream: true as const };
-    const created = options
-      ? await client.messages.create(streamed, options)
-      : await client.messages.create(streamed);
-    const response = await collectModelResult(created, started);
+    // With the retry on, the stream is read inside the attempt, because an
+    // overloaded error can arrive after the 200; the SDK's own retries are
+    // off so `withUpstreamRetry` alone decides how many attempts there are.
+    // With ANSWER_LENGTH_GUARD_ENABLED on as well, the guard sits outside and
+    // the retry inside each call: the first call and the length retry each go
+    // through `withUpstreamRetry`, on one turn budget, with 60 s per attempt
+    // instead of 45 s. `outer` is the guard's abort for the length retry.
+    const attemptOnce =
+      (outer?: AbortSignal, onText?: (text: string) => void) =>
+      async (attempt: UpstreamAttempt): Promise<CollectedModelResult> => {
+        if (outer?.aborted) throw new APIUserAbortError();
+        return collectModelResult(
+          await client.messages.create(streamed, {
+            ...options,
+            maxRetries: 0,
+            timeout: Math.min(options?.timeout ?? attempt.timeout, attempt.timeout),
+            signal: outer ? AbortSignal.any([outer, attempt.signal]) : attempt.signal,
+          }),
+          started,
+          onText,
+        );
+      };
+    // Guard and retry both on: the longest text any timed-out attempt streamed.
+    let streamedSoFar = "";
+    const keepStreamed = guard
+      ? (text: string) => {
+          if (text.length > streamedSoFar.length) streamedSoFar = text;
+        }
+      : undefined;
+    const budgetStartedAt = guard ? guard.turnStartedAt : chatRequestReceivedAt();
+    let response: CollectedModelResult;
+    try {
+      response = retry
+        ? guard
+          ? await withUpstreamRetry(retry, budgetStartedAt, attemptOnce(undefined, keepStreamed), GUARDED_ATTEMPT_TIMEOUT_MS)
+          : await withUpstreamRetry(retry, budgetStartedAt, attemptOnce())
+        : await collectModelResult(
+            options ? await client.messages.create(streamed, options) : await client.messages.create(streamed),
+            started,
+          );
+    } catch (error) {
+      // Guard and retry on: every attempt ran out of time after streaming a
+      // whole sentence. The manager gets that text cut clean, as a cut reply
+      // would be, instead of the error card.
+      const salvaged = guard && retry ? timedOutAsCut(error, streamedSoFar) : null;
+      if (salvaged === null) throw error;
+      response = { stopReason: "max_tokens", text: salvaged, usage: null, firstTokenMs: null };
+    }
 
     // A reply cut at max_tokens: once more within the turn's time, else up to its last whole sentence.
     const answer = guard
       ? await settleCollectedAnswer(guard, response, async (signal) =>
-          collectModelResult(await client.messages.create(streamed, { ...options, maxRetries: 0, signal }), started),
+          retry
+            ? withUpstreamRetry(retry, budgetStartedAt, attemptOnce(signal), GUARDED_ATTEMPT_TIMEOUT_MS)
+            : collectModelResult(await client.messages.create(streamed, { ...options, maxRetries: 0, signal }), started),
         )
       : response;
     const noted = {
@@ -295,6 +366,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       latencyMs: Date.now() - started,
       firstTokenMs: response.firstTokenMs,
       usage: response.usage,
+      ...(retry?.retried ? { retried: true } : {}),
     };
     if (answer.stopReason === "refusal") {
       noteModelCall({ ...noted, subtype: "refused" });
@@ -333,6 +405,9 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       firstTokenMs: null,
       usage: null,
       error,
+      // With the retry on: whether it was tried again, and the subtype read
+      // from the SDK's own type field (a streamed overloaded error has no status).
+      ...(retry ? { retried: retry.retried, subtype: retry.last?.subtype ?? null } : {}),
     });
     throw modelUnavailable(error);
   }
