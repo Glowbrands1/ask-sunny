@@ -109,6 +109,8 @@ beforeEach(() => {
   state.rewrites = [];
 });
 afterEach(() => vi.unstubAllEnvs());
+// Flag-off pins hold whatever the environment has on; flag-on tests call on().
+beforeEach(() => vi.stubEnv("RAW_MARKER_BACKSTOP_ENABLED", ""));
 
 const on = () => vi.stubEnv("RAW_MARKER_BACKSTOP_ENABLED", "true");
 const RAW = /\[\s*S\s*\d+\s*\]/i;
@@ -149,6 +151,17 @@ describe("the text pass", () => {
     ["- Clock in on time [S1]\n- Call ahead [S2]", "- Clock in on time\n- Call ahead"],
   ])("%s", (input, output) => {
     expect(withoutRawMarkerText(input)).toBe(output);
+  });
+
+  it.each([
+    ["Steps:\n- First step [S1]\n    - nested step [S2]\n    - nested two\n- Second", "Steps:\n- First step\n    - nested step\n    - nested two\n- Second"],
+    ["1. Open [S1]\n   a. detail one", "1. Open\n   a. detail one"],
+    ["Not allowed (in) the store [S1].", "Not allowed (in) the store."],
+    ["Use `arr[S1]` here [S2].", "Use `arr[S1]` here."],
+    ["PTO (see [S4], [S5]).", "PTO."],
+  ])("QA-5: %s", (input, output) => {
+    expect(withoutRawMarkerText(input)).toBe(output);
+    expect(withoutRawMarkerText(input.toUpperCase())).toBe(output.toUpperCase());
   });
 
   it("[p.N] citations and ordinary brackets are untouched", () => {

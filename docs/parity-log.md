@@ -1010,4 +1010,4 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
-- RAW_MARKER_BACKSTOP_ENABLED (26 Oct 2026, raw "[S6][S10]" / "[S2]" in replies): Sunny-only. Ask Bubbles' `stripMarkers` already takes a run of adjacent markers out ("[S2][S3]", in its prompts.ts); here prompts.ts is pinned by the replay scoreboard, so the same result is a last pass on the finished reply.
+- RAW_MARKER_BACKSTOP_ENABLED (26 Oct 2026, raw "[S6][S10]" / "[S2]" in replies): Sunny-only. Ask Bubbles' `stripMarkers` already takes a run of adjacent markers out ("[S2][S3]", in its prompts.ts); here prompts.ts is pinned by the replay scoreboard, so the same result is a last pass on the finished reply. Two small Bubbles leftovers, not ported (QA-5): "See [S2]-style notes." keeps "[S2]" there (a marker followed by "-"), and with REFORMAT_KEEPS_SOURCES off "PTO (see [S4], [S5])." reads "PTO (see,).".
