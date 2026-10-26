@@ -251,3 +251,45 @@ describe("flag on: QA-3's denials and positives, through describedManualSection"
     expect(described(text)).toBe(CARE);
   });
 });
+
+/*
+ * QA-3 and QA-7, 26 Oct 2026 (stand-in name invented): a refusal or failure
+ * the manager denies is not an incident ("never refused to clean"), a habit
+ * denial is not one ("she never skips the cleaning"), and leaving without
+ * cleaning is one. Each in lowercase, sentence case and CAPS.
+ */
+describe("flag on: denied refusals and failures, and leaving without cleaning", () => {
+  const PREFIX = "Create a verbal corrective action for Ione Varga. ";
+  const registers = (text: string) => [text, sentence(text), text.toUpperCase()];
+  const described = (text: string) => describedManualSection({ text: `${PREFIX}${text}`, chunks: CHUNKS })?.section.heading ?? null;
+
+  const DENIED = [
+    "never refused to clean",
+    "she never refused to clean the lobby",
+    "she did not refuse to clean",
+    "she didn't refuse to clean",
+    "she never skipped cleaning",
+    "she never failed to clean",
+    "she never skips the cleaning",
+    "she never left without cleaning the restrooms",
+  ].flatMap(registers);
+
+  it.each(DENIED)("%s reads no cleaning incident", (text) => {
+    on();
+    expect(cleaningIncidentPhrase(text)).toBeNull();
+    expect(described(text)).not.toBe(CARE);
+  });
+
+  it.each(["she left without cleaning the restrooms", "she went home without cleaning the lobby", "she failed to clean the lobby", "she skipped cleaning"].flatMap(registers))(
+    "%s cites Care and Cleaning",
+    (text) => {
+      on();
+      expect(cleaningIncidentPhrase(text)).not.toBeNull();
+      expect(described(text)).toBe(CARE);
+    },
+  );
+
+  it.each(DENIED)("flag off: %s reads nothing", (text) => {
+    expect(cleaningIncidentPhrase(text)).toBeNull();
+  });
+});
