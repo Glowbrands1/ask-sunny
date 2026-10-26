@@ -847,6 +847,16 @@ export function terseSlotReadEnabled(): boolean {
 }
 
 /**
+ * "Policy: …, as you said" only for a policy the manager named (D4, QA, 25
+ * Oct 2026). The app's own "Policy reference: …, JBA Policy Manual." line,
+ * which the form state writes ahead of the turn, is not the manager's words.
+ * Off, the policy is read as before.
+ */
+export function policyAsYouSaidManagerOnlyEnabled(): boolean {
+  return envFlag("POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED");
+}
+
+/**
  * Chat answers never repeat a default-password format or Social Security
  * digits from the knowledge base (QA P0, 25 Oct 2026; same flag in both
  * apps). The sentence is taken out of the excerpts the model is given and of
