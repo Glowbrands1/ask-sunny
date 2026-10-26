@@ -525,3 +525,36 @@ describe(`${FLAG_PR} on: the real one-star shape`, () => {
     expect(prior).toBe("Coaching — 10/01/2026");
   });
 });
+
+/*
+ * QA live pass 7 (26 Oct 2026, rolled back): the real one-star chat names a
+ * coaching without a date ("On the first shift I verbally coached her …"), and
+ * the first shift is 10/5, an incident date. The model's row for it is the
+ * manager's and is KEPT; only a step kind the manager dated elsewhere is
+ * dropped on an incident date.
+ */
+const BR3 = [
+  "My employee rory vance has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15",
+  "I already told you the employee name. She is at Kearney",
+  "10/15",
+];
+
+describe(`${FLAG_PR} on: BR3, a coaching the manager named without a date`, () => {
+  it.each([
+    ["Sentence case", BR3],
+    ["lowercase", BR3.map((turn) => turn.toLowerCase())],
+  ])("%s keeps the coaching on the first shift", async (_casing, turns) => {
+    useProduction(true);
+    const thread = new Thread();
+    for (const turn of turns) await thread.say(turn);
+    state.draft = {
+      values: {
+        observation: "Observed: Rory Vance arrived late on October 5, 2026, and again on October 15, 2026.",
+        prior_actions: "Verbal coaching on attendance policy and expectations — 10/5/2026",
+      },
+    };
+    const id = await thread.create();
+    const prior = store.form_instance_values.find((row) => row.instance_id === id && row.field_key === "prior_actions")?.value ?? null;
+    expect(prior).toBe("Verbal coaching on attendance policy and expectations — 10/5/2026");
+  });
+});
