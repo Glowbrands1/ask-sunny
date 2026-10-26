@@ -201,4 +201,39 @@ describe("QA B22-2: a reply with no card never says a draft is open (NO_CARD_NO_
     const payload = await (await route.POST(ask())).json();
     expect(payload.content).toBe(PHANTOM_REPLY);
   });
+
+  /*
+   * Register rule (Pau): the manager's turn and the model's echo of it, all
+   * lowercase and in sentence case with the names lowercase or Capitalized.
+   * On, the invented draft goes and the honest line names the employee in
+   * every one; off, the answer comes back exactly as it came.
+   */
+  const lower = (text: string) => text.toLowerCase();
+  const sentenceCase = (text: string) =>
+    text.toLowerCase().replace(/(^|[.!?]\s+|\n+)([a-z])/g, (_m, lead: string, first: string) => `${lead}${first.toUpperCase()}`);
+  const namesCapitalized = (text: string) =>
+    sentenceCase(text).replace(/\btest employee( two)?\b/gi, (name) =>
+      name.replace(/\b[a-z]/g, (letter) => letter.toUpperCase()),
+    );
+  const registers = [
+    ["all lowercase", lower],
+    ["sentence case, names lowercase", sentenceCase],
+    ["sentence case, names Capitalized", namesCapitalized],
+  ] as const;
+
+  it.each(registers)("on (%s): the invented draft and its Finalize line are replaced", async (_label, recase) => {
+    process.env.NO_CARD_NO_DRAFT_CLAIM_ENABLED = "true";
+    const { route } = await load({ content: recase(PHANTOM_REPLY) });
+    const payload = await (await route.POST(ask(recase(QUESTION)))).json();
+    expect(payload.content).not.toMatch(/draft is open/i);
+    expect(payload.content).not.toMatch(/press finalize/i);
+    expect(payload.content).toMatch(/^I haven't created a form for test employee two yet/i);
+    expect(payload.content).toMatch(/late arrivals are recorded as an attendance concern\.$/i);
+  });
+
+  it.each(registers)("off (%s): returns the answer exactly as it came", async (_label, recase) => {
+    const { route } = await load({ content: recase(PHANTOM_REPLY) });
+    const payload = await (await route.POST(ask(recase(QUESTION)))).json();
+    expect(payload.content).toBe(recase(PHANTOM_REPLY));
+  });
 });
