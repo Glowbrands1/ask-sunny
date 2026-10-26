@@ -35,6 +35,7 @@ import {
   manualNegatedListNoteEnabled,
   remapIncidentFixEnabled,
   questionNotFormEnabled,
+  googleReviewsInChatEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -118,6 +119,7 @@ import type { ReportFamilyId } from "@/lib/reporting/read/report-families";
 import type { SourceCitation } from "@/types";
 import { callClaude } from "./call-claude";
 import { loadChatDataBlock } from "./chat-data-tools";
+import { loadGoogleReviewsChatBlock } from "./google-reviews-chat-read";
 import { prepareLongContext } from "./long-context-claude";
 import { formCommandBypassesSearch, routeUnderstoodFormTurn } from "./form-tool-route";
 import { understandFormTurn } from "./form-tool-understand";
@@ -1514,6 +1516,14 @@ async function answerQuestionUntraced(
    * so this cannot fail the answer.
    */
   const briefing = await briefingPromise;
+  /*
+   * GOOGLE_REVIEWS_IN_CHAT_ENABLED: the Google Reviews page's month to date,
+   * goal and pace for the caller's salons, read only on a Google review
+   * question and only with View Google reviews. Null otherwise.
+   */
+  const reviewBlock = googleReviewsInChatEnabled()
+    ? await loadGoogleReviewsChatBlock({ question: request.question, role: actor.role, scope: actor.scope })
+    : null;
 
   /*
    * WHICH FRAMEWORK ACTUALLY CONTRIBUTED, decided from the assembled rows
@@ -1560,7 +1570,7 @@ async function answerQuestionUntraced(
     context: request.context,
     mode: request.mode,
     hasContext: grounding.length > 0 || fullManualBlock !== null,
-    hasReportData: (briefing?.present.length ?? 0) > 0,
+    hasReportData: (briefing?.present.length ?? 0) > 0 || reviewBlock?.figures === true,
     hasFrameworkGrounding: employeeFrameworkIncluded,
     unifiedAuthority: unifiedAuthorityOrderEnabled(),
     hasEmployeeFactsBlock: Boolean(employeeFacts?.block),
@@ -1631,6 +1641,7 @@ async function answerQuestionUntraced(
     role: actor.role,
     scope: actor.scope,
     briefedFamilies: families,
+    reviewsHandled: reviewBlock !== null,
   });
   const pinnedPolicy = fullManualBlock ? null : await citedManualGrounding(request, knowledge);
   /*
@@ -1658,9 +1669,11 @@ async function answerQuestionUntraced(
   const written = await callClaude({
     system,
     grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
-    reportData: dataAddition.data
-      ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
-      : reportText,
+    reportData: reviewBlock
+      ? [reportText, reviewBlock.text, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+      : dataAddition.data
+        ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+        : reportText,
     /*
      * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
      *
@@ -1772,7 +1785,11 @@ async function answerQuestionUntraced(
        * `grounded` would put a confident banner over an answer whose whole
        * content is "I do not have that delivery".
        */
-      grounding.length === 0 && !fullManualBlock && (briefing?.present.length ?? 0) === 0 && formRecords === null
+      grounding.length === 0 &&
+      !fullManualBlock &&
+      (briefing?.present.length ?? 0) === 0 &&
+      formRecords === null &&
+      reviewBlock?.figures !== true
         ? "insufficient"
         : "grounded",
     // Video matching is a separate concern and still runs on the client's
