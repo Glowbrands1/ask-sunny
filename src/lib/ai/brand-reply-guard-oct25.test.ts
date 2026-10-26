@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { withoutOtherBrands } from "./brand-reply-guard";
+import { NOTHING_LEFT, withoutOtherBrands } from "./brand-reply-guard";
 
 /**
  * ============================================================================
@@ -70,4 +70,25 @@ describe("flag on: Sun Tan City's own wording stays", () => {
     on();
     expect(withoutOtherBrands(reply)).toBe(reply);
   });
+});
+
+/* QA-2 review, 26 Oct 2026: never an empty reply; quoted titles kept as written. */
+describe("flag on: QA-2 review", () => {
+  it.each(["Buff City Soap applies this to its stores.", "Policy: Buff City Soap Policy Manual [p.14]."])(
+    "never empties a reply: %s",
+    (reply) => {
+      on();
+      expect(withoutOtherBrands(reply)).toBe(NOTHING_LEFT);
+      expect(NOTHING_LEFT).toContain("Sun Tan City");
+      expect(NOTHING_LEFT).not.toMatch(/buff city/i);
+    },
+  );
+
+  it.each(['See "Salon/Store Opening" on the card [p.15].', "Cite the Salon Director Manual, Late Opening [p.15]."])(
+    "keeps quoted text and manual titles: %s",
+    (reply) => {
+      on();
+      expect(withoutOtherBrands(reply)).toBe(reply);
+    },
+  );
 });

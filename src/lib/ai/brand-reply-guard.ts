@@ -17,7 +17,11 @@ import { brandReplyGuardEnabled } from "@/lib/config/chat-quality-flags";
  *   a parenthetical or a list item that names the other company is taken
  *   out, and what is left is kept when it no longer names it;
  *   a sentence that is about the other company and nothing else is taken out;
- *   "salon/store" is this company's word.
+ *   "salon/store" is this company's word;
+ *   a quoted phrase and a manual title ("… Policy", "… Manual") are never
+ *   rewritten;
+ *   a reply is never emptied: if nothing of it is left, a short line says so
+ *   in this company's name.
  *
  * Only the sibling company is another brand here. JB & Associates is this
  * app's operator and the manual's tanning sections are shared with Crunch, so
@@ -52,11 +56,22 @@ function withoutBrandListItems(sentence: string): string {
     .concat(tail);
 }
 
+/**
+ * Quoted text and manual titles are kept as written: `"Salon/Store Opening"`,
+ * "Salon Director Manual". Each is swapped for a placeholder while the
+ * location word is changed, then put back.
+ */
+const KEPT_AS_WRITTEN =
+  /"[^"\n]*"|“[^”\n]*”|\b(?:[A-Z][\w&'/-]*\s+){0,5}(?:Policy|Policies|Manual|Handbook|Guide)\b(?:\s+\[p\.\d+\])?/g;
+
 /** This company's word where a reply wrote both: "salon/store". */
 function withLocationWord(text: string): string {
-  return text.replace(/\bsalons?\s*\/\s*stores?\b|\bstores?\s*\/\s*salons?\b/gi, (match) =>
+  const kept: string[] = [];
+  const masked = text.replace(KEPT_AS_WRITTEN, (match) => `\u0000${kept.push(match) - 1}\u0000`);
+  const swapped = masked.replace(/\bsalons?\s*\/\s*stores?\b|\bstores?\s*\/\s*salons?\b/gi, (match) =>
     /s\b/i.test(match.split("/")[0]!.trim()) ? LOCATIONS : LOCATION,
   );
+  return swapped.replace(/\u0000(\d+)\u0000/g, (_m, index: string) => kept[Number(index)]!);
 }
 
 /** One sentence, with another brand taken out of it, or null when nothing of it is left. */
@@ -68,7 +83,10 @@ function guardSentence(sentence: string): string | null {
   return OTHER_BRAND.test(text) ? null : text;
 }
 
-/** The reply in this company's words. Off, as written. */
+/** Said when nothing of a reply is left: this company's name only. */
+export const NOTHING_LEFT = `That one isn't part of the ${STC_BRAND.brandName} policy as far as I can see. Ask me about ${STC_BRAND.brandName} and I'll check the manual.`;
+
+/** The reply in this company's words, never empty. Off, as written. */
 export function withoutOtherBrands(content: string): string {
   if (!brandReplyGuardEnabled() || !content) return content;
   const lines = content.split("\n").map((line) => {
@@ -88,5 +106,8 @@ export function withoutOtherBrands(content: string): string {
     const joined = out.join("").trimEnd();
     return dropped && joined.trim() === "" ? null : joined;
   });
-  return withLocationWord(lines.filter((line): line is string => line !== null).join("\n")).replace(/\n{3,}/g, "\n\n");
+  const guarded = withLocationWord(lines.filter((line): line is string => line !== null).join("\n")).replace(/\n{3,}/g, "\n\n");
+  // What is left must still say something: not only a citation, a label or punctuation.
+  const words = guarded.replace(/\[(?:p|S)\.?\s*\d+\]/g, " ").replace(/[^A-Za-z]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  return words.length < 3 ? NOTHING_LEFT : guarded;
 }
