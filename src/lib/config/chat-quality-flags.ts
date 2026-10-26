@@ -1067,6 +1067,16 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * A notice worked to the last day was fulfilled on it (manager, 26 Oct 2026):
+ * "her last day worked was 9-28-26" with "gave and worked 2 week notice" left
+ * "Date that notice was fulfilled" blank. See `readExitFacts` in
+ * `forms/exit-facts.ts`. Off, as before.
+ */
+export function exitFulfilledIsLastDayEnabled(): boolean {
+  return envFlag("EXIT_FULFILLED_IS_LAST_DAY_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
