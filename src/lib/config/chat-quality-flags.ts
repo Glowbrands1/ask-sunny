@@ -1022,3 +1022,13 @@ export function attendanceActionPlanEnabled(): boolean {
 export function hideNoPolicyMatchNoticeEnabled(): boolean {
   return envFlag("HIDE_NO_POLICY_MATCH_NOTICE_ENABLED");
 }
+
+/**
+ * A payroll answer with typos ("yes payrol ldeduct") is never read as the
+ * employee's name, so the card is not called out of date for "payrol ldeduct"
+ * (manager, 26 Oct 2026; same flag in both apps). See `forms/payroll-words.ts`.
+ * Off, names are read as before.
+ */
+export function payrollTypoNotANameEnabled(): boolean {
+  return envFlag("PAYROLL_TYPO_NOT_A_NAME_ENABLED");
+}
