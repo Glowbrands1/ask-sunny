@@ -1,4 +1,5 @@
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "./name-words";
+import { notANameGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { isNotAName } from "./not-a-name";
 import { isFormVocabulary } from "./template-intent";
 
@@ -46,6 +47,24 @@ const POSITIONS: readonly RegExp[] = [
   new RegExp(`(?:^|\\n)\\s*${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|[.!]?\\s*$))`, "g"),
 ];
 
+/*
+ * NOT_A_NAME_GUARD_ENABLED (ported from Ask Bubbles, QA B8 / G11 there). The
+ * role in front of the name: "for Tanning Consultant, Test Employee at
+ * Kearney, NE", "for tanning consultant Test Employee at lincoln".
+ */
+const AFTER_ROLE = new RegExp(
+  `\\b(?:for|about|regarding)\\s+(?:(?:a|an|the|my|our)\\s+)?(?:[A-Za-z]+\\s+){0,2}[A-Za-z]+,?\\s+${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|\\bwho\\b|[.!]|$))`,
+  "g",
+);
+
+/*
+ * NOT_A_NAME_GUARD_ENABLED (QA G4, Ask Sunny conv_mvo1t7qv253555k): "Okay
+ * let's restart. Test Employee, Tanning Consultant, KS Manhattan. …" — the
+ * name opening a sentence after another, as it opens a turn. Only the model's
+ * slot carried it, so the card dropped the employee in one run of three.
+ */
+const SENTENCE_START = new RegExp(`(?<=[.!?]\\s+)${FIRST}\\s+${EMPLOYEE}(?=\\s*(?:,|\\bat\\b|[.!]?\\s*$))`, "g");
+
 function namesSomebody(first: string): boolean {
   const key = first.toLowerCase();
   if (NOT_A_NAME.has(key) || NOT_A_TYPED_NAME.has(key) || DESCRIBING.has(key)) return false;
@@ -53,13 +72,56 @@ function namesSomebody(first: string): boolean {
   return !isNotAName(first) && !isNotAName(`${first} Employee`);
 }
 
+/*
+ * NOT_A_NAME_GUARD_ENABLED (Pau, 26 Oct 2026: "lowercase or first letter
+ * capitalized, should be like human"). With the guard on, the name reads the
+ * same however the manager typed it:
+ *
+ *   - "Employee" is read in either case after a capitalised first name: "for
+ *     Test employee", "Okay let's restart. Test employee, Tanning Consultant";
+ *   - QA's synthetic person, "test employee" all in lower case, is read
+ *     wherever it stands ("okay lets restart test employee tanning consultant
+ *     ks manhattan"), not after "a", "the", "my" … and not before a word that
+ *     makes it a thing ("test employee handbook").
+ *
+ * A lower-case first word other than "test" is still not read here. Without
+ * a capital, "for a late employee" and "a rude employee" have only the words
+ * to go on; whether a lower-case word is a real person is the roster's call
+ * (the proposal's roster matching), not this reader's.
+ */
+const ANY_EMPLOYEE = "[Ee]mployee(?![\\w'’-])(?!\\s+[A-Z])";
+const ANY_CASE_POSITIONS: readonly RegExp[] = [...POSITIONS, AFTER_ROLE, SENTENCE_START].map(
+  (position) => new RegExp(position.source.split(EMPLOYEE).join(ANY_EMPLOYEE), position.flags),
+);
+const PLACEHOLDER = /(?<![\w'’-])(?<!\b(?:a|an|the|my|our|this|that|each|every|any|one|new|no)\s+)test\s+employee(?![\w'’-])/gi;
+/** Words that make "… employee <word>" a thing rather than a person. */
+const THING_AFTER = new Set([
+  "handbook", "handbooks", "performance", "plan", "plans", "dress", "code", "file", "files", "record", "records",
+  "review", "reviews", "id", "number", "discount", "orientation", "manual", "policy", "policies", "agreement",
+  "form", "forms", "status", "list", "roster", "directory", "portal", "schedule", "information", "info", "data",
+  "details", "name", "names", "count", "account", "login", "evaluation", "evaluations", "training",
+]);
+
+function thingFollows(text: string, end: number): boolean {
+  const next = /^\s+([A-Za-z]+)/.exec(text.slice(end))?.[1];
+  return Boolean(next && THING_AFTER.has(next.toLowerCase()));
+}
+
 /** "Test Employee" when the manager typed it as the employee's name, else null. */
 export function typedEmployeeName(text: string): string | null {
-  if (!text || !text.includes("Employee")) return null;
-  for (const position of POSITIONS) {
+  if (!text) return null;
+  const guard = notANameGuardEnabled();
+  if (!(guard ? /employee/i.test(text) : text.includes("Employee"))) return null;
+  for (const position of guard ? ANY_CASE_POSITIONS : POSITIONS) {
     for (const match of text.matchAll(position)) {
       const first = match[1]!;
+      if (guard && thingFollows(text, match.index + match[0].length)) continue;
       if (namesSomebody(first)) return `${first} Employee`;
+    }
+  }
+  if (guard) {
+    for (const match of text.matchAll(PLACEHOLDER)) {
+      if (!thingFollows(text, match.index + match[0].length)) return "Test Employee";
     }
   }
   return null;
