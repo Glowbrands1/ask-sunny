@@ -1034,3 +1034,10 @@ through "no payroll deduct", and with REMAP_INCIDENT_FIX_ENABLED and
 REMAP_DRAFT_SOURCES_ENABLED its sources are every turn. Its intent path does
 not draft a card from these turns. Test:
 `src/app/api/chat/stored-slots-not-a-request-e2e.test.ts`.
+
+## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
+
+"create corrective action form for <name>, Salon Director" drafted "Observed:
+Salon Director." here. Ask Bubbles reads the request's clause through
+`requestIssueClause` (`incident-issue.ts`); the same shape there, with a
+store title, writes no Observation (checked 26 Oct 2026). Not ported.
