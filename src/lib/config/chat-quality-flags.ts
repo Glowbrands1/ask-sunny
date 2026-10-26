@@ -903,6 +903,34 @@ export function googleReviewsInChatEnabled(): boolean {
 }
 
 /**
+ * A Corrective Action or coaching draft is never filed blank (found in the
+ * sibling app's production, 26 Oct 2026: `drafted` with no fields and nothing
+ * rejected, from Create clicks fired several at once). The model's tool call
+ * is read when its `values` / `checked` came back JSON-encoded, one object per
+ * section, keyed by label, or with a single option as text; a model call that
+ * threw (429, 529, overloaded), answered with no tool call, or left no
+ * narrative although the notes hold an account is tried again up to twice
+ * (after 1 s, then 3 s), as is a failed framework read; if it is still empty,
+ * the Observation is the manager's own incident clause. Every reason goes on
+ * a drafted event, with `{"fallback": "manager_words"}` where used. See
+ * `forms/draft-never-blank.ts`. Off, the draft route is unchanged.
+ */
+export function draftNeverBlankEnabled(): boolean {
+  return envFlag("DRAFT_NEVER_BLANK_ENABLED");
+}
+
+/**
+ * NAME_BEFORE_TITLE_ENABLED (QA, 26 Oct 2026): "ca for <first> <last>, team member at
+ * <salon>" in lowercase left the Employee unread, and "for <First> <Last> Team
+ * Member at <salon>" dropped the surname. A two-word name right before a job
+ * title is read as the name, with the title after a comma. See
+ * `ai/name-before-title.ts`. Off, the turn is read as typed.
+ */
+export function nameBeforeTitleEnabled(): boolean {
+  return envFlag("NAME_BEFORE_TITLE_ENABLED");
+}
+
+/**
  * A sentence that says how a default, starter or first sign-in password or
  * code is built (a name, a year, a birthday, "followed by") never reaches a
  * chat answer (Code 3; coordinator, 26 Oct 2026; same flag in both apps). See
