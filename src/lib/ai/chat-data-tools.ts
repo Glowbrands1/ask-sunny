@@ -126,6 +126,8 @@ export async function loadChatDataBlock(input: {
   readonly role: Role | null;
   readonly scope: AccessScope | null;
   readonly briefedFamilies: readonly string[];
+  /** GOOGLE_REVIEWS_IN_CHAT_ENABLED already attached the review block. */
+  readonly reviewsHandled?: boolean;
   readonly choose?: () => Promise<DataChoice>;
   readonly readReviews?: (storeCodes: readonly string[]) => Promise<string | null>;
   readonly readSales?: () => Promise<string | null>;
@@ -147,7 +149,8 @@ export async function loadChatDataBlock(input: {
       }
     }
   }
-  const wants = questionWantsData(input.question);
+  const asked = questionWantsData(input.question);
+  const wants = input.reviewsHandled ? { ...asked, reviews: false } : asked;
   if (!wants.reviews && !wants.sales && !wants.comp) return { help, data: null };
 
   let choice: DataChoice = "none";
@@ -157,6 +160,7 @@ export async function loadChatDataBlock(input: {
     choice = wants.reviews ? "reviews" : wants.comp ? "comp" : wants.sales ? "sales" : "none";
   }
   if (wants.comp && choice !== "reviews") choice = "comp";
+  if (input.reviewsHandled && choice === "reviews") choice = wants.comp ? "comp" : wants.sales ? "sales" : "none";
   const planned = planDataRead({
     choice,
     canViewReviews:
