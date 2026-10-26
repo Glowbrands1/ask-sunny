@@ -867,3 +867,13 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
 }
+
+/**
+ * An incident date after today is asked about once, in every register, and
+ * never dates the form (QA, 26 Oct 2026, U4). A deadline or a follow-up in
+ * the future is not asked about. Off, a future date is dropped silently, as
+ * before.
+ */
+export function futureIncidentDateAskEnabled(): boolean {
+  return envFlag("FUTURE_INCIDENT_DATE_ASK_ENABLED");
+}
