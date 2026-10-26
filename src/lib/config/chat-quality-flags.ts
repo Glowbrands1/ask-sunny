@@ -836,6 +836,16 @@ export function chatLongMessageEnabled(): boolean {
 }
 
 /**
+ * The form's date is the incident date the manager stated, or the day the
+ * form is created — never a deadline, due date, assignment date, prior-action
+ * date or a "by <date>" (Pau's coordinator, 25 Oct 2026, D3). Off, the date
+ * readers keep main's reading.
+ */
+export function formDateIncidentOnlyEnabled(): boolean {
+  return envFlag("FORM_DATE_INCIDENT_ONLY_ENABLED");
+}
+
+/**
  * A terse "ca <name> <what happened> <date> verbal 25 deduct" line is written
  * out as the long form before it is read, so the name, salon, date, warning
  * level and payroll amount are read as they are from a full sentence (Ask

@@ -69,6 +69,7 @@ import {
   terseSlotReadEnabled,
   remapDraftSourcesClientEnabled,
   remapDraftSourcesEnabled,
+  formDateIncidentOnlyEnabled,
   reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
@@ -167,6 +168,7 @@ const NEW_FLAGS = [
   "TERSE_SLOT_READ_ENABLED",
   "REMAP_DRAFT_SOURCES_ENABLED",
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
+  "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
@@ -338,6 +340,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(terseSlotReadEnabled()).toBe(false);
     expect(remapDraftSourcesEnabled()).toBe(false);
     expect(remapDraftSourcesClientEnabled()).toBe(false);
+    expect(formDateIncidentOnlyEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
