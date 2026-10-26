@@ -345,6 +345,28 @@ const MANUAL_FAILURE = /\b(?:fail\w*|didn['’]?t|did\s+not|never|not|missed|ref
 const COACHED_ON_BEFORE = /\bcoached\s+on\s+$/i;
 
 /*
+ * "PREVIOUS COACHING. VERBAL (06/25/2026) AND WRITTEN (07/28/2026)" (QA, 25 Oct
+ * 2026, Ask Sunny production). The label ends its own sentence and heads the
+ * items after it, each a step with its date in brackets. No reader saw a step:
+ * the full stop closed the label, and the brackets sat between each item and
+ * its date. Both priors were missing from the card, and the chat asked which
+ * of 6/25, 7/28 and 10/15 goes on the form (or dated it 6/25). With the flag
+ * on, a label closed by a full stop heads the next item when that item names a
+ * step ("verbal", "written ca", "coaching"), and the list continues only with
+ * items that name a step; "previous coaching. she was late (10/20/2026)" opens
+ * nothing. A bracket around a date is not between the item and its date.
+ */
+const HEADED_STEP_BEFORE = new RegExp(
+  String.raw`\b${HISTORY_LABEL_PARSE}\s*\.\s+(?<topic>(?:${TOPIC_WORD}\s+){1,5})(?<tail>(?:on|dated|signed)\s+)?$`,
+  "i",
+);
+/** "verbal (" → "verbal ", ") and written (" → " and written ": the brackets around a date. */
+function withoutDateBrackets(text: string, leading: boolean): string {
+  const trailing = text.replace(/\(\s*$/, "");
+  return leading ? trailing.replace(/^\s*\)/, "") : trailing;
+}
+
+/*
  * "…for being late to open on 10-20, she was coached on 9-15 for being late,
  * no payroll" (conv_mvnoiw8n2kfbcvc, QA 25 Oct 2026). A dashed date needs a
  * year to be read at all (`DATE_IN_TEXT`), so the coaching was no prior action
@@ -486,7 +508,7 @@ function labelledStepsParsed(text: string, dates: readonly DateInText[], today?:
   let listNeedsStep = false;
   let previousEnd = 0;
   for (const date of dates) {
-    const item = list === null ? null : LIST_ITEM_BEFORE.exec(text.slice(previousEnd, date.index));
+    const item = list === null ? null : LIST_ITEM_BEFORE.exec(withoutDateBrackets(text.slice(previousEnd, date.index), true));
     previousEnd = date.end;
     if (list !== null && item && (!listNeedsStep || NAMES_A_STEP_PARSE.test(item[1] ?? ""))) {
       const words = (item[1] ?? "").replace(TOPIC_ARTICLE, "");
@@ -498,13 +520,23 @@ function labelledStepsParsed(text: string, dates: readonly DateInText[], today?:
     }
     list = null;
     const before = text.slice(0, date.index);
-    const ahead = LABELLED_STEP_BEFORE_PARSE.exec(before);
+    const unbracketed = withoutDateBrackets(before, false);
+    const ahead = LABELLED_STEP_BEFORE_PARSE.exec(unbracketed);
     if (ahead) {
       const topic = ahead.groups?.topic ?? "";
       const tail = ahead.groups?.tail ?? "";
       found.set(date.index, { named: ahead[0], topic: topic.replace(TOPIC_ARTICLE, "").trim() });
       list = ahead[0].slice(0, ahead[0].length - topic.length - tail.length);
       listNeedsStep = !ahead.groups?.marker;
+      continue;
+    }
+    // "previous coaching. verbal (06/25/2026) and written (07/28/2026)": the label heads the items that name a step.
+    const headed = HEADED_STEP_BEFORE.exec(unbracketed);
+    if (headed && NAMES_A_STEP_PARSE.test(headed.groups?.topic ?? "")) {
+      const topic = headed.groups?.topic ?? "";
+      found.set(date.index, { named: headed[0], topic: topic.replace(TOPIC_ARTICLE, "").trim() });
+      list = "";
+      listNeedsStep = true;
       continue;
     }
     const after = LABELLED_STEP_AFTER_PARSE.exec(text.slice(date.end));
