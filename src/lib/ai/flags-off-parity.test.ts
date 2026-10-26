@@ -79,6 +79,7 @@ import {
   draftReuseOwnDraftsOnlyEnabled,
   noCardNoDraftClaimEnabled,
   selfCheckNeverBlankEnabled,
+  policyConductWordingEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -176,6 +177,7 @@ const NEW_FLAGS = [
   "DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED",
   "NO_CARD_NO_DRAFT_CLAIM_ENABLED",
   "SELF_CHECK_NEVER_BLANK_ENABLED",
+  "POLICY_CONDUCT_WORDING_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -346,6 +348,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(draftReuseOwnDraftsOnlyEnabled()).toBe(false);
     expect(noCardNoDraftClaimEnabled()).toBe(false);
     expect(selfCheckNeverBlankEnabled()).toBe(false);
+    expect(policyConductWordingEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
