@@ -344,6 +344,8 @@ vi.mock("@/data/salons", async (importOriginal) => {
 
 vi.mock("@/lib/config/server-env", () => ({
   liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }),
+  /* Read only by GOOGLE_REVIEWS_IN_CHAT_ENABLED; see the s23 twin. */
+  supabaseReadiness: () => ({ ready: true, missing: [] }),
   MissingConfigurationError: class MissingConfigurationError extends Error {
     missing: string[] = [];
   },
@@ -422,6 +424,30 @@ vi.mock("@/lib/reviews/queries", async (importOriginal) => {
     loadReviewsSnapshot: async () => ({
       summary: { qualifyingThisWeek: 4, unanswered: 0, averageRating: 4.6 },
       empty: false,
+      /* Read only with GOOGLE_REVIEWS_IN_CHAT_ENABLED on; see the s23 twin below. */
+      locations: [
+        {
+          storeCode: "306",
+          locationName: "Sun Tan City - KS Manhattan",
+          district: null,
+          salonNumber: "0462",
+          listingState: "verified",
+          anchorReviewId: "anchor-306",
+          anchorReviewer: null,
+          historical: 0,
+          reviewsThisWeek: 2,
+          qualifyingThisWeek: 2,
+          lastWeek: 3,
+          qualifyingLastWeek: 3,
+          qualifyingMonthToDate: 9,
+          unanswered: 0,
+          criticalOpen: 0,
+          averageRating: 4.6,
+          total: 40,
+        },
+      ],
+      goal: { target: 10, monthStart: "2026-10-01", today: "2026-10-23", dayOfMonth: 23, daysInMonth: 31, daysElapsed: 22, paceTarget: 8 },
+      lastSyncAt: new Date().toISOString(),
     }),
   };
 });
@@ -1299,6 +1325,15 @@ function setFlags(on: boolean) {
     savedFlags.set("CHAT_DATA_TOOLS_ENABLED", process.env.CHAT_DATA_TOOLS_ENABLED);
   }
   delete process.env.CHAT_DATA_TOOLS_ENABLED;
+  /*
+   * GOOGLE_REVIEWS_IN_CHAT_ENABLED replaces the s23 review block, so every
+   * round here runs with it off whatever the environment says; its own row
+   * is "s23 with GOOGLE_REVIEWS_IN_CHAT_ENABLED on" below.
+   */
+  if (!savedFlags.has("GOOGLE_REVIEWS_IN_CHAT_ENABLED")) {
+    savedFlags.set("GOOGLE_REVIEWS_IN_CHAT_ENABLED", process.env.GOOGLE_REVIEWS_IN_CHAT_ENABLED);
+  }
+  delete process.env.GOOGLE_REVIEWS_IN_CHAT_ENABLED;
   for (const name of FLAGS) {
     if (!savedFlags.has(name)) savedFlags.set(name, process.env[name]);
     if (on) process.env[name] = "1";
@@ -1868,6 +1903,28 @@ describe("one quality flag at a time", () => {
       ]);
     }
     flagEffects.push({ flag, floorPass, cardPass, broken, cardFailures, ...(dataCases ? { dataCases } : {}) });
+  }, 60_000);
+});
+
+/*
+ * THE FLAG-ON TWIN OF THE s23 ROW. With GOOGLE_REVIEWS_IN_CHAT_ENABLED on, the
+ * same verbatim turn gets the Google Reviews page's month-to-date block
+ * instead of the inventory sentence (QA T11): CHAT_DATA_TOOLS skips its own
+ * review read on that turn, so "254 reviews in total" is no longer attached.
+ * The row above keeps the flag off and keeps that expectation.
+ */
+describe("s23 with GOOGLE_REVIEWS_IN_CHAT_ENABLED on", () => {
+  afterAll(() => {
+    recordHarness.on = true;
+    delete process.env.GOOGLE_REVIEWS_IN_CHAT_ENABLED;
+  });
+  it("attaches the month-to-date block, not the inventory sentence", async () => {
+    setOnlyFlag("CHAT_DATA_TOOLS_ENABLED");
+    process.env.GOOGLE_REVIEWS_IN_CHAT_ENABLED = "1";
+    const s23 = DATA_CASES.find((item) => item.id === "s23")!;
+    const monthToDate = { ...s23, mark: /GOOGLE REVIEWS — MONTH TO DATE[\s\S]*KS Manhattan \(store 306\): 9 qualifying reviews month to date/ };
+    expect(await dataCaseAttaches(monthToDate as unknown as (typeof DATA_CASES)[number], "reviews-on")).toBe(true);
+    expect(attachedBlock()).not.toContain("254 reviews in total");
   }, 60_000);
 });
 
