@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { futureIncidentDateAskEnabled } from "@/lib/config/chat-quality-flags";
+
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
 import { displayTypedName } from "./roster-reply";
@@ -1497,12 +1499,29 @@ describe("the form date, from the request or from a follow-up answer", () => {
     ["September 11, 2026", "2026-09-11"],
   ] as const;
 
+  /*
+   * FUTURE_INCIDENT_DATE_ASK_ENABLED (changed on purpose, QA U4, 26 Oct 2026):
+   * this harness's clock is 9 Sep 2026 (`todayIso` above — the date this suite
+   * was written against, kept so its dates read the same every year), so
+   * "9/11", "9/21" and "September 11" are AFTER its today. With the flag on, an
+   * incident date after today is asked about and never dates the form; flag
+   * off, as before. "02/21" is in the past either way.
+   */
+  function expectFormDate(answer: { formProposal?: { formDate?: string | null } | null; content: string }, iso: string): void {
+    if (futureIncidentDateAskEnabled() && iso > "2026-09-09") {
+      expect(answer.formProposal!.formDate ?? null).toBeNull();
+      expect(answer.content).toContain("is after today");
+    } else {
+      expect(answer.formProposal!.formDate).toBe(iso);
+    }
+  }
+
   it.each(DATES)("is read from the initial request: %s", async (typed, iso) => {
     const answer = await ask(`Create a Corrective Action form for Sarah Test. She wore slippers on ${typed}.`);
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.employeeName).toBe("Sarah Test");
-    expect(answer.formProposal!.formDate).toBe(iso);
+    expectFormDate(answer, iso);
     expect(answer.formProposal!.status).toBe("ready");
   });
 
@@ -1522,7 +1541,7 @@ describe("the form date, from the request or from a follow-up answer", () => {
 
     expect(answer.formProposal).toBeDefined();
     expect(answer.formProposal!.employeeName).toBe("Sarah Test");
-    expect(answer.formProposal!.formDate).toBe(iso);
+    expectFormDate(answer, iso);
     expect(answer.formProposal!.status).toBe("ready");
   });
 

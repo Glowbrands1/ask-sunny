@@ -32,7 +32,9 @@ const REGISTERS: [string, string][] = [
 
 describe.each(REGISTERS)("FUTURE_INCIDENT_DATE_ASK_ENABLED (%s)", (_register, text) => {
   it("off: the future date is dropped silently, as before", () => {
-    expect(decide(text).question ?? "").not.toContain(FUTURE_DATE_TAG);
+    delete process.env[FLAG];
+    // Main decides nothing here: no question, no date (the card keeps the reader's date).
+    expect(decide(text)).toEqual({});
   });
 
   it("on: the future date is asked about, and the form is not dated by it", () => {
@@ -55,6 +57,7 @@ describe("FUTURE_INCIDENT_DATE_ASK_ENABLED: NEVER-BREAK", () => {
   for (const on of [false, true]) {
     it(`flag ${on ? "on" : "off"}: a future deadline or follow-up is not challenged; a past date dates the form as before`, () => {
       if (on) process.env[FLAG] = "true";
+      else delete process.env[FLAG];
       expect(decide("write up ava pellmore, she has to finish the training by 12-20-26").question ?? "").not.toContain(
         FUTURE_DATE_TAG,
       );
@@ -71,6 +74,7 @@ describe("FUTURE_INCIDENT_DATE_ASK_ENABLED: a date given to the form itself", ()
   for (const on of [false, true]) {
     it(`flag ${on ? "on" : "off"}: "dated 10/2" dates the form and is not challenged`, () => {
       if (on) process.env[FLAG] = "true";
+      else delete process.env[FLAG];
       const decided = decideFormDate({
         text: "coaching form for ava pellmore dated 10/2",
         templateKey: "coaching",
@@ -81,4 +85,42 @@ describe("FUTURE_INCIDENT_DATE_ASK_ENABLED: a date given to the form itself", ()
       expect(decided).toEqual({ formDate: "2026-10-02" });
     });
   }
+});
+
+/* QA-4 / coordinator, 26 Oct 2026: asked only when no past incident date was stated. Lowercase and sentence case. */
+const TWO_CLAUSE: [string, (text: string) => string][] = [
+  ["all lowercase", (text) => text.toLowerCase()],
+  ["sentence case", (text) => {
+    const named = text.toLowerCase().split("ava pellmore").join("Ava Pellmore");
+    return named.charAt(0).toUpperCase() + named.slice(1);
+  }],
+];
+
+describe.each(TWO_CLAUSE)("FUTURE_INCIDENT_DATE_ASK_ENABLED, a past incident and a future date (%s)", (_register, as) => {
+  it("on: the past incident dates the form and nothing is asked", () => {
+    process.env[FLAG] = "true";
+    for (const text of [
+      "write up ava pellmore, late on 10-20-26, meeting is on 12-20-26",
+      "write up ava pellmore, meeting on 12-20-26 and late on 10-20-26",
+    ]) {
+      const decided = decide(as(text));
+      expect(decided.question ?? "", text).not.toContain(FUTURE_DATE_TAG);
+      expect(decided.formDate, text).toBe("2026-10-20");
+    }
+  });
+
+  /*
+   * PINNED (QA-4): a negated future date is asked about all the same. A
+   * form records something that happened; the manager answers with the date.
+   */
+  it("on: a negated future date is still asked about", () => {
+    process.env[FLAG] = "true";
+    for (const text of [
+      "write up ava pellmore, the meeting was not on 12-20-26",
+      "write up ava pellmore, she did not come to the meeting on 12-20-26",
+      "write up ava pellmore, she was not late on 12-20-26",
+    ]) {
+      expect(decide(as(text)).question ?? "", text).toContain(FUTURE_DATE_TAG);
+    }
+  });
 });
