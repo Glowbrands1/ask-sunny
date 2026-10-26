@@ -1,4 +1,5 @@
 import { listIncidentDates } from "./form-date-answer";
+import { incidentOnly } from "./form-date-incident-only";
 
 /**
  * A date this turn states as the incident. A prior coaching date
@@ -10,7 +11,7 @@ const HISTORY =
 
 export function explicitIncidentIso(question: string, today: string): string | null {
   const stripped = question.replace(HISTORY, " ");
-  const dates = listIncidentDates(stripped, today);
+  const dates = incidentOnly(stripped, today, listIncidentDates(stripped, today));
   if (dates.length === 1) return dates[0]!.iso;
   if (dates.length > 1) return null;
   if (/\btoday\b/i.test(stripped) && !/\bwas\s+given\b/i.test(question)) return today;

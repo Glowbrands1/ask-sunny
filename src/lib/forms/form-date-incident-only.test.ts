@@ -62,13 +62,15 @@ describe("FORM_DATE_INCIDENT_ONLY_ENABLED: the form's date is never a deadline, 
 
   it('"assigned by 9-15-26" is a due date: the form is dated the day it is created', () => {
     withFlag(true);
-    expect(extractFormDate(ASSIGNED_BY, TODAY)).toBeNull();
+    // Dated the day it is created; the shared reader still sees the date, so the intake stays open.
+    expect(decide(ASSIGNED_BY)).toEqual({ formDate: null });
+    expect(extractFormDate(ASSIGNED_BY, TODAY)).toBe("2026-09-15");
     expect(explicitIncidentIso(ASSIGNED_BY, TODAY)).toBeNull();
   });
 
   it('"assigned 9-1-26 … due by 9-15-26" offers neither date', () => {
     withFlag(true);
-    expect(extractFormDate(ASSIGNED_AND_DUE, TODAY)).toBeNull();
+    expect(decide(ASSIGNED_AND_DUE)).toEqual({ formDate: null });
     expect(explicitIncidentIso(ASSIGNED_AND_DUE, TODAY)).toBeNull();
     expect(incidentDates(ASSIGNED_AND_DUE, TODAY)).toEqual([]);
   });
@@ -76,13 +78,12 @@ describe("FORM_DATE_INCIDENT_ONLY_ENABLED: the form's date is never a deadline, 
   it("a woven deadline and prior-action dates are not offered as the form's date", () => {
     withFlag(true);
     expect(incidentDates(WOVEN_DEADLINE, TODAY)).toEqual([]);
-    expect(decide(WOVEN_DEADLINE)).toEqual({});
-    expect(extractFormDate(WOVEN_DEADLINE, TODAY)).toBeNull();
+    expect(decide(WOVEN_DEADLINE)).toEqual({ formDate: null });
   });
 
   it('"today" with prior actions in parentheses asks no "which date?" and takes today', () => {
     withFlag(true);
-    expect(decide(PRIOR_IN_PARENS)).toEqual({});
+    expect(decide(PRIOR_IN_PARENS)).toEqual({ formDate: null });
     expect(explicitIncidentIso(PRIOR_IN_PARENS, TODAY)).toBe(TODAY);
   });
 
@@ -157,10 +158,10 @@ describe.each(REGISTERS)(
   (_register, as) => {
     it("flag on: no deadline, assignment or prior-action date is the form's date", () => {
       withFlag(true);
-      expect(extractFormDate(as(ASSIGNED_BY), TODAY)).toBeNull();
+      expect(decide(as(ASSIGNED_BY))).toEqual({ formDate: null });
       expect(incidentDates(as(ASSIGNED_AND_DUE), TODAY)).toEqual([]);
       expect(incidentDates(as(WOVEN_DEADLINE), TODAY)).toEqual([]);
-      expect(decide(as(PRIOR_IN_PARENS))).toEqual({});
+      expect(decide(as(PRIOR_IN_PARENS))).toEqual({ formDate: null });
       expect(explicitIncidentIso(as(PRIOR_IN_PARENS), TODAY)).toBe(TODAY);
     });
 
@@ -261,6 +262,15 @@ describe.each(REGISTERS)("live tester findings, 26 Oct 2026 (%s)", (_register, a
     expect(remapDate(as(PRIORS_TODAY))).not.toBe("2026-10-21");
     expect(remapDate(as(PRIORS_TODAY))).not.toBe("2026-10-16");
   });
+
+  for (const on of [false, true]) {
+    // Dispatcher probe, 26 Oct 2026: the verbal this form documents keeps its date.
+    it(`NEVER-BREAK (flag ${on ? "on" : "off"}): "i gave her a verbal on 10-21 for being late" dates the form 10-21`, () => {
+      withFlag(on);
+      expect(remapDate(as("write up ava pellmore, i gave her a verbal on 10-21 for being late"))).toBe("2026-10-21");
+      expect(remapDate(as("verbal for ava pellmore, gave her a verbal on 10-21 for being late on 10-21"))).toBe("2026-10-21");
+    });
+  }
 
   for (const on of [false, true]) {
     it(`NEVER-BREAK (flag ${on ? "on" : "off"}): a late opening and a single year-less incident date are read as before`, () => {

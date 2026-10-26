@@ -196,9 +196,7 @@ const PROTECTED = [
  * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
  * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
  * on the PROTECTED list; only the diff check leaves it out. No other
- * protected file is excepted. QA assigned the same file to Code 4 on 25 Oct
- * 2026 for the form-date rule (D3), behind FORM_DATE_INCIDENT_ONLY_ENABLED,
- * flag-off reading unchanged.
+ * protected file is excepted.
  */
 const APPROVED_PROTECTED_EDITS = [":(exclude)src/lib/forms/form-date-answer.ts"];
 

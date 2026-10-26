@@ -1,6 +1,7 @@
 import { formDateIncidentOnlyEnabled, lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { listIncidentDates } from "./form-date-answer";
+import { incidentOnly } from "./form-date-incident-only";
 
 /**
  * ============================================================================
@@ -134,7 +135,7 @@ export function newestStatedDate(
 }
 
 function singleIncidentDate(text: string, today: string): string | null {
-  const dates = [...new Set(listIncidentDates(text, today).map((found) => found.iso))];
+  const dates = [...new Set(incidentOnly(text, today, listIncidentDates(text, today)).map((found) => found.iso))];
   return dates.length === 1 ? dates[0]! : null;
 }
 
