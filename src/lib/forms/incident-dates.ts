@@ -1,7 +1,7 @@
 import { withoutAppLines } from "@/lib/ai/app-sentences";
 import { futureIncidentDateAskEnabled, keepFormEmployeeEnabled } from "@/lib/config/chat-quality-flags";
 
-import { explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
+import { datesInText, explicitFormDate, heldCoachingDates, listFormDates, listIncidentDates } from "./form-date-answer";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -141,6 +141,14 @@ export const FUTURE_DATE_TAG = "is after today";
 
 /** "finish it by 12-20-26", "due 12/1": a date something is owed by, which may well be ahead. */
 const DUE_BEFORE = /\b(?:by|due(?:\s+(?:on|by))?|until|till|til|before|deadline(?:\s+(?:of|is|on))?)\s+(?:the\s+)?$/i;
+/*
+ * "missing the 11/1 woven deadline", "the 12-20-26 due date": a date a deadline
+ * word follows, up to two words on (QA-7, 26 Oct 2026). The same rule as
+ * FORM_DATE_INCIDENT_ONLY's `DEADLINE_NEAR_AFTER`; kept here so this flag
+ * stands on its own.
+ */
+const DEADLINE_AFTER =
+  /^\s*(?:(?!(?:and|for|the|but|or|then|after|before|so|to|was|were|is|are|of|on|at|with|because|when|while|she|he|they|her|his|it)\b)[a-z]+\s+){0,2}(?:deadline|due\s+date)\b/i;
 
 function longDate(iso: string): string {
   const [year, month, day] = iso.split("-");
@@ -180,8 +188,11 @@ export function decideFormDate(input: {
    * neither is a date the manager gave the form itself ("dated 10/2", above).
    */
   if (futureIncidentDateAskEnabled()) {
+    const ends = new Map(datesInText(input.text, input.today).map((date) => [date.index, date.end]));
     const read = listIncidentDates(input.text, input.today).filter(
-      (found) => !DUE_BEFORE.test(input.text.slice(Math.max(0, found.index - 30), found.index)),
+      (found) =>
+        !DUE_BEFORE.test(input.text.slice(Math.max(0, found.index - 30), found.index)) &&
+        !DEADLINE_AFTER.test(input.text.slice(ends.get(found.index) ?? found.index, (ends.get(found.index) ?? found.index) + 30)),
     );
     const future = [...new Set(read.map((found) => found.iso))].filter((iso) => iso > input.today);
     /*
