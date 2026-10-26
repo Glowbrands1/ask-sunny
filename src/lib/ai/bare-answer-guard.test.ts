@@ -167,4 +167,17 @@ describe("BARE_ANSWER_BINDING_ENABLED on", () => {
     const both = respondWith(two, "x");
     expect(bindBareAnswer({ response: both, question: "yes", history: [{ role: "assistant", content: "x", formProposal: two }] })).toBe(both);
   });
+
+  it("reads bare answers the same in lowercase and sentence case", () => {
+    process.env[FLAG] = "on";
+    const no = { content: "Is payroll deduct applicable? **No** — tell me if that should change.", citations: [], formProposal: card({ payrollDeduct: "no" }) } as unknown as AskResponse;
+    for (const answer of ["no", "No", "No.", "yes", "Yes", "YES"]) {
+      const response = /^y/i.test(answer) ? RESPONSE : no;
+      expect(bindBareAnswer({ response, question: answer, history: HISTORY })).toBe(response);
+    }
+    for (const word of ["verbal", "Verbal", "VERBAL"]) {
+      const out = bindBareAnswer({ response: { content: "x", citations: [], formProposal: card({ employeeRole: word }) } as unknown as AskResponse, question: word, history: HISTORY });
+      expect(out.formProposal?.employeeRole).toBe("Tanning Consultant");
+    }
+  });
 });
