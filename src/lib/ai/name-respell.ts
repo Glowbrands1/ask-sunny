@@ -46,6 +46,8 @@ export function respelling(name: string, question: string): string | null {
     const lower = span.map((word) => word.toLowerCase());
     if (!lower.every((word, index) => close(word, target[index]!))) continue;
     if (lower.every((word, index) => word === target[index])) return null;
+    // QA-6, 26 Oct 2026: "never Mara Quill", "not Mara Quill but …" is not the newest spelling.
+    if (words.slice(Math.max(0, start - 2), start).some((word) => /^(?:not|never|no|except)$/i.test(word))) continue;
     return span.join(" ");
   }
   return null;
