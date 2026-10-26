@@ -1019,3 +1019,16 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+## 26 Oct 2026: "late on 10-5" dated a Coaching Form ahead of the held coaching — ported to Ask Bubbles' intent read only (LATE_OPEN_DATE_FIX_ENABLED)
+
+With LATE_OPEN_DATE_ENABLED on, "coaching form for …, she was late on 10-5 and
+10-15, I coached her on 10-16" was dated 10/5 on Ask Sunny's card. Behind
+`LATE_OPEN_DATE_FIX_ENABLED` (default off) the held coaching dates a Coaching
+Form and two held coachings are asked about. Ask Bubbles' live form path, the
+full remap, never had this bug: its card is dated 10/16 with LATE_OPEN_DATE on
+and off. The same mechanism is ported to Ask Bubbles' intent read (the slots
+it saves), behind the same flag (Ask Bubbles c43e7b57). The grammar-turn case
+(edits-dates-replay B17) is on hold and was not changed in either app. Tests:
+`src/lib/ai/prior-actions-yearless-oct25.test.ts`; Ask Bubbles
+`src/lib/ai/late-open-date-oct24.test.ts`.
