@@ -2,7 +2,6 @@ import { coachingAsksWhatHappenedEnabled } from "@/lib/config/chat-quality-flags
 import { answeredWhatHappened, describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import type { ChatFormProposal } from "@/types";
 
-import { withoutStateLead } from "./remap-incident";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -27,6 +26,14 @@ import type { AskRequest, AskResponse } from "./types";
  */
 
 const COACHING_TEMPLATES = new Set(["coaching", "follow-up-coaching"]);
+
+/** The sentences the intent read writes in front of a turn ("The employee is ….", "Incident: …."): the app's, not the manager's. */
+const STATE_LEAD =
+  /^\s*(?:(?:The form is the|The employee is|Job title:|It happened at|It happened on|Warning level:|Payroll amount:|Policy reference:|Incident:|The account continues)[^\n]*?\.(?=\s|$)\s*|(?:Payroll deduct applies|No payroll deduction)\.\s*)+/i;
+
+function withoutStateLead(turn: string): string {
+  return turn.replace(STATE_LEAD, "");
+}
 
 /** The marker `answeredWhatHappened` reads, so the next reply is taken as the account and never asked again. */
 const MARKER = "You haven't told me what happened yet";
