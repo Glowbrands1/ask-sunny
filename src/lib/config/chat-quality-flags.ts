@@ -806,6 +806,17 @@ export function chatLongMessageEnabled(): boolean {
 }
 
 /**
+ * A terse "ca <name> <what happened> <date> verbal 25 deduct" line is written
+ * out as the long form before it is read, so the name, salon, date, warning
+ * level and payroll amount are read as they are from a full sentence (Ask
+ * Sunny conv_mvoffldz24z2t0u, 25 Oct 2026). See `ai/terse-slots.ts`. Off, the
+ * turn is read as typed.
+ */
+export function terseSlotReadEnabled(): boolean {
+  return envFlag("TERSE_SLOT_READ_ENABLED");
+}
+
+/**
  * "What is a ca?", "difference between coaching and ca", "which forms can I
  * create here?" are answered from the app's own published form templates and
  * role matrix (`lib/forms/forms-guide.ts`), never from model memory or a

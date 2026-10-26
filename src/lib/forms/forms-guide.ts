@@ -298,7 +298,7 @@ export interface GuideAnswerInput<Role extends string> {
   /** Active templates with a published current version, in library order. */
   templates: readonly GuideTemplate[];
   access: GuideAccess<Role>;
-  /** "Ask Sunny" / "Ask Bubbles". */
+  /** The product name, from the brand config. */
   productName: string;
 }
 
