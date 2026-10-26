@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import manual151 from "@/test/fixtures/jba-manual-production-151.json";
 import { manualChunkFromRow, type ChunkRow as ManualChunkRow } from "@/lib/ai/full-manual-load";
+import { formDateIncidentOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -1497,6 +1499,13 @@ describe("QA 22 Oct: Woven-deadline wording not in any earlier example", () => {
  * of them an earlier example. Each is created and the stored form read back.
  * The first two were known gaps in round 1.
  */
+/** The wordings whose only date is written as the deadline itself (D3). */
+const DEADLINE_DATED = new Set([
+  "tess varga didn't finish her woven items by 10-15-26. create a verbal CA for her. no payroll deduct",
+  "write up tess varga, verbal warning. she blew the 10/15/26 woven deadline. no payroll deduction",
+  "can you write up tess varga? she missed the 10/15/26 woven deadline. it's a verbal",
+]);
+
 describe("QA 22 Oct: requests in new wording, through to the saved form", () => {
   it.each([
     // [message, level, payroll, date]
@@ -1515,7 +1524,13 @@ describe("QA 22 Oct: requests in new wording, through to the saved form", () => 
     expect(proposal.employeeName).toBe("Tess Varga");
     expect(proposal.warningLevel ?? null).toBe(level);
     expect(proposal.payrollDeduct ?? null).toBe(payroll);
-    expect(proposal.formDate ?? null).toBe(date);
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (D3, changed on purpose; QA ruled D3 wins over
+     * "dated 10/15", 26 Oct 2026): a date written as the deadline ("the 10-15-26
+     * woven deadline", "by 10-15-26") never dates the form, so with the flag on
+     * the card is dated the day it is created (null). Flag off keeps 10-15.
+     */
+    expect(proposal.formDate ?? null).toBe(formDateIncidentOnlyEnabled() && DEADLINE_DATED.has(text) ? null : date);
 
     state.draft = WOVEN_OBSERVATION;
     const { reference } = await create();

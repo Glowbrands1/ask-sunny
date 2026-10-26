@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { formDateIncidentOnlyEnabled } from "@/lib/config/chat-quality-flags";
 import { incidentDates } from "@/lib/forms/incident-dates";
 import { correctiveActionDocument } from "@/lib/forms/library";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
@@ -345,7 +346,15 @@ describe("QA's turn, word for word (flag on)", () => {
     intentModel.reading = reading("10-15-26");
     const [first] = await chat([SAID], "conv-priors-off");
     expect(priorLines(first!.content)).toEqual([]);
-    expect(first!.content).toMatch(ASKS_WHICH_DATE);
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (D3, changed on purpose; QA ruled D3 wins
+     * over "dated 10/15", 26 Oct 2026): "the 10-15-26 Woven deadline" is a
+     * deadline, so with that flag on it is not an incident date the form's date
+     * is chosen from. Flag off keeps ["2026-10-15"]. With it on, no date is left
+     * to choose between, so nothing is asked.
+     */
+    if (formDateIncidentOnlyEnabled()) expect(first!.content).not.toMatch(ASKS_WHICH_DATE);
+    else expect(first!.content).toMatch(ASKS_WHICH_DATE);
   });
 });
 
@@ -410,7 +419,8 @@ describe("QA's turn in every register (flag on)", () => {
     expect(priorLines(first!.content)).toEqual(PRIOR_LINES);
     expect(first!.content).not.toMatch(ASKS_WHICH_DATE);
     expect(statedPriorActions(said, TODAY)).toEqual(PRIOR_LINES);
-    expect(incidentDates(said, TODAY)).toEqual(["2026-10-15"]);
+    // D3 (see "the readers" below): with FORM_DATE_INCIDENT_ONLY on the deadline is no incident date.
+    expect(incidentDates(said, TODAY)).toEqual(formDateIncidentOnlyEnabled() ? [] : ["2026-10-15"]);
   });
 });
 
@@ -485,7 +495,13 @@ describe("the readers", () => {
     expect(statedPriorActions(PRIORS, TODAY)).toEqual(PRIOR_LINES);
     expect(listIncidentDates(SAID, TODAY).map((found) => found.iso)).toEqual(["2026-10-15"]);
     expect(listIncidentDates(PRIORS, TODAY)).toEqual([]);
-    expect(incidentDates(SAID, TODAY)).toEqual(["2026-10-15"]);
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (D3, changed on purpose; QA ruled D3 wins
+     * over "dated 10/15", 26 Oct 2026): "the 10-15-26 Woven deadline" is a
+     * deadline, so with that flag on it is not an incident date the form's date
+     * is chosen from. Flag off keeps ["2026-10-15"].
+     */
+    expect(incidentDates(SAID, TODAY)).toEqual(formDateIncidentOnlyEnabled() ? [] : ["2026-10-15"]);
   });
 
   it("flag on: a full stop after the label opens nothing that names no step", () => {

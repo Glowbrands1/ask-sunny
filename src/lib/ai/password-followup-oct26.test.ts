@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { appPasswordHelpFor, isAppPasswordQuestion } from "./app-password-help";
 import { EXCERPT_NOTE, REPLY_NOTE, redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
@@ -21,6 +21,12 @@ import { EXCERPT_NOTE, REPLY_NOTE, redactSensitiveDefaults, withoutSensitiveDefa
  */
 
 afterEach(() => vi.unstubAllEnvs());
+// Each test sets the flags it needs; flag-off pins hold whatever the environment has on.
+beforeEach(() => {
+  vi.stubEnv("SENSITIVE_DEFAULTS_REDACT_ENABLED", "");
+  vi.stubEnv("APP_PASSWORD_HELP_ENABLED", "");
+});
+
 
 const lower = (text: string) => text.toLowerCase();
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
@@ -30,13 +36,17 @@ const HINTS = /social\s+security|\bssn\b|digits?|formats?|default/i;
 const FORMAT_REPLY = "The default password is the Example format with the store code [S1].";
 
 describe("1. the refusal names nothing it hides", () => {
-  it.each([
-    ["reply", REPLY_NOTE],
-    ["excerpt", EXCERPT_NOTE],
-  ])("the %s note", (_where, note) => {
-    expect(note).not.toMatch(HINTS);
-    expect(note).toContain("Forgot your password?");
-    expect(note).toMatch(/ask (?:your|a) manager to reset it/);
+  it("the reply note", () => {
+    expect(REPLY_NOTE).not.toMatch(HINTS);
+    expect(REPLY_NOTE).toContain("Forgot your password?");
+    expect(REPLY_NOTE).toMatch(/ask your manager to reset it/);
+  });
+
+  // Since 26 Oct (QA live): the excerpt note names no system, so an answer
+  // about another system's password never picks up this app's link from it.
+  it("the excerpt note", () => {
+    expect(EXCERPT_NOTE).not.toMatch(HINTS);
+    expect(EXCERPT_NOTE).not.toMatch(/password|forgot|log-?in|reset/i);
   });
 
   it("a redacted reply says the note, and nothing about digits or formats", () => {
