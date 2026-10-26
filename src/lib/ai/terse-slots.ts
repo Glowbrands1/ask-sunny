@@ -1,4 +1,4 @@
-import { terseSlotReadEnabled } from "@/lib/config/chat-quality-flags";
+import { terseCommandOnlyEnabled, terseSlotReadEnabled } from "@/lib/config/chat-quality-flags";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 
@@ -81,11 +81,30 @@ export function withTerseSlots(request: AskRequest): AskRequest {
   return changed ? { ...request, question, history } : request;
 }
 
+/**
+ * TERSE_COMMAND_ONLY_ENABLED (QA, 26 Oct 2026): with TERSE_SLOT_READ on, full
+ * sentences were rewritten — "Exit for john michael doe effective october 2"
+ * lost the surname, "coaching form for Test Employee at NE Kearney, she was
+ * late on 10-5 and 10-15, I coached her on 10-16 …" was dated 10-5, and "CA
+ * for Test Employee at Kearney, out of dress code 10/11" lost "out of". A
+ * request with "for" after the form word is already read as a request, and a
+ * line that talks in sentences (she, I, was, about, effective …) is an
+ * account: both are left as typed. Only "<form word> <name> …" is written out.
+ */
+const FOR_LEAD = /^\s*(?:(?:verbal|written)\s+)?(?:ca|c\/a|dpoa|coach|coaching|exit)(?:\s+form)?\s+for\b/i;
+const SENTENCE_WORDS = /\b(?:she|he|they|i|her|his|their|was|were|is|are|has|had|have|about|because|effective|who|when|while)\b/i;
+
+function commandLine(text: string): boolean {
+  return !FOR_LEAD.test(text) && !SENTENCE_WORDS.test(text);
+}
+
 /** The long form of a terse "<form word> <name> …" line, or the text as it is. */
 export function expandTerseRequest(text: string, today: string): string {
   if (/[.!?\n]/.test(text.replace(/\d\.\d/g, "")) || text.trim().split(/\s+/).length > 40) return text;
   const lead = TERSE_LEAD.exec(text);
   if (!lead) return text;
+  // TERSE_COMMAND_ONLY_ENABLED: only a command line is written out, never a sentence the readers already read.
+  if (terseCommandOnlyEnabled() && !commandLine(text)) return text;
   const form = SHORT_FORM_WORDS[lead[2]!.toLowerCase()]!;
   const tokens = lead[3]!
     .trim()
