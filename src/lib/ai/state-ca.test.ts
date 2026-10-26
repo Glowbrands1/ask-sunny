@@ -52,3 +52,37 @@ describe("STATE_CA_GUARD_ENABLED on", () => {
     }
   });
 });
+
+/**
+ * QA-4 and QA-6, 26 Oct 2026: "CA" after a person, a salon or a topic is the
+ * form. Names invented.
+ */
+describe("STATE_CA_GUARD_ENABLED on: CA after a name stays the form", () => {
+  const sentence = (text: string) => text[0]!.toUpperCase() + text.slice(1);
+
+  it.each([
+    "Avery Stone CA",
+    "Make Avery Stone CA",
+    "Avery Stone, CA",
+    "avery, ca",
+    "at Lawrence CA",
+    "Rowan Pell CA",
+    "Test Employee CA",
+    "Rowan Pell, CA",
+    "Coaching, CA",
+    "write up Rowan Pell, CA, verbal",
+  ])("'%s' is left as typed, in lowercase and sentence case", (turn) => {
+    process.env[FLAG] = "on";
+    for (const variant of [turn, turn.toLowerCase(), sentence(turn.toLowerCase())]) expect(statesSpelledOut(variant)).toBe(variant);
+  });
+
+  it.each(["what is a ca?", "What is a ca?", "Los Angeles CA 90001", "Los angeles ca 90001", "she moved to sacramento, ca last month"])(
+    "twins: '%s'",
+    (turn) => {
+      process.env[FLAG] = "on";
+      const out = statesSpelledOut(turn);
+      if (/what is a ca/i.test(turn)) expect(out).toBe(turn);
+      else expect(out).toMatch(/California/);
+    },
+  );
+});

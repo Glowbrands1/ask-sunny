@@ -11,9 +11,10 @@ import type { AskRequest } from "./types";
  * takes the word "CA" wherever it stands, in any case.
  *
  * Before any reader sees a manager turn, "CA" is written as "California"
- * where it is a state: after a place and a comma ("Sacramento, CA",
- * "sacramento, ca"), before a ZIP code ("Los Angeles CA 90001"), or after a
- * capitalised city ("Los Angeles CA"). "ca" as a form ("ca", "ca for …",
+ * where it is a state: before a ZIP code ("Los Angeles CA 90001"), or after a
+ * California city, with or without a comma, in any case ("Sacramento, CA",
+ * "sacramento, ca", "Los Angeles CA"). After a person, a salon or a topic
+ * ("Rowan Pell, CA", "at Lawrence CA", "Coaching, CA") it stays the form. "ca" as a form ("ca", "ca for …",
  * "write up ca", "create a ca", "verbal ca …") is never changed. Off, every
  * turn is read as typed.
  *
@@ -38,16 +39,43 @@ export function withStateNames(request: AskRequest): AskRequest {
   return changed ? { ...request, question, history } : request;
 }
 
+/**
+ * California's cities, the evidence that "CA" after a word is the state (QA-4
+ * and QA-6, 26 Oct 2026: "Avery Stone CA", "Rowan Pell, CA", "avery, ca", "at
+ * Lawrence CA", "Coaching, CA" are the form after a person, a salon or a
+ * topic, and capitals or a comma cannot tell them from "Sacramento, CA").
+ * Geography, the same in both apps.
+ */
+const CALIFORNIA_CITIES = new Set(
+  (
+    "los angeles|san diego|san jose|san francisco|fresno|sacramento|long beach|oakland|bakersfield|anaheim|santa ana|riverside|stockton|irvine|" +
+    "chula vista|fremont|san bernardino|modesto|fontana|oxnard|moreno valley|huntington beach|glendale|santa clarita|garden grove|oceanside|" +
+    "rancho cucamonga|santa rosa|ontario|elk grove|corona|lancaster|palmdale|salinas|pomona|hayward|escondido|torrance|sunnyvale|orange|" +
+    "fullerton|pasadena|thousand oaks|visalia|simi valley|concord|roseville|vallejo|santa clara|victorville|berkeley|fairfield|carlsbad|" +
+    "temecula|redding|chico|san mateo|santa barbara|santa monica|burbank|inglewood|downey|ventura|el monte|costa mesa|antioch|richmond|" +
+    "daly city|west covina|norwalk|murrieta|el cajon|san luis obispo|palm springs|napa|davis|merced|monterey|santa cruz|eureka|malibu|" +
+    "beverly hills|culver city|newport beach|laguna beach|redondo beach|mountain view|palo alto|walnut creek|san rafael|tracy|turlock|yuba city"
+  ).split("|"),
+);
+
 /** The text with every state "CA" written as "California". */
 export function statesSpelledOut(text: string): string {
   if (!text) return text;
-  return text.replace(/\b([A-Za-z][A-Za-z.'’-]*)(,\s*|\s+)(ca)\b/gi, (whole, place: string, gap: string, ca: string, offset: number, all: string) => {
+  return text.replace(/\b([A-Za-z][A-Za-z.'’-]*)(,\s*|\s+)(ca)\b/gi, (whole, place: string, gap: string, _ca: string, offset: number, all: string) => {
     if (FORM_LEAD.test(place)) return whole;
     const after = all.slice(offset + whole.length);
-    const comma = gap.includes(",");
+    if (!AFTER_STATE.test(after)) return whole;
     const zip = /^\s+\d{5}\b/.test(after);
-    const capitalCity = /^[A-Z][a-z]/.test(place) && ca === "CA" && offset > 0;
-    if (!(comma || zip || capitalCity) || !AFTER_STATE.test(after)) return whole;
+    if (!zip && !californiaCity(all.slice(0, offset), place)) return whole;
     return `${place}${gap}California`;
   });
+}
+
+/** The word before "CA", with up to two words before it, names a California city. */
+function californiaCity(before: string, place: string): boolean {
+  const words = `${before} ${place}`.toLowerCase().split(/[^a-z.'’-]+/).filter(Boolean);
+  for (let size = 1; size <= 3 && size <= words.length; size += 1) {
+    if (CALIFORNIA_CITIES.has(words.slice(-size).join(" "))) return true;
+  }
+  return false;
 }
