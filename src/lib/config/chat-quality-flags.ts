@@ -815,3 +815,15 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * HUMAN_REPLIES_ENABLED: a form chat says its long opener once. On a later
+ * card turn for the same form and employee, the opener becomes one line on
+ * what changed ("Got it — the date's 10/14."), lines the manager already read
+ * are left out, and the save notice is "Nothing's saved until you tap Create
+ * draft." Questions and the card are unchanged (owner, 26 Oct 2026: "humanize
+ * it"). See `lib/ai/human-replies.ts`. Off, every reply is as built.
+ */
+export function humanRepliesEnabled(): boolean {
+  return envFlag("HUMAN_REPLIES_ENABLED");
+}
