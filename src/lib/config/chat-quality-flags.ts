@@ -926,3 +926,16 @@ export function policyConductWordingEnabled(): boolean {
 export function policyCleaningIncidentEnabled(): boolean {
   return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
 }
+
+/**
+ * A policy the manager sets aside leaves the card (Code 3, policy reading;
+ * QA F1/M3, 25 Oct 2026): "the policy violated is late opening, not
+ * attendance", "not attendance, late opening", "no no late opening policy
+ * only", "reference the late opening policy INSTEAD of the attendance
+ * policy". The negated or set-aside policy is not cited, no third policy is
+ * added, and a pasted manual paragraph does not add a generic heading such as
+ * Guidelines p.22. Off, the policy is read exactly as before.
+ */
+export function policySetAsideEnabled(): boolean {
+  return envFlag("POLICY_SET_ASIDE_ENABLED");
+}

@@ -1,4 +1,6 @@
-import { readCaPolicy, statedOffenseKeys } from "./ca-policy";
+import { policySetAsideEnabled } from "@/lib/config/chat-quality-flags";
+
+import { policiesSetAside, readCaPolicy, statedOffenseKeys, withoutSetAsideSections } from "./ca-policy";
 import { correctPolicyTypos } from "./policy-typos";
 import {
   boxSectionNames,
@@ -74,6 +76,10 @@ export function readPolicyChange(question: string, options: { readonly policyAsk
   const text = (question ?? "").trim();
   if (text === "" || ASKS_ABOUT.test(text)) return null;
   if (!NAMES_A_POLICY.test(text)) {
+    // POLICY_SET_ASIDE_ENABLED: "not attendance, late opening" names one policy and sets another aside.
+    if (policySetAsideEnabled() && readCaPolicy(text).stated !== null && policiesSetAside(text).setAside.length > 0) {
+      return "replace";
+    }
     return POLICY_ANSWER.test(text) && (options.policyAsked || ANSWER_CUE.test(text)) ? "replace" : null;
   }
   if (REMOVE.test(text)) return "remove";
@@ -112,11 +118,26 @@ const SHORTEST_HEADING = 4;
  * The manual's headings this text names, longest first, with a heading that
  * is only part of a longer one dropped ("Opening" inside "Late Opening").
  */
+/*
+ * POLICY_SET_ASIDE_ENABLED: a one-word heading that is also an everyday word
+ * is never named by a turn. A pasted Late Opening paragraph says "guidelines",
+ * and the card gained Guidelines p.22, a social-media postings section the
+ * manager never named (QA F1/M3, 25 Oct 2026).
+ */
+const JOB_WORD = /^(?:consultants?|associates?|specialists?|managers?|directors?|leads?|supervisors?|team members?)\b/;
+const EVERYDAY_HEADINGS = new Set(["guidelines", "procedures", "overview", "requirements", "expectations"]);
+
 export function headingsNamedIn(text: string, headings: readonly string[]): string[] {
   const said = ` ${headingKey(text)} `;
   const matched = headings.filter((heading) => {
     const key = headingKey(heading);
     if (key.length < SHORTEST_HEADING || NOT_A_SECTION.has(key)) return false;
+    if (policySetAsideEnabled() && EVERYDAY_HEADINGS.has(key)) return false;
+    // POLICY_SET_ASIDE_ENABLED: "tanning consultant" is a job title, not the Tanning section.
+    if (policySetAsideEnabled() && !key.includes(" ")) {
+      const alone = said.split(` ${key} `).slice(1).some((after) => !JOB_WORD.test(after));
+      if (!alone) return false;
+    }
     return said.includes(` ${key} `);
   });
   const keys = matched.map(headingKey);
@@ -190,6 +211,15 @@ export function sectionsNamedIn(input: {
 }): ManualSection[] {
   // POLICY_NAME_TYPOS_ENABLED: "add the attendence policy" names Attendance.
   input = { ...input, text: correctPolicyTypos(input.text) };
+  // POLICY_SET_ASIDE_ENABLED: "late opening, not attendance" names Late Opening alone.
+  return withoutSetAsideSections(sectionsNamedInTurn(input), input.text);
+}
+
+function sectionsNamedInTurn(input: {
+  readonly text: string;
+  readonly chunks: readonly ManualChunk[];
+  readonly jobTitle?: string | null;
+}): ManualSection[] {
   const found: ManualSection[] = [];
   const keep = (section: ManualSection | null) => {
     if (section && !found.some((seen) => headingKey(seen.heading) === headingKey(section.heading))) found.push(section);

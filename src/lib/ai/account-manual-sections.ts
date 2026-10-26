@@ -5,6 +5,7 @@ import {
   groundConductPolicy,
   readCaPolicy,
   statedOffenseKeys,
+  withoutSetAsideSections,
 } from "@/lib/forms/ca-policy";
 import { describedManualSection, namedManualSection } from "@/lib/forms/named-policy-section";
 import {
@@ -77,7 +78,8 @@ export function accountManualSections(
     }
   }
 
-  return found;
+  // POLICY_SET_ASIDE_ENABLED: "late opening, not attendance" cites no Attendance.
+  return withoutSetAsideSections(found, text);
 }
 
 /** A heading printed on a chunk whose sheet has no usable page. Page 0 means "omit the page". */

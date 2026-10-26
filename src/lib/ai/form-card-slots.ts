@@ -33,7 +33,7 @@ import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, KnowledgeCategory, SourceCitation } from "@/types";
 
-import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys } from "@/lib/forms/ca-policy";
+import { describedAttendanceKeys, readCaPolicy, statedOffenseKeys, withoutSetAsideSections } from "@/lib/forms/ca-policy";
 import {
   citeAttendanceForTardiness,
   formatPolicyCitation,
@@ -165,7 +165,10 @@ export function formTurnCitations(input: {
   readonly documentCategory?: string | null;
   readonly modelHeading?: string | null;
 }): SourceCitation[] {
-  const sections = violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null));
+  const sections = withoutSetAsideSections(
+    violatedSections(sectionsFor(input.notes, input.chunks, input.modelHeading ?? null)),
+    input.notes,
+  );
   const category = categoryOf(input.documentCategory);
   const citations: SourceCitation[] = [];
   for (const section of sections) {
@@ -232,6 +235,8 @@ export function attachFormTurnSources(given: {
   // LATE_OPEN_DATE_ENABLED: a late opening cites Late Opening, never Attendance,
   // whichever reader found the sections.
   sections = withoutAttendanceForLateOpening(sections, input.notes);
+  // POLICY_SET_ASIDE_ENABLED: a policy the manager set aside is not cited, whichever reader found it.
+  sections = withoutSetAsideSections(sections, input.notes);
   const mustCitePage = input.pageRequired === true || input.attendanceCitation === true;
   for (const section of sections) {
     const line =
