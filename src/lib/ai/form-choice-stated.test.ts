@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+import { formChoiceStatedEnabled, policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { HR_TEMPLATE_SEEDS } from "@/lib/forms/library";
 import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
@@ -468,7 +468,14 @@ describe("FORM_CHOICE_STATED_ENABLED: the form the manager named wins", () => {
 
     it("conv_mvmyqvkq2zwzrln cited page 14, Disciplinary Action", async () => {
       const out = await live({ history: [], question: WOVEN_DEADLINE, saved: null, raw: WOVEN_RAW });
-      expect(out.sources?.citations.map((citation) => citation.locator)).toEqual(["Page 14"]);
+      /*
+       * POLICY_SPECIFIC_TOPICS_ENABLED adds the Standards of Conduct (Page 12)
+       * to the card for a missed Woven deadline, on purpose (QA, 26 Oct 2026:
+       * the card carries the policy a Corrective Action does). Off, Page 14 only.
+       */
+      expect(out.sources?.citations.map((citation) => citation.locator)).toEqual(
+        policySpecificTopicsEnabled() ? ["Page 12", "Page 14"] : ["Page 14"],
+      );
     });
   });
 

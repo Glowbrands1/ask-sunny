@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
+
 import { JBA_MANUAL_CHUNKS } from "@/lib/ai/__fixtures__/jba-policy-manual";
 
 import type { ManualChunk } from "./official-policy-manual";
@@ -162,6 +164,25 @@ describe("describedManualSection — a policy the account describes", () => {
     "payroll deduct applies",
     "a $25 payroll deduction applies",
   ])("%s → nothing", (text) => {
+    /*
+     * POLICY_SPECIFIC_TOPICS_ENABLED changes two of these on purpose (QA
+     * rulings, 26 Oct 2026): a social media POST is the Social Media Policy,
+     * and a guest treated rudely is the Standards of Conduct, page 12. Off,
+     * every line here still reads nothing; the flag's own cases are in
+     * policy-specific-topics-oct26.test.ts.
+     */
+    const intended: Record<string, string> = {
+      "she was posting on social media": "Social Media Policy",
+    };
+    const heading = described(text)?.section.heading;
+    if (policySpecificTopicsEnabled() && /rude to a (?:guest|client)$/.test(text)) {
+      expect(heading).toBe("Standards of Conduct");
+      return;
+    }
+    if (policySpecificTopicsEnabled() && intended[text]) {
+      expect(heading).toBe(intended[text]);
+      return;
+    }
     expect(described(text)).toBeNull();
   });
 

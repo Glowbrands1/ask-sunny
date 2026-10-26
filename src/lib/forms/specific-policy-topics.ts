@@ -348,6 +348,55 @@ export function withConductLinePage(
   );
 }
 
+/**
+ * The manual's own wording for the infraction a conduct incident is cited
+ * under: the listed bullet, verbatim ("Insubordination -the refusal to follow
+ * the directions of the manager."), from the chunk that carries it. A page-13
+ * excerpt cut from the top of the chunk would often stop before the bullet it
+ * is cited for. Null where the manual has no such bullet.
+ */
+function conductLineWording(chunks: readonly ManualChunk[], anchor: RegExp): string | null {
+  const range = conductRange(chunks);
+  if (!range) return null;
+  const chunk = chunks
+    .filter((entry) => entry.chunkIndex >= range.from && entry.chunkIndex < range.to && anchor.test(entry.content))
+    .sort((a, b) => a.chunkIndex - b.chunkIndex)[0];
+  if (!chunk) return null;
+  const found = anchor.exec(chunk.content);
+  if (!found) return null;
+  const marker = /(?:^|\n|\.\s)o\s+/g;
+  let start = 0;
+  for (let m = marker.exec(chunk.content); m && m.index <= found.index; m = marker.exec(chunk.content)) start = m.index + m[0].length;
+  const rest = chunk.content.slice(found.index);
+  const next = /(?:\n|\.\s)o\s+/.exec(rest.slice(1));
+  const end = found.index + (next ? next.index + 1 + (next[0].startsWith(".") ? 1 : 0) : rest.length);
+  const line = chunk.content.slice(start, end).replace(/\s+/g, " ").trim();
+  return line === "" ? null : line;
+}
+
+/**
+ * The policies a draft quotes, with the Standards of Conduct page-13 entry
+ * quoted as the listed infraction instead of the top of the chunk. Everything
+ * else, and flag off, passes through.
+ */
+export function withConductLineWording<T extends { readonly sectionTitle: string | null; readonly pageLabel: string | null; readonly policyText: string }>(
+  policies: readonly T[],
+  notes: string | null | undefined,
+  chunks: readonly ManualChunk[],
+): T[] {
+  if (!policySpecificTopicsEnabled()) return [...policies];
+  const topic = specificTopic(notes ?? "");
+  if (!topic || topic.cite.kind !== "conduct_line") return [...policies];
+  const refined = conductLineSection(chunks, topic.cite.anchor);
+  const wording = conductLineWording(chunks, topic.cite.anchor);
+  if (!refined || !wording) return [...policies];
+  return policies.map((policy) =>
+    (policy.sectionTitle ?? "").trim().toLowerCase() === CONDUCT_HEADING.toLowerCase() && policy.pageLabel === String(refined.page)
+      ? { ...policy, policyText: wording }
+      : policy,
+  );
+}
+
 /* ------------------------------------------------- the coaching "other" -- */
 
 /** Words that say lateness or attendance, the only account "Punctuality" fits. */

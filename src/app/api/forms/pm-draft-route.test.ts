@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
@@ -1684,7 +1685,19 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   it("rests a direction not followed on the manual's insubordination line", async () => {
     const payload = await post("Delphine was told to restock the lotion wall before close and refused.");
     expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
-    expect(state.persisted[0]!.values.policy_language).toBe(CITED);
+    /*
+     * POLICY_SPECIFIC_TOPICS_ENABLED changes this one on purpose (QA ruling,
+     * 26 Oct 2026): the policy quotes the manual's insubordination bullet, not
+     * the top of the section, and cites the printed page that bullet is on. In
+     * this fixture manual the bullet is on p. 12 (in the production manual it
+     * is p. 13: policy-specific-topics-oct26.test.ts). Off, the section's
+     * opening as before.
+     */
+    expect(state.persisted[0]!.values.policy_language).toBe(
+      policySpecificTopicsEnabled()
+        ? "Insubordination -the refusal to follow the directions of the manager.\n\nSource: JBA Policy Manual — Standards of Conduct, p. 12"
+        : CITED,
+    );
     expect(payload.caPolicy).toMatchObject({
       applied: true,
       anchor: "o Insubordination -the refusal to follow the directions of the manager.",

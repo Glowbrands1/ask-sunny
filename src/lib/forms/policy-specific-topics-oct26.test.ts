@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import rows from "@/test/fixtures/jba-manual-production-151.json";
 import { accountManualSections } from "@/lib/ai/account-manual-sections";
@@ -9,8 +9,9 @@ import { manualChunkFromRow, type ChunkRow } from "@/lib/ai/full-manual-load";
 
 import { describedManualSection } from "./named-policy-section";
 import type { ManualChunk } from "./official-policy-manual";
+import { manualGroundedPolicies, policyFieldValue } from "./policy-citation";
 import { manualSectionsFor, officialManualReference } from "./official-policy-manual";
-import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withoutPrimedTopic } from "./specific-policy-topics";
+import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "./specific-policy-topics";
 
 /**
  * ============================================================================
@@ -18,7 +19,7 @@ import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, without
  * ============================================================================
  *
  * A live test, 26 Oct 2026, one manager sentence per incident ("create a ca
- * for <name> at dodge, ne. <incident>", names invented). Nearly all came back
+ * for <name> at <store>. <incident>", names invented). Nearly all came back
  * Standards of Conduct, page 12. Pau's map of what each should cite is the
  * expectation here, read against the production JBA manual rows (printed
  * pages; the PDF sheet is printed + 1) so a moved heading is followed.
@@ -29,6 +30,8 @@ import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, without
 
 const CHUNKS: readonly ManualChunk[] = (rows.chunks as ChunkRow[]).map(manualChunkFromRow);
 
+/* The flag is off unless a case turns it on, even when the whole suite runs with it on. */
+beforeEach(() => vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", ""));
 afterEach(() => vi.unstubAllEnvs());
 const on = () => vi.stubEnv("POLICY_SPECIFIC_TOPICS_ENABLED", "true");
 const cited = (text: string) => accountManualSections(text, CHUNKS).map((section) => `${section.heading} p.${section.page}`);
@@ -41,7 +44,7 @@ const viaBox = (text: string, key: string) =>
   withConductLinePage(manualSectionsFor({ chunks: CHUNKS, offenseKeys: [key], notes: text }), text, CHUNKS).map(
     (section) => `${section.heading} p.${section.page}`,
   );
-const ask = (incident: string) => `create a ca for Marisol Quade at dodge, ne. ${incident}`;
+const ask = (incident: string) => `create a ca for Marisol Quade at Lawrence. ${incident}`;
 
 /* HOW MANAGERS TYPE: as written, all lowercase, sentence case, ALL CAPS. */
 const lower = (text: string) => text.toLowerCase();
@@ -235,7 +238,7 @@ describe("flag on: not an account of the incident", () => {
 });
 
 describe("the coaching form's other topic is not primed with Punctuality (POLICY_SPECIFIC_TOPICS_ENABLED)", () => {
-  const cellPhone = "coaching for Marisol Quade at dodge, ne. she was on her cell phone for over 30 minutes";
+  const cellPhone = "coaching for Marisol Quade at Lawrence. she was on her cell phone for over 30 minutes";
 
   it("off: the route still shows Punctuality in its prompt and the value stands (the bug)", () => {
     expect(readFileSync("src/app/api/forms/instances/[id]/draft/route.ts", "utf8")).toContain('for lateness that write-in is "Punctuality"');
@@ -281,5 +284,37 @@ describe("flag on: a conduct incident the reading points at cites the Standards 
     expect(before).not.toContain(cite);
     on();
     expect(cited(ask(incident))).toEqual([cite]);
+  });
+});
+
+describe("flag on: the policy quotes the infraction the page is cited for", () => {
+  const quoted = (incident: string) => {
+    const notes = ask(incident);
+    const policies = withConductLineWording(
+      manualGroundedPolicies(
+        { documentId: "manual", documentTitle: "JBA Policy Manual", chunks: CHUNKS },
+        accountManualSections(notes, CHUNKS),
+      ),
+      notes,
+      CHUNKS,
+    );
+    return policyFieldValue(policies);
+  };
+
+  it.each([
+    ["refused to follow direction", "Insubordination -the refusal to follow the directions of the manager.", "p. 13"],
+    ["drawer short", "Register / Bank shortages", "p. 13"],
+    ["took product without paying", "Theft, inappropriate removal", "p. 13"],
+    ["talking bad about coworkers", "Behavior that demonstrates disrespect for a manager or other Employees", "p. 13"],
+  ])("%s", (incident, line, page) => {
+    on();
+    const value = quoted(incident)!;
+    expect(value).toContain(line);
+    expect(value).toContain(`Source: JBA Policy Manual — Standards of Conduct, ${page}`);
+    expect(value).not.toContain("Lack of sales performance");
+  });
+
+  it("off, the chunk's own opening is quoted as before", () => {
+    expect(withConductLineWording([{ sectionTitle: "Standards of Conduct", pageLabel: "13", policyText: "x" }], ask("drawer short"), CHUNKS)[0]!.policyText).toBe("x");
   });
 });
