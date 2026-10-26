@@ -68,15 +68,17 @@ describe("STORE_ALIAS_ENABLED on", () => {
   });
 
   it("reads a one-word salon reply as the salon only after the app asked which salon", () => {
-    expect(rosterNames("kearney", true)).toBe("NE Kearney");
-    expect(rosterNames("Kearney", true)).toBe("NE Kearney");
+    // Changed on purpose (QA, 26 Oct 2026): a whole-turn reply is written as the
+    // salon answer, so the incident readers never take it for What happened.
+    expect(rosterNames("kearney", true)).toBe("the salon is NE Kearney");
+    expect(rosterNames("Kearney", true)).toBe("the salon is NE Kearney");
     expect(rosterNames("kearney")).toBe("kearney");
     process.env[FLAG] = "on";
     const out = withStoreAliases({
       question: "kearney",
       history: [{ role: "assistant", content: "I have **Avery Stone**. Which salon is this for?" }],
     } as unknown as AskRequest);
-    expect(out.question).toBe("NE Kearney");
+    expect(out.question).toBe("the salon is NE Kearney");
   });
 
   it("leaves people, other words and roster names as typed", () => {
