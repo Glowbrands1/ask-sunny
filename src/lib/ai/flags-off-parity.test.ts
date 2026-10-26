@@ -94,6 +94,7 @@ import {
 
 import { augmentIntakeQuestion } from "./intake-augment";
 import { flaggedCitationWrite } from "./policy-citation-fields";
+import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/private-creators";
 
 /**
  * Flags off must match the path main already ships.
@@ -199,6 +200,7 @@ const NEW_FLAGS = [
   "DATE_ANSWER_APPLIED_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
+  "PRIVATE_CREATOR_FORMS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -308,6 +310,8 @@ describe("new flags default off and wrappers are inert", () => {
     const previous = Object.fromEntries(NEW_FLAGS.map((name) => [name, process.env[name]]));
     for (const name of NEW_FLAGS) delete process.env[name];
     expect(slotRetentionEnabled()).toBe(false);
+    expect(privateCreatorFormsEnabled()).toBe(false);
+    expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);
     expect(draftDedupeEnabled()).toBe(false);
     expect(secondFormEnabled()).toBe(false);
@@ -441,6 +445,11 @@ describe("new flags default off and wrappers are inert", () => {
       // NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED, hiding them from a reader
       // without Form Monitoring. Each gate reads the flag first; off, it
       // renders as before for every role.
+      // And the follow-up reads in layout.tsx, forms/monitoring/page.tsx and
+      // (app)/page.tsx: QA approved on 26 Oct 2026, behind
+      // PRIVATE_CREATOR_FORMS_ENABLED, over-reading and trimming to the page
+      // so private rows dropped after the query cannot leave it short. Off,
+      // each read asks for its page exactly as before.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -454,6 +463,8 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/global-search.tsx",
           ":(exclude)src/components/shell/hides-form-monitoring.ts",
           ":(exclude)src/app/(app)/page.tsx",
+          ":(exclude)src/app/(app)/layout.tsx",
+          ":(exclude)src/app/(app)/forms/monitoring/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
         ]),
       ).toBe("");

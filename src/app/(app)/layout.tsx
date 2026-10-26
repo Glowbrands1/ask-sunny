@@ -7,6 +7,7 @@ import { pageShowsAppSwitcher } from "@/lib/auth/app-switcher";
 import { pageCan, pageIdentity } from "@/lib/auth/page";
 import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
+import { privateAwareLimit } from "@/lib/forms/private-creators";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 
 /**
@@ -36,9 +37,10 @@ async function overdueCount(): Promise<number> {
     const access = await pageFormsAccess(await pageIdentity());
     if (access.noSalon) return 0;
     const outstanding = withoutUnreadable(
-      await listOutstandingFollowUps(50, access.locationIds, access.ownCreatedBy),
+      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 50; off, 50 itself.
+      await listOutstandingFollowUps(privateAwareLimit(50), access.locationIds, access.ownCreatedBy),
       (permission) => permission === "create_exit_form" && readsExit,
-    ).filter((instance) => actorMaySeeInstance(access.actor, instance));
+    ).filter((instance) => actorMaySeeInstance(access.actor, instance)).slice(0, 50);
     return attentionSummary(outstanding, today).overdue;
   } catch {
     return 0;

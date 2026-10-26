@@ -11,6 +11,7 @@ import {
   type LoadedInstance,
 } from "./instances";
 import { authorizeLocation, authorizedSalonIds } from "./location-scope";
+import { hiddenAsPrivate } from "./private-creators";
 import { getTemplateByKey } from "./repository";
 import type { Permission } from "@/types";
 
@@ -82,6 +83,8 @@ export type InstanceAction =
  * eventually does.
  */
 export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): boolean {
+  // PRIVATE_CREATOR_FORMS: before every other rule, global and preview included. See `private-creators.ts`.
+  if (hiddenAsPrivate(actor, instance)) return false;
   // Demo: unverified identity, no scope, no enforcement. See `location-scope`.
   const visibility = actor.visibility;
   if (!visibility) return true;
