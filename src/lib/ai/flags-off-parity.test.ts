@@ -83,6 +83,7 @@ import {
   policySetAsideEnabled,
   policyCarryRetrievalEnabled,
   draftReuseOwnDraftsOnlyEnabled,
+  remapRoleCheckEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -184,6 +185,7 @@ const NEW_FLAGS = [
   "POLICY_SET_ASIDE_ENABLED",
   "POLICY_CARRY_RETRIEVAL_ENABLED",
   "DRAFT_REUSE_OWN_DRAFTS_ONLY_ENABLED",
+  "REMAP_ROLE_CHECK_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -344,6 +346,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(policySetAsideEnabled()).toBe(false);
     expect(policyCarryRetrievalEnabled()).toBe(false);
     expect(draftReuseOwnDraftsOnlyEnabled()).toBe(false);
+    expect(remapRoleCheckEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
