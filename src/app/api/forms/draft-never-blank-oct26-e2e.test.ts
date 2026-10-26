@@ -62,10 +62,10 @@ const state = vi.hoisted(() => ({
   role: "salon_director",
   scope: null as unknown,
   /** What the drafting model returns, one entry per call; the last repeats. */
-  drafts: [] as unknown[],
+  drafts: [] as ModelReply[],
   calls: 0,
   /** Per employee (as the prompt names them): that employee's replies, in order; the last repeats. */
-  scripts: {} as Record<string, unknown[]>,
+  scripts: {} as Record<string, ModelReply[]>,
   scriptCalls: {} as Record<string, number>,
   /** The drafted event that says why cannot be written. */
   failOutcomeInsert: false,
@@ -677,7 +677,9 @@ describe("never-break: a draft that fills is identical with the flag on and off"
     state.drafts = [{ values: { observation: MODEL_OBSERVATION[c.incident](c.person.first) }, checked: { offense_type: TICK[c.incident] } }];
     const { form, events, draft } = await createFromTurn(c.turn, c.person.cap);
     const strip = (rows: Record<string, unknown>[]) =>
-      rows.map(({ id: _id, instance_id: _instance, created_at: _at, updated_at: _updated, ...rest }) => rest);
+      rows.map((row) =>
+        Object.fromEntries(Object.entries(row).filter(([key]) => !["id", "instance_id", "created_at", "updated_at"].includes(key))),
+      );
     return JSON.stringify({
       draft,
       values: form.values.map(({ fieldKey, value, checked, provenance }) => ({ fieldKey, value, checked, provenance })),
@@ -803,7 +805,7 @@ describe("six Create presses at once (the production burst)", () => {
     `create a ca for ${person.first.toLowerCase()} ${person.last.toLowerCase()} at dodge, ne. she was a no call no show on 10/22`;
   const good = (first: string) => ({ values: { observation: MODEL_OBSERVATION.ncns(first) }, checked: { offense_type: TICK.ncns } });
   /* What the model gives each of the six: some blank, some not; a blank that repeats stays blank. */
-  const SCRIPT = (person: { first: string }, index: number): unknown[] =>
+  const SCRIPT = (person: { first: string }, index: number) =>
     [
       [{ values: {} }, good(person.first)],
       [{ noTool: true }, good(person.first)],
@@ -811,7 +813,7 @@ describe("six Create presses at once (the production burst)", () => {
       [{ values: {} }],
       [{ noTool: true }],
       [good(person.first)],
-    ][index]!;
+    ][index]! as ModelReply[];
   const BLANK_FIRST = new Set([0, 1, 3, 4]);
 
   async function burst() {
@@ -905,5 +907,60 @@ describe("six Create presses at once (the production burst)", () => {
       expect(result.outcome).toBeNull();
     });
     expect(Object.values(state.scriptCalls).every((count) => count === 1)).toBe(true);
+  });
+});
+
+/*
+ * QA-2, 26 Oct 2026: an account told only as what did not happen — "She never
+ * opened the salon on time." — was read as no account at all, so the draft
+ * got no retry and no fallback and could still end blank. "did not", "didn't"
+ * and "no call" are pinned beside it.
+ */
+describe("an account told as what did not happen", () => {
+  const NEGATED: { label: string; turn: string; observed: string }[] = [
+    {
+      label: "lowercase, never (salon)",
+      turn: "create a ca for odalys merriweather at dodge, ne. she never opened the salon on time",
+      observed: "Observed:\nOdalys never opened the salon on time.",
+    },
+    {
+      label: "Sentence case, never (salon)",
+      turn: "Create a CA for Odalys Merriweather at Dodge, NE. She never opened the salon on time.",
+      observed: "Observed:\nOdalys never opened the salon on time.",
+    },
+    {
+      label: "lowercase, did not (no state: \"<store>, NE. ... did not\" is refused at Create, a separate bug)",
+      turn: "create a ca for odalys merriweather at dodge. she did not clock in on 10/22",
+      observed: "Observed:\nOdalys did not clock in on 10/22.",
+    },
+    {
+      label: "Sentence case, didn't",
+      turn: "Create a CA for Odalys Merriweather at Dodge, NE. She didn't clock in on 10/22.",
+      observed: "Observed:\nOdalys didn't clock in on 10/22.",
+    },
+    {
+      label: "lowercase, no call",
+      turn: "create a ca for odalys merriweather at dodge, ne. she was a no call on 10/22",
+      observed: "Observed:\nOdalys was a no call on 10/22.",
+    },
+  ];
+
+  describe.each(NEGATED)("$label", ({ turn, observed }) => {
+    it("flag on: never blank — retried, then the manager's words", async () => {
+      process.env[FLAG] = "true";
+      state.drafts = [{ values: {} }];
+      const { value, outcome } = await createFromTurn(turn, SHE.cap);
+      expect(state.calls).toBe(3);
+      expect(value("observation")).toBe(observed);
+      expect(outcome).toMatchObject({ fallback: "manager_words", field: "observation", attempts: 3 });
+    });
+
+    it("flag off: filed blank, as on main", async () => {
+      state.drafts = [{ values: {} }];
+      const { value, events } = await createFromTurn(turn, SHE.cap);
+      expect(state.calls).toBe(1);
+      expect(value("observation")).toBe("");
+      expect(events.map((event) => event.detail)).toContainEqual({ fields: [], rejected: [] });
+    });
   });
 });

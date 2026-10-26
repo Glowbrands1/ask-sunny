@@ -246,6 +246,52 @@ export function readDraftedCall(
   return result;
 }
 
+/*
+ * AN ACCOUNT TOLD AS WHAT DID NOT HAPPEN. "She never opened the salon on
+ * time", "he did not come in", "she didn't clock in", "no call on 10/22" —
+ * QA-2, 26 Oct 2026: the incident readers above take none of these for an
+ * account, so a draft whose only account is one of them got no retry and no
+ * fallback. The latest such sentences, outside the request itself, read as
+ * the manager wrote them.
+ */
+const NEGATED_ACCOUNT = /\b(?:never|did\s+not|didn['’]?t|no[- ]call)\s+[a-z]/i;
+const ASKS_FOR_THE_FORM =
+  /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding|re:?)\s/i;
+const NOT_THE_INCIDENT =
+  /\b(?:payroll\s+deduct|previous\s+coaching|prior\s+(?:coaching|actions?)|jba\s+(?:policy\s+)?manual)\b/i;
+
+export function negatedAccountClause(text: string): string | null {
+  const turns = (text ?? "").split(/\n\s*\n/).map((turn) => turn.trim()).filter(Boolean);
+  for (const turn of [...turns].reverse()) {
+    const sentences = [...turn.matchAll(/[^.!?\n]+[.!?]*/g)]
+      .map((match) => match[0].trim())
+      .filter((sentence) => sentence.length >= 3 && sentence.length <= 180);
+    const hits = sentences
+      .map((sentence, index) => ({ sentence, index }))
+      .filter(
+        ({ sentence }) =>
+          NEGATED_ACCOUNT.test(sentence) && !ASKS_FOR_THE_FORM.test(sentence) && !NOT_THE_INCIDENT.test(sentence),
+      );
+    if (hits.length === 0) continue;
+    let start = hits.length - 1;
+    while (start > 0 && hits[start]!.index === hits[start - 1]!.index + 1) start -= 1;
+    let joined = "";
+    for (const hit of hits.slice(start)) {
+      const next = joined ? `${joined} ${hit.sentence}` : hit.sentence;
+      if (next.length > 180) break;
+      joined = next;
+    }
+    const clause = joined.trim().replace(/[\s"'”’)]+$/, "").replace(/\.+$/, "");
+    if (clause.length >= 3) return clause;
+  }
+  return null;
+}
+
+/** The incident clause, or — when the readers find none — an account told as what did not happen. */
+function incidentClause(notes: string, employeeName: string | null): string | null {
+  return managerIncidentClause(notes, employeeName) ?? negatedAccountClause(notes);
+}
+
 /** True when any of `keys` holds text. */
 export function holdsNarrative(values: Record<string, string>, keys: readonly string[]): boolean {
   return keys.some((key) => typeof values[key] === "string" && values[key]!.trim() !== "");
@@ -253,7 +299,7 @@ export function holdsNarrative(values: Record<string, string>, keys: readonly st
 
 /** True when the notes give an account of what happened, so a blank narrative is a failure. */
 export function notesHoldAccount(notes: string, employeeName: string | null): boolean {
-  return managerIncidentClause(notes, employeeName) !== null || describesIncident(notes);
+  return incidentClause(notes, employeeName) !== null || describesIncident(notes);
 }
 
 /**
@@ -262,7 +308,7 @@ export function notesHoldAccount(notes: string, employeeName: string | null): bo
  * the notes hold no clause.
  */
 export function managerWordsObservation(notes: string, employeeName: string | null): string | null {
-  const clause = managerIncidentClause(notes, employeeName)?.trim();
+  const clause = incidentClause(notes, employeeName)?.trim();
   if (!clause) return null;
   const sentence = `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
   return `${OBSERVED_LABEL}\n${/[.!?]$/.test(sentence) ? sentence : `${sentence}.`}`;
