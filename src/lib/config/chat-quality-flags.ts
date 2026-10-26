@@ -939,3 +939,15 @@ export function draftNeverBlankEnabled(): boolean {
 export function nameBeforeTitleEnabled(): boolean {
   return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }
+
+/**
+ * With LATE_OPEN_DATE_ENABLED on, payroll deduct is read from this form only
+ * (QA, 26 Oct 2026; same flag in both apps): what the manager's own turns
+ * state, and a bare Yes/No only as the reply to the payroll question just
+ * asked on a Corrective Action Form. A bare "Yes" after an exit form, a
+ * resignation or a Coaching Form is never stored as payroll deduct. See
+ * `latePayrollFromForm` in `ai/intent-slots.ts`. Off, exactly as before.
+ */
+export function latePayrollFromFormEnabled(): boolean {
+  return envFlag("LATE_OPEN_PAYROLL_FROM_FORM_ENABLED");
+}
