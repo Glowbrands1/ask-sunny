@@ -99,3 +99,21 @@ describe("NEXT_PERSON_FORM_ENABLED on", () => {
     expect(withNextPersonForm(request)).toBe(request);
   });
 });
+
+/** QA-7 probes, 26 Oct 2026: a time, a meal or a topic after "one for" is not a person. */
+describe("NEXT_PERSON_FORM_ENABLED on: 'now one for friday' is not a new form", () => {
+  it.each(["now one for friday", "now one for tomorrow", "now one for lunch", "another one for being late", "Now one for Friday", "Another one for being late"])(
+    "leaves '%s' as typed",
+    (turn) => {
+      process.env[FLAG] = "on";
+      expect(nextPersonRequest(turn, "Corrective Action Form")).toBe(turn);
+    },
+  );
+
+  it("only the first 'one for' is read", () => {
+    process.env[FLAG] = "on";
+    expect(nextPersonRequest("now one for devon harlan and one for tom lee", "Corrective Action Form")).toBe(
+      "create a Corrective Action Form for devon harlan and one for tom lee",
+    );
+  });
+});

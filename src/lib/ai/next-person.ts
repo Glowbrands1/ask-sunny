@@ -15,7 +15,9 @@ import type { AskRequest } from "./types";
  * (do / make) (another / the next / next) one (is) for <name>" is read as
  * "create a <that card's form> for <name> …", which every reader already
  * reads as a new request. The rest of the turn stays as typed. "for her",
- * "for the team" and a turn with no card before it are left alone. Off, every
+ * "for the team", a time or a topic ("friday", "lunch", "being late"), and a
+ * turn with no card before it are left alone; only the first "one for" is
+ * read ("… and one for <B>" stays as typed). Off, every
  * turn is read as typed.
  *
  * The same file in the sibling app.
@@ -23,7 +25,10 @@ import type { AskRequest } from "./types";
 
 const NEXT_ONE =
   /^\s*(?:(?:and|ok|okay|now|then|also)[,\s]+)*(?:(?:do|make|create|need|start)\s+)?(?:(?:another|the\s+next|next|a\s+second)\s+)?one\s+(?:is\s+)?for\s+(?=[A-Za-z])/i;
-const NOT_A_PERSON = /^(?:her|him|them|me|you|us|the|my|our|this|that|it|everyone|all|team|staff)\b/i;
+const NOT_A_PERSON =
+  /^(?:her|him|them|me|you|us|the|a|an|my|our|your|this|that|it|everyone|everybody|anyone|all|team|staff|being|today|tonight|tomorrow|yesterday|now|later|lunch|break|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next|last|attendance|lateness|cash|dress|phone|policy|\d)\b/i;
+/** QA-7, 26 Oct 2026: the words after "for" must read as a first and a last name. */
+const PERSON = /^[A-Za-z][A-Za-z'’-]+\s+[A-Za-z][A-Za-z'’-]+/;
 
 export function withNextPersonForm(request: AskRequest): AskRequest {
   if (!nextPersonFormEnabled()) return request;
@@ -51,7 +56,7 @@ export function nextPersonRequest(text: string, openForm: string | null): string
   const lead = NEXT_ONE.exec(text);
   if (!lead) return text;
   const rest = text.slice(lead[0].length);
-  if (NOT_A_PERSON.test(rest)) return text;
+  if (NOT_A_PERSON.test(rest) || !PERSON.test(rest)) return text;
   const article = /^[aeiou]/i.test(openForm) ? "an" : "a";
   return `create ${article} ${openForm} for ${rest}`;
 }
