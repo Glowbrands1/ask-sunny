@@ -541,7 +541,13 @@ describe("lock: the passing behaviours stay (flag on)", () => {
     const [first] = await chat([`${SAID}. action plan: ${PLAN}`], "conv-lock-plan");
     const plans = first!.content.split("\n").filter((line) => /\*\*Action plan:?\*\*/i.test(line));
     expect(plans).toEqual([`**Action Plan:** ${PLAN}`]);
-    expect(first!.formProposal?.formDate).toBe("2026-10-15");
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (changed on purpose; QA ruled D3 wins over
+     * "dated 10/15", live card test 26 Oct 2026): "the 10-15-26 woven deadline"
+     * is a deadline, so the model copying it as the incident's date no longer
+     * dates the card; the form is dated the day it is created.
+     */
+    expect(first!.formProposal?.formDate ?? null).toBe(formDateIncidentOnlyEnabled() ? null : "2026-10-15");
     expect(priorLines(first!.content)).toEqual(PRIOR_LINES);
     expect(first!.content).not.toMatch(ASKS_WHICH_DATE);
   });

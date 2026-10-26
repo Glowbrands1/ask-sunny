@@ -1,7 +1,8 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { payrollAmountFieldEnabled, priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
-import { blankYearlessStepDates, extractFormDate } from "@/lib/forms/form-date-answer";
-import { lateOpenOn, yearlessCuedDates } from "@/lib/forms/late-open";
+import { blankYearlessStepDates, extractFormDate, heldCoachingDates, listIncidentDates } from "@/lib/forms/form-date-answer";
+import { incidentOnly, incidentOnlyOn } from "@/lib/forms/form-date-incident-only";
+import { lateOpenOn, withYearlessDatesWritten, yearlessCuedDates } from "@/lib/forms/late-open";
 import {
   payrollAmountFromConversation,
   payrollAnswerForAmount,
@@ -164,13 +165,45 @@ function rankSalons(phrase: string): { name: string; score: number } | null {
  * deduction the amount reader did not take. Rewritten into shapes
  * `extractFormDate` and `payrollDeductAmount` already accept.
  */
+/** The manager asked for a Coaching Form: "coaching form for …", "create a coaching for …". */
+const NAMES_COACHING_FORM = /\bcoaching\s+form\b|\b(?:create|make|write|start|need|do)\s+(?:a\s+|an\s+|the\s+)?coaching\b/i;
+
+/**
+ * The date the "It happened on" line names, written without a year, or null.
+ * On a Coaching Form the one coaching the manager held ("I coached her on
+ * 10-16") dates it, as `decideFormDate` does; otherwise the one incident date
+ * left once earlier steps and deadlines are set aside.
+ */
+function soleYearlessIncident(text: string, today: string): string | null {
+  const written = withYearlessDatesWritten(text, today);
+  if (written === text) return null;
+  const held = NAMES_COACHING_FORM.test(text) ? heldCoachingDates(written, today) : [];
+  const isos =
+    held.length === 1
+      ? held
+      : [...new Set(incidentOnly(written, today, listIncidentDates(written, today)).map((found) => found.iso))];
+  if (isos.length !== 1) return null;
+  const [year, month, day] = isos[0]!.split("-");
+  return `${Number(month)}/${Number(day)}/${year}`;
+}
+
 export function fieldLines(question: string, today: string, earlier = ""): string[] {
   const lines: string[] = [];
   const corpus = earlier.trim() ? `${earlier}\n${question}` : question;
   if (!extractFormDate(question, today)) {
     const known = extractFormDate(corpus, today);
     // "she was coached on 9-15": an earlier step's yearless date is not the incident (PRIOR_ACTIONS_PARSE_ENABLED).
-    const slash = lastUnyearDated(priorActionsParseEnabled() ? blankYearlessStepDates(corpus, today) : corpus, today);
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (live card test, 26 Oct 2026): "coached
+     * her 10-16, written warning on 10-20" wrote "It happened on 10/20/2026"
+     * and "late on 10-5 and 10-15. i coached her on 10-16" wrote 10/16 — the
+     * LAST month-day date, which the card then took as the form's date. On,
+     * the line names the one incident date left once earlier steps and
+     * deadlines are set aside, and no line is written for none or several.
+     */
+    const slash = incidentOnlyOn()
+      ? soleYearlessIncident(corpus, today)
+      : lastUnyearDated(priorActionsParseEnabled() ? blankYearlessStepDates(corpus, today) : corpus, today);
     if (known) lines.push(`It happened on ${slashDate(known)}.`);
     else if (slash) lines.push(`It happened on ${slash}.`);
   }

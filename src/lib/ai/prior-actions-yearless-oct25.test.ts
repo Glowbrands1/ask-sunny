@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formDateIncidentOnlyEnabled } from "@/lib/config/chat-quality-flags";
 import type { DirectoryFact } from "@/lib/forms/employee-roster";
 import { blankYearlessStepDates } from "@/lib/forms/form-date-answer";
 import { correctiveActionDocument } from "@/lib/forms/library";
@@ -336,7 +337,12 @@ describe("conv_mvnoiw8n2kfbcvc, word for word", () => {
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
     intentModel.reading = reading(null);
     const [first] = await chat([SAID], "conv-yearless-off");
-    expect(first!.formProposal?.formDate).toBe("2026-09-15");
+    /*
+     * FORM_DATE_INCIDENT_ONLY_ENABLED (changed on purpose, live card test 26
+     * Oct 2026): the intake's "It happened on" line names the one incident
+     * date, never the earlier coaching's, so the form is dated 10/20.
+     */
+    expect(first!.formProposal?.formDate).toBe(formDateIncidentOnlyEnabled() ? "2026-10-20" : "2026-09-15");
     expect(priorLine(first!.content)).toBeNull();
   });
 });
@@ -374,7 +380,8 @@ describe("the readers", () => {
     expect(statedPriorActions(held, TODAY)).toEqual([]);
     vi.stubEnv("PRIOR_ACTIONS_PARSE_ENABLED", "");
     expect(statedPriorActions(SAID, TODAY)).toEqual([]);
-    expect(fieldLines(SAID, TODAY)).toEqual(["It happened on 9/15/2026."]);
+    // FORM_DATE_INCIDENT_ONLY_ENABLED (changed on purpose): the earlier coaching's 9-15 is never the line's date.
+    expect(fieldLines(SAID, TODAY)).toEqual([`It happened on ${formDateIncidentOnlyEnabled() ? "10/20" : "9/15"}/2026.`]);
     expect(blankYearlessStepDates(SAID, TODAY)).toBe(SAID);
   });
 });
