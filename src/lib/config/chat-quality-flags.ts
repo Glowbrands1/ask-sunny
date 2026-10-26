@@ -806,6 +806,17 @@ export function chatLongMessageEnabled(): boolean {
 }
 
 /**
+ * A terse "ca <name> <what happened> <date> verbal 25 deduct" line is written
+ * out as the long form before it is read, so the name, salon, date, warning
+ * level and payroll amount are read as they are from a full sentence (Ask
+ * Sunny conv_mvoffldz24z2t0u, 25 Oct 2026). See `ai/terse-slots.ts`. Off, the
+ * turn is read as typed.
+ */
+export function terseSlotReadEnabled(): boolean {
+  return envFlag("TERSE_SLOT_READ_ENABLED");
+}
+
+/**
  * "change observation of offense to: <text>" (also "what happened", "issue")
  * replaces What happened with exactly <text>; an "add …" is appended in the
  * manager's words; any other instruction to the app is never content. The

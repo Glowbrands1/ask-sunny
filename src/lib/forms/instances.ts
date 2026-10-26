@@ -1119,6 +1119,16 @@ export async function reviseInstance(
     })
     .select("id")
     .single();
+  /*
+   * TWO PRESSES AT ONCE. Both can pass the open-revision check above before
+   * either inserts. The partial unique index on `revises_instance_id` (open
+   * drafts only) refuses the second insert; that press gets the revision the
+   * first one opened.
+   */
+  if (error?.code === UNIQUE_VIOLATION) {
+    const raced = await findOpenRevision(instanceId);
+    if (raced) return raced;
+  }
   if (error || !data) throw new Error(`Could not open the revision: ${error?.message}`);
 
   const carried = loaded.values.filter((value) => value.filledBy !== "signature");
