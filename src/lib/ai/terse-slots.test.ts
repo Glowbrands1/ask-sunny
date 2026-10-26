@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
@@ -12,9 +12,17 @@ import type { AskRequest } from "./types";
  */
 const FLAG = "TERSE_SLOT_READ_ENABLED";
 const saved = process.env[FLAG];
+const NO_NAME = "TERSE_INCIDENT_NO_NAME_ENABLED";
+const savedNoName = process.env[NO_NAME];
+// The strings below are TERSE_INCIDENT_NO_NAME off, whatever the run sets; its flag-on twins are at the end.
+beforeEach(() => {
+  delete process.env[NO_NAME];
+});
 afterEach(() => {
   if (saved === undefined) delete process.env[FLAG];
   else process.env[FLAG] = saved;
+  if (savedNoName === undefined) delete process.env[NO_NAME];
+  else process.env[NO_NAME] = savedNoName;
 });
 
 const TODAY = "2026-10-25";
@@ -97,5 +105,56 @@ describe("expandTerseRequest", () => {
     ]) {
       expect(expandTerseRequest(text, TODAY)).toBe(text);
     }
+  });
+});
+
+/*
+ * CHANGED ON PURPOSE, TERSE_INCIDENT_NO_NAME_ENABLED on (QA, 26 Oct 2026): the
+ * incident sentence no longer repeats the employee's name ("On 9-20-26,
+ * opened late 15 min"); the name stays in the request sentence, and the date,
+ * level and deduction are unchanged. Flag off keeps the strings above.
+ */
+const CASES_NO_NAME: readonly [string, string][] = [
+  [
+    "ca quenby arlott opened late 15 min 9-20 verbal 25 deduct",
+    "Create a corrective action form for quenby arlott. On 9-20-26, opened late 15 min. This is a verbal warning. Payroll deduct applies and $25 will be deducted.",
+  ],
+  [
+    "ca for quenby arlott not opening salon on time and no call no show",
+    "Create a corrective action form for quenby arlott. Not opening salon on time and no call no show.",
+  ],
+  [
+    "coach quenby arlott woven acks 10-16",
+    "Create a coaching form for quenby arlott. On 10-16-26, woven acks.",
+  ],
+  [
+    "coach tamsin vedder",
+    "Create a coaching form for tamsin vedder.",
+  ],
+  [
+    "coaching quenby arlott tanned on clock 9-28-26 tc ks manhattan",
+    "Create a coaching form for quenby arlott at ks manhattan, Tanning Consultant. On 9-28-26, tanned on clock.",
+  ],
+  [
+    "exit quenby arlott tc ks manhattan nc/ns last day 9/20 called 9/27 no answer",
+    "Create an exit form for quenby arlott at ks manhattan, Tanning Consultant. nc/ns last day 9/20 called 9/27 no answer.",
+  ],
+  [
+    "verbal ca quenby arlott ks manhattan dress code 10/11",
+    "Create a corrective action form for quenby arlott at ks manhattan. On 10/11/26, dress code. This is a verbal warning.",
+  ],
+];
+
+describe("expandTerseRequest with TERSE_INCIDENT_NO_NAME_ENABLED on", () => {
+  it.each(CASES_NO_NAME)("writes out %s", (terse, long) => {
+    process.env[NO_NAME] = "true";
+    expect(expandTerseRequest(terse, TODAY)).toBe(long);
+  });
+
+  it("withTerseSlots writes the earlier terse turn out the same way", () => {
+    process.env[FLAG] = "on";
+    process.env[NO_NAME] = "true";
+    const out = withTerseSlots(request("verbal", [{ id: "m0", role: "user", content: CASES_NO_NAME[0]![0], createdAt: "" } as never]));
+    expect(out.history[0]!.content).toBe(CASES_NO_NAME[0]![1]);
   });
 });

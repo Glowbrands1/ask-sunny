@@ -40,6 +40,7 @@ describe.each(REGISTERS)(
   "TERSE_INCIDENT_NO_NAME_ENABLED (%s)",
   (_register, as) => {
     it("off: the incident sentence starts with the name, as before", () => {
+      delete process.env[FLAG];
       expect(
         incident(expandTerseRequest(as(DRESS), TODAY)).toLowerCase(),
       ).toMatch(/^on 10\/11\/26 quenby arlott dress code\./);
