@@ -1,7 +1,8 @@
-import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
+import { incidentDates } from "./incident-dates";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { OFFICIAL_POLICY_MANUAL } from "./official-policy-manual";
 
@@ -209,6 +210,9 @@ export function groundPriorActions(input: {
     ...onFile.map((form) => form.formDate),
   ]);
   const removed: string[] = [];
+  // PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED: a step on the incident's own date that nobody named is invented.
+  const incidentDays = priorRowNotOnIncidentDateEnabled() ? new Set(incidentDates(input.notes, input.today)) : new Set<string>();
+  const stepOrFile = new Set([...priorSteps(input.notes, input.today).map((step) => step.iso), ...onFile.map((form) => form.formDate)]);
 
   // A date the manager corrected ("9-2-26 not 9-1-26") is no longer one they gave.
   for (const retracted of correctedDates(input.notes, input.today).keys()) stated.delete(retracted);
@@ -219,6 +223,10 @@ export function groundPriorActions(input: {
       if (line === "") return false;
       const dates = datesInText(line, input.today);
       if (dates.some((found) => !stated.has(found.iso))) {
+        removed.push(line);
+        return false;
+      }
+      if (dates.length > 0 && dates.every((found) => incidentDays.has(found.iso) && !stepOrFile.has(found.iso))) {
         removed.push(line);
         return false;
       }
