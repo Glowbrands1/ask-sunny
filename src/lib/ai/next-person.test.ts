@@ -124,3 +124,33 @@ describe("NEXT_PERSON_FORM_ENABLED on: a person's team is not a person", () => {
     expect(nextPersonRequest(turn, "Coaching Form")).toBe(turn);
   });
 });
+
+/**
+ * Coordinator probes, 26 Oct 2026 (names invented): only the first named person is read as the
+ * new request, on purpose (one card per turn). The second is asked for on the next turn; a
+ * person the manager says not to do is never a request.
+ */
+describe("NEXT_PERSON_FORM_ENABLED on: the first named person only", () => {
+  it.each([
+    "now one for devon harlan and one for tom lee",
+    "Now one for Devon Harlan and one for Tom Lee",
+    "NOW ONE FOR DEVON HARLAN AND ONE FOR TOM LEE",
+  ])("'%s': the first person now, the second as typed", (turn) => {
+    const out = nextPersonRequest(turn, "Corrective Action Form");
+    expect(out.toLowerCase()).toBe("create a corrective action form for devon harlan and one for tom lee");
+    // The next turn asks for the second person, and is read as that person's request.
+    expect(nextPersonRequest(turn.replace(/^.*and (one for)/i, "now $1"), "Corrective Action Form").toLowerCase()).toBe(
+      "create a corrective action form for tom lee",
+    );
+  });
+
+  it.each([
+    "now one for devon harlan, but not for tom lee",
+    "Now one for Devon Harlan, but not for Tom Lee",
+    "NOW ONE FOR DEVON HARLAN, BUT NOT FOR TOM LEE",
+  ])("'%s': the negated person is never a request", (turn) => {
+    const out = nextPersonRequest(turn, "Corrective Action Form").toLowerCase();
+    expect(out).toBe("create a corrective action form for devon harlan, but not for tom lee");
+    expect(out.match(/create a/g)).toHaveLength(1);
+  });
+});
