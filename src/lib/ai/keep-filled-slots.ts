@@ -9,7 +9,7 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
-import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
+import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -31,6 +31,7 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  coachingIncidentKeptEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -557,6 +558,35 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
 }
 
 /** The account already given, copied onto the card so the offense is not asked again. */
+/**
+ * COACHING_INCIDENT_KEPT_ENABLED (QA live run, 26 Oct 2026; tester 2,
+ * conv_mvom8pmcfahjcb, conv_mvom8tp46c33ex, conv_mvom8y66qov94i, names
+ * invented): "coaching form for <name>, she was late today" gave a card with no
+ * Observation of Offense, while "… for <name> at lawrence, she was late today"
+ * kept "she was late today": the account was three words short of
+ * `describesMoreThanTheRequest`. A sentence whose account clause describes an
+ * incident is kept however short, word for word, so a negated account ("she
+ * was not late today", "she was never late") stays negated. What another
+ * person did ("tom lee was late today", "his coworker was late today") is not
+ * this employee's account and is not kept.
+ */
+const ANOTHER_PERSON = /^([a-z][a-z'’-]+)\s+([a-z][a-z'’-]+)\s+(?:was|is|did|left|came|got|took|opened)\b/i;
+
+function shortIncident(said: string, employeeName: string | null): boolean {
+  if (!coachingIncidentKeptEnabled()) return false;
+  const account = managerAccount(said, employeeName).trim();
+  return Boolean(account) && describesIncident(account) && !notHerIncident(said, employeeName);
+}
+
+function notHerIncident(said: string, employeeName: string | null): boolean {
+  const account = managerAccount(said, employeeName).trim();
+  if (/^(?:his|her|their)\s+(?:co-?workers?|coworkers?|friends?|managers?|team\s*mates?|teammates?|sisters?|brothers?|mom|dad|boyfriend|girlfriend)\b/i.test(account)) return true;
+  const named = ANOTHER_PERSON.exec(account);
+  if (!named || /^(?:she|he|they|it|this|that|the|her|his|their)$/i.test(named[1]!)) return false;
+  const person = (employeeName ?? "").toLowerCase().split(/\s+/);
+  return !person.includes(named[1]!.toLowerCase()) && !person.includes(named[2]!.toLowerCase());
+}
+
 function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
@@ -565,11 +595,14 @@ function withObservation(content: string, turns: readonly string[], employeeName
     for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
       if (said.length < 12) continue;
-      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      const short = !describesMoreThanTheRequest(said, { ignore }) && shortIncident(said, employeeName);
+      if (!short && !describesMoreThanTheRequest(said, { ignore })) continue;
+      // COACHING_INCIDENT_KEPT_ENABLED: what another person did is not this employee's account.
+      if (coachingIncidentKeptEnabled() && notHerIncident(said, employeeName)) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).
-      const sentence = managerOnly ? managerAccount(said, employeeName) : said;
+      const sentence = managerOnly || short ? managerAccount(said, employeeName) : said;
       if (!sentence) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;

@@ -1019,3 +1019,14 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+## 26 Oct 2026: COACHING_INCIDENT_KEPT_ENABLED — card preview only; Bubbles not needed
+
+Scope: the CARD PREVIEW. Ask Sunny's card turn adds an Observation of Offense
+line from the manager's turns (`withObservation` in `ai/keep-filled-slots.ts`),
+and a short account ("coaching form for <name>, she was late today") was one
+word short of the three it needs, so the preview showed no Observation row.
+The saved draft already kept the incident in all four tester runs ("Observed:
+Rory was late today."), so no data was lost. Ask Bubbles' coaching card has no
+Observation row (unit harness, with and without a store) and its draft has
+the incident, so there is nothing to port.

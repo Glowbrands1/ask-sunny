@@ -894,6 +894,16 @@ export function stateCodeNotAPersonEnabled(): boolean {
 }
 
 /**
+ * A short incident after the name ("coaching form for <name>, she was late
+ * today") is kept in the Observation of Offense; a negated one or another
+ * person's is not (QA, 26 Oct 2026; same flag in both apps). See
+ * `ai/keep-filled-slots.ts`. Off, the Observation is read as before.
+ */
+export function coachingIncidentKeptEnabled(): boolean {
+  return envFlag("COACHING_INCIDENT_KEPT_ENABLED");
+}
+
+/**
  * A Google review question gets the Google Reviews page's month-to-date
  * figures, goal and pace for the caller's salons, and only with View Google
  * reviews. Off, review questions keep the existing path.

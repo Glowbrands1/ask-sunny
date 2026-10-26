@@ -1949,3 +1949,86 @@ describe("HR feedback 30 Sep — the Corrective Action names or asks the policy"
     expect(answer.formProposal).toBeUndefined();
   });
 });
+
+/**
+ * QA live run, 26 Oct 2026 (tester 2, conv_mvom8pmcfahjcb lowercase,
+ * conv_mvom8tp46c33ex sentence case, conv_mvom8y66qov94i capitals; the
+ * tester's invented name replaced): "coaching form for <name>, she was late
+ * today" gave a Coaching card with no Observation of Offense. INTENT_EXTRACTION
+ * is on in production, so it is on here. Flag off: as on main; flag on
+ * (COACHING_INCIDENT_KEPT_ENABLED): the incident is kept.
+ */
+describe("'coaching form for <name>, she was late today'", () => {
+  const TURNS = [
+    "coaching form for rory vance, she was late today",
+    "Coaching form for Rory Vance, she was late today",
+    "COACHING FORM FOR RORY VANCE, SHE WAS LATE TODAY",
+  ];
+  const on = (...names: string[]) => {
+    for (const name of names) process.env[name] = "1";
+    return () => {
+      for (const name of names) delete process.env[name];
+    };
+  };
+
+  it("flag off, as on main: no Observation of Offense", async () => {
+    const saved = process.env.COACHING_INCIDENT_KEPT_ENABLED;
+    delete process.env.COACHING_INCIDENT_KEPT_ENABLED;
+    const off = on("INTENT_EXTRACTION_ENABLED");
+    try {
+      const answer = await ask(TURNS[0]!);
+      expect(answer.formProposal?.templateKey).toBe("coaching");
+      expect(answer.content).not.toMatch(/\*\*Observation of Offense:\*\*/);
+    } finally {
+      off();
+      if (saved !== undefined) process.env.COACHING_INCIDENT_KEPT_ENABLED = saved;
+    }
+  });
+
+  it.each(TURNS)("flag on: '%s' keeps 'she was late today'", async (turn) => {
+    const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
+    try {
+      const answer = await ask(turn);
+      expect(answer.content).toMatch(/\*\*Observation of Offense:\*\* she was late today/i);
+    } finally {
+      off();
+    }
+  });
+
+  // Coordinator, 26 Oct 2026: a negated account is kept word for word, never turned into "late".
+  it.each([
+    ["coaching form for rory vance, she was not late today", "she was not late today"],
+    ["Coaching form for Rory Vance, she was not late today", "she was not late today"],
+    ["COACHING FORM FOR RORY VANCE, SHE WAS NOT LATE TODAY", "SHE WAS NOT LATE TODAY"],
+    ["coaching form for rory vance, she was never late", "she was never late"],
+    ["Coaching form for Rory Vance, she was never late", "she was never late"],
+    ["COACHING FORM FOR RORY VANCE, SHE WAS NEVER LATE", "SHE WAS NEVER LATE"],
+  ])("flag on: '%s' keeps '%s' verbatim", async (turn, kept) => {
+    const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
+    try {
+      const answer = await ask(turn);
+      const line = /\*\*Observation of Offense:\*\* ([^\n]*)/.exec(answer.content)?.[1] ?? "";
+      // Kept as typed (on main a longer account is the whole sentence), so "not"/"never" stays.
+      expect(line).toContain(kept);
+    } finally {
+      off();
+    }
+  });
+
+  it.each([
+    "coaching form for rory vance, tom lee was late today",
+    "Coaching form for Rory Vance, Tom Lee was late today",
+    "COACHING FORM FOR RORY VANCE, TOM LEE WAS LATE TODAY",
+    "coaching form for rory vance, his coworker was late today",
+    "Coaching form for Rory Vance, his coworker was late today",
+    "COACHING FORM FOR RORY VANCE, HIS COWORKER WAS LATE TODAY",
+  ])("flag on: another person's '%s' is not kept as hers", async (turn) => {
+    const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
+    try {
+      const answer = await ask(turn);
+      expect(answer.content).not.toMatch(/\*\*Observation of Offense:\*\*/);
+    } finally {
+      off();
+    }
+  });
+});
