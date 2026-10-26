@@ -918,3 +918,15 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * CLEANUP_REQUEST_KEEPS_CARD_ENABLED (QA live run, 26 Oct 2026): on an open
+ * card, "can you clean up my grammar and capitalizing on proper nouns?" lost the
+ * card (Ask Sunny) or re-issued it with the request glued into the account and
+ * the incident dates dropped (Ask Bubbles). A clean-up request or a thank-you is
+ * answered with the same card, unchanged. See `ai/cleanup-keeps-card.ts`. Off,
+ * the reply is as it is.
+ */
+export function cleanupRequestKeepsCardEnabled(): boolean {
+  return envFlag("CLEANUP_REQUEST_KEEPS_CARD_ENABLED");
+}
