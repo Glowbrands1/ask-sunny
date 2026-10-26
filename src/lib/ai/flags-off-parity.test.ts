@@ -74,6 +74,8 @@ import {
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  followUpNotPriorEnabled,
+  stateCodeNotAPersonEnabled,
   coachingAsksWhatHappenedEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -167,6 +169,8 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "FOLLOW_UP_NOT_PRIOR_ENABLED",
+  "STATE_CODE_NOT_A_PERSON_ENABLED",
   "COACHING_ASKS_WHAT_HAPPENED_ENABLED",
 ] as const;
 
@@ -333,6 +337,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(followUpNotPriorEnabled()).toBe(false);
+    expect(stateCodeNotAPersonEnabled()).toBe(false);
 
     expect(coachingAsksWhatHappenedEnabled()).toBe(false);
 
