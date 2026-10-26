@@ -100,7 +100,7 @@ import {
   OBSERVED_LABEL,
   PLAN_OF_ACTION,
   guardNarrativeDraft,
-  withoutGoingForward,
+  managerTypedGoingForward, withoutGoingForward,
 } from "@/lib/forms/narrative-draft";
 import {
   dropUngroundedPolicy,
@@ -1407,14 +1407,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     /*
      * And on the Coaching and Follow-up Coaching forms (QA, 26 Oct 2026): their
      * "Going Forward" is the model's too, so it stays only when the manager
-     * stated a plan themselves ("going forward …", "action plan: …").
+     * stated a plan themselves ("going forward …", "action plan: …"); a negated
+     * "no going forward needed" is not one (`managerTypedGoingForward`).
      */
     const coachingForm =
       loaded.instance.templateKey === "coaching" || loaded.instance.templateKey === "follow-up-coaching";
     if (
       draftNoInventedPlanEnabled() &&
       coachingForm &&
-      !/\bgoing forward\b/i.test(notes) &&
+      !managerTypedGoingForward(notes) &&
       managerTypedActionPlan(notes) === null
     ) {
       narrated.values = withoutGoingForward(narrated.values, fields);

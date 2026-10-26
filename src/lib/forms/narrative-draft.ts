@@ -426,3 +426,20 @@ export function withoutGoingForward(
   return next;
 }
 
+/**
+ * DRAFT_NO_INVENTED_PLAN_ENABLED, the Coaching guard (QA-2, 26 Oct 2026): did
+ * the manager's notes state a "going forward" plan? A negated mention is not
+ * one: "no going forward needed", "do not add a going forward section",
+ * "without a going forward plan", "she is not on a plan going forward", "not
+ * going forward with discipline". "going forward she will …" and "she will
+ * clock in on time going forward" are.
+ */
+const GOING_FORWARD_NEGATED_BEFORE =
+  /\b(?:no|not|without|never|don't|dont|do not|won't|isn't|aren't|wasn't|doesn't|didn't)\b[^.,;:!?\n]{0,30}$/i;
+
+export function managerTypedGoingForward(notes: string): boolean {
+  for (const match of notes.matchAll(/\bgoing forward\b/gi)) {
+    if (!GOING_FORWARD_NEGATED_BEFORE.test(notes.slice(0, match.index))) return true;
+  }
+  return false;
+}
