@@ -70,12 +70,12 @@ import {
   remapDraftSourcesClientEnabled,
   remapDraftSourcesEnabled,
   reopenVerbGuardEnabled,
-  policyCleaningIncidentEnabled,
-  policySpecificTopicsEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  policyCleaningIncidentEnabled,
+  policySpecificTopicsEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -164,12 +164,12 @@ const NEW_FLAGS = [
   "REMAP_DRAFT_SOURCES_ENABLED",
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
-  "POLICY_CLEANING_INCIDENT_ENABLED",
-  "POLICY_SPECIFIC_TOPICS_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "POLICY_CLEANING_INCIDENT_ENABLED",
+  "POLICY_SPECIFIC_TOPICS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -331,12 +331,12 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapDraftSourcesEnabled()).toBe(false);
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
-    expect(policyCleaningIncidentEnabled()).toBe(false);
-    expect(policySpecificTopicsEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(policyCleaningIncidentEnabled()).toBe(false);
+    expect(policySpecificTopicsEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
