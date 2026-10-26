@@ -17,6 +17,7 @@ import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { isFieldLabelWord, nameAfterNameLabel, NOT_A_TYPED_NAME, stripFieldLabels } from "@/lib/forms/name-words";
 import { describedManualSection } from "@/lib/forms/named-policy-section";
+import { withConductLinePage } from "@/lib/forms/specific-policy-topics";
 import {
   findManualSection,
   headingKey,
@@ -316,7 +317,7 @@ function sectionsFor(notes: string, chunks: readonly ManualChunk[], modelHeading
   const heading = modelHeading ?? statedManualHeading(notes);
   if (!heading) return [];
   const section = findManualSection(chunks, [heading]);
-  return section ? citedPolicies([section]) : [];
+  return section ? citedPolicies(withConductLinePage([section], notes, chunks)) : [];
 }
 
 /** A sheet the manual does not title as a policy — the retirement "Warning" — is not cited. */

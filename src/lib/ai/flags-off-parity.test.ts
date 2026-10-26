@@ -75,13 +75,16 @@ import {
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  policyCleaningIncidentEnabled,
+  policySpecificTopicsEnabled,
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
   googleReviewsInChatEnabled,
   draftNeverBlankEnabled,
   nameBeforeTitleEnabled,
-  dateReaderWideEnabled,
   latePayrollFromFormEnabled,
+  storedSlotsNotARequestEnabled,
+  dateReaderWideEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -175,13 +178,16 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "POLICY_CLEANING_INCIDENT_ENABLED",
+  "POLICY_SPECIFIC_TOPICS_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
   "DRAFT_NEVER_BLANK_ENABLED",
   "NAME_BEFORE_TITLE_ENABLED",
-  "DATE_READER_WIDE_ENABLED",
   "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
+  "STORED_SLOTS_NOT_A_REQUEST_ENABLED",
+  "DATE_READER_WIDE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -209,10 +215,18 @@ const PROTECTED = [
  * The user (Pau) approved, via QA on 25 Oct 2026, editing
  * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
  * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
- * on the PROTECTED list; only the diff check leaves it out. No other
- * protected file is excepted.
+ * on the PROTECTED list; only the diff check leaves it out.
+ *
+ * The user (Pau) approved, on 26 Oct 2026, editing src/lib/ai/form-proposal.ts
+ * for STORED_SLOTS_NOT_A_REQUEST_ENABLED: in turnsAboutThisForm the new-request
+ * check reads the manager's words, not the app's stored-slot lines, with the
+ * flag-off reading unchanged. It stays on the PROTECTED list; only the diff
+ * check leaves it out. No other protected file is excepted.
  */
-const APPROVED_PROTECTED_EDITS = [":(exclude)src/lib/forms/form-date-answer.ts"];
+const APPROVED_PROTECTED_EDITS = [
+  ":(exclude)src/lib/forms/form-date-answer.ts",
+  ":(exclude)src/lib/ai/form-proposal.ts",
+];
 
 const UI_PATHS = ["src/app/**/*.tsx", "src/components/**", "src/features/**/*.tsx", "**/*.css"];
 
@@ -348,12 +362,15 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(policyCleaningIncidentEnabled()).toBe(false);
+    expect(policySpecificTopicsEnabled()).toBe(false);
     expect(nameBeforeTitleEnabled()).toBe(false);
     expect(latePayrollFromFormEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
     expect(draftNeverBlankEnabled()).toBe(false);
+    expect(storedSlotsNotARequestEnabled()).toBe(false);
     expect(dateReaderWideEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
