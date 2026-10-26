@@ -68,6 +68,7 @@ import {
   resignMethodFollowupEnabled,
   chatLongMessageEnabled,
   namedFormExactEnabled,
+  terseSlotReadEnabled,
   remapDraftSourcesClientEnabled,
   remapDraftSourcesEnabled,
   reopenVerbGuardEnabled,
@@ -157,6 +158,7 @@ const NEW_FLAGS = [
   "CHAT_LONG_MESSAGE_ENABLED",
   "NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED",
   "NAMED_FORM_EXACT_ENABLED",
+  "TERSE_SLOT_READ_ENABLED",
   "REMAP_DRAFT_SOURCES_ENABLED",
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
@@ -303,6 +305,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(resignMethodFollowupEnabled()).toBe(false);
     expect(chatLongMessageEnabled()).toBe(false);
     expect(namedFormExactEnabled()).toBe(false);
+    expect(terseSlotReadEnabled()).toBe(false);
     expect(remapDraftSourcesEnabled()).toBe(false);
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
