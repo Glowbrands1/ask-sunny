@@ -124,3 +124,38 @@ describe.each(TWO_CLAUSE)("FUTURE_INCIDENT_DATE_ASK_ENABLED, a past incident and
     }
   });
 });
+
+/*
+ * QA-7 / dispatcher, 26 Oct 2026: "missing the 11/1 woven deadline" asked as if
+ * 11/1 were the incident. A date a deadline word follows is a deadline, never
+ * the incident, as "by 12-20-26" above. Lowercase, sentence case, ALL CAPS.
+ */
+const DEADLINE_REGISTERS: [string, (text: string) => string][] = [
+  ...TWO_CLAUSE,
+  ["ALL CAPS", (text) => text.toUpperCase()],
+];
+
+describe.each(DEADLINE_REGISTERS)("FUTURE_INCIDENT_DATE_ASK_ENABLED, a date before a deadline word (%s)", (_register, as) => {
+  it("on: the deadline is not challenged", () => {
+    process.env[FLAG] = "true";
+    for (const text of [
+      "write up ava pellmore for missing the 11/1 woven deadline",
+      "write up ava pellmore, she is missing the 11/1 woven deadline",
+      "write up ava pellmore, the 12-20-26 due date for the training",
+    ]) {
+      expect(decide(as(text)).question ?? "", text).not.toContain(FUTURE_DATE_TAG);
+    }
+  });
+
+  it("on, NEVER-BREAK: a past incident still dates the form beside the deadline", () => {
+    process.env[FLAG] = "true";
+    const decided = decide(as("write up ava pellmore, late on 10-20-26 and missing the 11/1 woven deadline"));
+    expect(decided.question ?? "").not.toContain(FUTURE_DATE_TAG);
+    expect(decided.formDate ?? "2026-10-20").toBe("2026-10-20");
+  });
+
+  it("on, NEVER-BREAK: a future date with no deadline word is still asked about", () => {
+    process.env[FLAG] = "true";
+    expect(decide(as("write up ava pellmore for missing the meeting on 11/1")).question ?? "").toContain(FUTURE_DATE_TAG);
+  });
+});
