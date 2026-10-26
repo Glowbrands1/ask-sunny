@@ -1067,6 +1067,16 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * A Prior actions row dated after today is never kept (QA LS-B11 in the
+ * sibling app, 26 Oct 2026; same flag in both apps): a typo "11-1-26" the
+ * manager corrected to "11-1-25" left "Coaching — signed 11/01/2026" on the
+ * draft. See `groundPriorActions` in `forms/prior-actions.ts`. Off, as before.
+ */
+export function futurePriorRowDropEnabled(): boolean {
+  return envFlag("FUTURE_PRIOR_ROW_DROP_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on

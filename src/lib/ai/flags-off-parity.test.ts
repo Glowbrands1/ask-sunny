@@ -91,6 +91,7 @@ import {
   answerNotANameEnabled,
   dateAnswerAppliedEnabled,
   requestLineAccountEnabled,
+  futurePriorRowDropEnabled,
   priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -201,6 +202,7 @@ const NEW_FLAGS = [
   "ANSWER_NOT_A_NAME_ENABLED",
   "DATE_ANSWER_APPLIED_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
+  "FUTURE_PRIOR_ROW_DROP_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
 ] as const;
@@ -405,6 +407,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(answerNotANameEnabled()).toBe(false);
     expect(dateAnswerAppliedEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
+    expect(futurePriorRowDropEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
