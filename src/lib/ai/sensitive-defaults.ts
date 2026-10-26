@@ -141,8 +141,8 @@ const NAMES_DEFAULT = /\b(?:default|defualt|temporary|temp|initial|starting|firs
 /**
  * DENY BY DEFAULT AFTER A DEFAULT-PASSWORD SENTENCE (QA-3, QA-5, coordinator,
  * 26 Oct 2026). Once a sentence names a default password — kept as a pure
- * forbid or removed — every sentence and line after it, up to a blank line, is
- * suspect: "Do not use default passwords. Instead use Welcome2024." kept the
+ * forbid or removed — every sentence and line after it, to the end of the
+ * text, is suspect: "Do not use default passwords. Instead use Welcome2024." kept the
  * second sentence because it was judged alone and never says "password". In
  * that window a piece is removed when it has
  *   - a token mixing letters and digits, or a run of four or more digits;
@@ -178,19 +178,17 @@ export function redactSensitiveDefaults(text: string, note: string | null = EXCE
   const parts = text.split(SENTENCE_BREAK);
   let changed = false;
   let noteSaid = false;
-  // The window after a default-password sentence; a blank line closes it.
+  // The window after a default-password sentence stays open to the end: a
+  // blank line, a heading or a "Note:" line is no safe boundary in a
+  // knowledge excerpt (QA-3, QA-5, coordinator, 26 Oct 2026).
   let afterDefault = false;
-  let gap = "";
   const out: string[] = [];
   for (const part of parts) {
     if (part === undefined) continue;
     if (/^\s*$/.test(part)) {
-      gap += part;
       out.push(part);
       continue;
     }
-    if (/\n[ \t]*\n/.test(gap)) afterDefault = false;
-    gap = "";
     const valueAfter = afterDefault && isSuspectAfterDefault(part);
     if (valueAfter || (isSensitiveSentence(part) && !isNoInformation(part))) {
       changed = true;

@@ -92,15 +92,44 @@ describe("flag on: the manual's own guidance and a normal policy answer stay int
     expect(redactSensitiveDefaults(text, null)).toBe(text);
   });
 
-  it("a blank line closes the window", () => {
+  it.each(registers(`${FORBID}\n\nChange your password every quarter.`))("a legit paragraph after a blank line: %s", (text) => {
     on();
-    const text = `${FORBID}\n\nThe 2024 schedule is posted in Woven.`;
     expect(redactSensitiveDefaults(text, null)).toBe(text);
   });
 
   it("with no default-password sentence nothing is suspect", () => {
     on();
     const text = "Use Woven to post the schedule. The code is A12 on the door.";
+    expect(redactSensitiveDefaults(text, null)).toBe(text);
+  });
+});
+
+/*
+ * QA-3 and QA-5, coordinator, 26 Oct 2026: a blank line is no boundary in a
+ * knowledge excerpt. The window stays open across one or two blank lines, a
+ * heading, a "Note:" line and into a bullet.
+ */
+describe("flag on: the window stays open past a paragraph break", () => {
+  const ACROSS: readonly { text: string; value: string }[] = [
+    { text: `${FORBID}\n\nWelcome2024`, value: "welcome2024" },
+    { text: `${FORBID}\n\nThe default is Welcome2024.`, value: "welcome2024" },
+    { text: `${FORBID}\n\n\nWelcome2024`, value: "welcome2024" },
+    { text: `${FORBID}\nSecurity\nWelcome2024`, value: "welcome2024" },
+    { text: `${FORBID}\n\nSecurity\n\nInstead use Welcome2024.`, value: "welcome2024" },
+    { text: `${FORBID}\nNote: ask your manager first.\nWelcome2024`, value: "welcome2024" },
+    { text: `${FORBID}\n\n- Welcome2024`, value: "welcome2024" },
+    { text: `${FORBID}\n\n- It is bluebird.`, value: "bluebird" },
+  ];
+
+  it.each(ACROSS.flatMap(({ text, value }) => registers(text).map((typed) => ({ typed, value }))))("$typed", ({ typed, value }) => {
+    on();
+    const out = redactSensitiveDefaults(typed, null);
+    expect(out.toLowerCase()).not.toContain(value);
+    expect(out.toLowerCase()).toContain("do not use default passwords");
+  });
+
+  it.each(registers(`${FORBID}\n\nSecurity\n\nNote: change your password every quarter.`))("kept: %s", (text) => {
+    on();
     expect(redactSensitiveDefaults(text, null)).toBe(text);
   });
 });
