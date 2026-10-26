@@ -75,6 +75,7 @@ import {
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
   followUpNotPriorEnabled,
+  stateCodeNotAPersonEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { reviewsUpdateNoteEnabled } from "@/lib/reviews/update-note";
@@ -170,6 +171,7 @@ const NEW_FLAGS = [
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
+  "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED",
 ] as const;
 
@@ -349,6 +351,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
+    expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(reviewsUpdateNoteEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
