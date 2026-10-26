@@ -72,6 +72,7 @@ import {
   remapDraftSourcesEnabled,
   reopenVerbGuardEnabled,
   exitProseFactsEnabled,
+  exitRehireReasonEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
@@ -171,6 +172,7 @@ const NEW_FLAGS = [
   "REOPEN_VERB_GUARD_ENABLED",
   "EXIT_PROSE_FACTS_ENABLED",
   "INCIDENT_SPLIT_FIX_ENABLED",
+  "EXIT_REHIRE_REASON_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
@@ -343,6 +345,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(exitProseFactsEnabled()).toBe(false);
+    expect(exitRehireReasonEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
