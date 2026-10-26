@@ -1067,6 +1067,16 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * An earlier step told in a sentence is a Prior actions row (managers, 26 Oct
+ * 2026): "note a verbal ca was given on 9-1-26" and "she was issued a verbal
+ * ca on 10.1 for this same thing" listed none. See `sentenceSteps` in
+ * `forms/prior-actions.ts`. Off, as before.
+ */
+export function priorStepSentenceEnabled(): boolean {
+  return envFlag("PRIOR_STEP_SENTENCE_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
