@@ -75,6 +75,8 @@ import {
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  policyCleaningIncidentEnabled,
+  policySpecificTopicsEnabled,
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
   googleReviewsInChatEnabled,
@@ -175,6 +177,8 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "POLICY_CLEANING_INCIDENT_ENABLED",
+  "POLICY_SPECIFIC_TOPICS_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
@@ -356,6 +360,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(policyCleaningIncidentEnabled()).toBe(false);
+    expect(policySpecificTopicsEnabled()).toBe(false);
     expect(nameBeforeTitleEnabled()).toBe(false);
     expect(latePayrollFromFormEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);

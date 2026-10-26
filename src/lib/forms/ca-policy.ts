@@ -1,4 +1,4 @@
-import { formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditDateRulesEnabled, policyCleaningIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
@@ -151,6 +151,95 @@ const CONDUCT_TOPICS: { topic: ConductTopic; pattern: RegExp }[] = [
     ),
   },
 ];
+
+/*
+ * POLICY_CLEANING_INCIDENT_ENABLED: DUTIES LEFT UNDONE, IN THE WORDS MANAGERS
+ * USE (QA T5, 25 Oct 2026): "cleaning duties not being completed", "weren't
+ * done", "didn't get done". Duties are the Standards of Conduct; cleaning is
+ * the manual's Care and Cleaning of Equipment and Facilities section
+ * (`cleaningIncident`, `named-policy-section.ts`), chosen here and not by the
+ * model, so the same chat cites the same section every run (QA item 9).
+ */
+const UNDONE_DUTIES = new RegExp(
+  String.raw`\b${TASK_NOUN}\s+(?:\S+\s+){0,4}?(?:(?:were|was|are|is|been)\s+not\s+(?:being\s+)?|(?:were ?n[o']?t|weren't|was ?n[o']?t|wasn't|are ?n[o']?t|aren't|is ?n[o']?t|isn't)\s+(?:being\s+)?|not\s+being\s+|(?:did ?n[o']?t|didn't|never)\s+(?:get|got)\s+|never\s+(?:got|get)\s+)(?:completed|done|finished)\b`,
+);
+
+/** Cleaning, sanitizing or the equipment — the words that make it Care and Cleaning. */
+const CLEANING_WORD =
+  String.raw`(?:clean(?:ing|ed|s)?|san[ai]?t[ai]?[zs]\w*|disinfect\w*|wip(?:e|ed|ing)\s+down|mop(?:ped|ping)?|sweep(?:ing)?|swept|vacuum\w*|dust(?:ing|ed)?)`;
+const CLEANING_UNDONE = [
+  new RegExp(
+    String.raw`\b${CLEANING_WORD}\b[^.;!?\n]{0,40}?(?:(?:were|was|are|is|been)\s+not\s+(?:being\s+)?|(?:were ?n[o']?t|weren't|was ?n[o']?t|wasn't|are ?n[o']?t|aren't|is ?n[o']?t|isn't)\s+(?:being\s+)?|not\s+being\s+|(?:did ?n[o']?t|didn't|never)\s+(?:get|got)\s+)(?:completed|done|finished)\b`,
+  ),
+  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,3}?(?:complete|completed|finish|finished|do|done)\b[^.;!?\n]{0,30}?\b${CLEANING_WORD}\b`),
+  new RegExp(String.raw`\b(?:${FAILED}|not)\s+(?:\S+\s+){0,2}?${CLEANING_WORD}\b`),
+  // "skipped the 10 minute sanitize"
+  new RegExp(String.raw`\b(?:skipped|skips|skipping)\s+(?:\S+\s+){0,4}?${CLEANING_WORD}\b`),
+  /\bleft\s+(?:\S+\s+){0,4}?(?:dirty|unclean|filthy|a\s+mess|messy|uncleaned|unsanitized)\b/,
+  /\b(?:dirty|unclean|filthy|uncleaned|unsanitized)\s+(?:\S+\s+){0,1}?(?:beds?|booths?|rooms?|equipment|lobby|restrooms?|bathrooms?|floors?|counters?|stations?|machines?|units?|towels?|break\s?room)\b/,
+  // "she left without cleaning the restrooms" (QA-7, 26 Oct 2026)
+  new RegExp(
+    String.raw`\b(?:left|leaves|leaving|went\s+home|clocked\s+out|closed(?:\s+up)?)\s+(?:\S+\s+){0,3}?without\s+(?:\S+\s+){0,2}?${CLEANING_WORD}\b`,
+  ),
+];
+
+/**
+ * Whether the account says cleaning was left undone: "the cleaning didn't get
+ * done", "left the beds dirty". Questions are not accounts. Off, never.
+ */
+export function cleaningIncident(rawText: string): boolean {
+  return cleaningIncidentPhrase(rawText) !== null;
+}
+
+/*
+ * NOT AN ACCOUNT OF CLEANING LEFT UNDONE (QA-6, 26 Oct 2026): "she never left
+ * the beds dirty", "the beds were not left dirty", "no dirty beds", "she did
+ * not fail to clean the beds", "it is not about cleaning, she was late", "not
+ * cleaning, attendance", "she is not responsible for cleaning". A negation
+ * just before the incident words, in the same clause, undoes them; a
+ * "failure" that is about the topic or a double negative is not one; a bare
+ * "not" counts only before what was not done ("not cleaned").
+ */
+const NEGATED_INCIDENT = /\b(?:never|not|no|no\s+one|nobody|none|did ?n[o']?t|didn't|was ?n[o']?t|wasn't|were ?n[o']?t|weren't)\s+(?:\S+\s+){0,3}$/;
+const NOT_A_FAILURE = /\b(?:about|responsible|regarding|related|fail|forget|neglect|skip|miss|only|just)\b/;
+/**
+ * A negation before a refusal or failure word is a denial, not an incident
+ * (QA-3, QA-7, 26 Oct 2026): "never refused to clean", "did not refuse to
+ * clean", "never skipped cleaning", "never failed to clean", "never skips the
+ * cleaning", "never left without cleaning".
+ */
+const DOUBLE_NEGATIVE =
+  /^(?:never|not|did ?n[o']?t|didn't|has ?n[o']?t|hasn't|have ?n[o']?t|haven't|had ?n[o']?t|hadn't|is ?n[o']?t|isn't)\s+(?:\S+\s+){0,3}?(?:refus\w*|skip\w*|fail\w*|miss\w*|forg[eo]t\w*|neglect\w*|declin\w*|avoid\w*|without)\b/;
+const DONE_WORD = /\b(?:cleaned|san[ai]?t[ai]?[zs]ed|disinfected|wiped\s+down|mopped|swept|vacuumed|dusted)\b/;
+/** The patterns above that say what happened ("left … dirty", "dirty beds", "skipped …"), not that something failed. */
+const AFFIRMATIVE_PATTERNS = new Set([3, 4, 5, 6]);
+
+function clauseBefore(sentence: string, index: number): string {
+  return sentence.slice(0, index).split(/[,;:–—]|\s-\s|\bbut\b/).pop() ?? "";
+}
+
+function readsAsIncident(sentence: string, match: RegExpExecArray, pattern: number): boolean {
+  const before = clauseBefore(sentence, match.index);
+  if (AFFIRMATIVE_PATTERNS.has(pattern)) return !NEGATED_INCIDENT.test(before);
+  if (pattern === 1 || pattern === 2) {
+    if (NOT_A_FAILURE.test(match[0]) || DOUBLE_NEGATIVE.test(match[0])) return false;
+    if (NEGATED_INCIDENT.test(before)) return false;
+    if (pattern === 2 && /^not\b/.test(match[0]) && !DONE_WORD.test(match[0])) return false;
+  }
+  return true;
+}
+
+/** The manager's words that say the cleaning was left undone, as written, or null. */
+export function cleaningIncidentPhrase(rawText: string): string | null {
+  if (!policyCleaningIncidentEnabled()) return null;
+  for (const sentence of statements(normalize(rawText))) {
+    for (const [index, pattern] of CLEANING_UNDONE.entries()) {
+      const match = pattern.exec(sentence);
+      if (match && readsAsIncident(sentence, match, index)) return match[0].trim();
+    }
+  }
+  return null;
+}
 
 /**
  * THE OTHER READINGS OF THE SAME ACCOUNT. A task left undone because she was
@@ -312,9 +401,14 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
    */
   if (stated === null && missedEvent !== null) stated = "attendance";
 
-  const topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
+  let topics = CONDUCT_TOPICS.filter(({ pattern }) => sentences.some((s) => pattern.test(s))).map(
     ({ topic }) => topic,
   );
+  if (policyCleaningIncidentEnabled()) {
+    if (!topics.includes("task") && sentences.some((s) => UNDONE_DUTIES.test(s))) topics.push("task");
+    // Cleaning left undone is Care and Cleaning, not the catch-all: the task reading gives way to that section.
+    if (cleaningIncident(rawText)) topics = topics.filter((topic) => topic !== "task");
+  }
 
   const alternatives: CaPolicyReading["alternatives"] = [];
   if (topics.length > 0) {

@@ -879,6 +879,32 @@ export function appPasswordHelpEnabled(): boolean {
 }
 
 /**
+ * Cleaning left undone cites the manual's Care and Cleaning of Equipment and
+ * Facilities section, chosen by the code (Code 3, policy reading; QA T5,
+ * 25 Oct 2026): "cleaning duties not being completed", "weren't done",
+ * "didn't get done", "left dirty". Other duties left undone in those words are
+ * the Standards of Conduct. Off, the policy is read exactly as before.
+ */
+export function policyCleaningIncidentEnabled(): boolean {
+  return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
+}
+
+/**
+ * Specific incidents cite their own manual section, chosen by the code (Code 9,
+ * policy reading; QA, 26 Oct 2026): no wet floor sign -> Safety in the
+ * Workplace, a long break -> Meal and Rest Policy, a social media post ->
+ * Social Media Policy, sexual comments -> Sexual and Other Forms of
+ * Harassment, a pet at work -> Animals in the Workplace, theft, cash
+ * shortages, insubordination and talking badly about coworkers -> the page of
+ * the Standards of Conduct that lists them. A coaching form's "other" topic
+ * is no longer primed with "Punctuality". Off, the policy and the topic are
+ * read exactly as before.
+ */
+export function policySpecificTopicsEnabled(): boolean {
+  return envFlag("POLICY_SPECIFIC_TOPICS_ENABLED");
+}
+
+/**
  * A prior action's date is not a follow-up date (QA Sunny tester batch 13,
  * S16 and S19, 26 Oct 2026). "She already had a verbal on 06/25/2026 and a
  * written on 07/28/2026" listed both under Prior actions and also as
