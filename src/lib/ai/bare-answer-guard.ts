@@ -42,6 +42,8 @@ const READERS = {
 const SLOT_WORD =
   /^(?:yes|y|yeah|yep|yup|no|n|nope|nah|none|n\/a|ok|okay|sure|verbal|written|final|verbal\s+warning|written\s+warning|final\s+warning|prior|no\s+prior|previous|coaching|payroll|deduct|no\s+payroll|today|yesterday)$/i;
 const BARE_YES_NO = /^(?:yes|y|yeah|yep|yup|no|n|nope|nah)[.!]?$/i;
+/** A whole turn that says the question does not apply ("doesn't apply", "not applicable", "n/a"). */
+const NOT_APPLICABLE = /^(?:it\s+)?(?:does\s*n[o'’]?t\s+apply|not\s+applicable|n\/a)[.!]?$/i;
 const SHORT_TURN_WORDS = 6;
 const SAYS_PAYROLL = /\b(?:payroll|deduct\w*|paycheck|pay\s+check)\b/i;
 
@@ -153,7 +155,7 @@ function notATitle(role: string): boolean {
 function payrollAnswered(question: string, lastAsked: string): boolean {
   // Only a short turn is read this way; a numbered intake or an account is the readers' as before.
   if (SAYS_PAYROLL.test(question) || question.trim().split(/\s+/).length > SHORT_TURN_WORDS) return true;
-  if (!BARE_YES_NO.test(question.trim())) return false;
+  if (!BARE_YES_NO.test(question.trim()) && !NOT_APPLICABLE.test(question.trim())) return false;
   return /payroll\s+deduct/i.test(lastQuestion(lastAsked));
 }
 
