@@ -194,3 +194,55 @@ describe.each(REGISTERS)(
     }
   },
 );
+
+/*
+ * PINNED FOR THE COORDINATOR (26 Oct 2026). With the flag on, `readCaPolicy`
+ * no longer counts the app's own "Policy reference: …" line as stated, in
+ * BOTH REMAP_INCIDENT_FIX branches (`managersWords` sits in ca-policy.ts,
+ * which both read). So a turn whose only policy was that line reads no stated
+ * policy, and the remap reply shows no Policy line at all for it.
+ */
+function remapReplyWithFix(question: string, fix: boolean): string {
+  const before = process.env.REMAP_INCIDENT_FIX_ENABLED;
+  if (fix) process.env.REMAP_INCIDENT_FIX_ENABLED = "true";
+  else delete process.env.REMAP_INCIDENT_FIX_ENABLED;
+  try {
+    return remapReply(question, "Attendance");
+  } finally {
+    if (before === undefined) delete process.env.REMAP_INCIDENT_FIX_ENABLED;
+    else process.env.REMAP_INCIDENT_FIX_ENABLED = before;
+  }
+}
+
+describe.each(REGISTERS)("POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED across REMAP_INCIDENT_FIX: %s", (_register, as) => {
+  for (const fix of [false, true]) {
+    it(`REMAP_INCIDENT_FIX ${fix ? "on" : "off"}: the app's own policy line is stated with the flag off, not with it on`, () => {
+      const behind = behindPolicyLine(as(TC_LATE), "Attendance");
+      withFlag(false);
+      expect(readCaPolicy(behind).stated).toBe("attendance");
+      expect(remapReplyWithFix(behind, fix)).toContain("**Policy:** Attendance, as you said");
+      withFlag(true);
+      expect(readCaPolicy(behind).stated).toBeNull();
+      expect(remapReplyWithFix(behind, fix)).not.toMatch(/\*\*Policy:\*\*/);
+    });
+  }
+
+  /*
+   * KNOWN GAP, pinned (QA-6, 26 Oct 2026): "per the late open policy" is not
+   * read as naming the Late Opening policy (`namedPolicy` knows "late opening
+   * policy"), so with the flag on that manager loses ", as you said". Not
+   * widened here: `namedPolicy` also feeds the REMAP_INCIDENT_FIX-on branch.
+   */
+  it('known gap: "per the late open policy" is not a named policy, so the flag drops "as you said"', () => {
+    const said = as("ca for ava pellmore per the late open policy, late 10/20");
+    process.env.LATE_OPEN_DATE_ENABLED = "true";
+    try {
+      withFlag(false);
+      expect(remapReply(said, "Late Opening")).toContain("**Policy:** Late Opening, as you said");
+      withFlag(true);
+      expect(remapReply(said, "Late Opening")).toMatch(/\*\*Policy:\*\* Late Opening(?!, as you said)/);
+    } finally {
+      delete process.env.LATE_OPEN_DATE_ENABLED;
+    }
+  });
+});

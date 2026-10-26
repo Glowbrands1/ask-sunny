@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { policyAsYouSaidManagerOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { correctiveActionDocument } from "@/lib/forms/library";
 import type { AccessScope, ChatMessage } from "@/types";
 
@@ -840,7 +842,7 @@ describe("remap path: a late opening with LATE_OPEN_DATE_ENABLED on too", () => 
      * date are the same either way. This is the REMAP_INCIDENT_FIX-off branch
      * of form-full-remap.ts.
      */
-    if (process.env.POLICY_AS_YOU_SAID_MANAGER_ONLY_ENABLED === "true") {
+    if (policyAsYouSaidManagerOnlyEnabled()) {
       expect(response.content).toMatch(/\*\*Policy:\*\* Late Opening\n/);
       expect(response.content).not.toMatch(/Late Opening, as you said/);
     } else {
