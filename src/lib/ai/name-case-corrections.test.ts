@@ -66,7 +66,7 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: the surname is never cut after a bla
 });
 
 /**
- * QA live run, 26 Oct 2026 (Bubbles tester G14, conv_mvom3ssl2g7q7kn and
+ * QA live run, 26 Oct 2026 (the sibling app's tester G14, conv_mvom3ssl2g7q7kn and
  * conv_mvom3x2b2a98o2u; the same reader in both apps): a chatty exit that
  * names the person after "one of my team members," left the Employee blank.
  */
@@ -108,10 +108,46 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: the card's name in Title Case, word 
       formProposal: { employeeName: "rory vance" },
     } as unknown as AskResponse;
     delete process.env[FLAG];
-    expect(withNameTitleCase(response)).toBe(response);
+    const request = { question: "create a ca for rory vance", history: [] } as unknown as AskRequest;
+    expect(withNameTitleCase(response, request)).toBe(response);
     process.env[FLAG] = "on";
-    const out = withNameTitleCase(response);
+    const out = withNameTitleCase(response, request);
     expect(out.formProposal?.employeeName).toBe("Rory Vance");
     expect(out.content).toBe("I'll draft a **Corrective Action Form** for **Rory Vance**.");
+  });
+});
+
+/**
+ * QA-5, 26 Oct 2026 (flag on): the reply was changed inside other words, and
+ * name particles were capitalised; the directory's spelling must win.
+ */
+describe("NAME_CASE_INSENSITIVE_ENABLED on: whole words, particles and the directory's spelling", () => {
+  const ask = (question: string) => ({ question, history: [] }) as unknown as AskRequest;
+  const reply = (name: string, content: string) => ({ content, citations: [], formProposal: { employeeName: name } }) as unknown as AskResponse;
+
+  it.each([
+    ["ann", "...for **ann**. Planning notes: the annual review and manager ann will sign.", "...for **Ann**. Planning notes: the annual review and manager Ann will sign."],
+    ["al", "...for **al**. The policy, total deduct and local rules apply.", "...for **Al**. The policy, total deduct and local rules apply."],
+    ["jo", "...for **jo**. Joint review and job duties.", "...for **Jo**. Joint review and job duties."],
+  ])("'%s' is changed on whole words only", (name, content, shown) => {
+    process.env[FLAG] = "on";
+    expect(withNameTitleCase(reply(name, content), ask(`create a ca for ${name}`)).content).toBe(shown);
+  });
+
+  it.each([
+    ["van der berg", "Van der Berg"],
+    ["de la cruz", "De la Cruz"],
+    ["maria del rio", "Maria del Rio"],
+    ["omar al-amin", "Omar al-Amin"],
+    ["mary-jane smith", "Mary-Jane Smith"],
+    ["d'angelo", "D'Angelo"],
+  ])("%s → %s", (typed, stored) => {
+    expect(titleCaseName(typed)).toBe(stored);
+  });
+
+  it("a name the directory spelled is kept: 'van der berg' typed, the card shows 'Van der Berg'", () => {
+    process.env[FLAG] = "on";
+    const directory = reply("van Der Berg", "for **van Der Berg**");
+    expect(withNameTitleCase(directory, ask("create a ca for van der berg"))).toBe(directory);
   });
 });
