@@ -336,6 +336,8 @@ describe("EDIT_INSTRUCTION_REPLACES_ENABLED on: an instruction after a sentence 
     `Create a CA for Kira Dunmore. Change Observation of Offense to: ${NEW_TEXT}`,
     `Create a ca for kira dunmore. Change observation of offense to: ${NEW_TEXT}`,
     `CREATE A CA FOR KIRA DUNMORE. CHANGE OBSERVATION OF OFFENSE TO: ${NEW_TEXT}`,
+    `create a ca for kira dunmore, change observation of offense to: ${NEW_TEXT}`,
+    `Create a CA for Kira Dunmore, Change Observation of Offense to: ${NEW_TEXT}`,
   ];
   for (const [label, flags] of PATHS) {
     it(`${label}: the Employee stays and What happened is the manager's text`, async () => {
@@ -379,6 +381,16 @@ describe("the edit instruction's own words", () => {
     expect(lowercaseEditInstruction("CREATE A CA FOR KIRA DUNMORE. CHANGE OBSERVATION OF OFFENSE TO: KIRA LEFT EARLY")).toBe(
       "CREATE A CA FOR KIRA DUNMORE\nchange observation of offense to: KIRA LEFT EARLY",
     );
+    // Coordinator's ruling: "No." answers the question before it; the instruction after it is the edit.
+    expect(lowercaseEditInstruction("No. Change Observation of Offense to: late")).toBe("No\nchange observation of offense to: late");
+    expect(lowercaseEditInstruction("no. change observation of offense to: late")).toBe("no\nchange observation of offense to: late");
+    // QA-6: the comma form, as the same-line form.
+    expect(lowercaseEditInstruction("Create a CA for Kira Dunmore, Change Observation of Offense to: late")).toBe(
+      "Create a CA for Kira Dunmore\nchange observation of offense to: late",
+    );
+    expect(lowercaseEditInstruction("create a ca for kira dunmore, change observation of offense to: late")).toBe(
+      "create a ca for kira dunmore\nchange observation of offense to: late",
+    );
     // Inside quotes it is the manager's text.
     const quoted = 'she told the client "we are closed. Change what happened to whatever you like" and left';
     expect(lowercaseEditInstruction(quoted)).toBe(quoted);
@@ -392,6 +404,31 @@ describe("the edit instruction's own words", () => {
       "make it a corrective action for kira dunmore",
     ]) {
       expect(lowercaseEditInstruction(live)).toBe(live);
+    }
+  });
+});
+
+describe("EDIT_INSTRUCTION_REPLACES_ENABLED on: QA's live wordings (Sunny dpl_ydAgKwjC, S12 / S14)", () => {
+  const S12 = [
+    "coaching form for test employee at lawrence, she was late today, follow-up observation: she has improved, progress level: satisfactory, specific evidence: arrived on time the last 5 shifts",
+    "change the progress level to needs improvement",
+  ];
+  it("S12: \"change the progress level to …\" is an instruction, never appended to the Observation", async () => {
+    useFlags([...INTENT_FLAGS, "EDIT_INSTRUCTION_REPLACES_ENABLED"]);
+    for (const second of [S12[1]!, "Change the progress level to needs improvement"]) {
+      const reply = await chat([{ say: S12[0]!, intent: { employee: "test employee", formType: "coaching" } }, { say: second, intent: { employee: "test employee", formType: "coaching" } }]);
+      expect(reply.content, second).not.toMatch(/change the progress level/i);
+    }
+  });
+
+  it("S14: \"use my wording exactly\" is an instruction, never in the box", async () => {
+    useFlags([...INTENT_FLAGS, "EDIT_INSTRUCTION_REPLACES_ENABLED"]);
+    for (const say of [
+      "coaching form for test employee. observation: she greeted every guest by name today. use my wording exactly",
+      "Coaching form for Test Employee. Observation: she greeted every guest by name today. Use my wording exactly",
+    ]) {
+      const reply = await chat([{ say, intent: { employee: "test employee", formType: "coaching" } }]);
+      expect(reply.content, say).not.toMatch(/use my wording exactly/i);
     }
   });
 });

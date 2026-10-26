@@ -24,7 +24,13 @@ const WORDS = String.raw`(?:change|update|set|edit|make|rewrite|reword)\s+${FIEL
 const INSTRUCTION = new RegExp(String.raw`^(\s*${LEAD})(${WORDS})(?=\s|:|-|–|—|$)`, "i");
 
 /** "… Kira Dunmore. Change Observation of Offense to: …": an instruction after a sentence on the same line. */
-const AFTER_SENTENCE = new RegExp(String.raw`([.!?])[ \t]+(?=${LEAD}(?:${WORDS})(?:\s|:|-|–|—|$))`, "gi");
+// A comma before the instruction counts too: "… Kira Dunmore, Change Observation of Offense to: …" (QA-6).
+const AFTER_SENTENCE = new RegExp(String.raw`([.!?,])[ \t]+(?=${LEAD}(?:${WORDS})(?:\s|:|-|–|—|$))`, "gi");
+
+/** "Ok, can you change …": a comma after a lead-in word alone is no break; the instruction is the line's own. */
+function leadInOnly(line: string, at: number, stop: string): boolean {
+  return stop === "," && /^\s*(?:ok(?:ay)?|yes|great|thanks|and|also|now|so|no)\s*$/i.test(line.slice(0, at));
+}
 
 /** A point inside quotes ("she said \"stop. change it\"") is the manager's text, never an instruction break. */
 function insideQuotes(line: string, at: number): boolean {
@@ -37,12 +43,14 @@ function insideQuotes(line: string, at: number): boolean {
  * line first, so the readers that read an edit from the start of a line see it
  * too (QA-2, 26 Oct 2026: "Create a CA for Kira Dunmore. Change Observation of
  * Offense to: …" still made the Employee "Change"). The sentence's own point
- * goes with the break, so no reader reads "Kira Dunmore." as the name.
+ * or comma goes with the break, so no reader reads "Kira Dunmore." as the
+ * name. An instruction after "No." is still the edit: "No." answers the
+ * question before it (coordinator's ruling, 26 Oct 2026).
  */
 export function lowercaseEditInstruction(turn: string): string {
   return turn
     .split("\n")
-    .flatMap((line) => line.replace(AFTER_SENTENCE, (whole, stop: string, at: number) => (insideQuotes(line, at) ? whole : `${stop === "." ? "" : stop}\n`)).split("\n"))
+    .flatMap((line) => line.replace(AFTER_SENTENCE, (whole, stop: string, at: number) => (insideQuotes(line, at) || leadInOnly(line, at, stop) ? whole : `${stop === "." || stop === "," ? "" : stop}\n`)).split("\n"))
     .map((line) => line.replace(INSTRUCTION, (_whole, lead: string, words: string) => `${lead.toLowerCase()}${words.toLowerCase()}`))
     .join("\n");
 }
