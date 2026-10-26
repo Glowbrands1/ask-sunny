@@ -312,7 +312,7 @@ describe("PRIOR_ACTIONS_NO_COMMA_ENABLED off: today's output, pinned", () => {
     });
   }
 
-  it("(2): the priors accumulate, the model's 9/25 dates the form, and the level is blank (QA's defect)", () => {
+  it("(2): the priors accumulate, the form is not dated 9/25 (since #243), and the level is blank (QA's defect)", () => {
     flags(true, false);
     expect(statedPriorActions(QA_TWO, TODAY)).toEqual([
       "Coaching — 09/08/2026",
@@ -321,7 +321,11 @@ describe("PRIOR_ACTIONS_NO_COMMA_ENABLED off: today's output, pinned", () => {
     ]);
     expect(statedPriorActions("prior coachings 9/8, 9/15 and 9/25", TODAY)).toEqual(["Coaching — 09/08/2026"]);
     expect(incidentDates("prior coachings 9/8, 9/15 and 9/25", TODAY)).toEqual(["2026-09-15", "2026-09-25"]);
-    expect(turn(QA_TWO, "9/25").formDate).toBe("2026-09-25");
+    // Changed on purpose (26 Oct 2026): main now carries #243, whose
+    // PRIOR_ACTIONS_PARSE notAFormDate guard in intent-slots.ts groundDate already
+    // drops the model's prior-step date. So with this flag off the form is no
+    // longer dated 9/25; it was when this pin was written against 3a0d9012.
+    expect(turn(QA_TWO, "9/25").formDate).toBeNull();
     vi.stubEnv("WARNING_LEVEL_MANAGER_ONLY_ENABLED", "1");
     expect(turn(QA_TWO, null).warningLevel).toBeNull();
   });
