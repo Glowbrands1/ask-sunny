@@ -112,3 +112,21 @@ describe("CARD_NEVER_SILENT_ENABLED on: a bare form word asks for the facts", ()
     expect(withCardNeverSilent(response, { question: "ca", history: [] } as unknown as AskRequest)).toBe(response);
   });
 });
+
+/** QA-6/QA-7 negation probes, 26 Oct 2026: a turn that says not to finalize, make or edit is never told to press Create draft. */
+describe("CARD_NEVER_SILENT_ENABLED on: a negated finalize / make / edit", () => {
+  it.each(["do not make it", "Do not make it", "don't finalize", "never finalize it", "I haven't verified it yet", "not done yet", "no edit please", "do not edit it"])(
+    "'%s' is answered as nothing changed",
+    (question) => {
+      process.env[FLAG] = "on";
+      const out = turn(question);
+      expect(out.content).toContain("Nothing on the card changed with that message.");
+      expect(out.content).not.toContain("To edit it, press");
+    },
+  );
+
+  it.each(["i verified everythign i jsut need to finalize it", "i need to edit this can you make it to where i can edit", "yes"])("'%s' still gets its answer", (question) => {
+    process.env[FLAG] = "on";
+    expect(turn(question).content).not.toContain("Nothing on the card changed with that message.");
+  });
+});

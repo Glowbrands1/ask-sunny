@@ -43,3 +43,10 @@ describe("CARD_NEVER_SILENT_ENABLED on: a negated or named chatty team phrase is
     expect(readsAsTeamSubject("not for the whole team, just for Rowan Pell")).toBe(false);
   });
 });
+
+describe("CARD_NEVER_SILENT_ENABLED on: a person named in a later sentence", () => {
+  it.each(["please make it generic for the whole team. Rowan Pell was late", "Please make it generic for the whole team. Rowan Pell was late"])("'%s' is not the team", (turn) => {
+    process.env[FLAG] = "on";
+    expect(readsAsTeamSubject(turn)).toBe(false);
+  });
+});
