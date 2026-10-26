@@ -901,3 +901,13 @@ export function stateCodeNotAPersonEnabled(): boolean {
 export function googleReviewsInChatEnabled(): boolean {
   return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
 }
+
+/**
+ * An incident date after today is asked about once, in every register, and
+ * never dates the form (QA, 26 Oct 2026, U4). A deadline or a follow-up in
+ * the future is not asked about. Off, a future date is dropped silently, as
+ * before.
+ */
+export function futureIncidentDateAskEnabled(): boolean {
+  return envFlag("FUTURE_INCIDENT_DATE_ASK_ENABLED");
+}
