@@ -69,15 +69,19 @@ import {
   terseSlotReadEnabled,
   remapDraftSourcesClientEnabled,
   remapDraftSourcesEnabled,
+  formDateIncidentOnlyEnabled,
   reopenVerbGuardEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
   appPasswordHelpEnabled,
+  policyCleaningIncidentEnabled,
+  policySpecificTopicsEnabled,
   followUpNotPriorEnabled,
   stateCodeNotAPersonEnabled,
   googleReviewsInChatEnabled,
-  policyCleaningIncidentEnabled,
+  draftNeverBlankEnabled,
+  nameBeforeTitleEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -165,15 +169,19 @@ const NEW_FLAGS = [
   "TERSE_SLOT_READ_ENABLED",
   "REMAP_DRAFT_SOURCES_ENABLED",
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
+  "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "SENSITIVE_DEFAULTS_REDACT_ENABLED",
   "APP_PASSWORD_HELP_ENABLED",
+  "POLICY_CLEANING_INCIDENT_ENABLED",
+  "POLICY_SPECIFIC_TOPICS_ENABLED",
   "FOLLOW_UP_NOT_PRIOR_ENABLED",
   "STATE_CODE_NOT_A_PERSON_ENABLED",
   "GOOGLE_REVIEWS_IN_CHAT_ENABLED",
-  "POLICY_CLEANING_INCIDENT_ENABLED",
+  "DRAFT_NEVER_BLANK_ENABLED",
+  "NAME_BEFORE_TITLE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -334,15 +342,19 @@ describe("new flags default off and wrappers are inert", () => {
     expect(terseSlotReadEnabled()).toBe(false);
     expect(remapDraftSourcesEnabled()).toBe(false);
     expect(remapDraftSourcesClientEnabled()).toBe(false);
+    expect(formDateIncidentOnlyEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(sensitiveDefaultsRedactEnabled()).toBe(false);
     expect(appPasswordHelpEnabled()).toBe(false);
+    expect(policyCleaningIncidentEnabled()).toBe(false);
+    expect(policySpecificTopicsEnabled()).toBe(false);
+    expect(nameBeforeTitleEnabled()).toBe(false);
     expect(followUpNotPriorEnabled()).toBe(false);
     expect(stateCodeNotAPersonEnabled()).toBe(false);
     expect(googleReviewsInChatEnabled()).toBe(false);
-    expect(policyCleaningIncidentEnabled()).toBe(false);
+    expect(draftNeverBlankEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

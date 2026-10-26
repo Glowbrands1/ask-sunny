@@ -836,6 +836,16 @@ export function chatLongMessageEnabled(): boolean {
 }
 
 /**
+ * The form's date is the incident date the manager stated, or the day the
+ * form is created — never a deadline, due date, assignment date, prior-action
+ * date or a "by <date>" (Pau's coordinator, 25 Oct 2026, D3). Off, the date
+ * readers keep main's reading.
+ */
+export function formDateIncidentOnlyEnabled(): boolean {
+  return envFlag("FORM_DATE_INCIDENT_ONLY_ENABLED");
+}
+
+/**
  * A terse "ca <name> <what happened> <date> verbal 25 deduct" line is written
  * out as the long form before it is read, so the name, salon, date, warning
  * level and payroll amount are read as they are from a full sentence (Ask
@@ -866,6 +876,32 @@ export function sensitiveDefaultsRedactEnabled(): boolean {
  */
 export function appPasswordHelpEnabled(): boolean {
   return envFlag("APP_PASSWORD_HELP_ENABLED");
+}
+
+/**
+ * Cleaning left undone cites the manual's Care and Cleaning of Equipment and
+ * Facilities section, chosen by the code (Code 3, policy reading; QA T5,
+ * 25 Oct 2026): "cleaning duties not being completed", "weren't done",
+ * "didn't get done", "left dirty". Other duties left undone in those words are
+ * the Standards of Conduct. Off, the policy is read exactly as before.
+ */
+export function policyCleaningIncidentEnabled(): boolean {
+  return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
+}
+
+/**
+ * Specific incidents cite their own manual section, chosen by the code (Code 9,
+ * policy reading; QA, 26 Oct 2026): no wet floor sign -> Safety in the
+ * Workplace, a long break -> Meal and Rest Policy, a social media post ->
+ * Social Media Policy, sexual comments -> Sexual and Other Forms of
+ * Harassment, a pet at work -> Animals in the Workplace, theft, cash
+ * shortages, insubordination and talking badly about coworkers -> the page of
+ * the Standards of Conduct that lists them. A coaching form's "other" topic
+ * is no longer primed with "Punctuality". Off, the policy and the topic are
+ * read exactly as before.
+ */
+export function policySpecificTopicsEnabled(): boolean {
+  return envFlag("POLICY_SPECIFIC_TOPICS_ENABLED");
 }
 
 /**
@@ -903,12 +939,29 @@ export function googleReviewsInChatEnabled(): boolean {
 }
 
 /**
- * Cleaning left undone cites the manual's Care and Cleaning of Equipment and
- * Facilities section, chosen by the code (Code 3, policy reading; QA T5,
- * 25 Oct 2026): "cleaning duties not being completed", "weren't done",
- * "didn't get done", "left dirty". Other duties left undone in those words are
- * the Standards of Conduct. Off, the policy is read exactly as before.
+ * A Corrective Action or coaching draft is never filed blank (found in the
+ * sibling app's production, 26 Oct 2026: `drafted` with no fields and nothing
+ * rejected, from Create clicks fired several at once). The model's tool call
+ * is read when its `values` / `checked` came back JSON-encoded, one object per
+ * section, keyed by label, or with a single option as text; a model call that
+ * threw (429, 529, overloaded), answered with no tool call, or left no
+ * narrative although the notes hold an account is tried again up to twice
+ * (after 1 s, then 3 s), as is a failed framework read; if it is still empty,
+ * the Observation is the manager's own incident clause. Every reason goes on
+ * a drafted event, with `{"fallback": "manager_words"}` where used. See
+ * `forms/draft-never-blank.ts`. Off, the draft route is unchanged.
  */
-export function policyCleaningIncidentEnabled(): boolean {
-  return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
+export function draftNeverBlankEnabled(): boolean {
+  return envFlag("DRAFT_NEVER_BLANK_ENABLED");
+}
+
+/**
+ * NAME_BEFORE_TITLE_ENABLED (QA, 26 Oct 2026): "ca for <first> <last>, team member at
+ * <salon>" in lowercase left the Employee unread, and "for <First> <Last> Team
+ * Member at <salon>" dropped the surname. A two-word name right before a job
+ * title is read as the name, with the title after a comma. See
+ * `ai/name-before-title.ts`. Off, the turn is read as typed.
+ */
+export function nameBeforeTitleEnabled(): boolean {
+  return envFlag("NAME_BEFORE_TITLE_ENABLED");
 }

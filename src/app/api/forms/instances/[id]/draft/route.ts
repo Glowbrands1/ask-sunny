@@ -7,9 +7,11 @@ import {
   actionPlanSentencesEnabled,
   attendancePolicyCitationEnabled,
   draftMergeEnabled,
+  draftNeverBlankEnabled,
   payrollAmountFieldEnabled,
   policyCitationEnabled,
   policyPageRequiredEnabled,
+  policySpecificTopicsEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -95,6 +97,7 @@ import {
   isApprovedPolicyManualTitle,
   manualSectionsFor,
   officialManualProvenance,
+  type ManualSection,
   unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
@@ -137,6 +140,7 @@ import {
   describedManualSection,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
+import { OTHER_WRITE_IN_INSTRUCTION, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -162,6 +166,20 @@ import {
   sectionsWithNameAndPage,
 } from "@/lib/forms/required-policy-citation";
 import { retainFilledFields } from "@/lib/forms/draft-merge";
+import {
+  DRAFT_RETRY_BACKOFF_MS,
+  withinDraftBudget,
+  callSaidAnything,
+  emptyCallReason,
+  holdsNarrative,
+  managerWordsObservation,
+  modelFailureReason,
+  notesHoldAccount,
+  pauseBeforeRetry,
+  readDraftedCall,
+  recordDraftOutcome,
+  type DraftedCall,
+} from "@/lib/forms/draft-never-blank";
 import { WARNING_TYPE_KEY } from "@/lib/forms/corrective-action-intake";
 import {
   COACHING_CONTEXT_RULES,
@@ -276,6 +294,8 @@ async function readOfficialPolicyManual(
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
+    /* When this request began: DRAFT_NEVER_BLANK_ENABLED stops retrying past its budget. */
+    const startedAt = Date.now();
     assertLiveMode();
     assertNoConfigurationProblems();
     const { id } = await context.params;
@@ -438,14 +458,33 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       variantKey,
     });
 
-    const progression = governance.governed
-      ? await new SupabaseKnowledgeProvider()
-          .fetchRoleGrounding(
-            PERFORMANCE_MANAGEMENT_FRAMEWORK,
-            ACTIVE_BRAND.knowledgeScopeId,
-          )
-          .catch(() => null)
+    const readFramework = () =>
+      new SupabaseKnowledgeProvider()
+        .fetchRoleGrounding(
+          PERFORMANCE_MANAGEMENT_FRAMEWORK,
+          ACTIVE_BRAND.knowledgeScopeId,
+        )
+        .catch(() => null);
+    let progression = governance.governed
+      ? await readFramework()
       : null;
+    /*
+     * DRAFT_NEVER_BLANK_ENABLED: a framework read that failed (a timeout or a
+     * dropped connection under load reads as `null` here) is tried again,
+     * after 1 s and then 3 s, before the draft is withheld for want of it.
+     */
+    let frameworkReads = 1;
+    while (
+      draftNeverBlankEnabled() &&
+      governance.governed &&
+      (progression === null || !progression.ok) &&
+      frameworkReads <= DRAFT_RETRY_BACKOFF_MS.length &&
+      withinDraftBudget(startedAt)
+    ) {
+      await pauseBeforeRetry(DRAFT_RETRY_BACKOFF_MS[frameworkReads - 1]!);
+      frameworkReads += 1;
+      progression = await readFramework();
+    }
 
     /*
      * FAILS CLOSED, AND THE FORM STAYS USABLE.
@@ -459,6 +498,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * unavailable state rather than a 500, so this branch covers both.
      */
     if (governance.governed && (progression === null || !progression.ok)) {
+      /* Not silent either (DRAFT_NEVER_BLANK_ENABLED): why nothing was drafted. */
+      if (draftNeverBlankEnabled()) {
+        await recordDraftOutcome(id, actor.id, {
+          attempts: frameworkReads,
+          reasons: [
+            progression === null ? "framework_read_failed" : "framework_unavailable",
+            ...(frameworkReads <= DRAFT_RETRY_BACKOFF_MS.length && !withinDraftBudget(startedAt)
+              ? ["time_budget_exceeded"]
+              : []),
+          ],
+        });
+      }
       return NextResponse.json({
         values: {},
         checked: {},
@@ -937,7 +988,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        * prints a ticked box with no label beside it.
        */
       promptGroups.some((group) => group.options.some((option) => option.key === "other"))
-        ? 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
+        ? policySpecificTopicsEnabled()
+          ? OTHER_WRITE_IN_INSTRUCTION
+          : 'When no listed option fits, tick "other" AND name the topic in the matching write-in field — for lateness that write-in is "Punctuality".'
         : "",
       offersConductPolicy
         ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
@@ -947,7 +1000,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       .join("\n");
 
     const client = getAnthropicClient();
-    const response = await client.messages.create({
+    const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
       system,
@@ -976,14 +1029,55 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ],
       tool_choice: { type: "tool", name: "write_form_fields" },
     });
+    type DraftReply = Awaited<ReturnType<typeof draftCall>>;
+    const toolCall = (reply: DraftReply) =>
+      reply.content.find(
+        (block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use",
+      );
 
-    const call = response.content.find(
-      (block): block is Extract<typeof block, { type: "tool_use" }> => block.type === "tool_use",
-    );
-    const drafted = (call?.input ?? {}) as {
-      values?: Record<string, string>;
-      checked?: Record<string, string[]>;
+    /*
+     * DRAFT_NEVER_BLANK_ENABLED: the tool call read as the text and ticks it
+     * carries, whatever shape they came back in, and a model error (429, 529,
+     * overloaded) answered as a failed attempt rather than a failed draft —
+     * see `draft-never-blank.ts`. Off, exactly what the call held, and an
+     * error throws as before.
+     */
+    const neverBlank = draftNeverBlankEnabled();
+    const readCall = (input: unknown): DraftedCall =>
+      neverBlank
+        ? readDraftedCall(input, { fields: promptFields, groups: promptGroups })
+        : ((input ?? {}) as DraftedCall);
+    /* Why each attempt that wrote nothing wrote nothing, for the drafted event. */
+    const reasons: string[] = [];
+    let lastError: unknown = null;
+    const ask = async (): Promise<{ drafted: DraftedCall; failed: boolean }> => {
+      let reply: DraftReply;
+      try {
+        reply = await draftCall();
+      } catch (error) {
+        if (!neverBlank) throw error;
+        lastError = error;
+        reasons.push(modelFailureReason(error));
+        return { drafted: {}, failed: true };
+      }
+      const call = toolCall(reply);
+      const read = readCall(call?.input);
+      if (neverBlank) {
+        const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
+        if (empty) reasons.push(empty);
+      }
+      return { drafted: read, failed: false };
     };
+    const first = await ask();
+    let drafted = first.drafted;
+
+    /*
+     * THE PROSE GUARDS, in order, over one tool call. A function only so a
+     * retried call (DRAFT_NEVER_BLANK_ENABLED) runs through exactly the same
+     * guards; the first call's path is unchanged. The body keeps its original
+     * indentation, so the guards read (and diff) as they always have.
+     */
+    const guardDraft = (drafted: DraftedCall) => {
 
     /*
      * UNRESOLVED PLACEHOLDERS GO BEFORE ANYTHING IS STORED.
@@ -1198,6 +1292,81 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         )
       : { values: requirements.values, adjusted: [] as string[], emptied: [] as string[] };
 
+    return { cleaned, dated, narrated, timeframe, followUp, framing, groundedKeys, claims, absence, requirements, attributions };
+    };
+
+    let prose = guardDraft(drafted);
+
+    /*
+     * ========================================================================
+     * A CORRECTIVE ACTION OR COACHING DRAFT IS NEVER FILED BLANK
+     * ========================================================================
+     *
+     * DRAFT_NEVER_BLANK_ENABLED (found in the sibling app, 26 Oct 2026:
+     * `drafted` with no fields and nothing rejected). A model call that threw,
+     * answered without a tool call, or left no narrative although the notes
+     * hold an account is tried again up to twice, after 1 s and 3 s; if it is
+     * still empty, the narrative is the manager's own incident clause through
+     * the same guards; every reason is recorded. See `draft-never-blank.ts`.
+     * Off, nothing here runs.
+     */
+    const narrativeTargets = promptFields
+      .filter((field) => field.narrative === OBSERVED_EXPECTATION)
+      .map((field) => field.key);
+    const blankable =
+      (loaded.instance.layoutFamily === "corrective" || isCoachingFamily) &&
+      narrativeTargets.length > 0 &&
+      notesHoldAccount(notes, loaded.instance.employeeName);
+    const blank = (current: typeof prose) => blankable && !holdsNarrative(current.attributions.values, narrativeTargets);
+    if (blank(prose) && neverBlank && !first.failed) reasons.push("no_narrative_after_guards");
+    let attempts = 1;
+    let succeeded = !first.failed;
+    let lastFailed = first.failed;
+    while (
+      neverBlank &&
+      (lastFailed || blank(prose)) &&
+      attempts <= DRAFT_RETRY_BACKOFF_MS.length &&
+      withinDraftBudget(startedAt)
+    ) {
+      await pauseBeforeRetry(DRAFT_RETRY_BACKOFF_MS[attempts - 1]!);
+      attempts += 1;
+      const next = await ask();
+      lastFailed = next.failed;
+      if (next.failed) continue;
+      succeeded = true;
+      const nextProse = guardDraft(next.drafted);
+      if (!blank(nextProse) || !callSaidAnything(drafted)) {
+        drafted = next.drafted;
+        prose = nextProse;
+      }
+      if (blank(prose)) reasons.push("no_narrative_after_guards");
+    }
+    /* Out of time with retries left: say so, and go straight to what is in hand. */
+    if (neverBlank && (lastFailed || blank(prose)) && attempts <= DRAFT_RETRY_BACKOFF_MS.length && !withinDraftBudget(startedAt)) {
+      reasons.push("time_budget_exceeded");
+    }
+    const retried = attempts > 1;
+    let fallback: "manager_words" | null = null;
+    if (neverBlank && blank(prose)) {
+      const words = managerWordsObservation(notes, loaded.instance.employeeName);
+      if (words) {
+        const withWords: DraftedCall = { ...drafted, values: { ...(drafted.values ?? {}), [narrativeTargets[0]!]: words } };
+        const wordsProse = guardDraft(withWords);
+        if (holdsNarrative(wordsProse.attributions.values, narrativeTargets)) {
+          drafted = withWords;
+          prose = wordsProse;
+          fallback = "manager_words";
+        }
+      }
+    }
+    /*
+     * Every attempt failed and nothing could be written from the manager's
+     * words: the draft fails as it always has, and the client says so.
+     */
+    if (neverBlank && !succeeded && !fallback) throw lastError;
+    const { cleaned, dated, narrated, timeframe, followUp, framing, claims, absence, requirements, attributions } =
+      prose;
+
     /*
      * ========================================================================
      * EVERY GUARD RUNS IN MEMORY. THE WRITE HAPPENS ONCE, AT THE END.
@@ -1342,7 +1511,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     })();
 
     const enforced = enforceResponsibilities(document, variantKey, {
-      values: priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+      values: withoutPrimedTopic(
+        priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+        `${body.topic ?? ""} ${notes}`,
+      ),
       checked: exit?.checked ?? sensitive.checked,
     });
 
@@ -1561,9 +1733,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           notes: `${body.topic ?? ""} ${notes}`,
         })
       : [];
-    const manualSections = namedManual
-      ? [namedManual, ...tickedSections.filter((section) => section.heading !== namedManual.heading)]
-      : tickedSections;
+    /* POLICY_SPECIFIC_TOPICS_ENABLED: the further sections the same incident is cited under (Animals, then Visitors). */
+    const alsoManual: readonly ManualSection[] = namedManual && policySection && "also" in policySection ? (policySection.also ?? []) : [];
+    const manualSections = withConductLinePage(
+      namedManual
+        ? [
+            namedManual,
+            ...alsoManual.filter((section) => section.heading !== namedManual.heading),
+            ...tickedSections.filter(
+              (section) => section.heading !== namedManual.heading && !alsoManual.some((also) => also.heading === section.heading),
+            ),
+          ]
+        : tickedSections,
+      `${body.topic ?? ""} ${notes}`,
+      manual.ok ? manual.chunks : [],
+    );
 
     const derivedPolicy = applyDerivedPolicyFields({
       document,
@@ -1585,7 +1769,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
        */
       manualReference:
         manual.ok && manualSections.length > 0
-          ? policyFieldValue(manualGroundedPolicies(manual, manualSections))
+          ? policyFieldValue(
+              withConductLineWording(manualGroundedPolicies(manual, manualSections), `${body.topic ?? ""} ${notes}`, manual.chunks),
+            )
           : null,
       manualAmbiguous: !manual.ok && manual.problem === "ambiguous",
       /*
@@ -1890,12 +2076,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           checked: draftedPayload.checked,
         })
       : draftedPayload;
+    const writtenProvenance: Record<string, Record<string, unknown>> = { ...planned.provenance, ...cited.provenance };
     const guarded = await applyAssistantDraft(
       id,
       kept,
       actor.id,
-      { ...planned.provenance, ...cited.provenance },
+      fallback
+        ? {
+            ...writtenProvenance,
+            [narrativeTargets[0]!]: { ...(writtenProvenance[narrativeTargets[0]!] ?? {}), fallback },
+          }
+        : writtenProvenance,
     );
+    /*
+     * NEVER A SILENT BLANK (DRAFT_NEVER_BLANK_ENABLED). Whenever an attempt
+     * failed or wrote nothing, or the write itself holds no field, the reason
+     * goes on a drafted event of its own (the write's event is
+     * `applyAssistantDraft`'s, and stays as it is).
+     */
+    if (
+      neverBlank &&
+      (retried || fallback || reasons.length > 0 || Object.keys(guarded.accepted.values).length === 0)
+    ) {
+      await recordDraftOutcome(id, actor.id, {
+        ...(fallback && guarded.accepted.values[narrativeTargets[0]!] ? { fallback, field: narrativeTargets[0]! } : {}),
+        attempts,
+        reasons: reasons.length > 0 ? reasons : ["nothing_to_write"],
+      });
+    }
 
     /*
      * A redraft writes the assistant's fields and leaves every other key. The
@@ -2077,6 +2285,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
             exitHeaderRestated: exit.headerRestated,
           }
         : {}),
+      /* DRAFT_NEVER_BLANK_ENABLED only: the model was asked again; the narrative is the manager's words. */
+      ...(retried ? { retried: true } : {}),
+      ...(fallback ? { fallback } : {}),
       sources: grounding.sources,
       /** Fields filled from the manager's own statements, not by the model. */
       statedFacts: [...statedFacts, ...exitStatedFacts],
