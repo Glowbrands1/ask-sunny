@@ -1035,6 +1035,13 @@ REMAP_DRAFT_SOURCES_ENABLED its sources are every turn. Its intent path does
 not draft a card from these turns. Test:
 `src/app/api/chat/stored-slots-not-a-request-e2e.test.ts`.
 
+## 26 Oct 2026: an assistant salon director has no Form Monitoring — Sunny-only (NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED)
+
+Requested for Sun Tan City's assistant salon director role only. With the flag
+on, that role loses `view_form_monitoring` (sidebar, page, Overview follow-ups,
+chat card link and search hits go with it) but still opens and downloads the
+forms it created itself. Ask Bubbles' assistant manager keeps the Forms
+Register: not requested there; ask Pau if wanted.
 ## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
 
 "create corrective action form for <name>, Salon Director" drafted "Observed:
