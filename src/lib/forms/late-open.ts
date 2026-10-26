@@ -1,5 +1,6 @@
 import { lateOpenDateEnabled } from "@/lib/config/chat-quality-flags";
 
+import { saysUndenied } from "./denied-incident";
 import { listIncidentDates } from "./form-date-answer";
 
 /**
@@ -38,7 +39,7 @@ const ATTENDANCE_TOO =
 
 /** Whether the account describes something the Attendance section governs beside a late opening. */
 export function describesAttendanceToo(text: string): boolean {
-  return ATTENDANCE_TOO.test(text ?? "");
+  return saysUndenied(text ?? "", ATTENDANCE_TOO);
 }
 
 /** A month-day with no year, not part of a longer date or number. "10-19", not "10-19-26". */

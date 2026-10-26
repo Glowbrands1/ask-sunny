@@ -918,3 +918,14 @@ export function googleReviewsInChatEnabled(): boolean {
 export function draftNeverBlankEnabled(): boolean {
   return envFlag("DRAFT_NEVER_BLANK_ENABLED");
 }
+
+/**
+ * A lateness or absence the manager denies is not one (Code 3; QA-2 and the
+ * coordinator, 26 Oct 2026; same flag in both apps): "was not late to her
+ * shift", "was never late" and "is not late" cited Attendance p.14. On, the
+ * lateness and absence readers skip a match with a negation just before it
+ * in the same clause (`lib/forms/denied-incident.ts`). Off, as before.
+ */
+export function negatedLateShiftEnabled(): boolean {
+  return envFlag("NEGATED_LATE_SHIFT_ENABLED");
+}
