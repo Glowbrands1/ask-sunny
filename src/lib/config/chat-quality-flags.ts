@@ -815,3 +815,15 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * The card's policy heading is one the manager's own words support (Code 3,
+ * policy reading; QA, 25-26 Oct 2026; same flag in both apps): the slot
+ * model's heading, the saved one or the incident type is kept only when the
+ * manager named it or described an account the code reads as it; otherwise
+ * the code's own reading decides. "missing the woven deadline" is Standards
+ * of Conduct on every run, never "Attendance, as you said". Off, as before.
+ */
+export function policyHeadingStatedOnlyEnabled(): boolean {
+  return envFlag("POLICY_HEADING_STATED_ONLY_ENABLED");
+}
