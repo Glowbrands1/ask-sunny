@@ -1,6 +1,7 @@
 import { negatedPersonNoCardEnabled } from "@/lib/config/chat-quality-flags";
 
 import { firstNonNegatedName, isNegatedName, onlyNegatedMentions } from "./negated-name";
+import { extractEmployeeNames } from "./proposal";
 
 /**
  * NEGATED_PERSON_NO_CARD_ENABLED (QA-6, 26 Oct 2026): "never one for Rowan
@@ -49,4 +50,43 @@ export function withoutNegatedPeople(text: string, names: readonly string[]): st
     }
   }
   return out;
+}
+
+/** "Rowan Pell": two capitalised words, the shape a typed name has. */
+const TITLE_CASE_PAIR = /(?<![\w'’-])[A-Z][a-z][\w'’-]*\s+[A-Z][a-z][\w'’-]*(?![\w'’-])/g;
+
+/**
+ * The people `text` could be naming, for the negation check: the model's
+ * reading, the proposal's name reader, any two capitalised words, and the
+ * roster's names (which also find a name typed in lower case or ALL CAPS).
+ * Flag off: none.
+ */
+export function negationCandidates(text: string, proposed: string | null | undefined, people: readonly string[] = []): string[] {
+  if (!negatedPersonNoCardEnabled() || !text) return [];
+  return distinct([proposed, ...extractEmployeeNames(text), ...(text.match(TITLE_CASE_PAIR) ?? []), ...people]);
+}
+
+/**
+ * The model's person and the manager's turns as a name reader should see
+ * them. A person the newest turn names only after a negation is blanked out
+ * of that turn, and a model reading of them (or no reading) becomes the
+ * first person the turn names without one, or nobody. A turn with no
+ * negated person is left as given. Flag off: both as given.
+ */
+export function unnegatedNameReading(
+  proposed: string | null,
+  turns: readonly string[],
+  people: readonly string[] = [],
+): { proposed: string | null; turns: readonly string[] } {
+  const latest = turns.at(-1) ?? "";
+  const candidates = negationCandidates(latest, proposed, people);
+  const negated = negatedPeople(latest, candidates);
+  if (negated.length === 0) return { proposed, turns };
+  const key = proposed?.trim().toLowerCase();
+  // A negated model reading, or none, becomes the first person named without a negation.
+  const replace = !key || negated.some((name) => name.toLowerCase() === key);
+  return {
+    proposed: replace ? firstUnnegatedPerson(latest, candidates) : proposed,
+    turns: [...turns.slice(0, -1), withoutNegatedPeople(latest, negated)],
+  };
 }

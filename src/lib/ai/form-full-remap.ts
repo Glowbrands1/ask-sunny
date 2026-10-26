@@ -26,6 +26,7 @@ import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { payrollDeductAmount, payrollDeductFromConversation } from "@/lib/forms/payroll-deduct";
 import { extractEmployeeNames, extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
+import { unnegatedNameReading } from "@/lib/forms/negated-person";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { warningLevelFromTurns } from "@/lib/forms/warning-level";
@@ -159,7 +160,9 @@ export function groundFormSlots(input: {
     templateFromUser(said) ??
     (isTemplate(input.continueTemplateKey) ? input.continueTemplateKey : null) ??
     (isTemplate(raw.templateKey) ? raw.templateKey : null);
-  const employeeName = groundedName(raw.employeeName, users);
+  // NEGATED_PERSON_NO_CARD_ENABLED: "never one for Rowan Pell" names nobody for the form.
+  const nameReading = unnegatedNameReading(raw.employeeName, users, input.people.map((person) => `${person.firstName} ${person.lastName}`));
+  const employeeName = groundedName(nameReading.proposed, nameReading.turns);
   const jobTitle = groundedTitle(fixed ? users.map(withoutStateCodes) : users);
   // NEWEST_PLACE_TURN_ENABLED: the newest manager turn that names one salon wins.
   const newest = newestPlaceTurnEnabled() ? newestManagerTurnSalon([...users].reverse()) : null;
