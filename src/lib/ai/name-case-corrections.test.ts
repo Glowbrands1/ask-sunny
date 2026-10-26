@@ -126,7 +126,8 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: whole words, particles and the direc
   const reply = (name: string, content: string) => ({ content, citations: [], formProposal: { employeeName: name } }) as unknown as AskResponse;
 
   it.each([
-    ["ann", "...for **ann**. Planning notes: the annual review and manager ann will sign.", "...for **Ann**. Planning notes: the annual review and manager Ann will sign."],
+    // QA-5, 26 Oct 2026: changed on purpose — a one-word name is changed only in bold, so "manager ann" stays as written.
+    ["ann", "...for **ann**. Planning notes: the annual review and manager ann will sign.", "...for **Ann**. Planning notes: the annual review and manager ann will sign."],
     ["al", "...for **al**. The policy, total deduct and local rules apply.", "...for **Al**. The policy, total deduct and local rules apply."],
     ["jo", "...for **jo**. Joint review and job duties.", "...for **Jo**. Joint review and job duties."],
   ])("'%s' is changed on whole words only", (name, content, shown) => {
@@ -149,5 +150,28 @@ describe("NAME_CASE_INSENSITIVE_ENABLED on: whole words, particles and the direc
     process.env[FLAG] = "on";
     const directory = reply("van Der Berg", "for **van Der Berg**");
     expect(withNameTitleCase(directory, ask("create a ca for van der berg"))).toBe(directory);
+  });
+});
+
+/** QA-5, 26 Oct 2026: a one-word name that is an ordinary word, and a particle before the surname. Names invented. */
+describe("NAME_CASE_INSENSITIVE_ENABLED on: a one-word name is changed only where it is the name", () => {
+  const ask = (question: string) => ({ question, history: [] }) as unknown as AskRequest;
+  const reply = (name: string, content: string) => ({ content, citations: [], formProposal: { employeeName: name } }) as unknown as AskResponse;
+
+  it.each(["create a ca for will", "Create a ca for will"])("'%s': only **will** becomes **Will**", (question) => {
+    process.env[FLAG] = "on";
+    const out = withNameTitleCase(reply("will", "I'll draft it for **will**. She will sign and will be late. **will**'s manager will review it."), ask(question));
+    expect(out.content).toBe("I'll draft it for **Will**. She will sign and will be late. **Will**'s manager will review it.");
+    expect(out.formProposal?.employeeName).toBe("Will");
+  });
+
+  it.each(["ca for van der berg late open", "Ca for van der berg late open", "CA FOR VAN DER BERG LATE OPEN"])("'%s' reads the name as 'Van der Berg'", (question) => {
+    process.env[FLAG] = "on";
+    expect(withNameCase(ask(question)).question).toContain("Van der Berg");
+  });
+
+  it("a lowercase third word after an ordinary second word is still not a name: 'rowan testcase opend'", () => {
+    process.env[FLAG] = "on";
+    expect(withNameCase(ask("ca for rowan testcase opend late")).question).not.toContain("Opend");
   });
 });

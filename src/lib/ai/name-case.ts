@@ -108,7 +108,8 @@ export function humanCase(text: string): string {
       const placeholder = words.length === 1 && words[0]!.toLowerCase() === "test" && /^employee$/i.test(token[0]);
       if (!placeholder && !nameWord(token[0])) break;
       // A third word only when typed with a capital ("Mary Ann Smith"), never "rowan testcase opend".
-      if (words.length === 2 && !/^[A-Z]/.test(token[0])) break;
+      // QA-5, 26 Oct 2026: after a particle ("van der berg") the third word is the surname.
+      if (words.length === 2 && !/^[A-Z]/.test(token[0]) && !PARTICLES.has(words[1]!.toLowerCase())) break;
       if (words.length === 3) break;
       words.push(token[0]);
       end = from + token.index! + token[0].length;
@@ -155,9 +156,21 @@ export function withNameTitleCase(response: AskResponse, request: AskRequest): A
   if (!typed.some((turn) => asTyped.test(turn) || asTyped.test(humanCase(turn)))) return response;
   return {
     ...response,
-    content: response.content.replace(new RegExp(asTyped.source, "g"), titled),
+    content: inReply(response.content, name, titled),
     formProposal: { ...response.formProposal!, employeeName: titled },
   };
+}
+
+/**
+ * QA-5, 26 Oct 2026: a one-word name can be an ordinary word ("will": "She
+ * Will sign and Will be late"). A one-word name is changed only where the
+ * reply shows it as the name, in bold ("**will**", "**will**'s"); a longer
+ * name on whole words.
+ */
+function inReply(content: string, name: string, titled: string): string {
+  if (/\s/.test(name.trim())) return content.replace(new RegExp(wholeWord(name).source, "g"), titled);
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return content.replace(new RegExp(`\\*\\*${escaped}(?=\\*\\*|['’]s\\*\\*)`, "g"), `**${titled}`);
 }
 
 /** Name particles kept in lowercase after the first word. */
