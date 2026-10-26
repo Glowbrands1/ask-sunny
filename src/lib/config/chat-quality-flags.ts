@@ -804,3 +804,15 @@ export function chatLongMessageEnabled(): boolean {
     flagOn(process.env.NEXT_PUBLIC_CHAT_LONG_MESSAGE_ENABLED)
   );
 }
+
+/**
+ * "change observation of offense to: <text>" (also "what happened", "issue")
+ * replaces What happened with exactly <text>; an "add …" is appended in the
+ * manager's words; any other instruction to the app is never content. The
+ * Employee and the other fields stay. Only the What happened half of
+ * FORM_EDIT_DATE_RULES_ENABLED, without its date rules (QA, 26 Oct 2026).
+ * Off (the default), an edit turn is read as it is today.
+ */
+export function editInstructionReplacesEnabled(): boolean {
+  return envFlag("EDIT_INSTRUCTION_REPLACES_ENABLED");
+}

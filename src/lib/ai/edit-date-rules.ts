@@ -41,7 +41,8 @@ import type { AskResponse } from "./types";
 /** "ok,", "please", "can you", "could you please" before the instruction itself. */
 const LEAD = /^\s*(?:(?:ok(?:ay)?|yes|great|thanks|and|also|now|so)\b[,.!]?\s*)*(?:(?:please|pls)\s+)?(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?(?:(?:please|pls)\s+)?/i;
 
-const OBSERVATION_FIELD = String.raw`(?:the\s+)?(?:observation(?:\s+of\s+(?:the\s+)?offen[cs]e)?|what\s+happened|offen[cs]e\s+description|description(?:\s+of\s+(?:the\s+)?offen[cs]e)?|narrative)`;
+// "change issue to …": the sibling app's card calls the field Issue (QA, 26 Oct 2026).
+const OBSERVATION_FIELD = String.raw`(?:the\s+)?(?:observation(?:\s+of\s+(?:the\s+)?offen[cs]e)?|what\s+happened|offen[cs]e\s+description|description(?:\s+of\s+(?:the\s+)?offen[cs]e)?|narrative|issue)`;
 
 const REPLACE = [
   new RegExp(

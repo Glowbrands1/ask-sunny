@@ -31,6 +31,7 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  editInstructionReplacesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -206,7 +207,8 @@ export function holdFilledSlots(input: {
       const build = (given: string, account: readonly string[]) =>
         fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
-      content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
+      // EDIT_INSTRUCTION_REPLACES_ENABLED: the same Observation rules without the date rules.
+      content = formEditDateRulesEnabled() || editInstructionReplacesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
