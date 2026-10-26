@@ -1053,6 +1053,12 @@ export async function markExported(instanceId: string, actor: string): Promise<v
   await recordEvent(instanceId, "exported", actor);
 }
 
+/** The manager's reason and the revision's number, recorded on the revision's `created` event. */
+export interface ReviseOptions {
+  readonly reason?: string;
+  readonly revisionNumber?: number;
+}
+
 /**
  * A revision, or the re-evaluation stage of an EPP.
  *
@@ -1073,11 +1079,17 @@ export async function markExported(instanceId: string, actor: string): Promise<v
  *
  * ONE OPEN REVISION AT A TIME. Asking again while a revision is still a draft
  * returns that draft rather than forking a second one.
+ *
+ * WHY, AND WHICH REVISION (`FORM_REVISIONS_ENABLED`). The caller may pass the
+ * manager's reason for the edit and the revision's number in its chain; both
+ * go on the revision's `created` event. Neither is passed with the flag off,
+ * and the event is then exactly what it always was.
  */
 export async function reviseInstance(
   instanceId: string,
   actor: string,
   kind: "revised" | "reevaluated",
+  options: ReviseOptions = {},
 ): Promise<InstanceRow> {
   const supabase = getSupabaseAdmin();
   const loaded = await loadInstance(instanceId);
@@ -1119,6 +1131,16 @@ export async function reviseInstance(
     })
     .select("id")
     .single();
+  /*
+   * TWO PRESSES AT ONCE. Both can pass the open-revision check above before
+   * either inserts. The partial unique index on `revises_instance_id` (open
+   * drafts only) refuses the second insert; that press gets the revision the
+   * first one opened.
+   */
+  if (error?.code === UNIQUE_VIOLATION) {
+    const raced = await findOpenRevision(instanceId);
+    if (raced) return raced;
+  }
   if (error || !data) throw new Error(`Could not open the revision: ${error?.message}`);
 
   const carried = loaded.values.filter((value) => value.filledBy !== "signature");
@@ -1231,7 +1253,12 @@ export async function reviseInstance(
    * marked `revised`, with that event, when this is finalized. The revision's
    * own `created` event says what it was opened from.
    */
-  await recordEvent(String(data.id), "created", actor, { revisionOf: instanceId, kind });
+  await recordEvent(String(data.id), "created", actor, {
+    revisionOf: instanceId,
+    kind,
+    ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.revisionNumber ? { revisionNumber: options.revisionNumber } : {}),
+  });
 
   const revision = await loadInstance(String(data.id));
   if (!revision) throw new Error("The revision could not be read back.");

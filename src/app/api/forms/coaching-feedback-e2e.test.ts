@@ -474,6 +474,34 @@ describe("individual and team-wide coaching", () => {
     expect(draft.prompt).not.toContain("EMPLOYEE:");
   });
 
+  // Ask Sunny conv_mvoffldz24z2t0u, 25 Oct 2026: the manager's terse turn exactly, name invented.
+  const TERSE = "ca avery stone opened late 15 min 9-20 verbal 25 deduct";
+
+  it("TERSE_SLOT_READ_ENABLED off: the terse turn reads no level, payroll or date, as on main", async () => {
+    const { expandTerseRequest } = await import("@/lib/ai/terse-slots");
+    delete process.env.TERSE_SLOT_READ_ENABLED;
+    const response = await propose([said(TERSE)]);
+    expect(response!.formProposal?.warningLevel ?? null).toBeNull();
+    expect(response!.formProposal?.payrollDeduct ?? null).toBeNull();
+    expect(expandTerseRequest(TERSE, "2026-10-01")).not.toBe(TERSE);
+  });
+
+  it("TERSE_SLOT_READ_ENABLED on: the terse turn reads the name, date, verbal and the $25 deduction", async () => {
+    const { expandTerseRequest } = await import("@/lib/ai/terse-slots");
+    const response = await propose([said(expandTerseRequest(TERSE, "2026-10-01"))]);
+    expect(response!.formProposal?.employeeName?.toLowerCase()).toBe("avery stone");
+    expect(response!.formProposal?.warningLevel).toBe("verbal");
+    expect(response!.formProposal?.payrollDeduct).toBe("yes");
+    // The amount is a card field only with PAYROLL_AMOUNT_FIELD_ENABLED; its reader takes it from the long form.
+    const { payrollDeductAmount } = await import("@/lib/forms/payroll-deduct");
+    expect(payrollDeductAmount(expandTerseRequest(TERSE, "2026-10-01"))).toBe("$25");
+    expect(response!.formProposal?.formDate).toBe("2026-09-20");
+    // The account stays in the manager's words.
+    expect(expandTerseRequest(TERSE, "2026-10-01")).toBe(
+      "Create a corrective action form for avery stone. On 9-20-26 avery stone opened late 15 min. This is a verbal warning. Payroll deduct applies and $25 will be deducted.",
+    );
+  });
+
   it("refuses a team subject on a form that is about one person", async () => {
     const response = await instancesRoute.POST(
       new Request("https://app.test/api/forms/instances", {
