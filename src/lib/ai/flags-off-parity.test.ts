@@ -75,6 +75,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 
 import { staleBannerEnabled } from "@/lib/reviews/sync-health";
+import { reviewsUpdateNoteEnabled } from "@/lib/reviews/update-note";
 
 import { augmentIntakeQuestion } from "./intake-augment";
 import { flaggedCitationWrite } from "./policy-citation-fields";
@@ -165,6 +166,7 @@ const NEW_FLAGS = [
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "GOOGLE_REVIEWS_STALE_BANNER_ENABLED",
+  "GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -329,6 +331,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(staleBannerEnabled()).toBe(false);
+    expect(reviewsUpdateNoteEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -372,6 +375,10 @@ describe("new flags default off and wrappers are inert", () => {
       // And except composer.tsx: QA approved on 25 Oct 2026, behind
       // CHAT_LONG_MESSAGE_ENABLED, the character-count line under the field
       // and send disabled over the limit. Off, it renders as before.
+      // And except the Google Reviews page. Pau, 26 Oct 2026: asked for the
+      // update note on the Google Reviews page. Behind
+      // GOOGLE_REVIEWS_UPDATE_NOTE_ENABLED; off, it renders as before
+      // (pinned in src/app/(app)/reviews/page.test.tsx).
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -381,6 +388,7 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/features/chat/chat-screen.tsx",
           ":(exclude)src/features/chat/composer.tsx",
           `:(exclude)${MONITORING_TABLE}`,
+          ":(exclude)src/app/(app)/reviews/page.tsx",
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
