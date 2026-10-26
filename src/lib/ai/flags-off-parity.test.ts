@@ -71,6 +71,7 @@ import {
   remapDraftSourcesEnabled,
   reopenVerbGuardEnabled,
   managerFormChoiceEnabled,
+  exitRehireReasonEnabled,
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   topicNotANameEnabled,
@@ -167,6 +168,7 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_REMAP_DRAFT_SOURCES_ENABLED",
   "REOPEN_VERB_GUARD_ENABLED",
   "MANAGER_FORM_CHOICE_ENABLED",
+  "EXIT_REHIRE_REASON_ENABLED",
   "FORM_REVISIONS_ENABLED",
   "NEXT_PUBLIC_FORM_REVISIONS_ENABLED",
   "TOPIC_NOT_A_NAME_ENABLED",
@@ -336,6 +338,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(remapDraftSourcesClientEnabled()).toBe(false);
     expect(reopenVerbGuardEnabled()).toBe(false);
     expect(managerFormChoiceEnabled()).toBe(false);
+    expect(exitRehireReasonEnabled()).toBe(false);
     expect(formRevisionsEnabled()).toBe(false);
     expect(formRevisionsUiEnabled()).toBe(false);
     expect(topicNotANameEnabled()).toBe(false);
