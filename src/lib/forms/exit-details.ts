@@ -463,6 +463,10 @@ const METHODS: { label: string; pattern: RegExp }[] = [
   },
 ];
 
+/** "resigned 9-15 on woven", "quit on woven", "put in her notice in woven". */
+const RESIGNED_ON_WOVEN =
+  /\b(?:resigned|resigning|quit|gave (?:her |his |their )?notice|put in (?:her |his |their )?notice)\b[^.;!?\n]{0,30}?\b(?:on|in|via|through|over) woven\b/;
+
 function methodsIn(turn: string): string[] {
   const found: string[] = [];
   for (const sentence of statements(turn)) {
@@ -482,6 +486,10 @@ function methodsIn(turn: string): string[] {
       !found.includes("Phone call")
     ) {
       found.push("Phone call");
+    }
+    // EXIT_REHIRE_REASON_ENABLED: "she resigned 9-15 on woven" (QA, Sunny batch 13).
+    if (exitRehireReasonEnabled() && RESIGNED_ON_WOVEN.test(sentence) && !found.includes("Woven message")) {
+      found.push("Woven message");
     }
     for (const method of METHODS) {
       for (const match of sentence.matchAll(method.pattern)) {
