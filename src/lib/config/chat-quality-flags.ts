@@ -915,3 +915,14 @@ export function formDateIncidentOnlyEnabled(): boolean {
 export function policyConductWordingEnabled(): boolean {
   return envFlag("POLICY_CONDUCT_WORDING_ENABLED");
 }
+
+/**
+ * Cleaning left undone cites the manual's Care and Cleaning of Equipment and
+ * Facilities section, chosen by the code (Code 3, policy reading; QA T5,
+ * 25 Oct 2026): "cleaning duties not being completed", "weren't done",
+ * "didn't get done", "left dirty". Other duties left undone in those words are
+ * the Standards of Conduct. Off, the policy is read exactly as before.
+ */
+export function policyCleaningIncidentEnabled(): boolean {
+  return envFlag("POLICY_CLEANING_INCIDENT_ENABLED");
+}

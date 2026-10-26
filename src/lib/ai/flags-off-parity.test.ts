@@ -79,6 +79,7 @@ import {
   draftNoInventedPlanEnabled,
   formDateIncidentOnlyEnabled,
   policyConductWordingEnabled,
+  policyCleaningIncidentEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -176,6 +177,7 @@ const NEW_FLAGS = [
   "DRAFT_NO_INVENTED_PLAN_ENABLED",
   "FORM_DATE_INCIDENT_ONLY_ENABLED",
   "POLICY_CONDUCT_WORDING_ENABLED",
+  "POLICY_CLEANING_INCIDENT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -332,6 +334,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(draftNoInventedPlanEnabled()).toBe(false);
     expect(formDateIncidentOnlyEnabled()).toBe(false);
     expect(policyConductWordingEnabled()).toBe(false);
+    expect(policyCleaningIncidentEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
