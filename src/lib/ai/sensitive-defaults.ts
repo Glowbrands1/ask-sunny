@@ -138,20 +138,60 @@ function isValueAfter(piece: string): boolean {
 }
 const NAMES_DEFAULT = /\b(?:default|defualt|temporary|temp|initial|starting|first[- ]time)\s+(?:pass\s?words?|passcodes?|pw|pins?|log-?\s?ins?)\b/i;
 
+/**
+ * DENY BY DEFAULT AFTER A DEFAULT-PASSWORD SENTENCE (QA-3, QA-5, coordinator,
+ * 26 Oct 2026). Once a sentence names a default password — kept as a pure
+ * forbid or removed — every sentence and line after it, up to a blank line, is
+ * suspect: "Do not use default passwords. Instead use Welcome2024." kept the
+ * second sentence because it was judged alone and never says "password". In
+ * that window a piece is removed when it has
+ *   - a token mixing letters and digits, or a run of four or more digits;
+ *   - a value tail: "(instead) use / try / enter / it is / it's / the default
+ *     is / the starting one is <one word>", with an optional "instead";
+ *   - a leading value: "<one token> is the one / works / will work".
+ * Plain advice is kept: "The password should be 8-10 characters long.",
+ * "Include numbers.", "Choose a strong password.", "See the IT section.", a
+ * heading like "Security". Citation markers ("[S1]", "[p.14]") never count.
+ */
+const MARKERS = /\[[^\]\n]*\]/g;
+const DIGIT_TOKEN = /(?<![\w-])(?=[\w@#$%&*!.-]*[a-z])(?=[\w@#$%&*!.-]*\d)(?!\d+(?:st|nd|rd|th|am|pm)\b)(?!p\.\d)[\w@#$%&*!.-]*\w|\d{4,}/i;
+const NOT_A_VALUE =
+  /^(?:caution|care|judgment|judgement|discretion|required|optional|allowed|permitted|prohibited|recommended|mandatory|important|necessary|confidential|private|case-sensitive|unique|it|them|this|that|one|these|those|instead)$/i;
+const VALUE_TAIL =
+  /\b(?:instead\s+use|use|try|enter|type|it\s+is|it'?s|that\s+is|(?:the\s+)?(?:default|starting|initial|temporary|temp|first(?:[- ]time)?|new)(?:\s+(?:one|password|pass\s?word|pw|code))?\s*(?:is|:))\s+["“'(]?([^\s"”')]+?)["”')]?(?:\s+(?:instead|then|now))?\s*[.!?]?\s*$/i;
+const LEADING_VALUE =
+  /^\s*(?:[-*•▪]\s*)?["“'(]?([^\s"”')]+)["”')]?\s+(?:is\s+(?:the\s+(?:one|password|default|code)|it)|works|will\s+work)\b[^.!?\n]*[.!?]?\s*$/i;
+
+/** Whether a piece in the window after a default-password sentence may carry a value. */
+function isSuspectAfterDefault(piece: string): boolean {
+  if (isValueAfter(piece)) return true;
+  const text = piece.replace(MARKERS, " ");
+  if (DIGIT_TOKEN.test(text)) return true;
+  const tail = VALUE_TAIL.exec(text);
+  if (tail && !NOT_A_VALUE.test(tail[1]!)) return true;
+  const lead = LEADING_VALUE.exec(text);
+  return Boolean(lead && !NOT_A_VALUE.test(lead[1]!));
+}
+
 export function redactSensitiveDefaults(text: string, note: string | null = EXCERPT_NOTE): string {
   if (!sensitiveDefaultsRedactEnabled() || !text) return text;
   const parts = text.split(SENTENCE_BREAK);
   let changed = false;
   let noteSaid = false;
+  // The window after a default-password sentence; a blank line closes it.
   let afterDefault = false;
+  let gap = "";
   const out: string[] = [];
   for (const part of parts) {
     if (part === undefined) continue;
     if (/^\s*$/.test(part)) {
+      gap += part;
       out.push(part);
       continue;
     }
-    const valueAfter = afterDefault && isValueAfter(part);
+    if (/\n[ \t]*\n/.test(gap)) afterDefault = false;
+    gap = "";
+    const valueAfter = afterDefault && isSuspectAfterDefault(part);
     if (valueAfter || (isSensitiveSentence(part) && !isNoInformation(part))) {
       changed = true;
       // The note once per text, wherever the sentences were; none when null.
@@ -160,7 +200,7 @@ export function redactSensitiveDefaults(text: string, note: string | null = EXCE
       afterDefault = true;
       continue;
     }
-    afterDefault = NAMES_DEFAULT.test(part);
+    if (NAMES_DEFAULT.test(part)) afterDefault = true;
     out.push(part);
   }
   if (!changed) return text;
