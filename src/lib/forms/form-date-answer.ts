@@ -357,17 +357,46 @@ const COACHED_ON_BEFORE = /\bcoached\s+on\s+$/i;
 const YEARLESS_DASHED = /(?<![\d/.-])(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)/g;
 const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|years?|people|times|x\b|%|am\b|pm\b|dollars?)/i;
 
+/*
+ * "… NO CALL NO SHOW TODAY. I COACHED HER ON 10-16 AND GAVE A VERBAL ON
+ * 10-21." Sunny tester, 26 Oct 2026: no prior action was listed. The held
+ * coaching was skipped here, as it should be, but so was the verbal after it:
+ * the held-coaching reader runs back across "10-16 and gave a verbal on" and
+ * took the second step for the coaching too. With
+ * PRIOR_ACTIONS_NO_COMMA_ENABLED on, a held coaching governs only the words
+ * since the date before it, and `stepSpans` also reads the held coaching's
+ * own date (`keepHeld`), so "I coached her on 10-16" is listed as an earlier
+ * step on a Corrective Action. It is never blanked
+ * (`blankYearlessStepDates` reads without `keepHeld`), and it never dates the
+ * form, as before.
+ */
+/** "I coached her on 10-16", "we counseled him about attendance on 10/1": an earlier step the manager held. */
+const COACHED_HER_BEFORE =
+  /\b(?:i|we)\s+(?:(?:verbally|formally|also|already|then|just)\s+)?(?:coached|counsel(?:ed|led))\s+(?:her|him|them|the employee)\b[^.;\n\d]{0,30}$/i;
+
+/** The end of the last date before `index` in `found`, or 0. */
+function previousDateEnd(found: readonly DateInText[], index: number): number {
+  let end = 0;
+  for (const date of found) if (date.end <= index && date.end > end) end = date.end;
+  return end;
+}
+
 /** `dates` with every yearless dashed month-day in the text added, in order (flag on only). */
-function withYearlessDates(text: string, dates: readonly DateInText[], today: string): DateInText[] {
+function withYearlessDates(text: string, dates: readonly DateInText[], today: string, keepHeld = false): DateInText[] {
   const year = Number(/^(\d{4})-/.exec(today)?.[1]);
   if (!Number.isFinite(year)) return [...dates];
+  const scoped = priorActionsNoCommaEnabled();
   const extra: DateInText[] = [];
+  // Every yearless date read so far, a skipped held coaching's included: each one ends the clause before the next.
+  const seen: DateInText[] = [];
   for (const match of text.matchAll(YEARLESS_DASHED)) {
     const index = match.index ?? 0;
     const end = index + match[0].length;
     if (RANGE_AFTER.test(text.slice(end, end + 12))) continue;
+    seen.push({ iso: "", index, end });
     // "I coached her on 10-16": a coaching the manager held is read as it was before.
-    if (HELD_COACHING_BEFORE.test(text.slice(0, index))) continue;
+    const heldText = scoped ? text.slice(previousDateEnd([...dates, ...seen], index), index) : text.slice(0, index);
+    if (!(scoped && keepHeld) && HELD_COACHING_BEFORE.test(heldText)) continue;
     if (dates.some((found) => index < found.end && end > found.index)) continue;
     const iso = calendarIso(year, Number(match[1]), Number(match[2]));
     if (iso) extra.push({ iso, index, end });
@@ -677,7 +706,9 @@ function stepsAsWritten(text: string, today: string): WrittenStep[] {
 
 /** Each earlier step with the offset of its date. A yearless "9-15" is read too with the flag on. */
 function stepSpans(text: string, today: string): { step: WrittenStep; index: number }[] {
-  const dates = priorActionsParseEnabled() ? withYearlessDates(text, datesInText(text, today), today) : datesInText(text, today);
+  const dates = priorActionsParseEnabled()
+    ? withYearlessDates(text, datesInText(text, today), today, true)
+    : datesInText(text, today);
   const steps = labelledSteps(text, dates, today);
   // "jba manual 11-1-25" after "previous coaching jba manual 11-1-26": the later date is that step's (flag on only).
   const movedTo = new Map<number, DateInText>();
@@ -715,6 +746,9 @@ function stepSpans(text: string, today: string): { step: WrittenStep; index: num
     if (owned && !ISSUES_THIS_FORM.test(owned[0]) && found.iso < today) {
       return at({ iso: found.iso, named: owned[0], ...withAbout });
     }
+    // "I coached her on 10-16" before today: an earlier step (PRIOR_ACTIONS_NO_COMMA_ENABLED).
+    const coached = priorActionsNoCommaEnabled() && found.iso < today ? COACHED_HER_BEFORE.exec(before) : null;
+    if (coached) return at({ iso: found.iso, named: coached[0], ...withAbout });
     return [];
   });
 }
