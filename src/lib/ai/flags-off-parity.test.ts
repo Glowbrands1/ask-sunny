@@ -84,6 +84,7 @@ import {
   nameBeforeTitleEnabled,
   latePayrollFromFormEnabled,
   storedSlotsNotARequestEnabled,
+  priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -186,6 +187,7 @@ const NEW_FLAGS = [
   "NAME_BEFORE_TITLE_ENABLED",
   "LATE_OPEN_PAYROLL_FROM_FORM_ENABLED",
   "STORED_SLOTS_NOT_A_REQUEST_ENABLED",
+  "PRIOR_SENTENCE_FIX_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -220,6 +222,11 @@ const PROTECTED = [
  * check reads the manager's words, not the app's stored-slot lines, with the
  * flag-off reading unchanged. It stays on the PROTECTED list; only the diff
  * check leaves it out. No other protected file is excepted.
+ * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged, and on
+ * 26 Oct 2026 again for the incident date behind PRIOR_SENTENCE_FIX_ENABLED
+ * (a prior step's date is never the form's Date). It stays
+ * on the PROTECTED list; only the diff check leaves it out. No other
+ * protected file is excepted.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/form-date-answer.ts",
@@ -369,6 +376,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(googleReviewsInChatEnabled()).toBe(false);
     expect(draftNeverBlankEnabled()).toBe(false);
     expect(storedSlotsNotARequestEnabled()).toBe(false);
+    expect(priorSentenceFixEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

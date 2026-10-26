@@ -1,4 +1,13 @@
-import { datesInText, listFormDates } from "./form-date-answer";
+import { priorSentenceFixFor } from "./prior-sentence-scope";
+
+import {
+  datesInText,
+  listFormDates,
+  managerDatesForDraft,
+  priorStepDateOffsets,
+  priorSteps,
+  type DateInText,
+} from "./form-date-answer";
 
 /**
  * ============================================================================
@@ -162,7 +171,9 @@ export function formDateBrief(resolved: ResolvedFormDate, givenDates: readonly s
  * the manager gave in the form's own style is not taken for an invented one.
  */
 function noteDateSpellings(notes: string, year: string): string[] {
-  return datesInText(notes, `${year}-01-01`).flatMap((found) => resolveFormDate(found.iso)?.spellings ?? []);
+  // PRIOR_SENTENCE_FIX_ENABLED: "10-15" and "i coached her on 10-16" are dates the manager gave too.
+  const read = priorSentenceFixFor(notes) ? managerDatesForDraft : datesInText;
+  return read(notes, `${year}-01-01`).flatMap((found) => resolveFormDate(found.iso)?.spellings ?? []);
 }
 
 /**
@@ -244,6 +255,7 @@ export function correctDraftedDates(
   keys: ReadonlySet<string>,
   notes: string,
   resolved: ResolvedFormDate | null,
+  today?: string,
 ): FormDateCorrection {
   if (!resolved) return { values, corrected: [] };
 
@@ -254,7 +266,9 @@ export function correctDraftedDates(
    * rewritten to the form's (District Manager feedback, 21 Oct 2026).
    */
   const year = resolved.iso.slice(0, 4);
-  const noted = datesInText(notes, `${year}-01-01`);
+  // PRIOR_SENTENCE_FIX_ENABLED: with the yearless "10-5", "10-15" and the coaching's "10-16" (QA, 26 Oct 2026).
+  const sentenceFix = priorSentenceFixFor(notes);
+  const noted = sentenceFix ? managerDatesForDraft(notes, `${year}-01-01`) : datesInText(notes, `${year}-01-01`);
   const given = new Set(noted.map((found) => found.iso));
   const isoOf = (token: string) => datesInText(token, `${year}-01-01`)[0]?.iso ?? null;
   const isSupplied = (token: string) =>
@@ -272,7 +286,9 @@ export function correctDraftedDates(
    * ("got a verbal warning on 10-01-26"): review, 22 Oct 2026, where the
    * prior warning's date was put on the incident.
    */
-  const incidentAt = new Set(listFormDates(notes, `${year}-01-01`).map((found) => found.index));
+  const incidentAt = sentenceFix
+    ? draftIncidentOffsets(notes, noted, today ?? `${year}-12-31`)
+    : new Set(listFormDates(notes, `${year}-01-01`).map((found) => found.index));
   const incidents = noted.filter((found) => incidentAt.has(found.index));
   const incidentDays = new Set(incidents.map((found) => found.iso));
   const formDateIsTheManagers =
@@ -301,6 +317,7 @@ export function correctDraftedDates(
     return resolved.long;
   };
 
+  const steps = sentenceFix ? priorSteps(notes, today ?? `${year}-12-31`) : [];
   const next: Record<string, string> = {};
   const corrected: string[] = [];
 
@@ -339,6 +356,7 @@ export function correctDraftedDates(
               for (const token of new Set(wrong)) next = next.split(token).join(replacement);
             }
 
+            if (sentenceFix) next = withStepDateAsGiven(next, steps, isoOf);
             next = withEachDayOnce(next, isoOf);
             if (next !== sentence) changed = true;
             return next;
@@ -356,6 +374,70 @@ export function correctDraftedDates(
   }
 
   return { values: next, corrected };
+}
+
+/**
+ * The manager's incident dates the draft prompt lists (`formDateBrief`):
+ * `listFormDates`, and with PRIOR_SENTENCE_FIX_ENABLED each yearless "10-15"
+ * that is no earlier step's too, so the model is not told to use only the
+ * form's date for both latenesses.
+ */
+export function draftBriefDates(notes: string, today: string): string[] {
+  if (!priorSentenceFixFor(notes)) return listFormDates(notes, today).map((found) => found.iso);
+  const noted = managerDatesForDraft(notes, today);
+  const incident = draftIncidentOffsets(notes, noted, today);
+  return noted.filter((found) => incident.has(found.index)).map((found) => found.iso);
+}
+
+/**
+ * PRIOR_SENTENCE_FIX_ENABLED: the offsets of the manager's incident dates —
+ * `listFormDates`, and each yearless date that is no earlier step's.
+ */
+function draftIncidentOffsets(notes: string, noted: readonly DateInText[], today: string): Set<number> {
+  const year = today.slice(0, 4);
+  const formDates = new Set(listFormDates(notes, `${year}-01-01`).map((found) => found.index));
+  const read = new Set(datesInText(notes, `${year}-01-01`).map((found) => found.index));
+  const steps = new Set(priorStepDateOffsets(notes, today, notes));
+  return new Set(noted.filter((found) => formDates.has(found.index) || (!read.has(found.index) && !steps.has(found.index))).map((found) => found.index));
+}
+
+/*
+ * ============================================================================
+ * PRIOR_SENTENCE_FIX_ENABLED — A STEP'S DATE IS THE ONE THE MANAGER GAVE IT
+ * ============================================================================
+ *
+ * QA, 26 Oct 2026 (a saved Ask Sunny production draft): "…she was late on
+ * 10-5 and 10-15. i coached her on 10-16 about being late" was filed as
+ * "…was coached about being late on October 5, 2026" — a date the manager
+ * gave for the lateness, put on the coaching. A sentence that names a step
+ * (coached, counseled, warned, a written or verbal warning) with one date
+ * after the step word, where that date is no step's, takes the date of the
+ * one step of that kind the manager dated. With no such step, or more than
+ * one date among them, the sentence is left as written; no date is invented.
+ */
+const STEP_WORD = /\b(?:coach(?:ed|ing)?|counsel(?:ed|led|ing)?|warn(?:ed|ing)|written\s+up|write[- ]?up|(?:verbal|written)\s+(?:warning|corrective|ca)\b)/i;
+const COACHING_KIND = /\b(?:coach|counsel)/i;
+
+function withStepDateAsGiven(
+  sentence: string,
+  steps: readonly { iso: string; named: string }[],
+  isoOf: (token: string) => string | null,
+): string {
+  if (steps.length === 0) return sentence;
+  const step = STEP_WORD.exec(sentence);
+  if (!step) return sentence;
+  DATE_TOKEN.lastIndex = 0;
+  const tokens = [...sentence.matchAll(DATE_TOKEN)];
+  if (tokens.length !== 1 || tokens[0]!.index! < step.index) return sentence;
+  const token = tokens[0]![0];
+  const iso = isoOf(token);
+  if (!iso || steps.some((found) => found.iso === iso)) return sentence;
+  const coaching = COACHING_KIND.test(step[0]);
+  const kind = steps.filter((found) => COACHING_KIND.test(found.named) === coaching);
+  const days = new Set(kind.map((found) => found.iso));
+  if (days.size !== 1) return sentence;
+  const given = resolveFormDate([...days][0]!);
+  return given ? sentence.split(token).join(given.long) : sentence;
 }
 
 /**

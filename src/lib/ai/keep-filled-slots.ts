@@ -1,6 +1,6 @@
 import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
-import { listIncidentDates } from "@/lib/forms/form-date-answer";
+import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { matchEmployeeName } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
@@ -9,7 +9,7 @@ import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
-import { describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
+import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { replyWithManagerActionPlan } from "@/lib/forms/manager-action-plan";
 import { readPlaceState } from "@/lib/forms/place-state";
@@ -31,12 +31,14 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { statedFormDate } from "@/lib/forms/incident-dates";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
-import { withoutAppLines } from "./app-sentences";
+import { isAppLine, withoutAppLines } from "./app-sentences";
 import { observationByRules } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
@@ -172,6 +174,16 @@ export function holdFilledSlots(input: {
     };
   }
   if (formDate && formDate !== next.formDate) next = { ...next, formDate };
+  /*
+   * PRIOR_SENTENCE_FIX_ENABLED (coordinator's ruling, 26 Oct 2026): the date
+   * the manager's incident dates settle (`statedFormDate`) — two are asked
+   * about, and the form is dated the day it is created until they answer —
+   * over the intent read's "It happened on …" line, which took one of them.
+   */
+  const stated = priorSentenceFixEnabled() && next.templateKey === "dpoa"
+    ? statedFormDate([...input.history, { role: "user", content: input.question }], input.today)
+    : null;
+  if (stated && (stated.iso ?? null) !== (next.formDate ?? null)) next = { ...next, formDate: stated.iso };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
   if (warningLevel && warningLevel !== next.warningLevel) next = { ...next, warningLevel };
   if (warningLevelManagerOnlyEnabled() && !warningLevel && next.warningLevel) next = { ...next, warningLevel: null };
@@ -191,6 +203,7 @@ export function holdFilledSlots(input: {
     if (prior.trim()) content = prior;
   }
   content = dropWarningLines(content);
+  if (stated) content = withDateLine(content, stated.iso);
   if (next.templateKey === "stc-exit" && next.employeeName) {
     content = exitContent(content, next, turns.join("\n"), input.today);
   }
@@ -204,7 +217,7 @@ export function holdFilledSlots(input: {
      */
     if (next.templateKey !== "stc-exit") {
       const build = (given: string, account: readonly string[]) =>
-        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName);
+        fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, next.templateKey === "dpoa" ? input.today : undefined);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
     }
@@ -556,16 +569,36 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
   return person ? [...person.salonIds] : [];
 }
 
+/** PRIOR_SENTENCE_FIX_ENABLED: the reply's "**Date:**" line says the settled date, or is gone while it is asked. */
+function withDateLine(content: string, iso: string | null): string {
+  const line = iso ? `**Date:** ${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}/${iso.slice(0, 4)}` : null;
+  const lines = content.split("\n");
+  const at = lines.findIndex((entry) => entry.startsWith("**Date:**"));
+  if (at < 0) return content;
+  if (line) lines[at] = line;
+  else lines.splice(at, lines[at + 1] === "" && lines[at - 1] === "" ? 2 : 1);
+  return lines.join("\n");
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
-function withObservation(content: string, turns: readonly string[], employeeName: string | null): string {
+function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
   const managerOnly = managerWordsOnlyEnabled();
   const sentences: string[] = [];
+  const conversation = turns.join("\n");
   for (const turn of managerOnly ? turns.map(withoutAppLines) : turns) {
-    for (const part of turn.split(/\n+|(?<=[.!?])\s+/)) {
+    // PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): "…she was late on 10-5 and 10-15. i coached her on
+    // 10-16 about being late" put only the coaching here — the short incident sentence failed
+    // `describesMoreThanTheRequest`. A prior step's clause is no account, and a manager sentence
+    // left beside it that describes an incident is kept however short.
+    const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
+    for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
       const said = part.trim();
       if (said.length < 12) continue;
-      if (!describesMoreThanTheRequest(said, { ignore })) continue;
+      // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
+      // however few words it has beyond the request, with a prior clause beside it or not.
+      const incident = today !== undefined && priorSentenceFixEnabled() && !isAppLine(said) && describesIncident(said);
+      if (!incident && !describesMoreThanTheRequest(said, { ignore })) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the
       // form, name the employee or give their place (QA, 25 Oct 2026).

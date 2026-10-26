@@ -1,7 +1,10 @@
+import { businessToday } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
 import { describesIncident } from "./corrective-action-intake";
+import { withoutPriorStepClauses } from "./form-date-answer";
+import { priorSentenceFixFor } from "./prior-sentence-scope";
 import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrative-draft";
 
 /**
@@ -278,9 +281,15 @@ export function managerAccountClause(text: string): string | null {
   return null;
 }
 
-/** The manager's account, sentence by sentence, or — with none — the request's own for-clause. */
+/**
+ * The manager's account, sentence by sentence, or — with none — the request's own for-clause.
+ * PRIOR_SENTENCE_FIX_ENABLED (QA-6, 26 Oct 2026): never an earlier step's clause — "ca for …,
+ * coached her 10-16, written warning on 10-20" filed "Observed: Coached her 10-16." as the
+ * account (`withoutPriorStepClauses`, unchanged with the flag off).
+ */
 function incidentClause(notes: string, employeeName: string | null): string | null {
-  return managerAccountClause(notes) ?? issueFromRequest(notes, employeeName);
+  const own = priorSentenceFixFor(notes) ? withoutPriorStepClauses(notes, businessToday(), notes).text : notes;
+  return managerAccountClause(own) ?? issueFromRequest(own, employeeName);
 }
 
 /** True when any of `keys` holds text. */

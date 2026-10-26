@@ -12,13 +12,15 @@ import {
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
   formDateIncidentOnlyEnabled,
+  priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
 import { lateOpenOn } from "@/lib/forms/late-open";
 import { withoutAttendanceForLateOpening } from "@/lib/forms/official-policy-manual";
 import { matchEmployeeName, type RosterEmployee } from "@/lib/forms/employee-match";
-import { datesInText, datesInTextWithYearless, listIncidentDates } from "@/lib/forms/form-date-answer";
+import { blankPriorStepDates, datesInText, datesInTextWithYearless, listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
+import { dateAnswersSaid, statedFormDate } from "@/lib/forms/incident-dates";
 import { incidentOnly } from "@/lib/forms/form-date-incident-only";
 import { isNotAName, maskNotANameText } from "@/lib/forms/not-a-name";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -57,6 +59,7 @@ import {
 } from "./remap-incident";
 import type { ChatFormProposal } from "@/types";
 
+import { withoutAppLines } from "./app-sentences";
 import { callClaudeTool } from "./call-claude";
 import { formDateByRules, managerWords, remapEditLine, remapObservation, withoutSetAsidePolicies } from "./edit-date-rules";
 import { chatTraceDraft } from "./chat-trace-store";
@@ -170,7 +173,19 @@ export function groundFormSlots(input: {
     (newest && newestName ? { id: newest.id, name: newestName } : null) ??
     groundedStore(said) ??
     (fixed ? placeStore(said) : null);
-  const incidentDateIso = groundedDate(said, input.today);
+  /*
+   * PRIOR_SENTENCE_FIX_ENABLED (coordinator's ruling, 26 Oct 2026): the form's
+   * date by `statedFormDate` — one incident date, or two asked about once and
+   * dated the day it is created until answered — and otherwise this reader's
+   * own, with every earlier step's date ("coached her 10-16", "written
+   * warning on 10-20") blanked first.
+   */
+  // Corrective Action only: on a Coaching Form the coaching held is its date.
+  const sentenceFix = priorSentenceFixEnabled() && templateKey === "dpoa";
+  const stated = sentenceFix ? statedFormDate(conversation, input.today) : null;
+  const incidentDateIso = stated
+    ? stated.iso
+    : groundedDate(sentenceFix ? blankPriorStepDates(said, input.today) : said, input.today);
   const warningLevel = explicitWarning(users);
   // A bare "Yes" after a list of questions answers none of them (REMAP_INCIDENT_FIX_ENABLED).
   const payrollDeduct = payrollDeductFromConversation(fixed ? withoutAmbiguousAnswers(conversation) : conversation);
@@ -185,12 +200,18 @@ export function groundFormSlots(input: {
   // policy is named and the manual gives no section for it.
   const lateOpening = fixed && !named ? describedLateOpening(withoutPriorList(scoped)) : null;
   const policySection = fixed ? (named ?? lateOpening) : groundedPolicy(said);
+  // PRIOR_SENTENCE_FIX_ENABLED: an answer to the date question ("10/15", "most recent") is no account.
+  const answers = sentenceFix ? dateAnswersSaid(conversation) : null;
+  const incidentScope = answers?.size
+    ? users.slice(start).filter((turn) => !answers.has(withoutAppLines(turn).trim())).join("\n")
+    : scoped;
   const incidentRead = fixed
-    ? (requestIncident({ text: scoped, employeeName, slotClause }) ??
+    ? (requestIncident({ text: incidentScope, employeeName, slotClause, ...(sentenceFix ? { today: input.today } : {}) }) ??
       (isRequestLeftover(raw.observation, employeeName) || hasCutDate(raw.observation, said)
         ? null
         : acceptSummary(raw.observation, scoped)))
-    : (statedIncident(said, employeeName) ?? acceptSummary(raw.observation, said));
+    : (statedIncident(sentenceFix ? withoutPriorStepClauses(said, input.today, said).text : said, employeeName) ??
+      acceptSummary(raw.observation, said));
   // A stray quote or other punctuation alone is never What happened (sibling app conv_mvnu3j932gpohx4).
   const observation = incidentRead && HAS_WORD.test(incidentRead) ? incidentRead : null;
   // Both readers contribute, each behind its own flag: the "previous coaching: …"
@@ -234,6 +255,8 @@ export function groundFormSlots(input: {
   };
   const saved = fixed ? withoutLeftovers(input.saved ?? null, employeeName, start > 0, said) : (input.saved ?? null);
   let slots = finishSlots(mergeSlots(read, saved), said);
+  // PRIOR_SENTENCE_FIX_ENABLED: a date settled (or asked about) this turn is not replaced by a saved one.
+  if (stated) slots = { ...slots, incidentDateIso: stated.iso };
   // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never becomes What happened; the Date follows the incident.
   if (formEditDateRulesEnabled()) {
     slots = withEditDateRules(slots, {
@@ -264,7 +287,12 @@ export function groundFormSlots(input: {
   const assistants = conversation.filter((turn) => turn.role === "assistant").map((turn) => turn.content);
   // An ambiguous "Yes" answered nothing, so the questions before it are asked again.
   if (fixed && isAmbiguousAnswer(conversation, conversation.length - 1)) assistants.pop();
-  const questions = questionsFor(slots, assistants);
+  const questionsRead = questionsFor(slots, assistants);
+  // PRIOR_SENTENCE_FIX_ENABLED: two incident dates are asked about by name, once.
+  const questions =
+    stated && stated.candidates.length > 1
+      ? questionsRead.flatMap((question) => (question === QUESTIONS.incidentDateIso ? (stated.question ? [stated.question] : []) : [question]))
+      : questionsRead;
   const content = renderReply(
     slots,
     questions,

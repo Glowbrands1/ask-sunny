@@ -1,4 +1,4 @@
-import { priorActionsParseEnabled } from "@/lib/config/chat-quality-flags";
+import { priorActionsParseEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -380,7 +380,7 @@ const YEARLESS_DASHED = /(?<![\d/.-])(\d{1,2})-(\d{1,2})(?![\d/-]|\.\d)/g;
 const RANGE_AFTER = /^\s*(?:min|mins|minutes|hrs?|hours?|days?|weeks?|months?|years?|people|times|x\b|%|am\b|pm\b|dollars?)/i;
 
 /** `dates` with every yearless dashed month-day in the text added, in order (flag on only). */
-function withYearlessDates(text: string, dates: readonly DateInText[], today: string): DateInText[] {
+function withYearlessDates(text: string, dates: readonly DateInText[], today: string, keepHeld = false): DateInText[] {
   const year = Number(/^(\d{4})-/.exec(today)?.[1]);
   if (!Number.isFinite(year)) return [...dates];
   const extra: DateInText[] = [];
@@ -389,7 +389,8 @@ function withYearlessDates(text: string, dates: readonly DateInText[], today: st
     const end = index + match[0].length;
     if (RANGE_AFTER.test(text.slice(end, end + 12))) continue;
     // "I coached her on 10-16": a coaching the manager held is read as it was before.
-    if (HELD_COACHING_BEFORE.test(text.slice(0, index))) continue;
+    // PRIOR_SENTENCE_FIX_ENABLED on a Corrective Action: that coaching is a prior step too (`heldStepSpans`).
+    if (!keepHeld && HELD_COACHING_BEFORE.test(text.slice(0, index))) continue;
     if (dates.some((found) => index < found.end && end > found.index)) continue;
     const iso = calendarIso(year, Number(match[1]), Number(match[2]));
     if (iso) extra.push({ iso, index, end });
@@ -416,7 +417,7 @@ export function blankYearlessStepDates(text: string, today: string): string {
   const read = new Set(datesInText(text, today).map((found) => found.index));
   const steps = new Set(stepSpans(text, today).map((span) => span.index));
   let out = text;
-  for (const found of withYearlessDates(text, [], today)) {
+  for (const found of withYearlessDates(text, [], today, sentenceFixOn(text))) {
     if (read.has(found.index)) continue;
     if (!steps.has(found.index) && !manualOrCoachedDate(text.slice(0, found.index))) continue;
     out = out.slice(0, found.index) + " ".repeat(found.end - found.index) + out.slice(found.end);
@@ -647,8 +648,11 @@ function stepsAsWritten(text: string, today: string): WrittenStep[] {
 }
 
 /** Each earlier step with the offset of its date. A yearless "9-15" is read too with the flag on. */
-function stepSpans(text: string, today: string): { step: WrittenStep; index: number }[] {
-  const dates = priorActionsParseEnabled() ? withYearlessDates(text, datesInText(text, today), today) : datesInText(text, today);
+function stepSpans(text: string, today: string, context?: string): { step: WrittenStep; index: number }[] {
+  const sentenceFix = sentenceFixOn(context ?? text);
+  const dates = priorActionsParseEnabled()
+    ? withYearlessDates(text, datesInText(text, today), today, sentenceFix)
+    : datesInText(text, today);
   const steps = labelledSteps(text, dates, today);
   // "jba manual 11-1-25" after "previous coaching jba manual 11-1-26": the later date is that step's (flag on only).
   const movedTo = new Map<number, DateInText>();
@@ -658,7 +662,7 @@ function stepSpans(text: string, today: string): { step: WrittenStep; index: num
       if (date) movedTo.set(to, date);
     }
   }
-  return dates.flatMap((found): { step: WrittenStep; index: number }[] => {
+  const spans = dates.flatMap((found): { step: WrittenStep; index: number }[] => {
     const at = (step: WrittenStep) => [{ step, index: found.index }];
     const before = text.slice(0, found.index);
     const about = reasonAfter(text.slice(found.end));
@@ -688,6 +692,217 @@ function stepSpans(text: string, today: string): { step: WrittenStep; index: num
     }
     return [];
   });
+  if (!sentenceFix) return spans;
+  const held = heldStepSpans(text, dates, today, new Set(spans.map((span) => span.index)));
+  return held.length === 0 ? spans : [...spans, ...held].sort((left, right) => left.index - right.index);
+}
+
+/*
+ * ============================================================================
+ * PRIOR_SENTENCE_FIX_ENABLED — "I COACHED HER ON 10-16" ON A CORRECTIVE ACTION
+ * ============================================================================
+ *
+ * QA, 26 Oct 2026 (Ask Sunny production, 8365e21f): "create a ca for … she was
+ * late on 10-5 and 10-15. i coached her on 10-16 about being late" had no
+ * Prior actions row, and "ca for …, coached her 10-16, written warning on
+ * 10-20" was dated 10/20, the written warning's day. On a Corrective Action
+ * the coaching a manager says they held is the history the form escalates
+ * from (on a Coaching Form it is the form's own event: `HELD_COACHING_BEFORE`,
+ * left as it was). With the flag on, and only where the conversation names a
+ * Corrective Action and no Coaching Form:
+ *
+ *   "(i) (verbally) coached / counseled / warned her|him|them <date>" is a
+ *   prior step, unless the clause negates it ("i never coached her …"), names
+ *   someone else ("i coached Corvin Mallow on 10-16"), or holds anything but
+ *   "on", "dated" or what it was about between the pronoun and the date
+ *   ("coached her when she was late on 10/1"; QA-7, 26 Oct 2026: "i coached
+ *   her coworker, not her, on 10-16" and "i coached her on 10-16 and <another
+ *   name> on 10-17" are not hers).
+ *
+ *   Each comma or "and" item straight after it that names a step, holds only
+ *   step words, and has its own date ("…, written warning on 10-20") is one
+ *   too; anything else (", she was late again on 10-20", "and <a name> on
+ *   10-17") ends the list.
+ */
+const NAMES_CORRECTIVE_ACTION = /\b(?:cas?|c\/a|corrective\s+actions?|dpoa)\b/i;
+const NAMES_COACHING_FORM = /\bcoaching\s+(?:form|document|doc)\b/i;
+const HELD_STEP_BEFORE =
+  /\b(?:(?:i|we)\s+(?:(?:verbally|formally|also|then|just|already)\s+)?)?(?:verbally\s+)?(?:coached|counsel(?:ed|led)|warned)\s+(?:her|him|them|the\s+employee)\b([^.;\n]{0,30})$/i;
+const HELD_STEP_VERB = /\b(?:coached|counsel(?:ed|led)|warned)\s+(?:her|him|them|the\s+employee)\b/gi;
+/** Between "coached her" and the date: nothing, "on", "dated", or what it was about, then "on". */
+const HELD_STEP_GAP = /^\s*(?:(?:again\s+|back\s+)?(?:on|dated)\s*|(?:about|regarding|for|over)\s+[a-z' -]{1,30}?\s+on\s*)?$/i;
+/** The only words a list item after a held step may hold: the step, a level, an article, and "on". */
+const STEP_ITEM_WORDS =
+  /^(?:a|an|the|another|also|then|her|his|their|final|verbal|written|warnings?|coachings?|coached|ca|cas|c\/a|corrective|actions?|write-?ups?|written\s+up|disciplin\w*|ack\w*|acknowledg\w*|policy|manual|jba|on|dated|signed)$/i;
+const NEGATED_STEP = /\b(?:never|not|didn['’]?t|haven['’]?t|hasn['’]?t|wasn['’]?t)\b[^.;,\n]*$/i;
+
+/** The flag is on and the conversation is a Corrective Action's, not a Coaching Form's. */
+function sentenceFixOn(text: string): boolean {
+  return priorSentenceFixEnabled() && NAMES_CORRECTIVE_ACTION.test(text ?? "") && !NAMES_COACHING_FORM.test(text ?? "");
+}
+
+/** The held coachings and the step items after them, for dates no other reading took (`taken`). */
+function heldStepSpans(
+  text: string,
+  dates: readonly DateInText[],
+  today: string,
+  taken: ReadonlySet<number>,
+): { step: WrittenStep; index: number }[] {
+  const found: { step: WrittenStep; index: number }[] = [];
+  let open = false;
+  let previousEnd = 0;
+  for (const date of dates) {
+    const gap = text.slice(previousEnd, date.index);
+    previousEnd = date.end;
+    if (taken.has(date.index)) {
+      open = false;
+      continue;
+    }
+    const about = reasonAfter(text.slice(date.end));
+    const withAbout = about ? { about } : {};
+    const clause = clauseBefore(text.slice(0, date.index));
+    // The held step nearest the date: "i coached her on 10-1 and i coached her on 10-16".
+    const verbs = [...clause.matchAll(HELD_STEP_VERB)];
+    const from = verbs.at(-1)?.index ?? 0;
+    const near = HELD_STEP_BEFORE.exec(clause.slice(Math.max(0, clause.lastIndexOf(" ", Math.max(0, from - 2)) - 20)));
+    const held = near ? Object.assign(near, { index: clause.length - near[0].length }) : null;
+    const heldGap = held?.[1] ?? "";
+    if (held && HELD_STEP_GAP.test(heldGap) && !ACCOUNT_IN_TOPIC.test(heldGap) && !NEGATED_STEP.test(clause.slice(0, held.index))) {
+      found.push({ index: date.index, step: { iso: earlierYearIfAhead(date, text, today), named: held[0], ...withAbout } });
+      open = true;
+      continue;
+    }
+    const item = open ? LIST_ITEM_BEFORE.exec(gap) : null;
+    const words = item?.[1] ?? "";
+    const onlyStepWords = words.trim().split(/\s+/).every((word) => STEP_ITEM_WORDS.test(word));
+    if (item && onlyStepWords && NAMES_A_STEP_PARSE.test(words) && !ISSUES_THIS_FORM.test(words) && date.iso <= today) {
+      found.push({ index: date.index, step: { iso: date.iso, named: words.trim(), ...withAbout } });
+      continue;
+    }
+    open = false;
+  }
+  return found;
+}
+
+/**
+ * PRIOR_SENTENCE_FIX_ENABLED: every date the manager gave, a yearless dashed
+ * "10-15" and a held coaching's "10-16" included, for the draft's date check
+ * (`form-date-grounding.ts`). `datesInText` with the flag off.
+ */
+export function managerDatesForDraft(text: string, today: string): DateInText[] {
+  const dates = datesInText(text, today);
+  return priorSentenceFixEnabled() && text ? withYearlessDates(text, dates, today, true) : dates;
+}
+
+/*
+ * PRIOR_SENTENCE_FIX_ENABLED — THE MANAGER'S INCIDENT DATES (coordinator's
+ * ruling, 26 Oct 2026, both apps): every date the manager gave for what
+ * happened, yearless ("10-5") or written out, in order. Never an earlier
+ * step's (`stepSpans`, a held coaching on a Corrective Action included), a
+ * follow-up's, a deadline's, one the manager corrected away, or a day still
+ * to come; and a range ("from 10-5 to 10-9") is one incident, its first day.
+ * Two or more of these are asked about; one dates the form. `context` (the
+ * whole conversation) says whether this is a Corrective Action. Empty with
+ * the flag off.
+ */
+const RANGE_GAP = /^\s*(?:to|through|thru|until|till|[-–—])\s*$/i;
+
+/**
+ * "i coached her on 10-16 and <another name> on 10-17": a date later in the
+ * clause of a coaching, counseling or warning, with no account of what she
+ * did in between, is that step's (anyone's), never an incident date.
+ */
+const STEP_VERB = /\b(?:coached|counsel(?:ed|led)|warned|talked\s+to|spoke\s+(?:to|with))\b/gi;
+
+function afterHeldStep(text: string, date: DateInText): boolean {
+  const clause = clauseBefore(text.slice(0, date.index));
+  const verbs = [...clause.matchAll(STEP_VERB)];
+  const last = verbs.at(-1);
+  return last !== undefined && !ACCOUNT_IN_TOPIC.test(clause.slice((last.index ?? 0) + last[0].length));
+}
+
+export function statedIncidentDates(text: string, today: string, context?: string): DateInText[] {
+  if (!priorSentenceFixEnabled() || !text) return [];
+  const dates = withYearlessDates(text, datesInText(text, today), today, true);
+  const labelled = labelledSteps(text, dates, today);
+  const steps = new Set(stepSpans(text, today, context).map((span) => span.index));
+  const corrected = correctedDates(text, today);
+  const found: DateInText[] = [];
+  let previous: DateInText | null = null;
+  for (const date of dates) {
+    const rangeEnd = previous !== null && RANGE_GAP.test(text.slice(previous.end, date.index));
+    previous = date;
+    if (rangeEnd || steps.has(date.index) || date.iso > today || corrected.has(date.iso)) continue;
+    if (isOtherDate(text, date, labelled) || isDeadline(text, date) || afterHeldStep(text, date)) continue;
+    found.push(date);
+  }
+  return found;
+}
+
+/*
+ * PRIOR_SENTENCE_FIX_ENABLED (QA, 26 Oct 2026): the text without each clause
+ * whose dates are all earlier steps' (`priorStepDateOffsets`) — "i coached
+ * her on 10-16 about being late", ", written warning on 10-20" — so the
+ * incident clause beside it is what an Observation reader sees. A clause that
+ * also dates something else stays whole. `dropped` says whether anything was
+ * taken out. Unchanged with the flag off.
+ */
+const CLAUSE_END = /\.(?=\s|$)|(?<!\d)\.(?!\d)|[;!?\n]|,(?!\s*\d{4})/g;
+
+export function withoutPriorStepClauses(text: string, today: string, context: string): { text: string; dropped: boolean } {
+  const steps = priorStepDateOffsets(text, today, context);
+  if (steps.length === 0) return { text, dropped: false };
+  const stepSet = new Set(steps);
+  const ends = [...text.matchAll(CLAUSE_END)].map((match) => match.index ?? 0);
+  const dates = withYearlessDates(text, datesInText(text, today), today, true);
+  const cuts: [number, number][] = [];
+  for (const index of steps) {
+    const opening = ends.filter((at) => at < index).at(-1) ?? -1;
+    const closing = ends.find((at) => at > index) ?? text.length;
+    // (Another person's step in the same clause — "and <a name> on 10-17" — is no incident date either.)
+    if (dates.some((found) => found.index > opening && found.index < closing && !stepSet.has(found.index) && !afterHeldStep(text, found))) continue;
+    const comma = opening >= 0 && text[opening] === ",";
+    const from = comma ? opening : opening + 1;
+    const to = !comma && text[closing] === "," ? closing + 1 : closing;
+    if (!cuts.some(([start, end]) => start === from && end === to)) cuts.push([from, to]);
+  }
+  if (cuts.length === 0) return { text, dropped: false };
+  let out = text;
+  for (const [from, to] of [...cuts].sort((left, right) => right[0] - left[0])) out = out.slice(0, from) + out.slice(to);
+  return { text: out, dropped: true };
+}
+
+/** PRIOR_SENTENCE_FIX_ENABLED: the text with each earlier step's date blanked to spaces (offsets kept). Unchanged with it off. */
+export function blankPriorStepDates(text: string, today: string, context?: string): string {
+  const steps = new Set(priorStepDateOffsets(text, today, context ?? text));
+  if (steps.size === 0) return text;
+  let out = text;
+  for (const found of withYearlessDates(text, datesInText(text, today), today, true)) {
+    if (steps.has(found.index)) out = out.slice(0, found.index) + " ".repeat(found.end - found.index) + out.slice(found.end);
+  }
+  return out;
+}
+
+/** Each yearless "10-15" written out as "10/15/2026", so the written-date readers see it (PRIOR_SENTENCE_FIX_ENABLED callers). */
+export function yearlessWrittenOut(text: string, today: string): string {
+  let out = "";
+  let at = 0;
+  for (const found of withYearlessDates(text, [], today, true)) {
+    const [year, month, day] = found.iso.split("-");
+    out += text.slice(at, found.index) + `${Number(month)}/${Number(day)}/${year}`;
+    at = found.end;
+  }
+  return out + text.slice(at);
+}
+
+/**
+ * PRIOR_SENTENCE_FIX_ENABLED: the offsets of the earlier steps' dates in
+ * `text`, every reading's (`stepSpans`). `context` (the whole conversation)
+ * says whether this is a Corrective Action. Empty with the flag off.
+ */
+export function priorStepDateOffsets(text: string, today: string, context: string): number[] {
+  if (!priorSentenceFixEnabled() || !text) return [];
+  return stepSpans(text, today, context).map((span) => span.index);
 }
 
 /**
@@ -840,8 +1055,11 @@ export function listFormDates(text: string, today: string): { iso: string; index
   const corrected = correctedDates(text, today);
   const stepDates = new Set(stepsAsWritten(text, today).map((step) => step.iso));
   const correctsAStep = new Set([...corrected].filter(([from]) => stepDates.has(from)).map(([, to]) => to));
+  // PRIOR_SENTENCE_FIX_ENABLED: "i coached her on 10/16", "written warning on 10/20" on a Corrective Action date a prior step.
+  const held = sentenceFixOn(text) ? new Set(heldStepSpans(text, dates, today, new Set()).map((span) => span.index)) : null;
   const kept = dates
     .filter((found) => !isOtherDate(text, found, labelled, restatedAt))
+    .filter((found) => !held?.has(found.index))
     .filter((found) => !corrected.has(found.iso) && !correctsAStep.has(found.iso));
   // A date given to the FORM leads — the last one typed first, so a later "date it 10/21" corrects an earlier one.
   const explicit = kept.filter((found) => isExplicitFormDate(text, found)).reverse();

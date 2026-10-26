@@ -989,3 +989,16 @@ export function latePayrollFromFormEnabled(): boolean {
 export function storedSlotsNotARequestEnabled(): boolean {
   return envFlag("STORED_SLOTS_NOT_A_REQUEST_ENABLED");
 }
+
+/**
+ * A coaching or prior step said as its own sentence on a Corrective Action
+ * (QA, 26 Oct 2026, Ask Sunny production; same flag in both apps): "i coached
+ * her on 10-16 about being late", "coached her 10-16, written warning on
+ * 10-20" are Prior actions rows, never the form's Date, and never the
+ * Observation of Offense in place of the incident ("she was late again
+ * today" stays). See `heldStepSpans` in `forms/form-date-answer.ts` and
+ * `withObservation` in `ai/keep-filled-slots.ts`. Off, read as before.
+ */
+export function priorSentenceFixEnabled(): boolean {
+  return envFlag("PRIOR_SENTENCE_FIX_ENABLED");
+}
