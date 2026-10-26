@@ -894,6 +894,15 @@ export function stateCodeNotAPersonEnabled(): boolean {
 }
 
 /**
+ * A Google review question gets the Google Reviews page's month-to-date
+ * figures, goal and pace for the caller's salons, and only with View Google
+ * reviews. Off, review questions keep the existing path.
+ */
+export function googleReviewsInChatEnabled(): boolean {
+  return envFlag("GOOGLE_REVIEWS_IN_CHAT_ENABLED");
+}
+
+/**
  * A Corrective Action or coaching draft is never filed blank (found in the
  * sibling app's production, 26 Oct 2026: `drafted` with no fields and nothing
  * rejected, from Create clicks fired several at once). The model's tool call
