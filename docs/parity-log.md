@@ -1010,3 +1010,12 @@ and its Observation of Offense (`accountSentences`, `withObservation`) ends a
 sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
+
+**POLICY_HEADING_STATED_ONLY_ENABLED (Code 3, 26 Oct 2026). Sunny-only.** The
+slot model's `policyHeading` ("Attendance" for a missed Woven deadline) was
+accepted whenever it was a real manual heading, saved, and written back as
+"Policy reference: …", so the card flipped between Attendance and Standards of
+Conduct on the same words. Ask Bubbles' `intent-slots.ts` reads no policy
+heading from the model (its state only clears a Disciplinary Action one), so
+the mechanism has nothing to guard there. Test:
+`src/lib/ai/policy-heading-stated-oct26.test.ts`.
