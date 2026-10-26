@@ -155,6 +155,7 @@ import { withTerseSlots } from "./terse-slots";
 import { withBareAnswerBinding } from "./bare-answer-guard";
 import { withManagerFormChoice } from "./manager-form-choice";
 import { withStoreAliases } from "./store-alias";
+import { withNameRespell } from "./name-respell";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
 import { AiError } from "./errors";
