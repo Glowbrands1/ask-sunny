@@ -46,6 +46,7 @@ import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
 import { withRemapDraftSources } from "./remap-draft-sources";
+import { remapCardNotPermitted } from "./remap-role-check";
 import { loadScopedRoster } from "@/lib/forms/employee-roster";
 import type { RosterEmployee } from "@/lib/forms/employee-match";
 import { answersFormClarification } from "@/lib/forms/form-clarification";
@@ -676,8 +677,10 @@ async function answerQuestionUntraced(
             : null;
         },
       });
+      // REMAP_ROLE_CHECK_ENABLED: a role that may not create the form falls through to the proposal path's refusal.
+      const refused = remapped ? remapCardNotPermitted({ response: remapped, role: actor.role, summaries }) : false;
       // REMAP_DRAFT_SOURCES_ENABLED: the card names the turns its draft is written from.
-      if (remapped) return withRemapDraftSources(remapped, request);
+      if (remapped && !refused) return withRemapDraftSources(remapped, request);
     }
 
     let manualRead: ReturnType<typeof knowledge.fetchOfficialPolicyManual> | null = null;

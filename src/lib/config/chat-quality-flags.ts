@@ -815,3 +815,15 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * A full-remap card is shown only to a role that may create its form (QA, 25
+ * Oct 2026). The remap returned its card before the proposal path's role
+ * check, so a role with no create rights was offered a form the server then
+ * refused on Create. On, such a turn falls through to the proposal path,
+ * which refuses it. Server-only. Off, the remap card is returned as before.
+ * See `lib/ai/remap-role-check.ts`.
+ */
+export function remapRoleCheckEnabled(): boolean {
+  return envFlag("REMAP_ROLE_CHECK_ENABLED");
+}
