@@ -66,3 +66,41 @@ describe("WRITE_IT_UP_ENABLED on", () => {
     },
   );
 });
+
+/** QA-7 probes, 26 Oct 2026: negations, non-people, questions and second matches are read as typed. */
+describe("WRITE_IT_UP_ENABLED on: only the first 'write it up for <first> <last>' asks for the form", () => {
+  const sentence = (text: string) => text[0]!.toUpperCase() + text.slice(1);
+
+  it.each([
+    "never write it up for devon harlan",
+    "no need to write it up for devon harlan",
+    "write it up for anyone except devon harlan",
+    "write it up for friday",
+    "write it up for tomorrow",
+    "write it up for the meeting",
+    "write it up for the team",
+    "write it up for her",
+    "how do i write up for attendance",
+    "write up for being late",
+    "write it up on devon harlan",
+    "can i write it up for devon harlan?",
+  ])("'%s' is left as typed, in lowercase and sentence case", (turn) => {
+    process.env[FLAG] = "on";
+    for (const variant of [turn, sentence(turn)]) expect(writeItUpRequest(variant)).toBe(variant);
+  });
+
+  it("only the first of two is rewritten", () => {
+    process.env[FLAG] = "on";
+    expect(writeItUpRequest("write it up for devon harlan and write it up for tom lee")).toBe(
+      "create a corrective action form for devon harlan and write it up for tom lee",
+    );
+  });
+
+  it.each(["write it up for devon harlan", "Write it up for Devon Harlan", "WRITE IT UP FOR DEVON HARLAN", "write this up for devon harlan, she was late 10/4"])(
+    "'%s' is still the form",
+    (turn) => {
+      process.env[FLAG] = "on";
+      expect(writeItUpRequest(turn).toLowerCase()).toMatch(/^create a corrective action form for devon harlan/);
+    },
+  );
+});
