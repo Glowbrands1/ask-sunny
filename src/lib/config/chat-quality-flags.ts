@@ -881,3 +881,14 @@ export function exitNoticeFulfilledEnabled(): boolean {
 export function exitRehireReasonEnabled(): boolean {
   return envFlag("EXIT_REHIRE_REASON_ENABLED");
 }
+
+/**
+ * The Corrective Action Form's Observation carries no AI-written "Going
+ * Forward" section (QA, 25 Oct 2026, D-draft): a plan or commitment the
+ * manager never typed is not part of the HR record. What the employee does
+ * next is the Action Plan, which is the manager's own (ACTION_PLAN_MANAGER_ONLY).
+ * Off, the Observation drafts as before.
+ */
+export function draftNoInventedPlanEnabled(): boolean {
+  return envFlag("DRAFT_NO_INVENTED_PLAN_ENABLED");
+}
