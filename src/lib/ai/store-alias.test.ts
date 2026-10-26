@@ -51,6 +51,10 @@ describe("STORE_ALIAS_ENABLED on", () => {
     ["lincoln o st", O_STREET],
     ["o st lincoln", O_STREET],
     ["kearney ne", KEARNEY],
+    ["Kearney ne", KEARNEY],
+    ["Kearney, Ne", KEARNEY],
+    ["At o st today", O_STREET],
+    ["Lincoln o st", O_STREET],
     ["kearney, ne", KEARNEY],
     ["KEARNEY, NE", KEARNEY],
     ["she works at our kearney ne salon", KEARNEY],
@@ -58,8 +62,14 @@ describe("STORE_ALIAS_ENABLED on", () => {
     expect(ids(rosterNames(text))).toEqual([salon.id]);
   });
 
+  it("reads the reported turn the same in sentence case", () => {
+    const sentence = REPORTED[0]!.toUpperCase() + REPORTED.slice(1);
+    expect(ids(rosterNames(sentence))).toEqual([O_STREET.id]);
+  });
+
   it("reads a one-word salon reply as the salon only after the app asked which salon", () => {
     expect(rosterNames("kearney", true)).toBe("NE Kearney");
+    expect(rosterNames("Kearney", true)).toBe("NE Kearney");
     expect(rosterNames("kearney")).toBe("kearney");
     process.env[FLAG] = "on";
     const out = withStoreAliases({
