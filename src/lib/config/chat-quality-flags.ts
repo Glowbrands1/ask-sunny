@@ -845,3 +845,13 @@ export function chatLongMessageEnabled(): boolean {
 export function terseSlotReadEnabled(): boolean {
   return envFlag("TERSE_SLOT_READ_ENABLED");
 }
+
+/**
+ * What a coaching is about is never who it is for: an Employee made only of
+ * topic words ("efts spa", "weekly") is not kept; "for my team" / "the whole
+ * team" on a coaching form makes it the team's, otherwise the card asks who
+ * (QA, 25-26 Oct 2026). See `ai/topic-name-guard.ts`. Off, the card is as it is.
+ */
+export function topicNotANameEnabled(): boolean {
+  return envFlag("TOPIC_NOT_A_NAME_ENABLED");
+}

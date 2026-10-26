@@ -151,6 +151,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withTopicNotAName } from "./topic-name-guard";
 import { withTerseSlots } from "./terse-slots";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -267,7 +268,8 @@ export async function answerQuestion(
     const response = await answerQuestionUntraced(withTerseSlots(request), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
-    return keepManagerActionPlan(await applyQuietQuality(response), request);
+    // TOPIC_NOT_A_NAME_ENABLED: what a coaching is about is never who it is for.
+    return keepManagerActionPlan(withTopicNotAName(await applyQuietQuality(response), request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();
