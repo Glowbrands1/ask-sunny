@@ -1985,7 +1985,7 @@ describe("'coaching form for <name>, she was late today'", () => {
     }
   });
 
-  it.each(TURNS.slice(0, 2))("flag on: '%s' keeps 'she was late today'", async (turn) => {
+  it.each(TURNS)("flag on: '%s' keeps 'she was late today'", async (turn) => {
     const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
     try {
       const answer = await ask(turn);
@@ -1995,11 +1995,34 @@ describe("'coaching form for <name>, she was late today'", () => {
     }
   });
 
+  // Coordinator, 26 Oct 2026: a negated account is kept word for word, never turned into "late".
   it.each([
-    "coaching form for rory vance, she was not late today",
-    "coaching form for rory vance, she was never late",
+    ["coaching form for rory vance, she was not late today", "she was not late today"],
+    ["Coaching form for Rory Vance, she was not late today", "she was not late today"],
+    ["COACHING FORM FOR RORY VANCE, SHE WAS NOT LATE TODAY", "SHE WAS NOT LATE TODAY"],
+    ["coaching form for rory vance, she was never late", "she was never late"],
+    ["Coaching form for Rory Vance, she was never late", "she was never late"],
+    ["COACHING FORM FOR RORY VANCE, SHE WAS NEVER LATE", "SHE WAS NEVER LATE"],
+  ])("flag on: '%s' keeps '%s' verbatim", async (turn, kept) => {
+    const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
+    try {
+      const answer = await ask(turn);
+      const line = /\*\*Observation of Offense:\*\* ([^\n]*)/.exec(answer.content)?.[1] ?? "";
+      // Kept as typed (on main a longer account is the whole sentence), so "not"/"never" stays.
+      expect(line).toContain(kept);
+    } finally {
+      off();
+    }
+  });
+
+  it.each([
     "coaching form for rory vance, tom lee was late today",
-  ])("flag on: '%s' keeps nothing", async (turn) => {
+    "Coaching form for Rory Vance, Tom Lee was late today",
+    "COACHING FORM FOR RORY VANCE, TOM LEE WAS LATE TODAY",
+    "coaching form for rory vance, his coworker was late today",
+    "Coaching form for Rory Vance, his coworker was late today",
+    "COACHING FORM FOR RORY VANCE, HIS COWORKER WAS LATE TODAY",
+  ])("flag on: another person's '%s' is not kept as hers", async (turn) => {
     const off = on("INTENT_EXTRACTION_ENABLED", "COACHING_INCIDENT_KEPT_ENABLED");
     try {
       const answer = await ask(turn);

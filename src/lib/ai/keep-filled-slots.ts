@@ -565,10 +565,11 @@ function directorySalonIds(name: string | null, people: readonly GroundedPerson[
  * Observation of Offense, while "… for <name> at lawrence, she was late today"
  * kept "she was late today": the account was three words short of
  * `describesMoreThanTheRequest`. A sentence whose account clause describes an
- * incident is kept however short, unless it is negated ("she was not late
- * today", "never late") or says what another person did ("tom lee was late").
+ * incident is kept however short, word for word, so a negated account ("she
+ * was not late today", "she was never late") stays negated. What another
+ * person did ("tom lee was late today", "his coworker was late today") is not
+ * this employee's account and is not kept.
  */
-const SHORT_NEGATED = /\b(?:not|never|no|didn'?t|wasn'?t|isn'?t|without)\b/i;
 const ANOTHER_PERSON = /^([a-z][a-z'’-]+)\s+([a-z][a-z'’-]+)\s+(?:was|is|did|left|came|got|took|opened)\b/i;
 
 function shortIncident(said: string, employeeName: string | null): boolean {
@@ -579,7 +580,7 @@ function shortIncident(said: string, employeeName: string | null): boolean {
 
 function notHerIncident(said: string, employeeName: string | null): boolean {
   const account = managerAccount(said, employeeName).trim();
-  if (SHORT_NEGATED.test(account)) return true;
+  if (/^(?:his|her|their)\s+(?:co-?workers?|coworkers?|friends?|managers?|team\s*mates?|teammates?|sisters?|brothers?|mom|dad|boyfriend|girlfriend)\b/i.test(account)) return true;
   const named = ANOTHER_PERSON.exec(account);
   if (!named || /^(?:she|he|they|it|this|that|the|her|his|their)$/i.test(named[1]!)) return false;
   const person = (employeeName ?? "").toLowerCase().split(/\s+/);
@@ -596,7 +597,7 @@ function withObservation(content: string, turns: readonly string[], employeeName
       if (said.length < 12) continue;
       const short = !describesMoreThanTheRequest(said, { ignore }) && shortIncident(said, employeeName);
       if (!short && !describesMoreThanTheRequest(said, { ignore })) continue;
-      // COACHING_INCIDENT_KEPT_ENABLED: what she did not do, or another person did, is never the account.
+      // COACHING_INCIDENT_KEPT_ENABLED: what another person did is not this employee's account.
       if (coachingIncidentKeptEnabled() && notHerIncident(said, employeeName)) continue;
       if (managerOnly && onlySaysWhereTheyWork(said, ignore)) continue;
       // MANAGER_WORDS_ONLY_ENABLED: without the clauses that only request the

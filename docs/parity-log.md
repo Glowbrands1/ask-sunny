@@ -1020,10 +1020,12 @@ sentence only at a point followed by a space, so "$3.25" already stays
 whole. `src/lib/ai/decimal-keep-lock.test.ts` locks that with the reported
 wording.
 
-## 26 Oct 2026: COACHING_INCIDENT_KEPT_ENABLED stays Sunny-only
+## 26 Oct 2026: COACHING_INCIDENT_KEPT_ENABLED — pending Bubbles preview
 
 Ask Sunny's card turn adds an Observation of Offense line from the manager's
 turns (`withObservation` in `ai/keep-filled-slots.ts`), and a short account
 ("coaching form for <name>, she was late today") was one word short of the
-three it needs. Ask Bubbles has no such line on the coaching card reply,
-with or without a store named, so there is nothing to keep there.
+three it needs. In the unit harness, Ask Bubbles' coaching card reply shows no
+such line with or without a store named. Whether the Bubbles draft keeps the
+short account is pending the coordinator's Bubbles preview; if it drops it,
+the mechanism is ported name-mapped ("Port from Ask Sunny (<sha>): …").
