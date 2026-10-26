@@ -109,3 +109,18 @@ describe("expandTerseRequest", () => {
     }
   });
 });
+
+/**
+ * The flag-on twin (coordinator rule, 26 Oct 2026). Changed on purpose with
+ * TERSE_COMMAND_ONLY_ENABLED on as well: a "ca for <name> …" sentence is left
+ * as typed, so the readers read it as the request it already is.
+ */
+describe("expandTerseRequest with TERSE_COMMAND_ONLY_ENABLED on", () => {
+  it("leaves the 'ca for' sentence as typed, in lowercase and capitals", () => {
+    process.env[COMMAND_ONLY] = "on";
+    const sentence = "ca for quenby arlott not opening salon on time and no call no show";
+    expect(expandTerseRequest(sentence, TODAY)).toBe(sentence);
+    expect(expandTerseRequest(sentence.toUpperCase(), TODAY)).toBe(sentence.toUpperCase());
+    expect(expandTerseRequest(CASES[0]![0], TODAY)).toBe(CASES[0]![1]);
+  });
+});

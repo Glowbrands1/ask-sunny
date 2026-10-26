@@ -168,3 +168,30 @@ describe("TERSE_COMMAND_ONLY_ENABLED on: a third name word is never a level, top
     },
   );
 });
+
+/** QA-4, 26 Oct 2026 (re-probe): a negation or degree word is never a name; a three-part name before a topic or a code stays whole. */
+describe("TERSE_COMMAND_ONLY_ENABLED on: 'never' is not a name, and long-tail three-part names stay whole", () => {
+  it.each([
+    "ca avery stone never late",
+    "ca avery stone always late",
+    "ca avery stone also late",
+    "ca avery stone just late",
+    "ca avery stone still late",
+    "ca avery stone again late",
+    "ca avery stone really late",
+    "ca avery stone not opening",
+    "ca avery stone never opened the store",
+    "ca avery stone sleeping 10-14",
+  ])("'%s' keeps the name 'avery stone', in any case", (command) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase()).toMatch(/ form for avery stone(?:[.,]| at )/);
+  });
+
+  it.each([
+    ["coach rory ann vance woven acks 10-16", "Create a coaching form for rory ann vance."],
+    ["exit rory ann vance nc/ns last day 9/20", "Create an exit form for rory ann vance."],
+  ])("'%s' keeps the three-part name, in any case", (command, start) => {
+    process.env.TERSE_COMMAND_ONLY_ENABLED = "on";
+    for (const variant of cases(command)) expect(expandTerseRequest(variant, TODAY).toLowerCase().startsWith(start.toLowerCase())).toBe(true);
+  });
+});
