@@ -77,6 +77,7 @@ import {
   exitNoticeFulfilledEnabled,
   exitRehireReasonEnabled,
   draftNoInventedPlanEnabled,
+  formDateIncidentOnlyEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -172,6 +173,7 @@ const NEW_FLAGS = [
   "EXIT_NOTICE_FULFILLED_ENABLED",
   "EXIT_REHIRE_REASON_ENABLED",
   "DRAFT_NO_INVENTED_PLAN_ENABLED",
+  "FORM_DATE_INCIDENT_ONLY_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -200,7 +202,9 @@ const PROTECTED = [
  * src/lib/forms/form-date-answer.ts to fix prior-action parsing behind
  * PRIOR_ACTIONS_PARSE_ENABLED, with the flag-off reading unchanged. It stays
  * on the PROTECTED list; only the diff check leaves it out. No other
- * protected file is excepted.
+ * protected file is excepted. QA assigned the same file to Code 4 on 25 Oct
+ * 2026 for the form-date rule (D3), behind FORM_DATE_INCIDENT_ONLY_ENABLED,
+ * flag-off reading unchanged.
  */
 const APPROVED_PROTECTED_EDITS = [":(exclude)src/lib/forms/form-date-answer.ts"];
 
@@ -324,6 +328,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(exitNoticeFulfilledEnabled()).toBe(false);
     expect(exitRehireReasonEnabled()).toBe(false);
     expect(draftNoInventedPlanEnabled()).toBe(false);
+    expect(formDateIncidentOnlyEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
