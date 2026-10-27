@@ -1,3 +1,5 @@
+import { nameQuestionOnlyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { readCaPolicy } from "./ca-policy";
 import {
   PAYROLL_DEDUCT_LABEL,
@@ -748,6 +750,10 @@ export function correctiveActionIntakeRequest(input: {
    */
   readonly today?: string | null;
 }): string {
+  // NAME_QUESTION_ONLY_ENABLED (Pau, 26 Oct 2026): with no name yet, one plain question, never the list.
+  if (nameQuestionOnlyEnabled() && input.items.some((item) => item.key === "employee_name")) {
+    return "Who is this form for? Tell me the employee's full name.";
+  }
   const numbered = input.items
     .map((item, index) => `${index + 1}. ${promptFor(item, input.today ?? null)}`)
     .join("\n");

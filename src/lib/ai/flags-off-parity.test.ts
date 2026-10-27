@@ -92,6 +92,13 @@ import {
   dateAnswerAppliedEnabled,
   dateAnswerKeepsOpenEnabled,
   requestLineAccountEnabled,
+  notDeductibleReadEnabled,
+  priorStepSentenceEnabled,
+  exitFulfilledIsLastDayEnabled,
+  futurePriorRowDropEnabled,
+  nameQuestionOnlyEnabled,
+  meetingNotLatenessPlanEnabled,
+  planPayrollSentenceEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -205,6 +212,13 @@ const NEW_FLAGS = [
   "DATE_ANSWER_APPLIED_ENABLED",
   "DATE_ANSWER_KEEPS_OPEN_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
+  "NOT_DEDUCTIBLE_READ_ENABLED",
+  "PRIOR_STEP_SENTENCE_ENABLED",
+  "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
+  "FUTURE_PRIOR_ROW_DROP_ENABLED",
+  "NAME_QUESTION_ONLY_ENABLED",
+  "MEETING_NOT_LATENESS_PLAN_ENABLED",
+  "PLAN_PAYROLL_SENTENCE_ENABLED",
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
@@ -254,6 +268,11 @@ const PROTECTED = [
  * readEmployeeMentions' return filters its candidates through `namesSomebody`,
  * which keeps every one with the flag off. It stays on the PROTECTED list;
  * only the diff check leaves it out.
+ *
+ * The user (Pau) approved, in the Code session on 27 Oct 2026 ("yes, name
+ * question form-proposal.ts both apps"), two lines in src/lib/ai/form-proposal.ts
+ * openingQuestions behind NAME_QUESTION_ONLY_ENABLED: with no employee named,
+ * one plain question instead of the list. Off, the list as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
@@ -414,6 +433,13 @@ describe("new flags default off and wrappers are inert", () => {
     expect(dateAnswerAppliedEnabled()).toBe(false);
     expect(dateAnswerKeepsOpenEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
+    expect(notDeductibleReadEnabled()).toBe(false);
+    expect(priorStepSentenceEnabled()).toBe(false);
+    expect(exitFulfilledIsLastDayEnabled()).toBe(false);
+    expect(futurePriorRowDropEnabled()).toBe(false);
+    expect(nameQuestionOnlyEnabled()).toBe(false);
+    expect(meetingNotLatenessPlanEnabled()).toBe(false);
+    expect(planPayrollSentenceEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 

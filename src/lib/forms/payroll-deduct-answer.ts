@@ -161,10 +161,23 @@ function deniedNearby(clause: string, at: number, end: number): boolean {
 /** Yes, No, nothing about the deduction (null), or something about it that cannot safely be read. */
 export type ClauseReading = PayrollDeductAnswer | "unclear" | null;
 
+/*
+ * NOT_DEDUCTIBLE_READ_ENABLED (manager, 26 Oct 2026: "… verbal warning received
+ * … not payroll deductible Tanning Consultant"): "not payroll deductible",
+ * "non-deductible" said No, but no pattern read it, and the payroll question
+ * was asked on every turn. With the flag on it is a No. Read from the
+ * environment here because this module imports nothing (see the top).
+ */
+const NOT_DEDUCTIBLE = /\b(?:not|isn't|isnt|is not|non)[\s-]+(?:payroll\s+)?deductible\b/;
+function notDeductibleRead(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.NOT_DEDUCTIBLE_READ_ENABLED;
+  return typeof raw === "string" && ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
+}
+
 function readClause(clause: string): ClauseReading {
   if (UNDECIDED.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
   if (DENIED_WAIVER.test(clause) && ABOUT_DEDUCTION.test(clause)) return "unclear";
-  const negative = NEGATIVE.find((pattern) => pattern.test(clause));
+  const negative = NEGATIVE.find((pattern) => pattern.test(clause)) ?? (notDeductibleRead() && NOT_DEDUCTIBLE.test(clause) ? NOT_DEDUCTIBLE : undefined);
   if (negative) {
     /*
      * BOTH IN ONE CLAUSE IS NO ANSWER (F-01). With the negative's own words

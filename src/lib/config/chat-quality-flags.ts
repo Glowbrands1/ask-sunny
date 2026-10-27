@@ -1067,6 +1067,78 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * "not payroll deductible" is a No (manager, 26 Oct 2026): it was not read,
+ * and "Is payroll deduct applicable?" was asked on every turn. The reader
+ * (`forms/payroll-deduct-answer.ts`, which imports nothing) reads the same
+ * variable itself. Off, as before.
+ */
+export function notDeductibleReadEnabled(): boolean {
+  return envFlag("NOT_DEDUCTIBLE_READ_ENABLED");
+}
+
+/**
+ * An earlier step told in a sentence is a Prior actions row (managers, 26 Oct
+ * 2026): "note a verbal ca was given on 9-1-26" and "she was issued a verbal
+ * ca on 10.1 for this same thing" listed none. See `sentenceSteps` in
+ * `forms/prior-actions.ts`. Off, as before.
+ */
+export function priorStepSentenceEnabled(): boolean {
+  return envFlag("PRIOR_STEP_SENTENCE_ENABLED");
+}
+
+/**
+ * A notice worked to the last day was fulfilled on it (manager, 26 Oct 2026):
+ * "her last day worked was 9-28-26" with "gave and worked 2 week notice" left
+ * "Date that notice was fulfilled" blank. See `readExitFacts` in
+ * `forms/exit-facts.ts`. Off, as before.
+ */
+export function exitFulfilledIsLastDayEnabled(): boolean {
+  return envFlag("EXIT_FULFILLED_IS_LAST_DAY_ENABLED");
+}
+
+/**
+ * A Prior actions row dated after today is never kept (QA LS-B11 in the
+ * sibling app, 26 Oct 2026; same flag in both apps): a typo "11-1-26" the
+ * manager corrected to "11-1-25" left "Coaching — signed 11/01/2026" on the
+ * draft. See `groundPriorActions` in `forms/prior-actions.ts`. Off, as before.
+ */
+export function futurePriorRowDropEnabled(): boolean {
+  return envFlag("FUTURE_PRIOR_ROW_DROP_ENABLED");
+}
+
+/**
+ * With no employee named, the chat asks one plain question — "Who is this
+ * form for? Tell me the employee's full name." — never a list of details
+ * (Pau, 26 Oct 2026; same flag in both apps). This covers the Corrective
+ * Action intake ("ca", "blank corrective action form"); the coaching card's
+ * list in the protected `ai/form-proposal.ts` follows on Pau's approval. Off,
+ * as before.
+ */
+export function nameQuestionOnlyEnabled(): boolean {
+  return envFlag("NAME_QUESTION_ONLY_ENABLED");
+}
+
+/**
+ * A missed meeting with no lateness keeps the general Action Plan, not the
+ * attendance (lateness) wording (QA LS-B8 / SX1, 26 Oct 2026; same flag in
+ * both apps). The policy pick is unchanged. See `missedMeetingNotLateness` in
+ * `forms/attendance-action-plan.ts`. Off, as before.
+ */
+export function meetingNotLatenessPlanEnabled(): boolean {
+  return envFlag("MEETING_NOT_LATENESS_PLAN_ENABLED");
+}
+
+/**
+ * The Action Plan says the deduction: "<name> will be payroll deducted $3.25."
+ * when payroll deduct is Yes and the manager stated an amount (QA SX2 / SX3,
+ * 26 Oct 2026; same flag in both apps). See `forms/plan-payroll-sentence.ts`.
+ * Off, as before.
+ */
+export function planPayrollSentenceEnabled(): boolean {
+  return envFlag("PLAN_PAYROLL_SENTENCE_ENABLED");
+}
+
+/**
  * A job title is never the incident (manager, 26 Oct 2026): "create corrective
  * action form for <name>, Salon Director" filed "Observed: Salon Director."
  * With the flag on the manager's-words fallback skips a clause that is only a
