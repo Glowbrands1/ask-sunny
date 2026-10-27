@@ -1079,3 +1079,7 @@ Not needed in the sibling app: the same turns through its harness ("yes payroll 
 ## 27 Oct 2026: an amount answer is no account text (AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED, Sunny-only)
 
 Not needed in the sibling app: its card shows no Observation of Offense line. The same turns through its chat harness ("yes payroll deduct" then "i dont know the amount") put nothing about the amount into the card's account.
+
+## 27 Oct 2026: "Marlowe, Quinn" is read as Quinn Marlowe, without a model — both apps (LAST_FIRST_NAME_READ_ENABLED)
+
+QA's five "Last, First" variants (the AI reader's only measured win, +5 of 60) made today's name reader stop at the comma: "My employee Marlowe, Quinn" was the employee "Marlowe", "employee name is Hollis, Ivy" was "Hollis Ivy", "Marlowe, Quinn was late on 10/20" had no employee, and Create refused the card as out of date. With the flag on, a capitalised "Word, Word" pair in the manager's own turns goes through the AI reader's own checks (`ai/reader/check.ts`): it must fit exactly one person on the scoped roster, in either order; the merge fills only an employee today's readers left open and never replaces a settled one; the Create check takes the part-of-name card. No model, no cost. Built on the reader's check and merge (#341, which stays held), so it ships with or after that code; the AI call itself is not needed. Ask Bubbles: port after #266's hook point exists there.

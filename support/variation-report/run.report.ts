@@ -35,6 +35,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *   VARIATION_READER_MODEL=<id> …                       record the reader with another model
  *   VARIATION_RECORDINGS_DIR=<dir> …                    read and write recordings in a folder of its own
  *   VARIATION_EXTRA_FLAGS=A_ENABLED,B_ENABLED …         more flags on in the "this week's fixes" modes (the list in this file is older than the app)
+ *   VARIATION_FLAG_INSTEAD_OF_AI=A_ENABLED …            the last mode runs this flag, with no AI reader, for a no-model change
  *   VARIATION_BUDGET_USD=3 …                            record mode stops calling the model once live calls cost this much
  *
  * With VARIATION_READER set, this app's live slot call (`record_intent_slots`,
@@ -550,7 +551,10 @@ const NEW_FIXES = [
 ] as const;
 // VARIATION_EXTRA_FLAGS=A_ENABLED,B_ENABLED: flags shipped since the list above, on in every "this week's fixes" mode.
 const EXTRA = (process.env.VARIATION_EXTRA_FLAGS ?? "").split(",").map((name) => name.trim()).filter(Boolean);
-const AI = "AI_READS_CODE_CHECKS_ENABLED";
+// VARIATION_FLAG_INSTEAD_OF_AI=LAST_FIRST_NAME_READ_ENABLED: the last mode runs that flag with the real slot call
+// and NO AI reader (its row is still labelled "+ AI reader"), to measure a no-model change against the same baseline.
+const INSTEAD = process.env.VARIATION_FLAG_INSTEAD_OF_AI?.trim() || null;
+const AI = INSTEAD ?? "AI_READS_CODE_CHECKS_ENABLED";
 const READER_MODE = process.env.VARIATION_READER === "record" ? "record" : process.env.VARIATION_READER === "replay" ? "replay" : null;
 const TODAYS = "production + this week's fixes";
 const TODAY_REAL = "production + this week's fixes, real slot call";
@@ -561,7 +565,7 @@ const MODES: readonly { name: string; flags: readonly string[]; slots?: boolean;
   ...(READER_MODE
     ? [
         { name: TODAY_REAL, flags: [...NEW_FIXES, ...EXTRA], slots: true },
-        { name: WITH_AI, flags: [...NEW_FIXES, ...EXTRA, AI], slots: true, reader: true },
+        { name: WITH_AI, flags: [...NEW_FIXES, ...EXTRA, AI], slots: true, reader: !INSTEAD },
       ]
     : []),
 ];
