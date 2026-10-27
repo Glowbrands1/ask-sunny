@@ -578,6 +578,8 @@ function score(seed: Seed, out: Outcome): [string, boolean, string][] {
     check("form created", false, out.error);
     return results;
   }
+  // Counted on success too, so the row reads as a rate.
+  if (!seed.chatOnly) check("form created", true, "");
   if (e.employee) check("employee", f("employee_name").value.toLowerCase() === e.employee.toLowerCase(), f("employee_name").value);
   if (e.date) check("date", f("form_date").value === e.date, f("form_date").value);
   if (e.prior) {
