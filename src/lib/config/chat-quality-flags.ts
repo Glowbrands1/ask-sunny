@@ -1317,12 +1317,22 @@ export function stepDateNoQuestionEnabled(): boolean {
 }
 
 /**
+ * The name question uses the first name the manager gave, and is never asked
+ * twice in the same words (QA S15, 27 Oct 2026; same flag in both apps): "I
+ * have an employee ivy …" then "Yes" got "Who is this form for? Tell me the
+ * employee's full name." twice. See `ai/first-name-ask.ts`. Off, as before.
+ */
+export function firstNameAskEnabled(): boolean {
+  return envFlag("FIRST_NAME_ASK_ENABLED");
+}
+
+/**
  * The AI reads the form request, the code checks it (Pau, 27 Oct 2026; same
  * flag in both apps). One extra Haiku call per form turn returns each field
  * with the manager's own words it came from; a field is kept only when its
- * quote, the roster, the date readers and the manual agree, and a field the
- * two readings dispute is asked once. A failed or slow call leaves the turn on
- * today's readers. See `ai/reader/`. Off, as before.
+ * quote, the roster, the date readers and the manual agree, and it fills only
+ * what today's readers left open, never what they settled. A failed or slow
+ * call leaves the turn on today's readers. See `ai/reader/`. Off, as before.
  */
 export function aiReadsCodeChecksEnabled(): boolean {
   return envFlag("AI_READS_CODE_CHECKS_ENABLED");

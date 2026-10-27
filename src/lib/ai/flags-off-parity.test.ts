@@ -115,6 +115,7 @@ import {
   levelStepNotAccountEnabled,
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
+  firstNameAskEnabled,
   aiReadsCodeChecksEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -252,6 +253,7 @@ const NEW_FLAGS = [
   "LEVEL_STEP_NOT_ACCOUNT_ENABLED",
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
+  "FIRST_NAME_ASK_ENABLED",
   "AI_READS_CODE_CHECKS_ENABLED",
 ] as const;
 
@@ -386,6 +388,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(levelStepNotAccountEnabled()).toBe(false);
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
+    expect(firstNameAskEnabled()).toBe(false);
     expect(aiReadsCodeChecksEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
