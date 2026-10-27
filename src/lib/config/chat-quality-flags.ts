@@ -1410,6 +1410,15 @@ export function unreadDateAskEnabled(): boolean {
 }
 
 /**
+ * "yesturday", "tuesdy" and "last tusday" are read by the relative date reader
+ * as the day words they can only be (QA, 27 Oct 2026; same flag in both
+ * apps). See `forms/typo-match.ts`. Off, as before.
+ */
+export function dayWordTyposEnabled(): boolean {
+  return envFlag("DAY_WORD_TYPOS_ENABLED");
+}
+
+/**
  * "i dont know the amount", right after the amount question, is answered with
  * one line instead of the card alone (QA, 27 Oct 2026; same flag in both
  * apps). See `ai/amount-unknown-ack.ts`. Off, as before.
