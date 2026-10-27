@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { salonById } from "@/data/salons";
 
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
@@ -11,6 +13,7 @@ import {
   draftActionsEnabled,
   draftDedupeEnabled,
   payrollAmountFieldEnabled,
+  typoReadingRoutesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { parseHistory } from "@/lib/api/validation";
 import { authorizeForms } from "@/lib/forms/access";
@@ -283,7 +286,8 @@ export async function POST(request: Request) {
        * line stays blank, and the form is still created.
        */
       if (payrollAmountFieldEnabled() && card.payrollDeduct === "yes" && Array.isArray(card.conversation)) {
-        const turns = parseHistory(card.conversation);
+        // TYPO_READING_ROUTES_ENABLED: the reader sees "amont" as amount; the stored conversation stays as typed.
+        const turns = await readingTurns(parseHistory(card.conversation));
         const amount = payrollAmountFromConversation(turns, { payrollAnswer: "yes" });
         if (amount) {
           await applyStatedFacts(
@@ -593,4 +597,17 @@ function resolveLocationName(
   const rostered = salonById(locationId)?.name ?? null;
   if (!isDemoMode()) return rostered;
   return requested ?? rostered;
+}
+
+/**
+ * TYPO_READING_ROUTES_ENABLED: the manager's turns as the payroll-amount reader
+ * above sees them, each typo read as the one known word it can only be
+ * (`ai/typo-reading-copy.ts`). Only that reader gets it; the conversation
+ * stored and compared elsewhere in this route is the raw one. Off, the turns
+ * as given.
+ */
+async function readingTurns<T extends { role: string; content: string }>(turns: T[]): Promise<T[]> {
+  if (!typoReadingRoutesEnabled()) return turns;
+  const names = await protectedNameWords();
+  return turns.map((turn) => (turn.role === "user" ? { ...turn, content: typoReadingText(turn.content, names) } : turn));
 }

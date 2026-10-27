@@ -30,6 +30,16 @@ export function withTypoReadingCopy(request: AskRequest, names: ReadonlySet<stri
   return changed ? { ...request, question, history } : request;
 }
 
+/**
+ * One text read the same way, for the form routes' own readers
+ * (TYPO_READING_ROUTES_ENABLED). The caller checks its flag; "*" corrects
+ * nothing.
+ */
+export function typoReadingText(text: string, names: ReadonlySet<string>): string {
+  if (names.has("*")) return text;
+  return correctedText(text, typoVocabulary(), (word) => names.has(word) || NEVER_CORRECTED.has(word)).text;
+}
+
 /** Every employee name word, lower-cased, from directory rows. */
 export function nameWords(
   people: readonly { firstName: string | null; lastName: string | null; preferredFirstName?: string | null }[],
