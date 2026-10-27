@@ -1336,6 +1336,15 @@ export function firstNameAskEnabled(): boolean {
 }
 
 /**
+ * A turn that only answers the payroll amount ("i dont know the amount",
+ * "$25") is not added to the Observation of Offense (QA, 27 Oct 2026; same
+ * flag in both apps). See `forms/amount-answer.ts`. Off, as before.
+ */
+export function amountAnswerNotAccountEnabled(): boolean {
+  return envFlag("AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED");
+}
+
+/**
  * One user's traced model calls per UTC day are capped at MODEL_CALL_DAILY_CAP
  * (default 40); over it, the chat answers without calling the model (Pau,
  * 27 Oct 2026; same flag in both apps). See `ai/spend-guard.ts`. Off, as before.
