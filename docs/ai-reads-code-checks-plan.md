@@ -75,6 +75,9 @@ headings, scoped roster, history) and about 400 output tokens.
 | Haiku 4.5 (today's intent model, $1 / $5 per M) | ~$0.008 | ~$0.05 |
 | Haiku 5.5 ($0.10 / $0.50 per M) | ~$0.0008 | ~$0.005 |
 
+Per month: (chats in the last 14 days ÷ 14 × 30) × the per-chat figure. QA
+will supply the 14-day chat count from both databases.
+
 Prompt caching on the fixed part (instructions and manual headings) lowers
 both figures. Haiku 5.5 thinks by default: run it at `low` effort, or the
 output tokens grow.
@@ -93,6 +96,20 @@ output tokens grow.
   the manager's locations. Nothing new leaves the app.
 - **Tests:** the e2e tests use a stubbed model, so they test the checks, not
   the reading. A small recorded set of real model replies keeps CI offline.
+
+## Ship gate (QA, 27 Oct 2026)
+
+- A third mode of the report ("production + AI reader") must beat today's
+  67% fully right **and** lose on no seed or field that passes today (policy,
+  prior, date). Otherwise it does not ship.
+- That mode also reports the "one question" row and an "asked twice" count,
+  since leaving a disputed field blank can add questions.
+
+## When the model is down
+
+A timeout (2 s), an error or an unusable reply means the turn runs on
+today's readers, exactly as with the flag off. The card is never left blank
+because the model failed. Each fallback is counted in the chat trace.
 
 ## Estimate
 
