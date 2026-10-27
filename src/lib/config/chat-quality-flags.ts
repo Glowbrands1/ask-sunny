@@ -1417,3 +1417,12 @@ export function unreadDateAskEnabled(): boolean {
 export function dayWordTyposEnabled(): boolean {
   return envFlag("DAY_WORD_TYPOS_ENABLED");
 }
+
+/**
+ * "i dont know the amount", right after the amount question, is answered with
+ * one line instead of the card alone (QA, 27 Oct 2026; same flag in both
+ * apps). See `ai/amount-unknown-ack.ts`. Off, as before.
+ */
+export function amountUnknownAckEnabled(): boolean {
+  return envFlag("AMOUNT_UNKNOWN_ACK_ENABLED");
+}
