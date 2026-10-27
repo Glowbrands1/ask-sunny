@@ -115,6 +115,7 @@ import {
   levelStepNotAccountEnabled,
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
+  firstNameAskEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -251,6 +252,7 @@ const NEW_FLAGS = [
   "LEVEL_STEP_NOT_ACCOUNT_ENABLED",
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
+  "FIRST_NAME_ASK_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -384,6 +386,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(levelStepNotAccountEnabled()).toBe(false);
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
+    expect(firstNameAskEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);
