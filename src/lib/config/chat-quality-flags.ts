@@ -1183,3 +1183,13 @@ export function animalAnywhereEnabled(): boolean {
   return envFlag("ANIMAL_ANYWHERE_ENABLED");
 }
 
+/**
+ * A Corrective Action card with no account asks what happened (QA P1, 26 Oct
+ * 2026; same flag in both apps): "create corrective action form for <name>,
+ * Salon Director" drafted with no account and no question. See
+ * `ai/ca-what-happened.ts`. Off, as before.
+ */
+export function caAsksWhatHappenedEnabled(): boolean {
+  return envFlag("CA_ASKS_WHAT_HAPPENED_ENABLED");
+}
+
