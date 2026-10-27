@@ -111,6 +111,8 @@ import {
   exitReadbackJobTitleEnabled,
   followUpCitationFieldEnabled,
   grammarAskNotAccountEnabled,
+  jobTitleCaseEnabled,
+  levelStepNotAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -243,6 +245,8 @@ const NEW_FLAGS = [
   "EXIT_READBACK_JOB_TITLE_ENABLED",
   "FOLLOW_UP_CITATION_FIELD_ENABLED",
   "GRAMMAR_ASK_NOT_ACCOUNT_ENABLED",
+  "JOB_TITLE_CASE_ENABLED",
+  "LEVEL_STEP_NOT_ACCOUNT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -372,6 +376,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(exitReadbackJobTitleEnabled()).toBe(false);
     expect(followUpCitationFieldEnabled()).toBe(false);
     expect(grammarAskNotAccountEnabled()).toBe(false);
+    expect(jobTitleCaseEnabled()).toBe(false);
+    expect(levelStepNotAccountEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);

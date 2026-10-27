@@ -1275,3 +1275,22 @@ export function followUpCitationFieldEnabled(): boolean {
 export function grammarAskNotAccountEnabled(): boolean {
   return envFlag("GRAMMAR_ASK_NOT_ACCOUNT_ENABLED");
 }
+
+/**
+ * A Job Title read in lower case is written in title case (QA S1 live, 27 Oct
+ * 2026; same flag in both apps): "tan consultant" was saved as typed. See
+ * `ai/job-title-from-words.ts`. Off, as before.
+ */
+export function jobTitleCaseEnabled(): boolean {
+  return envFlag("JOB_TITLE_CASE_ENABLED");
+}
+
+/**
+ * A clause that only sets the warning level or only lists a prior step is not
+ * the account (QA S12, 27 Oct 2026; same flag in both apps): "this should be a
+ * written and note a verbal ca was given on 9-1-26" went into the card's
+ * Observation of Offense. See `ai/account-clauses.ts`. Off, as before.
+ */
+export function levelStepNotAccountEnabled(): boolean {
+  return envFlag("LEVEL_STEP_NOT_ACCOUNT_ENABLED");
+}
