@@ -1203,3 +1203,13 @@ export function caAsksWhatHappenedEnabled(): boolean {
 export function stepDateNotIncidentEnabled(): boolean {
   return envFlag("STEP_DATE_NOT_INCIDENT_ENABLED");
 }
+
+/**
+ * A warning level stated in an "and"-clause of its own is the card's level (QA
+ * S12 / SF4, 27 Oct 2026; same flag in both apps): "this should be a written
+ * and note a verbal ca was given on 9-1-26" left the level blank. See
+ * `ai/warning-level-clause.ts`. Off, as before.
+ */
+export function warningLevelAndClauseEnabled(): boolean {
+  return envFlag("WARNING_LEVEL_AND_CLAUSE_ENABLED");
+}

@@ -104,6 +104,7 @@ import {
   priorRowNotOnIncidentDateEnabled,
   caAsksWhatHappenedEnabled,
   stepDateNotIncidentEnabled,
+  warningLevelAndClauseEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -229,6 +230,7 @@ const NEW_FLAGS = [
   "PRIVATE_CREATOR_FORMS_ENABLED",
   "CA_ASKS_WHAT_HAPPENED_ENABLED",
   "STEP_DATE_NOT_INCIDENT_ENABLED",
+  "WARNING_LEVEL_AND_CLAUSE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -352,6 +354,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(slotRetentionEnabled()).toBe(false);
     expect(caAsksWhatHappenedEnabled()).toBe(false);
     expect(stepDateNotIncidentEnabled()).toBe(false);
+    expect(warningLevelAndClauseEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);
