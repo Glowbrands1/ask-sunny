@@ -128,6 +128,7 @@ import {
   monthlyBudgetGuardEnabled,
   ordinalDateInDraftEnabled,
   widerDateReaderEnabled,
+  aiReadsCodeChecksEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -277,6 +278,7 @@ const NEW_FLAGS = [
   "MONTHLY_BUDGET_GUARD_ENABLED",
   "ORDINAL_DATE_IN_DRAFT_ENABLED",
   "WIDER_DATE_READER_ENABLED",
+  "AI_READS_CODE_CHECKS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -430,6 +432,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(monthlyBudgetGuardEnabled()).toBe(false);
     expect(ordinalDateInDraftEnabled()).toBe(false);
     expect(widerDateReaderEnabled()).toBe(false);
+    expect(aiReadsCodeChecksEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);

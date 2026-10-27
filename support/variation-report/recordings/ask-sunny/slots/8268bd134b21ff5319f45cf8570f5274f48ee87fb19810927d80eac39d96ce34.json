@@ -1,0 +1,23 @@
+{
+  "key": "8268bd134b21ff5319f45cf8570f5274f48ee87fb19810927d80eac39d96ce34",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn marlowe",
+    "salon": "kearney",
+    "title": null,
+    "incidentType": "came into the salon to show her team her new puppy",
+    "incidentDate": "10-22",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "Corrective Action Form",
+    "formTurn": true,
+    "policyHeading": "Animals in the Workplace"
+  },
+  "usage": {
+    "inputTokens": 2831,
+    "outputTokens": 225,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

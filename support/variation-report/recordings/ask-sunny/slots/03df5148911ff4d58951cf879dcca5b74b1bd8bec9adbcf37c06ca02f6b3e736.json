@@ -1,0 +1,23 @@
+{
+  "key": "03df5148911ff4d58951cf879dcca5b74b1bd8bec9adbcf37c06ca02f6b3e736",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "dale ferris",
+    "salon": null,
+    "title": null,
+    "incidentType": "dale had a regiter shortage of $3.25 on 10-20-26",
+    "incidentDate": "10-20-26",
+    "payrollAmount": "$3.25",
+    "warningLevel": "verbal",
+    "formType": "ca form",
+    "formTurn": true,
+    "policyHeading": "Handling Theft"
+  },
+  "usage": {
+    "inputTokens": 2758,
+    "outputTokens": 231,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

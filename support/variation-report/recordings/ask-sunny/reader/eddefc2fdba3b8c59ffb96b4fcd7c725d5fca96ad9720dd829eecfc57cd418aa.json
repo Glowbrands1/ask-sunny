@@ -1,0 +1,48 @@
+{
+  "key": "eddefc2fdba3b8c59ffb96b4fcd7c725d5fca96ad9720dd829eecfc57cd418aa",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Ferris, Dale",
+      "evidence": "create ca form for Ferris, Dale"
+    },
+    "incident": {
+      "value": "Violated attendance policy",
+      "evidence": "for violating attendance policy on 10-20-26"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "on 10-20-26"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "verbal."
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "no payroll deduct."
+    },
+    "payrollAmount": null,
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": "for violating attendance policy on 10-20-26"
+    },
+    "priorSteps": [
+      {
+        "kind": "manual_ack",
+        "date": "2026-01-01",
+        "evidence": "jba manual 1-1-26 for previous coaching"
+      }
+    ],
+    "otherDates": [],
+    "location": null,
+    "jobTitle": null
+  },
+  "usage": {
+    "inputTokens": 4630,
+    "outputTokens": 492,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2426
+}

@@ -17,6 +17,7 @@ import {
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
+  aiReadsCodeChecksEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -56,6 +57,8 @@ import {
   type ConversationFormState,
 } from "./form-state";
 import type { GroundedPerson } from "./grounded-entities";
+import type { CheckedReading } from "./reader/check";
+import { mergeCheckedReading } from "./reader/merge";
 import { withoutStateCodes } from "./remap-incident";
 
 /**
@@ -164,6 +167,8 @@ export interface IntentTurnInput {
   readonly headingPages?: Readonly<Record<string, number>>;
   readonly templates: readonly TemplateRow[];
   readonly formInProgress: boolean;
+  /** AI_READS_CODE_CHECKS_ENABLED: the reader's fields that passed the checks, or null. */
+  readonly checked?: CheckedReading | null;
 }
 
 export interface IntentTurnDecision {
@@ -172,6 +177,8 @@ export interface IntentTurnDecision {
   readonly clarification: string | null;
   /** True when this turn is filing or continuing a form. */
   readonly formTurn: boolean;
+  /** AI_READS_CODE_CHECKS_ENABLED: what the checked reading filled, and where it disagreed. */
+  readonly reader?: { readonly filled: readonly string[]; readonly disputed: readonly string[] };
 }
 
 interface ChoiceOption {
@@ -229,6 +236,8 @@ function settleYesNo(question: string, saved: ConversationFormState): Conversati
 
 export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision {
   const input = withoutUntypedSavedName(rawInput);
+  // AI_READS_CODE_CHECKS_ENABLED: off, or with no checked reading, every field below is today's.
+  const merge = mergeCheckedReading(aiReadsCodeChecksEnabled() ? rawInput.checked : null);
   const choiceStated = formChoiceStatedEnabled();
   const saved = choiceStated
     ? withoutDisciplineProcedure(input.saved ?? EMPTY_FORM_STATE)
@@ -257,16 +266,17 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * the slot model's "Test", or nobody, is replaced by the name as typed.
    */
   const typedEmployee = keepFormEmployeeEnabled() && !choice?.person ? typedEmployeeName(input.question) : null;
-  const employee = typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded;
+  const employee = merge.employee(typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded);
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");
-  const salon =
+  const salon = merge.salon(
     (newestPlaceTurnEnabled()
       ? newestManagerTurnSalon([input.question, ...input.history.filter((turn) => turn.role === "user").map((turn) => turn.content).reverse()], input.salons)
       : null) ??
-    newestTurnSalon(input.question, input.salons) ??
-    groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person);
+      newestTurnSalon(input.question, input.salons) ??
+      groundSalon(choice?.salon ?? reading?.salon ?? null, userText, input.salons, employee.person),
+  );
   // The manager's turns only: a pasted policy is not their words, and
   // "ass't salon director" is read as the assistant title.
   const managerTitleText = managerWordsOnlyEnabled()
@@ -274,7 +284,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     : userText;
   // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
   const titleText = remapIncidentFixEnabled() ? withoutStateCodes(managerTitleText) : managerTitleText;
-  const title = groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed);
+  const title = merge.title(groundTitle(reading?.title ?? null, titleText, input.people, employee.person, employee.name ?? employee.typed));
   const groundedIncident = groundIncident(reading?.incidentType ?? null, blob, input.headings);
   const incidentType = choiceStated && isDisciplineProcedure(groundedIncident) ? null : groundedIncident;
   /*
@@ -290,9 +300,11 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   const groundedDate = statedNow
     ? { iso: statedNow, ambiguous: [] as readonly string[] }
     : groundDate(choice?.date ?? reading?.incidentDate ?? null, dateQuestion, dateText, input.today);
-  const date = codeSlotsEnabled()
-    ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
-    : groundedDate;
+  const date = merge.date(
+    codeSlotsEnabled()
+      ? { iso: explicitIncidentIso(dateQuestion, input.today) ?? saved.formDate, ambiguous: [] as readonly string[] }
+      : groundedDate,
+  );
   const formType: { key: string | null; ambiguous: readonly TemplateRow[]; together?: boolean } = choiceStated
     ? groundStatedForm(
         choice?.form ?? null,
@@ -334,7 +346,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
       : (payrollClauseAmount(input) ??
         (payrollAnswer === "yes" ? groundPayroll(reading?.payrollAmount ?? null, managerBlob(input)) : null));
   // LATE_OPEN_PAYROLL_FROM_FORM_ENABLED: "$25" on an exit form is no payroll deduction.
-  const payrollAmount = payrollFromForm && !asksPayroll ? null : payrollAmountRead;
+  const payrollAmount = payrollFromForm && !asksPayroll ? null : merge.payrollAmount(payrollAmountRead);
   // NAMED_FORM_EXACT_ENABLED: a numbered choice the manager just made is their
   // naming; otherwise their own latest naming bounds the form.
   const namedFormExact = namedFormExactEnabled();
@@ -350,17 +362,19 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * just made, or what their own turns state — nothing else.
    */
   const warningManagerOnly = warningLevelManagerOnlyEnabled();
-  const warningLevel = warningManagerOnly
-    ? {
-        value:
-          choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
-        ambiguous: false,
-      }
-    : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob);
+  const warningLevel = merge.warningLevel(
+    warningManagerOnly
+      ? {
+          value:
+            choice?.warning ?? managerStatedWarningLevel([...input.history, { role: "user", content: input.question }]),
+          ambiguous: false,
+        }
+      : groundWarning(choice?.warning ?? reading?.warningLevel ?? null, blob),
+  );
   // A heading already grounded stays. The account reader fills one in only
   // when this conversation has not chosen one, so a resend does not replace
   // Late Opening with the broader Attendance section.
-  const policyHeading = modelPolicy ?? saved.policyHeading ?? incidentType;
+  const policyHeading = merge.policyHeading(modelPolicy ?? saved.policyHeading ?? incidentType);
   const policyPage = codeSlotsEnabled()
     ? pageForHeading(policyHeading, input.headingPages) ?? saved.policyPage ?? printedPageForPolicy(policyHeading)
     : modelPolicy
@@ -450,10 +464,11 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   // FORM_CHOICE_STATED_ENABLED: two forms in one turn is a question, not a
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
-  if (clarification && formType.together) return { question, state, clarification, formTurn: false };
-  if (clarification) return { question, state, clarification, formTurn };
-  if (!formTurn) return { question, state, clarification: null, formTurn: false };
-  return { question, state, clarification: null, formTurn: true };
+  const reader = aiReadsCodeChecksEnabled() && rawInput.checked ? { reader: { filled: merge.filled, disputed: merge.disputed } } : {};
+  if (clarification && formType.together) return { question, state, clarification, formTurn: false, ...reader };
+  if (clarification) return { question, state, clarification, formTurn, ...reader };
+  if (!formTurn) return { question, state, clarification: null, formTurn: false, ...reader };
+  return { question, state, clarification: null, formTurn: true, ...reader };
 }
 
 /**

@@ -1,0 +1,23 @@
+{
+  "key": "4cb882821df474076d6ff221204c1c7d6d60bb98262e1f0740c16546cb44ba9d",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn",
+    "salon": null,
+    "title": "Tanning Consultant",
+    "incidentType": "below in PPTA, UPTA, LPSVA, CC% and Spa%",
+    "incidentDate": "September",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "performance CA",
+    "formTurn": true,
+    "policyHeading": "Evaluations and Raises"
+  },
+  "usage": {
+    "inputTokens": 2608,
+    "outputTokens": 230,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

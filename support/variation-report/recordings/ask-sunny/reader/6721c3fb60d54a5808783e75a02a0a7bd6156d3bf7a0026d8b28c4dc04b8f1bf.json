@@ -1,0 +1,57 @@
+{
+  "key": "6721c3fb60d54a5808783e75a02a0a7bd6156d3bf7a0026d8b28c4dc04b8f1bf",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "quinn",
+      "evidence": "quinn"
+    },
+    "location": {
+      "value": "manhattan",
+      "evidence": "manhattan"
+    },
+    "jobTitle": {
+      "value": "tan consultant",
+      "evidence": "tan consultant"
+    },
+    "incident": {
+      "value": "opening salon late",
+      "evidence": "opening salon late"
+    },
+    "incidentDate": {
+      "value": "2026-09-28",
+      "evidence": "9-28-26"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": "this should be a written"
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Late Opening",
+      "evidence": null
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-09-01",
+        "evidence": "a verbal ca was given on 9-1-26"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3520,
+    "outputTokens": 366,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

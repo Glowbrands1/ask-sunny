@@ -1,0 +1,23 @@
+{
+  "key": "305b38a738f63d56d2138fe39372da9ae64fd90bd8e827cd7fa0411bca51ab58",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Marlowe Quinn",
+    "salon": "NE Kearney",
+    "title": null,
+    "incidentType": "was late on 10/20 and the salon was opened late",
+    "incidentDate": "10/20",
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "Corrective Action Form",
+    "formTurn": true,
+    "policyHeading": "Late Opening"
+  },
+  "usage": {
+    "inputTokens": 3744,
+    "outputTokens": 228,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2013
+}
