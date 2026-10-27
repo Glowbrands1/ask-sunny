@@ -40,6 +40,11 @@ export function typoReadingText(text: string, names: ReadonlySet<string>): strin
   return correctedText(text, typoVocabulary(), (word) => names.has(word) || NEVER_CORRECTED.has(word)).text;
 }
 
+/** The manager's turns read that way; the assistant's turns as they are. */
+export function typoReadingTurns<T extends { role: string; content: string }>(turns: T[], names: ReadonlySet<string>): T[] {
+  return turns.map((turn) => (turn.role === "user" ? { ...turn, content: typoReadingText(turn.content, names) } : turn));
+}
+
 /** Every employee name word, lower-cased, from directory rows. */
 export function nameWords(
   people: readonly { firstName: string | null; lastName: string | null; preferredFirstName?: string | null }[],

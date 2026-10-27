@@ -474,6 +474,8 @@ function routesProduction(on: boolean) {
   if (on) process.env[ROUTES] = "true";
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0462"] },
+    // Invented: "Notise" is one letter from "notice".
+    { id: "e-2", firstName: "Notise", lastName: "Varnell", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0462"] },
   ];
 }
 
@@ -508,6 +510,19 @@ describe(`${ROUTES} on: the create route`, () => {
 
   it("\"yes payroll dedcut $25\" saves the payroll amount", async () => {
     expect(await amountSaved()).toBe("$25");
+  });
+});
+
+describe(`${ROUTES} on: names`, () => {
+  beforeEach(() => routesProduction(true));
+
+  it("a roster name near a list word is not corrected at Create", async () => {
+    const thread = new Thread();
+    await thread.say("create a ca for notise varnell at kearney, she was late on 10-15. i coahed notise on 10-16");
+    const id = await thread.create();
+    const value = (key: string) => store.form_instance_values.find((row) => row.instance_id === id && row.field_key === key)?.value ?? null;
+    expect(value("employee_name")).toBe("Notise Varnell");
+    expect(String(value("prior_actions") ?? "")).not.toMatch(/notice/i);
   });
 });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { typoReadingTurns } from "@/lib/ai/typo-reading-copy";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { salonById } from "@/data/salons";
 
@@ -608,6 +608,5 @@ function resolveLocationName(
  */
 async function readingTurns<T extends { role: string; content: string }>(turns: T[]): Promise<T[]> {
   if (!typoReadingRoutesEnabled()) return turns;
-  const names = await protectedNameWords();
-  return turns.map((turn) => (turn.role === "user" ? { ...turn, content: typoReadingText(turn.content, names) } : turn));
+  return typoReadingTurns(turns, await protectedNameWords());
 }
