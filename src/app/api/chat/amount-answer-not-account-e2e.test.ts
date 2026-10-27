@@ -449,7 +449,9 @@ const LIVE_SINCE = [
   "HIDE_NO_POLICY_MATCH_NOTICE_ENABLED",
   "ANSWER_NOT_A_NAME_ENABLED",
   "POLICY_SPECIFIC_TOPICS_ENABLED",
-] as const;const AA = "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED";
+] as const;
+
+const AA = "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED";
 const TURNS = [
   "i need to issue a ca for someone being late",
   "dale ferris was late on 10/20 and the salon was opened late",
