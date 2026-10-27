@@ -1,0 +1,23 @@
+{
+  "key": "1d1979b17f93ccce6284db4eaaf0c62eeb74492a9aa1266646f37996c149c84d",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "Dale Ferris",
+    "salon": null,
+    "title": null,
+    "incidentType": "opening salon late",
+    "incidentDate": "10-1-26",
+    "payrollAmount": "$25",
+    "warningLevel": "verbal",
+    "formType": "ca",
+    "formTurn": true,
+    "policyHeading": "Late Opening"
+  },
+  "usage": {
+    "inputTokens": 2516,
+    "outputTokens": 211,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

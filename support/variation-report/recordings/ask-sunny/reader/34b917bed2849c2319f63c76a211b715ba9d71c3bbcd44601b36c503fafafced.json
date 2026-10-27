@@ -1,0 +1,27 @@
+{
+  "key": "34b917bed2849c2319f63c76a211b715ba9d71c3bbcd44601b36c503fafafced",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": null,
+      "evidence": null
+    },
+    "location": null,
+    "jobTitle": null,
+    "incident": null,
+    "incidentDate": null,
+    "warningLevel": null,
+    "payroll": null,
+    "payrollAmount": null,
+    "policyHeading": null,
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4582,
+    "outputTokens": 288,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 1430
+}

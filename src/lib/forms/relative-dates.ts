@@ -1,6 +1,7 @@
-import { relativeDateReaderEnabled } from "@/lib/config/chat-quality-flags";
+import { dayWordTyposEnabled, relativeDateReaderEnabled } from "@/lib/config/chat-quality-flags";
 import { shiftDays, weekdayOf } from "@/lib/business-date";
 
+import { correctedText } from "./typo-match";
 import type { FoundDate } from "./wider-dates";
 
 /**
@@ -44,10 +45,31 @@ function mostRecent(today: string, weekday: number, includeToday: boolean): stri
   return shiftDays(today, -back);
 }
 
-export function relativeDates(text: string, today: string): FoundDate[] {
-  if (!relativeDateReaderEnabled() || !text || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return [];
+/*
+ * DAY_WORD_TYPOS_ENABLED (QA, 27 Oct 2026; same flag in both apps):
+ * "yesturday", "tuesdy", "last tusday" are read as the day words they can only
+ * be (`typo-match.ts`). The found date still points at what the manager typed.
+ */
+// "today" is left out: five letters is too short ("tsday" is one letter from it), and a form is dated today anyway.
+const DAY_WORDS = [...WEEKDAYS, "yesterday"];
+
+function readingCopy(text: string): { text: string; original: (index: number) => number } {
+  if (!dayWordTyposEnabled()) return { text, original: (index) => index };
+  return correctedText(text, DAY_WORDS);
+}
+
+/** True when `said` is a relative date word, typos included when that flag is on. */
+export function isRelativeDateWord(said: string): boolean {
+  return RELATIVE_DATE_WORD.test(readingCopy(said).text.trim());
+}
+
+export function relativeDates(typed: string, today: string): FoundDate[] {
+  if (!relativeDateReaderEnabled() || !typed || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return [];
+  const copy = readingCopy(typed);
+  const text = copy.text;
   const out: FoundDate[] = [];
-  const push = (iso: string, index: number, length: number) => out.push({ iso, index, end: index + length });
+  const push = (iso: string, index: number, length: number) =>
+    out.push({ iso, index: copy.original(index), end: copy.original(index + length - 1) + 1 });
   for (const match of text.matchAll(PAST_WEEKDAY)) {
     const weekday = weekdayIndex(match[1]!);
     if (weekday >= 0) push(mostRecent(today, weekday, false), match.index!, match[0].length);

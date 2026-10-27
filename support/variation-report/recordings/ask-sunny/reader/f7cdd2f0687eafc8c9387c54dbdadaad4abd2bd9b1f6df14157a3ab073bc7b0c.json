@@ -1,0 +1,51 @@
+{
+  "key": "f7cdd2f0687eafc8c9387c54dbdadaad4abd2bd9b1f6df14157a3ab073bc7b0c",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "Ferris, Dale",
+      "evidence": "Ferris, Dale"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": null,
+      "evidence": null
+    },
+    "incidentDate": {
+      "value": null,
+      "evidence": null
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": null,
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3484,
+    "outputTokens": 303,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}
