@@ -1317,6 +1317,15 @@ export function stepDateNoQuestionEnabled(): boolean {
 }
 
 /**
+ * The date reader also reads "2 october", "the 2nd of october", "on 10.2" and
+ * "on the 2nd" (QA, 27 Oct 2026; same flag in both apps). See
+ * `forms/wider-dates.ts`. Off, as before.
+ */
+export function widerDateReaderEnabled(): boolean {
+  return envFlag("WIDER_DATE_READER_ENABLED");
+}
+
+/**
  * The name question uses the first name the manager gave, and is never asked
  * twice in the same words (QA S15, 27 Oct 2026; same flag in both apps): "I
  * have an employee ivy …" then "Yes" got "Who is this form for? Tell me the
