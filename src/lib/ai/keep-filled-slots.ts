@@ -8,6 +8,7 @@ import { exitDateInWords, exitReady } from "@/lib/forms/exit-intake";
 import { readExitDetails } from "@/lib/forms/exit-details";
 import { readExitFacts } from "@/lib/forms/exit-facts";
 import { statedPayrollDeduct } from "@/lib/forms/payroll-deduct";
+import { withoutAmountAnswers } from "@/lib/forms/amount-answer";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
 import { describesIncident, describesMoreThanTheRequest } from "@/lib/forms/corrective-action-intake";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
@@ -222,10 +223,12 @@ export function holdFilledSlots(input: {
     if (next.templateKey !== "stc-exit") {
       const build = (given: string, account: readonly string[]) =>
         fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, next.templateKey === "dpoa" ? input.today : undefined);
+      // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
+      const said = withoutAmountAnswers(turns);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
-      if (formEditDateRulesEnabled()) content = observationByRules(content, turns, build);
-      else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, turns.map(withoutAsksToTheApp)), turns);
-      else content = build(content, turns);
+      if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
+      else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
+      else content = build(content, said);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);

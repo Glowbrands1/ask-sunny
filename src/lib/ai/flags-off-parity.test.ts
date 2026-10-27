@@ -116,6 +116,7 @@ import {
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
   firstNameAskEnabled,
+  amountAnswerNotAccountEnabled,
   widerDateReaderEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -254,6 +255,7 @@ const NEW_FLAGS = [
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
+  "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED",
   "WIDER_DATE_READER_ENABLED",
 ] as const;
 
@@ -396,6 +398,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
     expect(firstNameAskEnabled()).toBe(false);
+    expect(amountAnswerNotAccountEnabled()).toBe(false);
     expect(widerDateReaderEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);

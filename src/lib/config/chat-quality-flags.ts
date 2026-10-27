@@ -1334,3 +1334,12 @@ export function widerDateReaderEnabled(): boolean {
 export function firstNameAskEnabled(): boolean {
   return envFlag("FIRST_NAME_ASK_ENABLED");
 }
+
+/**
+ * A turn that only answers the payroll amount ("i dont know the amount",
+ * "$25") is not added to the Observation of Offense (QA, 27 Oct 2026; same
+ * flag in both apps). See `forms/amount-answer.ts`. Off, as before.
+ */
+export function amountAnswerNotAccountEnabled(): boolean {
+  return envFlag("AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED");
+}
