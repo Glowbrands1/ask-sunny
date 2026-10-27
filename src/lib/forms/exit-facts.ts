@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -588,7 +588,7 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
 
   let lastDayWorked = settle("lastDayWorked");
   const noticeGiven = settle("noticeGiven");
-  const noticeFulfilled = settle("noticeFulfilled");
+  let noticeFulfilled = settle("noticeFulfilled");
   const quitDate = settle("resigned");
   /*
    * HANDING IN NOTICE IS RESIGNING, so the notice date stands in for a
@@ -655,6 +655,25 @@ export function readExitFacts(rawText: string, today: string): ExitFacts {
     !involuntary
   ) {
     lastDayWorked = noticeFulfilled;
+  }
+
+  /*
+   * EXIT_FULFILLED_IS_LAST_DAY_ENABLED (manager, 26 Oct 2026: "her last day
+   * worked was 9-28-26" / "gave and worked 2 week notice"): the notice worked
+   * to the end was fulfilled on the last day worked, and that line stayed
+   * blank. With the flag on it is the last day, when the notice was said to be
+   * fulfilled and nothing about it is in doubt. Off, as before.
+   */
+  if (
+    exitFulfilledIsLastDayEnabled() &&
+    !noticeFulfilled &&
+    lastDayWorked &&
+    fulfilled &&
+    !lastDayUnclear &&
+    !separationUnclear &&
+    !ambiguities.some((entry) => entry.kind !== "separation_conflict" && entry.role === "noticeFulfilled")
+  ) {
+    noticeFulfilled = lastDayWorked;
   }
 
   return {

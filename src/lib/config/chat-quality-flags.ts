@@ -1087,6 +1087,16 @@ export function priorStepSentenceEnabled(): boolean {
 }
 
 /**
+ * A notice worked to the last day was fulfilled on it (manager, 26 Oct 2026):
+ * "her last day worked was 9-28-26" with "gave and worked 2 week notice" left
+ * "Date that notice was fulfilled" blank. See `readExitFacts` in
+ * `forms/exit-facts.ts`. Off, as before.
+ */
+export function exitFulfilledIsLastDayEnabled(): boolean {
+  return envFlag("EXIT_FULFILLED_IS_LAST_DAY_ENABLED");
+}
+
+/**
  * A job title is never the incident (manager, 26 Oct 2026): "create corrective
  * action form for <name>, Salon Director" filed "Observed: Salon Director."
  * With the flag on the manager's-words fallback skips a clause that is only a
