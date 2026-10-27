@@ -1,4 +1,4 @@
-import { jobTitleAppositionEnabled, jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -54,6 +54,20 @@ export function typedJobTitle(turns: readonly string[], name: string): string | 
   return found;
 }
 
+/**
+ * EXIT_READBACK_JOB_TITLE_ENABLED (ported from Ask Bubbles, QA 27 Oct 2026):
+ * the exit form's read-back is written before the title is filled, so it said
+ * "Left blank for you to review: Job Title" while the card and the draft had
+ * it. With the flag on, the read-back lists the Job Title under the Name and
+ * leaves it off the blank list.
+ */
+export function withJobTitleReadBack(content: string, title: string): string {
+  if (!/^\*\*Left blank for you to review:\*\* Job Title\b/m.test(content)) return content;
+  return content
+    .replace(/^(- \*\*Name:\*\* [^\n]+)$/m, (line) => `${line}\n- **Job Title:** ${title}`)
+    .replace(/^(\*\*Left blank for you to review:\*\* )Job Title(?:, | and )/m, "$1");
+}
+
 type Turn = { readonly role: string; readonly content: string };
 
 export function withJobTitleFromWords(response: AskResponse, request: AskRequest): AskResponse {
@@ -64,5 +78,6 @@ export function withJobTitleFromWords(response: AskResponse, request: AskRequest
   const managerTurns = [...history.filter((turn) => turn.role === "user").map((turn) => turn.content), request.question];
   const title = typedJobTitle(managerTurns, proposal.employeeName);
   if (!title) return response;
-  return { ...response, formProposal: { ...proposal, employeeRole: title } };
+  const content = exitReadbackJobTitleEnabled() ? withJobTitleReadBack(response.content, title) : response.content;
+  return { ...response, content, formProposal: { ...proposal, employeeRole: title } };
 }

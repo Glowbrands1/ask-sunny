@@ -108,6 +108,7 @@ import {
   warningLevelAndClauseEnabled,
   jobTitleAppositionEnabled,
   followUpReadbackCueEnabled,
+  exitReadbackJobTitleEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -237,6 +238,7 @@ const NEW_FLAGS = [
   "WARNING_LEVEL_AND_CLAUSE_ENABLED",
   "JOB_TITLE_APPOSITION_ENABLED",
   "FOLLOW_UP_READBACK_CUE_ENABLED",
+  "EXIT_READBACK_JOB_TITLE_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -363,6 +365,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(warningLevelAndClauseEnabled()).toBe(false);
     expect(jobTitleAppositionEnabled()).toBe(false);
     expect(followUpReadbackCueEnabled()).toBe(false);
+    expect(exitReadbackJobTitleEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);

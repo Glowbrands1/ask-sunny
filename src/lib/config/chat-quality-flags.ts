@@ -1243,3 +1243,14 @@ export function jobTitleAppositionEnabled(): boolean {
 export function followUpReadbackCueEnabled(): boolean {
   return envFlag("FOLLOW_UP_READBACK_CUE_ENABLED");
 }
+
+/**
+ * The exit form's read-back shows the Job Title the card and the draft have
+ * (ported from Ask Bubbles, QA 27 Oct 2026; same flag in both apps): with
+ * JOB_TITLE_FROM_WORDS it said "Left blank for you to review: Job Title" while
+ * the draft had the typed title. See `ai/job-title-from-words.ts`. Off, as
+ * before.
+ */
+export function exitReadbackJobTitleEnabled(): boolean {
+  return envFlag("EXIT_READBACK_JOB_TITLE_ENABLED");
+}

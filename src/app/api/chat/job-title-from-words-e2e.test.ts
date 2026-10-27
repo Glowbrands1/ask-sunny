@@ -524,3 +524,30 @@ describe(`${JT} off: as main`, () => {
     expect(await titled(exit("makery associate"))).toBeNull();
   });
 });
+
+/*
+ * QA, 27 Oct 2026 (seen in Ask Bubbles; the same here): the exit form's
+ * read-back said "Left blank for you to review: Job Title" while the card and
+ * the draft had the typed title. EXIT_READBACK_JOB_TITLE_ENABLED: it matches.
+ */
+const RB = "EXIT_READBACK_JOB_TITLE_ENABLED";
+
+describe(RB, () => {
+  for (const on of [true, false]) {
+    it(on ? "on: the read-back lists the Job Title" : "off: as main, listed as blank", async () => {
+      useProduction(true);
+      if (!saved.has(RB)) saved.set(RB, process.env[RB]);
+      delete process.env[RB];
+      if (on) process.env[RB] = "true";
+      const thread = new Thread();
+      const first = (await thread.say(exit("makery associate")[0]!)).content;
+      expect(thread.proposal?.employeeRole).toBe("Makery Associate");
+      if (on) {
+        expect(first).toContain("- **Job Title:** Makery Associate");
+        expect(first).not.toMatch(/Left blank for you to review:\*\*[^\n]*Job Title/);
+      } else {
+        expect(first).toMatch(/Left blank for you to review:\*\* Job Title/);
+      }
+    });
+  }
+});
