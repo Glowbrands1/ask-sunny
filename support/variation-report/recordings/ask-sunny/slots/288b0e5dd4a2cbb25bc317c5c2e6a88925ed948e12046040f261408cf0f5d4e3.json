@@ -1,0 +1,23 @@
+{
+  "key": "288b0e5dd4a2cbb25bc317c5c2e6a88925ed948e12046040f261408cf0f5d4e3",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn",
+    "salon": null,
+    "title": null,
+    "incidentType": "being late",
+    "incidentDate": "10/20",
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "Corrective Action",
+    "formTurn": true,
+    "policyHeading": "Late Opening"
+  },
+  "usage": {
+    "inputTokens": 2901,
+    "outputTokens": 207,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

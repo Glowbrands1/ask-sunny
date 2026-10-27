@@ -1,0 +1,23 @@
+{
+  "key": "6065b9ea77081e9104622ce1f23268c3951ac28a54e45cd651e2e59bbe40f3f6",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": null,
+    "salon": null,
+    "title": null,
+    "incidentType": "being late",
+    "incidentDate": null,
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "CA",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2478,
+    "outputTokens": 202,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

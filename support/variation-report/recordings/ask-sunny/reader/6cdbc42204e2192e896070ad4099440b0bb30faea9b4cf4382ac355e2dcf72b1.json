@@ -1,0 +1,67 @@
+{
+  "key": "6cdbc42204e2192e896070ad4099440b0bb30faea9b4cf4382ac355e2dcf72b1",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "quinn marlowe",
+      "evidence": "quinn marlowe today under performance for september"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": "tanning consultant",
+      "evidence": "tanning consultant"
+    },
+    "incident": {
+      "value": "270 tans below in ppta, upta, lpsva, cc% and spa%",
+      "evidence": "270 tans below in ppta, upta, lpsva, cc% and spa%"
+    },
+    "incidentDate": {
+      "value": "2026-09-30",
+      "evidence": "for september"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "verbal warning received"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "not payroll deductible"
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": null,
+      "evidence": null
+    },
+    "priorSteps": [
+      {
+        "kind": "coaching",
+        "date": "2026-09-08",
+        "evidence": "open ended questions coaching 9/8/2026"
+      },
+      {
+        "kind": "coaching",
+        "date": "2026-09-15",
+        "evidence": "focus item coaching 9/15/2026"
+      },
+      {
+        "kind": "coaching",
+        "date": "2026-09-25",
+        "evidence": "new product coaching 9/25/2026"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3568,
+    "outputTokens": 476,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}
