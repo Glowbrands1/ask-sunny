@@ -1,7 +1,7 @@
 import "server-only";
 
 import { withoutAppLines } from "@/lib/ai/app-sentences";
-import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
+import { CLAUDE_READER_MODEL } from "@/lib/config/models";
 
 import { callClaudeToolTimed } from "../call-claude";
 import { checkReading, type CheckContext, type CheckedReading } from "./check";
@@ -23,7 +23,7 @@ import { parseFormReading, READER_TOOL_DESCRIPTION, READER_TOOL_INPUT_SCHEMA, RE
  * are the same text in the sibling app.
  */
 
-export const READER_TIMEOUT_MS = 2_000;
+export const READER_TIMEOUT_MS = 3_500;
 
 const SYSTEM = `You read a manager's request for an HR form and call record_form_reading once.
 
@@ -56,7 +56,7 @@ export async function readFormRequest(input: {
   const started = performance.now();
   try {
     const reply = await callClaudeToolTimed({
-      model: CLAUDE_HAIKU_MODEL,
+      model: CLAUDE_READER_MODEL,
       system: SYSTEM,
       maxTokens: 600,
       timeoutMs: READER_TIMEOUT_MS,
