@@ -50,6 +50,8 @@ export interface ReplayStats {
   /** Characters of system and user text the missing calls would send, to size a recording run. */
   missingChars: number;
   recorded: number;
+  /** Milliseconds of each call that was recorded or replayed, to report median and p90 latency. */
+  latencies: number[];
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
@@ -63,8 +65,8 @@ let liveSpend = 0;
 export const liveSpendUsd = () => liveSpend;
 export const budgetExceeded = { value: false };
 
-export function replayTransport(dir: string, mode: "replay" | "record") {
-  const stats: ReplayStats = { calls: 0, missing: 0, slow: 0, missingChars: 0, recorded: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+export function replayTransport(dir: string, mode: "replay" | "record", options: { readonly limitMs?: number; readonly model?: string } = {}) {
+  const stats: ReplayStats = { calls: 0, missing: 0, slow: 0, missingChars: 0, recorded: 0, latencies: [], inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   let client: Anthropic | null = null;
   const count = (usage: Reply["usage"]) => {
     stats.inputTokens += usage.inputTokens;
@@ -74,12 +76,14 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
   };
   const call = async (input: Call): Promise<Reply> => {
     stats.calls += 1;
-    const key = recordingKey(input);
+    // A reader recorded with another model (VARIATION_READER_MODEL) has its own recordings.
+    const key = recordingKey(options.model ? { ...input, model: options.model } : input);
     const file = join(dir, `${key}.json`);
     if (existsSync(file)) {
       const saved = JSON.parse(readFileSync(file, "utf8")) as Recording;
       count(saved.usage);
-      if (saved.ms > input.timeoutMs) {
+      stats.latencies.push(saved.ms);
+      if (saved.ms > (options.limitMs ?? input.timeoutMs)) {
         stats.slow += 1;
         throw new Error("slower than the limit");
       }
@@ -100,7 +104,7 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
     const started = performance.now();
     const response = await client.messages.create(
       {
-        model: input.model,
+        model: options.model ?? input.model,
         max_tokens: input.maxTokens,
         system: input.system,
         tools: [
@@ -132,10 +136,11 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
     mkdirSync(dir, { recursive: true });
     writeFileSync(file, `${JSON.stringify(recording, null, 2)}\n`);
     stats.recorded += 1;
+    stats.latencies.push(ms);
     count(usage);
     liveSpend +=
       (usage.inputTokens * LIVE_PRICE.input + usage.outputTokens * LIVE_PRICE.output + usage.cacheReadTokens * LIVE_PRICE.cacheRead + usage.cacheWriteTokens * LIVE_PRICE.cacheWrite) / 1e6;
-    if (ms > input.timeoutMs) {
+    if (ms > (options.limitMs ?? input.timeoutMs)) {
       stats.slow += 1;
       throw new Error("slower than the limit");
     }

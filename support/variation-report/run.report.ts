@@ -31,6 +31,9 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *   VARIATION_READER=record npm run variation-report    calls the model (ANTHROPIC_API_KEY)
  *   VARIATION_LIMIT=20 …                                a smoke run: 20 variants spread over the seeds
  *   VARIATION_KINDS=name:20,typo:17 …                   that many variants of each kind, spread over the seeds
+ *   VARIATION_READER_TIMEOUT_MS=5000 …                 the reader's limit in this run (default: the app's 2 s)
+ *   VARIATION_READER_MODEL=<id> …                       record the reader with another model
+ *   VARIATION_RECORDINGS_DIR=<dir> …                    read and write recordings in a folder of its own
  *   VARIATION_BUDGET_USD=3 …                            record mode stops calling the model once live calls cost this much
  *
  * With VARIATION_READER set, this app's live slot call (`record_intent_slots`,
@@ -559,9 +562,19 @@ const MODES: readonly { name: string; flags: readonly string[]; slots?: boolean;
       ]
     : []),
 ];
+// VARIATION_RECORDINGS_DIR: a folder of its own (a scratch experiment); unset, the committed recordings.
 const recordings = (part: string) =>
-  fileURLToPath(new URL(`./recordings/${process.env.VARIATION_APP ?? "app"}/${part}/`, import.meta.url));
-const transport = READER_MODE ? replayTransport(recordings("reader"), READER_MODE) : null;
+  process.env.VARIATION_RECORDINGS_DIR
+    ? `${process.env.VARIATION_RECORDINGS_DIR.replace(/\/$/, "")}/${part}/`
+    : fileURLToPath(new URL(`./recordings/${process.env.VARIATION_APP ?? "app"}/${part}/`, import.meta.url));
+// VARIATION_READER_TIMEOUT_MS: the reader's limit in this run instead of the app's 2 s; VARIATION_READER_MODEL: record the reader with another model.
+const readerLimit = Number(process.env.VARIATION_READER_TIMEOUT_MS ?? "");
+const transport = READER_MODE
+  ? replayTransport(recordings("reader"), READER_MODE, {
+      ...(Number.isFinite(readerLimit) && readerLimit > 0 ? { limitMs: readerLimit } : {}),
+      ...(process.env.VARIATION_READER_MODEL ? { model: process.env.VARIATION_READER_MODEL } : {}),
+    })
+  : null;
 const slotTransport = READER_MODE ? replayTransport(recordings("slots"), READER_MODE) : null;
 
 /**
@@ -792,6 +805,12 @@ it("variation report", async () => {
       sections.push(
         `| ${name} | ${stats.calls} | ${stats.recorded} | ${stats.missing} | ${stats.slow} | ${stats.inputTokens} / ${stats.outputTokens} | $${cost(stats).toFixed(3)} | $${chats ? (cost(stats) / chats).toFixed(4) : "—"} | ${stats.missing} calls (≈ ${Math.round(stats.missingChars / 4)}) |`,
       );
+    }
+    sections.push("");
+    const seconds = (values: readonly number[], at: number) => (values.length === 0 ? "—" : `${(([...values].sort((a, b) => a - b)[Math.min(values.length - 1, Math.floor(values.length * at))] ?? 0) / 1000).toFixed(1)} s`);
+    sections.push("| call | latencies | median | p90 | under 2 s |", "|---|---|---|---|---|");
+    for (const [name, stats] of [["slot call (today, live)", slotTransport.stats], ["AI reader (new)", transport.stats]] as const) {
+      sections.push(`| ${name} | ${stats.latencies.length} | ${seconds(stats.latencies, 0.5)} | ${seconds(stats.latencies, 0.9)} | ${stats.latencies.filter((ms) => ms <= 2000).length} |`);
     }
     sections.push("");
     // THE GATE: a variant fully right with today's live path and not with the reader is a loss, whatever else it gains.
