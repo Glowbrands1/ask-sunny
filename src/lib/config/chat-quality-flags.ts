@@ -1440,6 +1440,16 @@ export function typoReadingCopyEnabled(): boolean {
 }
 
 /**
+ * The form routes' readers (the draft's notes; the create route's payroll
+ * amount) see the manager's words with each typo read as the one known word it
+ * can only be; stored text stays as typed (QA, 27 Oct 2026; same flag in both
+ * apps). See `ai/typo-reading-copy.ts`. Off, as before.
+ */
+export function typoReadingRoutesEnabled(): boolean {
+  return envFlag("TYPO_READING_ROUTES_ENABLED");
+}
+
+/**
  * "i dont know the amount", right after the amount question, is answered with
  * one line instead of the card alone (QA, 27 Oct 2026; same flag in both
  * apps). See `ai/amount-unknown-ack.ts`. Off, as before.

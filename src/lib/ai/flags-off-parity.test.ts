@@ -116,6 +116,7 @@ import {
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
   firstNameAskEnabled,
+  typoReadingRoutesEnabled,
   typoReadingCopyEnabled,
   dayWordTyposEnabled,
   amountUnknownAckEnabled,
@@ -266,6 +267,7 @@ const NEW_FLAGS = [
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
+  "TYPO_READING_ROUTES_ENABLED",
   "TYPO_READING_COPY_ENABLED",
   "DAY_WORD_TYPOS_ENABLED",
   "AMOUNT_UNKNOWN_ACK_ENABLED",
@@ -420,6 +422,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
     expect(firstNameAskEnabled()).toBe(false);
+    expect(typoReadingRoutesEnabled()).toBe(false);
     expect(typoReadingCopyEnabled()).toBe(false);
     expect(dayWordTyposEnabled()).toBe(false);
     expect(amountUnknownAckEnabled()).toBe(false);
