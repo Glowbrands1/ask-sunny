@@ -102,6 +102,7 @@ import {
   planPayrollSentenceEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
+  jobTitleFromWordsEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -225,6 +226,7 @@ const NEW_FLAGS = [
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
   "PRIVATE_CREATOR_FORMS_ENABLED",
+  "JOB_TITLE_FROM_WORDS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -445,6 +447,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(planPayrollSentenceEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
+    expect(jobTitleFromWordsEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(

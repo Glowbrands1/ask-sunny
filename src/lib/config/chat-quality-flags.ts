@@ -1183,3 +1183,13 @@ export function animalAnywhereEnabled(): boolean {
   return envFlag("ANIMAL_ANYWHERE_ENABLED");
 }
 
+
+/**
+ * The job title the manager typed is the card's Job Title, as typed (ported
+ * from Ask Bubbles, QA item 3, 27 Oct 2026; same flag in both apps): "<name>
+ * was a <title> at <salon> location" left Job Title empty when the title is
+ * not one of this company's. See `ai/job-title-from-words.ts`. Off, as before.
+ */
+export function jobTitleFromWordsEnabled(): boolean {
+  return envFlag("JOB_TITLE_FROM_WORDS_ENABLED");
+}
