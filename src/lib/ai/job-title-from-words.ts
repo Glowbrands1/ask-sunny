@@ -1,4 +1,4 @@
-import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleCaseEnabled, jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -69,6 +69,19 @@ export function withJobTitleReadBack(content: string, title: string): string {
 }
 
 type Turn = { readonly role: string; readonly content: string };
+
+/**
+ * JOB_TITLE_CASE_ENABLED (QA S1 live, 27 Oct 2026): "<name>, tan consultant
+ * at manhattan" saved Job Title "tan consultant", in lower case as typed —
+ * the live title reader keeps the words it read. A title in lower case only
+ * is written the way the title list writes one ("Tan Consultant"); one with
+ * any capital is left as typed.
+ */
+export function withJobTitleCase(response: AskResponse): AskResponse {
+  const role = response.formProposal?.employeeRole;
+  if (!jobTitleCaseEnabled() || !role || role !== role.toLowerCase()) return response;
+  return { ...response, formProposal: { ...response.formProposal!, employeeRole: titleCase(role.trim()) } };
+}
 
 export function withJobTitleFromWords(response: AskResponse, request: AskRequest): AskResponse {
   if (!jobTitleFromWordsEnabled()) return response;

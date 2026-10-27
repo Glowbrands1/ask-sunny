@@ -30,7 +30,9 @@ import {
   placeSpanGuardEnabled,
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
+  appSentencesNotAccountEnabled,
   formEditDateRulesEnabled,
+  levelStepNotAccountEnabled,
   grammarAskNotAccountEnabled,
   priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -39,6 +41,7 @@ import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
+import { withoutLevelAndStepClauses } from "./account-clauses";
 import { isAppLine, withoutAppLines } from "./app-sentences";
 import { GRAMMAR_ANSWER, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
@@ -618,7 +621,10 @@ function withObservation(content: string, turns: readonly string[], employeeName
     // left beside it that describes an incident is kept however short.
     const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
-      const said = part.trim();
+      // APP_SENTENCES_NOT_ACCOUNT_ENABLED: "Job title: tan consultant." and "It happened at manhattan." are the app's.
+      if (appSentencesNotAccountEnabled() && isAppLine(part)) continue;
+      // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
+      const said = (levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim();
       if (said.length < 12) continue;
       // PRIOR_SENTENCE_FIX_ENABLED (coordinator, 26 Oct 2026): "she was late on 10-5" is the account
       // however few words it has beyond the request, with a prior clause beside it or not.
