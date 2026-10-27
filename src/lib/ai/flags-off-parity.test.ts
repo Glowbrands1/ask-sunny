@@ -117,6 +117,7 @@ import {
   stepDateNoQuestionEnabled,
   firstNameAskEnabled,
   amountAnswerNotAccountEnabled,
+  ordinalDateInDraftEnabled,
   widerDateReaderEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -256,6 +257,7 @@ const NEW_FLAGS = [
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
   "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED",
+  "ORDINAL_DATE_IN_DRAFT_ENABLED",
   "WIDER_DATE_READER_ENABLED",
 ] as const;
 
@@ -399,6 +401,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(stepDateNoQuestionEnabled()).toBe(false);
     expect(firstNameAskEnabled()).toBe(false);
     expect(amountAnswerNotAccountEnabled()).toBe(false);
+    expect(ordinalDateInDraftEnabled()).toBe(false);
     expect(widerDateReaderEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
