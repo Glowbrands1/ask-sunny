@@ -47,6 +47,8 @@ export interface ReplayStats {
   missing: number;
   /** Replayed replies whose live call took longer than the app's limit. */
   slow: number;
+  /** Characters of system and user text the missing calls would send, to size a recording run. */
+  missingChars: number;
   recorded: number;
   inputTokens: number;
   outputTokens: number;
@@ -55,7 +57,7 @@ export interface ReplayStats {
 }
 
 export function replayTransport(dir: string, mode: "replay" | "record") {
-  const stats: ReplayStats = { calls: 0, missing: 0, slow: 0, recorded: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const stats: ReplayStats = { calls: 0, missing: 0, slow: 0, missingChars: 0, recorded: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   let client: Anthropic | null = null;
   const count = (usage: Reply["usage"]) => {
     stats.inputTokens += usage.inputTokens;
@@ -78,6 +80,7 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
     }
     if (mode === "replay") {
       stats.missing += 1;
+      stats.missingChars += input.system.length + input.messages.reduce((sum, message) => sum + message.content.length, 0);
       throw new Error("no recording");
     }
     client ??= new Anthropic();

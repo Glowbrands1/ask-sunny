@@ -30,6 +30,12 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *   VARIATION_READER=replay npm run variation-report    offline; a missing reply = flag off
  *   VARIATION_READER=record npm run variation-report    calls the model (ANTHROPIC_API_KEY)
  *   VARIATION_LIMIT=20 …                                a smoke run: 20 variants spread over the seeds
+ *
+ * With VARIATION_READER set, this app's live slot call (`record_intent_slots`,
+ * INTENT_EXTRACTION_ENABLED) is recorded and replayed too, in a mode of its
+ * own: the stubbed modes measure the code's readers alone, and production
+ * runs them beside the real slot call (QA, 27 Oct 2026). The gate compares
+ * "+ AI reader" against that recorded baseline.
  */
 
 /** Invented people only; the repository is public. */
@@ -113,7 +119,23 @@ const ANSWER = "A grounded answer from the policy manual.";
 
 const reader = vi.hoisted(() => ({
   call: null as null | ((input: never) => Promise<unknown>),
+  /** The recorded live slot call, in the modes that run it. */
+  slots: null as null | ((input: never) => Promise<{ input: unknown }>),
+  /** Each merge this variant made: what the checked reading filled, and where it disagreed. */
+  merges: [] as { filled: readonly string[]; disputed: readonly string[] }[],
 }));
+
+vi.mock("@/lib/ai/reader/merge", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ai/reader/merge")>();
+  return {
+    ...actual,
+    mergeCheckedReading: (checked: Parameters<typeof actual.mergeCheckedReading>[0]) => {
+      const merge = actual.mergeCheckedReading(checked);
+      if (checked) reader.merges.push(merge);
+      return merge;
+    },
+  };
+});
 
 vi.mock("@/lib/ai/call-claude", () => ({
   // AI_READS_CODE_CHECKS_ENABLED: the recorded (or recording) model; none outside the AI mode.
@@ -137,6 +159,14 @@ vi.mock("@/lib/ai/call-claude", () => ({
       };
     }
     if (input.tool?.name !== "record_intent_slots") return null;
+    if (reader.slots) {
+      // As in production, a failed slot call is no reading (`intent-extraction.ts`).
+      try {
+        return (await reader.slots({ ...input, timeoutMs: 30_000 } as never)).input;
+      } catch {
+        return null;
+      }
+    }
     if (state.slotReading === "copy") {
       const text = JSON.stringify(input.messages ?? []);
       const manager = (text.split("Manager:").pop() ?? text).replace(/\\n/g, "\n");
@@ -515,15 +545,22 @@ const NEW_FIXES = [
 const AI = "AI_READS_CODE_CHECKS_ENABLED";
 const READER_MODE = process.env.VARIATION_READER === "record" ? "record" : process.env.VARIATION_READER === "replay" ? "replay" : null;
 const TODAYS = "production + this week's fixes";
-const WITH_AI = "production + this week's fixes + AI reader";
-const MODES: readonly { name: string; flags: readonly string[]; reader?: boolean }[] = [
+const TODAY_REAL = "production + this week's fixes, real slot call";
+const WITH_AI = "production + this week's fixes, real slot call + AI reader";
+const MODES: readonly { name: string; flags: readonly string[]; slots?: boolean; reader?: boolean }[] = [
   { name: "production", flags: [] },
   { name: TODAYS, flags: NEW_FIXES },
-  ...(READER_MODE ? [{ name: WITH_AI, flags: [...NEW_FIXES, AI], reader: true }] : []),
+  ...(READER_MODE
+    ? [
+        { name: TODAY_REAL, flags: NEW_FIXES, slots: true },
+        { name: WITH_AI, flags: [...NEW_FIXES, AI], slots: true, reader: true },
+      ]
+    : []),
 ];
-const transport = READER_MODE
-  ? replayTransport(fileURLToPath(new URL(`./recordings/${process.env.VARIATION_APP ?? "app"}/`, import.meta.url)), READER_MODE)
-  : null;
+const recordings = (part: string) =>
+  fileURLToPath(new URL(`./recordings/${process.env.VARIATION_APP ?? "app"}/${part}/`, import.meta.url));
+const transport = READER_MODE ? replayTransport(recordings("reader"), READER_MODE) : null;
+const slotTransport = READER_MODE ? replayTransport(recordings("slots"), READER_MODE) : null;
 
 /** VARIATION_LIMIT=N: N variants, spread evenly over every seed's list, the same N each run. */
 function limited<T>(all: readonly T[]): readonly T[] {
@@ -657,6 +694,9 @@ interface Row {
   readonly seed: string;
   readonly variant: Variant;
   readonly checks: [string, boolean, string][];
+  /** AI_READS_CODE_CHECKS_ENABLED: fields the checked reading filled, and fields it disputed (today's value kept). */
+  readonly filled?: readonly string[];
+  readonly disputed?: readonly string[];
 }
 
 const pct = (pass: number, total: number) => (total === 0 ? "—" : `${Math.round((100 * pass) / total)}% (${pass}/${total})`);
@@ -694,11 +734,20 @@ it("variation report", async () => {
   const cases = limited(SEEDS.flatMap((seed) => variantsOf(seed).map((variant) => ({ seed, variant }))));
   for (const mode of MODES) {
     reader.call = mode.reader && transport ? (transport.call as never) : null;
+    reader.slots = mode.slots && slotTransport ? (slotTransport.call as never) : null;
     for (const { seed, variant } of cases) {
       setFlags([...mode.flags, ...(mode.flags.length > 0 ? (seed.flags ?? []) : [])]);
       await reset();
+      reader.merges = [];
       const out = await replay(variant.turns, seed.chatOnly === true, seed.openingQuestion === true);
-      rows.push({ mode: mode.name, seed: seed.id, variant, checks: score(seed, out) });
+      rows.push({
+        mode: mode.name,
+        seed: seed.id,
+        variant,
+        checks: score(seed, out),
+        filled: [...new Set(reader.merges.flatMap((merge) => merge.filled))],
+        disputed: [...new Set(reader.merges.flatMap((merge) => merge.disputed))],
+      });
     }
   }
   const sections: string[] = [`# Variation report — ${process.env.VARIATION_APP ?? "this app"}`, ""];
@@ -717,29 +766,42 @@ it("variation report", async () => {
     }
     sections.push("");
   }
-  if (transport) {
-    const stats = transport.stats;
-    const dollars =
+  if (transport && slotTransport) {
+    const cost = (stats: typeof transport.stats) =>
       (stats.inputTokens * PRICE.input + stats.outputTokens * PRICE.output + stats.cacheReadTokens * PRICE.cacheRead + stats.cacheWriteTokens * PRICE.cacheWrite) /
       1_000_000;
     const chats = rows.filter((row) => row.mode === WITH_AI).length;
-    sections.push(
-      `## The AI reader's model (${READER_MODE})`,
-      "",
-      `Calls ${stats.calls}; recorded now ${stats.recorded}; no recording (ran as flag off) ${stats.missing}; slower than 2 s (ran as flag off) ${stats.slow}.`,
-      `Tokens: ${stats.inputTokens} in, ${stats.outputTokens} out, ${stats.cacheReadTokens} cache read, ${stats.cacheWriteTokens} cache write.`,
-      `Haiku 4.5 list price: $${dollars.toFixed(3)} in all, $${chats ? (dollars / chats).toFixed(4) : "—"} per chat (${chats} chats).`,
-      "",
-    );
-    // THE GATE: a variant fully right today and not with the reader is a loss, whatever else it gains.
-    const today = new Map(rows.filter((row) => row.mode === TODAYS).map((row) => [`${row.seed}|${row.variant.label}`, row]));
-    const lost = rows
-      .filter((row) => row.mode === WITH_AI)
-      .filter((row) => today.get(`${row.seed}|${row.variant.label}`)?.checks.every(([, ok]) => ok) && !row.checks.every(([, ok]) => ok));
-    sections.push(`## Lost with the AI reader (right today, wrong with it): ${lost.length}`, "");
-    for (const row of lost) {
-      const wrong = row.checks.filter(([, ok]) => !ok).map(([name, , read]) => `${name}: ${read}`).join("; ");
-      sections.push(`- **${row.seed} · ${row.variant.label}** — ${wrong}`);
+    sections.push(`## The recorded model calls (${READER_MODE})`, "", "| call | calls | recorded now | no recording (ran as flag off) | slower than its limit | tokens in / out | Haiku 4.5 list price | per chat | still to record (≈ tokens in) |", "|---|---|---|---|---|---|---|---|---|");
+    for (const [name, stats] of [["slot call (today, live)", slotTransport.stats], ["AI reader (new)", transport.stats]] as const) {
+      sections.push(
+        `| ${name} | ${stats.calls} | ${stats.recorded} | ${stats.missing} | ${stats.slow} | ${stats.inputTokens} / ${stats.outputTokens} | $${cost(stats).toFixed(3)} | $${chats ? (cost(stats) / chats).toFixed(4) : "—"} | ${stats.missing} calls (≈ ${Math.round(stats.missingChars / 4)}) |`,
+      );
+    }
+    sections.push("");
+    // THE GATE: a variant fully right with today's live path and not with the reader is a loss, whatever else it gains.
+    const right = (row: Row | undefined) => Boolean(row?.checks.every(([, ok]) => ok));
+    const key = (row: Row) => `${row.seed}|${row.variant.label}`;
+    for (const baseline of [TODAY_REAL, TODAYS]) {
+      const before = new Map(rows.filter((row) => row.mode === baseline).map((row) => [key(row), row]));
+      const lost = rows.filter((row) => row.mode === WITH_AI && right(before.get(key(row))) && !right(row));
+      sections.push(`## Lost with the AI reader against "${baseline}": ${lost.length}`, "");
+      for (const row of lost) {
+        const wrong = row.checks.filter(([, ok]) => !ok).map(([name, , read]) => `${name}: ${read}`).join("; ");
+        sections.push(`- **${row.seed} · ${row.variant.label}** — ${wrong}`);
+      }
+      sections.push("");
+    }
+    // Disputes are kept as today's value; this is how often blank-and-ask would have fired.
+    const mine = rows.filter((row) => row.mode === WITH_AI);
+    const kinds = [...new Set(mine.map((row) => row.variant.kind))];
+    sections.push("## What the AI reader changed, per variation", "", "| variation | variants | with a field filled | with a dispute (today's value kept) | disputed fields |", "|---|---|---|---|---|");
+    for (const kind of kinds) {
+      const these = mine.filter((row) => row.variant.kind === kind);
+      const fields = new Map<string, number>();
+      for (const row of these) for (const field of row.disputed ?? []) fields.set(field, (fields.get(field) ?? 0) + 1);
+      sections.push(
+        `| ${kind} | ${these.length} | ${these.filter((row) => (row.filled ?? []).length > 0).length} | ${these.filter((row) => (row.disputed ?? []).length > 0).length} | ${[...fields].map(([field, count]) => `${field} ${count}`).join(", ") || "—"} |`,
+      );
     }
     sections.push("");
   }
