@@ -153,6 +153,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
+import { withJobTitleFromWords } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { recallMemory, rememberFact } from "./chat-memory-store";
@@ -294,7 +295,8 @@ async function answerQuestionChecked(
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
-    return keepManagerActionPlan(withCaWhatHappened(await applyQuietQuality(response), request), request);
+    // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed.
+    return keepManagerActionPlan(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request), request);
   };
   if (!chatTraceEnabled()) {
     if (!selfCheckEnabled()) return produce();

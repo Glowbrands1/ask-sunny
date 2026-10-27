@@ -102,6 +102,7 @@ import {
   planPayrollSentenceEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
+  jobTitleFromWordsEnabled,
   caAsksWhatHappenedEnabled,
   stepDateNotIncidentEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -227,6 +228,7 @@ const NEW_FLAGS = [
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
   "PRIVATE_CREATOR_FORMS_ENABLED",
+  "JOB_TITLE_FROM_WORDS_ENABLED",
   "CA_ASKS_WHAT_HAPPENED_ENABLED",
   "STEP_DATE_NOT_INCIDENT_ENABLED",
 ] as const;
@@ -451,6 +453,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(planPayrollSentenceEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
+    expect(jobTitleFromWordsEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
