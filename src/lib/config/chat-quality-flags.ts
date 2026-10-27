@@ -1325,3 +1325,14 @@ export function stepDateNoQuestionEnabled(): boolean {
 export function firstNameAskEnabled(): boolean {
   return envFlag("FIRST_NAME_ASK_ENABLED");
 }
+
+/**
+ * A typed name that is not on the directory is named back once, and the name
+ * question is never shown twice in a row (ported from Ask Bubbles, QA BF7
+ * live, 27 Oct 2026; same flag in both apps): the same "Who is this Corrective
+ * Action Form for?" came back every turn. See `ai/unknown-name-ask.ts`. Off,
+ * as before.
+ */
+export function unknownNameAskEnabled(): boolean {
+  return envFlag("UNKNOWN_NAME_ASK_ENABLED");
+}
