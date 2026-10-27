@@ -1336,6 +1336,15 @@ export function firstNameAskEnabled(): boolean {
 }
 
 /**
+ * A bare "$25" right after the payroll amount question is read back and put on
+ * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it
+ * from the bare-figure reader. See `ai/amount-answer-saved.ts`. Off, as before.
+ */
+export function amountAnswerSavedEnabled(): boolean {
+  return envFlag("AMOUNT_ANSWER_SAVED_ENABLED");
+}
+
+/**
  * A turn that only answers the payroll amount ("i dont know the amount",
  * "$25") is not added to the Observation of Offense (QA, 27 Oct 2026; same
  * flag in both apps). See `forms/amount-answer.ts`. Off, as before.

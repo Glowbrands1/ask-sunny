@@ -1068,6 +1068,10 @@ QA P1: "create corrective action form for <name>, <job title>" / "<name>, <job t
 
 QA SF4: "… for opening salon late on 9-28-26" / "note a verbal ca was given on 9-1-26". Here the step's 9/1 blanked the card's Date and the form was dated today; in Ask Bubbles it dated the card and the form 9/1. With the flag on, a date in a sentence that says a step was given, issued, received or signed is not an incident date, in both apps.
 
+## 27 Oct 2026: "$25" after the amount question is read back (AMOUNT_ANSWER_SAVED_ENABLED, Sunny-only)
+
+Not needed in the sibling app: the same turns through its harness ("yes payroll deduct" then "$25") read back "**Payroll deduction amount:** $25".
+
 ## 27 Oct 2026: an amount answer is no account text (AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED, Sunny-only)
 
 Not needed in the sibling app: its card shows no Observation of Offense line. The same turns through its chat harness ("yes payroll deduct" then "i dont know the amount") put nothing about the amount into the card's account.
