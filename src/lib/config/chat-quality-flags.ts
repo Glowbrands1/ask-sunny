@@ -1077,6 +1077,16 @@ export function notDeductibleReadEnabled(): boolean {
 }
 
 /**
+ * An earlier step told in a sentence is a Prior actions row (managers, 26 Oct
+ * 2026): "note a verbal ca was given on 9-1-26" and "she was issued a verbal
+ * ca on 10.1 for this same thing" listed none. See `sentenceSteps` in
+ * `forms/prior-actions.ts`. Off, as before.
+ */
+export function priorStepSentenceEnabled(): boolean {
+  return envFlag("PRIOR_STEP_SENTENCE_ENABLED");
+}
+
+/**
  * A job title is never the incident (manager, 26 Oct 2026): "create corrective
  * action form for <name>, Salon Director" filed "Observed: Salon Director."
  * With the flag on the manager's-words fallback skips a clause that is only a

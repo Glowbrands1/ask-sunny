@@ -93,6 +93,7 @@ import {
   dateAnswerKeepsOpenEnabled,
   requestLineAccountEnabled,
   notDeductibleReadEnabled,
+  priorStepSentenceEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -207,6 +208,7 @@ const NEW_FLAGS = [
   "DATE_ANSWER_KEEPS_OPEN_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "NOT_DEDUCTIBLE_READ_ENABLED",
+  "PRIOR_STEP_SENTENCE_ENABLED",
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
@@ -417,6 +419,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(dateAnswerKeepsOpenEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
     expect(notDeductibleReadEnabled()).toBe(false);
+    expect(priorStepSentenceEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 
