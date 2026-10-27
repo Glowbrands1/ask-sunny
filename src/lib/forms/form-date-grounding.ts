@@ -1,7 +1,7 @@
 import { ordinalDateInDraftEnabled, relativeDateReaderEnabled } from "@/lib/config/chat-quality-flags";
 
 import { priorSentenceFixFor } from "./prior-sentence-scope";
-import { RELATIVE_DATE_WORD } from "./relative-dates";
+import { isRelativeDateWord } from "./relative-dates";
 
 import {
   datesInText,
@@ -178,7 +178,7 @@ function noteDateSpellings(notes: string, year: string): string[] {
   const read = priorSentenceFixFor(notes) ? managerDatesForDraft : datesInText;
   return read(notes, `${year}-01-01`)
     // RELATIVE_DATE_READER_ENABLED: "last tuesday" read against 1 January is no date the manager gave.
-    .filter((found) => !(relativeDateReaderEnabled() && RELATIVE_DATE_WORD.test(notes.slice(found.index, found.end).trim())))
+    .filter((found) => !(relativeDateReaderEnabled() && isRelativeDateWord(notes.slice(found.index, found.end).trim())))
     .flatMap((found) => resolveFormDate(found.iso)?.spellings ?? []);
 }
 
@@ -275,7 +275,7 @@ function withOrdinalsFromToday<T extends DateInText>(found: T[], notes: string, 
   const real = datesInText(notes, today);
   return found.map((date) => {
     const said = notes.slice(date.index, date.end).trim();
-    if (!(ordinals && BARE_ORDINAL.test(said)) && !(relative && RELATIVE_DATE_WORD.test(said))) return date;
+    if (!(ordinals && BARE_ORDINAL.test(said)) && !(relative && isRelativeDateWord(said))) return date;
     const read = real.find((other) => other.index === date.index);
     return read ? { ...date, iso: read.iso } : date;
   });

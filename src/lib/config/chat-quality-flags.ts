@@ -1408,3 +1408,12 @@ export function relativeDateReaderEnabled(): boolean {
 export function unreadDateAskEnabled(): boolean {
   return envFlag("UNREAD_DATE_ASK_ENABLED");
 }
+
+/**
+ * "yesturday", "tuesdy" and "last tusday" are read by the relative date reader
+ * as the day words they can only be (QA, 27 Oct 2026; same flag in both
+ * apps). See `forms/typo-match.ts`. Off, as before.
+ */
+export function dayWordTyposEnabled(): boolean {
+  return envFlag("DAY_WORD_TYPOS_ENABLED");
+}
