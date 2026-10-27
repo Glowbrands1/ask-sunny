@@ -1,7 +1,11 @@
 /**
  * The seeds: real manager chats from production (QA, 27 Oct 2026), word for
- * word, every name invented. Each says what the finished form should hold;
- * `checks` names only what the seed is about.
+ * word, every name invented. Each says what the finished form should hold.
+ *
+ * THE POLICY IS CHECKED ONLY WHERE THE CODE DECIDES IT (a policy the manager
+ * named, a specific topic like a pet at work). Elsewhere the drafting model
+ * picks the offense box the policy follows, and the report stubs the model
+ * out, so a blank policy there says nothing about production.
  */
 export interface Expect {
   /** "Quinn Marlowe": the saved Employee. */
@@ -46,6 +50,8 @@ export interface Seed {
   readonly flags?: readonly string[];
   /** No form is created: the seed is about the chat's questions. */
   readonly chatOnly?: boolean;
+  /** The first turn is a plain question, answered before the form talk: it is replayed as history. */
+  readonly openingQuestion?: boolean;
 }
 
 export const SEEDS: readonly Seed[] = [
@@ -58,7 +64,7 @@ export const SEEDS: readonly Seed[] = [
     ],
     name: { first: "quinn", last: "marlowe" },
     dates: [{ text: "10/15", iso: "2026-10-15" }],
-    expect: { employee: "Quinn Marlowe", date: "2026-10-15", policy: /Attendance|Tardiness|Absentee/i },
+    expect: { employee: "Quinn Marlowe", date: "2026-10-15" },
   },
   {
     id: "S2",
@@ -84,7 +90,7 @@ export const SEEDS: readonly Seed[] = [
     ],
     name: { first: "quinn", last: "marlowe" },
     dates: [{ text: "10/20", iso: "2026-10-20" }],
-    expect: { employee: "Quinn Marlowe", date: "2026-10-20", prior: ["10/01/2026"], payroll: "yes", policy: /Late Open/i },
+    expect: { employee: "Quinn Marlowe", date: "2026-10-20", prior: ["10/01/2026"], payroll: "yes" },
   },
   {
     id: "S4",
@@ -114,7 +120,7 @@ export const SEEDS: readonly Seed[] = [
     ],
     name: { first: "dale", last: "ferris" },
     dates: [{ text: "10-1-26", iso: "2026-10-01" }],
-    expect: { employee: "Dale Ferris", date: "2026-10-01", policy: /Late Open/i, amountInPlan: "$25", payroll: "yes" },
+    expect: { employee: "Dale Ferris", date: "2026-10-01", amountInPlan: "$25", payroll: "yes" },
   },
   {
     id: "S7",
@@ -124,7 +130,7 @@ export const SEEDS: readonly Seed[] = [
     ],
     name: { first: "dale", last: "ferris" },
     dates: [{ text: "10-20-26", iso: "2026-10-20" }],
-    expect: { employee: "Dale Ferris", date: "2026-10-20", policy: /Attendance|Absentee/i, prior: ["01/01/2026"], payroll: "no", warning: "verbal" },
+    expect: { employee: "Dale Ferris", date: "2026-10-20", prior: ["01/01/2026"], payroll: "no", warning: "verbal" },
   },
   {
     id: "S8",
@@ -175,7 +181,7 @@ export const SEEDS: readonly Seed[] = [
     name: { first: "quinn", last: "marlowe" },
     dates: [{ text: "9-28-26", iso: "2026-09-28" }],
     flags: ["PRIOR_STEP_SENTENCE_ENABLED"],
-    expect: { employee: "Quinn Marlowe", prior: ["09/01/2026"], warning: "written", policy: /Late Open/i, jobTitle: /Tan(?:ning)? Consultant/i },
+    expect: { employee: "Quinn Marlowe", prior: ["09/01/2026"], warning: "written", jobTitle: /Tan(?:ning)? Consultant/i },
   },
   {
     id: "S13",
@@ -199,6 +205,7 @@ export const SEEDS: readonly Seed[] = [
       "Yes",
     ],
     chatOnly: true,
+    openingQuestion: true,
     flags: ["NAME_QUESTION_ONLY_ENABLED"],
     expect: { oneQuestion: true },
   },

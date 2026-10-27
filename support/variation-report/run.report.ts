@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -497,7 +497,7 @@ const MODES = [
   { name: "production + this week's fixes", flags: NEW_FIXES },
 ] as const;
 
-function useFlags(extra: readonly string[]) {
+function setFlags(extra: readonly string[]) {
   for (const name of [...ALL_FLAGS, ...LIVE_SINCE, ...NEW_FIXES, "ACTION_PLAN_MANAGER_ONLY_ENABLED"]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
@@ -528,10 +528,18 @@ interface Outcome {
   readonly error: string | null;
 }
 
-async function replay(turns: readonly string[], chatOnly: boolean): Promise<Outcome> {
+async function replay(turns: readonly string[], chatOnly: boolean, openingQuestion = false): Promise<Outcome> {
   const thread = new Thread();
   const replies: string[] = [];
-  for (const turn of turns) {
+  if (openingQuestion) {
+    // A plain question first: this harness answers questions by a policy search it does not stub, so it is history.
+    thread.messages.push(
+      { id: "m0", role: "user", content: turns[0]!, createdAt: `${TODAY}T12:27:00Z` } as ChatMessage,
+      { id: "a0", role: "assistant", content: ANSWER, createdAt: `${TODAY}T12:27:01Z` } as ChatMessage,
+    );
+    replies.push(ANSWER);
+  }
+  for (const turn of openingQuestion ? turns.slice(1) : turns) {
     try {
       replies.push((await thread.say(turn)).content);
     } catch (error) {
@@ -567,7 +575,7 @@ function score(seed: Seed, out: Outcome): [string, boolean, string][] {
   const check = (name: string, ok: boolean, read: string) => results.push([name, ok, read]);
   const yesNo = (field: Field) => (field.checked.join(",") || field.value).toLowerCase();
   if (out.error && !seed.chatOnly) {
-    for (const key of Object.keys(e)) check(key, false, out.error);
+    check("form created", false, out.error);
     return results;
   }
   if (e.employee) check("employee", f("employee_name").value.toLowerCase() === e.employee.toLowerCase(), f("employee_name").value);
@@ -646,9 +654,9 @@ it("variation report", async () => {
   for (const mode of MODES) {
     for (const seed of SEEDS) {
       for (const variant of variantsOf(seed)) {
-        useFlags([...mode.flags, ...(mode.flags.length > 0 ? (seed.flags ?? []) : [])]);
+        setFlags([...mode.flags, ...(mode.flags.length > 0 ? (seed.flags ?? []) : [])]);
         await reset();
-        const out = await replay(variant.turns, seed.chatOnly === true);
+        const out = await replay(variant.turns, seed.chatOnly === true, seed.openingQuestion === true);
         rows.push({ mode: mode.name, seed: seed.id, variant, checks: score(seed, out) });
       }
     }
