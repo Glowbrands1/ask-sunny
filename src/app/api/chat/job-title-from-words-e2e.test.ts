@@ -491,6 +491,16 @@ describe(`${JT} on`, () => {
     expect(await titled(exit("tanning consultant"))).toBe("Tanning Consultant");
   });
 
+  // QA S12: the title set off by a comma after the name.
+  it("S12: \"<name>, tan consultant at manhattan\" is the Job Title", async () => {
+    expect(
+      await titled([
+        "create a CA form for rory vance, tan consultant at manhattan, for opening salon late on 9-28-26",
+        "this should be a written and note a verbal ca was given on 9-1-26",
+      ]),
+    ).toBe("Tan Consultant");
+  });
+
   it("\"was a no call no show\" is not a title", async () => {
     expect(await titled(exit("no call no show"))).toBeNull();
   });
