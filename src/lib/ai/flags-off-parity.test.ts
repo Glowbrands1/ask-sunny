@@ -118,6 +118,7 @@ import {
   firstNameAskEnabled,
   typoReadingCopyEnabled,
   dayWordTyposEnabled,
+  amountUnknownAckEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -266,6 +267,7 @@ const NEW_FLAGS = [
   "FIRST_NAME_ASK_ENABLED",
   "TYPO_READING_COPY_ENABLED",
   "DAY_WORD_TYPOS_ENABLED",
+  "AMOUNT_UNKNOWN_ACK_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
   "UNREAD_DATE_ASK_ENABLED",
@@ -418,6 +420,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(firstNameAskEnabled()).toBe(false);
     expect(typoReadingCopyEnabled()).toBe(false);
     expect(dayWordTyposEnabled()).toBe(false);
+    expect(amountUnknownAckEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
