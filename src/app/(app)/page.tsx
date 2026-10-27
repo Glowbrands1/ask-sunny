@@ -19,6 +19,7 @@ import {
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary, followUpState } from "@/lib/forms/follow-up";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
+import { privateAwareLimit } from "@/lib/forms/private-creators";
 import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
 import { pageFormsAccess } from "@/lib/forms/page-scope";
 import { pageCan, requirePagePermission } from "@/lib/auth/page";
@@ -104,9 +105,10 @@ export default async function OverviewPage() {
     const outstanding = access.noSalon
       ? []
       : withoutUnreadable(
-          await listOutstandingFollowUps(50, locationIds, access.ownCreatedBy),
+          // PRIVATE_CREATOR_FORMS: over-read, then trim to the page of 50; off, 50 itself.
+          await listOutstandingFollowUps(privateAwareLimit(50), locationIds, access.ownCreatedBy),
           (permission) => permission === "create_exit_form" && readsExit,
-        ).filter((instance) => actorMaySeeInstance(access.actor, instance));
+        ).filter((instance) => actorMaySeeInstance(access.actor, instance)).slice(0, 50);
 
     /*
      * NON-PRODUCTION RECORDS ARE HELD BACK FROM THE SUMMARY, NOT DELETED.
