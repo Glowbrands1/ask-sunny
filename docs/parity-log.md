@@ -948,6 +948,7 @@ turns and starts at a later create request with its own incident; that
 request also starts the proposal's history and the intent read's stored
 slots afresh, and a date edit ("change the date to 10/22") is read from the
 manager's words, not the intent read's "It happened on …" sentence.
+
 ## 24 Oct 2026: a policy phrase is not a place (from Ask-bubbles#102)
 
 `PLACE_SPAN_GUARD_ENABLED` (default off), the same flag as Ask Bubbles PR
@@ -1042,6 +1043,7 @@ on, that role loses `view_form_monitoring` (sidebar, page, Overview follow-ups,
 chat card link and search hits go with it) but still opens and downloads the
 forms it created itself. Ask Bubbles' assistant manager keeps the Forms
 Register: not requested there; ask Pau if wanted.
+
 ## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
 
 "create corrective action form for <name>, Salon Director" drafted "Observed:
