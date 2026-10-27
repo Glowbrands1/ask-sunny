@@ -158,6 +158,7 @@ import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withUnreadDateAsk } from "./unread-date-ask";
+import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -302,10 +303,14 @@ async function answerQuestionChecked(
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
     // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
     // UNREAD_DATE_ASK_ENABLED: "last tuesday" the reader could not read is asked about, never dated today in silence.
+    // AMOUNT_ANSWER_SAVED_ENABLED: "$25" after the amount question is the amount.
     return keepManagerActionPlan(
       withUnreadDateAsk(
-        withFirstNameAsk(
-          withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+        withStatedAmount(
+          withFirstNameAsk(
+            withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+            request,
+          ),
           request,
         ),
         request,

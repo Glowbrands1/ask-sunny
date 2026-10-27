@@ -118,6 +118,8 @@ import {
   firstNameAskEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
+  amountAnswerSavedEnabled,
+  amountAnswerNotAccountEnabled,
   modelCallDailyCapEnabled,
   monthlyBudgetGuardEnabled,
   ordinalDateInDraftEnabled,
@@ -261,6 +263,8 @@ const NEW_FLAGS = [
   "FIRST_NAME_ASK_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
   "UNREAD_DATE_ASK_ENABLED",
+  "AMOUNT_ANSWER_SAVED_ENABLED",
+  "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED",
   "MODEL_CALL_DAILY_CAP_ENABLED",
   "MONTHLY_BUDGET_GUARD_ENABLED",
   "ORDINAL_DATE_IN_DRAFT_ENABLED",
@@ -408,6 +412,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(firstNameAskEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
+    expect(amountAnswerSavedEnabled()).toBe(false);
+    expect(amountAnswerNotAccountEnabled()).toBe(false);
     expect(modelCallDailyCapEnabled()).toBe(false);
     expect(monthlyBudgetGuardEnabled()).toBe(false);
     expect(ordinalDateInDraftEnabled()).toBe(false);

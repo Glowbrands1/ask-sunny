@@ -948,6 +948,7 @@ turns and starts at a later create request with its own incident; that
 request also starts the proposal's history and the intent read's stored
 slots afresh, and a date edit ("change the date to 10/22") is read from the
 manager's words, not the intent read's "It happened on …" sentence.
+
 ## 24 Oct 2026: a policy phrase is not a place (from Ask-bubbles#102)
 
 `PLACE_SPAN_GUARD_ENABLED` (default off), the same flag as Ask Bubbles PR
@@ -1042,6 +1043,7 @@ on, that role loses `view_form_monitoring` (sidebar, page, Overview follow-ups,
 chat card link and search hits go with it) but still opens and downloads the
 forms it created itself. Ask Bubbles' assistant manager keeps the Forms
 Register: not requested there; ask Pau if wanted.
+
 ## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
 
 "create corrective action form for <name>, Salon Director" drafted "Observed:
@@ -1065,3 +1067,11 @@ QA P1: "create corrective action form for <name>, <job title>" / "<name>, <job t
 ## 27 Oct 2026: a step's date is not the incident date — both apps (STEP_DATE_NOT_INCIDENT_ENABLED)
 
 QA SF4: "… for opening salon late on 9-28-26" / "note a verbal ca was given on 9-1-26". Here the step's 9/1 blanked the card's Date and the form was dated today; in Ask Bubbles it dated the card and the form 9/1. With the flag on, a date in a sentence that says a step was given, issued, received or signed is not an incident date, in both apps.
+
+## 27 Oct 2026: "$25" after the amount question is read back (AMOUNT_ANSWER_SAVED_ENABLED, Sunny-only)
+
+Not needed in the sibling app: the same turns through its harness ("yes payroll deduct" then "$25") read back "**Payroll deduction amount:** $25".
+
+## 27 Oct 2026: an amount answer is no account text (AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED, Sunny-only)
+
+Not needed in the sibling app: its card shows no Observation of Offense line. The same turns through its chat harness ("yes payroll deduct" then "i dont know the amount") put nothing about the amount into the card's account.
