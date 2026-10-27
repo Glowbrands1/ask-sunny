@@ -22,6 +22,14 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * and it is not part of `npm test` (its own config, outside `src/`).
  *
  *   npm run variation-report
+ *
+ * AI_READS_CODE_CHECKS_ENABLED adds a third mode, "+ AI reader", run only when
+ * VARIATION_READER is set. Its model replies are recorded once and replayed
+ * after (`src/lib/ai/reader/replay.ts`, `recordings/<app>/`):
+ *
+ *   VARIATION_READER=replay npm run variation-report    offline; a missing reply = flag off
+ *   VARIATION_READER=record npm run variation-report    calls the model (ANTHROPIC_API_KEY)
+ *   VARIATION_LIMIT=20 …                                a smoke run: 20 variants spread over the seeds
  */
 
 /** Invented people only; the repository is public. */
@@ -103,7 +111,16 @@ vi.mock("@/lib/analytics/record", async (importOriginal) => ({
 
 const ANSWER = "A grounded answer from the policy manual.";
 
+const reader = vi.hoisted(() => ({
+  call: null as null | ((input: never) => Promise<unknown>),
+}));
+
 vi.mock("@/lib/ai/call-claude", () => ({
+  // AI_READS_CODE_CHECKS_ENABLED: the recorded (or recording) model; none outside the AI mode.
+  callClaudeToolTimed: async (input: never) => {
+    if (!reader.call) throw new Error("no reader model in this mode");
+    return reader.call(input);
+  },
   callClaude: async () => {
     state.chatModelCalls += 1;
     return ANSWER;
@@ -465,6 +482,9 @@ afterEach(() => {
  * ======================================================================= */
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { replayTransport } from "@/lib/ai/reader/replay";
 
 import { SEEDS, type Seed } from "./seeds";
 import { variantsOf, type Variant } from "./variants";
@@ -492,13 +512,31 @@ const NEW_FIXES = [
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "ANIMAL_ANYWHERE_ENABLED",
 ] as const;
-const MODES = [
-  { name: "production", flags: [] as readonly string[] },
-  { name: "production + this week's fixes", flags: NEW_FIXES },
-] as const;
+const AI = "AI_READS_CODE_CHECKS_ENABLED";
+const READER_MODE = process.env.VARIATION_READER === "record" ? "record" : process.env.VARIATION_READER === "replay" ? "replay" : null;
+const TODAYS = "production + this week's fixes";
+const WITH_AI = "production + this week's fixes + AI reader";
+const MODES: readonly { name: string; flags: readonly string[]; reader?: boolean }[] = [
+  { name: "production", flags: [] },
+  { name: TODAYS, flags: NEW_FIXES },
+  ...(READER_MODE ? [{ name: WITH_AI, flags: [...NEW_FIXES, AI], reader: true }] : []),
+];
+const transport = READER_MODE
+  ? replayTransport(fileURLToPath(new URL(`./recordings/${process.env.VARIATION_APP ?? "app"}/`, import.meta.url)), READER_MODE)
+  : null;
+
+/** VARIATION_LIMIT=N: N variants, spread evenly over every seed's list, the same N each run. */
+function limited<T>(all: readonly T[]): readonly T[] {
+  const limit = Number(process.env.VARIATION_LIMIT ?? "");
+  if (!Number.isInteger(limit) || limit <= 0 || limit >= all.length) return all;
+  return Array.from({ length: limit }, (_unused, index) => all[Math.floor((index * all.length) / limit)]!);
+}
+
+/** Haiku 4.5 list price per million tokens. */
+const PRICE = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
 
 function setFlags(extra: readonly string[]) {
-  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, ...NEW_FIXES, "ACTION_PLAN_MANAGER_ONLY_ENABLED"]) {
+  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, ...NEW_FIXES, AI, "ACTION_PLAN_MANAGER_ONLY_ENABLED"]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
@@ -653,14 +691,14 @@ function byCheck(rows: Row[]): string {
 
 it("variation report", async () => {
   const rows: Row[] = [];
+  const cases = limited(SEEDS.flatMap((seed) => variantsOf(seed).map((variant) => ({ seed, variant }))));
   for (const mode of MODES) {
-    for (const seed of SEEDS) {
-      for (const variant of variantsOf(seed)) {
-        setFlags([...mode.flags, ...(mode.flags.length > 0 ? (seed.flags ?? []) : [])]);
-        await reset();
-        const out = await replay(variant.turns, seed.chatOnly === true, seed.openingQuestion === true);
-        rows.push({ mode: mode.name, seed: seed.id, variant, checks: score(seed, out) });
-      }
+    reader.call = mode.reader && transport ? (transport.call as never) : null;
+    for (const { seed, variant } of cases) {
+      setFlags([...mode.flags, ...(mode.flags.length > 0 ? (seed.flags ?? []) : [])]);
+      await reset();
+      const out = await replay(variant.turns, seed.chatOnly === true, seed.openingQuestion === true);
+      rows.push({ mode: mode.name, seed: seed.id, variant, checks: score(seed, out) });
     }
   }
   const sections: string[] = [`# Variation report — ${process.env.VARIATION_APP ?? "this app"}`, ""];
@@ -676,6 +714,32 @@ it("variation report", async () => {
     for (const row of mine.filter((entry) => entry.checks.some(([, ok]) => !ok))) {
       const wrong = row.checks.filter(([, ok]) => !ok).map(([name, , read]) => `${name}: ${read}`).join("; ");
       sections.push(`- **${row.seed} · ${row.variant.label}** — ${wrong}  \n  \`${row.variant.turns.join(" / ").slice(0, 220)}\``);
+    }
+    sections.push("");
+  }
+  if (transport) {
+    const stats = transport.stats;
+    const dollars =
+      (stats.inputTokens * PRICE.input + stats.outputTokens * PRICE.output + stats.cacheReadTokens * PRICE.cacheRead + stats.cacheWriteTokens * PRICE.cacheWrite) /
+      1_000_000;
+    const chats = rows.filter((row) => row.mode === WITH_AI).length;
+    sections.push(
+      `## The AI reader's model (${READER_MODE})`,
+      "",
+      `Calls ${stats.calls}; recorded now ${stats.recorded}; no recording (ran as flag off) ${stats.missing}; slower than 2 s (ran as flag off) ${stats.slow}.`,
+      `Tokens: ${stats.inputTokens} in, ${stats.outputTokens} out, ${stats.cacheReadTokens} cache read, ${stats.cacheWriteTokens} cache write.`,
+      `Haiku 4.5 list price: $${dollars.toFixed(3)} in all, $${chats ? (dollars / chats).toFixed(4) : "—"} per chat (${chats} chats).`,
+      "",
+    );
+    // THE GATE: a variant fully right today and not with the reader is a loss, whatever else it gains.
+    const today = new Map(rows.filter((row) => row.mode === TODAYS).map((row) => [`${row.seed}|${row.variant.label}`, row]));
+    const lost = rows
+      .filter((row) => row.mode === WITH_AI)
+      .filter((row) => today.get(`${row.seed}|${row.variant.label}`)?.checks.every(([, ok]) => ok) && !row.checks.every(([, ok]) => ok));
+    sections.push(`## Lost with the AI reader (right today, wrong with it): ${lost.length}`, "");
+    for (const row of lost) {
+      const wrong = row.checks.filter(([, ok]) => !ok).map(([name, , read]) => `${name}: ${read}`).join("; ");
+      sections.push(`- **${row.seed} · ${row.variant.label}** — ${wrong}`);
     }
     sections.push("");
   }

@@ -32,6 +32,9 @@ export interface LocationRow {
   readonly name: string;
 }
 
+export type PriorKind = "verbal" | "written" | "coaching" | "manual_ack" | "other";
+const PRIOR_KINDS: readonly PriorKind[] = ["verbal", "written", "coaching", "manual_ack", "other"];
+
 export interface CheckContext {
   /** The manager's own turns about this form, oldest first. */
   readonly managerTurns: readonly string[];
@@ -46,12 +49,18 @@ export interface CheckedReading {
   readonly location: LocationRow | null;
   readonly jobTitle: string | null;
   readonly incidentDate: string | null;
+  /** The newest manager turn (index into `managerTurns`) whose words the incident date was read from. */
+  readonly incidentDateTurn: number | null;
+  /** The newest manager turn that states each date written anywhere in them, by ISO day. */
+  readonly dateTurns: Readonly<Record<string, number>>;
   readonly warningLevel: "verbal" | "written" | null;
   readonly payroll: "yes" | "no" | null;
   readonly payrollAmount: string | null;
   readonly policyHeading: string | null;
   /** Dates the manager gave for something other than the incident, each quoted. */
   readonly notIncidentDates: readonly string[];
+  /** Earlier steps with this employee, each quoted and dated, oldest first. */
+  readonly priorSteps: readonly { readonly kind: PriorKind; readonly iso: string }[];
   /** The fields that were read but failed a check, for the trace. */
   readonly rejected: readonly string[];
 }
@@ -72,10 +81,16 @@ export function checkReading(reading: FormReading, context: CheckContext): Check
   const employee = keep("employee", reading.employee, (value, evidence) => checkEmployee(value, evidence, context.people));
   const location = keep("location", reading.location, (value, evidence) => checkLocation(value, evidence, context.locations));
   const jobTitle = keep("jobTitle", reading.jobTitle, (value, evidence) => checkTitle(value, evidence, context.people));
-  const notIncidentDates = [...reading.priorSteps, ...reading.otherDates]
-    .filter((row) => row.date && row.evidence && quoted(row.evidence, context.managerTurns))
-    .map((row) => checkDate(row.date!, row.evidence!, context.today))
-    .filter((iso): iso is string => iso !== null);
+  const dated = (rows: FormReading["priorSteps"]) =>
+    rows
+      .filter((row) => row.date && row.evidence && quoted(row.evidence, context.managerTurns))
+      .map((row) => ({ kind: row.kind, iso: checkDate(row.date!, row.evidence!, context.today) }))
+      .filter((row): row is { kind: string | null; iso: string } => row.iso !== null);
+  const steps = dated(reading.priorSteps);
+  const notIncidentDates = [...steps, ...dated(reading.otherDates)].map((row) => row.iso);
+  const priorSteps = steps
+    .map((row) => ({ kind: PRIOR_KINDS.find((kind) => kind === row.kind?.toLowerCase()) ?? ("other" as const), iso: row.iso }))
+    .sort((a, b) => a.iso.localeCompare(b.iso));
   const statedDate = keep("incidentDate", reading.incidentDate, (value, evidence) => checkDate(value, evidence, context.today));
   const incidentDate = statedDate && !notIncidentDates.includes(statedDate) ? statedDate : null;
   if (statedDate && !incidentDate) rejected.push("incidentDate");
@@ -94,16 +109,23 @@ export function checkReading(reading: FormReading, context: CheckContext): Check
     : null;
   if (reading.policyHeading.value && !policyHeading) rejected.push("policyHeading");
 
+  const dateTurns: Record<string, number> = {};
+  context.managerTurns.forEach((turn, index) => {
+    for (const iso of datesSaid(turn, context.today)) dateTurns[iso] = index;
+  });
   return {
     employee,
     location,
     jobTitle,
     incidentDate,
+    incidentDateTurn: incidentDate ? newestTurnQuoting(reading.incidentDate.evidence!, context.managerTurns) : null,
+    dateTurns,
     warningLevel,
     payroll,
     payrollAmount,
     policyHeading,
     notIncidentDates,
+    priorSteps: incidentDate ? priorSteps.filter((step) => step.iso <= incidentDate) : priorSteps,
     rejected,
   };
 }
@@ -119,9 +141,16 @@ export function plainWords(text: string): string {
 }
 
 export function quoted(evidence: string, turns: readonly string[]): boolean {
+  return newestTurnQuoting(evidence, turns) !== null;
+}
+
+function newestTurnQuoting(evidence: string, turns: readonly string[]): number | null {
   const needle = plainWords(evidence);
-  if (needle === "") return false;
-  return turns.some((turn) => ` ${plainWords(turn)} `.includes(` ${needle} `));
+  if (needle === "") return null;
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (` ${plainWords(turns[index]!)} `.includes(` ${needle} `)) return index;
+  }
+  return null;
 }
 
 function wordSaid(word: string, evidence: string): boolean {
@@ -232,7 +261,7 @@ function datesSaid(evidence: string, today: string): string[] {
     if (realDay(y, month, day)) found.add(isoOf(y, month, day));
   };
   const text = evidence.toLowerCase();
-  for (const match of text.matchAll(/\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/g)) {
+  for (const match of text.matchAll(/(?<![$\d.])\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b(?!\.\d)/g)) {
     add(Number(match[1]), Number(match[2]), match[3] ? Number(match[3]) : undefined);
   }
   const month = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?`;

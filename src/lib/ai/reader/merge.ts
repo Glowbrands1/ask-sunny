@@ -67,8 +67,11 @@ export function mergeCheckedReading(checked: CheckedReading | null | undefined):
     },
     date(code) {
       const read = checked?.incidentDate ?? null;
-      // A date the manager gave for an earlier step or a follow-up is not settled.
-      const mine = code.iso && !checked?.notIncidentDates.includes(code.iso) ? code.iso : null;
+      // A date the manager gave for an earlier step or a follow-up is not settled,
+      // and neither is one an answer in a later turn moved past ("10.15" after "10.5 and 10.15").
+      const newer = read !== null && checked!.incidentDateTurn !== null && code.iso !== null &&
+        checked!.incidentDateTurn > (checked!.dateTurns[code.iso] ?? Number.POSITIVE_INFINITY);
+      const mine = code.iso && !checked?.notIncidentDates.includes(code.iso) && !newer ? code.iso : null;
       if (!checked || settled("incidentDate", mine, read, (a, b) => a === b) || !read) return code;
       return fill("incidentDate", { ...code, iso: read, ambiguous: [] });
     },
@@ -89,3 +92,4 @@ export function mergeCheckedReading(checked: CheckedReading | null | undefined):
     },
   };
 }
+

@@ -566,3 +566,47 @@ async function filedOff(turns: readonly string[]): Promise<Record<string, string
 function withoutIds(fields: Record<string, string>): Record<string, string> {
   return fields;
 }
+
+
+/** QA seed S1, word for word, in the report's "M.D" and "first name only" variants. */
+const S1 = [
+  "My employee quinn marlowe has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15",
+  "I already told you the employee name. She is at Kearney",
+  "10/15",
+];
+const S1_DOTS = S1.map((turn) => turn.split("10/15").join("10.15").split("10/5").join("10.5"));
+const S1_FIRST = S1.map((turn) => turn.replace("quinn marlowe", "quinn"));
+
+describe(`${FLAG_AI}: S1`, () => {
+  const reading = (name: string, date: string) => ({
+    ...S2_READING,
+    employee: quote(name, `My employee ${name} has`),
+    location: quote("Kearney", "She is at Kearney"),
+    incidentDate: quote("2026-10-15", date),
+    warningLevel: none,
+    payroll: none,
+    priorSteps: [],
+  });
+
+  it("on, \"10.5 and 10.15\" then \"10.15\": the Date is 10/15", async () => {
+    useProduction(true);
+    state.reading = reading("quinn marlowe", "10.15");
+    expect((await filed(S1_DOTS)).form_date).toBe("2026-10-15");
+  });
+
+  it("off: as main, the Date is not 10/15", async () => {
+    useProduction(false);
+    expect((await filed(S1_DOTS)).form_date).not.toBe("2026-10-15");
+  });
+
+  it("on, first name only: the Employee is Quinn Marlowe", async () => {
+    useProduction(true);
+    state.reading = reading("quinn", "10/15");
+    expect((await filed(S1_FIRST)).employee_name).toBe("Quinn Marlowe");
+  });
+
+  it("off, first name only: as main, Quinn", async () => {
+    useProduction(false);
+    expect((await filed(S1_FIRST)).employee_name).toBe("Quinn");
+  });
+});

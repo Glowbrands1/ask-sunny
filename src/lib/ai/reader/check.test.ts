@@ -170,4 +170,27 @@ describe("the checked reading fills only what today's readers left open", () => 
     expect(merge.date(code.date)).toBe(code.date);
     expect(merge.title("Tanning Consultant")).toBe("Tanning Consultant");
   });
+
+  it("S1 written \"10.5 and 10.15\", then \"10.15\": the newest answer moves past today's 10/05", () => {
+    const turns = [S1.replace("10/5 and 10/15", "10.5 and 10.15"), "I already told you the employee name. She is at Kearney", "10.15"];
+    const checked = checkReading(read({ incidentDate: { value: "2026-10-15", evidence: "10.15" } }), context(turns));
+    expect(checked.incidentDateTurn).toBe(2);
+    const merge = mergeCheckedReading(checked);
+    expect(merge.date({ iso: "2026-10-05", ambiguous: [] }).iso).toBe("2026-10-15");
+    expect(merge.filled).toEqual(["incidentDate"]);
+  });
+
+  it("a date stated again in the newest turn stays today's", () => {
+    const turns = [S2, "10-15"];
+    const checked = checkReading(read({ incidentDate: { value: "2026-10-05", evidence: "10-5" } }), context(turns));
+    const merge = mergeCheckedReading(checked);
+    expect(merge.date({ iso: "2026-10-15", ambiguous: [] }).iso).toBe("2026-10-15");
+  });
 });
+
+describe("an amount is not a date", () => {
+  it("\"$3.25\" states no March 25th", () => {
+    expect(checkDate("2026-03-25", "short $3.25", "2026-10-27")).toBeNull();
+  });
+});
+
