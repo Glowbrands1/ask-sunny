@@ -17,7 +17,7 @@
  *   warning        "This is a written warning."
  *   payroll        "Payroll deduct no."
  *   store / salon  "<Label>: <name>."
- *   job title      "Job title: Salon Director."
+ *   job title      "Job title: <title>."
  *
  * Only the fields that differ from the card are said. Nothing changed, or a
  * date that is not a real calendar day, is null: nothing is sent.
