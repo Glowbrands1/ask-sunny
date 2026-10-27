@@ -1346,3 +1346,49 @@ export function firstNameAskEnabled(): boolean {
 export function aiReadsCodeChecksEnabled(): boolean {
   return envFlag("AI_READS_CODE_CHECKS_ENABLED");
 }
+
+/**
+ * A bare "$25" right after the payroll amount question is read back and put on
+ * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it
+ * from the bare-figure reader. See `ai/amount-answer-saved.ts`. Off, as before.
+ */
+export function amountAnswerSavedEnabled(): boolean {
+  return envFlag("AMOUNT_ANSWER_SAVED_ENABLED");
+}
+
+/**
+ * A turn that only answers the payroll amount ("i dont know the amount",
+ * "$25") is not added to the Observation of Offense (QA, 27 Oct 2026; same
+ * flag in both apps). See `forms/amount-answer.ts`. Off, as before.
+ */
+export function amountAnswerNotAccountEnabled(): boolean {
+  return envFlag("AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED");
+}
+
+/**
+ * One user's traced model calls per UTC day are capped at MODEL_CALL_DAILY_CAP
+ * (default 40); over it, the chat answers without calling the model (Pau,
+ * 27 Oct 2026; same flag in both apps). See `ai/spend-guard.ts`. Off, as before.
+ */
+export function modelCallDailyCapEnabled(): boolean {
+  return envFlag("MODEL_CALL_DAILY_CAP_ENABLED");
+}
+
+/**
+ * This month's traced model spend, at list prices, is held under
+ * MONTHLY_BUDGET_USD (default 10); at it, no question reaches the model (Pau,
+ * 27 Oct 2026; same flag in both apps). See `ai/spend-guard.ts`. Off, as before.
+ */
+export function monthlyBudgetGuardEnabled(): boolean {
+  return envFlag("MONTHLY_BUDGET_GUARD_ENABLED");
+}
+
+/**
+ * A bare "the 2nd" in the manager's notes is read against today when a draft's
+ * dates are checked (QA, 27 Oct 2026; same flag in both apps): the drafted
+ * "December 2, 2025" was kept beside a form dated 10/02/2026. See
+ * `forms/form-date-grounding.ts`. Off, as before.
+ */
+export function ordinalDateInDraftEnabled(): boolean {
+  return envFlag("ORDINAL_DATE_IN_DRAFT_ENABLED");
+}

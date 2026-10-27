@@ -157,6 +157,7 @@ import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase } fro
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
 import { recallMemory, rememberFact } from "./chat-memory-store";
 import { normalizeForChat } from "./message-normalize-claude";
@@ -300,9 +301,13 @@ async function answerQuestionChecked(
     // JOB_TITLE_FROM_WORDS_ENABLED: an empty Job Title takes the title the manager typed; JOB_TITLE_CASE_ENABLED: in title case.
     // WARNING_LEVEL_AND_CLAUSE_ENABLED: "this should be a written and note a verbal ca was given …" states written.
     // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
+    // AMOUNT_ANSWER_SAVED_ENABLED: "$25" after the amount question is the amount.
     return keepManagerActionPlan(
-      withFirstNameAsk(
-        withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+      withStatedAmount(
+        withFirstNameAsk(
+          withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+          request,
+        ),
         request,
       ),
       request,
