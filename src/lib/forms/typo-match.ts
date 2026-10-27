@@ -13,8 +13,9 @@
  *   exactly ONE list word is that close. Two at the same distance is a tie,
  *   and a tie is never guessed.
  *
- * A word that is already on the list, a number, or a word the caller protects
- * (an employee's name) is left as it is.
+ * A word that is already on the list, a list word with an ending ("noticed",
+ * "mondays"), a number, or a word the caller protects (an employee's name) is
+ * left as it is.
  */
 
 /** Edits between two words, a swap of neighbours counting as one. */
@@ -32,6 +33,12 @@ export function editDistance(a: string, b: string): number {
   return d[a.length]![b.length]!;
 }
 
+const ENDINGS = ["s", "es", "d", "ed", "ing", "er", "ers", "ly"];
+
+function inflects(word: string, candidate: string): boolean {
+  return ENDINGS.some((ending) => word === candidate + ending || candidate === word + ending);
+}
+
 function allowed(word: string): number {
   return word.length >= 9 ? 2 : 1;
 }
@@ -46,6 +53,8 @@ export function onlyMatch(typed: string, list: readonly string[], protect: (word
   let tied = false;
   for (const candidate of list) {
     if (candidate[0] !== word[0]) continue;
+    // "noticed" is not a typo of "notice", nor "mondays" of "monday": an ending is a word, not a slip.
+    if (inflects(word, candidate)) return null;
     const distance = editDistance(word, candidate);
     if (distance > allowed(candidate)) continue;
     if (distance < bestDistance) {
