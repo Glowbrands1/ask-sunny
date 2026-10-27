@@ -90,13 +90,16 @@ import {
   payrollTypoNotANameEnabled,
   answerNotANameEnabled,
   dateAnswerAppliedEnabled,
+  dateAnswerKeepsOpenEnabled,
   requestLineAccountEnabled,
   futurePriorRowDropEnabled,
+  jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
 import { flaggedCitationWrite } from "./policy-citation-fields";
+import { privateCreatorFormsEnabled, privateCreatorsActive } from "@/lib/forms/private-creators";
 
 /**
  * Flags off must match the path main already ships.
@@ -201,10 +204,13 @@ const NEW_FLAGS = [
   "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
   "ANSWER_NOT_A_NAME_ENABLED",
   "DATE_ANSWER_APPLIED_ENABLED",
+  "DATE_ANSWER_KEEPS_OPEN_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "FUTURE_PRIOR_ROW_DROP_ENABLED",
+  "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
+  "PRIVATE_CREATOR_FORMS_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -321,6 +327,8 @@ describe("new flags default off and wrappers are inert", () => {
     const previous = Object.fromEntries(NEW_FLAGS.map((name) => [name, process.env[name]]));
     for (const name of NEW_FLAGS) delete process.env[name];
     expect(slotRetentionEnabled()).toBe(false);
+    expect(privateCreatorFormsEnabled()).toBe(false);
+    expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);
     expect(draftDedupeEnabled()).toBe(false);
     expect(secondFormEnabled()).toBe(false);
@@ -406,8 +414,10 @@ describe("new flags default off and wrappers are inert", () => {
     expect(payrollTypoNotANameEnabled()).toBe(false);
     expect(answerNotANameEnabled()).toBe(false);
     expect(dateAnswerAppliedEnabled()).toBe(false);
+    expect(dateAnswerKeepsOpenEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
     expect(futurePriorRowDropEnabled()).toBe(false);
+    expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
@@ -457,6 +467,11 @@ describe("new flags default off and wrappers are inert", () => {
       // NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED, hiding them from a reader
       // without Form Monitoring. Each gate reads the flag first; off, it
       // renders as before for every role.
+      // And the follow-up reads in layout.tsx, forms/monitoring/page.tsx and
+      // (app)/page.tsx: QA approved on 26 Oct 2026, behind
+      // PRIVATE_CREATOR_FORMS_ENABLED, over-reading and trimming to the page
+      // so private rows dropped after the query cannot leave it short. Off,
+      // each read asks for its page exactly as before.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -470,6 +485,8 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/components/shell/global-search.tsx",
           ":(exclude)src/components/shell/hides-form-monitoring.ts",
           ":(exclude)src/app/(app)/page.tsx",
+          ":(exclude)src/app/(app)/layout.tsx",
+          ":(exclude)src/app/(app)/forms/monitoring/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
         ]),
       ).toBe("");

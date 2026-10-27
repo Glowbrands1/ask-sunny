@@ -42,6 +42,7 @@ import {
   type InstanceView,
 } from "@/lib/forms/instances";
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
+import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
 import type { SameChat } from "@/lib/forms/draft-same-chat";
@@ -115,10 +116,11 @@ export async function GET(request: Request) {
      * predicate re-checks what is returned, and the predicate is the one that
      * fails closed if they ever drift.
      */
+    // PRIVATE_CREATOR_FORMS: over-read, then trim to the default page of 200; off, as before.
     const instances = visibleInstances(
       actor,
-      await listInstances(view, undefined, instanceListFilterFor(actor)),
-    );
+      await listInstances(view, privateCreatorsActive() ? privateAwareLimit(200) : undefined, instanceListFilterFor(actor)),
+    ).slice(0, 200);
 
     // The sweep's shape is returned alongside so the screen can say "Delete 5
     // demo forms" with a real number rather than counting what it happens to

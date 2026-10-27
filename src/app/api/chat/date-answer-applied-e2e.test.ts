@@ -453,6 +453,8 @@ afterEach(() => {
 
 
 const DA_FLAG = "DATE_ANSWER_APPLIED_ENABLED";
+/** On top of the live DATE_ANSWER_APPLIED_ENABLED: the BT4 follow-up and QA's negatives. */
+const KEEPS_OPEN = "DATE_ANSWER_KEEPS_OPEN_ENABLED";
 const T1 =
   "My employee rory vance has was 10 minutes late on her last two shifts. On the first shift I verbally coached her on our policy and expectations. Then she was late again. Please create a CA form so I can document. She was late on 10/5 and 10/15";
 const T2 = "I already told you the employee name. She is at Kearney";
@@ -473,7 +475,7 @@ const CASINGS = [
 ] as const;
 
 function useProduction(on: boolean) {
-  for (const name of [...ALL_FLAGS, DA_FLAG]) delete process.env[name];
+  for (const name of [...ALL_FLAGS, DA_FLAG, KEEPS_OPEN]) delete process.env[name];
   for (const name of PRODUCTION) process.env[name] = "true";
   // PRIOR_SENTENCE_FIX is live in this app since #305.
   process.env[FLAG] = "true";
@@ -518,6 +520,92 @@ describe(`${DA_FLAG} on`, () => {
 });
 
 /*
+ * QA's negatives (26 Oct 2026): a reply that names a person is no date
+ * answer, and a reply with two dates ("10/5 and 10/15") picks neither — on
+ * main, straight after the question, it dated the form with the last one.
+ */
+describe(`${KEEPS_OPEN} on: not an answer`, () => {
+  beforeEach(() => {
+    useProduction(true);
+    process.env[KEEPS_OPEN] = "true";
+  });
+
+  for (const between of [false, true]) {
+    it.each(["payton rolls", "10/5 and 10/15"])(`${between ? "after a turn, " : ""}"%s" leaves the form undated`, async (reply) => {
+      const { proposal } = await answered([T1, ...(between ? [T2] : []), reply], false);
+      expect(proposal?.formDate ?? null).toBeNull();
+      expect(proposal?.employeeName).toBe("Rory Vance");
+    });
+  }
+});
+
+/*
+ * QA BT4, live 26 Oct 2026 (conv_mvpnbveu27l2dv3): the date question, then
+ * two answers to the other questions, then the date. The question vanished
+ * from the card after the first answer, and "10-15" did not date the form:
+ * the app's own lines added to the reply ("No payroll deduction. Warning
+ * level: verbal.") made it more than a short answer. With the flag on the
+ * answer dates it.
+ */
+const BT4 = [
+  "create a ca for rory vance at kearney, she was late on 10-5 and 10-15. i coached her on 10-16 about being late",
+  "verbal",
+  "no payroll deduct",
+  "10-15",
+];
+
+describe(`${KEEPS_OPEN} on: BT4`, () => {
+  beforeEach(() => {
+    useProduction(true);
+    process.env[KEEPS_OPEN] = "true";
+  });
+
+  it.each(CASINGS)("%s", async (_casing, cased) => {
+    const thread = new Thread();
+    const asked: boolean[] = [];
+    let last: Answer | null = null;
+    for (const turn of BT4) {
+      last = await thread.say(cased(turn));
+      asked.push(/Which date goes on the form\?/.test(last.content));
+    }
+    /*
+     * Here the intent reader writes the first date onto each later turn ("It
+     * happened on 10/5/2026."), so the middle cards do not ask again; that is
+     * the stored-slot date (D3), not this flag. The answer still dates it.
+     */
+    expect(asked).toEqual([true, false, false, false]);
+    expect(last!.formProposal?.formDate).toBe("2026-10-15");
+    expect(last!.formProposal?.employeeName).toBe("Rory Vance");
+    expect(await createdDate(thread, "Observed: Rory Vance arrived late on October 5, 2026, and again on October 15, 2026.")).toBe("2026-10-15");
+  });
+});
+
+/*
+ * ${DA_FLAG} on (live) with ${KEEPS_OPEN} off: exactly today's live reading.
+ */
+describe(`${DA_FLAG} on, ${KEEPS_OPEN} off: as live today`, () => {
+  beforeEach(() => useProduction(true));
+
+  it("BT4: asked once; \"10-15\" after two other answers dates it", async () => {
+    const thread = new Thread();
+    const asked: boolean[] = [];
+    let last: Answer | null = null;
+    for (const turn of BT4) {
+      last = await thread.say(turn);
+      asked.push(/Which date goes on the form\?/.test(last.content));
+    }
+    expect(asked).toEqual([true, false, false, false]);
+    // Here the live date answer already dates it: the intent path reads the answer.
+    expect(last!.formProposal?.formDate).toBe("2026-10-15");
+  });
+
+  it('"10/5 and 10/15" straight after the question dates the form with the last one', async () => {
+    const { proposal } = await answered([T1, "10/5 and 10/15"], false);
+    expect(proposal?.formDate).toBe("2026-10-15");
+  });
+});
+
+/*
  * NEVER-BREAK: with the flag off, main today (this app's production env).
  * Straight after the question every typed date and "most recent" already
  * date it here; "the 15th" does not. After a turn in between, no answer dates
@@ -547,10 +635,27 @@ describe(`${DA_FLAG} off: as main`, () => {
     });
   }
 
+  it('"10/5 and 10/15" straight after the question dates the form with the last one', async () => {
+    const { proposal } = await answered([T1, "10/5 and 10/15"], false);
+    expect(proposal?.formDate).toBe("2026-10-15");
+  });
+
   it('after a turn, "most recent" is read as the employee and Create on the earlier card is refused', async () => {
     await expect(answered([T1, T2, "most recent"])).rejects.toThrow(
       "This proposal is out of date: the conversation now says the form is for most recent, not Rory Vance. Use the newest proposal.",
     );
+  });
+
+  it("BT4: the question is asked once and \"10-15\" after two other answers leaves the form undated", async () => {
+    const thread = new Thread();
+    const asked: boolean[] = [];
+    let last: Answer | null = null;
+    for (const turn of BT4) {
+      last = await thread.say(turn);
+      asked.push(/Which date goes on the form\?/.test(last.content));
+    }
+    expect(asked).toEqual([true, false, false, false]);
+    expect(last!.formProposal?.formDate ?? null).toBeNull();
   });
 
   it("the flag reads off by default", async () => {

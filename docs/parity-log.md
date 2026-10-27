@@ -1042,3 +1042,9 @@ on, that role loses `view_form_monitoring` (sidebar, page, Overview follow-ups,
 chat card link and search hits go with it) but still opens and downloads the
 forms it created itself. Ask Bubbles' assistant manager keeps the Forms
 Register: not requested there; ask Pau if wanted.
+## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
+
+"create corrective action form for <name>, Salon Director" drafted "Observed:
+Salon Director." here. Ask Bubbles reads the request's clause through
+`requestIssueClause` (`incident-issue.ts`); the same shape there, with a
+store title, writes no Observation (checked 26 Oct 2026). Not ported.
