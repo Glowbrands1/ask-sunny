@@ -1065,3 +1065,7 @@ QA P1: "create corrective action form for <name>, <job title>" / "<name>, <job t
 ## 27 Oct 2026: a step's date is not the incident date — both apps (STEP_DATE_NOT_INCIDENT_ENABLED)
 
 QA SF4: "… for opening salon late on 9-28-26" / "note a verbal ca was given on 9-1-26". Here the step's 9/1 blanked the card's Date and the form was dated today; in Ask Bubbles it dated the card and the form 9/1. With the flag on, a date in a sentence that says a step was given, issued, received or signed is not an incident date, in both apps.
+
+## 27 Oct 2026: "$25" after the amount question is read back (AMOUNT_ANSWER_SAVED_ENABLED, Sunny-only)
+
+Not needed in the sibling app: the same turns through its harness ("yes payroll deduct" then "$25") read back "**Payroll deduction amount:** $25".

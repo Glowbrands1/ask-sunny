@@ -1334,3 +1334,12 @@ export function widerDateReaderEnabled(): boolean {
 export function firstNameAskEnabled(): boolean {
   return envFlag("FIRST_NAME_ASK_ENABLED");
 }
+
+/**
+ * A bare "$25" right after the payroll amount question is read back and put on
+ * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it
+ * from the bare-figure reader. See `ai/amount-answer-saved.ts`. Off, as before.
+ */
+export function amountAnswerSavedEnabled(): boolean {
+  return envFlag("AMOUNT_ANSWER_SAVED_ENABLED");
+}
