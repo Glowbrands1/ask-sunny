@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { cardChangeEnabled } from "@/lib/forms/card-change-flag";
+
 import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
@@ -264,6 +266,7 @@ const NEW_FLAGS = [
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
   "AMOUNT_UNKNOWN_ACK_ENABLED",
+  "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
   "UNREAD_DATE_ASK_ENABLED",
@@ -524,6 +527,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
     expect(jobTitleFromWordsEnabled()).toBe(false);
+    expect(cardChangeEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -577,12 +581,16 @@ describe("new flags default off and wrappers are inert", () => {
       // PRIVATE_CREATOR_FORMS_ENABLED, over-reading and trimming to the page
       // so private rows dropped after the query cannot leave it short. Off,
       // each read asks for its page exactly as before.
+      // And card-change-panel.tsx: QA-approved 2026-10-27 (owner asked for the
+      // Change something button), behind NEXT_PUBLIC_CARD_CHANGE_ENABLED; off,
+      // it renders nothing and the bubble's one mount line adds nothing.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
           ":(exclude)**/*.test.tsx",
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
+          ":(exclude)src/features/chat/card-change-panel.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
           ":(exclude)src/features/chat/composer.tsx",
           ":(exclude)src/features/chat/inline-form.tsx",
