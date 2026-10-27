@@ -37,6 +37,8 @@ const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   remapObservation: null as string | null,
   draft: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown> },
+  /** What the drafting model was given, as text. */
+  draftPrompt: "",
   revision: {} as { values?: Record<string, unknown>; checked?: Record<string, unknown>; clear?: string[] },
   revisionCalls: 0,
   chatModelCalls: 0,
@@ -147,6 +149,7 @@ vi.mock("@/lib/ai/anthropic", () => ({
     messages: {
       create: async (request: { tool_choice?: { name?: string } }) => {
         const revising = request.tool_choice?.name === "revise_form_fields";
+        if (!revising) state.draftPrompt = JSON.stringify(request);
         if (revising) state.revisionCalls += 1;
         return {
           stop_reason: "tool_use",
@@ -481,18 +484,19 @@ const CASES = [
   ["Sentence case", LS_S9.map((turn) => turn.replace(/^([a-z])/, (letter) => letter.toUpperCase()))],
 ] as const;
 
-async function replies(turns: readonly string[]) {
-  const thread = new Thread();
-  const out: string[] = [];
-  for (const turn of turns) out.push((await thread.say(turn)).content);
-  return out;
-}
 
 describe(`${GA} on`, () => {
   beforeEach(() => setProduction(true));
 
-  it.each(CASES)("%s: the request is answered, not added to the account", async (_casing, turns) => {
-    const out = await replies(turns);
+  it.each(CASES)("%s: the request is answered, not added to the account or the draft's notes", async (_casing, turns) => {
+    const thread = new Thread();
+    const out: string[] = [];
+    for (const turn of turns) out.push((await thread.say(turn)).content);
+    state.draft = { values: {} };
+    state.draftPrompt = "";
+    await thread.create();
+    expect(state.draftPrompt).toContain("roleplayed a couple objections");
+    expect(state.draftPrompt.toLowerCase()).not.toContain("clean up my grammar");
     for (const reply of out) expect(reply.toLowerCase()).not.toContain("clean up my grammar");
     expect(out[1]).toContain(GRAMMAR_ANSWER);
     expect(out[2]).toContain("i roleplayed a couple objections with her");
@@ -502,8 +506,14 @@ describe(`${GA} on`, () => {
 describe(`${GA} off: as main`, () => {
   beforeEach(() => setProduction(false));
 
-  it("the request is in the Observation, unanswered", async () => {
-    const out = await replies(LS_S9);
+  it("the request is in the Observation, unanswered, and in the draft's notes", async () => {
+    const thread = new Thread();
+    const out: string[] = [];
+    for (const turn of LS_S9) out.push((await thread.say(turn)).content);
+    state.draft = { values: {} };
+    state.draftPrompt = "";
+    await thread.create();
+    expect(state.draftPrompt.toLowerCase()).toContain("clean up my grammar");
     expect(out[1]).toContain(`the client is there in the first place ${ASK}`);
     expect(out[1]).not.toContain(GRAMMAR_ANSWER);
   });

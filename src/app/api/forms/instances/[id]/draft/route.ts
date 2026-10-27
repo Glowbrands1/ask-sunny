@@ -14,7 +14,9 @@ import {
   policyCitationEnabled,
   policyPageRequiredEnabled,
   policySpecificTopicsEnabled,
+  grammarAskNotAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
 import {
   assertLiveMode,
@@ -321,7 +323,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
-    const notes = String(body.notes ?? "").trim().slice(0, 4000);
+    // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
+    const typed = String(body.notes ?? "").trim().slice(0, 4000);
+    const notes = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
