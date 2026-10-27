@@ -60,6 +60,8 @@ export interface ReplayStats {
 
 /** Haiku 4.5 list price per million tokens; the record budget below counts live calls at this price. */
 const LIVE_PRICE = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
+/** Claude Haiku 5.5 (the pricing page, 27 Oct 2026), prompts up to 100K tokens. */
+const HAIKU_5_5_PRICE = { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 };
 /** Dollars spent on live calls by every transport in this process, against VARIATION_BUDGET_USD. */
 let liveSpend = 0;
 export const liveSpendUsd = () => liveSpend;
@@ -138,8 +140,8 @@ export function replayTransport(dir: string, mode: "replay" | "record", options:
     stats.recorded += 1;
     stats.latencies.push(ms);
     count(usage);
-    liveSpend +=
-      (usage.inputTokens * LIVE_PRICE.input + usage.outputTokens * LIVE_PRICE.output + usage.cacheReadTokens * LIVE_PRICE.cacheRead + usage.cacheWriteTokens * LIVE_PRICE.cacheWrite) / 1e6;
+    const price = (options.model ?? input.model).startsWith("claude-haiku-5-5") ? HAIKU_5_5_PRICE : LIVE_PRICE;
+    liveSpend += (usage.inputTokens * price.input + usage.outputTokens * price.output + usage.cacheReadTokens * price.cacheRead + usage.cacheWriteTokens * price.cacheWrite) / 1e6;
     if (ms > (options.limitMs ?? input.timeoutMs)) {
       stats.slow += 1;
       throw new Error("slower than the limit");
