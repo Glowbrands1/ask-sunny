@@ -1,7 +1,7 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
+import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
 import { aiReadsCodeChecksEnabled, intentExtractionEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
@@ -168,6 +168,8 @@ function readerTrace(
 ): Record<string, unknown> {
   if ("fallback" in read) return { fallback: read.fallback };
   return {
+    // The spend guard prices the reader's usage at this model (ai/spend-guard-reader.ts).
+    model: CLAUDE_READER_MODEL,
     ms: read.ms,
     usage: read.usage,
     rejected: read.checked.rejected,
