@@ -1068,6 +1068,10 @@ QA P1: "create corrective action form for <name>, <job title>" / "<name>, <job t
 
 QA SF4: "… for opening salon late on 9-28-26" / "note a verbal ca was given on 9-1-26". Here the step's 9/1 blanked the card's Date and the form was dated today; in Ask Bubbles it dated the card and the form 9/1. With the flag on, a date in a sentence that says a step was given, issued, received or signed is not an incident date, in both apps.
 
+## 27 Oct 2026: the AI reads the form request, the code checks it — both apps (AI_READS_CODE_CHECKS_ENABLED)
+
+Pau's decision, 27 Oct 2026. `AI_READS_CODE_CHECKS_ENABLED` defaults off, same name in both apps. On, one extra Haiku call per form turn (`ai/reader/read.ts`, 2 s limit, no retry) returns each field with the manager's own words it came from; `ai/reader/check.ts` keeps a field only when that quote is in the manager's turns and the roster, the date readers, the location list or the manual agree; `ai/reader/merge.ts` lets a checked field fill only what today's readers left open (no value, a numbered list, a name nobody on the roster has, a prior step's date), never replace what they settled. The Create check (`proposal-currency.ts`) takes "Marlowe" or "quinn" as part of the card's "Quinn Marlowe". A failed, slow or unusable reply runs the turn on today's readers. No protected file is edited. Tests: `src/lib/ai/reader/check.test.ts`, `src/app/api/chat/ai-reads-code-checks-e2e.test.ts`.
+
 ## 27 Oct 2026: "$25" after the amount question is read back (AMOUNT_ANSWER_SAVED_ENABLED, Sunny-only)
 
 Not needed in the sibling app: the same turns through its harness ("yes payroll deduct" then "$25") read back "**Payroll deduction amount:** $25".
@@ -1075,3 +1079,7 @@ Not needed in the sibling app: the same turns through its harness ("yes payroll 
 ## 27 Oct 2026: an amount answer is no account text (AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED, Sunny-only)
 
 Not needed in the sibling app: its card shows no Observation of Offense line. The same turns through its chat harness ("yes payroll deduct" then "i dont know the amount") put nothing about the amount into the card's account.
+
+## 27 Oct 2026: the monthly budget counts the AI reader's call, and prices Claude Haiku 5.5 — both apps
+
+The spend guard read only each `chat_traces` row's own model and token columns. The AI reader (`AI_READS_CODE_CHECKS_ENABLED`) records its call in `slots.reader`, so its spend was invisible to the monthly budget (the daily call cap counts answering calls only, by design). `modelUsageSince` now adds a row for `slots.reader.usage` (priced at `slots.reader.model`, or as Haiku 4.5, the dearer Haiku, when the trace has none), counts form turns that had a reader call but no answering model call, and `model-prices.ts` lists Claude Haiku 5.5 ($0.10 in / $0.50 out per MTok, cache read $0.01, cache write $0.125, prompts up to 100K) instead of pricing it as Opus. If the reader-aware read errors (for example the `slots->reader` path is not what the project has), the old read (answering calls only) is used and a warning is logged: never zero, never the guard off. The daily call cap is unchanged (`modelCallsSince` is the same query). It only makes the guard count more, and the guard flags stay default off, so this change has no flag of its own. The existing slot call (`record_intent_slots`) records no usage in the trace and is still not counted. Same change in Ask Bubbles.

@@ -1,0 +1,51 @@
+{
+  "key": "30d9ff955d8652d9606cce0d23c4b4d013b04316e90f0a72793e8aa6c7efbefd",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Marlowe, Quinn",
+      "evidence": "create a ca form for quinn marlowe"
+    },
+    "location": {
+      "value": "manhattan",
+      "evidence": "tan consultant at manhattan"
+    },
+    "jobTitle": {
+      "value": "tan consultant",
+      "evidence": "tan consultant at manhattan"
+    },
+    "incident": {
+      "value": "Opening salon late",
+      "evidence": "for opening salon late on 9-28-26"
+    },
+    "incidentDate": {
+      "value": "2026-09-28",
+      "evidence": "for opening salon late on 9-28-26"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": "this should be a written"
+    },
+    "payroll": null,
+    "payrollAmount": null,
+    "policyHeading": {
+      "value": "Late Opening",
+      "evidence": "for opening salon late on 9-28-26"
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-09-01",
+        "evidence": "note a verbal ca was given on 9-1-26"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4637,
+    "outputTokens": 526,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2865
+}

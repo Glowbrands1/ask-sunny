@@ -13,6 +13,7 @@
     "test": "vitest run",
     "export:feedback-replay": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/export-feedback-replay.mts",
     "test:watch": "vitest",
+    "variation-report": "VARIATION_APP=ask-sunny vitest run --config vitest.variation.config.mts",
     "dry-run:comp-sales": "vitest run src/lib/reporting/real-workbook.dry-run.test.ts --disableConsoleIntercept",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
     "dry-run:bed-spa": "vitest run src/lib/reporting/bed-spa.dry-run.test.ts --disableConsoleIntercept",

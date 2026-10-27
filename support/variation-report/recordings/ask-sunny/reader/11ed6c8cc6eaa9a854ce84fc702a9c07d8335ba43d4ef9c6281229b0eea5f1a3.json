@@ -1,0 +1,57 @@
+{
+  "key": "11ed6c8cc6eaa9a854ce84fc702a9c07d8335ba43d4ef9c6281229b0eea5f1a3",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "QUINN MARLOWE",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "being late",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20 AND THE SALON WAS OPENED LATE"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "WAS LATE ON 10/20"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": "I NEED TO ISSUE A CA FOR SOMEONE BEING LATE"
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": "QUINN MARLOWE WAS LATE ON 10/20"
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-10-01",
+        "evidence": "SHE WAS ISSUED A VERBAL CA ON 10.1 FOR THIS SAME THING"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3544,
+    "outputTokens": 436,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

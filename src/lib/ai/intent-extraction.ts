@@ -1,10 +1,11 @@
 import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { intentExtractionEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
+import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
+import { aiReadsCodeChecksEnabled, intentExtractionEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
@@ -20,6 +21,7 @@ import {
   INTENT_TOOL_INPUT_SCHEMA,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
+import { readFormRequest, type ReaderResult } from "./reader/read";
 import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
 import type { AskRequest, AskResponse } from "./types";
 
@@ -56,6 +58,22 @@ export async function applyIntentExtraction(input: {
       loadTemplates(),
     ]);
     const salons = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
+    // AI_READS_CODE_CHECKS_ENABLED: the reader runs beside the slot call, on a form turn only.
+    const reading = aiReadsCodeChecksEnabled() && readsAForm(input.request, saved)
+      ? readFormRequest({
+          turns: [...requestScopedHistory(input.request.history, input.request.question), { role: "user", content: input.request.question }],
+          context: {
+            managerTurns: [
+              ...requestScopedHistory(input.request.history, input.request.question).filter((turn) => turn.role === "user").map((turn) => turn.content),
+              input.request.question,
+            ],
+            people,
+            locations: salons,
+            headings: manual.headings,
+            today: input.request.context.todayIso,
+          },
+        })
+      : null;
     const raw = await callClaudeTool({
       model: CLAUDE_HAIKU_MODEL,
       system: SYSTEM,
@@ -72,6 +90,8 @@ export async function applyIntentExtraction(input: {
         },
       ],
     }).catch(() => null);
+    const read = reading ? await reading : null;
+    const checked = read && "checked" in read ? read.checked : null;
 
     // REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" is a prior step, not the incident date.
     const fixed = remapIncidentFixEnabled();
@@ -96,6 +116,7 @@ export async function applyIntentExtraction(input: {
           input.request.openForm ||
           input.request.activeFormInstanceId,
       ),
+      checked,
     });
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
     updateChatTrace({
@@ -108,6 +129,7 @@ export async function applyIntentExtraction(input: {
         policyPage: decision.state.policyPage,
         templateKey: decision.state.templateKey,
         pendingConfirmation: decision.state.pendingConfirmation ?? null,
+        ...(read ? { reader: readerTrace(read, decision.reader) } : {}),
       },
     });
     // A form turn keeps its card. A date, a salon, or a warning question used
@@ -131,6 +153,29 @@ export async function applyIntentExtraction(input: {
   } catch {
     return { request: input.request, clarification: null, formTurn: false };
   }
+}
+
+/** A turn that files a form, or answers about one already open. */
+function readsAForm(request: AskRequest, saved: { templateKey?: string | null } | null): boolean {
+  if (saved?.templateKey || request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId) return true;
+  return detectTemplateIntent(request.question).kind !== "none";
+}
+
+/** AI_READS_CODE_CHECKS_ENABLED: kept in the chat trace, so cost, fallbacks and disagreements can be counted. */
+function readerTrace(
+  read: ReaderResult | { readonly fallback: string },
+  merged: { readonly filled: readonly string[]; readonly disputed: readonly string[] } | undefined,
+): Record<string, unknown> {
+  if ("fallback" in read) return { fallback: read.fallback };
+  return {
+    // The spend guard prices the reader's usage at this model (ai/spend-guard-reader.ts).
+    model: CLAUDE_READER_MODEL,
+    ms: read.ms,
+    usage: read.usage,
+    rejected: read.checked.rejected,
+    filled: merged?.filled ?? [],
+    disputed: merged?.disputed ?? [],
+  };
 }
 
 function userBlock(request: AskRequest, saved: string, headings: readonly string[]): string {

@@ -1,0 +1,23 @@
+{
+  "key": "f907efc16f2e3fe97b687297ba6ab62faee27ebd8964aaafa738d5389776d0aa",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "ivy",
+    "salon": "manhattan location",
+    "title": "tanning consultant",
+    "incidentType": "resignation",
+    "incidentDate": "9-15-26",
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "exit form",
+    "formTurn": true,
+    "policyHeading": "Employment Termination"
+  },
+  "usage": {
+    "inputTokens": 2835,
+    "outputTokens": 211,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

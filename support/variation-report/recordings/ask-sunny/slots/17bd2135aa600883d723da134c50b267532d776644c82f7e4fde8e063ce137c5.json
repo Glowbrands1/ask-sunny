@@ -1,0 +1,23 @@
+{
+  "key": "17bd2135aa600883d723da134c50b267532d776644c82f7e4fde8e063ce137c5",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "dale",
+    "salon": null,
+    "title": null,
+    "incidentType": "not attending the monthly meeting",
+    "incidentDate": "10-20-26",
+    "payrollAmount": null,
+    "warningLevel": "written",
+    "formType": "CA",
+    "formTurn": true,
+    "policyHeading": "Attendance"
+  },
+  "usage": {
+    "inputTokens": 2512,
+    "outputTokens": 209,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

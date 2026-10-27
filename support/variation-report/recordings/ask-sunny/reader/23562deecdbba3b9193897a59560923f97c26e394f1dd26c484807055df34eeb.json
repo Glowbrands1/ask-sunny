@@ -1,0 +1,51 @@
+{
+  "key": "23562deecdbba3b9193897a59560923f97c26e394f1dd26c484807055df34eeb",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "quinn marlowe",
+      "evidence": "quinn marlowe"
+    },
+    "location": {
+      "value": "manhattan",
+      "evidence": "manhattan"
+    },
+    "jobTitle": {
+      "value": "tan consutant",
+      "evidence": "tan consutant"
+    },
+    "incident": {
+      "value": "opening salon late",
+      "evidence": "opening salon late"
+    },
+    "incidentDate": {
+      "value": "2026-09-28",
+      "evidence": "9-28-26"
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Late Opening",
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3502,
+    "outputTokens": 332,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

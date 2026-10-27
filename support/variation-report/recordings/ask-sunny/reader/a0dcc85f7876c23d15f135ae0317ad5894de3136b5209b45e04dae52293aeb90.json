@@ -1,0 +1,45 @@
+{
+  "key": "a0dcc85f7876c23d15f135ae0317ad5894de3136b5209b45e04dae52293aeb90",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "dale ferris",
+      "evidence": "emplyee name is dale ferris"
+    },
+    "location": {
+      "value": "manhattan",
+      "evidence": "tanning consultant at manhattan"
+    },
+    "jobTitle": {
+      "value": "tanning consultant",
+      "evidence": "dale ferris who is a tanning consultant at manhattan"
+    },
+    "incident": {
+      "value": "out of dress code",
+      "evidence": "on 9-29-26 dale was out of dress code"
+    },
+    "incidentDate": {
+      "value": "2026-09-29",
+      "evidence": "on 9-29-26 dale was out of dress code"
+    },
+    "warningLevel": {
+      "value": "coaching",
+      "evidence": "create coaching form for emplyee dale ferris"
+    },
+    "payroll": null,
+    "payrollAmount": null,
+    "policyHeading": {
+      "value": "Dress Code for The Company",
+      "evidence": "on 9-29-26 dale was out of dress code"
+    },
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4634,
+    "outputTokens": 509,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 1837
+}
