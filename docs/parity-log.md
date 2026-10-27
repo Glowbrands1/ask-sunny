@@ -1057,3 +1057,11 @@ QA's Sunny baseline (SX1-SX3) found the same two bugs as Ask Bubbles LS-B8 / LS-
 
 Pau reversed the earlier "no" on 27 Oct 2026. With the flag on, an animal word (puppy, kitten, dog, cat, pet, …) anywhere in a sentence about being at work is the Animals in the Workplace incident (service animal, hot dog and guinea pig stay excluded), and a "cite <policy>" line names that policy without the word "cite". Same flag and mechanism in Ask Bubbles (#254).
 
+
+## 27 Oct 2026: a Corrective Action card with no account asks what happened — Sunny-only (CA_ASKS_WHAT_HAPPENED_ENABLED)
+
+QA P1: "create corrective action form for <name>, <job title>" / "<name>, <job title>" drafted with no account and no question here, because this app's proposal reader counts the job title as an account. Ask Bubbles already asks "You haven't told me what happened yet" on the same turns (checked through POST /api/chat with Bubbles' production flags, flag off), so the flag stays Sunny-only.
+
+## 27 Oct 2026: a step's date is not the incident date — both apps (STEP_DATE_NOT_INCIDENT_ENABLED)
+
+QA SF4: "… for opening salon late on 9-28-26" / "note a verbal ca was given on 9-1-26". Here the step's 9/1 blanked the card's Date and the form was dated today; in Ask Bubbles it dated the card and the form 9/1. With the flag on, a date in a sentence that says a step was given, issued, received or signed is not an incident date, in both apps.
