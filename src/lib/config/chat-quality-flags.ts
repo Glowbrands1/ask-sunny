@@ -1336,6 +1336,17 @@ export function firstNameAskEnabled(): boolean {
 }
 
 /**
+ * Create takes "Marlowe", "quinn" or "dale ferris dale" in the conversation as
+ * part of the card's "Quinn Marlowe" / "Dale Ferris" instead of refusing the
+ * card as out of date (QA S5, 27 Oct 2026; same flag in both apps). A second
+ * name that is not the card's still refuses. See `forms/proposal-currency.ts`.
+ * Off, as before.
+ */
+export function createAcceptsPartOfNameEnabled(): boolean {
+  return envFlag("CREATE_ACCEPTS_PART_OF_NAME_ENABLED");
+}
+
+/**
  * A bare "$25" right after the payroll amount question is read back and put on
  * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it
  * from the bare-figure reader. See `ai/amount-answer-saved.ts`. Off, as before.

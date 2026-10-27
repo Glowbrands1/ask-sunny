@@ -7,6 +7,7 @@ import { detectTemplateIntent } from "./template-intent";
 import { dateAnswerTurns } from "./incident-dates";
 import { isPayrollAnswer } from "./payroll-words";
 import { stateCodePlaceContext } from "./state-code-place";
+import { createAcceptsPartOfNameEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -84,7 +85,8 @@ export function checkProposalIsCurrent(input: {
   if (
     resolution.kind === "resolved" &&
     !samePerson(resolution.employeeName, input.employeeName) &&
-    !accepted
+    !accepted &&
+    !(createAcceptsPartOfNameEnabled() && partOfName(resolution.employeeName, input.employeeName))
   ) {
     return {
       current: false,
@@ -118,4 +120,18 @@ export function checkProposalIsCurrent(input: {
   }
 
   return { current: true };
+}
+
+/**
+ * CREATE_ACCEPTS_PART_OF_NAME_ENABLED: the conversation's "Marlowe" (from
+ * "Marlowe, Quinn"), "quinn" or "dale ferris dale" is part of the card's
+ * "Quinn Marlowe" / "Dale Ferris", not another person. Every word the
+ * conversation says must be one of the card's words, so "Quinn Smith" is still
+ * not "Quinn Marlowe".
+ */
+function partOfName(said: string, card: string): boolean {
+  const words = (text: string) => text.toLowerCase().split(/[^a-z']+/).filter(Boolean);
+  const full = words(card);
+  const part = words(said);
+  return part.length > 0 && part.every((word) => full.includes(word));
 }

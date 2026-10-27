@@ -1075,3 +1075,7 @@ Not needed in the sibling app: the same turns through its harness ("yes payroll 
 ## 27 Oct 2026: an amount answer is no account text (AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED, Sunny-only)
 
 Not needed in the sibling app: its card shows no Observation of Offense line. The same turns through its chat harness ("yes payroll deduct" then "i dont know the amount") put nothing about the amount into the card's account.
+
+## 27 Oct 2026: Create takes part of a name as the card's person — both apps (CREATE_ACCEPTS_PART_OF_NAME_ENABLED)
+
+QA S5: "create ca form for dale ferris dale had a register shortage …" made a card for Dale Ferris, and Create refused it as "out of date: the conversation now says the form is for dale ferris dale". With the flag on, a name the conversation says whose every word is one of the card's words ("Marlowe", "quinn", "dale ferris dale") is the card's person; "Quinn Smith" against the card for Quinn Marlowe is still refused. Same check in `forms/proposal-currency.ts` in Ask Bubbles (same flag, ported in the same session).
