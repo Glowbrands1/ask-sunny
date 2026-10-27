@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
+import { modelSpendGuard } from "@/lib/ai/spend-guard";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
@@ -144,6 +145,17 @@ export async function POST(request: Request) {
      * `app_users` — and neither is read from `body`, which is why they are a
      * second argument rather than two more fields on `AskRequest`.
      */
+    /*
+     * MODEL_CALL_DAILY_CAP_ENABLED / MONTHLY_BUDGET_GUARD_ENABLED: over a spend
+     * limit, one plain sentence and no model call. Before every step below,
+     * since each of them can call the model. See `ai/spend-guard.ts`.
+     */
+    const capped = await modelSpendGuard({ userId: context.identity.subject, role: context.identity.role });
+    if (capped) {
+      await closeTurn(turnId, { category: "unclassified", succeeded: true, latencyMs: Date.now() - askedAt });
+      return NextResponse.json({ ...capped, turnId });
+    }
+
     let answer;
     try {
       const asked = parseAskRequest(body);
