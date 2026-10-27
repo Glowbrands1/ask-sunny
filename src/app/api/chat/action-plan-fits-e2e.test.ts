@@ -520,3 +520,29 @@ describe(`${MEETING} off: as main`, () => {
     expect(meetingNotLatenessPlanEnabled()).toBe(false);
   });
 });
+
+describe(`${PAYROLL} on`, () => {
+  it.each([
+    ["SX2 lowercase", "$3.25", SX2, "Observed: Quinn Marlowe had a register shortage of $3.25 on October 20, 2026."],
+    ["SX2 Sentence case", "$3.25", SX2.map(sentence), "Observed: Quinn Marlowe had a register shortage of $3.25 on October 20, 2026."],
+    ["SX3 lowercase", "$25", SX3, "Observed: Quinn Marlowe opened the salon late on October 1, 2026."],
+    ["SX3 Sentence case", "$25", SX3.map(sentence), "Observed: Quinn Marlowe opened the salon late on October 1, 2026."],
+  ])("%s: the plan says the %s deduction", async (_name, figure, turns, observed) => {
+    useProduction(PAYROLL);
+    const written = await plan(turns, observed);
+    expect(written).toContain(`Quinn will be payroll deducted ${figure}.`);
+    expect(written.indexOf(`deducted ${figure}`)).toBeLessThan(written.lastIndexOf("Future policy violations"));
+  });
+});
+
+describe(`${PAYROLL} off: as main`, () => {
+  it("the plan says nothing of the deduction", async () => {
+    useProduction();
+    expect(await plan(SX2, "Observed: Quinn Marlowe had a register shortage of $3.25 on October 20, 2026.")).not.toMatch(/will be payroll deducted/);
+  });
+
+  it("the flag reads off by default", async () => {
+    const { planPayrollSentenceEnabled } = await import("@/lib/config/chat-quality-flags");
+    expect(planPayrollSentenceEnabled()).toBe(false);
+  });
+});

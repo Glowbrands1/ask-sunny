@@ -1048,3 +1048,7 @@ Register: not requested there; ask Pau if wanted.
 Salon Director." here. Ask Bubbles reads the request's clause through
 `requestIssueClause` (`incident-issue.ts`); the same shape there, with a
 store title, writes no Observation (checked 26 Oct 2026). Not ported.
+
+## 27 Oct 2026: the Action Plan fits the incident — ported from Ask Bubbles (MEETING_NOT_LATENESS_PLAN_ENABLED, PLAN_PAYROLL_SENTENCE_ENABLED)
+
+QA's Sunny baseline (SX1-SX3) found the same two bugs as Ask Bubbles LS-B8 / LS-B6 / LS-B9: a missed meeting got the lateness plan, and a stated deduction was left out of the plan. Same flags, same mechanism (Ask Bubbles #253). The protected `ca-action-plan.ts` is untouched.

@@ -162,6 +162,7 @@ import {
 } from "@/lib/forms/ca-action-plan";
 import { twoSentenceActionPlan } from "@/lib/forms/action-plan-sentences";
 import { attendanceActionPlan, isAttendancePlan, missedMeetingNotLateness } from "@/lib/forms/attendance-action-plan";
+import { withPayrollSentence } from "@/lib/forms/plan-payroll-sentence";
 import { managerTypedActionPlan } from "@/lib/forms/manager-action-plan";
 import {
   citeAttendanceForTardiness,
@@ -1995,13 +1996,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         ? {
             values: {
               ...named.values,
-              [fixedPlan.key]:
+              // PLAN_PAYROLL_SENTENCE_ENABLED: the deduction the manager stated is said in the plan.
+              [fixedPlan.key]: withPayrollSentence(
                 // MEETING_NOT_LATENESS_PLAN_ENABLED: a missed meeting keeps the general plan.
                 attendanceActionPlanEnabled() && isAttendancePlan(planInput) && !missedMeetingNotLateness(notes)
                   ? attendanceActionPlan(planInput)
                   : actionPlanSentencesEnabled()
                     ? twoSentenceActionPlan(planInput)
                     : correctiveActionPlan(planInput),
+                { answer: planInput.payroll.answer, amount: payrollDeductAmount(notes), employeeName: loaded.instance.employeeName },
+              ),
             },
             provenance: { ...provenance, [fixedPlan.key]: actionPlanProvenance(planInput) },
           }
