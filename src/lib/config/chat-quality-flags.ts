@@ -1286,16 +1286,6 @@ export function jobTitleCaseEnabled(): boolean {
 }
 
 /**
- * The app's own state sentences are not the account (QA S1 live, 27 Oct 2026;
- * same flag in both apps): "Job title: tan consultant. It happened. … Incident:
- * Late Opening." went into the card's Observation of Offense. See
- * `ai/keep-filled-slots.ts`. Off, as before.
- */
-export function appSentencesNotAccountEnabled(): boolean {
-  return envFlag("APP_SENTENCES_NOT_ACCOUNT_ENABLED");
-}
-
-/**
  * A clause that only sets the warning level or only lists a prior step is not
  * the account (QA S12, 27 Oct 2026; same flag in both apps): "this should be a
  * written and note a verbal ca was given on 9-1-26" went into the card's

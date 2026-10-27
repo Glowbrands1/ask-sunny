@@ -30,7 +30,6 @@ import {
   placeSpanGuardEnabled,
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
-  appSentencesNotAccountEnabled,
   formEditDateRulesEnabled,
   levelStepNotAccountEnabled,
   grammarAskNotAccountEnabled,
@@ -616,8 +615,6 @@ function withObservation(content: string, turns: readonly string[], employeeName
     // left beside it that describes an incident is kept however short.
     const read = today === undefined ? { text: turn, dropped: false } : withoutPriorStepClauses(turn, today, conversation);
     for (const part of read.text.split(/\n+|(?<=[.!?])\s+/)) {
-      // APP_SENTENCES_NOT_ACCOUNT_ENABLED: "Job title: tan consultant." and "It happened at manhattan." are the app's.
-      if (appSentencesNotAccountEnabled() && isAppLine(part)) continue;
       // LEVEL_STEP_NOT_ACCOUNT_ENABLED: "this should be a written and note a verbal ca was given on 9-1-26" says nothing that happened.
       const said = (levelStepNotAccountEnabled() ? withoutLevelAndStepClauses(part) : part).trim();
       if (said.length < 12) continue;

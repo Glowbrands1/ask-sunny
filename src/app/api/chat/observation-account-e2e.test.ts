@@ -8,19 +8,18 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
  * ============================================================================
- * QA S1 / S12, 27 OCT 2026 — THE CARD'S OBSERVATION IS THE MANAGER'S ACCOUNT
+ * QA S12 / S1, 27 OCT 2026 — THE LEVEL AND THE STEP ARE NOT THE OBSERVATION
  * ============================================================================
  *
- * Live in this app (conv_mvqa2u7m23g2o0p, all six S12 flags on), word for
- * word, the name invented: "create a CA form for <name>, tan consultant at
- * manhattan, for opening salon late on 9-28-26" / "this should be a written
- * and note a verbal ca was given on 9-1-26" / "Create a form from this
- * conversation." The card read "Observation of Offense: opening salon late on
- * 9-28-26 Job title: tan consultant. It happened. Policy reference: Late
- * Opening, JBA Policy Manual p.15. Incident: Late Opening." and, QA S12, the
- * level and step sentence too. APP_SENTENCES_NOT_ACCOUNT_ENABLED leaves the
- * app's own state sentences out; LEVEL_STEP_NOT_ACCOUNT_ENABLED the clauses
- * that only set the level or list a prior step. Through POST /api/chat in
+ * Live in this app (conv_mvqa2u7m23g2o0p), word for word, the name invented:
+ * "create a CA form for <name>, tan consultant at manhattan, for opening
+ * salon late on 9-28-26" / "this should be a written and note a verbal ca was
+ * given on 9-1-26" / "Create a form from this conversation." The card's
+ * Observation of Offense carried "this should be a written and note a verbal
+ * ca was given on 9-1-26". LEVEL_STEP_NOT_ACCOUNT_ENABLED leaves out the
+ * clauses that only set the level or list a prior step. (The app's state
+ * sentences QA also saw there — "Job title: … It happened. … Incident: …" —
+ * no longer reach this card on main since #335.) Through POST /api/chat in
  * this app's production env; three casings.
  */
 
@@ -455,7 +454,6 @@ const LIVE_SINCE = [
   "ANSWER_NOT_A_NAME_ENABLED",
   "POLICY_SPECIFIC_TOPICS_ENABLED",
 ] as const;
-const AS = "APP_SENTENCES_NOT_ACCOUNT_ENABLED";
 const LS = "LEVEL_STEP_NOT_ACCOUNT_ENABLED";
 const S12_LIVE = [
   "PRIOR_STEP_SENTENCE_ENABLED", "ANIMAL_ANYWHERE_ENABLED", "JOB_TITLE_FROM_WORDS_ENABLED", "WARNING_LEVEL_AND_CLAUSE_ENABLED",
@@ -464,7 +462,7 @@ const S12_LIVE = [
 ];
 
 function setProduction(on: readonly string[]) {
-  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, ...S12_LIVE, AS, LS]) {
+  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, ...S12_LIVE, LS]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
@@ -493,8 +491,8 @@ async function observation(turns: readonly string[]) {
   return content.match(/\*\*Observation of Offense:\*\*[^\n]*/)?.[0] ?? "";
 }
 
-describe(`${AS} and ${LS} on`, () => {
-  beforeEach(() => setProduction([AS, LS]));
+describe(`${LS} on`, () => {
+  beforeEach(() => setProduction([LS]));
 
   it.each(CASES)("%s: only what happened", async (_casing, turns) => {
     const line = await observation(turns);
@@ -511,22 +509,11 @@ describe(`${AS} and ${LS} on`, () => {
   });
 });
 
-describe(`${AS} on, ${LS} off`, () => {
-  beforeEach(() => setProduction([AS]));
-
-  it("the app's sentences are out; the level and step clauses stay, as main", async () => {
-    const line = await observation(S1);
-    expect(line).not.toContain("It happened");
-    expect(line).toContain("this should be a written and note a verbal ca was given on 9-1-26");
-  });
-});
-
-describe(`${AS} and ${LS} off: as main`, () => {
+describe(`${LS} off: as main`, () => {
   beforeEach(() => setProduction([]));
 
-  it("the card's Observation carries the app's sentences and the level and step", async () => {
+  it("the card's Observation carries the level and step", async () => {
     const line = await observation(S1);
-    expect(line).toContain("It happened. Policy reference: Late Opening, JBA Policy Manual p.15. Incident: Late Opening.");
-    expect(line).toContain("this should be a written and note a verbal ca was given on 9-1-26");
+    expect(line).toBe("**Observation of Offense:** opening salon late on 9-28-26 this should be a written and note a verbal ca was given on 9-1-26");
   });
 });
