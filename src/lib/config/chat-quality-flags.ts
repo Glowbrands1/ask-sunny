@@ -1394,6 +1394,16 @@ export function ordinalDateInDraftEnabled(): boolean {
 }
 
 /**
+ * The draft's policy search reads the manager's account only, never a payroll
+ * or amount answer, and the drafting rules forbid an opening, shift or role the
+ * manager did not write (QA, 27 Oct 2026; same flag in both apps). See
+ * `forms/account-only-policy-query.ts`. Off, as before.
+ */
+export function accountOnlyPolicyQueryEnabled(): boolean {
+  return envFlag("ACCOUNT_ONLY_POLICY_QUERY_ENABLED");
+}
+
+/**
  * The date reader also reads "last tuesday", "this past monday", "on tuesday",
  * "yesterday" and "today" from the business date (QA, 27 Oct 2026; same flag
  * in both apps). See `forms/relative-dates.ts`. Off, as before.
@@ -1409,4 +1419,31 @@ export function relativeDateReaderEnabled(): boolean {
  */
 export function unreadDateAskEnabled(): boolean {
   return envFlag("UNREAD_DATE_ASK_ENABLED");
+}
+
+/**
+ * "yesturday", "tuesdy" and "last tusday" are read by the relative date reader
+ * as the day words they can only be (QA, 27 Oct 2026; same flag in both
+ * apps). See `forms/typo-match.ts`. Off, as before.
+ */
+export function dayWordTyposEnabled(): boolean {
+  return envFlag("DAY_WORD_TYPOS_ENABLED");
+}
+
+/**
+ * The chat's readers see the manager's turns with each typo read as the one
+ * known word it can only be; employee names never (QA, 27 Oct 2026; same flag
+ * in both apps). See `ai/typo-reading-copy.ts`. Off, as before.
+ */
+export function typoReadingCopyEnabled(): boolean {
+  return envFlag("TYPO_READING_COPY_ENABLED");
+}
+
+/**
+ * "i dont know the amount", right after the amount question, is answered with
+ * one line instead of the card alone (QA, 27 Oct 2026; same flag in both
+ * apps). See `ai/amount-unknown-ack.ts`. Off, as before.
+ */
+export function amountUnknownAckEnabled(): boolean {
+  return envFlag("AMOUNT_UNKNOWN_ACK_ENABLED");
 }

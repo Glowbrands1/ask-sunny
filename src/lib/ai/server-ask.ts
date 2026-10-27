@@ -36,6 +36,7 @@ import {
   remapIncidentFixEnabled,
   questionNotFormEnabled,
   googleReviewsInChatEnabled,
+  typoReadingCopyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -157,6 +158,7 @@ import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase } fro
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
+import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
@@ -177,6 +179,8 @@ import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import { withNameBeforeTitle } from "./name-before-title";
+import { withTypoReadingCopy } from "./typo-reading-copy";
+import { protectedNameWords } from "./typo-name-words";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 
@@ -295,7 +299,9 @@ async function answerQuestionChecked(
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
     // NAME_BEFORE_TITLE_ENABLED: a two-word name right before a job title is the name.
-    const response = await answerQuestionUntraced(withTerseSlots(withNameBeforeTitle(request)), actor, memory);
+    // TYPO_READING_COPY_ENABLED: "coahed", "amont", "Manger" are read as the words they can only be; names never.
+    const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
+    const response = await answerQuestionUntraced(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(request, names))), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
@@ -304,11 +310,15 @@ async function answerQuestionChecked(
     // FIRST_NAME_ASK_ENABLED: "Is this for ivy? Tell me her full name.", never the same question twice.
     // UNREAD_DATE_ASK_ENABLED: "last tuesday" the reader could not read is asked about, never dated today in silence.
     // AMOUNT_ANSWER_SAVED_ENABLED: "$25" after the amount question is the amount.
+    // AMOUNT_UNKNOWN_ACK_ENABLED: "i dont know the amount" is answered, not met with the card alone.
     return keepManagerActionPlan(
-      withUnreadDateAsk(
-        withStatedAmount(
-          withFirstNameAsk(
-            withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+      withAmountUnknownAck(
+        withUnreadDateAsk(
+          withStatedAmount(
+            withFirstNameAsk(
+              withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+              request,
+            ),
             request,
           ),
           request,
