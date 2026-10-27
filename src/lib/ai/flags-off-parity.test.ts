@@ -97,6 +97,7 @@ import {
   exitFulfilledIsLastDayEnabled,
   futurePriorRowDropEnabled,
   nameQuestionOnlyEnabled,
+  animalAnywhereEnabled,
   meetingNotLatenessPlanEnabled,
   planPayrollSentenceEnabled,
   jobTitleNotIncidentEnabled,
@@ -217,6 +218,7 @@ const NEW_FLAGS = [
   "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
   "FUTURE_PRIOR_ROW_DROP_ENABLED",
   "NAME_QUESTION_ONLY_ENABLED",
+  "ANIMAL_ANYWHERE_ENABLED",
   "MEETING_NOT_LATENESS_PLAN_ENABLED",
   "PLAN_PAYROLL_SENTENCE_ENABLED",
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
@@ -438,6 +440,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(exitFulfilledIsLastDayEnabled()).toBe(false);
     expect(futurePriorRowDropEnabled()).toBe(false);
     expect(nameQuestionOnlyEnabled()).toBe(false);
+    expect(animalAnywhereEnabled()).toBe(false);
     expect(meetingNotLatenessPlanEnabled()).toBe(false);
     expect(planPayrollSentenceEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
