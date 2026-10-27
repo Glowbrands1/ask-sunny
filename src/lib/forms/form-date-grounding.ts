@@ -1,3 +1,5 @@
+import { ordinalDateInDraftEnabled } from "@/lib/config/chat-quality-flags";
+
 import { priorSentenceFixFor } from "./prior-sentence-scope";
 
 import {
@@ -250,6 +252,27 @@ export interface FormDateCorrection {
  * — the caller passes the narrative ones — and a date the manager DID write is
  * left exactly as they wrote it.
  */
+/*
+ * ORDINAL_DATE_IN_DRAFT_ENABLED (QA, 27 Oct 2026; draft 50b31e1d): "she was
+ * late on the 2nd" was saved with form_date 2026-10-02, but the drafted
+ * Observed read "on December 2, 2025" and was kept. The notes are read here
+ * against 1 January of the form's year, so a bare "the 2nd" (this month or
+ * last, from the wider date reader) came out as 2 December of the year before
+ * — and the model's guess matched it, so it counted as the manager's date.
+ * With the flag on, a bare ordinal is read against the real day instead.
+ */
+const BARE_ORDINAL = /^the\s+\d{1,2}(?:st|nd|rd|th)$/i;
+
+function withOrdinalsFromToday<T extends DateInText>(found: T[], notes: string, today: string | undefined): T[] {
+  if (!ordinalDateInDraftEnabled() || !today) return found;
+  const real = datesInText(notes, today);
+  return found.map((date) => {
+    if (!BARE_ORDINAL.test(notes.slice(date.index, date.end).trim())) return date;
+    const read = real.find((other) => other.index === date.index);
+    return read ? { ...date, iso: read.iso } : date;
+  });
+}
+
 export function correctDraftedDates(
   values: Record<string, string>,
   keys: ReadonlySet<string>,
@@ -268,7 +291,11 @@ export function correctDraftedDates(
   const year = resolved.iso.slice(0, 4);
   // PRIOR_SENTENCE_FIX_ENABLED: with the yearless "10-5", "10-15" and the coaching's "10-16" (QA, 26 Oct 2026).
   const sentenceFix = priorSentenceFixFor(notes);
-  const noted = sentenceFix ? managerDatesForDraft(notes, `${year}-01-01`) : datesInText(notes, `${year}-01-01`);
+  const noted = withOrdinalsFromToday(
+    sentenceFix ? managerDatesForDraft(notes, `${year}-01-01`) : datesInText(notes, `${year}-01-01`),
+    notes,
+    today,
+  );
   const given = new Set(noted.map((found) => found.iso));
   const isoOf = (token: string) => datesInText(token, `${year}-01-01`)[0]?.iso ?? null;
   const isSupplied = (token: string) =>
