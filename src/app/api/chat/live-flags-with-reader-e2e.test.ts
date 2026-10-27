@@ -39,6 +39,7 @@ const state = vi.hoisted(() => ({
   directory: [] as unknown[],
   reading: null as Record<string, unknown> | null,
   readerCalls: 0,
+  stall: false,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
@@ -148,6 +149,7 @@ vi.mock("@/lib/ai/anthropic", () => ({
       create: async (request: { tool_choice?: { name?: string } }) => {
         if (request.tool_choice?.name === "record_form_reading") {
           state.readerCalls += 1;
+          if (state.stall) return new Promise((_resolve, reject) => setTimeout(() => reject(new Error("timed out")), 3_500));
           if (!state.reading) throw new Error("the reader's model is down");
           return {
             stop_reason: "tool_use",
@@ -467,20 +469,50 @@ const LIVE_SINCE = [
 ] as const;
 
 const AI = "AI_READS_CODE_CHECKS_ENABLED";
-/** Flags live in Ask Sunny since the PRODUCTION list above, plus the spend guard (all on in this test). */
+/**
+ * Every flag shipped since the PRODUCTION list above (27 Oct 2026), including the
+ * ones merged today and both spend-guard flags: the reader may only ADD to a
+ * chat in which all of them are live. (The list is the parity test's, in order,
+ * from NOT_DEDUCTIBLE_READ_ENABLED to WIDER_DATE_READER_ENABLED.)
+ */
 const THIS_WEEK = [
-  "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED",
-  "AMOUNT_ANSWER_SAVED_ENABLED",
-  "ORDINAL_DATE_IN_DRAFT_ENABLED",
+  "NOT_DEDUCTIBLE_READ_ENABLED",
+  "PRIOR_STEP_SENTENCE_ENABLED",
+  "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
+  "FUTURE_PRIOR_ROW_DROP_ENABLED",
+  "NAME_QUESTION_ONLY_ENABLED",
+  "ANIMAL_ANYWHERE_ENABLED",
+  "MEETING_NOT_LATENESS_PLAN_ENABLED",
+  "PLAN_PAYROLL_SENTENCE_ENABLED",
+  "JOB_TITLE_NOT_INCIDENT_ENABLED",
+  "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
+  "PRIVATE_CREATOR_FORMS_ENABLED",
+  "JOB_TITLE_FROM_WORDS_ENABLED",
+  "CA_ASKS_WHAT_HAPPENED_ENABLED",
+  "STEP_DATE_NOT_INCIDENT_ENABLED",
+  "WARNING_LEVEL_AND_CLAUSE_ENABLED",
+  "JOB_TITLE_APPOSITION_ENABLED",
+  "FOLLOW_UP_READBACK_CUE_ENABLED",
+  "EXIT_READBACK_JOB_TITLE_ENABLED",
+  "FOLLOW_UP_CITATION_FIELD_ENABLED",
+  "GRAMMAR_ASK_NOT_ACCOUNT_ENABLED",
+  "JOB_TITLE_CASE_ENABLED",
+  "LEVEL_STEP_NOT_ACCOUNT_ENABLED",
+  "JOB_TITLE_READBACK_CASE_ENABLED",
+  "STEP_DATE_NO_QUESTION_ENABLED",
+  "FIRST_NAME_ASK_ENABLED",
+  "TYPO_READING_COPY_ENABLED",
+  "DAY_WORD_TYPOS_ENABLED",
+  "AMOUNT_UNKNOWN_ACK_ENABLED",
+  "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
   "UNREAD_DATE_ASK_ENABLED",
-  "WIDER_DATE_READER_ENABLED",
-  "WARNING_LEVEL_AND_CLAUSE_ENABLED",
-  "STEP_DATE_NOT_INCIDENT_ENABLED",
-  "FIRST_NAME_ASK_ENABLED",
-  "JOB_TITLE_APPOSITION_ENABLED",
+  "AMOUNT_ANSWER_SAVED_ENABLED",
+  "AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED",
   "MODEL_CALL_DAILY_CAP_ENABLED",
   "MONTHLY_BUDGET_GUARD_ENABLED",
+  "ORDINAL_DATE_IN_DRAFT_ENABLED",
+  "WIDER_DATE_READER_ENABLED",
 ] as const;
 
 function setLive(reader: boolean) {
@@ -507,6 +539,7 @@ const reading = (extra: Record<string, unknown> = {}) => ({
 
 interface Outcome {
   readonly answers: string[];
+  readonly card: string;
   readonly formDate: unknown;
   readonly observation: string;
   readonly values: Record<string, unknown>;
@@ -516,81 +549,131 @@ async function chat(turns: string[], written: string | null, readerOn: boolean, 
   setLive(readerOn);
   state.slotReading = "ca";
   state.reading = read;
+  state.readerCalls = 0;
   const thread = new Thread();
   const answers: string[] = [];
   for (const turn of turns) answers.push((await thread.say(turn)).content);
   state.draft = { values: { observation: `Observed:\nQuinn arrived late for the scheduled shift on ${written ?? "the scheduled day"}.\n\nExpectation:\nQuinn is expected to arrive on time.` } };
+  const card = JSON.stringify(thread.proposal ? { ...thread.proposal, proposalId: undefined } : null);
   const id = await thread.create();
   const rows = store.form_instance_values.filter((row) => row.instance_id === id);
   const values = Object.fromEntries(rows.map((row) => [String(row.field_key), row.value]));
-  return { answers, formDate: values.form_date, observation: String(values.observation ?? ""), values, readerCalls: state.readerCalls };
+  return { answers, card, formDate: values.form_date, observation: String(values.observation ?? ""), values, readerCalls: state.readerCalls };
 }
 
-/** The same turns, reader off and on: the form must end the same. */
-async function bothWays(turns: string[], written: string | null, read: Record<string, unknown> | null) {
-  const off = await chat(turns, written, false, read);
+async function fresh() {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
   await ensureTemplateLibrary("system");
+}
+
+/** The same turns, reader off and on. */
+async function bothWays(turns: string[], written: string | null, read: Record<string, unknown> | null) {
+  const off = await chat(turns, written, false, read);
+  await fresh();
   const on = await chat(turns, written, true, read);
   return { off, on };
+}
+
+/** Off and on end on the same chat, card and form (the reader added nothing, changed nothing). */
+function expectIdentical(off: Outcome, on: Outcome) {
+  expect(on.answers).toEqual(off.answers);
+  expect(on.card).toBe(off.card);
+  expect(on.values).toEqual(off.values);
 }
 
 const NAME = "create a CA form for quinn marlowe at kearney";
 
 describe("live flags on, reader off and on: this week's tester chats", () => {
-  it("(1) 'she was late on the 2nd', 'yes payroll deduct', '$25' then Create", async () => {
+  it("(a) 'she was late on the 2nd', 'yes payroll deduct', '$25' then Create", async () => {
     const turns = [`${NAME}. she was late on the 2nd`, "yes payroll deduct", "$25"];
     const { off, on } = await bothWays(turns, "December 2, 2025", reading({ incidentDate: field("2026-10-02", "the 2nd") }));
     expect(off.formDate).toBe("2026-10-02");
     expect(off.observation).toContain("October 2, 2026");
     expect(JSON.stringify(off.values)).toContain("25");
     expect(on.readerCalls).toBeGreaterThan(0);
-    expect(on.formDate).toBe(off.formDate);
+    expectIdentical(off, on);
+  });
+
+  it("(b) 'i dont know the amount': the reader does not touch the amount or add text", async () => {
+    const turns = [`${NAME}. she was late on the 2nd`, "yes payroll deduct", "i dont know the amount"];
+    // The reader tries to read an amount out of the manager's "i dont know the amount".
+    const { off, on } = await bothWays(turns, "October 2, 2026", reading({ payrollAmount: field("25", "i dont know the amount"), payroll: field("yes", "yes payroll deduct") }));
+    expect(on.readerCalls).toBeGreaterThan(0);
+    expectIdentical(off, on);
+    expect(JSON.stringify(on.values)).not.toContain('"25"');
     expect(on.observation).toBe(off.observation);
-    expect(on.values).toEqual(off.values);
   });
 
-  it("(2) 'she was late last tuesday': the card's Date is 10/20", async () => {
-    const { off, on } = await bothWays([`${NAME}. she was late last tuesday`], "October 20, 2026", reading({ incidentDate: field("2026-10-20", "last tuesday") }));
-    expect(off.formDate).toBe("2026-10-20");
+  it("(c) 'she was late yesturday': the day-word fix wins, the reader sets no other date", async () => {
+    const turns = [`${NAME}. she was late yesturday`];
+    const faithful = await bothWays(turns, "October 25, 2026", reading({ incidentDate: field("2026-10-25", "yesturday") }));
+    expect(faithful.off.formDate).toBe("2026-10-25");
+    expect(faithful.on.readerCalls).toBeGreaterThan(0);
+    expectIdentical(faithful.off, faithful.on);
+    await fresh();
+    const wrong = await bothWays(turns, "October 25, 2026", reading({ incidentDate: field("2026-10-24", "yesturday") }));
+    expect(wrong.on.formDate).toBe("2026-10-25");
+    expectIdentical(wrong.off, wrong.on);
+  });
+
+  it("(d) 'yes payroll dedcut' (typo) is still the payroll answer", async () => {
+    const turns = [`${NAME}. she was late on the 2nd`, "yes payroll dedcut"];
+    const { off, on } = await bothWays(turns, "October 2, 2026", reading({ payroll: field("no", "yes payroll dedcut") }));
     expect(on.readerCalls).toBeGreaterThan(0);
-    expect(on.formDate).toBe(off.formDate);
-    expect(on.values).toEqual(off.values);
+    expectIdentical(off, on);
   });
 
-  it("(3) 'she was late the other day': the which-date line, not a guess", async () => {
-    const turns = [`${NAME}. she was late the other day`];
-    const { off, on } = await bothWays(turns, null, reading());
-    expect(on.readerCalls).toBeGreaterThan(0);
-    expect(on.answers).toEqual(off.answers);
-    expect(on.formDate).toBe(off.formDate);
-  });
-
-  it("(4) '3.5 hours late and owes $10.25': the 3.5 is not a date", async () => {
-    const turns = [`${NAME}. she was 3.5 hours late and owes $10.25`];
-    const { off, on } = await bothWays(turns, "October 26, 2026", reading({ payrollAmount: field("10.25", "$10.25") }));
-    // "3.5" is hours, not 5 March or 3 May: no date was given, so the form is dated today.
-    expect(off.formDate).toBe("2026-10-26");
-    expect(on.readerCalls).toBeGreaterThan(0);
-    expect(on.values).toEqual(off.values);
-  });
-
-  it("a reader field that disagrees with a value the rules settled does not replace it", async () => {
-    // The rules read "the 2nd" as 2 October; the reader claims 3 October from the same words.
+  it("(e) invented details: the model's 'opened' stays out of the narrative the same way with the reader on", async () => {
     const turns = [`${NAME}. she was late on the 2nd`];
-    const { off, on } = await bothWays(turns, "October 2, 2026", reading({ incidentDate: field("2026-10-03", "the 2nd") }));
-    expect(off.formDate).toBe("2026-10-02");
+    const invented = "October 2, 2026, and the salon was opened late";
+    const { off, on } = await bothWays(turns, invented, reading({ incident: field("opened late", "she was late") }));
     expect(on.readerCalls).toBeGreaterThan(0);
-    expect(on.formDate).toBe("2026-10-02");
-    expect(on.values).toEqual(off.values);
+    expectIdentical(off, on);
+    // The model's invented "opened" is not in the saved narrative, reader off or on.
+    expect(off.observation.toLowerCase()).not.toContain("open");
+    expect(on.observation.toLowerCase()).not.toContain("open");
   });
 
-  it("the reader's model down: the turn is the reader-off turn", async () => {
+  it("(f) a reader field that disagrees with a rule: the rule wins", async () => {
+    const turns = [`${NAME}. she was late on the 2nd`, "yes payroll deduct", "$25"];
+    const { off, on } = await bothWays(
+      turns,
+      "October 2, 2026",
+      reading({ incidentDate: field("2026-10-03", "the 2nd"), payrollAmount: field("20", "$25"), warningLevel: field("written", "late"), location: field("lincoln", "kearney") }),
+    );
+    expect(off.formDate).toBe("2026-10-02");
+    expect(on.formDate).toBe("2026-10-02");
+    expect(on.readerCalls).toBeGreaterThan(0);
+    expectIdentical(off, on);
+  });
+
+  it("(g) the reader's model down: the same chat as reader off", async () => {
     const turns = [`${NAME}. she was late on the 2nd`, "yes payroll deduct", "$25"];
     const { off, on } = await bothWays(turns, "December 2, 2025", null);
     expect(on.readerCalls).toBeGreaterThan(0);
-    expect(on.values).toEqual(off.values);
-    expect(on.answers).toEqual(off.answers);
+    expectIdentical(off, on);
+  });
+
+  it("(g) the reader timing out: the same chat as reader off", async () => {
+    const turns = [`${NAME}. she was late on the 2nd`, "yes payroll deduct", "$25"];
+    const off = await chat(turns, "December 2, 2025", false, null);
+    await fresh();
+    state.stall = true;
+    try {
+      const on = await chat(turns, "December 2, 2025", true, reading());
+      expect(on.readerCalls).toBeGreaterThan(0);
+      expectIdentical(off, on);
+    } finally {
+      state.stall = false;
+    }
+  }, 30_000);
+
+  it("where the reader fills a field the rules left open, that is the only difference", async () => {
+    // "Marlowe, Quinn": today's reader keeps "Marlowe"; the reader fills the employee.
+    const turns = ["My employee Marlowe, Quinn was late on the 2nd at Kearney. Please create a CA form"];
+    const { off, on } = await bothWays(turns, "October 2, 2026", reading({ employee: field("Marlowe, Quinn", "Marlowe, Quinn"), incidentDate: field("2026-10-02", "the 2nd") }));
+    expect(on.formDate).toBe(off.formDate);
+    expect(on.values.employee_name).toBe("Quinn Marlowe");
   });
 });
