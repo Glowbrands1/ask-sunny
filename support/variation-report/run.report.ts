@@ -34,6 +34,7 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *   VARIATION_READER_TIMEOUT_MS=5000 …                 the reader's limit in this run (default: the app's 2 s)
  *   VARIATION_READER_MODEL=<id> …                       record the reader with another model
  *   VARIATION_RECORDINGS_DIR=<dir> …                    read and write recordings in a folder of its own
+ *   VARIATION_EXTRA_FLAGS=A_ENABLED,B_ENABLED …         more flags on in the "this week's fixes" modes (the list in this file is older than the app)
  *   VARIATION_BUDGET_USD=3 …                            record mode stops calling the model once live calls cost this much
  *
  * With VARIATION_READER set, this app's live slot call (`record_intent_slots`,
@@ -547,6 +548,8 @@ const NEW_FIXES = [
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "ANIMAL_ANYWHERE_ENABLED",
 ] as const;
+// VARIATION_EXTRA_FLAGS=A_ENABLED,B_ENABLED: flags shipped since the list above, on in every "this week's fixes" mode.
+const EXTRA = (process.env.VARIATION_EXTRA_FLAGS ?? "").split(",").map((name) => name.trim()).filter(Boolean);
 const AI = "AI_READS_CODE_CHECKS_ENABLED";
 const READER_MODE = process.env.VARIATION_READER === "record" ? "record" : process.env.VARIATION_READER === "replay" ? "replay" : null;
 const TODAYS = "production + this week's fixes";
@@ -554,11 +557,11 @@ const TODAY_REAL = "production + this week's fixes, real slot call";
 const WITH_AI = "production + this week's fixes, real slot call + AI reader";
 const MODES: readonly { name: string; flags: readonly string[]; slots?: boolean; reader?: boolean }[] = [
   { name: "production", flags: [] },
-  { name: TODAYS, flags: NEW_FIXES },
+  { name: TODAYS, flags: [...NEW_FIXES, ...EXTRA] },
   ...(READER_MODE
     ? [
-        { name: TODAY_REAL, flags: NEW_FIXES, slots: true },
-        { name: WITH_AI, flags: [...NEW_FIXES, AI], slots: true, reader: true },
+        { name: TODAY_REAL, flags: [...NEW_FIXES, ...EXTRA], slots: true },
+        { name: WITH_AI, flags: [...NEW_FIXES, ...EXTRA, AI], slots: true, reader: true },
       ]
     : []),
 ];
