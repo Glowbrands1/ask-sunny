@@ -30,6 +30,8 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *   VARIATION_READER=replay npm run variation-report    offline; a missing reply = flag off
  *   VARIATION_READER=record npm run variation-report    calls the model (ANTHROPIC_API_KEY)
  *   VARIATION_LIMIT=20 …                                a smoke run: 20 variants spread over the seeds
+ *   VARIATION_KINDS=name:20,typo:17 …                   that many variants of each kind, spread over the seeds
+ *   VARIATION_BUDGET_USD=3 …                            record mode stops calling the model once live calls cost this much
  *
  * With VARIATION_READER set, this app's live slot call (`record_intent_slots`,
  * INTENT_EXTRACTION_ENABLED) is recorded and replayed too, in a mode of its
@@ -514,7 +516,7 @@ afterEach(() => {
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { replayTransport } from "@/lib/ai/reader/replay";
+import { budgetExceeded, replayTransport } from "@/lib/ai/reader/replay";
 
 import { SEEDS, type Seed } from "./seeds";
 import { variantsOf, type Variant } from "./variants";
@@ -561,6 +563,20 @@ const recordings = (part: string) =>
   fileURLToPath(new URL(`./recordings/${process.env.VARIATION_APP ?? "app"}/${part}/`, import.meta.url));
 const transport = READER_MODE ? replayTransport(recordings("reader"), READER_MODE) : null;
 const slotTransport = READER_MODE ? replayTransport(recordings("slots"), READER_MODE) : null;
+
+/**
+ * VARIATION_KINDS=name:20,typo:17: that many variants of each listed kind, spread
+ * evenly over the seeds, the same ones each run. Kinds not listed are left out.
+ */
+function ofKinds<T extends { variant: Variant }>(all: readonly T[]): readonly T[] {
+  const wanted = (process.env.VARIATION_KINDS ?? "").split(",").map((part) => part.trim().split(":")).filter((part) => part[0]);
+  if (wanted.length === 0) return all;
+  return wanted.flatMap(([kind, count]) => {
+    const these = all.filter((one) => one.variant.kind === kind);
+    const n = Number(count);
+    return Number.isInteger(n) && n > 0 && n < these.length ? Array.from({ length: n }, (_unused, index) => these[Math.floor((index * these.length) / n)]!) : these;
+  });
+}
 
 /** VARIATION_LIMIT=N: N variants, spread evenly over every seed's list, the same N each run. */
 function limited<T>(all: readonly T[]): readonly T[] {
@@ -731,7 +747,7 @@ function byCheck(rows: Row[]): string {
 
 it("variation report", async () => {
   const rows: Row[] = [];
-  const cases = limited(SEEDS.flatMap((seed) => variantsOf(seed).map((variant) => ({ seed, variant }))));
+  const cases = limited(ofKinds(SEEDS.flatMap((seed) => variantsOf(seed).map((variant) => ({ seed, variant })))));
   for (const mode of MODES) {
     reader.call = mode.reader && transport ? (transport.call as never) : null;
     reader.slots = mode.slots && slotTransport ? (slotTransport.call as never) : null;
@@ -809,4 +825,5 @@ it("variation report", async () => {
   mkdirSync(new URL("./out/", import.meta.url), { recursive: true });
   writeFileSync(new URL(`./out/report-${process.env.VARIATION_APP ?? "app"}.md`, import.meta.url), report);
   process.stdout.write(`\n${report}\n`);
+  if (budgetExceeded.value) throw new Error("VARIATION_BUDGET_USD reached: the recording is incomplete; calls after the budget ran as flag off.");
 }, 3_600_000);

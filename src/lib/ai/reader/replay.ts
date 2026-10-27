@@ -56,6 +56,13 @@ export interface ReplayStats {
   cacheWriteTokens: number;
 }
 
+/** Haiku 4.5 list price per million tokens; the record budget below counts live calls at this price. */
+const LIVE_PRICE = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
+/** Dollars spent on live calls by every transport in this process, against VARIATION_BUDGET_USD. */
+let liveSpend = 0;
+export const liveSpendUsd = () => liveSpend;
+export const budgetExceeded = { value: false };
+
 export function replayTransport(dir: string, mode: "replay" | "record") {
   const stats: ReplayStats = { calls: 0, missing: 0, slow: 0, missingChars: 0, recorded: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   let client: Anthropic | null = null;
@@ -82,6 +89,11 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
       stats.missing += 1;
       stats.missingChars += input.system.length + input.messages.reduce((sum, message) => sum + message.content.length, 0);
       throw new Error("no recording");
+    }
+    const budget = Number(process.env.VARIATION_BUDGET_USD ?? "");
+    if (Number.isFinite(budget) && budget > 0 && liveSpend >= budget) {
+      budgetExceeded.value = true;
+      throw new Error("record budget reached");
     }
     client ??= new Anthropic();
     const started = Date.now();
@@ -120,6 +132,8 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
     writeFileSync(file, `${JSON.stringify(recording, null, 2)}\n`);
     stats.recorded += 1;
     count(usage);
+    liveSpend +=
+      (usage.inputTokens * LIVE_PRICE.input + usage.outputTokens * LIVE_PRICE.output + usage.cacheReadTokens * LIVE_PRICE.cacheRead + usage.cacheWriteTokens * LIVE_PRICE.cacheWrite) / 1e6;
     if (ms > input.timeoutMs) {
       stats.slow += 1;
       throw new Error("slower than the limit");
