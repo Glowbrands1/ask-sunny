@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { TokenUsage } from "./model-prices";
+import { readerUsageRow, type ReaderTraceRow } from "./spend-guard-reader";
 
 /** Model calls this user made since `sinceIso`, one chat_traces row each. */
 export async function modelCallsSince(userId: string, sinceIso: string): Promise<number> {
@@ -24,9 +25,10 @@ export async function modelUsageSince(sinceIso: string): Promise<TokenUsage[]> {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await getSupabaseAdmin()
       .from("chat_traces")
-      .select("model, input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens")
+      .select("model, input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, reader:slots->reader")
       .gte("created_at", sinceIso)
-      .not("model", "is", null)
+      // A form turn the AI reader read may have no answering model call; its reader call still counts.
+      .or("model.not.is.null,slots->reader.not.is.null")
       .order("created_at", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`chat_traces usage read failed: ${error.message}`);
@@ -36,6 +38,7 @@ export async function modelUsageSince(sinceIso: string): Promise<TokenUsage[]> {
       output_tokens: number | null;
       cache_read_input_tokens: number | null;
       cache_creation_input_tokens: number | null;
+      reader: ReaderTraceRow | null;
     }[];
     for (const row of rows) {
       out.push({
@@ -45,6 +48,9 @@ export async function modelUsageSince(sinceIso: string): Promise<TokenUsage[]> {
         cacheReadTokens: row.cache_read_input_tokens,
         cacheWriteTokens: row.cache_creation_input_tokens,
       });
+      // The AI reader's call is in the trace's slots, not in the model columns (AI_READS_CODE_CHECKS_ENABLED).
+      const reader = readerUsageRow(row.reader);
+      if (reader) out.push(reader);
     }
     if (rows.length < PAGE) return out;
   }

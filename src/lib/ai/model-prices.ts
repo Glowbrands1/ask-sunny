@@ -17,10 +17,15 @@ const SONNET: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2
 // Haiku's cache prices follow the same 0.1x / 1.25x ratios as the others.
 const HAIKU: ModelPrice = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
 
+// Claude Haiku 5.5, for prompts up to 100,000 tokens (the pricing page, 27 Oct 2026): $0.10 in, $0.50 out,
+// cache reads $0.01, 5-minute cache writes $0.125. Longer prompts cost more, so a call over 100K is under-counted.
+const HAIKU_5_5: ModelPrice = { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 };
+
 const BY_PREFIX: readonly (readonly [string, ModelPrice])[] = [
   ["claude-opus-5", OPUS],
   ["claude-sonnet-5", SONNET],
   ["claude-haiku-4-5", HAIKU],
+  ["claude-haiku-5-5", HAIKU_5_5],
 ];
 
 export function priceFor(model: string | null | undefined): ModelPrice {
