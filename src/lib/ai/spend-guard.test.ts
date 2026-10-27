@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usageCostUsd } from "./model-prices";
 import { DAILY_CAP_REPLY, MONTHLY_BUDGET_REPLY, modelSpendGuard, resetSpendGuardCache, type SpendGuardStore } from "./spend-guard";
 
-const NAMES = ["MODEL_CALL_DAILY_CAP_ENABLED", "MODEL_CALL_DAILY_CAP", "MONTHLY_BUDGET_GUARD_ENABLED", "MONTHLY_BUDGET_USD"];
+const NAMES = ["MODEL_CALL_DAILY_CAP_ENABLED", "MODEL_CALL_DAILY_CAP", "MONTHLY_BUDGET_GUARD_ENABLED", "MONTHLY_BUDGET_USD", "BUDGET_COUNT_FROM"];
 const saved = new Map<string, string | undefined>();
 const NOW = new Date("2026-10-27T15:00:00Z");
 
@@ -133,6 +133,62 @@ describe("MONTHLY_BUDGET_GUARD_ENABLED", () => {
     expect(reads.usage).toBe(1);
     await modelSpendGuard({ userId: "u3", role: "salon_director", now: new Date(NOW.getTime() + 61_000) }, store);
     expect(reads.usage).toBe(2);
+  });
+});
+
+describe("BUDGET_COUNT_FROM", () => {
+  beforeEach(() => {
+    process.env.MONTHLY_BUDGET_GUARD_ENABLED = "true";
+  });
+
+  /** $12 before 14:00, $3 after: a store that answers by where the count starts. */
+  function storeAround() {
+    const asked: string[] = [];
+    const store: SpendGuardStore = {
+      modelCallsSince: async () => 0,
+      async modelUsageSince(since) {
+        asked.push(since);
+        const rows = [
+          { at: "2026-10-27T09:00:00.000Z", usd: 12 },
+          { at: "2026-10-27T15:00:00.000Z", usd: 3 },
+        ].filter((row) => row.at >= since);
+        return rows.map((row) => ({ model: "claude-sonnet-5", inputTokens: 0, outputTokens: row.usd * 100_000, cacheReadTokens: 0, cacheWriteTokens: 0 }));
+      },
+    };
+    return { store, asked };
+  }
+
+  it("unset: counted from the start of the month, as before", async () => {
+    const { store, asked } = storeAround();
+    expect((await modelSpendGuard({ userId: "u1", role: "salon_director", now: NOW }, store))?.content).toBe(MONTHLY_BUDGET_REPLY);
+    expect(asked).toEqual(["2026-10-01T00:00:00.000Z"]);
+  });
+
+  it("set: rows before it are ignored, rows after it count", async () => {
+    process.env.BUDGET_COUNT_FROM = "2026-10-27T14:00:00Z";
+    const { store, asked } = storeAround();
+    expect(await modelSpendGuard({ userId: "u1", role: "salon_director", now: NOW }, store)).toBeNull();
+    expect(asked).toEqual(["2026-10-27T14:00:00.000Z"]);
+  });
+
+  it("never earlier than the start of the month", async () => {
+    process.env.BUDGET_COUNT_FROM = "2026-09-15T00:00:00Z";
+    const { store, asked } = storeAround();
+    await modelSpendGuard({ userId: "u1", role: "salon_director", now: NOW }, store);
+    expect(asked).toEqual(["2026-10-01T00:00:00.000Z"]);
+  });
+
+  it("not a time: as unset", async () => {
+    process.env.BUDGET_COUNT_FROM = "when I turn it on";
+    const { store, asked } = storeAround();
+    await modelSpendGuard({ userId: "u1", role: "salon_director", now: NOW }, store);
+    expect(asked).toEqual(["2026-10-01T00:00:00.000Z"]);
+  });
+});
+
+describe("the pause sentences", () => {
+  it("say nothing about cost", () => {
+    for (const sentence of [DAILY_CAP_REPLY, MONTHLY_BUDGET_REPLY]) expect(sentence).not.toMatch(/\$|cost|spend|budget|money|dollar/i);
   });
 });
 

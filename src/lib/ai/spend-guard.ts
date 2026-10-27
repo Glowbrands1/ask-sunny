@@ -18,7 +18,8 @@ import type { AskResponse } from "./types";
  *   40). Admins and owners are not counted against it.
  *
  *   MONTHLY_BUDGET_GUARD_ENABLED — this calendar month's traced tokens at list
- *   prices (`model-prices.ts`) against MONTHLY_BUDGET_USD (default 10). At
+ *   prices (`model-prices.ts`), counted from BUDGET_COUNT_FROM when that is
+ *   later, against MONTHLY_BUDGET_USD (default 10). At
  *   80% a warning is logged; at 100% nobody's question reaches the model.
  *   The month's total is read at most once a minute per server instance.
  *
@@ -57,6 +58,7 @@ function utcMonthStart(now: Date): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
+/** `month` is where the count started, so a new BUDGET_COUNT_FROM is read afresh. */
 let monthCache: { month: string; costUsd: number; readAt: number } | null = null;
 
 /** For tests: the next guard reads the month's total afresh. */
@@ -64,14 +66,28 @@ export function resetSpendGuardCache(): void {
   monthCache = null;
 }
 
-async function monthCostUsd(store: SpendGuardStore, now: Date): Promise<number> {
+/**
+ * Where this month's count starts: the start of the month, or BUDGET_COUNT_FROM
+ * (an ISO time, set when the guard is turned on) if that is later, so spend
+ * from before the guard existed does not pause the chat. Never earlier than
+ * the start of the month.
+ */
+function countFrom(now: Date): string {
   const month = utcMonthStart(now);
-  if (monthCache && monthCache.month === month && now.getTime() - monthCache.readAt < REFRESH_MS) {
+  const raw = process.env.BUDGET_COUNT_FROM?.trim();
+  const from = raw ? new Date(raw) : null;
+  if (!from || Number.isNaN(from.getTime())) return month;
+  return from.getTime() > Date.parse(month) ? from.toISOString() : month;
+}
+
+async function monthCostUsd(store: SpendGuardStore, now: Date): Promise<number> {
+  const since = countFrom(now);
+  if (monthCache && monthCache.month === since && now.getTime() - monthCache.readAt < REFRESH_MS) {
     return monthCache.costUsd;
   }
-  const usage = await store.modelUsageSince(month);
+  const usage = await store.modelUsageSince(since);
   const costUsd = usage.reduce((sum, row) => sum + usageCostUsd(row), 0);
-  monthCache = { month, costUsd, readAt: now.getTime() };
+  monthCache = { month: since, costUsd, readAt: now.getTime() };
   return costUsd;
 }
 
