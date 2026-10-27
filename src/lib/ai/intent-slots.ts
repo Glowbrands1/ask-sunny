@@ -17,7 +17,7 @@ import {
   namedFormExactEnabled,
   remapIncidentFixEnabled,
   warningLevelManagerOnlyEnabled,
-  aiReadsCodeChecksEnabled,
+  checkedReadingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -237,7 +237,7 @@ function settleYesNo(question: string, saved: ConversationFormState): Conversati
 export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision {
   const input = withoutUntypedSavedName(rawInput);
   // AI_READS_CODE_CHECKS_ENABLED: off, or with no checked reading, every field below is today's.
-  const merge = mergeCheckedReading(aiReadsCodeChecksEnabled() ? rawInput.checked : null);
+  const merge = mergeCheckedReading(checkedReadingEnabled() ? rawInput.checked : null);
   const choiceStated = formChoiceStatedEnabled();
   const saved = choiceStated
     ? withoutDisciplineProcedure(input.saved ?? EMPTY_FORM_STATE)
@@ -464,7 +464,7 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
   // FORM_CHOICE_STATED_ENABLED: two forms in one turn is a question, not a
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
-  const reader = aiReadsCodeChecksEnabled() && rawInput.checked ? { reader: { filled: merge.filled, disputed: merge.disputed } } : {};
+  const reader = checkedReadingEnabled() && rawInput.checked ? { reader: { filled: merge.filled, disputed: merge.disputed } } : {};
   if (clarification && formType.together) return { question, state, clarification, formTurn: false, ...reader };
   if (clarification) return { question, state, clarification, formTurn, ...reader };
   if (!formTurn) return { question, state, clarification: null, formTurn: false, ...reader };
