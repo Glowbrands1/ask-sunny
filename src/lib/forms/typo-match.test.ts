@@ -33,6 +33,12 @@ describe("onlyMatch", () => {
     expect(onlyMatch("munday", DAYS, (word) => word === "munday")).toBeNull();
   });
 
+  it("an ending is a word, not a slip", () => {
+    expect(onlyMatch("noticed", ["notice"])).toBeNull();
+    expect(onlyMatch("mondays", DAYS)).toBeNull();
+    expect(onlyMatch("coach", ["coached"])).toBeNull();
+  });
+
   it("needs the same first letter", () => {
     expect(onlyMatch("ruesday", DAYS)).toBeNull();
   });

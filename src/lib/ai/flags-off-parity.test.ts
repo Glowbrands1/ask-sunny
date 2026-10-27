@@ -116,6 +116,7 @@ import {
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
   firstNameAskEnabled,
+  typoReadingCopyEnabled,
   dayWordTyposEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
@@ -263,6 +264,7 @@ const NEW_FLAGS = [
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
+  "TYPO_READING_COPY_ENABLED",
   "DAY_WORD_TYPOS_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
@@ -414,6 +416,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
     expect(firstNameAskEnabled()).toBe(false);
+    expect(typoReadingCopyEnabled()).toBe(false);
     expect(dayWordTyposEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);

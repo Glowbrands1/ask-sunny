@@ -36,6 +36,7 @@ import {
   remapIncidentFixEnabled,
   questionNotFormEnabled,
   googleReviewsInChatEnabled,
+  typoReadingCopyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -177,6 +178,8 @@ import { appPasswordHelpFor } from "./app-password-help";
 import { redactSensitiveDefaults, withoutSensitiveDefaults } from "./sensitive-defaults";
 import { withoutSharedSourceClaims } from "./sources-not-shared";
 import { withNameBeforeTitle } from "./name-before-title";
+import { withTypoReadingCopy } from "./typo-reading-copy";
+import { protectedNameWords } from "./typo-name-words";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 
@@ -295,7 +298,9 @@ async function answerQuestionChecked(
   const produce = async () => {
     // TERSE_SLOT_READ_ENABLED: a terse "ca …" line is read as the long form.
     // NAME_BEFORE_TITLE_ENABLED: a two-word name right before a job title is the name.
-    const response = await answerQuestionUntraced(withTerseSlots(withNameBeforeTitle(request)), actor, memory);
+    // TYPO_READING_COPY_ENABLED: "coahed", "amont", "Manger" are read as the words they can only be; names never.
+    const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
+    const response = await answerQuestionUntraced(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(request, names))), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.

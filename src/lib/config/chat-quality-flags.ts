@@ -1417,3 +1417,12 @@ export function unreadDateAskEnabled(): boolean {
 export function dayWordTyposEnabled(): boolean {
   return envFlag("DAY_WORD_TYPOS_ENABLED");
 }
+
+/**
+ * The chat's readers see the manager's turns with each typo read as the one
+ * known word it can only be; employee names never (QA, 27 Oct 2026; same flag
+ * in both apps). See `ai/typo-reading-copy.ts`. Off, as before.
+ */
+export function typoReadingCopyEnabled(): boolean {
+  return envFlag("TYPO_READING_COPY_ENABLED");
+}
