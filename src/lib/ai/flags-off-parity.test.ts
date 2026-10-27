@@ -103,6 +103,8 @@ import {
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
   jobTitleFromWordsEnabled,
+  caAsksWhatHappenedEnabled,
+  stepDateNotIncidentEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -227,6 +229,8 @@ const NEW_FLAGS = [
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
   "PRIVATE_CREATOR_FORMS_ENABLED",
   "JOB_TITLE_FROM_WORDS_ENABLED",
+  "CA_ASKS_WHAT_HAPPENED_ENABLED",
+  "STEP_DATE_NOT_INCIDENT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -348,6 +352,8 @@ describe("new flags default off and wrappers are inert", () => {
     const previous = Object.fromEntries(NEW_FLAGS.map((name) => [name, process.env[name]]));
     for (const name of NEW_FLAGS) delete process.env[name];
     expect(slotRetentionEnabled()).toBe(false);
+    expect(caAsksWhatHappenedEnabled()).toBe(false);
+    expect(stepDateNotIncidentEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);
