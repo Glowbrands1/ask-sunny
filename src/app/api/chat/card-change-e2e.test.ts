@@ -485,8 +485,9 @@ describe("each field alone", () => {
   it("the date", async () => {
     expect((await changed({ formDate: "2026-10-19" })).after.formDate).toBe("2026-10-19");
   });
-  it("the type of warning", async () => {
+  it("the type of warning, written and verbal", async () => {
     expect((await changed({ warningLevel: "written" })).after.warningLevel).toBe("written");
+    expect((await changed({ warningLevel: "verbal" })).after.warningLevel).toBe("verbal");
   });
   it("payroll deduct", async () => {
     expect((await changed({ payrollDeduct: "no" })).after.payrollDeduct).toBe("no");

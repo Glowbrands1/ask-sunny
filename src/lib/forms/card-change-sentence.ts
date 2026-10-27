@@ -14,7 +14,7 @@
  * The sentences are the ones the readers already read:
  *
  *   date           "Change the date to 10/19/2026."
- *   warning        "Written warning."
+ *   warning        "This is a written warning."
  *   payroll        "Payroll deduct no."
  *   store / salon  "<Label>: <name>."
  *   job title      "Job title: Salon Director."
@@ -62,7 +62,7 @@ export function cardChangeSentence(change: CardChange, card: CardFields, placeLa
     if (!date) return null;
     parts.push(`Change the date to ${date}.`);
   }
-  if (changed(change.warningLevel, card.warningLevel)) parts.push(`${change.warningLevel === "verbal" ? "Verbal" : "Written"} warning.`);
+  if (changed(change.warningLevel, card.warningLevel)) parts.push(`This is a ${change.warningLevel === "verbal" ? "verbal" : "written"} warning.`);
   if (changed(change.payrollDeduct, card.payrollDeduct)) parts.push(`Payroll deduct ${change.payrollDeduct}.`);
   if (changed(change.locationName, card.locationName)) parts.push(`${placeLabel}: ${change.locationName!.trim()}.`);
   if (changed(change.employeeRole, card.employeeRole)) parts.push(`Job title: ${change.employeeRole!.trim()}.`);

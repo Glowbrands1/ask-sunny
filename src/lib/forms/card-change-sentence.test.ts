@@ -7,7 +7,7 @@ const CARD = { formDate: "2026-10-20", warningLevel: null, payrollDeduct: null, 
 describe("cardChangeSentence", () => {
   it("says each field alone", () => {
     expect(cardChangeSentence({ formDate: "2026-10-19" }, CARD, "Salon")).toBe("Change the date to 10/19/2026.");
-    expect(cardChangeSentence({ warningLevel: "written" }, CARD, "Salon")).toBe("Change: Written warning.");
+    expect(cardChangeSentence({ warningLevel: "written" }, CARD, "Salon")).toBe("Change: This is a written warning.");
     expect(cardChangeSentence({ payrollDeduct: "no" }, CARD, "Salon")).toBe("Change: Payroll deduct no.");
     expect(cardChangeSentence({ locationName: "Lawrence" }, CARD, "Salon")).toBe("Change: Salon: Lawrence.");
     expect(cardChangeSentence({ employeeRole: "Salon Director" }, CARD, "Salon")).toBe("Change: Job title: Salon Director.");
@@ -16,7 +16,7 @@ describe("cardChangeSentence", () => {
   it("says several fields in one turn, the date first", () => {
     expect(
       cardChangeSentence({ formDate: "2026-10-19", warningLevel: "written", payrollDeduct: "yes", employeeRole: "Salon Director" }, CARD, "Salon"),
-    ).toBe("Change the date to 10/19/2026. Written warning. Payroll deduct yes. Job title: Salon Director.");
+    ).toBe("Change the date to 10/19/2026. This is a written warning. Payroll deduct yes. Job title: Salon Director.");
   });
 
   it("says nothing for a field that did not change, and null when nothing did", () => {
