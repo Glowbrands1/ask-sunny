@@ -1315,3 +1315,13 @@ export function jobTitleReadbackCaseEnabled(): boolean {
 export function stepDateNoQuestionEnabled(): boolean {
   return envFlag("STEP_DATE_NO_QUESTION_ENABLED");
 }
+
+/**
+ * The name question uses the first name the manager gave, and is never asked
+ * twice in the same words (QA S15, 27 Oct 2026; same flag in both apps): "I
+ * have an employee ivy …" then "Yes" got "Who is this form for? Tell me the
+ * employee's full name." twice. See `ai/first-name-ask.ts`. Off, as before.
+ */
+export function firstNameAskEnabled(): boolean {
+  return envFlag("FIRST_NAME_ASK_ENABLED");
+}
