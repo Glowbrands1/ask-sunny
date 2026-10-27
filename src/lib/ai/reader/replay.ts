@@ -96,7 +96,8 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
       throw new Error("record budget reached");
     }
     client ??= new Anthropic();
-    const started = Date.now();
+    // performance.now, not Date.now: the report freezes Date, so every recording said 0 ms.
+    const started = performance.now();
     const response = await client.messages.create(
       {
         model: input.model,
@@ -126,7 +127,7 @@ export function replayTransport(dir: string, mode: "replay" | "record") {
       cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
       cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
     };
-    const ms = Date.now() - started;
+    const ms = Math.round(performance.now() - started);
     const recording: Recording = { key, model: input.model, reply: block && block.type === "tool_use" ? block.input : null, usage, ms };
     mkdirSync(dir, { recursive: true });
     writeFileSync(file, `${JSON.stringify(recording, null, 2)}\n`);

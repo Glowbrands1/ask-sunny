@@ -52,7 +52,8 @@ export async function readFormRequest(input: {
   readonly turns: readonly ReaderTurn[];
   readonly context: CheckContext;
 }): Promise<ReaderResult | { readonly fallback: string }> {
-  const started = Date.now();
+  // performance.now, not Date.now: the variation report freezes Date, which made every recorded latency 0 ms.
+  const started = performance.now();
   try {
     const reply = await callClaudeToolTimed({
       model: CLAUDE_HAIKU_MODEL,
@@ -64,9 +65,9 @@ export async function readFormRequest(input: {
     });
     const reading = parseFormReading(reply.input);
     if (!reading) return { fallback: "unusable" };
-    return { checked: checkReading(reading, input.context), usage: reply.usage, ms: Date.now() - started };
+    return { checked: checkReading(reading, input.context), usage: reply.usage, ms: performance.now() - started };
   } catch {
-    return { fallback: Date.now() - started >= READER_TIMEOUT_MS ? "timeout" : "error" };
+    return { fallback: performance.now() - started >= READER_TIMEOUT_MS ? "timeout" : "error" };
   }
 }
 
