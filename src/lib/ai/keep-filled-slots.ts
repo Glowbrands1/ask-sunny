@@ -43,6 +43,7 @@ import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { withoutLevelAndStepClauses } from "./account-clauses";
 import { isAppLine, withoutAppLines } from "./app-sentences";
+import { withoutAsksToTheApp } from "./asks-to-the-app";
 import { GRAMMAR_ANSWER, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
@@ -591,17 +592,11 @@ function withDateLine(content: string, iso: string | null): string {
  * clean up my grammar and capitalizing on proper nouns?" was added to the
  * card's Observation, word for word, and never answered — on the Coaching and
  * Follow-Up Coaching cards, where FORM_EDIT_DATE_RULES (which reads such a
- * sentence) is not live. With the flag on, a sentence that asks the app for
- * something (`readSentenceEdit`) is no account, and a grammar request gets the
- * same answer the edit rules give.
+ * sentence) is not live. With the flag on, a grammar request, or an
+ * instruction asked as a question, is no account (here and in the draft's
+ * notes, `forms/instances/[id]/draft/route.ts`), and a grammar request gets
+ * the same answer the edit rules give.
  */
-function withoutAsksToTheApp(turn: string): string {
-  return turn
-    .split(/\n+|(?<=[.!?])\s+/)
-    .filter((sentence) => !readSentenceEdit(sentence))
-    .join(" ");
-}
-
 function withGrammarAnswered(content: string, turns: readonly string[]): string {
   const last = turns[turns.length - 1] ?? "";
   const asked = last.split(/\n+|(?<=[.!?])\s+/).some((sentence) => readSentenceEdit(sentence)?.kind === "grammar");
