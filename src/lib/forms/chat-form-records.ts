@@ -9,6 +9,7 @@ import { FOLLOW_UP_LABEL, followUpState } from "./follow-up";
 import { resolveFormsVisibility } from "./forms-visibility";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances, type InstanceRow } from "./instances";
+import { privateAwareLimit } from "./private-creators";
 
 /**
  * ============================================================================
@@ -337,17 +338,18 @@ export async function loadFormRecords(input: {
     }
 
     if (words.length > 0) {
+      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, the page itself.
       const rows = visibleInstances(
         formsActor,
-        await listInstances("all", MATCH_LIMIT, { ...filter, employeeNameWords: words }),
-      );
+        await listInstances("all", privateAwareLimit(MATCH_LIMIT), { ...filter, employeeNameWords: words }),
+      ).slice(0, MATCH_LIMIT);
       const matches = matchRowsToQuestion(rows, words);
       if (matches.named.length > 0 || matches.possible.length > 0) {
         return { block: renderFormRecordsBlock({ visibility, words, matches, recent: [], today, viewerId }) };
       }
     }
 
-    const recent = visibleInstances(formsActor, await listInstances("active", RECENT_LIMIT, filter));
+    const recent = visibleInstances(formsActor, await listInstances("active", privateAwareLimit(RECENT_LIMIT), filter)).slice(0, RECENT_LIMIT);
     /*
      * A question that names somebody nobody on file matches is reported as
      * "no form names them" — with the recent list left out, so the model

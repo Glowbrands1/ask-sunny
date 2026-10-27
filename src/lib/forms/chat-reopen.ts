@@ -10,6 +10,7 @@ import { formOpenedFor, openEditableDraft, openingLine, reasonRequiredReply } fr
 import { RevisionReasonRequiredError } from "./revision-chain";
 import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
+import { privateAwareLimit } from "./private-creators";
 import { extractEmployeeNames, samePerson } from "./proposal";
 import { draftMergeEnabled, formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
 
@@ -101,7 +102,8 @@ export async function reopenRequestedForm(input: {
     let visible: InstanceRow[];
     try {
       const actor = await authorizeForms(input.request, "view_form_monitoring");
-      visible = visibleInstances(actor, await listInstances("active", 200, instanceListFilterFor(actor)));
+      // PRIVATE_CREATOR_FORMS: over-read, then trim to the page; off, 200 itself.
+      visible = visibleInstances(actor, await listInstances("active", privateAwareLimit(200), instanceListFilterFor(actor))).slice(0, 200);
     } catch {
       return null;
     }

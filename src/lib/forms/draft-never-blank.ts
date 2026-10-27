@@ -1,11 +1,12 @@
 import { businessToday } from "@/lib/business-date";
-import { requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { jobTitleNotIncidentEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
 import { describesIncident } from "./corrective-action-intake";
 import { withoutPriorStepClauses } from "./form-date-answer";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
+import { JOB_TITLES } from "./proposal";
 import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrative-draft";
 
 /**
@@ -81,6 +82,22 @@ function personAndPlaceOnly(issue: string, employeeName: string | null): boolean
   return rest.length === 0 || (person.size > 0 && rest.every((word) => person.has(word.toLowerCase())));
 }
 
+/*
+ * JOB_TITLE_NOT_INCIDENT_ENABLED (manager, 26 Oct 2026: "create corrective
+ * action form for <name>, Salon Director" / "<name>, Salon Director"): the
+ * request's clause after the name was the job title, and the draft was filed
+ * "Observed: Salon Director." With the flag on a clause that is only a job
+ * title is no issue, so nothing is written for an incident nobody gave. Off,
+ * as before.
+ */
+function onlyAJobTitle(issue: string): boolean {
+  if (!jobTitleNotIncidentEnabled()) return false;
+  const text = issue.replace(/^(?:an?|the|our|my)\s+/i, "").trim();
+  if (JOB_TITLES.some((entry) => entry.pattern.test(text) && text.replace(entry.pattern, "").trim() === "")) return true;
+  // "tan consultant", "front desk lead": up to three words ending on a title word.
+  return /^(?:[a-z]+\s+){0,2}(?:manager|director|consultant|assistant|lead|supervisor|trainer|associate|specialist|key\s?holder|stylist|cashier|receptionist)s?$/i.test(text);
+}
+
 function issueFromRequest(text: string, employeeName: string | null): string | null {
   const person = (employeeName ?? "").trim().toLowerCase();
   for (const turn of [...turnsOf(text)].reverse()) {
@@ -98,6 +115,7 @@ function issueFromRequest(text: string, employeeName: string | null): string | n
       if (issue.length < 3 || issue.length > 80 || NOT_AN_ISSUE.test(issue)) continue;
       if (person && (lower === person || lower.startsWith(`${person} `))) continue;
       if (personAndPlaceOnly(issue, employeeName)) continue;
+      if (onlyAJobTitle(issue)) continue;
       found = issue;
     }
     if (found) return found;
