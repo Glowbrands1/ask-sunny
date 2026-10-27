@@ -2,9 +2,10 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
-import { intentExtractionEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
+import { intentExtractionEnabled, lastFirstNameReadEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
+import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-policy-manual";
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
@@ -20,6 +21,7 @@ import {
   INTENT_TOOL_INPUT_SCHEMA,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
+import { lastFirstReading } from "./reader/last-first";
 import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
 import type { AskRequest, AskResponse } from "./types";
 
@@ -73,6 +75,21 @@ export async function applyIntentExtraction(input: {
       ],
     }).catch(() => null);
 
+    // LAST_FIRST_NAME_READ_ENABLED: "Marlowe, Quinn" is read by the roster checks alone, no model.
+    const checked =
+      lastFirstNameReadEnabled() && readsAForm(input.request, saved)
+        ? lastFirstReading({
+            managerTurns: [
+              ...requestScopedHistory(input.request.history, input.request.question).filter((turn) => turn.role === "user").map((turn) => turn.content),
+              input.request.question,
+            ],
+            people,
+            locations: salons,
+            headings: manual.headings,
+            today: input.request.context.todayIso,
+          })
+        : null;
+
     // REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" is a prior step, not the incident date.
     const fixed = remapIncidentFixEnabled();
     const decision = decideIntentTurn({
@@ -96,6 +113,7 @@ export async function applyIntentExtraction(input: {
           input.request.openForm ||
           input.request.activeFormInstanceId,
       ),
+      checked,
     });
     await writeSaved(input.actor.subject, input.request.conversationId, decision.state);
     updateChatTrace({
@@ -108,6 +126,7 @@ export async function applyIntentExtraction(input: {
         policyPage: decision.state.policyPage,
         templateKey: decision.state.templateKey,
         pendingConfirmation: decision.state.pendingConfirmation ?? null,
+        ...(decision.reader ? { lastFirst: decision.reader } : {}),
       },
     });
     // A form turn keeps its card. A date, a salon, or a warning question used
@@ -210,4 +229,10 @@ async function loadTemplates(): Promise<{ key: string; name: string }[]> {
   } catch {
     return [];
   }
+}
+
+/** A turn that files a form, or answers about one already open. */
+function readsAForm(request: AskRequest, saved: { templateKey?: string | null } | null): boolean {
+  if (saved?.templateKey || request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId) return true;
+  return detectTemplateIntent(request.question).kind !== "none";
 }
