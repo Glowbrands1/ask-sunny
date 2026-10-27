@@ -1067,6 +1067,18 @@ export function requestLineAccountEnabled(): boolean {
 }
 
 /**
+ * With no employee named, the chat asks one plain question — "Who is this
+ * form for? Tell me the employee's full name." — never a list of details
+ * (Pau, 26 Oct 2026; same flag in both apps). This covers the Corrective
+ * Action intake ("ca", "blank corrective action form"); the coaching card's
+ * list in the protected `ai/form-proposal.ts` follows on Pau's approval. Off,
+ * as before.
+ */
+export function nameQuestionOnlyEnabled(): boolean {
+  return envFlag("NAME_QUESTION_ONLY_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
