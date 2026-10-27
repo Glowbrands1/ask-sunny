@@ -1068,6 +1068,10 @@ QA P1: "create corrective action form for <name>, <job title>" / "<name>, <job t
 
 QA SF4: "… for opening salon late on 9-28-26" / "note a verbal ca was given on 9-1-26". Here the step's 9/1 blanked the card's Date and the form was dated today; in Ask Bubbles it dated the card and the form 9/1. With the flag on, a date in a sentence that says a step was given, issued, received or signed is not an incident date, in both apps.
 
+## 27 Oct 2026: the AI reads the form request, the code checks it — both apps (AI_READS_CODE_CHECKS_ENABLED)
+
+Pau's decision, 27 Oct 2026. `AI_READS_CODE_CHECKS_ENABLED` defaults off, same name in both apps. On, one extra Haiku call per form turn (`ai/reader/read.ts`, 2 s limit, no retry) returns each field with the manager's own words it came from; `ai/reader/check.ts` keeps a field only when that quote is in the manager's turns and the roster, the date readers, the location list or the manual agree; `ai/reader/merge.ts` lets a checked field fill only what today's readers left open (no value, a numbered list, a name nobody on the roster has, a prior step's date), never replace what they settled. The Create check (`proposal-currency.ts`) takes "Marlowe" or "quinn" as part of the card's "Quinn Marlowe". A failed, slow or unusable reply runs the turn on today's readers. No protected file is edited. Tests: `src/lib/ai/reader/check.test.ts`, `src/app/api/chat/ai-reads-code-checks-e2e.test.ts`.
+
 ## 27 Oct 2026: "$25" after the amount question is read back (AMOUNT_ANSWER_SAVED_ENABLED, Sunny-only)
 
 Not needed in the sibling app: the same turns through its harness ("yes payroll deduct" then "$25") read back "**Payroll deduction amount:** $25".

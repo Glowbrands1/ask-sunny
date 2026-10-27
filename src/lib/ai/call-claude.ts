@@ -384,3 +384,67 @@ export async function callClaudeTool(input: {
     throw modelUnavailable(error);
   }
 }
+
+/**
+ * AI_READS_CODE_CHECKS_ENABLED: `callClaudeTool` with a hard time limit and
+ * the token usage, for a caller that falls back to its own readers when the
+ * model is slow. No retry: a retry would outlive the limit. Same error
+ * contract — nothing from the SDK escapes.
+ */
+export async function callClaudeToolTimed(input: Parameters<typeof callClaudeTool>[0] & { readonly timeoutMs: number }): Promise<{
+  readonly input: unknown;
+  readonly usage: { readonly inputTokens: number; readonly outputTokens: number; readonly cacheReadTokens: number; readonly cacheWriteTokens: number };
+}> {
+  const client = getAnthropicClient();
+  const messages = input.messages.filter((message) => message.content.trim() !== "");
+  try {
+    const response = await client.messages.create(
+      {
+        model: input.model,
+        max_tokens: input.maxTokens,
+        system: cachedSystem(input.system),
+        tools: [
+          {
+            name: input.tool.name,
+            description: input.tool.description,
+            input_schema: {
+              type: "object" as const,
+              properties: input.tool.input_schema.properties ?? {},
+              required: input.tool.input_schema.required ? [...input.tool.input_schema.required] : undefined,
+              additionalProperties: input.tool.input_schema.additionalProperties,
+            },
+          },
+        ],
+        tool_choice: { type: "tool" as const, name: input.tool.name },
+        messages: messages.map((message) => ({ role: message.role, content: message.content })),
+      },
+      { timeout: input.timeoutMs, maxRetries: 0 },
+    );
+    const block = response.content.find((item) => item.type === "tool_use");
+    if (!block || block.type !== "tool_use") {
+      throw new AiError("model_failed", "Sunny could not reach the language model. No answer was generated.", 502);
+    }
+    const usage = response.usage;
+    return {
+      input: block.input,
+      usage: {
+        inputTokens: usage?.input_tokens ?? 0,
+        outputTokens: usage?.output_tokens ?? 0,
+        cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: usage?.cache_creation_input_tokens ?? 0,
+      },
+    };
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    if (error instanceof MissingConfigurationError) throw error;
+    // The reader falls back to today's readers; this says why (status and type only, never the request).
+    console.warn(`ai.reader: the model call failed (${describeCallError(error)}); the turn runs on today's readers`);
+    throw modelUnavailable(error);
+  }
+}
+
+function describeCallError(error: unknown): string {
+  const record = (error && typeof error === "object" ? error : {}) as { status?: unknown; name?: unknown; error?: { type?: unknown } };
+  const parts = [typeof record.status === "number" ? `HTTP ${record.status}` : null, typeof record.error?.type === "string" ? record.error.type : typeof record.name === "string" ? record.name : null];
+  return parts.filter(Boolean).join(" ") || "unknown error";
+}

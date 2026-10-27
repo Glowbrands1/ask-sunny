@@ -1336,6 +1336,18 @@ export function firstNameAskEnabled(): boolean {
 }
 
 /**
+ * The AI reads the form request, the code checks it (Pau, 27 Oct 2026; same
+ * flag in both apps). One extra Haiku call per form turn returns each field
+ * with the manager's own words it came from; a field is kept only when its
+ * quote, the roster, the date readers and the manual agree, and it fills only
+ * what today's readers left open, never what they settled. A failed or slow
+ * call leaves the turn on today's readers. See `ai/reader/`. Off, as before.
+ */
+export function aiReadsCodeChecksEnabled(): boolean {
+  return envFlag("AI_READS_CODE_CHECKS_ENABLED");
+}
+
+/**
  * A bare "$25" right after the payroll amount question is read back and put on
  * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it
  * from the bare-figure reader. See `ai/amount-answer-saved.ts`. Off, as before.

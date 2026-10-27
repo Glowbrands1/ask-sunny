@@ -1,0 +1,43 @@
+{
+  "key": "a16a90bab13fef4b83932ed4ed0b9daddbac7fd6922d513d9f95ad7578e2c2e0",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Quinn Marlowe",
+      "evidence": "do verbal for Quinn Marlowe at kearney"
+    },
+    "location": {
+      "value": "kearney",
+      "evidence": "do verbal for Quinn Marlowe at kearney"
+    },
+    "jobTitle": null,
+    "incident": {
+      "value": "Came into the salon while not scheduled to work to show her team her new puppy; stayed in the salon 45 min",
+      "evidence": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy. quinn was in the salon 45 min"
+    },
+    "incidentDate": {
+      "value": "2026-10-22",
+      "evidence": "on 10-22-26 quinn was not scheduled to work and came into the salon to show her team her new puppy"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "do verbal for Quinn Marlowe at kearney"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "payroll deduct does not apply"
+    },
+    "payrollAmount": null,
+    "policyHeading": {
+      "value": "Visitors in the Workplace",
+      "evidence": "jba manual 11-1-25"
+    }
+  },
+  "usage": {
+    "inputTokens": 4680,
+    "outputTokens": 600,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2154
+}

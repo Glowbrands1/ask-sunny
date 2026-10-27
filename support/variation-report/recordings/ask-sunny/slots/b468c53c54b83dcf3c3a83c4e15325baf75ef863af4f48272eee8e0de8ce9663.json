@@ -1,0 +1,23 @@
+{
+  "key": "b468c53c54b83dcf3c3a83c4e15325baf75ef863af4f48272eee8e0de8ce9663",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "quinn marlowe",
+    "salon": "manhattan",
+    "title": "tan consutant",
+    "incidentType": "opening salon late",
+    "incidentDate": "9-28-26",
+    "payrollAmount": null,
+    "warningLevel": "written",
+    "formType": "CA form",
+    "formTurn": true,
+    "policyHeading": "Late Opening"
+  },
+  "usage": {
+    "inputTokens": 2786,
+    "outputTokens": 213,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

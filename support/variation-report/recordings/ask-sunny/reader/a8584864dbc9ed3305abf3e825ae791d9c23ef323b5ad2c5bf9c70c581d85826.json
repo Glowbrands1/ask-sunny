@@ -1,0 +1,54 @@
+{
+  "key": "a8584864dbc9ed3305abf3e825ae791d9c23ef323b5ad2c5bf9c70c581d85826",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "Quinn Marlowe",
+      "evidence": "Quinn Marlowe toay under performance"
+    },
+    "location": null,
+    "jobTitle": {
+      "value": "Tanning Consultant",
+      "evidence": "Tanning Consultant"
+    },
+    "incident": {
+      "value": "Under performance for September: 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa%",
+      "evidence": "under performance for September 270 tans below in PPTA, UPTA, LPSVA, CC% and Spa%"
+    },
+    "incidentDate": null,
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "verbal warning received"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "not payroll deductible"
+    },
+    "payrollAmount": null,
+    "policyHeading": null,
+    "priorSteps": [
+      {
+        "kind": "coaching",
+        "date": "2026-09-08",
+        "evidence": "Open Ended Questions Coaching 9/8/2026"
+      },
+      {
+        "kind": "coaching",
+        "date": "2026-09-15",
+        "evidence": "Focus Item Coaching 9/15/2026"
+      },
+      {
+        "kind": "coaching",
+        "date": "2026-09-25",
+        "evidence": "New Product Coaching 9/25/2026"
+      }
+    ]
+  },
+  "usage": {
+    "inputTokens": 4710,
+    "outputTokens": 600,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 2232
+}
