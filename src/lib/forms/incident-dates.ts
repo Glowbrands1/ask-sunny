@@ -15,6 +15,7 @@ import {
 } from "./form-date-answer";
 import { incidentOnly, incidentOnlyOn } from "./form-date-incident-only";
 import { priorSentenceFixFor } from "./prior-sentence-scope";
+import { stepSentenceDates } from "./step-sentence-dates";
 import { correctsTheEmployee } from "./proposal";
 
 /**
@@ -354,7 +355,11 @@ export function statedFormDate(conversation: readonly Turn[], today: string): St
   const text = users.filter((turn) => !change(turn)).join("\n");
   const explicit = explicitFormDate(yearlessWrittenOut(text, today), today);
   if (explicit) return { iso: explicit, candidates: [], question: null };
-  const dates = [...new Set(incidentOnly(text, today, statedIncidentDates(text, today)).map((found) => found.iso))].sort();
+  // STEP_DATE_NOT_INCIDENT_ENABLED: "a verbal ca was given on 9-1-26" dates a step, not the incident.
+  const steps = stepSentenceDates(text, today);
+  const dates = [...new Set(incidentOnly(text, today, statedIncidentDates(text, today)).map((found) => found.iso))]
+    .filter((iso) => !steps.has(iso))
+    .sort();
   if (dates.length === 0) return null;
   if (dates.length === 1) return { iso: dates[0]!, candidates: [], question: null };
   const written = said.map((turn) => (turn.role === "user" ? { ...turn, content: yearlessWrittenOut(String(turn.content), today) } : turn));

@@ -1193,3 +1193,13 @@ export function caAsksWhatHappenedEnabled(): boolean {
   return envFlag("CA_ASKS_WHAT_HAPPENED_ENABLED");
 }
 
+
+/**
+ * A step's date is not the incident date (QA SF4, 27 Oct 2026; same flag in
+ * both apps): "for opening salon late on 9-28-26" / "note a verbal ca was given
+ * on 9-1-26" left the card's Date blank and dated the form today. See
+ * `forms/step-sentence-dates.ts`. Off, as before.
+ */
+export function stepDateNotIncidentEnabled(): boolean {
+  return envFlag("STEP_DATE_NOT_INCIDENT_ENABLED");
+}
