@@ -1391,3 +1391,21 @@ export function monthlyBudgetGuardEnabled(): boolean {
 export function ordinalDateInDraftEnabled(): boolean {
   return envFlag("ORDINAL_DATE_IN_DRAFT_ENABLED");
 }
+
+/**
+ * The date reader also reads "last tuesday", "this past monday", "on tuesday",
+ * "yesterday" and "today" from the business date (QA, 27 Oct 2026; same flag
+ * in both apps). See `forms/relative-dates.ts`. Off, as before.
+ */
+export function relativeDateReaderEnabled(): boolean {
+  return envFlag("RELATIVE_DATE_READER_ENABLED");
+}
+
+/**
+ * A card with no date says which of the manager's words it could not read as
+ * one and asks for the date (QA, 27 Oct 2026; same flag in both apps). See
+ * `ai/unread-date-ask.ts`. Off, as before.
+ */
+export function unreadDateAskEnabled(): boolean {
+  return envFlag("UNREAD_DATE_ASK_ENABLED");
+}
