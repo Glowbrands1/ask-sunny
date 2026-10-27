@@ -454,7 +454,7 @@ const LIVE_SINCE = [
 const JT = "JOB_TITLE_FROM_WORDS_ENABLED";
 
 function useProduction(on: boolean) {
-  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, JT]) {
+  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, JT, "JOB_TITLE_APPOSITION_ENABLED"]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
@@ -492,7 +492,8 @@ describe(`${JT} on`, () => {
   });
 
   // QA S12: the title set off by a comma after the name.
-  it("S12: \"<name>, tan consultant at manhattan\" is the Job Title", async () => {
+  it("S12, JOB_TITLE_APPOSITION on: \"<name>, tan consultant at manhattan\" is the Job Title", async () => {
+    process.env.JOB_TITLE_APPOSITION_ENABLED = "true";
     expect(
       await titled([
         "create a CA form for rory vance, tan consultant at manhattan, for opening salon late on 9-28-26",
@@ -508,6 +509,16 @@ describe(`${JT} on`, () => {
 
 describe(`${JT} off: as main`, () => {
   beforeEach(() => useProduction(false));
+
+  it("S12 with JOB_TITLE_FROM_WORDS on, JOB_TITLE_APPOSITION off: the Job Title stays blank", async () => {
+    process.env[JT] = "true";
+    expect(
+      await titled([
+        "create a CA form for rory vance, tan consultant at manhattan, for opening salon late on 9-28-26",
+        "this should be a written and note a verbal ca was given on 9-1-26",
+      ]),
+    ).toBeNull();
+  });
 
   it("the typed title is lost", async () => {
     expect(await titled(exit("makery associate"))).toBeNull();

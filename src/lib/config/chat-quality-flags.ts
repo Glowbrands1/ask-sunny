@@ -1222,3 +1222,24 @@ export function stepDateNotIncidentEnabled(): boolean {
 export function warningLevelAndClauseEnabled(): boolean {
   return envFlag("WARNING_LEVEL_AND_CLAUSE_ENABLED");
 }
+
+/**
+ * The title set off by a comma right after the name is the typed title (QA
+ * S12, 27 Oct 2026; same flag in both apps): "<name>, tan consultant at
+ * manhattan". On top of JOB_TITLE_FROM_WORDS_ENABLED, which fills an empty Job
+ * Title only. See `ai/job-title-from-words.ts`. Off, as before.
+ */
+export function jobTitleAppositionEnabled(): boolean {
+  return envFlag("JOB_TITLE_APPOSITION_ENABLED");
+}
+
+/**
+ * The card's "Follow-up:" read-back lists only a date the manager gave a
+ * follow-up word to (QA SF9, 27 Oct 2026; same flag in both apps): "jba manual
+ * 11-1-25", a corrected prior coaching date, was read back as "Follow-up:
+ * 11/1/2025" though the draft has no follow-up. See `ai/form-card-slots.ts`.
+ * Off, as before.
+ */
+export function followUpReadbackCueEnabled(): boolean {
+  return envFlag("FOLLOW_UP_READBACK_CUE_ENABLED");
+}
