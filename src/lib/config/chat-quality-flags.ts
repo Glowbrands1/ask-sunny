@@ -1382,6 +1382,16 @@ export function ordinalDateInDraftEnabled(): boolean {
 }
 
 /**
+ * The draft's policy search reads the manager's account only, never a payroll
+ * or amount answer, and the drafting rules forbid an opening, shift or role the
+ * manager did not write (QA, 27 Oct 2026; same flag in both apps). See
+ * `forms/account-only-policy-query.ts`. Off, as before.
+ */
+export function accountOnlyPolicyQueryEnabled(): boolean {
+  return envFlag("ACCOUNT_ONLY_POLICY_QUERY_ENABLED");
+}
+
+/**
  * The date reader also reads "last tuesday", "this past monday", "on tuesday",
  * "yesterday" and "today" from the business date (QA, 27 Oct 2026; same flag
  * in both apps). See `forms/relative-dates.ts`. Off, as before.
