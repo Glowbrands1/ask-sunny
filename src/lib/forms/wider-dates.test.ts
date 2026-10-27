@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { withWiderDates } from "./wider-dates";
+import { withWiderDates, type FoundDate } from "./wider-dates";
 
 /** WIDER_DATE_READER_ENABLED (QA, 27 Oct 2026). Today is 27 Oct 2026. */
 const FLAG = "WIDER_DATE_READER_ENABLED";
 const TODAY = "2026-10-27";
-const read = (text: string) => withWiderDates(text, TODAY, []).map((found) => found.iso);
+const none: FoundDate[] = [];
+const read = (text: string) => withWiderDates(text, TODAY, none).map((found) => found.iso);
 
 afterEach(() => {
   delete process.env[FLAG];
