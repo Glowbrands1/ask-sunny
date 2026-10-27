@@ -1097,6 +1097,16 @@ export function exitFulfilledIsLastDayEnabled(): boolean {
 }
 
 /**
+ * A Prior actions row dated after today is never kept (QA LS-B11 in the
+ * sibling app, 26 Oct 2026; same flag in both apps): a typo "11-1-26" the
+ * manager corrected to "11-1-25" left "Coaching — signed 11/01/2026" on the
+ * draft. See `groundPriorActions` in `forms/prior-actions.ts`. Off, as before.
+ */
+export function futurePriorRowDropEnabled(): boolean {
+  return envFlag("FUTURE_PRIOR_ROW_DROP_ENABLED");
+}
+
+/**
  * A job title is never the incident (manager, 26 Oct 2026): "create corrective
  * action form for <name>, Salon Director" filed "Observed: Salon Director."
  * With the flag on the manager's-words fallback skips a clause that is only a

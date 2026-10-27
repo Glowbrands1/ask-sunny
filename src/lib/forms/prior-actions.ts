@@ -1,4 +1,5 @@
 import { priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled, priorStepSentenceEnabled } from "@/lib/config/chat-quality-flags";
+import { futurePriorRowDropEnabled, priorActionsParseEnabled, priorRowNotOnIncidentDateEnabled } from "@/lib/config/chat-quality-flags";
 
 import { statesFirstOccurrence } from "./corrective-action-intake";
 import { correctedDates, datesInText, managerDatesForDraft, priorSteps } from "./form-date-answer";
@@ -281,6 +282,17 @@ export function groundPriorActions(input: {
       if (line === "") return false;
       const dates = datesInText(line, input.today);
       if (dates.some((found) => !stated.has(found.iso))) {
+        removed.push(line);
+        return false;
+      }
+      /*
+       * FUTURE_PRIOR_ROW_DROP_ENABLED (QA LS-B11 in the sibling app, 26 Oct 2026: "previous
+       * coaching jba manual 11-1-26", corrected next turn to "jba manual
+       * 11-1-25"): the draft kept "Coaching — signed 11/01/2026" beside the
+       * corrected row. An earlier step is never after today, so with the flag
+       * on such a row is removed. Off, as before.
+       */
+      if (futurePriorRowDropEnabled() && dates.length > 0 && dates.every((found) => found.iso > input.today)) {
         removed.push(line);
         return false;
       }

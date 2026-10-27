@@ -95,6 +95,7 @@ import {
   notDeductibleReadEnabled,
   priorStepSentenceEnabled,
   exitFulfilledIsLastDayEnabled,
+  futurePriorRowDropEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -211,6 +212,7 @@ const NEW_FLAGS = [
   "NOT_DEDUCTIBLE_READ_ENABLED",
   "PRIOR_STEP_SENTENCE_ENABLED",
   "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
+  "FUTURE_PRIOR_ROW_DROP_ENABLED",
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
@@ -423,6 +425,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(notDeductibleReadEnabled()).toBe(false);
     expect(priorStepSentenceEnabled()).toBe(false);
     expect(exitFulfilledIsLastDayEnabled()).toBe(false);
+    expect(futurePriorRowDropEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 
