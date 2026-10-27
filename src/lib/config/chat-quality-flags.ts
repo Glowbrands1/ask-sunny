@@ -1184,6 +1184,16 @@ export function animalAnywhereEnabled(): boolean {
 }
 
 /**
+ * The job title the manager typed is the card's Job Title, as typed (ported
+ * from Ask Bubbles, QA item 3, 27 Oct 2026; same flag in both apps): "<name>
+ * was a <title> at <salon> location" left Job Title empty when the title is
+ * not one of this company's. See `ai/job-title-from-words.ts`. Off, as before.
+ */
+export function jobTitleFromWordsEnabled(): boolean {
+  return envFlag("JOB_TITLE_FROM_WORDS_ENABLED");
+}
+
+/**
  * A Corrective Action card with no account asks what happened (QA P1, 26 Oct
  * 2026; same flag in both apps): "create corrective action form for <name>,
  * Salon Director" drafted with no account and no question. See
@@ -1192,7 +1202,6 @@ export function animalAnywhereEnabled(): boolean {
 export function caAsksWhatHappenedEnabled(): boolean {
   return envFlag("CA_ASKS_WHAT_HAPPENED_ENABLED");
 }
-
 
 /**
  * A step's date is not the incident date (QA SF4, 27 Oct 2026; same flag in
