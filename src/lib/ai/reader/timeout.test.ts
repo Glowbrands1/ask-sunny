@@ -28,17 +28,16 @@ describe("a stalled reader", () => {
     expect(create.mock.calls[0]![1]).toEqual({ timeout: 2_000, maxRetries: 0 });
   });
 
-  it("falls back as a timeout when the call stalls past 2 s, even with Date frozen", async () => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "performance"] });
+  it("falls back as a timeout when the call stalls past 2 s, with Date frozen as the report freezes it", async () => {
+    // The report fakes only Date, so the 2 s wait is real; Date.now would read 0 ms elapsed and class this "error".
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-27T15:30:00Z"));
     create.mockImplementation((_body: unknown, options: { timeout: number }) => new Promise((_resolve, reject) => setTimeout(() => reject(new Error("timed out")), options.timeout)));
-    const reading = readFormRequest({ turns, context });
-    await vi.advanceTimersByTimeAsync(READER_TIMEOUT_MS);
-    expect(await reading).toEqual({ fallback: "timeout" });
-  });
+    expect(await readFormRequest({ turns, context })).toEqual({ fallback: "timeout" });
+  }, 10_000);
 
   it("falls back as an error when the call fails at once", async () => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "performance"] });
+    vi.useFakeTimers({ toFake: ["Date"] });
     create.mockRejectedValue(new Error("boom"));
     expect(await readFormRequest({ turns, context })).toEqual({ fallback: "error" });
   });
