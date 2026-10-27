@@ -1315,3 +1315,12 @@ export function jobTitleReadbackCaseEnabled(): boolean {
 export function stepDateNoQuestionEnabled(): boolean {
   return envFlag("STEP_DATE_NO_QUESTION_ENABLED");
 }
+
+/**
+ * The date reader also reads "2 october", "the 2nd of october", "on 10.2" and
+ * "on the 2nd" (QA, 27 Oct 2026; same flag in both apps). See
+ * `forms/wider-dates.ts`. Off, as before.
+ */
+export function widerDateReaderEnabled(): boolean {
+  return envFlag("WIDER_DATE_READER_ENABLED");
+}
