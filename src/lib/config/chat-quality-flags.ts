@@ -1254,3 +1254,24 @@ export function followUpReadbackCueEnabled(): boolean {
 export function exitReadbackJobTitleEnabled(): boolean {
   return envFlag("EXIT_READBACK_JOB_TITLE_ENABLED");
 }
+
+/**
+ * The Follow-Up Coaching Form's policy citation goes with the Original
+ * Expectation (QA P5, 27 Oct 2026; same flag in both apps): it went into
+ * Follow-Up Observation, which stays blank until the follow-up has happened,
+ * so that field read "Policy reference: …". See `ai/policy-citation-fields.ts`.
+ * Off, as before.
+ */
+export function followUpCitationFieldEnabled(): boolean {
+  return envFlag("FOLLOW_UP_CITATION_FIELD_ENABLED");
+}
+
+/**
+ * A request to the app ("can you clean up my grammar and capitalizing on proper
+ * nouns?") is not the account, and a grammar request is answered (QA P5, 27 Oct
+ * 2026; same flag in both apps): it was added to the card's Observation word
+ * for word and never answered. See `ai/keep-filled-slots.ts`. Off, as before.
+ */
+export function grammarAskNotAccountEnabled(): boolean {
+  return envFlag("GRAMMAR_ASK_NOT_ACCOUNT_ENABLED");
+}
