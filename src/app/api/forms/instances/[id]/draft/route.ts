@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { accountOnlyRules, policyQueryNotes, withoutInventedDuty } from "@/lib/forms/account-only-policy-query";
+import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
 import {
@@ -138,7 +138,7 @@ import {
   withConductOffense,
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
-import { priorStepDate } from "@/lib/forms/form-date-answer";
+import { datesInText, priorStepDate } from "@/lib/forms/form-date-answer";
 import {
   SPECIFIC_SECTION_BOXES,
   describedManualChoices,
@@ -1107,11 +1107,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      */
     // The Corrective Action Form's Action Plan is built below, never taken from the model.
     if (fixedPlan && drafted.values) delete drafted.values[fixedPlan.key];
-    // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "scheduled to open" nobody wrote is the manager's words instead.
+    // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "scheduled to open" nobody wrote is the manager's words, dated.
     if (drafted.values) {
-      drafted.values = withoutInventedDuty(drafted.values, narrativeKeys, notes, () =>
-        managerWordsObservation(notes, loaded.instance.employeeName),
-      );
+      drafted.values = withoutInventedDetail(drafted.values, narrativeKeys, {
+        notes,
+        managerWords: () => managerWordsObservation(notes, loaded.instance.employeeName),
+        formDate: resolvedFormDate?.long ?? null,
+        employeeName: loaded.instance.employeeName,
+        datesIn: (text) => datesInText(text, businessToday()),
+      });
     }
     const cleaned = stripPlaceholdersFromDraft(drafted.values ?? {});
 

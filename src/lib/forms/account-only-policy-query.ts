@@ -17,11 +17,11 @@ import { EXPECTATION_LABEL, GOING_FORWARD_LABEL, OBSERVED_LABEL } from "./narrat
  *   payroll question or gives the amount ("yes payroll deduct", "$25", "i
  *   dont know the amount") is left out of the search, never out of the notes;
  *
- *   the drafting rules say the Observed and Going Forward state no role,
- *   shift, opening or closing duty the manager did not write;
+ *   the drafting rules keep full sentences and the policy's expectations, and
+ *   forbid any fact about what happened the manager did not write;
  *
- *   after the model, a sentence that still states an opening or closing duty
- *   the manager never wrote is taken out (`withoutInventedDuty`).
+ *   after the model, a sentence that still adds a detail the manager never
+ *   wrote is taken out (`withoutInventedDetail`).
  */
 const ANSWER_WORD =
   /^(?:yes|yeah|yep|yup|no|nope|pay|roll|payroll|payrol|ldeduct|deduct|deduction|deductions|deducted|applies|applicable|is|it|the|amount|amt|i|dont|don't|do|not|know|sure|of|idk|unsure|\$?\d[\d,]*(?:\.\d{2})?|dollars?)$/i;
@@ -49,7 +49,7 @@ export function policyQueryNotes(notes: string): string {
 }
 
 export const ACCOUNT_ONLY_RULES: readonly string[] = [
-  "The Observed and Going Forward sections state only what the manager wrote. Never add a role, a shift, an opening or closing duty, or any other detail the manager did not write — a policy quoted below is not part of their account.",
+  "Write full, professional sentences in the three sections, and state the expectations and consequences the approved policy gives. But add NO fact about what happened that the manager did not write: no role or duty (opening, closing, cashier), no shift or schedule, no time of day, no customer or business impact, no one who noticed, no count of times, no place beyond the one given. A policy quoted below is not part of their account. \"She was late on the 2nd\" is written as \"<name> was late to work on <date>\", never \"late to open the location\" or \"scheduled to open\".",
 ];
 
 /** The drafting rules this flag adds. Off, none. */
@@ -57,61 +57,117 @@ export function accountOnlyRules(): readonly string[] {
   return accountOnlyPolicyQueryEnabled() ? ACCOUNT_ONLY_RULES : [];
 }
 
-const DUTY = /\b(?:open|opens|opened|opening|close|closes|closed|closing)\b/i;
+/**
+ * Details about WHAT HAPPENED that a draft may not add (QA and Pau, 27 Oct
+ * 2026). The draft still writes full sentences, the three paragraphs, and the
+ * expectations and consequences the manual states; it never adds a role or
+ * duty, a shift or schedule, a clock time, or — in the Observed — a customer,
+ * who noticed, or how many times. A sentence is touched only when it uses one
+ * of these and the manager's own turns never did. One list, so it can grow.
+ */
+const ANY_SECTION: readonly RegExp[] = [
+  /\b(?:open|opens|opened|opening)\b/i,
+  /\b(?:close|closes|closed|closing)\b/i,
+  /\b(?:cashier|register|till)\b/i,
+  /\b(?:morning|evening|night|overnight|mid|double)\s+shifts?\b/i,
+  /\bscheduled\s+to\b/i,
+  /\b\d{1,2}(?::\d{2})?\s?(?:am|pm|a\.m\.|p\.m\.)(?![a-z])/i,
+];
+const OBSERVED_ONLY: readonly RegExp[] = [
+  /\b(?:customers?|clients?|guests?)\b/i,
+  /\bnoticed\b/i,
+  /\bagain\b/i,
+  /\b(?:\d+|two|three|four|five|several|multiple|many)\s+times\b/i,
+];
+
+export const DRAFT_DETAIL_PATTERNS = { anySection: ANY_SECTION, observedOnly: OBSERVED_ONLY };
+
 const LABELS = [OBSERVED_LABEL, EXPECTATION_LABEL, GOING_FORWARD_LABEL];
 
+export interface InventedDetailContext {
+  /** The manager's own turns, joined. */
+  readonly notes: string;
+  /** "Observed:\n<their words>." — `managerWordsObservation`. */
+  readonly managerWords: () => string | null;
+  /** The form's resolved date in words ("October 2, 2026"), when known. */
+  readonly formDate: string | null;
+  /** The employee's name, for "Quinn was late …" instead of "She was late …". */
+  readonly employeeName: string | null;
+  /** The manager's dates in their clause, as `{ index, end }` spans. */
+  readonly datesIn: (text: string) => readonly { index: number; end: number }[];
+}
+
+function invented(sentence: string, notes: string, observed: boolean): boolean {
+  const patterns = observed ? [...ANY_SECTION, ...OBSERVED_ONLY] : ANY_SECTION;
+  return patterns.some((pattern) => pattern.test(sentence) && !pattern.test(notes));
+}
+
 /**
- * After the model: a narrative sentence that states an opening or closing duty
- * the manager never wrote is taken out. The Observed sentence is replaced by
- * the manager's own clause (`managerWords`, "Observed:\n<their words>."); an
- * Expectation or Going Forward sentence is dropped, and a section left empty
- * loses its label. Notes that say open or close themselves are left alone.
- * Off, the values as given.
+ * After the model: a narrative sentence that adds a detail the manager never
+ * wrote is taken out. An Observed sentence is rewritten from the manager's own
+ * clause, in a full sentence with the employee's name and the form's resolved
+ * date ("Quinn was late on October 2, 2026."); an Expectation or Going
+ * Forward sentence is dropped and every other sentence kept as written; a
+ * section left empty loses its label. Off, the values as given.
  */
-export function withoutInventedDuty(
+export function withoutInventedDetail(
   values: Record<string, string>,
   keys: ReadonlySet<string>,
-  notes: string,
-  managerWords: () => string | null,
+  context: InventedDetailContext,
 ): Record<string, string> {
-  if (!accountOnlyPolicyQueryEnabled() || DUTY.test(notes)) return values;
+  if (!accountOnlyPolicyQueryEnabled()) return values;
   const next: Record<string, string> = { ...values };
   for (const [key, value] of Object.entries(values)) {
-    if (!keys.has(key) || typeof value !== "string" || !DUTY.test(value)) continue;
-    next[key] = rewritten(value, managerWords);
+    if (!keys.has(key) || typeof value !== "string") continue;
+    next[key] = rewritten(value, context);
   }
   return next;
 }
 
-function rewritten(value: string, managerWords: () => string | null): string {
+function rewritten(value: string, context: InventedDetailContext): string {
   const sections: { label: string | null; lines: string[] }[] = [];
   for (const line of value.split("\n")) {
     const label = LABELS.find((name) => line.trim() === name);
     if (label || sections.length === 0) sections.push({ label: label ?? null, lines: [] });
     if (!label) sections[sections.length - 1]!.lines.push(line);
   }
+  let changed = false;
   const out: string[] = [];
   for (const section of sections) {
+    const observed = section.label === OBSERVED_LABEL;
     const body = section.lines.join("\n").trim();
-    let kept = body;
-    if (DUTY.test(body)) {
-      if (section.label === OBSERVED_LABEL) {
-        const words = managerWords()?.replace(OBSERVED_LABEL, "").trim();
-        kept = words || withoutDutySentences(body);
-      } else {
-        kept = withoutDutySentences(body);
-      }
+    const sentences = body.split(/(?<=[.!?])\s+/);
+    if (!sentences.some((sentence) => invented(sentence, context.notes, observed))) {
+      if (body) out.push(section.label ? `${section.label}\n${body}` : body);
+      continue;
     }
-    if (!kept) continue;
-    out.push(section.label ? `${section.label}\n${kept}` : kept);
+    changed = true;
+    let kept = sentences.filter((sentence) => !invented(sentence, context.notes, observed));
+    if (observed) {
+      const words = managerSentence(context);
+      kept = words ? [words, ...kept] : kept;
+    }
+    const text = kept.join(" ").trim();
+    if (text) out.push(section.label ? `${section.label}\n${text}` : text);
   }
-  return out.join("\n\n");
+  return changed ? out.join("\n\n") : value;
 }
 
-function withoutDutySentences(text: string): string {
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .filter((sentence) => !DUTY.test(sentence))
-    .join(" ")
-    .trim();
+const PAST_WORD = /^(?:last|this\s+past|past|yesterday|today)\b/i;
+
+/** "she was late on the 2nd" → "Quinn was late on October 2, 2026." */
+function managerSentence(context: InventedDetailContext): string | null {
+  let clause = context.managerWords()?.replace(OBSERVED_LABEL, "").trim().replace(/[.!?]+$/, "") ?? "";
+  if (!clause) return null;
+  if (context.formDate) {
+    for (const span of [...context.datesIn(clause)].sort((a, b) => b.index - a.index)) {
+      const said = clause.slice(span.index, span.end);
+      const before = clause.slice(0, span.index);
+      const on = PAST_WORD.test(said) && !/\bon\s*$/i.test(before) ? "on " : "";
+      clause = `${before}${on}${context.formDate}${clause.slice(span.end)}`;
+    }
+  }
+  const first = context.employeeName?.trim().split(/\s+/)[0];
+  if (first) clause = clause.replace(/^(?:she|he|they)\b/i, first);
+  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 }
