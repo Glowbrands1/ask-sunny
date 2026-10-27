@@ -31,6 +31,7 @@ import {
   notANameGuardEnabled,
   newestPlaceTurnEnabled,
   formEditDateRulesEnabled,
+  grammarAskNotAccountEnabled,
   priorSentenceFixEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { statedFormDate } from "@/lib/forms/incident-dates";
@@ -39,7 +40,7 @@ import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-vali
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
 import { isAppLine, withoutAppLines } from "./app-sentences";
-import { observationByRules } from "./edit-date-rules";
+import { GRAMMAR_ANSWER, observationByRules, readSentenceEdit } from "./edit-date-rules";
 import { titleTextFromQuestion, titleTextFromTurns } from "./title-words";
 import type { GroundedPerson } from "./grounded-entities";
 import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
@@ -219,7 +220,9 @@ export function holdFilledSlots(input: {
       const build = (given: string, account: readonly string[]) =>
         fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, next.templateKey === "dpoa" ? input.today : undefined);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
-      content = formEditDateRulesEnabled() ? observationByRules(content, turns, build) : build(content, turns);
+      if (formEditDateRulesEnabled()) content = observationByRules(content, turns, build);
+      else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, turns.map(withoutAsksToTheApp)), turns);
+      else content = build(content, turns);
     }
     if (fixed && next.templateKey === "dpoa") {
       content = withPriorActions(content, currentRequestTurns(turns, next.employeeName), input.today);
@@ -578,6 +581,28 @@ function withDateLine(content: string, iso: string | null): string {
   if (line) lines[at] = line;
   else lines.splice(at, lines[at + 1] === "" && lines[at - 1] === "" ? 2 : 1);
   return lines.join("\n");
+}
+
+/*
+ * GRAMMAR_ASK_NOT_ACCOUNT_ENABLED (QA P5 replay LS-S9, 27 Oct 2026): "can you
+ * clean up my grammar and capitalizing on proper nouns?" was added to the
+ * card's Observation, word for word, and never answered — on the Coaching and
+ * Follow-Up Coaching cards, where FORM_EDIT_DATE_RULES (which reads such a
+ * sentence) is not live. With the flag on, a sentence that asks the app for
+ * something (`readSentenceEdit`) is no account, and a grammar request gets the
+ * same answer the edit rules give.
+ */
+function withoutAsksToTheApp(turn: string): string {
+  return turn
+    .split(/\n+|(?<=[.!?])\s+/)
+    .filter((sentence) => !readSentenceEdit(sentence))
+    .join(" ");
+}
+
+function withGrammarAnswered(content: string, turns: readonly string[]): string {
+  const last = turns[turns.length - 1] ?? "";
+  const asked = last.split(/\n+|(?<=[.!?])\s+/).some((sentence) => readSentenceEdit(sentence)?.kind === "grammar");
+  return asked && !content.includes(GRAMMAR_ANSWER) ? `${content}\n\n${GRAMMAR_ANSWER}` : content;
 }
 
 /** The account already given, copied onto the card so the offense is not asked again. */

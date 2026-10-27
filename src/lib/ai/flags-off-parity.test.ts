@@ -105,6 +105,12 @@ import {
   jobTitleFromWordsEnabled,
   caAsksWhatHappenedEnabled,
   stepDateNotIncidentEnabled,
+  warningLevelAndClauseEnabled,
+  jobTitleAppositionEnabled,
+  followUpReadbackCueEnabled,
+  exitReadbackJobTitleEnabled,
+  followUpCitationFieldEnabled,
+  grammarAskNotAccountEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -231,6 +237,12 @@ const NEW_FLAGS = [
   "JOB_TITLE_FROM_WORDS_ENABLED",
   "CA_ASKS_WHAT_HAPPENED_ENABLED",
   "STEP_DATE_NOT_INCIDENT_ENABLED",
+  "WARNING_LEVEL_AND_CLAUSE_ENABLED",
+  "JOB_TITLE_APPOSITION_ENABLED",
+  "FOLLOW_UP_READBACK_CUE_ENABLED",
+  "EXIT_READBACK_JOB_TITLE_ENABLED",
+  "FOLLOW_UP_CITATION_FIELD_ENABLED",
+  "GRAMMAR_ASK_NOT_ACCOUNT_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -354,6 +366,12 @@ describe("new flags default off and wrappers are inert", () => {
     expect(slotRetentionEnabled()).toBe(false);
     expect(caAsksWhatHappenedEnabled()).toBe(false);
     expect(stepDateNotIncidentEnabled()).toBe(false);
+    expect(warningLevelAndClauseEnabled()).toBe(false);
+    expect(jobTitleAppositionEnabled()).toBe(false);
+    expect(followUpReadbackCueEnabled()).toBe(false);
+    expect(exitReadbackJobTitleEnabled()).toBe(false);
+    expect(followUpCitationFieldEnabled()).toBe(false);
+    expect(grammarAskNotAccountEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);

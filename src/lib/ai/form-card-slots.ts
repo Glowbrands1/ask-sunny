@@ -10,8 +10,10 @@ import {
   typedNameProceedsEnabled,
   warningLevelManagerOnlyEnabled,
   followUpNotPriorEnabled,
+  followUpReadbackCueEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
+import { followUpDatesByRules } from "./edit-date-rules";
 import { matchEmployeeName, rosterNameNamedIn } from "@/lib/forms/employee-match";
 import { inlineCloseMatch } from "@/lib/forms/typed-name-proceeds";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
@@ -483,7 +485,17 @@ function followUpDates(text: string, today: string, incident: string | null): st
   if (incident) incidents.add(incident);
   // FOLLOW_UP_NOT_PRIOR_ENABLED: an earlier step's date ("a verbal on 06/25/2026") is a prior action, not a follow-up.
   if (followUpNotPriorEnabled()) for (const step of priorSteps(text, today)) incidents.add(step.iso);
-  return [...new Set(datesInText(text, today).map((item) => item.iso))].filter((iso) => !incidents.has(iso));
+  /*
+   * FOLLOW_UP_READBACK_CUE_ENABLED (QA SF9, 27 Oct 2026): "jba manual
+   * 11-1-25", correcting a prior coaching's date, was read back as
+   * "Follow-up: 11/1/2025" though the draft has none. A follow-up is a date
+   * the manager put a follow-up word to ("review on", "follow up", "check
+   * in"), the same rule the draft's follow-up reading uses.
+   */
+  const dates = followUpReadbackCueEnabled()
+    ? followUpDatesByRules(text, today)
+    : [...new Set(datesInText(text, today).map((item) => item.iso))];
+  return dates.filter((iso) => !incidents.has(iso));
 }
 
 function salonIdsIn(text: string): string[] {

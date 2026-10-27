@@ -1,4 +1,4 @@
-import { jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -21,6 +21,9 @@ const ROLE_NOUN =
   /\b(?:associate|consultant|lead|manager|director|maker|member|cashier|supervisor|keyholder|key\s+holder|trainee|specialist|assistant|clerk|representative|rep|coordinator|stylist|technician|attendant|host|agent|trainer)$/i;
 const IS_A = (who: string) =>
   new RegExp(`\\b(?:she|he|they|${who})\\s+(?:is|was|works\\s+as|worked\\s+as)\\s+(?:an?|our|the)\\s+((?:[a-z][a-z'’-]*\\s+){0,3}[a-z][a-z'’-]*)`, "gi");
+/** JOB_TITLE_APPOSITION_ENABLED: "<name>, tan consultant at manhattan", the title set off by a comma right after the name (QA S12). */
+const APPOSITION = (who: string) =>
+  new RegExp(`\\b(?:${who}),\\s+((?:[a-z][a-z'’-]*\\s+){0,3}[a-z][a-z'’-]*)`, "gi");
 const LABELED = /\b(?:job\s+title|position|title|role)\s*(?:is|was|:|-)\s*(?:an?\s+|the\s+)?((?:[a-z][a-z'’-]*\s+){0,3}[a-z][a-z'’-]*)/gi;
 const STOP_AFTER = /\s+(?:at|in|for|from|on|and|who|that|with|since)\b.*$/i;
 
@@ -41,7 +44,7 @@ export function typedJobTitle(turns: readonly string[], name: string): string | 
   const who = [parts.join("\\s+"), parts[0]].filter(Boolean).join("|");
   let found: string | null = null;
   for (const turn of turns) {
-    for (const pattern of [IS_A(who), LABELED]) {
+    for (const pattern of [IS_A(who), ...(jobTitleAppositionEnabled() ? [APPOSITION(who)] : []), LABELED]) {
       for (const match of turn.matchAll(pattern)) {
         const phrase = match[1]!.replace(STOP_AFTER, "").trim();
         if (ROLE_NOUN.test(phrase)) found = titleCase(phrase);
@@ -49,6 +52,20 @@ export function typedJobTitle(turns: readonly string[], name: string): string | 
     }
   }
   return found;
+}
+
+/**
+ * EXIT_READBACK_JOB_TITLE_ENABLED (ported from Ask Bubbles, QA 27 Oct 2026):
+ * the exit form's read-back is written before the title is filled, so it said
+ * "Left blank for you to review: Job Title" while the card and the draft had
+ * it. With the flag on, the read-back lists the Job Title under the Name and
+ * leaves it off the blank list.
+ */
+export function withJobTitleReadBack(content: string, title: string): string {
+  if (!/^\*\*Left blank for you to review:\*\* Job Title\b/m.test(content)) return content;
+  return content
+    .replace(/^(- \*\*Name:\*\* [^\n]+)$/m, (line) => `${line}\n- **Job Title:** ${title}`)
+    .replace(/^(\*\*Left blank for you to review:\*\* )Job Title(?:, | and )/m, "$1");
 }
 
 type Turn = { readonly role: string; readonly content: string };
@@ -61,5 +78,6 @@ export function withJobTitleFromWords(response: AskResponse, request: AskRequest
   const managerTurns = [...history.filter((turn) => turn.role === "user").map((turn) => turn.content), request.question];
   const title = typedJobTitle(managerTurns, proposal.employeeName);
   if (!title) return response;
-  return { ...response, formProposal: { ...proposal, employeeRole: title } };
+  const content = exitReadbackJobTitleEnabled() ? withJobTitleReadBack(response.content, title) : response.content;
+  return { ...response, content, formProposal: { ...proposal, employeeRole: title } };
 }

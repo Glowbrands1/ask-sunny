@@ -454,7 +454,7 @@ const LIVE_SINCE = [
 const JT = "JOB_TITLE_FROM_WORDS_ENABLED";
 
 function useProduction(on: boolean) {
-  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, JT]) {
+  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, JT, "JOB_TITLE_APPOSITION_ENABLED"]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
@@ -491,6 +491,17 @@ describe(`${JT} on`, () => {
     expect(await titled(exit("tanning consultant"))).toBe("Tanning Consultant");
   });
 
+  // QA S12: the title set off by a comma after the name.
+  it("S12, JOB_TITLE_APPOSITION on: \"<name>, tan consultant at manhattan\" is the Job Title", async () => {
+    process.env.JOB_TITLE_APPOSITION_ENABLED = "true";
+    expect(
+      await titled([
+        "create a CA form for rory vance, tan consultant at manhattan, for opening salon late on 9-28-26",
+        "this should be a written and note a verbal ca was given on 9-1-26",
+      ]),
+    ).toBe("Tan Consultant");
+  });
+
   it("\"was a no call no show\" is not a title", async () => {
     expect(await titled(exit("no call no show"))).toBeNull();
   });
@@ -499,7 +510,44 @@ describe(`${JT} on`, () => {
 describe(`${JT} off: as main`, () => {
   beforeEach(() => useProduction(false));
 
+  it("S12 with JOB_TITLE_FROM_WORDS on, JOB_TITLE_APPOSITION off: the Job Title stays blank", async () => {
+    process.env[JT] = "true";
+    expect(
+      await titled([
+        "create a CA form for rory vance, tan consultant at manhattan, for opening salon late on 9-28-26",
+        "this should be a written and note a verbal ca was given on 9-1-26",
+      ]),
+    ).toBeNull();
+  });
+
   it("the typed title is lost", async () => {
     expect(await titled(exit("makery associate"))).toBeNull();
   });
+});
+
+/*
+ * QA, 27 Oct 2026 (seen in Ask Bubbles; the same here): the exit form's
+ * read-back said "Left blank for you to review: Job Title" while the card and
+ * the draft had the typed title. EXIT_READBACK_JOB_TITLE_ENABLED: it matches.
+ */
+const RB = "EXIT_READBACK_JOB_TITLE_ENABLED";
+
+describe(RB, () => {
+  for (const on of [true, false]) {
+    it(on ? "on: the read-back lists the Job Title" : "off: as main, listed as blank", async () => {
+      useProduction(true);
+      if (!saved.has(RB)) saved.set(RB, process.env[RB]);
+      delete process.env[RB];
+      if (on) process.env[RB] = "true";
+      const thread = new Thread();
+      const first = (await thread.say(exit("makery associate")[0]!)).content;
+      expect(thread.proposal?.employeeRole).toBe("Makery Associate");
+      if (on) {
+        expect(first).toContain("- **Job Title:** Makery Associate");
+        expect(first).not.toMatch(/Left blank for you to review:\*\*[^\n]*Job Title/);
+      } else {
+        expect(first).toMatch(/Left blank for you to review:\*\* Job Title/);
+      }
+    });
+  }
 });

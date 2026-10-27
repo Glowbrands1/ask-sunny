@@ -1,3 +1,4 @@
+import { followUpCitationFieldEnabled } from "@/lib/config/chat-quality-flags";
 import { printedPageOf } from "@/lib/ingestion/extract/pdf-sections";
 import {
   approvedManualConfirmed,
@@ -92,7 +93,15 @@ export function flaggedCitationWrite(input: {
   if (found.length === 0) return { values: input.values, provenance: {} };
   const line = found.map((item) => formatManualCitation(item.heading, item.page)).join("; ");
 
-  const narrative = NARRATIVE_KEY[input.templateKey];
+  /*
+   * FOLLOW_UP_CITATION_FIELD_ENABLED (QA P5, 27 Oct 2026): on the Follow-Up
+   * Coaching Form the citation went into Follow-Up Observation — a field that
+   * stays blank until the manager has followed up (`follow-up-observation.ts`)
+   * — so the draft's only "observation" was "Policy reference: …". With the
+   * flag on it goes with the Original Expectation, which the policy describes.
+   */
+  const narrative =
+    followUpCitationFieldEnabled() && input.templateKey === "follow-up-coaching" ? "original_expectation" : NARRATIVE_KEY[input.templateKey];
   if (narrative) {
     const current = input.values[narrative] ?? "";
     if (current.includes(line)) return { values: input.values, provenance: {} };
