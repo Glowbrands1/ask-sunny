@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withoutAppLines } from "@/lib/ai/app-sentences";
 import { CLAUDE_HAIKU_MODEL } from "@/lib/config/models";
 
 import { callClaudeToolTimed } from "../call-claude";
@@ -18,14 +19,15 @@ import { parseFormReading, READER_TOOL_DESCRIPTION, READER_TOOL_INPUT_SCHEMA, RE
  * the turn runs on today's readers exactly as with the flag off.
  *
  * No roster is sent: the model copies the name as typed and the code finds
- * the one person in the manager's scope it fits.
+ * the one person in the manager's scope it fits. The prompt and the user block
+ * are the same text in the sibling app.
  */
 
 export const READER_TIMEOUT_MS = 2_000;
 
 const SYSTEM = `You read a manager's request for an HR form and call record_form_reading once.
 
-For each field, give the value and the evidence: the manager's own words the value came from, copied exactly as they typed them (same spelling, typos included). Only the manager's lines count, never the assistant's. Leave a field null when the manager did not state it. Never invent a value.
+For each field, give the value and the evidence: the manager's own words the value came from, copied exactly as they typed them (same spelling, typos included). Only the manager's lines are given. Leave a field null when the manager did not state it. Never invent a value.
 
 employee: the name exactly as the manager typed it ("quinn", "Marlowe, Quinn", "quin marlowe").
 incidentDate: the day the incident happened, as YYYY-MM-DD. Read any shape: 10/15, 10-15-26, 10.15, oct 15, october 15th, the 15th. A date without a year is the latest such day that is not after today. When several incident days are given, it is the latest one unless the manager picked one.
@@ -68,12 +70,18 @@ export async function readFormRequest(input: {
   }
 }
 
+/**
+ * QA (27 Oct 2026): the model gets the manager's own turns and the manual
+ * headings only. No roster, no location list, no assistant turn and none of
+ * the app's own lines: the roster, location and title checks stay in code.
+ */
 function userBlock(turns: readonly ReaderTurn[], context: CheckContext): string {
   const lines = turns
-    .filter((turn) => turn.content.trim() !== "")
+    .filter((turn) => turn.role === "user")
+    .map((turn) => withoutAppLines(turn.content).trim())
+    .filter((content) => content !== "")
     .slice(-12)
-    .map((turn) => `${turn.role === "assistant" ? "Assistant" : "Manager"}: ${turn.content.trim().slice(0, 1500)}`);
+    .map((content) => `Manager: ${content.slice(0, 1500)}`);
   const manual = context.headings.length > 0 ? `Manual headings:\n${context.headings.map((heading) => `- ${heading}`).join("\n")}\n\n` : "";
-  const locations = `Locations:\n${context.locations.map((row) => `- ${row.name}`).join("\n")}\n\n`;
-  return `${manual}${locations}Today is ${context.today}.\n\n${lines.join("\n\n")}`;
+  return `${manual}Today is ${context.today}.\n\n${lines.join("\n\n")}`;
 }
