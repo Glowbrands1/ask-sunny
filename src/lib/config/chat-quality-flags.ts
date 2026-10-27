@@ -1294,3 +1294,24 @@ export function jobTitleCaseEnabled(): boolean {
 export function levelStepNotAccountEnabled(): boolean {
   return envFlag("LEVEL_STEP_NOT_ACCOUNT_ENABLED");
 }
+
+/**
+ * The reply's "Job title:" line says the card's title (QA live, 27 Oct 2026;
+ * same flag in both apps): with JOB_TITLE_CASE the draft said "Tan
+ * Consultant" and the read-back "tan consultant". See
+ * `ai/job-title-from-words.ts`. Off, as before.
+ */
+export function jobTitleReadbackCaseEnabled(): boolean {
+  return envFlag("JOB_TITLE_READBACK_CASE_ENABLED");
+}
+
+/**
+ * A prior step's date is no candidate in the date question (QA live, 27 Oct
+ * 2026; same flag in both apps): with STEP_DATE_NOT_INCIDENT on, "note a verbal
+ * ca was given on 9-1-26" still made the reply ask "You mentioned more than one
+ * date (9/1, 9/28)" although the card was 9/28. See `forms/incident-dates.ts`
+ * (`incidentDates`). Off, as before.
+ */
+export function stepDateNoQuestionEnabled(): boolean {
+  return envFlag("STEP_DATE_NO_QUESTION_ENABLED");
+}

@@ -1,4 +1,4 @@
-import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleCaseEnabled, jobTitleFromWordsEnabled } from "@/lib/config/chat-quality-flags";
+import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleCaseEnabled, jobTitleFromWordsEnabled, jobTitleReadbackCaseEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -81,6 +81,21 @@ export function withJobTitleCase(response: AskResponse): AskResponse {
   const role = response.formProposal?.employeeRole;
   if (!jobTitleCaseEnabled() || !role || role !== role.toLowerCase()) return response;
   return { ...response, formProposal: { ...response.formProposal!, employeeRole: titleCase(role.trim()) } };
+}
+
+/**
+ * JOB_TITLE_READBACK_CASE_ENABLED (QA live, conv_mvqd9oeo2x3lovu, 27 Oct
+ * 2026): with JOB_TITLE_CASE the card and the draft say "Tan Consultant", but
+ * the reply's "**Job title:** tan consultant" line kept the words as typed.
+ * The read-back says the card's title.
+ */
+export function withJobTitleReadBackCase(response: AskResponse): AskResponse {
+  const role = response.formProposal?.employeeRole;
+  if (!jobTitleReadbackCaseEnabled() || !role) return response;
+  const content = response.content.replace(/^(\*\*Job title:\*\* )(.+)$/gm, (line, label: string, said: string) =>
+    said.trim().toLowerCase() === role.toLowerCase() && said.trim() !== role ? `${label}${role}` : line,
+  );
+  return content === response.content ? response : { ...response, content };
 }
 
 export function withJobTitleFromWords(response: AskResponse, request: AskRequest): AskResponse {

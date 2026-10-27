@@ -1,5 +1,5 @@
 import { isAppLine, withoutAppLines } from "@/lib/ai/app-sentences";
-import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { dateAnswerAppliedEnabled, dateAnswerKeepsOpenEnabled, keepFormEmployeeEnabled, priorSentenceFixEnabled, stepDateNoQuestionEnabled } from "@/lib/config/chat-quality-flags";
 
 /** DATE_ANSWER_KEEPS_OPEN_ENABLED, on top of the live DATE_ANSWER_APPLIED_ENABLED. */
 const keepsOpen = () => dateAnswerAppliedEnabled() && dateAnswerKeepsOpenEnabled();
@@ -60,8 +60,10 @@ export function incidentDates(text: string, today: string, coaching = false): st
   // PRIOR_SENTENCE_FIX_ENABLED: yearless "10-5 and 10-15" are two incident dates too, a range is one
   // (`statedIncidentDates`). Not on a Coaching Form, whose date is the coaching held.
   const read = priorSentenceFixFor(text) && !coaching ? statedIncidentDates(text, today) : listIncidentDates(text, today);
+  // STEP_DATE_NO_QUESTION_ENABLED: "a verbal ca was given on 9-1-26" dates a step; it is no candidate for the form's Date.
+  const steps = stepDateNoQuestionEnabled() ? stepSentenceDates(text, today) : new Set<string>();
   return [...new Set(incidentOnly(text, today, read).map((found) => found.iso))]
-    .filter((iso) => iso <= today && iso !== explicit)
+    .filter((iso) => iso <= today && iso !== explicit && !steps.has(iso))
     .sort();
 }
 
