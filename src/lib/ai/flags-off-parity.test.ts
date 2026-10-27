@@ -115,6 +115,8 @@ import {
   levelStepNotAccountEnabled,
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
+  firstNameAskEnabled,
+  widerDateReaderEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -251,6 +253,8 @@ const NEW_FLAGS = [
   "LEVEL_STEP_NOT_ACCOUNT_ENABLED",
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
+  "FIRST_NAME_ASK_ENABLED",
+  "WIDER_DATE_READER_ENABLED",
 ] as const;
 
 const PROTECTED = [
@@ -301,6 +305,13 @@ const PROTECTED = [
  * question form-proposal.ts both apps"), two lines in src/lib/ai/form-proposal.ts
  * openingQuestions behind NAME_QUESTION_ONLY_ENABLED: with no employee named,
  * one plain question instead of the list. Off, the list as before.
+ *
+ * The user (Pau) approved, in the Code session on 27 Oct 2026, editing
+ * src/lib/forms/form-date-answer.ts in both apps, only two lines: the import
+ * of `withWiderDates` from "./wider-dates", and datesInText's last line
+ * `return withWiderDates(text ?? "", today, found);`. Behind
+ * WIDER_DATE_READER_ENABLED, default off; off, the dates found are returned
+ * as they were.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
@@ -384,6 +395,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(levelStepNotAccountEnabled()).toBe(false);
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
+    expect(firstNameAskEnabled()).toBe(false);
+    expect(widerDateReaderEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);
