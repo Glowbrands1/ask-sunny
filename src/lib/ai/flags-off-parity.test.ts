@@ -118,6 +118,7 @@ import {
   firstNameAskEnabled,
   modelCallDailyCapEnabled,
   monthlyBudgetGuardEnabled,
+  ordinalDateInDraftEnabled,
   widerDateReaderEnabled,
 } from "@/lib/config/chat-quality-flags";
 
@@ -258,6 +259,7 @@ const NEW_FLAGS = [
   "FIRST_NAME_ASK_ENABLED",
   "MODEL_CALL_DAILY_CAP_ENABLED",
   "MONTHLY_BUDGET_GUARD_ENABLED",
+  "ORDINAL_DATE_IN_DRAFT_ENABLED",
   "WIDER_DATE_READER_ENABLED",
 ] as const;
 
@@ -402,6 +404,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(firstNameAskEnabled()).toBe(false);
     expect(modelCallDailyCapEnabled()).toBe(false);
     expect(monthlyBudgetGuardEnabled()).toBe(false);
+    expect(ordinalDateInDraftEnabled()).toBe(false);
     expect(widerDateReaderEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);

@@ -1352,3 +1352,13 @@ export function modelCallDailyCapEnabled(): boolean {
 export function monthlyBudgetGuardEnabled(): boolean {
   return envFlag("MONTHLY_BUDGET_GUARD_ENABLED");
 }
+
+/**
+ * A bare "the 2nd" in the manager's notes is read against today when a draft's
+ * dates are checked (QA, 27 Oct 2026; same flag in both apps): the drafted
+ * "December 2, 2025" was kept beside a form dated 10/02/2026. See
+ * `forms/form-date-grounding.ts`. Off, as before.
+ */
+export function ordinalDateInDraftEnabled(): boolean {
+  return envFlag("ORDINAL_DATE_IN_DRAFT_ENABLED");
+}
