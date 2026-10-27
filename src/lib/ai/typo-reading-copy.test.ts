@@ -43,6 +43,21 @@ describe("withTypoReadingCopy", () => {
     expect(read.question).toBe("create a ca for notise varnell");
   });
 
+  it("a correct word is never moved onto a neighbour: manager, warning, policy stay", () => {
+    const request = ask("the manager gave a written warning about the policy");
+    expect(withTypoReadingCopy(request, new Set())).toBe(request);
+  });
+
+  it("a real word one edit from a list word is not changed: warming, police, opener", () => {
+    const request = ask("the store was warming up, she called the police, she was the opener");
+    expect(withTypoReadingCopy(request, new Set())).toBe(request);
+  });
+
+  it("a tie is never guessed: violatin is one edit from violating and from violation", () => {
+    const request = ask("she keeps violatin it");
+    expect(withTypoReadingCopy(request, new Set())).toBe(request);
+  });
+
   it("leaves numbers, dates and short words alone", () => {
     const request = ask("late on 10/20 by 15 mins, $25");
     expect(withTypoReadingCopy(request, new Set())).toBe(request);

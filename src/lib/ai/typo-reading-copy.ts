@@ -1,6 +1,6 @@
 import { typoReadingCopyEnabled } from "@/lib/config/chat-quality-flags";
 import { correctedText } from "@/lib/forms/typo-match";
-import { typoVocabulary } from "@/lib/forms/typo-vocabulary";
+import { NEVER_CORRECTED, typoVocabulary } from "@/lib/forms/typo-vocabulary";
 
 import type { AskRequest } from "./types";
 
@@ -9,14 +9,15 @@ import type { AskRequest } from "./types";
  * chat's readers see the manager's turns with each typo read as the one known
  * word it can only be — "coahed" coached, "amont" amount, "Manger" manager —
  * by the rules in `forms/typo-match.ts` (one edit, same first letter, no tie).
- * An employee's first, last or preferred name is never corrected. This is the
+ * An employee's first, last or preferred name, and a real word on the
+ * never-corrected list ("warming", "police"), is never corrected. This is the
  * READING copy only: the stored messages, and so the record and the draft
  * notes, keep exactly what the manager typed. Off, the request as given.
  */
 export function withTypoReadingCopy(request: AskRequest, names: ReadonlySet<string>): AskRequest {
   // "*": the directory could not be read, so no name is known to be safe — nothing is corrected.
   if (!typoReadingCopyEnabled() || names.has("*")) return request;
-  const read = (text: string) => correctedText(text, typoVocabulary(), (word) => names.has(word)).text;
+  const read = (text: string) => correctedText(text, typoVocabulary(), (word) => names.has(word) || NEVER_CORRECTED.has(word)).text;
   const question = read(request.question);
   let changed = question !== request.question;
   const history = request.history.map((turn) => {
