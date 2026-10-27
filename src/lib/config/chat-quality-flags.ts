@@ -1315,3 +1315,15 @@ export function jobTitleReadbackCaseEnabled(): boolean {
 export function stepDateNoQuestionEnabled(): boolean {
   return envFlag("STEP_DATE_NO_QUESTION_ENABLED");
 }
+
+/**
+ * The AI reads the form request, the code checks it (Pau, 27 Oct 2026; same
+ * flag in both apps). One extra Haiku call per form turn returns each field
+ * with the manager's own words it came from; a field is kept only when its
+ * quote, the roster, the date readers and the manual agree, and a field the
+ * two readings dispute is asked once. A failed or slow call leaves the turn on
+ * today's readers. See `ai/reader/`. Off, as before.
+ */
+export function aiReadsCodeChecksEnabled(): boolean {
+  return envFlag("AI_READS_CODE_CHECKS_ENABLED");
+}
