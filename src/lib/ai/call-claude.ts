@@ -437,6 +437,14 @@ export async function callClaudeToolTimed(input: Parameters<typeof callClaudeToo
   } catch (error) {
     if (error instanceof AiError) throw error;
     if (error instanceof MissingConfigurationError) throw error;
+    // The reader falls back to today's readers; this says why (status and type only, never the request).
+    console.warn(`ai.reader: the model call failed (${describeCallError(error)}); the turn runs on today's readers`);
     throw modelUnavailable(error);
   }
+}
+
+function describeCallError(error: unknown): string {
+  const record = (error && typeof error === "object" ? error : {}) as { status?: unknown; name?: unknown; error?: { type?: unknown } };
+  const parts = [typeof record.status === "number" ? `HTTP ${record.status}` : null, typeof record.error?.type === "string" ? record.error.type : typeof record.name === "string" ? record.name : null];
+  return parts.filter(Boolean).join(" ") || "unknown error";
 }

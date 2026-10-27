@@ -41,4 +41,13 @@ describe("a stalled reader", () => {
     create.mockRejectedValue(new Error("boom"));
     expect(await readFormRequest({ turns, context })).toEqual({ fallback: "error" });
   });
+
+  it("a model the key cannot call (401 / 404) falls back to today's readers and says why in the log", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    create.mockRejectedValue(Object.assign(new Error("authentication_error: invalid x-api-key"), { status: 401, error: { type: "authentication_error" } }));
+    expect(await readFormRequest({ turns, context })).toEqual({ fallback: "error" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("ai.reader: the model call failed (HTTP 401 authentication_error)"));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("x-api-key");
+    warn.mockRestore();
+  });
 });

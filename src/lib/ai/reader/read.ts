@@ -23,7 +23,9 @@ import { parseFormReading, READER_TOOL_DESCRIPTION, READER_TOOL_INPUT_SCHEMA, RE
  * are the same text in the sibling app.
  */
 
-export const READER_TIMEOUT_MS = 3_500;
+/** The reader's limit; AI_READER_TIMEOUT_MS sets it for a trial (milliseconds, 500 to 10,000). */
+const CONFIGURED_TIMEOUT = Number(process.env.AI_READER_TIMEOUT_MS);
+export const READER_TIMEOUT_MS = Number.isFinite(CONFIGURED_TIMEOUT) && CONFIGURED_TIMEOUT >= 500 && CONFIGURED_TIMEOUT <= 10_000 ? CONFIGURED_TIMEOUT : 3_500;
 
 const SYSTEM = `You read a manager's request for an HR form and call record_form_reading once.
 
@@ -64,7 +66,10 @@ export async function readFormRequest(input: {
       messages: [{ role: "user", content: userBlock(input.turns, input.context) }],
     });
     const reading = parseFormReading(reply.input);
-    if (!reading) return { fallback: "unusable" };
+    if (!reading) {
+      console.warn("ai.reader: the model returned something unusable; the turn runs on today's readers");
+      return { fallback: "unusable" };
+    }
     return { checked: checkReading(reading, input.context), usage: reply.usage, ms: performance.now() - started };
   } catch {
     return { fallback: performance.now() - started >= READER_TIMEOUT_MS ? "timeout" : "error" };
