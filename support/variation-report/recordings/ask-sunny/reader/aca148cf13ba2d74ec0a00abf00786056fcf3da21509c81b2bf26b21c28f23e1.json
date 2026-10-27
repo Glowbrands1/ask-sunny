@@ -1,0 +1,39 @@
+{
+  "key": "aca148cf13ba2d74ec0a00abf00786056fcf3da21509c81b2bf26b21c28f23e1",
+  "model": "claude-haiku-5-5",
+  "reply": {
+    "employee": {
+      "value": "dale ferris",
+      "evidence": "create ca form for dale ferris"
+    },
+    "incident": {
+      "value": "Register shortage of $3.25",
+      "evidence": "dale had a register shortage of $3.25 on 10-20-26"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "dale had a register shortage of $3.25 on 10-20-26"
+    },
+    "location": null,
+    "jobTitle": null,
+    "warningLevel": null,
+    "payroll": {
+      "value": "yes",
+      "evidence": "payroll deduct of $3.25 is applicable"
+    },
+    "payrollAmount": {
+      "value": "3.25",
+      "evidence": "payroll deduct of $3.25 is applicable"
+    },
+    "policyHeading": null,
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 4621,
+    "outputTokens": 451,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 1663
+}
