@@ -1042,9 +1042,6 @@ on, that role loses `view_form_monitoring` (sidebar, page, Overview follow-ups,
 chat card link and search hits go with it) but still opens and downloads the
 forms it created itself. Ask Bubbles' assistant manager keeps the Forms
 Register: not requested there; ask Pau if wanted.
-## 26 Oct 2026: Animals in the Workplace widening — declined by Pau, 26 Oct 2026
-
-The live animals rule (POLICY_SPECIFIC_TOPICS_ENABLED) misses a pet named after the store at the end of a sentence (sibling app, LS-B11). Widening it and reading "cite <policy>" onto the form were scoped and declined by Pau, 26 Oct 2026. Not built in either app.
 ## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
 
 "create corrective action form for <name>, Salon Director" drafted "Observed:
@@ -1055,3 +1052,8 @@ store title, writes no Observation (checked 26 Oct 2026). Not ported.
 ## 27 Oct 2026: the Action Plan fits the incident — ported from Ask Bubbles (MEETING_NOT_LATENESS_PLAN_ENABLED, PLAN_PAYROLL_SENTENCE_ENABLED)
 
 QA's Sunny baseline (SX1-SX3) found the same two bugs as Ask Bubbles LS-B8 / LS-B6 / LS-B9: a missed meeting got the lateness plan, and a stated deduction was left out of the plan. Same flags, same mechanism (Ask Bubbles #253). The protected `ca-action-plan.ts` is untouched.
+
+## 27 Oct 2026: a pet at work cites Animals in the Workplace — both apps (ANIMAL_ANYWHERE_ENABLED)
+
+Pau reversed the earlier "no" on 27 Oct 2026. With the flag on, an animal word (puppy, kitten, dog, cat, pet, …) anywhere in a sentence about being at work is the Animals in the Workplace incident (service animal, hot dog and guinea pig stay excluded), and a "cite <policy>" line names that policy without the word "cite". Same flag and mechanism in Ask Bubbles (#254).
+

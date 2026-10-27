@@ -1,4 +1,4 @@
-import { policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
+import { animalAnywhereEnabled, policySpecificTopicsEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   findManualSection,
@@ -77,6 +77,19 @@ const ANIMAL = String.raw`(?:pupp(?:y|ies|ie)|pupy|pups?|dogs?|doggy|doggie|dogg
 const ANIMAL_AT_WORK = new RegExp(
   String.raw`\b(?:brought|bring(?:ing|s)?|brang|had|has|having|allow(?:ed|ing)?|let|letting|kept|keeping|walked in with|came in with|come in with|coming in with|showed up with)\s+(?:\S+\s+){0,3}?${ANIMAL}\b|\b${ANIMAL}\s+(?:\S+\s+){0,3}?(?:in|inside|at)\s+(?:\S+\s+){0,2}?(?:the\s+)?(?:salon|store|location|shop|lobby|building|work)\b`,
 );
+
+/*
+ * ANIMAL_ANYWHERE_ENABLED (QA SX5 / the sibling app's LS-B11, Pau 27 Oct 2026: "came
+ * into the salon to show her team her new puppy"): the animal came after the store and
+ * neither shape above matched, so the form cited Standards of Conduct. With
+ * the flag on, an animal word anywhere in a sentence that also says where
+ * work happens (store, salon, location, shift, team, coworkers, clients …)
+ * is the animals incident. The exclusions above (service animal, hot dog,
+ * guinea pig) still hold. Off, as before.
+ */
+const ANIMAL_ALONE = new RegExp(String.raw`\b${ANIMAL}\b`);
+const AT_WORK =
+  /\b(?:store|salon|location|shop|lobby|building|work|shift|team|coworkers?|co-workers?|clients?|customers?|guests?|counter|front desk|back room|break ?room)\b/;
 
 const SOCIAL_SITE = String.raw`(?:insta(?:gram|gam|grm|gran)?|ig|tik ?tok|tiktoc|facebook|face ?book|fb|snap ?chat|snap|twitter|reddit|youtube|social media|socal media|social midia)`;
 const SOCIAL_POST = String.raw`(?:post(?:ed|ing|s)?|stor(?:y|ies)|vid(?:eo)?s?|reels?|pic(?:ture)?s?|photos?|tagged|shared|filmed|filming|recorded|live ?stream\w*|went live|wrote|comment(?:ed|s)? on)`;
@@ -278,7 +291,8 @@ export function specificTopic(text: string): SpecificTopic | null {
   for (const rule of TOPICS) {
     for (const sentence of sentences) {
       if (rule.not?.test(sentence) && !rule.unless?.test(sentence)) continue;
-      for (const pattern of rule.words) {
+      const anywhere = rule.id === "animals" && animalAnywhereEnabled() && AT_WORK.test(sentence) ? [ANIMAL_ALONE] : [];
+      for (const pattern of [...rule.words, ...anywhere]) {
         const match = positiveMatch(pattern, sentence, rule);
         if (!match) continue;
         const also = (rule.also ?? []).filter((entry) => entry.when === undefined || sentences.some((s) => entry.when!.test(s))).map((entry) => entry.heading);
