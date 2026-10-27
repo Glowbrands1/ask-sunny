@@ -1077,6 +1077,17 @@ export function priorStepSentenceEnabled(): boolean {
 }
 
 /**
+ * A job title is never the incident (manager, 26 Oct 2026): "create corrective
+ * action form for <name>, Salon Director" filed "Observed: Salon Director."
+ * With the flag on the manager's-words fallback skips a clause that is only a
+ * job title. See `issueFromRequest` in `forms/draft-never-blank.ts`. Off, as
+ * before.
+ */
+export function jobTitleNotIncidentEnabled(): boolean {
+  return envFlag("JOB_TITLE_NOT_INCIDENT_ENABLED");
+}
+
+/**
  * A drafted Prior actions row dated on an incident date is invented (QA BT4,
  * 26 Oct 2026; same flag in both apps): "Verbal coaching on lateness —
  * 10/15/2026" from "verbal" and "10-15", when the manager named no step on
@@ -1086,4 +1097,15 @@ export function priorStepSentenceEnabled(): boolean {
  */
 export function priorRowNotOnIncidentDateEnabled(): boolean {
   return envFlag("PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED");
+}
+
+/**
+ * On top of DATE_ANSWER_APPLIED_ENABLED (QA BT4, 26 Oct 2026; same flag in both
+ * apps): the date question stays on every card until answered, the answer
+ * counts after other answers (the app's own lines around it are skipped), and
+ * a reply with two dates picks neither. Off, the live date answer is unchanged.
+ * See `incident-dates.ts`.
+ */
+export function dateAnswerKeepsOpenEnabled(): boolean {
+  return envFlag("DATE_ANSWER_KEEPS_OPEN_ENABLED");
 }

@@ -1045,3 +1045,9 @@ Register: not requested there; ask Pau if wanted.
 ## 26 Oct 2026: Animals in the Workplace widening — declined by Pau, 26 Oct 2026
 
 The live animals rule (POLICY_SPECIFIC_TOPICS_ENABLED) misses a pet named after the store at the end of a sentence (sibling app, LS-B11). Widening it and reading "cite <policy>" onto the form were scoped and declined by Pau, 26 Oct 2026. Not built in either app.
+## 26 Oct 2026: a job title is never the incident — Sunny-only (JOB_TITLE_NOT_INCIDENT_ENABLED)
+
+"create corrective action form for <name>, Salon Director" drafted "Observed:
+Salon Director." here. Ask Bubbles reads the request's clause through
+`requestIssueClause` (`incident-issue.ts`); the same shape there, with a
+store title, writes no Observation (checked 26 Oct 2026). Not ported.
