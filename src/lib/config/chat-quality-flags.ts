@@ -1119,6 +1119,26 @@ export function nameQuestionOnlyEnabled(): boolean {
 }
 
 /**
+ * A missed meeting with no lateness keeps the general Action Plan, not the
+ * attendance (lateness) wording (QA LS-B8 / SX1, 26 Oct 2026; same flag in
+ * both apps). The policy pick is unchanged. See `missedMeetingNotLateness` in
+ * `forms/attendance-action-plan.ts`. Off, as before.
+ */
+export function meetingNotLatenessPlanEnabled(): boolean {
+  return envFlag("MEETING_NOT_LATENESS_PLAN_ENABLED");
+}
+
+/**
+ * The Action Plan says the deduction: "<name> will be payroll deducted $3.25."
+ * when payroll deduct is Yes and the manager stated an amount (QA SX2 / SX3,
+ * 26 Oct 2026; same flag in both apps). See `forms/plan-payroll-sentence.ts`.
+ * Off, as before.
+ */
+export function planPayrollSentenceEnabled(): boolean {
+  return envFlag("PLAN_PAYROLL_SENTENCE_ENABLED");
+}
+
+/**
  * A job title is never the incident (manager, 26 Oct 2026): "create corrective
  * action form for <name>, Salon Director" filed "Observed: Salon Director."
  * With the flag on the manager's-words fallback skips a clause that is only a

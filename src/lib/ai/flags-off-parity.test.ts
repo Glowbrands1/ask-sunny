@@ -97,6 +97,8 @@ import {
   exitFulfilledIsLastDayEnabled,
   futurePriorRowDropEnabled,
   nameQuestionOnlyEnabled,
+  meetingNotLatenessPlanEnabled,
+  planPayrollSentenceEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -215,6 +217,8 @@ const NEW_FLAGS = [
   "EXIT_FULFILLED_IS_LAST_DAY_ENABLED",
   "FUTURE_PRIOR_ROW_DROP_ENABLED",
   "NAME_QUESTION_ONLY_ENABLED",
+  "MEETING_NOT_LATENESS_PLAN_ENABLED",
+  "PLAN_PAYROLL_SENTENCE_ENABLED",
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_ASD_NO_FORM_MONITORING_ENABLED",
@@ -434,6 +438,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(exitFulfilledIsLastDayEnabled()).toBe(false);
     expect(futurePriorRowDropEnabled()).toBe(false);
     expect(nameQuestionOnlyEnabled()).toBe(false);
+    expect(meetingNotLatenessPlanEnabled()).toBe(false);
+    expect(planPayrollSentenceEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
 
