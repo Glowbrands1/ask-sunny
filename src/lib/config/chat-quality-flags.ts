@@ -1107,6 +1107,18 @@ export function futurePriorRowDropEnabled(): boolean {
 }
 
 /**
+ * With no employee named, the chat asks one plain question — "Who is this
+ * form for? Tell me the employee's full name." — never a list of details
+ * (Pau, 26 Oct 2026; same flag in both apps). This covers the Corrective
+ * Action intake ("ca", "blank corrective action form"); the coaching card's
+ * list in the protected `ai/form-proposal.ts` follows on Pau's approval. Off,
+ * as before.
+ */
+export function nameQuestionOnlyEnabled(): boolean {
+  return envFlag("NAME_QUESTION_ONLY_ENABLED");
+}
+
+/**
  * A job title is never the incident (manager, 26 Oct 2026): "create corrective
  * action form for <name>, Salon Director" filed "Observed: Salon Director."
  * With the flag on the manager's-words fallback skips a clause that is only a
