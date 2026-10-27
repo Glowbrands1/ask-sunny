@@ -1,5 +1,7 @@
 import { widerDateReaderEnabled } from "@/lib/config/chat-quality-flags";
 
+import { relativeDates } from "./relative-dates";
+
 /**
  * WIDER_DATE_READER_ENABLED (QA, the Madeline chain and the variation
  * report, 27 Oct 2026; same flag in both apps): "she was late on 2 october",
@@ -64,8 +66,10 @@ function wider(text: string, today: string): FoundDate[] {
 }
 
 export function withWiderDates<T extends FoundDate>(text: string, today: string, found: T[]): T[] {
-  if (!widerDateReaderEnabled() || !text) return found;
-  const extra = wider(text, today).filter((date) => !found.some((have) => date.index < have.end && have.index < date.end));
+  if (!text) return found;
+  // RELATIVE_DATE_READER_ENABLED: "last tuesday", "yesterday", "today" — see `relative-dates.ts`.
+  const read = [...(widerDateReaderEnabled() ? wider(text, today) : []), ...relativeDates(text, today)];
+  const extra = read.filter((date) => !found.some((have) => date.index < have.end && have.index < date.end));
   if (extra.length === 0) return found;
   return [...found, ...(extra as T[])].sort((a, b) => a.index - b.index);
 }
