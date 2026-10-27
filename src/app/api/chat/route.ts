@@ -7,6 +7,7 @@ import { isQuestionNotForm } from "@/lib/ai/question-not-form";
 import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
   chatLongMessageEnabled,
+  differentEmployeeNewFormEnabled,
   draftActionsEnabled,
   questionNotFormEnabled,
   secondFormEnabled,
@@ -183,13 +184,35 @@ export async function POST(request: Request) {
        * Either way the open form is not corrected or revised by this turn: it
        * was answered above, or a new incident is a new form.
        */
+      /*
+       * "NOW ONE FOR <SOMEBODY ELSE>" (DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED,
+       * sibling QA B21-4): the open form is for another employee, so this turn
+       * is not a correction, redraft or revision of it. It is answered as a new
+       * card for the same form. See `lib/forms/other-employee.ts`.
+       */
+      const otherEmployee =
+        !draftAction && asked.activeFormInstanceId && differentEmployeeNewFormEnabled()
+          ? await (await import("@/lib/forms/other-employee-form")).otherEmployeeForm({
+              request,
+              instanceId: asked.activeFormInstanceId,
+              question: asked.question,
+              history: asked.history,
+            })
+          : null;
       const parsed = draftAction
         ? {
             ...asked,
             ...("question" in draftAction ? { question: draftAction.question } : {}),
             activeFormInstanceId: undefined,
           }
-        : asked;
+        : otherEmployee
+          ? {
+              ...asked,
+              question: otherEmployee.question,
+              activeFormInstanceId: undefined,
+              continueProposalTemplateKey: otherEmployee.templateKey,
+            }
+          : asked;
       /*
        * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her
        * new location to salon 24". Tried first, and only where the browser

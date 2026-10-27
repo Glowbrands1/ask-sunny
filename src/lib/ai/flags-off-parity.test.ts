@@ -56,6 +56,7 @@ import {
   priorActionsParseEnabled,
   keepFormEmployeeEnabled,
   titleWholeWordEnabled,
+  differentEmployeeNewFormEnabled,
   reformatKeepsSourcesEnabled,
   frameworkGeneralSectionsEnabled,
   newestPlaceTurnEnabled,
@@ -195,6 +196,7 @@ const NEW_FLAGS = [
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
   "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+  "DIFFERENT_EMPLOYEE_NEW_FORM_ENABLED",
   "EXIT_INTAKE_FIX_ENABLED",
   "REFORMAT_KEEPS_SOURCES_ENABLED",
   "FRAMEWORK_GENERAL_SECTIONS_ENABLED",
@@ -464,6 +466,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
     expect(actionPlanManagerOnlyEnabled()).toBe(false);
+    expect(differentEmployeeNewFormEnabled()).toBe(false);
     expect(exitIntakeFixEnabled()).toBe(false);
     expect(reformatKeepsSourcesEnabled()).toBe(false);
     expect(frameworkGeneralSectionsEnabled()).toBe(false);
