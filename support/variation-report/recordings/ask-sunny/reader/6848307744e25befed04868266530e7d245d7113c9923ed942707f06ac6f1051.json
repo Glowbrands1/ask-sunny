@@ -1,0 +1,62 @@
+{
+  "key": "6848307744e25befed04868266530e7d245d7113c9923ed942707f06ac6f1051",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "dale ferris",
+      "evidence": "dale ferris"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "not attending the monthly meeting",
+      "evidence": "not atteding the monthly meeting"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "10-20-26"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": "create a written CA"
+    },
+    "payroll": {
+      "value": "no",
+      "evidence": "payroll deduct not applicable"
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": null
+    },
+    "priorSteps": [
+      {
+        "kind": "manual_ack",
+        "date": "2026-01-01",
+        "evidence": "jba policy manual 1-1-26"
+      },
+      {
+        "kind": "verbal",
+        "date": "2026-09-01",
+        "evidence": "verbal ca 9-1-26"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3527,
+    "outputTokens": 484,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

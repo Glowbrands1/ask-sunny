@@ -1,0 +1,23 @@
+{
+  "key": "5960d968fa84e2ec50b82473bc78270b13cc30cb54d3688a39bc6112a66c0d7a",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": null,
+    "salon": null,
+    "title": null,
+    "incidentType": null,
+    "incidentDate": null,
+    "payrollAmount": null,
+    "warningLevel": null,
+    "formType": "blnk corrective action form",
+    "formTurn": true,
+    "policyHeading": null
+  },
+  "usage": {
+    "inputTokens": 2470,
+    "outputTokens": 206,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

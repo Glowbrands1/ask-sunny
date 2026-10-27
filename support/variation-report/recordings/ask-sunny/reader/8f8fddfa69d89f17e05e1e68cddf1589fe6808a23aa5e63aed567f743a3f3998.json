@@ -1,0 +1,51 @@
+{
+  "key": "8f8fddfa69d89f17e05e1e68cddf1589fe6808a23aa5e63aed567f743a3f3998",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "Quill, Mara",
+      "evidence": "Quill, Mara"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": "Salon Director",
+      "evidence": "Salon Director"
+    },
+    "incident": {
+      "value": null,
+      "evidence": null
+    },
+    "incidentDate": {
+      "value": null,
+      "evidence": null
+    },
+    "warningLevel": {
+      "value": null,
+      "evidence": null
+    },
+    "payroll": {
+      "value": null,
+      "evidence": null
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": null
+    },
+    "policyHeading": {
+      "value": null,
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3506,
+    "outputTokens": 314,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

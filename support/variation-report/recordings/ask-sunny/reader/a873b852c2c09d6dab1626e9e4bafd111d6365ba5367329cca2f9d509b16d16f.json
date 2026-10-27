@@ -1,0 +1,51 @@
+{
+  "key": "a873b852c2c09d6dab1626e9e4bafd111d6365ba5367329cca2f9d509b16d16f",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "Ferris, Dale",
+      "evidence": "Ferris, Dale"
+    },
+    "location": {
+      "value": null,
+      "evidence": null
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "register shortage of $3.25",
+      "evidence": "dale had a register shortage of $3.25"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "on 10-20-26"
+    },
+    "warningLevel": {
+      "value": "verbal",
+      "evidence": "verbal"
+    },
+    "payroll": {
+      "value": "yes",
+      "evidence": "payroll deduct of $3.25 is applicable"
+    },
+    "payrollAmount": {
+      "value": "3.25",
+      "evidence": "payroll deduct of $3.25"
+    },
+    "policyHeading": {
+      "value": null,
+      "evidence": null
+    },
+    "priorSteps": [],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3520,
+    "outputTokens": 365,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}
