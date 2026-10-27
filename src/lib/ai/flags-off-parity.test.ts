@@ -90,6 +90,7 @@ import {
   payrollTypoNotANameEnabled,
   answerNotANameEnabled,
   dateAnswerAppliedEnabled,
+  dateAnswerKeepsOpenEnabled,
   requestLineAccountEnabled,
   jobTitleNotIncidentEnabled,
   priorRowNotOnIncidentDateEnabled,
@@ -201,6 +202,7 @@ const NEW_FLAGS = [
   "PAYROLL_TYPO_NOT_A_NAME_ENABLED",
   "ANSWER_NOT_A_NAME_ENABLED",
   "DATE_ANSWER_APPLIED_ENABLED",
+  "DATE_ANSWER_KEEPS_OPEN_ENABLED",
   "REQUEST_LINE_ACCOUNT_ENABLED",
   "JOB_TITLE_NOT_INCIDENT_ENABLED",
   "PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED",
@@ -406,6 +408,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(payrollTypoNotANameEnabled()).toBe(false);
     expect(answerNotANameEnabled()).toBe(false);
     expect(dateAnswerAppliedEnabled()).toBe(false);
+    expect(dateAnswerKeepsOpenEnabled()).toBe(false);
     expect(requestLineAccountEnabled()).toBe(false);
     expect(jobTitleNotIncidentEnabled()).toBe(false);
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);

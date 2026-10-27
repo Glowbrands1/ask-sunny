@@ -1088,3 +1088,14 @@ export function jobTitleNotIncidentEnabled(): boolean {
 export function priorRowNotOnIncidentDateEnabled(): boolean {
   return envFlag("PRIOR_ROW_NOT_ON_INCIDENT_DATE_ENABLED");
 }
+
+/**
+ * On top of DATE_ANSWER_APPLIED_ENABLED (QA BT4, 26 Oct 2026; same flag in both
+ * apps): the date question stays on every card until answered, the answer
+ * counts after other answers (the app's own lines around it are skipped), and
+ * a reply with two dates picks neither. Off, the live date answer is unchanged.
+ * See `incident-dates.ts`.
+ */
+export function dateAnswerKeepsOpenEnabled(): boolean {
+  return envFlag("DATE_ANSWER_KEEPS_OPEN_ENABLED");
+}
