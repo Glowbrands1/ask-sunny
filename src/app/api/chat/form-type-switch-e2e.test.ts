@@ -485,6 +485,16 @@ const CASES: readonly (readonly [string, string, string, string])[] = [
   [COACHING, "coaching", "can this be a ca instead", "dpoa"],
   [COACHING, "coaching", "ca instead of coaching", "dpoa"],
   [COACHING, "coaching", "switch it to a ca", "dpoa"],
+  // Pau's own wording, in lower case, sentence case and capitals.
+  [CA, "dpoa", "change to coaching", "coaching"],
+  [CA, "dpoa", "Change to coaching", "coaching"],
+  [CA, "dpoa", "CHANGE TO COACHING", "coaching"],
+  [COACHING, "coaching", "change to ca", "dpoa"],
+  [COACHING, "coaching", "Change to ca", "dpoa"],
+  [COACHING, "coaching", "CHANGE TO CA", "dpoa"],
+  [COACHING, "coaching", "change to corrective action", "dpoa"],
+  [COACHING, "coaching", "Change to corrective action", "dpoa"],
+  [COACHING, "coaching", "CHANGE TO CORRECTIVE ACTION", "dpoa"],
 ];
 
 describe("the open card switches form and keeps the employee, the date and the salon", () => {
