@@ -93,6 +93,23 @@ vi.mock("@/lib/analytics/record", async (importOriginal) => ({
 const ANSWER = "A grounded answer from the policy manual.";
 
 vi.mock("@/lib/ai/call-claude", () => ({
+  /*
+   * The AI reader (AI_READS_CODE_CHECKS_ENABLED), as the live model reads a
+   * lone first name: the name exactly as typed, with its sentence as evidence.
+   */
+  callClaudeToolTimed: async (input: { messages?: { content?: unknown }[] }) => {
+    const text = JSON.stringify(input.messages ?? []);
+    const manager = (text.split("Manager: ").pop() ?? "").split("\\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
+    const name = /\b(katrin)\b/i.exec(manager)?.[1] ?? null;
+    return {
+      input: {
+        employee: name ? { value: name, evidence: manager } : null,
+        incident: /late/.test(manager) ? { value: "late", evidence: manager } : null,
+        incidentDate: /10\/20/.test(manager) ? { value: "2026-10-20", evidence: "10/20" } : null,
+      },
+      usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    };
+  },
   callClaude: async () => {
     state.chatModelCalls += 1;
     return ANSWER;
@@ -621,3 +638,114 @@ describe("the variation report's first-name-only variants", () => {
   }
 });
 
+/*
+ * QA, 28 Oct 2026, live in Ask Bubbles, checked here too: "katherine was late on 10/20, write her
+ * up" with one Katherine on the roster gave a card for her full name at once
+ * and never asked — the AI reader found the one roster person the first name
+ * fits and filled the card. Invented name; the same reading through the
+ * reader with AI_READS_CODE_CHECKS_ENABLED.
+ */
+describe("a first name the reader filled in full (AI_READS_CODE_CHECKS_ENABLED)", () => {
+  const ROSTER = [person("e-7", "Katrin", "Dovetail"), person("e-3", "Rowan", "Kestrel")];
+  const SAID = "katrin was late on 10/20, write her up";
+  const withReader = (on: boolean) => {
+    production(on, [...ROSTER]);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+  };
+
+  it("off (as main): the card is filled with the full name at once", async () => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    withReader(false);
+    const answer = (await new Thread().say(SAID)) as { formProposal?: Card };
+    expect(answer.formProposal?.employeeName).toBe("Katrin Dovetail");
+  });
+
+  it("on: asked \"Is this for **Katrin Dovetail**?\" and no card; \"yes\" gives the card for the full name", async () => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    withReader(true);
+    const thread = new Thread();
+    const asked = (await thread.say(SAID)) as { content: string; formProposal?: Card };
+    expect(asked.content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    expect(asked.formProposal).toBeUndefined();
+    const answer = (await thread.say("yes")) as { content: string; formProposal?: Card };
+    expect(answer.formProposal?.employeeName).toBe("Katrin Dovetail");
+    expect(answer.content).not.toContain("Is this for **");
+  });
+
+  it("on, the manager typed the full name: no question", async () => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    withReader(true);
+    const answer = (await new Thread().say("katrin dovetail was late on 10/20, write her up")) as { content: string; formProposal?: Card };
+    expect(answer.content).not.toMatch(/^Is this for \*\*/);
+    expect(answer.formProposal?.employeeName).toBe("Katrin Dovetail");
+  });
+});
+
+
+/*
+ * QA review, 28 Oct 2026: "on turn 3, any follow-up while the card is open
+ * (e.g. "make it a written warning", "she was also 20 minutes late", "change
+ * to coaching", the payroll answer, "create it") produces a card with the same
+ * full name and the question fires AGAIN, replacing the card." Once the
+ * manager has answered the question about a person, that person is confirmed
+ * for the rest of the conversation: no follow-up, form switch, warning-level
+ * answer, Create or correction asks again.
+ */
+describe("after the answer, the person stays confirmed (QA review of the reader fill)", () => {
+  const ROSTER = [person("e-7", "Katrin", "Dovetail"), person("e-2", "Quinn", "Ashby"), person("e-3", "Rowan", "Kestrel")];
+  const SAID = "katrin was late on 10/20, write her up";
+  async function confirmed(answer = "yes") {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    production(true, [...ROSTER]);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+    const thread = new Thread();
+    expect(((await thread.say(SAID)) as { content: string }).content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    const card = (await thread.say(answer)) as { content: string; formProposal?: Card };
+    return { thread, card };
+  }
+
+  for (const followUp of ["make it a written warning", "she was also 20 minutes late", "change to coaching", "written", "no payroll deduct", "create it"]) {
+    it(`"yes", then "${followUp}": never asked again, and any card stays for Katrin Dovetail`, async () => {
+      const { thread, card } = await confirmed();
+      expect(card.formProposal?.employeeName).toBe("Katrin Dovetail");
+      const next = (await thread.say(followUp)) as { content: string; formProposal?: Card };
+      expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+      if (next.formProposal) expect(next.formProposal.employeeName).toBe("Katrin Dovetail");
+    });
+  }
+
+  it('"yes", Create, then a follow-up on the open form: never asked again', async () => {
+    const { thread } = await confirmed();
+    await thread.create();
+    const next = (await thread.say("she was also 20 minutes late")) as { content: string };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+  });
+
+  it('"no, Quinn Ashby": the card is for Quinn Ashby, and a follow-up never asks again', async () => {
+    const { thread, card } = await confirmed("no, Quinn Ashby");
+    expect(card.formProposal?.employeeName).toBe("Quinn Ashby");
+    const next = (await thread.say("make it a written warning")) as { content: string; formProposal?: Card };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+    if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
+  });
+});
+
+describe("after a Did you mean answer, the person stays confirmed (QA review)", () => {
+  it('"ashby" after Did you mean, then "make it a written warning": never asked again', async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[2]!, "ashby");
+    expect(answer.formProposal?.employeeName).toBe("Quinn Ashby");
+    const next = (await thread.say("make it a written warning")) as { content: string; formProposal?: Card };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+    if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
+  });
+
+  it("the app's own numbered Did you mean, then a follow-up: never asked again", async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[0]!);
+    expect(answer.content).toMatch(/^Did you mean /);
+    const picked = (await thread.say("Quinn Ashby")) as { content: string; formProposal?: Card };
+    expect(picked.formProposal?.employeeName).toBe("Quinn Ashby");
+    const next = (await thread.say("make it a written warning")) as { content: string; formProposal?: Card };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+    if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
+  });
+});
