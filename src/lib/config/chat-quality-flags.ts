@@ -1501,3 +1501,13 @@ export function formTypeSwitchEnabled(): boolean {
 export function formTypeSwitchAfterCreateNoteEnabled(): boolean {
   return envFlag("FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED");
 }
+
+/**
+ * Payroll deduct changed in a finalized form's Change something panel rebuilds
+ * the new draft's Action Plan (Pau, 28 Oct 2026; same flag in both apps). See
+ * the forms instance route's PATCH. Off, the panel asks the manager to check
+ * the plan, as before.
+ */
+export function cardChangePlanRebuildEnabled(): boolean {
+  return envFlag("CARD_CHANGE_PLAN_REBUILD_ENABLED");
+}

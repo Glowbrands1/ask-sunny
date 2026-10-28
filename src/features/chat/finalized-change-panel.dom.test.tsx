@@ -111,12 +111,14 @@ let calls: Call[] = [];
 let instances: Record<string, unknown> = {};
 let reasonRequired = false;
 let rejected: { key: string; reason: string }[] = [];
+let planRebuilt = false;
 
 beforeEach(() => {
   calls = [];
   instances = {};
   reasonRequired = false;
   rejected = [];
+  planRebuilt = false;
   session.role = "salon_director";
   session.demoMode = false;
   process.env[FLAG] = "true";
@@ -137,7 +139,7 @@ beforeEach(() => {
         if (reasonRequired && !body.reason) return json({ error: "Editing a finalized form needs a reason.", code: "REVISION_REASON_REQUIRED" }, 400);
         return json({ instance: { id: REVISION, templateName: "Corrective Action Form" } });
       }
-      if (one && method === "PATCH" && one[1] === REVISION) return json({ ...(instances[REVISION] as object), rejected });
+      if (one && method === "PATCH" && one[1] === REVISION) return json({ ...(instances[REVISION] as object), rejected, ...(planRebuilt ? { actionPlanRebuilt: true } : {}) });
       return json({ error: `unexpected ${method} ${url}` }, 500);
     }),
   );
@@ -232,7 +234,7 @@ describe("what Send does", () => {
     await waitFor(() => expect(onReplaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: REVISION })));
     expect(writes()).toEqual([
       { url: `/api/forms/instances/${ORIGINAL}`, method: "POST", body: { action: "revise" } },
-      { url: `/api/forms/instances/${REVISION}`, method: "PATCH", body: { values: { form_date: "2026-10-19" }, checked: { warning_type: ["written"] } } },
+      { url: `/api/forms/instances/${REVISION}`, method: "PATCH", body: { values: { form_date: "2026-10-19" }, checked: { warning_type: ["written"] }, source: "card-change" } },
     ]);
   });
 
@@ -252,7 +254,7 @@ describe("what Send does", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open new draft/ }));
     await waitFor(() => expect(onReplaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: REVISION })));
     expect(writes()[0]).toEqual({ url: `/api/forms/instances/${ORIGINAL}`, method: "POST", body: { action: "revise", reason: "Wrong offense date was entered." } });
-    expect(writes()[1]?.body).toEqual({ values: { form_date: "2026-10-19" }, checked: {} });
+    expect(writes()[1]?.body).toEqual({ values: { form_date: "2026-10-19" }, checked: {}, source: "card-change" });
   });
 
   it("server asks for a reason though the browser flag is off: the dialog is shown, never a dead end", async () => {
@@ -279,7 +281,7 @@ describe("what Send does", () => {
     fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
     fireEvent.click(screen.getByRole("button", { name: "Send change" }));
     expect((await screen.findByRole("status")).textContent).toContain("check the Action Plan");
-    expect(writes()[1]?.body).toEqual({ values: {}, checked: { payroll_deduct: ["yes"] } });
+    expect(writes()[1]?.body).toEqual({ values: {}, checked: { payroll_deduct: ["yes"] }, source: "card-change" });
     fireEvent.click(screen.getByRole("button", { name: "Open the new draft" }));
     expect(onReplaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: REVISION }));
   });
@@ -305,4 +307,18 @@ describe("what Send does", () => {
     expect(panel().queryByLabelText("Type of warning")).toBeNull();
     expect(panel().queryByLabelText("Payroll deduct")).toBeNull();
   });
+
+  it("payroll changed and the server rebuilt the Action Plan (CARD_CHANGE_PLAN_REBUILD_ENABLED): no notice, straight to the draft", async () => {
+    planRebuilt = true;
+    instances[ORIGINAL] = loaded(ORIGINAL, "finalized");
+    instances[REVISION] = loaded(REVISION, "draft");
+    const onReplaced = vi.fn();
+    render(<Card instanceId={ORIGINAL} onReplaced={onReplaced} />);
+    await openPanel();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send change" }));
+    await waitFor(() => expect(onReplaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: REVISION })));
+    expect(screen.queryByText(/check the Action Plan/)).toBeNull();
+  });
 });
+
