@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { typoReadingText } from "@/lib/ai/typo-reading-copy";
+import { protectedNameWords } from "@/lib/ai/typo-name-words";
 import { accountOnlyRules, policyQueryNotes, withoutInventedDetail } from "@/lib/forms/account-only-policy-query";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import { flaggedCitationWrite } from "@/lib/ai/policy-citation-fields";
@@ -16,6 +18,7 @@ import {
   policyPageRequiredEnabled,
   policySpecificTopicsEnabled,
   grammarAskNotAccountEnabled,
+  typoReadingRoutesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
@@ -326,7 +329,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const body = ((await request.json().catch(() => null)) ?? {}) as DraftBody;
     // GRAMMAR_ASK_NOT_ACCOUNT_ENABLED: "can you clean up my grammar …?" is no account (`ai/asks-to-the-app.ts`).
     const typed = String(body.notes ?? "").trim().slice(0, 4000);
-    const notes = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    const asTyped = grammarAskNotAccountEnabled() ? withoutAsksToTheApp(typed).trim() : typed;
+    // TYPO_READING_ROUTES_ENABLED: the readers below see "coahed", "notcie", "amont" as the words they can only be.
+    const notes = typoReadingRoutesEnabled() ? typoReadingText(asTyped, await protectedNameWords()) : asTyped;
     if (notes.length < 10) {
       throw new AiError(
         "bad_request",
