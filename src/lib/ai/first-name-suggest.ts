@@ -79,6 +79,38 @@ function lastAssistant(request: AskRequest): string {
   return [...(request.history ?? [])].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
 }
 
+/** Every word the manager has typed in this conversation. */
+function everythingSaid(request: AskRequest): Set<string> {
+  const said = [...(request.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content), request.question];
+  return new Set(said.flatMap(words));
+}
+
+/**
+ * QA, 28 Oct 2026 (live): "katherine was late on 10/20, write her up" with
+ * one Katherine on the roster gave a card for her full name at once — a
+ * reader found the one roster person the first name fits and filled the
+ * card, so the manager was never asked. A card whose employee is a roster
+ * person whose last name the manager has never typed, and whose first (or
+ * preferred) name they did type, was filled from that first name alone: it
+ * is asked about like a one-word card. The first name, or null.
+ */
+function filledFromFirstName(name: string | null | undefined, request: AskRequest, roster: readonly RosterEmployee[]): string | null {
+  if (!name || !/\s/.test(name.trim())) return null;
+  const person = roster.find((entry) => displayName(entry).toLowerCase() === name.trim().toLowerCase());
+  if (!person) return null;
+  // Chosen from a question that named them ("Did you mean 1. **Quinn Ashby** …" — "2"): already confirmed.
+  if (lastAssistant(request).includes(`**${displayName(person)}**`)) return null;
+  const said = everythingSaid(request);
+  if (words(person.lastName).some((word) => said.has(word))) return null;
+  return firstNamesOf(person).find((first) => said.has(first) && !ORDINARY.has(first)) ?? null;
+}
+
+/** Cheap first look, before the roster is read: a card name whose last word the manager never typed. */
+function cardNameNotTypedInFull(name: string | null | undefined, request: AskRequest): boolean {
+  const parts = words(name ?? "");
+  return parts.length > 1 && !everythingSaid(request).has(parts.at(-1)!);
+}
+
 export function withFirstNameSuggest(
   response: AskResponse,
   request: AskRequest,
@@ -90,12 +122,14 @@ export function withFirstNameSuggest(
   if (ONE.test(asked) || MANY.test(asked)) return response;
   const card = response.formProposal;
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
-  if (!oneWordCard && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  // The card's full name was filled from a first name the manager typed alone ("katherine was late …").
+  const filledFirst = oneWordCard ? null : filledFromFirstName(card?.employeeName, request, roster);
+  if (!oneWordCard && !filledFirst && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
 
   const turns = managerTurns(request);
-  if (namesSomebodyInFull(turns, roster)) return response;
+  if (!filledFirst && namesSomebodyInFull(turns, roster)) return response;
   const own = words(request.context?.userName ?? "")[0] ?? null;
-  const first = oneWordCard ? card!.employeeName!.trim().toLowerCase() : statedFirstName(turns, roster, own);
+  const first = oneWordCard ? card!.employeeName!.trim().toLowerCase() : (filledFirst ?? statedFirstName(turns, roster, own));
   if (!first || first === own) return response;
   const people = roster.filter((person) => firstNamesOf(person).includes(first));
   if (people.length === 0) return response;
@@ -177,7 +211,8 @@ export async function withFirstNameSuggestFor(
   if (!firstNameSuggestEnabled()) return response;
   const card = response.formProposal;
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
-  if (!oneWordCard && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  const maybeFilled = cardNameNotTypedInFull(card?.employeeName, request);
+  if (!oneWordCard && !maybeFilled && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
   const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
   return withFirstNameSuggest(response, request, await loadScopedRoster(actor.scope));
 }

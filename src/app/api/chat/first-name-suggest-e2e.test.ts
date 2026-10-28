@@ -93,6 +93,23 @@ vi.mock("@/lib/analytics/record", async (importOriginal) => ({
 const ANSWER = "A grounded answer from the policy manual.";
 
 vi.mock("@/lib/ai/call-claude", () => ({
+  /*
+   * The AI reader (AI_READS_CODE_CHECKS_ENABLED), as the live model reads a
+   * lone first name: the name exactly as typed, with its sentence as evidence.
+   */
+  callClaudeToolTimed: async (input: { messages?: { content?: unknown }[] }) => {
+    const text = JSON.stringify(input.messages ?? []);
+    const manager = (text.split("Manager: ").pop() ?? "").split("\\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
+    const name = /\b(katrin)\b/i.exec(manager)?.[1] ?? null;
+    return {
+      input: {
+        employee: name ? { value: name, evidence: manager } : null,
+        incident: /late/.test(manager) ? { value: "late", evidence: manager } : null,
+        incidentDate: /10\/20/.test(manager) ? { value: "2026-10-20", evidence: "10/20" } : null,
+      },
+      usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    };
+  },
   callClaude: async () => {
     state.chatModelCalls += 1;
     return ANSWER;
@@ -619,5 +636,48 @@ describe("the variation report's first-name-only variants", () => {
       expect(answer.content).toBe(`Is this for **${full}**? Tell me if that should change.`);
     });
   }
+});
+
+/*
+ * QA, 28 Oct 2026, live in Ask Bubbles, checked here too: "katherine was late on 10/20, write her
+ * up" with one Katherine on the roster gave a card for her full name at once
+ * and never asked — the AI reader found the one roster person the first name
+ * fits and filled the card. Invented name; the same reading through the
+ * reader with AI_READS_CODE_CHECKS_ENABLED.
+ */
+describe("a first name the reader filled in full (AI_READS_CODE_CHECKS_ENABLED)", () => {
+  const ROSTER = [person("e-7", "Katrin", "Dovetail"), person("e-3", "Rowan", "Kestrel")];
+  const SAID = "katrin was late on 10/20, write her up";
+  const withReader = (on: boolean) => {
+    production(on, [...ROSTER]);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+  };
+
+  it("off (as main): the card is filled with the full name at once", async () => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    withReader(false);
+    const answer = (await new Thread().say(SAID)) as { formProposal?: Card };
+    expect(answer.formProposal?.employeeName).toBe("Katrin Dovetail");
+  });
+
+  it("on: asked \"Is this for **Katrin Dovetail**?\" and no card; \"yes\" gives the card for the full name", async () => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    withReader(true);
+    const thread = new Thread();
+    const asked = (await thread.say(SAID)) as { content: string; formProposal?: Card };
+    expect(asked.content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    expect(asked.formProposal).toBeUndefined();
+    const answer = (await thread.say("yes")) as { content: string; formProposal?: Card };
+    expect(answer.formProposal?.employeeName).toBe("Katrin Dovetail");
+    expect(answer.content).not.toContain("Is this for **");
+  });
+
+  it("on, the manager typed the full name: no question", async () => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    withReader(true);
+    const answer = (await new Thread().say("katrin dovetail was late on 10/20, write her up")) as { content: string; formProposal?: Card };
+    expect(answer.content).not.toMatch(/^Is this for \*\*/);
+    expect(answer.formProposal?.employeeName).toBe("Katrin Dovetail");
+  });
 });
 
