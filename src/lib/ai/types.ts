@@ -94,6 +94,13 @@ export interface AskRequest {
    */
   activeFormInstanceId?: string;
   /**
+   * FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: set by the request reading when
+   * the manager asked for the other form after this conversation's form was
+   * created — the form they already have, for the reply's note. Never sent by
+   * the browser.
+   */
+  switchedFromForm?: "coaching" | "ca";
+  /**
    * What the form named by `activeFormInstanceId` says now, for an answer that
    * no correction or revision handled.
    *

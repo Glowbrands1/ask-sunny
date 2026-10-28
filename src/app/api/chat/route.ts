@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
 import { answerQuestion } from "@/lib/ai/server-ask";
 import { modelSpendGuard } from "@/lib/ai/spend-guard";
@@ -183,13 +184,16 @@ export async function POST(request: Request) {
        * Either way the open form is not corrected or revised by this turn: it
        * was answered above, or a new incident is a new form.
        */
-      const parsed = draftAction
-        ? {
-            ...asked,
-            ...("question" in draftAction ? { question: draftAction.question } : {}),
-            activeFormInstanceId: undefined,
-          }
-        : asked;
+      // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: "change to coaching" after the form was created starts the other form; the created one is left as it is.
+      const parsed = withSwitchAfterCreate(
+        draftAction
+          ? {
+              ...asked,
+              ...("question" in draftAction ? { question: draftAction.question } : {}),
+              activeFormInstanceId: undefined,
+            }
+          : asked,
+      );
       /*
        * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her
        * new location to salon 24". Tried first, and only where the browser
