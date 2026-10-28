@@ -94,3 +94,30 @@ export function withFormTypeSwitch(request: AskRequest): AskRequest {
   });
   return { ...request, question: question ?? request.question, history };
 }
+
+/**
+ * THE STORED CONVERSATION, READ THE WAY THE CHAT READ IT. QA live, 28 Oct
+ * 2026: the switched card's "Create draft" saved nothing — the create route
+ * checks a card against the conversation the browser sends, which still read
+ * "create a ca …" as the last form asked for, and refused the Coaching Form as
+ * out of date. With FORM_TYPE_SWITCH_ENABLED the route reads it here first: the
+ * newest switch request as the request the chat switched on, and the turns
+ * before it as asking for that form. Nothing stored is changed.
+ */
+export function switchReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[]): T[] {
+  if (!formTypeSwitchEnabled()) return turns;
+  const users = turns.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.role === "user" && typeof turn.content === "string");
+  const switches = users.slice(1).filter(({ turn }) => requestedForm(turn.content) !== null);
+  const last = switches.at(-1);
+  if (!last) return turns;
+  const target = requestedForm(last.turn.content)!;
+  const from: Family = target === "coaching" ? "ca" : "coaching";
+  const switchAt = new Set(switches.map(({ index }) => index));
+  return turns.map((turn, index) => {
+    if (turn.role !== "user" || typeof turn.content !== "string") return turn;
+    if (switchAt.has(index)) return { ...turn, content: READ_AS[requestedForm(turn.content)!] };
+    if (index > last.index) return turn;
+    const content = askedFor(turn.content, from, target);
+    return content === turn.content ? turn : { ...turn, content };
+  });
+}
