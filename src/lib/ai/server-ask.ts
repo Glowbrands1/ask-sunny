@@ -160,7 +160,7 @@ import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
-import { withFormTypeSwitch, withSwitchNote } from "./form-type-switch";
+import { withFormTypeSwitch, withSwitchNote, withSwitchSources } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
@@ -317,7 +317,8 @@ async function answerQuestionChecked(
     // OUT_OF_SCOPE_PLACE_SAID_ENABLED: "Salon: KS Lawrence." from a manager not assigned there is told so.
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     return keepManagerActionPlan(
-      withSwitchNote(withOutOfScopePlace(withAmountUnknownAck(
+      // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
+      withSwitchSources(withSwitchNote(withOutOfScopePlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
@@ -329,7 +330,7 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ), request, actor), request, "Form Monitoring"),
+      ), request, actor), request, "Form Monitoring"), request),
       request,
     );
   };
