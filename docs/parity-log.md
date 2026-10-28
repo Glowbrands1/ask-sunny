@@ -1107,3 +1107,11 @@ Pau: structured changes to a finalized form, so a manager need not chat to chang
 ## 28 Oct 2026: after Create, "change to coaching" starts the other form and leaves the draft — both apps (FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED)
 
 Pau's decision A: once this conversation's form exists, a request for the other form leaves the existing form untouched (never changed, archived or deleted) and says so, then starts the other form's card. On main Pau's wordings after Create kept the old form's card. With the flag on, the chat route reads the switch turn as the request that asked for the first form with the other form named, and drops the open form from the turn (`withSwitchAfterCreate`), so none of the open-form paths run; the reply opens with "You already have a Corrective Action draft for <name>. I'll start a Coaching Form too, and the Corrective Action draft stays in Form Monitoring until you delete it." Same change in Ask Bubbles (its register's name).
+
+## 28 Oct 2026: payroll deduct changed from the finalized form's panel rebuilds the draft's Action Plan — both apps (CARD_CHANGE_PLAN_REBUILD_ENABLED)
+
+Pau: when payroll deduct goes No → Yes through the Change something panel, the new revision draft's Action Plan is rebuilt with the existing `syncCorrectiveActionPlan` (only a plan the app built; never the signed form). The panel's save carries `source: "card-change"`; an ordinary save is untouched. With production's plan wording (`ACTION_PLAN_SENTENCES_ENABLED`) the plan names a deduction only with an amount, so Yes alone rebuilds nothing and the panel keeps its "check the Action Plan" notice. Same change in Ask Bubbles.
+
+## 28 Oct 2026: an archived revision draft and "Edit as new draft" — open finding, waiting on Pau
+
+Ask Bubbles' `findOpenRevision` skips archived revision drafts; Ask Sunny's does not. The unique index `form_instances_one_open_revision` (both apps) still counts an archived draft, so in Ask Bubbles "Edit as new draft" on a form whose only open revision draft is archived fails ("duplicate key … form_instances_one_open_revision"), while Ask Sunny reopens that draft. Both `instances.ts` files are protected; the fix (filter, index, or neither) is Pau's decision.
