@@ -38,7 +38,15 @@ interface Current {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const LEVELS = ["verbal", "written"] as const;
 
-export function FinalizedChangePanel({
+type PanelProps = Parameters<typeof Panel>[0];
+
+/** Off, nothing — not even the session read (cards rendered without a session provider stay as they were). */
+export function FinalizedChangePanel(props: PanelProps) {
+  if (!cardChangeFinalizedEnabled()) return null;
+  return <Panel {...props} />;
+}
+
+function Panel({
   instanceId,
   templateName,
   employeeName,
@@ -71,7 +79,7 @@ export function FinalizedChangePanel({
   const [warning, setWarning] = React.useState(was.warning);
   const [payroll, setPayroll] = React.useState(was.payroll);
 
-  if (!cardChangeFinalizedEnabled() || !mayEdit) return null;
+  if (!mayEdit) return null;
 
   if (opened) {
     return (
