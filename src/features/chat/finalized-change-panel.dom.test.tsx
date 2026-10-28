@@ -322,3 +322,119 @@ describe("what Send does", () => {
   });
 });
 
+/*
+ * CARD_CHANGE_PLAN_REBUILD_ENABLED (QA, 28 Oct 2026): "Build the 'Payroll
+ * deduction amount' box in the finalized-form panel (shown only when Payroll
+ * deduct = Yes; saves to the draft's amount field". The server says the box is
+ * on (`cardChangeAmount`, the flag) and the form has the line.
+ */
+describe("the Payroll deduction amount box (CARD_CHANGE_PLAN_REBUILD_ENABLED)", () => {
+  const AMOUNT_FIELD = {
+    kind: "field" as const,
+    field: { key: "payroll_deduct_amount", label: "Payroll deduction amount", input: "text" as const, responsibility: "manager" as const },
+  };
+  function withAmountLine(id: string, status: "draft" | "finalized", on = true) {
+    const form = loaded(id, status);
+    return {
+      ...form,
+      version: { ...form.version, document: { ...CA_DOCUMENT, blocks: [...CA_DOCUMENT.blocks, AMOUNT_FIELD] } },
+      ...(on ? { cardChangeAmount: true } : {}),
+    };
+  }
+  const saves = () => calls.filter((call) => call.method === "PATCH");
+
+  it("flag off on the server: no box, even with payroll Yes", async () => {
+    instances[ORIGINAL] = withAmountLine(ORIGINAL, "finalized", false);
+    render(<Card instanceId={ORIGINAL} onReplaced={vi.fn()} />);
+    await openPanel();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    expect(panel().queryByLabelText("Payroll deduction amount")).toBeNull();
+  });
+
+  it("on: shown only when Payroll deduct is Yes", async () => {
+    instances[ORIGINAL] = withAmountLine(ORIGINAL, "finalized");
+    render(<Card instanceId={ORIGINAL} onReplaced={vi.fn()} />);
+    await openPanel();
+    expect(panel().queryByLabelText("Payroll deduction amount")).toBeNull();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    expect(panel().getByLabelText("Payroll deduction amount")).toBeTruthy();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "no" } });
+    expect(panel().queryByLabelText("Payroll deduction amount")).toBeNull();
+  });
+
+  it("on, a form without the amount line: no box", async () => {
+    instances[ORIGINAL] = { ...loaded(ORIGINAL, "finalized"), cardChangeAmount: true };
+    render(<Card instanceId={ORIGINAL} onReplaced={vi.fn()} />);
+    await openPanel();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    expect(panel().queryByLabelText("Payroll deduction amount")).toBeNull();
+  });
+
+  it("Yes and $25: one save onto the new draft with payroll and the amount", async () => {
+    planRebuilt = true;
+    instances[ORIGINAL] = withAmountLine(ORIGINAL, "finalized");
+    instances[REVISION] = withAmountLine(REVISION, "draft");
+    const onReplaced = vi.fn();
+    render(<Card instanceId={ORIGINAL} onReplaced={onReplaced} />);
+    await openPanel();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    fireEvent.change(panel().getByLabelText("Payroll deduction amount"), { target: { value: "$25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send change" }));
+    await waitFor(() => expect(onReplaced).toHaveBeenCalledWith(expect.objectContaining({ instanceId: REVISION })));
+    expect(saves()).toHaveLength(1);
+    expect(saves()[0]!.url).toBe(`/api/forms/instances/${REVISION}`);
+    expect(saves()[0]!.body).toEqual({
+      values: { payroll_deduct_amount: "$25" },
+      checked: { payroll_deduct: ["yes"] },
+      source: "card-change",
+    });
+  });
+
+  it("only the amount changed on a Yes form: the amount alone is saved", async () => {
+    planRebuilt = true;
+    const yes = (id: string, status: "draft" | "finalized") => {
+      const form = withAmountLine(id, status);
+      return {
+        ...form,
+        values: [
+          ...form.values.filter((row) => row.fieldKey !== "payroll_deduct"),
+          { fieldKey: "payroll_deduct", value: null, checked: ["yes"], filledBy: "manager" },
+          { fieldKey: "payroll_deduct_amount", value: "$10", checked: [], filledBy: "manager" },
+        ],
+      };
+    };
+    instances[ORIGINAL] = yes(ORIGINAL, "finalized");
+    instances[REVISION] = yes(REVISION, "draft");
+    const onReplaced = vi.fn();
+    render(<Card instanceId={ORIGINAL} onReplaced={onReplaced} />);
+    await openPanel();
+    expect((panel().getByLabelText("Payroll deduction amount") as HTMLInputElement).value).toBe("$10");
+    fireEvent.change(panel().getByLabelText("Payroll deduction amount"), { target: { value: "$25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send change" }));
+    await waitFor(() => expect(onReplaced).toHaveBeenCalled());
+    expect(saves()[0]!.body).toEqual({ values: { payroll_deduct_amount: "$25" }, checked: {}, source: "card-change" });
+  });
+
+  it("not a dollar figure: nothing is sent", async () => {
+    instances[ORIGINAL] = withAmountLine(ORIGINAL, "finalized");
+    render(<Card instanceId={ORIGINAL} onReplaced={vi.fn()} />);
+    await openPanel();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    fireEvent.change(panel().getByLabelText("Payroll deduction amount"), { target: { value: "twenty" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send change" }));
+    expect(await screen.findByText("That amount is not a dollar figure.")).toBeTruthy();
+    expect(calls.filter((call) => call.method !== "GET")).toHaveLength(0);
+  });
+
+  it("the amount saved but the plan was not rebuilt: the check-the-plan notice", async () => {
+    instances[ORIGINAL] = withAmountLine(ORIGINAL, "finalized");
+    instances[REVISION] = withAmountLine(REVISION, "draft");
+    render(<Card instanceId={ORIGINAL} onReplaced={vi.fn()} />);
+    await openPanel();
+    fireEvent.change(panel().getByLabelText("Payroll deduct"), { target: { value: "yes" } });
+    fireEvent.change(panel().getByLabelText("Payroll deduction amount"), { target: { value: "$25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send change" }));
+    expect(await screen.findByText(/check the Action Plan/)).toBeTruthy();
+  });
+});
+

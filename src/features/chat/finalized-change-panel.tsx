@@ -27,6 +27,11 @@ import { templateHasWarningLevel } from "@/lib/forms/warning-level";
  * draft through the form's own save. No chat turn and no model: the server's
  * own checks (the edit permission, the location scope, the template's fields)
  * decide. The signed form is never written; the card then shows the draft.
+ *
+ * CARD_CHANGE_PLAN_REBUILD_ENABLED (Pau, 28 Oct 2026; `amountBox`, from the
+ * server): with Payroll deduct Yes, the Payroll deduction amount too. The
+ * server rebuilds the Action Plan to say "<first name> will be payroll
+ * deducted <amount>."
  */
 type Call = <T>(url: string, init?: RequestInit) => Promise<T>;
 
@@ -37,6 +42,8 @@ interface Current {
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const LEVELS = ["verbal", "written"] as const;
+const AMOUNT_KEY = "payroll_deduct_amount";
+const MONEY = /^\$?\s?\d{1,3}(?:,?\d{3})*(?:\.\d{1,2})?$/;
 
 type PanelProps = Parameters<typeof Panel>[0];
 
@@ -53,6 +60,7 @@ function Panel({
   current,
   call,
   onOpened,
+  amountBox = false,
 }: {
   instanceId: string;
   templateName: string;
@@ -61,6 +69,8 @@ function Panel({
   call: Call;
   /** The new draft, which the card shows from now on. */
   onOpened: (draftId: string, templateName: string) => void;
+  /** The form has a Payroll deduction amount line and the server rebuilds the plan with it. */
+  amountBox?: boolean;
 }) {
   const mayEdit = useMayEditForm(templateName);
   const [open, setOpen] = React.useState(false);
@@ -74,10 +84,13 @@ function Panel({
     date: ISO.test(current.values.form_date ?? "") ? current.values.form_date! : "",
     warning: LEVELS.find((level) => (current.checked.warning_type ?? []).includes(level)) ?? "",
     payroll: (current.checked.payroll_deduct ?? [])[0] ?? "",
+    amount: current.values[AMOUNT_KEY] ?? "",
   };
   const [date, setDate] = React.useState(was.date);
   const [warning, setWarning] = React.useState(was.warning);
   const [payroll, setPayroll] = React.useState(was.payroll);
+  const [amount, setAmount] = React.useState(was.amount);
+  const withAmount = ca && amountBox && payroll === "yes";
 
   if (!mayEdit) return null;
 
@@ -107,6 +120,7 @@ function Panel({
     if (date && date !== was.date) values.form_date = date;
     if (ca && warning && warning !== was.warning) checked.warning_type = [warning];
     if (ca && payroll && payroll !== was.payroll) checked.payroll_deduct = [payroll];
+    if (withAmount && amount.trim() && amount.trim() !== was.amount) values[AMOUNT_KEY] = amount.trim();
     return { values, checked };
   };
 
@@ -134,7 +148,7 @@ function Panel({
       return;
     }
     // CARD_CHANGE_PLAN_REBUILD_ENABLED: the server rebuilt the Action Plan, so there is nothing to check.
-    if (checked.payroll_deduct && !saved.actionPlanRebuilt) {
+    if ((checked.payroll_deduct || values[AMOUNT_KEY]) && !saved.actionPlanRebuilt) {
       setOpened({
         id: draftId,
         name,
@@ -149,6 +163,10 @@ function Panel({
     if (busy) return;
     if (date && !managerDate(date)) {
       setProblem("That date is not a real day.");
+      return;
+    }
+    if (withAmount && amount.trim() && !MONEY.test(amount.trim())) {
+      setProblem("That amount is not a dollar figure.");
       return;
     }
     const { values, checked } = changes();
@@ -205,6 +223,12 @@ function Panel({
             </Select>
           </div>
         ) : null}
+        {withAmount ? (
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor={`fin-amount-${id}`}>Payroll deduction amount</Label>
+            <Input id={`fin-amount-${id}`} inputMode="decimal" placeholder="$25" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </div>
+        ) : null}
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         Changes go on a new draft of this form. The signed form stays as it is.
@@ -223,6 +247,7 @@ function Panel({
             setDate(was.date);
             setWarning(was.warning);
             setPayroll(was.payroll);
+            setAmount(was.amount);
           }}
           disabled={busy}
         >
