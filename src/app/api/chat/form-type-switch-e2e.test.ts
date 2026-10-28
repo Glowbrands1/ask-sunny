@@ -597,3 +597,78 @@ describe("Create after a switch files the switched form", () => {
     expect(store.form_instances).toHaveLength(0);
   });
 });
+
+describe("after Create, with FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the draft is left, the reply says so, the other form starts", () => {
+  const NOTE_FLAG = "FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED";
+  const AFTER: readonly (readonly [string, string, string, string])[] = [
+    [CA, "dpoa", "change to coaching", "coaching"],
+    [CA, "dpoa", "Change to coaching", "coaching"],
+    [CA, "dpoa", "CHANGE TO COACHING", "coaching"],
+    [COACHING, "coaching", "change to ca", "dpoa"],
+    [COACHING, "coaching", "Change to ca", "dpoa"],
+    [COACHING, "coaching", "CHANGE TO CA", "dpoa"],
+    [COACHING, "coaching", "change to corrective action", "dpoa"],
+    [COACHING, "coaching", "Change to corrective action", "dpoa"],
+    [COACHING, "coaching", "CHANGE TO CORRECTIVE ACTION", "dpoa"],
+  ];
+  const NOTE = {
+    coaching: "You already have a Corrective Action draft for **Quinn Marlowe**. I'll start a Coaching Form too, and the Corrective Action draft stays in Form Monitoring until you delete it.",
+    dpoa: "You already have a Coaching Form draft for **Quinn Marlowe**. I'll start a Corrective Action Form too, and the Coaching Form draft stays in Form Monitoring until you delete it.",
+  } as const;
+  const snapshot = (id: string) =>
+    JSON.stringify([
+      (store.form_instances as unknown as { id: string }[]).filter((row) => row.id === id),
+      (store.form_instance_values as unknown as { instance_id: string }[]).filter((row) => row.instance_id === id),
+    ]);
+
+  for (const [open, from, wording, to] of AFTER) {
+    it(`${from} created, then "${wording}"`, async () => {
+      production(true);
+      if (!saved.has(NOTE_FLAG)) saved.set(NOTE_FLAG, process.env[NOTE_FLAG]);
+      process.env[NOTE_FLAG] = "true";
+      const thread = new Thread();
+      const before = (await thread.say(open)).formProposal!;
+      const id = await thread.create();
+      const draft = snapshot(id);
+      const answer = await thread.say(wording);
+      expect(snapshot(id)).toBe(draft);
+      expect(store.form_instances).toHaveLength(1);
+      expect(answer.content.split(NOTE[to as keyof typeof NOTE])).toHaveLength(2);
+      expect(answer.content).not.toMatch(/haven't told me what happened/i);
+      expect(answer.formProposal?.templateKey).toBe(to);
+      expect([answer.formProposal?.employeeName, answer.formProposal?.formDate, answer.formProposal?.locationId]).toEqual([before.employeeName, before.formDate, before.locationId]);
+    });
+  }
+
+  it("Create on the new card files the other form; the first draft is still there, unchanged", async () => {
+    production(true);
+    process.env.FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED = "true";
+    const thread = new Thread();
+    await thread.say(CA);
+    const first = await thread.create();
+    const draft = snapshot(first);
+    await thread.say("change to coaching");
+    thread.instanceId = null;
+    const second = await thread.create();
+    expect(second).not.toBe(first);
+    expect(store.form_instances).toHaveLength(2);
+    expect(snapshot(first)).toBe(draft);
+    const templates = ((store as unknown as Record<string, unknown>).form_templates ?? []) as { id: string; key: string }[];
+    const row = (store.form_instances as unknown as { id: string; template_id?: string; employee_name: string }[]).find((r) => r.id === second)!;
+    expect(templates.find((t) => t.id === row.template_id)?.key).toBe("coaching");
+    expect(row.employee_name).toBe("Quinn Marlowe");
+  });
+
+  it("with only the after-Create flag on, Create on the new card still files the other form", async () => {
+    production(false);
+    process.env.FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED = "true";
+    const thread = new Thread();
+    await thread.say(CA);
+    await thread.create();
+    const answer = await thread.say("change to coaching");
+    expect(answer.formProposal?.templateKey).toBe("coaching");
+    thread.instanceId = null;
+    await thread.create();
+    expect(store.form_instances).toHaveLength(2);
+  });
+});
