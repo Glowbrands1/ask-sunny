@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { noteSpendUser } from "@/lib/ai/spend-meter";
+import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { typoReadingText } from "@/lib/ai/typo-reading-copy";
 import { protectedNameWords } from "@/lib/ai/typo-name-words";
@@ -303,7 +305,12 @@ async function readOfficialPolicyManual(
   }
 }
 
+/** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  return withSpendMeter("forms_draft", () => postFormsDraft(request, context));
+}
+
+async function postFormsDraft(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     /* When this request began: DRAFT_NEVER_BLANK_ENABLED stops retrying past its budget. */
     const startedAt = Date.now();
@@ -317,6 +324,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
      * Action — at any salon, on a guessed UUID.
      */
     const { actor, loaded } = await authorizeInstance(request, id, "edit");
+    noteSpendUser(actor.id);
     assertWithinRateLimit(request, "chat");
 
     if (loaded.instance.status !== "draft") {

@@ -3,6 +3,8 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { chatTraceDraft, runChatTrace, type ChatTraceDraft } from "./chat-trace-store";
+import type { TokenUsage } from "./model-prices";
+import { activeSpendMeter, takeSpend, type SpendSource } from "./spend-meter";
 
 /**
  * Write one chat_traces row after the turn, without blocking or failing it.
@@ -64,6 +66,8 @@ export function scheduleChatTrace(draft: ChatTraceDraft): void {
 }
 
 async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
+  // SPEND_GUARD_ALL_CALLS_ENABLED: every call this turn made so far goes on its row (`spend-meter.ts`).
+  const metered = activeSpendMeter() ? { metered: true, spend: takeSpend() } : null;
   try {
     const model = draft.modelCall;
     const admin = getSupabaseAdmin();
@@ -92,7 +96,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
-      slots: draft.slots ?? {},
+      slots: metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}),
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
@@ -102,6 +106,36 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
   } catch (error) {
     // Tracing never changes what the manager sees. A missing cache-column
     // migration used to drop the row with no log.
+    console.warn(traceInsertWarning(error));
+  }
+}
+
+/**
+ * SPEND_GUARD_ALL_CALLS_ENABLED: the Claude calls of a request that no chat
+ * trace row carries — a turn answered before `answerQuestion` (a correction, a
+ * revision), the Create card's draft, Sales Totals, template ingest. No
+ * conversation, so no turn's slots are read from it (`form-remap-scope.ts`);
+ * no model, so the daily cap does not count it. Never blocks or fails the request.
+ */
+export async function persistSpendRow(input: {
+  readonly source: SpendSource;
+  readonly userId: string | null;
+  readonly calls: readonly TokenUsage[];
+}): Promise<void> {
+  try {
+    const inserted = await getSupabaseAdmin().from("chat_traces").insert({
+      conversation_id: null,
+      message_id: null,
+      user_id: input.userId,
+      original_query: `[spend] ${input.source}`,
+      intent: "spend",
+      model: null,
+      slots: { spend_source: input.source, spend: input.calls },
+      succeeded: true,
+    });
+    const error = inserted && typeof inserted === "object" && "error" in inserted ? inserted.error : null;
+    if (error) throw error;
+  } catch (error) {
     console.warn(traceInsertWarning(error));
   }
 }
