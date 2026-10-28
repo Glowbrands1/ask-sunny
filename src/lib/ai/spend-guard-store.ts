@@ -1,5 +1,6 @@
 import "server-only";
 
+import { spendGuardAllCallsEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import type { TokenUsage } from "./model-prices";
@@ -27,6 +28,7 @@ interface UsageRow {
   cache_read_input_tokens: number | null;
   cache_creation_input_tokens: number | null;
   reader?: ReaderTraceRow | null;
+  spend?: unknown;
 }
 
 /**
@@ -37,16 +39,32 @@ interface UsageRow {
 async function readUsage(sinceIso: string, withReader: boolean): Promise<TokenUsage[]> {
   const out: TokenUsage[] = [];
   for (let from = 0; ; from += PAGE) {
+    // SPEND_GUARD_ALL_CALLS_ENABLED: also each row's `slots.spend`, and the spend rows that carry only that.
+    const allCalls = spendGuardAllCallsEnabled();
+    const columns = withReader ? `${MODEL_COLUMNS}, reader:slots->reader` : MODEL_COLUMNS;
     const base = getSupabaseAdmin()
       .from("chat_traces")
-      .select(withReader ? `${MODEL_COLUMNS}, reader:slots->reader` : MODEL_COLUMNS)
+      .select(allCalls ? `${columns}, spend:slots->spend` : columns)
       .gte("created_at", sinceIso);
-    const { data, error } = await (withReader ? base.or("model.not.is.null,slots->reader.not.is.null") : base.not("model", "is", null))
+    const { data, error } = await (allCalls
+      ? base.or(withReader ? "model.not.is.null,slots->reader.not.is.null,slots->spend.not.is.null" : "model.not.is.null,slots->spend.not.is.null")
+      : withReader
+        ? base.or("model.not.is.null,slots->reader.not.is.null")
+        : base.not("model", "is", null))
       .order("created_at", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`chat_traces usage read failed: ${error.message}`);
     const rows = (data ?? []) as unknown as UsageRow[];
     for (const row of rows) {
+      /*
+       * A metered row's `slots.spend` holds every call of the turn, the answer
+       * and the reader among them, so its model columns are not added again.
+       */
+      const spend = allCalls ? spendUsageRows(row.spend) : null;
+      if (spend && spend.length > 0) {
+        out.push(...spend);
+        continue;
+      }
       if (row.model !== null) {
         out.push({
           model: row.model,
@@ -78,3 +96,18 @@ export async function modelUsageSince(sinceIso: string): Promise<TokenUsage[]> {
     return readUsage(sinceIso, false);
   }
 }
+
+/** `slots.spend` as the meter wrote it (`spend-meter.ts`), or null for a row without it. */
+export function spendUsageRows(spend: unknown): TokenUsage[] | null {
+  if (!Array.isArray(spend)) return null;
+  return spend
+    .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+    .map((entry) => ({
+      model: typeof entry.model === "string" ? entry.model : null,
+      inputTokens: typeof entry.inputTokens === "number" ? entry.inputTokens : 0,
+      outputTokens: typeof entry.outputTokens === "number" ? entry.outputTokens : 0,
+      cacheReadTokens: typeof entry.cacheReadTokens === "number" ? entry.cacheReadTokens : 0,
+      cacheWriteTokens: typeof entry.cacheWriteTokens === "number" ? entry.cacheWriteTokens : 0,
+    }));
+}
+

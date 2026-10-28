@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { noteSpendUser } from "@/lib/ai/spend-meter";
+import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { withSwitchAfterCreate } from "@/lib/ai/form-type-switch";
 import { enterChatRequestClock } from "@/lib/ai/chat-trace-store";
@@ -67,12 +69,18 @@ const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request) {
+  return withSpendMeter("chat", () => postChat(request));
+}
+
+async function postChat(request: Request) {
   enterChatRequestClock();
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
     const context = await authorizeRequest(request, "ask_questions");
+    noteSpendUser(context.identity.subject);
     assertWithinRateLimit(request, "chat");
 
     const body = await parseJsonBody<AskRequest>(request);

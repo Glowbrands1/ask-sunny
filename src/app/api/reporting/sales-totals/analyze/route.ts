@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { noteSpendUser } from "@/lib/ai/spend-meter";
+import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
 import { AiError } from "@/lib/ai/errors";
 import {
@@ -105,7 +107,12 @@ const MAX_SALON_IDS = 300;
 /** A view fingerprint is a handful of short identifiers joined together. */
 const FINGERPRINT_LIMIT = 4096;
 
+/** SPEND_GUARD_ALL_CALLS_ENABLED: this route's Claude calls are counted (`ai/spend-meter.ts`). Off, as before. */
 export async function POST(request: Request) {
+  return withSpendMeter("sales_totals", () => postSalesTotals(request));
+}
+
+async function postSalesTotals(request: Request) {
   try {
     assertLiveMode();
     assertNoConfigurationProblems();
@@ -119,6 +126,7 @@ export async function POST(request: Request) {
      * body reaches it. See `reportingScopeOf`.
      */
     const context = await authorizeRequest(request, "view_reports");
+    noteSpendUser(context.identity.subject);
 
     assertWithinRateLimit(request, "reportAnalysis");
 
