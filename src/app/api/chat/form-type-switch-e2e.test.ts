@@ -243,9 +243,13 @@ const chatRoute = await import("./route");
 const instancesRoute = await import("../forms/instances/route");
 const draftRoute = await import("../forms/instances/[id]/draft/route");
 
+/** The notes each draft request carried: what the manager's draft is written from. */
+const draftNotes: string[] = [];
+
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const request = new Request(`https://app.test${url}`, init);
   const draft = /^\/api\/forms\/instances\/([^/]+)\/draft$/.exec(url);
+  if (draft && typeof init?.body === "string") draftNotes.push(String((JSON.parse(init.body) as { notes?: unknown }).notes ?? ""));
   const response = draft
     ? await draftRoute.POST(request, { params: Promise.resolve({ id: draft[1]! }) })
     : url === "/api/forms/instances"
@@ -672,3 +676,54 @@ describe("after Create, with FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the dra
     expect(store.form_instances).toHaveLength(2);
   });
 });
+
+/*
+ * QA LIVE, 28 OCT 2026 (after-Create note, flag on): the new Coaching draft
+ * read "Observed:\nA change to coaching was noted for Dale Ferris." — it was
+ * drafted from the switch turn alone, and the lateness was lost. The card's
+ * draft sources were the turns about the new form, which after Create is only
+ * "change to coaching". The draft must be written from the original account,
+ * never from the switch turn, before Create and after.
+ */
+describe("the switched form's draft is written from the account, never from the switch turn", () => {
+  const lastNotes = () => draftNotes[draftNotes.length - 1] ?? "";
+
+  for (const [open, wording] of [
+    [CA, "change to coaching"],
+    [COACHING, "change to ca"],
+  ] as const) {
+    it(`before Create: "${wording}" -> Create`, async () => {
+      production(true);
+      const thread = new Thread();
+      await thread.say(open);
+      await thread.say(wording);
+      await thread.create();
+      expect(lastNotes()).toContain("late on 10/20");
+      expect(lastNotes().toLowerCase()).not.toContain(wording.toLowerCase());
+    });
+
+    it(`after Create: "${wording}" -> Create on the new card`, async () => {
+      production(true);
+      process.env.FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED = "true";
+      const thread = new Thread();
+      await thread.say(open);
+      await thread.create();
+      await thread.say(wording);
+      thread.instanceId = null;
+      await thread.create();
+      expect(lastNotes()).toContain("late on 10/20");
+      expect(lastNotes().toLowerCase()).not.toContain(wording.toLowerCase());
+    });
+  }
+
+  it("a turn asking for the form that is already open stays a draft source", async () => {
+    production(true);
+    const thread = new Thread();
+    await thread.say(CA);
+    await thread.say("make it a written ca");
+    await thread.create();
+    expect(lastNotes()).toContain("late on 10/20");
+    expect(lastNotes()).toContain("make it a written ca");
+  });
+});
+
