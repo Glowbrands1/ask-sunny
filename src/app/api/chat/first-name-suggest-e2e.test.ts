@@ -681,3 +681,71 @@ describe("a first name the reader filled in full (AI_READS_CODE_CHECKS_ENABLED)"
   });
 });
 
+
+/*
+ * QA review, 28 Oct 2026: "on turn 3, any follow-up while the card is open
+ * (e.g. "make it a written warning", "she was also 20 minutes late", "change
+ * to coaching", the payroll answer, "create it") produces a card with the same
+ * full name and the question fires AGAIN, replacing the card." Once the
+ * manager has answered the question about a person, that person is confirmed
+ * for the rest of the conversation: no follow-up, form switch, warning-level
+ * answer, Create or correction asks again.
+ */
+describe("after the answer, the person stays confirmed (QA review of the reader fill)", () => {
+  const ROSTER = [person("e-7", "Katrin", "Dovetail"), person("e-2", "Quinn", "Ashby"), person("e-3", "Rowan", "Kestrel")];
+  const SAID = "katrin was late on 10/20, write her up";
+  async function confirmed(answer = "yes") {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    production(true, [...ROSTER]);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+    const thread = new Thread();
+    expect(((await thread.say(SAID)) as { content: string }).content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    const card = (await thread.say(answer)) as { content: string; formProposal?: Card };
+    return { thread, card };
+  }
+
+  for (const followUp of ["make it a written warning", "she was also 20 minutes late", "change to coaching", "written", "no payroll deduct", "create it"]) {
+    it(`"yes", then "${followUp}": never asked again, and any card stays for Katrin Dovetail`, async () => {
+      const { thread, card } = await confirmed();
+      expect(card.formProposal?.employeeName).toBe("Katrin Dovetail");
+      const next = (await thread.say(followUp)) as { content: string; formProposal?: Card };
+      expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+      if (next.formProposal) expect(next.formProposal.employeeName).toBe("Katrin Dovetail");
+    });
+  }
+
+  it('"yes", Create, then a follow-up on the open form: never asked again', async () => {
+    const { thread } = await confirmed();
+    await thread.create();
+    const next = (await thread.say("she was also 20 minutes late")) as { content: string };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+  });
+
+  it('"no, Quinn Ashby": the card is for Quinn Ashby, and a follow-up never asks again', async () => {
+    const { thread, card } = await confirmed("no, Quinn Ashby");
+    expect(card.formProposal?.employeeName).toBe("Quinn Ashby");
+    const next = (await thread.say("make it a written warning")) as { content: string; formProposal?: Card };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+    if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
+  });
+});
+
+describe("after a Did you mean answer, the person stays confirmed (QA review)", () => {
+  it('"ashby" after Did you mean, then "make it a written warning": never asked again', async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[2]!, "ashby");
+    expect(answer.formProposal?.employeeName).toBe("Quinn Ashby");
+    const next = (await thread.say("make it a written warning")) as { content: string; formProposal?: Card };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+    if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
+  });
+
+  it("the app's own numbered Did you mean, then a follow-up: never asked again", async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[0]!);
+    expect(answer.content).toMatch(/^Did you mean /);
+    const picked = (await thread.say("Quinn Ashby")) as { content: string; formProposal?: Card };
+    expect(picked.formProposal?.employeeName).toBe("Quinn Ashby");
+    const next = (await thread.say("make it a written warning")) as { content: string; formProposal?: Card };
+    expect(next.content).not.toMatch(/^Is this for \*\*|^Did you mean /);
+    if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
+  });
+});

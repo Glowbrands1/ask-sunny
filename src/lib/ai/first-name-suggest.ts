@@ -3,6 +3,7 @@ import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest, AskResponse } from "./types";
+import type { ChatMessage } from "@/types";
 
 /**
  * ============================================================================
@@ -98,11 +99,28 @@ function filledFromFirstName(name: string | null | undefined, request: AskReques
   if (!name || !/\s/.test(name.trim())) return null;
   const person = roster.find((entry) => displayName(entry).toLowerCase() === name.trim().toLowerCase());
   if (!person) return null;
-  // Chosen from a question that named them ("Did you mean 1. **Quinn Ashby** …" — "2"): already confirmed.
-  if (lastAssistant(request).includes(`**${displayName(person)}**`)) return null;
+  if (alreadyConfirmed(displayName(person), request)) return null;
   const said = everythingSaid(request);
   if (words(person.lastName).some((word) => said.has(word))) return null;
   return firstNamesOf(person).find((first) => said.has(first) && !ORDINARY.has(first)) ?? null;
+}
+
+/*
+ * QA review, 28 Oct 2026: after "yes" the card held the name, but every later
+ * turn ("make it a written warning", "create it") still showed a last name the
+ * manager never typed, and the question replaced the card again. The person
+ * is confirmed for the whole conversation once any earlier reply named them
+ * in bold (this question, or a numbered "Did you mean"), any earlier card was
+ * for them, or a form is already open.
+ */
+function alreadyConfirmed(fullName: string, request: AskRequest): boolean {
+  if (request.activeFormInstanceId) return true;
+  const target = fullName.trim().toLowerCase();
+  return (request.history ?? []).some(
+    (turn) =>
+      turn.role === "assistant" &&
+      (turn.content.toLowerCase().includes(`**${target}**`) || turn.formProposal?.employeeName?.trim().toLowerCase() === target),
+  );
 }
 
 /** Cheap first look, before the roster is read: a card name whose last word the manager never typed. */
@@ -156,6 +174,46 @@ const ORDINALS: readonly RegExp[] = [/\b(?:first|1st|one)\b|^\s*1\b/i, /\b(?:sec
  */
 export function withFirstNameAnswer(request: AskRequest): AskRequest {
   if (!firstNameSuggestEnabled()) return request;
+  return answeredNow(withEarlierAnswers(request));
+}
+
+/**
+ * QA review, 28 Oct 2026: the answer only rewrote ITS turn, so the turns
+ * after it ("make it a written warning", "create it") read the raw history
+ * again — the first name alone, "yes" — lost the person, and the question was
+ * asked again in place of the card. Every question of this kind earlier in
+ * the conversation that the manager answered puts the chosen name, in full,
+ * into the manager's turn that gave the first name, as the answer itself did.
+ */
+function withEarlierAnswers(request: AskRequest): AskRequest {
+  const history = request.history ?? [];
+  let next: ChatMessage[] | null = null;
+  history.forEach((turn, index) => {
+    const reply = history[index + 1];
+    if (turn.role !== "assistant" || reply?.role !== "user") return;
+    const one = ONE.exec(turn.content);
+    const many = one ? null : MANY.exec(turn.content);
+    if (!one && !many) return;
+    const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
+    const chosen = chosenName(reply.content.trim(), options, Boolean(one));
+    if (!chosen) return;
+    const first = new RegExp(`\\b${words(options[0]!)[0]!}\\b`, "i");
+    const turns: ChatMessage[] = next ?? [...history];
+    for (let at = index - 1; at >= 0; at -= 1) {
+      const said = turns[at]!;
+      if (said.role !== "user" || !first.test(said.content)) continue;
+      if (said.content.toLowerCase().includes(chosen.name.toLowerCase())) break;
+      turns[at] = { ...said, content: said.content.replace(first, chosen.name) };
+      break;
+    }
+    // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
+    turns[index + 1] = { ...reply, content: `${chosen.name}${chosen.rest}` };
+    next = turns;
+  });
+  return next ? { ...request, history: next } : request;
+}
+
+function answeredNow(request: AskRequest): AskRequest {
   const asked = lastAssistant(request);
   const reply = request.question.trim();
   const one = ONE.exec(asked);
