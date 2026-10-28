@@ -1,0 +1,23 @@
+{
+  "key": "da0850e178a91e30eecb7a1c1322f04e0f5f26a783b765dbc3561bbaca214495",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": "ivy",
+    "salon": "Grand Island",
+    "title": null,
+    "incidentType": "out of dress code three shifts",
+    "incidentDate": null,
+    "payrollAmount": null,
+    "warningLevel": "verbal",
+    "formType": "Coaching Form",
+    "formTurn": true,
+    "policyHeading": "Dress Code for The Company"
+  },
+  "usage": {
+    "inputTokens": 2685,
+    "outputTokens": 213,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

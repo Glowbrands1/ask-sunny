@@ -7,7 +7,7 @@ import { detectTemplateIntent } from "./template-intent";
 import { dateAnswerTurns } from "./incident-dates";
 import { isPayrollAnswer } from "./payroll-words";
 import { stateCodePlaceContext } from "./state-code-place";
-import { lastFirstNameReadEnabled } from "@/lib/config/chat-quality-flags";
+import { checkedReadingEnabled } from "@/lib/config/chat-quality-flags";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -86,7 +86,7 @@ export function checkProposalIsCurrent(input: {
     resolution.kind === "resolved" &&
     !samePerson(resolution.employeeName, input.employeeName) &&
     !accepted &&
-    !(lastFirstNameReadEnabled() && partOfName(resolution.employeeName, input.employeeName))
+    !(checkedReadingEnabled() && partOfName(resolution.employeeName, input.employeeName))
   ) {
     return {
       current: false,
@@ -123,11 +123,10 @@ export function checkProposalIsCurrent(input: {
 }
 
 /**
- * LAST_FIRST_NAME_READ_ENABLED: the conversation's "Marlowe" (from "Marlowe,
- * Quinn") or "Hollis Ivy" is part of the card's "Quinn Marlowe" / "Ivy Hollis",
- * not another person. The card's full name came from the one roster person those
- * words fit (`ai/reader/check.ts`); the conversation reader only stops sooner.
- * Every word the conversation says must be one of the card's words.
+ * AI_READS_CODE_CHECKS_ENABLED or LAST_FIRST_NAME_READ_ENABLED: the conversation's "Marlowe" (from "Marlowe,
+ * Quinn") or "quinn" is part of the card's "Quinn Marlowe", not another
+ * person. The card's full name came from the one roster person those words
+ * fit (`ai/reader/check.ts`); the conversation reader only stops sooner.
  */
 function partOfName(said: string, card: string): boolean {
   const words = (text: string) => text.toLowerCase().split(/[^a-z']+/).filter(Boolean);

@@ -116,6 +116,8 @@ import {
   jobTitleReadbackCaseEnabled,
   stepDateNoQuestionEnabled,
   firstNameAskEnabled,
+  typoReadingRoutesEnabled,
+  typoReadingCopyEnabled,
   dayWordTyposEnabled,
   amountUnknownAckEnabled,
   accountOnlyPolicyQueryEnabled,
@@ -127,6 +129,7 @@ import {
   monthlyBudgetGuardEnabled,
   ordinalDateInDraftEnabled,
   widerDateReaderEnabled,
+  aiReadsCodeChecksEnabled,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -264,6 +267,8 @@ const NEW_FLAGS = [
   "JOB_TITLE_READBACK_CASE_ENABLED",
   "STEP_DATE_NO_QUESTION_ENABLED",
   "FIRST_NAME_ASK_ENABLED",
+  "TYPO_READING_ROUTES_ENABLED",
+  "TYPO_READING_COPY_ENABLED",
   "DAY_WORD_TYPOS_ENABLED",
   "AMOUNT_UNKNOWN_ACK_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -275,6 +280,7 @@ const NEW_FLAGS = [
   "MONTHLY_BUDGET_GUARD_ENABLED",
   "ORDINAL_DATE_IN_DRAFT_ENABLED",
   "WIDER_DATE_READER_ENABLED",
+  "AI_READS_CODE_CHECKS_ENABLED",
   "LAST_FIRST_NAME_READ_ENABLED",
 ] as const;
 
@@ -417,6 +423,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(jobTitleReadbackCaseEnabled()).toBe(false);
     expect(stepDateNoQuestionEnabled()).toBe(false);
     expect(firstNameAskEnabled()).toBe(false);
+    expect(typoReadingRoutesEnabled()).toBe(false);
+    expect(typoReadingCopyEnabled()).toBe(false);
     expect(dayWordTyposEnabled()).toBe(false);
     expect(amountUnknownAckEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
@@ -428,6 +436,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(monthlyBudgetGuardEnabled()).toBe(false);
     expect(ordinalDateInDraftEnabled()).toBe(false);
     expect(widerDateReaderEnabled()).toBe(false);
+    expect(aiReadsCodeChecksEnabled()).toBe(false);
     expect(privateCreatorFormsEnabled()).toBe(false);
     expect(privateCreatorsActive()).toBe(false);
     expect(fieldAccuracyEnabled()).toBe(false);

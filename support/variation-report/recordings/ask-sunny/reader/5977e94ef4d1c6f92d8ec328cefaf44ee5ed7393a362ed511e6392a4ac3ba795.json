@@ -1,0 +1,57 @@
+{
+  "key": "5977e94ef4d1c6f92d8ec328cefaf44ee5ed7393a362ed511e6392a4ac3ba795",
+  "model": "claude-haiku-4-5",
+  "reply": {
+    "employee": {
+      "value": "quinn",
+      "evidence": "quinn was late on 10/20"
+    },
+    "location": {
+      "value": "salon",
+      "evidence": "the salon was opened late"
+    },
+    "jobTitle": {
+      "value": null,
+      "evidence": null
+    },
+    "incident": {
+      "value": "being late",
+      "evidence": "i need to issue a ca for someone being late"
+    },
+    "incidentDate": {
+      "value": "2026-10-20",
+      "evidence": "quinn was late on 10/20"
+    },
+    "warningLevel": {
+      "value": "written",
+      "evidence": null
+    },
+    "payroll": {
+      "value": "yes",
+      "evidence": "yes payrol ldeduct"
+    },
+    "payrollAmount": {
+      "value": null,
+      "evidence": "i dont know the amount"
+    },
+    "policyHeading": {
+      "value": "Attendance",
+      "evidence": null
+    },
+    "priorSteps": [
+      {
+        "kind": "verbal",
+        "date": "2026-10-01",
+        "evidence": "she was issued a verbal ca on 10.1 for this same thing"
+      }
+    ],
+    "otherDates": []
+  },
+  "usage": {
+    "inputTokens": 3539,
+    "outputTokens": 393,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "ms": 0
+}

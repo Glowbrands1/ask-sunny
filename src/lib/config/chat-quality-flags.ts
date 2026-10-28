@@ -1336,19 +1336,32 @@ export function firstNameAskEnabled(): boolean {
 }
 
 /**
- * "Marlowe, Quinn" is read as Quinn Marlowe, without a model (QA, 27 Oct 2026;
- * same flag in both apps). A "Last, First" pair in the manager's turns that fits
- * exactly one person on the scoped roster fills an employee today's readers left
- * open, and the Create check takes the part-of-name card. See
- * `ai/reader/last-first.ts`. Off, as before.
+ * The AI reads the form request, the code checks it (Pau, 27 Oct 2026; same
+ * flag in both apps). One extra Haiku call per form turn returns each field
+ * with the manager's own words it came from; a field is kept only when its
+ * quote, the roster, the date readers and the manual agree, and it fills only
+ * what today's readers left open, never what they settled. A failed or slow
+ * call leaves the turn on today's readers. See `ai/reader/`. Off, as before.
+ */
+export function aiReadsCodeChecksEnabled(): boolean {
+  return envFlag("AI_READS_CODE_CHECKS_ENABLED");
+}
+
+/**
+ * "Marlowe, Quinn" is read as Quinn Marlowe without a model (QA, 27 Oct 2026;
+ * same flag in both apps): the AI reader's one measured win, by the reader's own
+ * checks alone. A "Last, First" pair in the manager's turns that fits exactly one
+ * person on the scoped roster fills an employee today's readers left open, and
+ * the Create check takes the part-of-name card. See `ai/reader/last-first.ts`.
+ * Off, as before.
  */
 export function lastFirstNameReadEnabled(): boolean {
   return envFlag("LAST_FIRST_NAME_READ_ENABLED");
 }
 
-/** A checked reading is merged into the turn: today, only the Last, First one. */
+/** A checked reading is merged into the turn: the AI reader's, or the Last, First one. */
 export function checkedReadingEnabled(): boolean {
-  return lastFirstNameReadEnabled();
+  return aiReadsCodeChecksEnabled() || lastFirstNameReadEnabled();
 }
 
 /**
@@ -1432,6 +1445,25 @@ export function unreadDateAskEnabled(): boolean {
  */
 export function dayWordTyposEnabled(): boolean {
   return envFlag("DAY_WORD_TYPOS_ENABLED");
+}
+
+/**
+ * The chat's readers see the manager's turns with each typo read as the one
+ * known word it can only be; employee names never (QA, 27 Oct 2026; same flag
+ * in both apps). See `ai/typo-reading-copy.ts`. Off, as before.
+ */
+export function typoReadingCopyEnabled(): boolean {
+  return envFlag("TYPO_READING_COPY_ENABLED");
+}
+
+/**
+ * The form routes' readers (the draft's notes; the create route's payroll
+ * amount) see the manager's words with each typo read as the one known word it
+ * can only be; stored text stays as typed (QA, 27 Oct 2026; same flag in both
+ * apps). See `ai/typo-reading-copy.ts`. Off, as before.
+ */
+export function typoReadingRoutesEnabled(): boolean {
+  return envFlag("TYPO_READING_ROUTES_ENABLED");
 }
 
 /**
