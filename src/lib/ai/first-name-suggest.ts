@@ -3,6 +3,7 @@ import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest, AskResponse } from "./types";
+import type { ChatMessage } from "@/types";
 
 /**
  * ============================================================================
@@ -79,6 +80,55 @@ function lastAssistant(request: AskRequest): string {
   return [...(request.history ?? [])].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
 }
 
+/** Every word the manager has typed in this conversation. */
+function everythingSaid(request: AskRequest): Set<string> {
+  const said = [...(request.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content), request.question];
+  return new Set(said.flatMap(words));
+}
+
+/**
+ * QA, 28 Oct 2026 (live): "katherine was late on 10/20, write her up" with
+ * one Katherine on the roster gave a card for her full name at once — a
+ * reader found the one roster person the first name fits and filled the
+ * card, so the manager was never asked. A card whose employee is a roster
+ * person whose last name the manager has never typed, and whose first (or
+ * preferred) name they did type, was filled from that first name alone: it
+ * is asked about like a one-word card. The first name, or null.
+ */
+function filledFromFirstName(name: string | null | undefined, request: AskRequest, roster: readonly RosterEmployee[]): string | null {
+  if (!name || !/\s/.test(name.trim())) return null;
+  const person = roster.find((entry) => displayName(entry).toLowerCase() === name.trim().toLowerCase());
+  if (!person) return null;
+  if (alreadyConfirmed(displayName(person), request)) return null;
+  const said = everythingSaid(request);
+  if (words(person.lastName).some((word) => said.has(word))) return null;
+  return firstNamesOf(person).find((first) => said.has(first) && !ORDINARY.has(first)) ?? null;
+}
+
+/*
+ * QA review, 28 Oct 2026: after "yes" the card held the name, but every later
+ * turn ("make it a written warning", "create it") still showed a last name the
+ * manager never typed, and the question replaced the card again. The person
+ * is confirmed for the whole conversation once any earlier reply named them
+ * in bold (this question, or a numbered "Did you mean"), any earlier card was
+ * for them, or a form is already open.
+ */
+function alreadyConfirmed(fullName: string, request: AskRequest): boolean {
+  if (request.activeFormInstanceId) return true;
+  const target = fullName.trim().toLowerCase();
+  return (request.history ?? []).some(
+    (turn) =>
+      turn.role === "assistant" &&
+      (turn.content.toLowerCase().includes(`**${target}**`) || turn.formProposal?.employeeName?.trim().toLowerCase() === target),
+  );
+}
+
+/** Cheap first look, before the roster is read: a card name whose last word the manager never typed. */
+function cardNameNotTypedInFull(name: string | null | undefined, request: AskRequest): boolean {
+  const parts = words(name ?? "");
+  return parts.length > 1 && !everythingSaid(request).has(parts.at(-1)!);
+}
+
 export function withFirstNameSuggest(
   response: AskResponse,
   request: AskRequest,
@@ -90,12 +140,14 @@ export function withFirstNameSuggest(
   if (ONE.test(asked) || MANY.test(asked)) return response;
   const card = response.formProposal;
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
-  if (!oneWordCard && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  // The card's full name was filled from a first name the manager typed alone ("katherine was late …").
+  const filledFirst = oneWordCard ? null : filledFromFirstName(card?.employeeName, request, roster);
+  if (!oneWordCard && !filledFirst && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
 
   const turns = managerTurns(request);
-  if (namesSomebodyInFull(turns, roster)) return response;
+  if (!filledFirst && namesSomebodyInFull(turns, roster)) return response;
   const own = words(request.context?.userName ?? "")[0] ?? null;
-  const first = oneWordCard ? card!.employeeName!.trim().toLowerCase() : statedFirstName(turns, roster, own);
+  const first = oneWordCard ? card!.employeeName!.trim().toLowerCase() : (filledFirst ?? statedFirstName(turns, roster, own));
   if (!first || first === own) return response;
   const people = roster.filter((person) => firstNamesOf(person).includes(first));
   if (people.length === 0) return response;
@@ -122,6 +174,46 @@ const ORDINALS: readonly RegExp[] = [/\b(?:first|1st|one)\b|^\s*1\b/i, /\b(?:sec
  */
 export function withFirstNameAnswer(request: AskRequest): AskRequest {
   if (!firstNameSuggestEnabled()) return request;
+  return answeredNow(withEarlierAnswers(request));
+}
+
+/**
+ * QA review, 28 Oct 2026: the answer only rewrote ITS turn, so the turns
+ * after it ("make it a written warning", "create it") read the raw history
+ * again — the first name alone, "yes" — lost the person, and the question was
+ * asked again in place of the card. Every question of this kind earlier in
+ * the conversation that the manager answered puts the chosen name, in full,
+ * into the manager's turn that gave the first name, as the answer itself did.
+ */
+function withEarlierAnswers(request: AskRequest): AskRequest {
+  const history = request.history ?? [];
+  let next: ChatMessage[] | null = null;
+  history.forEach((turn, index) => {
+    const reply = history[index + 1];
+    if (turn.role !== "assistant" || reply?.role !== "user") return;
+    const one = ONE.exec(turn.content);
+    const many = one ? null : MANY.exec(turn.content);
+    if (!one && !many) return;
+    const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
+    const chosen = chosenName(reply.content.trim(), options, Boolean(one));
+    if (!chosen) return;
+    const first = new RegExp(`\\b${words(options[0]!)[0]!}\\b`, "i");
+    const turns: ChatMessage[] = next ?? [...history];
+    for (let at = index - 1; at >= 0; at -= 1) {
+      const said = turns[at]!;
+      if (said.role !== "user" || !first.test(said.content)) continue;
+      if (said.content.toLowerCase().includes(chosen.name.toLowerCase())) break;
+      turns[at] = { ...said, content: said.content.replace(first, chosen.name) };
+      break;
+    }
+    // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
+    turns[index + 1] = { ...reply, content: `${chosen.name}${chosen.rest}` };
+    next = turns;
+  });
+  return next ? { ...request, history: next } : request;
+}
+
+function answeredNow(request: AskRequest): AskRequest {
   const asked = lastAssistant(request);
   const reply = request.question.trim();
   const one = ONE.exec(asked);
@@ -177,7 +269,8 @@ export async function withFirstNameSuggestFor(
   if (!firstNameSuggestEnabled()) return response;
   const card = response.formProposal;
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
-  if (!oneWordCard && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  const maybeFilled = cardNameNotTypedInFull(card?.employeeName, request);
+  if (!oneWordCard && !maybeFilled && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
   const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
   return withFirstNameSuggest(response, request, await loadScopedRoster(actor.scope));
 }
