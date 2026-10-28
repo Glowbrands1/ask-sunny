@@ -378,6 +378,21 @@ const MONITORING_MOUNT = [
   "+                            <RegisterRowActions form={form} />",
 ];
 
+/*
+ * NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED (QA approved 28 Oct 2026, both
+ * apps; QA reviews the auth diff line by line): sign-in-form.tsx may add
+ * exactly the flag import and the gated accept call, plus comment lines.
+ * Off, the form behaves as before. Any other change to the file fails.
+ */
+const SIGN_IN_FORM = "src/features/auth/sign-in-form.tsx";
+const SIGN_IN_ACCEPT = [
+  '+import { invitedSignInAcceptsEnabled } from "@/lib/auth/invited-signin-flag";',
+  "+      if (invitedSignInAcceptsEnabled()) {",
+  '+        await fetch("/api/auth/accept-invitation", { method: "POST" }).catch(() => undefined);',
+  "+      }",
+];
+const isAddedCommentOrBlank = (line: string) => /^\+\s*(\/\*.*|\*.*|)$/.test(line);
+
 function changedLines(patch: string): string[] {
   return patch.split("\n").filter((line) => /^[+-](?![+-]{2} )/.test(line));
 }
@@ -641,9 +656,13 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/app/(app)/layout.tsx",
           ":(exclude)src/app/(app)/forms/monitoring/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
+          `:(exclude)${SIGN_IN_FORM}`,
         ]),
       ).toBe("");
       expect(changedLines(diff(uiBase, [MONITORING_TABLE])).filter((line) => !MONITORING_MOUNT.includes(line))).toEqual([]);
+      expect(
+        changedLines(diff(uiBase, [SIGN_IN_FORM])).filter((line) => !SIGN_IN_ACCEPT.includes(line) && !isAddedCommentOrBlank(line)),
+      ).toEqual([]);
     } else {
       console.warn(
         "Skipping the UI git-diff assertion: origin/main is not in this checkout, fetching it failed, and no merge-base with main is available.",
