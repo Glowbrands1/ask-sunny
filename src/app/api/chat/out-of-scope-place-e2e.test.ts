@@ -470,10 +470,11 @@ function production(scope: unknown, on: boolean) {
   ];
 }
 
-async function reply(second: string): Promise<{ first: string; second: string }> {
+async function reply(second: string): Promise<{ first: string; second: string; locationId?: string | null }> {
   const thread = new Thread();
   const first = (await thread.say(OPEN)).content;
-  return { first, second: (await thread.say(second)).content };
+  const answer = await thread.say(second);
+  return { first, second: answer.content, locationId: answer.formProposal?.locationId };
 }
 
 const QA_WORDINGS = [
@@ -507,6 +508,23 @@ describe("never", () => {
   it("a salon in the manager's scope", async () => {
     production({ level: "salon", primaryAreaId: "loc-0309", alsoCoversAreaIds: ["loc-0468"] }, true);
     expect((await reply("Salon: KS Lawrence.")).second).not.toContain("isn't a salon on your assignment");
+  });
+
+  // Pau, 28 Oct 2026: "assigned" is the manager's FULL scope, never just the primary salon.
+  for (const wording of QA_WORDINGS) {
+    it(`an additional salon of the manager's: "${wording}" — no line, the card takes it`, async () => {
+      production({ level: "salon", primaryAreaId: "loc-0309", alsoCoversAreaIds: ["loc-0468"] }, true);
+      const { second, locationId } = await reply(wording);
+      expect(second).not.toContain("isn't a salon on your assignment");
+      expect(locationId).toBe("loc-0468");
+    });
+  }
+
+  it("a district or region manager: no salon roster maps the area to its salons, so no line", async () => {
+    for (const level of ["district", "region"]) {
+      production({ level, primaryAreaId: `${level}-1`, alsoCoversAreaIds: [] }, true);
+      expect((await reply("Salon: KS Lawrence.")).second).not.toContain(LINE);
+    }
   });
 
   it("no salon named", async () => {
