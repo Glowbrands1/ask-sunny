@@ -1348,6 +1348,23 @@ export function aiReadsCodeChecksEnabled(): boolean {
 }
 
 /**
+ * "Marlowe, Quinn" is read as Quinn Marlowe without a model (QA, 27 Oct 2026;
+ * same flag in both apps): the AI reader's one measured win, by the reader's own
+ * checks alone. A "Last, First" pair in the manager's turns that fits exactly one
+ * person on the scoped roster fills an employee today's readers left open, and
+ * the Create check takes the part-of-name card. See `ai/reader/last-first.ts`.
+ * Off, as before.
+ */
+export function lastFirstNameReadEnabled(): boolean {
+  return envFlag("LAST_FIRST_NAME_READ_ENABLED");
+}
+
+/** A checked reading is merged into the turn: the AI reader's, or the Last, First one. */
+export function checkedReadingEnabled(): boolean {
+  return aiReadsCodeChecksEnabled() || lastFirstNameReadEnabled();
+}
+
+/**
  * A bare "$25" right after the payroll amount question is read back and put on
  * the card (QA, 27 Oct 2026; Sunny-only): the routed turn's slot lines hid it
  * from the bare-figure reader. See `ai/amount-answer-saved.ts`. Off, as before.

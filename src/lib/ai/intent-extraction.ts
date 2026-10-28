@@ -2,7 +2,7 @@ import "server-only";
 
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { CLAUDE_HAIKU_MODEL, CLAUDE_READER_MODEL } from "@/lib/config/models";
-import { aiReadsCodeChecksEnabled, intentExtractionEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
+import { aiReadsCodeChecksEnabled, intentExtractionEnabled, lastFirstNameReadEnabled, remapIncidentFixEnabled } from "@/lib/config/chat-quality-flags";
 import { readDirectoryFacts, loadScopedRoster, type DirectoryFact } from "@/lib/forms/employee-roster";
 import { listTemplateSummaries } from "@/lib/forms/repository";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
@@ -21,6 +21,7 @@ import {
   INTENT_TOOL_INPUT_SCHEMA,
   INTENT_TOOL_NAME,
 } from "./intent-slots";
+import { lastFirstReading } from "./reader/last-first";
 import { readFormRequest, type ReaderResult } from "./reader/read";
 import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
 import type { AskRequest, AskResponse } from "./types";
@@ -58,21 +59,18 @@ export async function applyIntentExtraction(input: {
       loadTemplates(),
     ]);
     const salons = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
+    const turns = requestScopedHistory(input.request.history, input.request.question);
+    const checkContext = {
+      managerTurns: [...turns.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question],
+      people,
+      locations: salons,
+      headings: manual.headings,
+      today: input.request.context.todayIso,
+    };
+    const readsForm = readsAForm(input.request, saved);
     // AI_READS_CODE_CHECKS_ENABLED: the reader runs beside the slot call, on a form turn only.
-    const reading = aiReadsCodeChecksEnabled() && readsAForm(input.request, saved)
-      ? readFormRequest({
-          turns: [...requestScopedHistory(input.request.history, input.request.question), { role: "user", content: input.request.question }],
-          context: {
-            managerTurns: [
-              ...requestScopedHistory(input.request.history, input.request.question).filter((turn) => turn.role === "user").map((turn) => turn.content),
-              input.request.question,
-            ],
-            people,
-            locations: salons,
-            headings: manual.headings,
-            today: input.request.context.todayIso,
-          },
-        })
+    const reading = aiReadsCodeChecksEnabled() && readsForm
+      ? readFormRequest({ turns: [...turns, { role: "user", content: input.request.question }], context: checkContext })
       : null;
     const raw = await callClaudeTool({
       model: CLAUDE_HAIKU_MODEL,
@@ -90,7 +88,13 @@ export async function applyIntentExtraction(input: {
         },
       ],
     }).catch(() => null);
-    const read = reading ? await reading : null;
+    // LAST_FIRST_NAME_READ_ENABLED: with no AI reader, "Marlowe, Quinn" is read by the reader's own checks, no model.
+    const lastFirst = !reading && readsForm && lastFirstNameReadEnabled() ? lastFirstReading(checkContext) : null;
+    const read: ReaderResult | { readonly fallback: string } | null = reading
+      ? await reading
+      : lastFirst
+        ? { checked: lastFirst, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, ms: 0 }
+        : null;
     const checked = read && "checked" in read ? read.checked : null;
 
     // REMAP_INCIDENT_FIX_ENABLED: "prior = manual ack 9/01" is a prior step, not the incident date.
@@ -169,7 +173,7 @@ function readerTrace(
   if ("fallback" in read) return { fallback: read.fallback };
   return {
     // The spend guard prices the reader's usage at this model (ai/spend-guard-reader.ts).
-    model: CLAUDE_READER_MODEL,
+    ...(read.ms > 0 ? { model: CLAUDE_READER_MODEL } : { source: "last_first" }),
     ms: read.ms,
     usage: read.usage,
     rejected: read.checked.rejected,
