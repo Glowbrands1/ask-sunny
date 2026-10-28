@@ -696,3 +696,46 @@ describe("the vocabulary matches the database", () => {
     expect(listed).toEqual([...ACCESS_ACTIONS].sort());
   });
 });
+
+/*
+ * NEW_HIRE_INVITES_ENABLED (Pau, 28 Oct 2026): a new hire — hired on or after
+ * NEW_HIRE_INVITE_SINCE, not after today — may also be given an account for a
+ * role named in NEW_HIRE_INVITE_ROLES. Everybody else is planned as before.
+ */
+describe("new hires (NEW_HIRE_INVITES_ENABLED)", () => {
+  const rule = { since: "2026-10-28", extraRoles: ["employee"] as const, today: "2026-10-30" };
+  const withRule = (employees: PlannerEmployee[], newHire: PlannerInput["newHire"] = { ...rule, extraRoles: [...rule.extraRoles] }) =>
+    planAccess({ employees, positions, locations, accounts: [], newHire });
+  const tc = (hireDate: string | null) => employee({ positionId: POS.tc, positionName: "Tanning Consultant", hireDate });
+
+  it("a Tanning Consultant hired on or after the date gets an account, with the hire date on the row", () => {
+    for (const day of ["2026-10-28", "2026-10-30"]) {
+      const e = tc(day);
+      const row = rowOf(withRule([e]), e);
+      expect(row.actions).toEqual(["CREATE_USER"]);
+      expect(row.hireDate).toBe(day);
+    }
+  });
+
+  it("hired before the date, after today, or with no hire date: no account, as before", () => {
+    for (const day of ["2026-10-27", "2026-10-31", null]) {
+      const e = tc(day);
+      const row = rowOf(withRule([e]), e);
+      expect(row.actions).toEqual(["NO_CHANGE"]);
+      expect(row.reasons).toContain("position_not_auto_provisioned");
+    }
+  });
+
+  it("a role not named stays out, new hire or not", () => {
+    const e = employee({ positionId: POS.dm, hireDate: "2026-10-29" });
+    expect(rowOf(withRule([e]), e).reasons).toContain("position_not_auto_provisioned");
+  });
+
+  it("no rule (the switch off): the plan is exactly as before, and carries no hire date", () => {
+    const e = tc("2026-10-29");
+    const off = rowOf(plan([e]), e);
+    expect(off.actions).toEqual(["NO_CHANGE"]);
+    expect("hireDate" in off).toBe(false);
+  });
+});
+

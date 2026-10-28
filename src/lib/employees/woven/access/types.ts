@@ -1,3 +1,4 @@
+import type { NewHireRule } from "./new-hire";
 import type { Role, ScopeLevel } from "@/types";
 
 import type { EmploymentStatus, LocationMapStatus, PositionMapStatus } from "../types";
@@ -95,6 +96,8 @@ export interface PlannerEmployee {
   issues: string[];
   terminationDate: string | null;
   lastSyncedAt: string | null;
+  /** Woven's hire date (NEW_HIRE_INVITES_ENABLED reads it; `new-hire.ts`). */
+  hireDate?: string | null;
 }
 
 export interface PlannerPosition {
@@ -157,6 +160,8 @@ export interface PlannerInput {
    * `auth_users_unverified`).
    */
   authOnly?: readonly AuthOnlyUser[] | null;
+  /** NEW_HIRE_INVITES_ENABLED: who counts as a new hire, and the roles they may also be given (`new-hire.ts`). */
+  newHire?: NewHireRule | null;
 }
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
@@ -173,6 +178,8 @@ export interface PlannedRow {
   wovenPosition: string | null;
   wovenPrimaryLocation: string | null;
   wovenAdditionalLocations: string[];
+  /** Woven's hire date, when the row is an employee's. */
+  hireDate?: string | null;
   account: {
     appUserId: string;
     email: string;

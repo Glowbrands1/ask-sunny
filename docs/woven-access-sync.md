@@ -266,6 +266,34 @@ The scheduled sync runs the lifecycle after a successful directory sync only. Th
 - missing-only, past TerminationDate, failed terminated read and protected accounts are never revoked;
 - a rehire stays disabled.
 
+## Stage 5b — new hires invited one at a time (built 28 Oct 2026; OFF)
+
+Pau, 28 Oct 2026: new hires should get their access link without an admin, but
+never in a batch — the mailer allows two emails an hour. Built and off; no
+migration. Four switches, all closed by default (`access/new-hire.ts`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NEW_HIRE_INVITES_ENABLED` | off | Master switch. Off: nothing below is read, the lifecycle behaves as before. |
+| `NEW_HIRE_INVITE_SINCE` | unset | `YYYY-MM-DD`. Only people whose Woven hire date is on or after it (and not after today) are new hires. Unset with the switch on: off, with a problem. |
+| `NEW_HIRE_INVITE_ROLES` | empty | Roles a new hire may also be given an account for, beyond `AUTO_PROVISION_ROLES` — e.g. `employee` for Tanning Consultants. An unknown role: off. |
+| `NEW_HIRE_INVITES_PER_HOUR` | 1 | `1` or `2`; anything else is 1. |
+
+With the switch on:
+
+- the daily lifecycle (`WOVEN_ACCESS_MODE=apply`) creates the accounts as before
+  and **sends no invitation itself** (`holdInvites`);
+- `GET /api/employees/woven/invites/cron` (hourly, minute 23, `CRON_SECRET`)
+  invites at most `NEW_HIRE_INVITES_PER_HOUR` new hires whose account is
+  waiting — oldest hire date first, only while the guards allow changes, only
+  in the approved batch — and stops at the first `email_rate_limited`;
+- everybody already on the team (hired before the date) is left to an admin
+  ("Send sign-in link" / "Generate reset link").
+
+Nothing is created or sent unless the lifecycle's own switches are also on
+(`WOVEN_ACCESS_MODE=apply`, `CREATE_USER`, `SEND_INVITE`). Leave one invitation
+an hour of headroom for an admin's own sends.
+
 ## Migration history in Production
 
 `supabase_migrations.schema_migrations` in Production does not mirror the repository:

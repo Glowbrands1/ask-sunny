@@ -184,7 +184,18 @@ describe("sample data", () => {
 describe("the schedule", () => {
   const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] };
   /* The employee sync's own route. (The separate Woven KNOWLEDGE sync has its own daily check, on its own route.) */
-  const employee = (vercel.crons ?? []).filter((c) => c.path.startsWith("/api/employees/"));
+  /*
+   * Changed on purpose (NEW_HIRE_INVITES_ENABLED, 28 Oct 2026): the hourly
+   * new-hire invitation has its own route under /api/employees/, checked
+   * below; it never runs the sync.
+   */
+  const employee = (vercel.crons ?? []).filter((c) => c.path.startsWith("/api/employees/") && c.path !== "/api/employees/woven/invites/cron");
+
+  it("schedules the new-hire invitation hourly, on its own route, once", () => {
+    expect((vercel.crons ?? []).filter((c) => c.path === "/api/employees/woven/invites/cron")).toEqual([
+      { path: "/api/employees/woven/invites/cron", schedule: "23 * * * *" },
+    ]);
+  });
 
   it("schedules the employee sync once a day, on its own route", () => {
     expect(employee).toEqual([{ path: "/api/employees/woven/cron", schedule: "17 11 * * *" }]);
