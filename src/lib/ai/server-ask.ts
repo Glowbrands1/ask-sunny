@@ -160,6 +160,7 @@ import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
+import { withOwnPlace } from "./keeps-own-place";
 import { withFormTypeSwitch, withSwitchNote, withSwitchSources } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
@@ -317,8 +318,9 @@ async function answerQuestionChecked(
     // OUT_OF_SCOPE_PLACE_SAID_ENABLED: "Salon: KS Lawrence." from a manager not assigned there is told so.
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     return keepManagerActionPlan(
+      // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
-      withSwitchSources(withSwitchNote(withOutOfScopePlace(withAmountUnknownAck(
+      withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
@@ -330,7 +332,7 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ), request, actor), request, "Form Monitoring"), request),
+      ), request, actor), request, actor), request, "Form Monitoring"), request),
       request,
     );
   };

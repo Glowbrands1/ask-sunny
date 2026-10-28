@@ -123,6 +123,7 @@ import {
   dayWordTyposEnabled,
   amountUnknownAckEnabled,
   outOfScopePlaceSaidEnabled,
+  outOfScopePlaceKeepsOwnEnabled,
   formTypeSwitchEnabled,
   formTypeSwitchAfterCreateNoteEnabled,
   cardChangePlanRebuildEnabled,
@@ -278,6 +279,7 @@ const NEW_FLAGS = [
   "DAY_WORD_TYPOS_ENABLED",
   "AMOUNT_UNKNOWN_ACK_ENABLED",
   "OUT_OF_SCOPE_PLACE_SAID_ENABLED",
+  "OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED",
   "FORM_TYPE_SWITCH_ENABLED",
   "FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED",
   "CARD_CHANGE_PLAN_REBUILD_ENABLED",
@@ -440,6 +442,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(dayWordTyposEnabled()).toBe(false);
     expect(amountUnknownAckEnabled()).toBe(false);
     expect(outOfScopePlaceSaidEnabled()).toBe(false);
+    expect(outOfScopePlaceKeepsOwnEnabled()).toBe(false);
     expect(formTypeSwitchEnabled()).toBe(false);
     expect(formTypeSwitchAfterCreateNoteEnabled()).toBe(false);
     expect(cardChangePlanRebuildEnabled()).toBe(false);

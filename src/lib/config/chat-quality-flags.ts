@@ -1485,6 +1485,15 @@ export function outOfScopePlaceSaidEnabled(): boolean {
 }
 
 /**
+ * A card never holds a salon the manager is not assigned to: it goes back to
+ * the manager's own, or asks which (Pau, 28 Oct 2026; same flag in both
+ * apps). See `ai/keeps-own-place.ts`. Off, as before.
+ */
+export function outOfScopePlaceKeepsOwnEnabled(): boolean {
+  return envFlag("OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED");
+}
+
+/**
  * While the card is open, "change to coaching" / "change to ca" switch it to
  * the other form (Pau, 28 Oct 2026; same flag in both apps). See
  * `ai/form-type-switch.ts`. Off, as before.
