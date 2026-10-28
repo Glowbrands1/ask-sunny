@@ -124,6 +124,7 @@ import {
   amountUnknownAckEnabled,
   outOfScopePlaceSaidEnabled,
   formTypeSwitchEnabled,
+  formTypeSwitchAfterCreateNoteEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -277,6 +278,7 @@ const NEW_FLAGS = [
   "AMOUNT_UNKNOWN_ACK_ENABLED",
   "OUT_OF_SCOPE_PLACE_SAID_ENABLED",
   "FORM_TYPE_SWITCH_ENABLED",
+  "FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -437,6 +439,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(amountUnknownAckEnabled()).toBe(false);
     expect(outOfScopePlaceSaidEnabled()).toBe(false);
     expect(formTypeSwitchEnabled()).toBe(false);
+    expect(formTypeSwitchAfterCreateNoteEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);

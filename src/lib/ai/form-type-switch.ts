@@ -1,6 +1,6 @@
-import { formTypeSwitchEnabled } from "@/lib/config/chat-quality-flags";
+import { formTypeSwitchAfterCreateNoteEnabled, formTypeSwitchEnabled } from "@/lib/config/chat-quality-flags";
 
-import type { AskRequest } from "./types";
+import type { AskRequest, AskResponse } from "./types";
 
 /**
  * ============================================================================
@@ -23,7 +23,7 @@ import type { AskRequest } from "./types";
  * turns too, so a later turn keeps the new form. What the manager typed is
  * stored as typed. After Create nothing changes here (a separate decision).
  */
-type Family = "coaching" | "ca";
+export type Family = "coaching" | "ca";
 
 const COACHING = /\bcoaching\b/i;
 const CA = /\b(?:ca|c\/a|corrective(?:\s+action)?|write[- ]?up)\b/i;
@@ -54,6 +54,14 @@ export function requestedForm(turn: string): Family | null {
   return coaching ? "coaching" : "ca";
 }
 
+/** The form a turn asked for ("create a ca for …"), or null. */
+export function askedForm(turn: string): Family | null {
+  const coaching = ASKED_FOR.coaching.exec(turn);
+  const ca = ASKED_FOR.ca.exec(turn);
+  if (coaching && ca) return coaching.index <= ca.index ? "coaching" : "ca";
+  return coaching ? "coaching" : ca ? "ca" : null;
+}
+
 /** The other form's name, as the manager asked for it: "create a coaching form for …". */
 const ASKED_FOR: Record<Family, RegExp> = {
   coaching: /(\b(?:create|start|make|need|open|draft|write|fill(?:\s+out)?|do|want|give)\b[^.!?\n]{0,40}?)\bcoaching(?:\s+form)?\b/i,
@@ -62,7 +70,7 @@ const ASKED_FOR: Record<Family, RegExp> = {
 const NAME: Record<Family, string> = { coaching: "coaching form", ca: "ca" };
 
 /** The turn that asked for `from`, read as asking for `to`; any other turn as it is. */
-function askedFor(turn: string, from: Family, to: Family): string {
+export function askedFor(turn: string, from: Family, to: Family): string {
   return turn.replace(ASKED_FOR[from], (_whole, lead: string) => `${lead}${NAME[to]}`);
 }
 
@@ -105,7 +113,8 @@ export function withFormTypeSwitch(request: AskRequest): AskRequest {
  * before it as asking for that form. Nothing stored is changed.
  */
 export function switchReadConversation<T extends { readonly role: string; readonly content: string }>(turns: T[]): T[] {
-  if (!formTypeSwitchEnabled()) return turns;
+  // Either flag: the after-Create switch's new card is checked against the same conversation.
+  if (!formTypeSwitchEnabled() && !formTypeSwitchAfterCreateNoteEnabled()) return turns;
   const users = turns.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.role === "user" && typeof turn.content === "string");
   const switches = users.slice(1).filter(({ turn }) => requestedForm(turn.content) !== null);
   const last = switches.at(-1);
@@ -120,4 +129,56 @@ export function switchReadConversation<T extends { readonly role: string; readon
     const content = askedFor(turn.content, from, target);
     return content === turn.content ? turn : { ...turn, content };
   });
+}
+
+/**
+ * ============================================================================
+ * "CHANGE TO COACHING" AFTER THE FORM WAS CREATED
+ * ============================================================================
+ *
+ * FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED (Pau, 28 Oct 2026; same flag in
+ * both apps): once this conversation's form exists, a request for the other
+ * form starts that form's card — read as the request that asked for the first
+ * one, with the other form named, so it keeps the employee, the date, the place
+ * and the account — and the reply says the existing form is left as it is
+ * (`withSwitchNote`). The existing form is never changed, archived or deleted:
+ * the turn is no longer about it, so none of the open-form paths run.
+ */
+export function withSwitchAfterCreate<T extends AskRequest>(request: T): T {
+  if (!formTypeSwitchAfterCreateNoteEnabled() || !request.activeFormInstanceId) return request;
+  const wanted = requestedForm(request.question);
+  if (!wanted) return request;
+  const opening = request.history
+    .filter((turn) => turn.role === "user" && typeof turn.content === "string")
+    .map((turn) => turn.content)
+    .reverse()
+    .find((turn) => askedForm(turn) !== null);
+  const from = opening ? askedForm(opening) : null;
+  if (!opening || !from || from === wanted) return request;
+  return {
+    ...request,
+    question: askedFor(opening, from, wanted),
+    activeFormInstanceId: undefined,
+    continueProposalTemplateKey: undefined,
+    switchedFromForm: from,
+  };
+}
+
+const DRAFT_NAME: Record<Family, string> = { ca: "Corrective Action", coaching: "Coaching Form" };
+const START_NAME: Record<Family, string> = { ca: "Corrective Action Form", coaching: "Coaching Form" };
+
+/** "You already have a Corrective Action draft for **Quinn Marlowe**. I'll start a Coaching Form too, …" */
+export function switchNote(from: Family, to: Family, employeeName: string, register: string): string {
+  return `You already have a ${DRAFT_NAME[from]} draft for **${employeeName}**. I'll start a ${START_NAME[to]} too, and the ${DRAFT_NAME[from]} draft stays in ${register} until you delete it.`;
+}
+
+/** Once, above the new form's card, when `withSwitchAfterCreate` started it. */
+export function withSwitchNote(response: AskResponse, request: AskRequest, register: string): AskResponse {
+  const from = request.switchedFromForm;
+  const card = response.formProposal;
+  const to = familyOf(card?.templateKey);
+  if (!from || !card || !to || to === from || !card.employeeName) return response;
+  const note = switchNote(from, to, card.employeeName, register);
+  if (response.content.includes(note)) return response;
+  return { ...response, content: `${note}\n\n${response.content}` };
 }

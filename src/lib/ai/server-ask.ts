@@ -160,7 +160,7 @@ import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
-import { withFormTypeSwitch } from "./form-type-switch";
+import { withFormTypeSwitch, withSwitchNote } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
@@ -315,8 +315,9 @@ async function answerQuestionChecked(
     // AMOUNT_ANSWER_SAVED_ENABLED: "$25" after the amount question is the amount.
     // AMOUNT_UNKNOWN_ACK_ENABLED: "i dont know the amount" is answered, not met with the card alone.
     // OUT_OF_SCOPE_PLACE_SAID_ENABLED: "Salon: KS Lawrence." from a manager not assigned there is told so.
+    // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     return keepManagerActionPlan(
-      withOutOfScopePlace(withAmountUnknownAck(
+      withSwitchNote(withOutOfScopePlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
@@ -328,7 +329,7 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ), request, actor),
+      ), request, actor), request, "Form Monitoring"),
       request,
     );
   };
