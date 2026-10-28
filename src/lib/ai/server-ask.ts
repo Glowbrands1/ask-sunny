@@ -159,6 +159,7 @@ import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
+import { withOutOfScopePlace } from "./out-of-scope-place";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
@@ -311,8 +312,9 @@ async function answerQuestionChecked(
     // UNREAD_DATE_ASK_ENABLED: "last tuesday" the reader could not read is asked about, never dated today in silence.
     // AMOUNT_ANSWER_SAVED_ENABLED: "$25" after the amount question is the amount.
     // AMOUNT_UNKNOWN_ACK_ENABLED: "i dont know the amount" is answered, not met with the card alone.
+    // OUT_OF_SCOPE_PLACE_SAID_ENABLED: "Salon: KS Lawrence." from a manager not assigned there is told so.
     return keepManagerActionPlan(
-      withAmountUnknownAck(
+      withOutOfScopePlace(withAmountUnknownAck(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
@@ -324,7 +326,7 @@ async function answerQuestionChecked(
           request,
         ),
         request,
-      ),
+      ), request, actor),
       request,
     );
   };
