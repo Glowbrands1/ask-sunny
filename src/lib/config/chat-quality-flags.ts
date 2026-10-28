@@ -1483,3 +1483,12 @@ export function amountUnknownAckEnabled(): boolean {
 export function outOfScopePlaceSaidEnabled(): boolean {
   return envFlag("OUT_OF_SCOPE_PLACE_SAID_ENABLED");
 }
+
+/**
+ * A card never holds a salon the manager is not assigned to: it goes back to
+ * the manager's own, or asks which (Pau, 28 Oct 2026; same flag in both
+ * apps). See `ai/keeps-own-place.ts`. Off, as before.
+ */
+export function outOfScopePlaceKeepsOwnEnabled(): boolean {
+  return envFlag("OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED");
+}

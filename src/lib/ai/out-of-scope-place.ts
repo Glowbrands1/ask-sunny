@@ -1,4 +1,4 @@
-import { outOfScopePlaceSaidEnabled } from "@/lib/config/chat-quality-flags";
+import { outOfScopePlaceKeepsOwnEnabled, outOfScopePlaceSaidEnabled } from "@/lib/config/chat-quality-flags";
 import { authorizedSalonIds } from "@/lib/forms/location-scope";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import { salonCorrection, salonReply } from "@/lib/forms/salon-reply";
@@ -18,10 +18,24 @@ import type { AskRequest, AskResponse } from "./types";
  * Only when exactly one salon is named in the turn, none of the named salons
  * is the manager's, and the reply does not already say it. A manager whose
  * scope is not a list of salons (district, region, company) never gets it.
- * The card is not changed.
+ * The card is not changed. With OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED the card
+ * has gone back to the manager's own salon (`keeps-own-place.ts`), so the line
+ * says where the form stays, or asks which when the manager has several.
  */
 export function outOfScopeSalonLine(name: string): string {
   return `**${name}** isn't a salon on your assignment, so I can't file a form against it — Create will refuse it. Which of your salons is this about?`;
+}
+
+/** With the card kept at the manager's own salon: where the form stays, or which of theirs. */
+export function keptSalonLine(name: string, own: string | null): string {
+  return own
+    ? `**${name}** isn't a salon on your assignment, so the form stays at **${own}**.`
+    : `**${name}** isn't a salon on your assignment, so I can't file a form against it. Which of your salons is this about?`;
+}
+
+function lineFor(name: string, card: NonNullable<AskResponse["formProposal"]>): string {
+  if (!outOfScopePlaceKeepsOwnEnabled()) return outOfScopeSalonLine(name);
+  return keptSalonLine(name, card.locationId ? rosterSalonName(card.locationId) : null);
 }
 
 const ALREADY_SAID = /isn['’]t a salon on your assignment/;
@@ -48,5 +62,5 @@ export function withOutOfScopePlace(response: AskResponse, request: AskRequest, 
   if (named.length !== 1 || allowed.includes(named[0]!)) return response;
   const name = rosterSalonName(named[0]!);
   if (!name) return response;
-  return { ...response, content: `${response.content}\n\n${outOfScopeSalonLine(name)}` };
+  return { ...response, content: `${response.content}\n\n${lineFor(name, response.formProposal)}` };
 }

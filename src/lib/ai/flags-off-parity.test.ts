@@ -123,6 +123,7 @@ import {
   dayWordTyposEnabled,
   amountUnknownAckEnabled,
   outOfScopePlaceSaidEnabled,
+  outOfScopePlaceKeepsOwnEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -275,6 +276,7 @@ const NEW_FLAGS = [
   "DAY_WORD_TYPOS_ENABLED",
   "AMOUNT_UNKNOWN_ACK_ENABLED",
   "OUT_OF_SCOPE_PLACE_SAID_ENABLED",
+  "OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
@@ -433,6 +435,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(dayWordTyposEnabled()).toBe(false);
     expect(amountUnknownAckEnabled()).toBe(false);
     expect(outOfScopePlaceSaidEnabled()).toBe(false);
+    expect(outOfScopePlaceKeepsOwnEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
