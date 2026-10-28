@@ -1520,3 +1520,14 @@ export function formTypeSwitchAfterCreateNoteEnabled(): boolean {
 export function cardChangePlanRebuildEnabled(): boolean {
   return envFlag("CARD_CHANGE_PLAN_REBUILD_ENABLED");
 }
+
+/**
+ * Every Claude call is counted toward the monthly budget, not only the chat
+ * answer and the reader: retries, helpers, form revision, the Create card's
+ * draft, Sales Totals and template ingest (Pau and QA, 28 Oct 2026; same flag
+ * in both apps). See `ai/spend-meter.ts`. Counting only — nothing is blocked
+ * that was not before. Off, the guard counts as before.
+ */
+export function spendGuardAllCallsEnabled(): boolean {
+  return envFlag("SPEND_GUARD_ALL_CALLS_ENABLED");
+}
