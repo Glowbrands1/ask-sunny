@@ -550,3 +550,50 @@ describe("after Create, unchanged for now (a separate decision)", () => {
     expect(withFlag).toBe((await off.say("change to coaching")).formProposal?.templateKey ?? null);
   });
 });
+
+
+/*
+ * QA LIVE, 28 OCT 2026: the switch worked but "Create draft" on the switched
+ * card saved nothing. The create route checks the card against the stored
+ * conversation, which still read "create a ca …" as the last form asked for
+ * ("This proposal is out of date: the conversation has since asked for a
+ * different form."). Create after a switch must file the switched form.
+ */
+describe("Create after a switch files the switched form", () => {
+  const templateOf = (id: string) => {
+    const row = (store.form_instances as unknown as { id: string; template_id?: string }[]).find((r) => r.id === id);
+    const templates = ((store as unknown as Record<string, unknown>).form_templates ?? []) as { id: string; key: string }[];
+    return templates.find((t) => t.id === row?.template_id)?.key;
+  };
+  for (const [open, from, wording, to] of [
+    [CA, "dpoa", "change to coaching", "coaching"],
+    [CA, "dpoa", "switch it to coaching", "coaching"],
+    [COACHING, "coaching", "change to ca", "dpoa"],
+    [COACHING, "coaching", "CHANGE TO CORRECTIVE ACTION", "dpoa"],
+  ] as const) {
+    it(`${from} -> "${wording}" -> Create`, async () => {
+      production(true);
+      const thread = new Thread();
+      const before = (await thread.say(open)).formProposal!;
+      const switched = (await thread.say(wording)).formProposal!;
+      expect(switched.templateKey).toBe(to);
+      const id = await thread.create();
+      const row = (store.form_instances as unknown as { id: string; employee_name: string; form_date: string; location_id: string }[]).find((r) => r.id === id)!;
+      expect(templateOf(id)).toBe(to);
+      // The draft was written from the conversation, not refused.
+      expect((store.form_instance_events as unknown as { instance_id: string; kind: string }[]).filter((e) => e.instance_id === id).map((e) => e.kind)).toContain("drafted");
+      expect([row.employee_name, row.form_date, row.location_id]).toEqual([before.employeeName, before.formDate, before.locationId]);
+      expect(store.form_instances).toHaveLength(1);
+    });
+  }
+
+  it("the old card after the switch is still refused, and nothing is filed", async () => {
+    production(true);
+    const thread = new Thread();
+    const before = (await thread.say(CA)).formProposal!;
+    await thread.say("change to coaching");
+    thread.proposal = before;
+    await expect(thread.create()).rejects.toThrow(/out of date/);
+    expect(store.form_instances).toHaveLength(0);
+  });
+});
