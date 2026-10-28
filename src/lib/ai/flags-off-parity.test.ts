@@ -128,6 +128,7 @@ import {
   formTypeSwitchAfterCreateNoteEnabled,
   cardChangePlanRebuildEnabled,
   spendGuardAllCallsEnabled,
+  firstNameSuggestEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -285,6 +286,7 @@ const NEW_FLAGS = [
   "FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED",
   "CARD_CHANGE_PLAN_REBUILD_ENABLED",
   "SPEND_GUARD_ALL_CALLS_ENABLED",
+  "FIRST_NAME_SUGGEST_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -449,6 +451,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(formTypeSwitchAfterCreateNoteEnabled()).toBe(false);
     expect(cardChangePlanRebuildEnabled()).toBe(false);
     expect(spendGuardAllCallsEnabled()).toBe(false);
+    expect(firstNameSuggestEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);

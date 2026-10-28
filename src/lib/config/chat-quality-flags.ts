@@ -1531,3 +1531,14 @@ export function cardChangePlanRebuildEnabled(): boolean {
 export function spendGuardAllCallsEnabled(): boolean {
   return envFlag("SPEND_GUARD_ALL_CALLS_ENABLED");
 }
+
+/**
+ * A first name alone ("quinn") is asked about from the manager's own roster —
+ * "Did you mean **Quinn Marlowe** or **Quinn Ashby**?" or "Is this for
+ * **Quinn Marlowe**?" — instead of a card for the bare name or a plain "who is
+ * this for" (QA and Pau, 28 Oct 2026; same flag in both apps). See
+ * `ai/first-name-suggest.ts`. Off, as before.
+ */
+export function firstNameSuggestEnabled(): boolean {
+  return envFlag("FIRST_NAME_SUGGEST_ENABLED");
+}
