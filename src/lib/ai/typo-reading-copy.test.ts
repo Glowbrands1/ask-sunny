@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { nameWords, withTypoReadingCopy } from "./typo-reading-copy";
+import { nameWords, typoReadingTurns, withTypoReadingCopy } from "./typo-reading-copy";
 import type { AskRequest } from "./types";
 
 const FLAG = "TYPO_READING_COPY_ENABLED";
@@ -72,5 +72,22 @@ describe("withTypoReadingCopy", () => {
     delete process.env[FLAG];
     const request = ask("she was coahed");
     expect(withTypoReadingCopy(request, new Set())).toBe(request);
+  });
+});
+
+describe("typoReadingTurns (the form routes)", () => {
+  it("reads the manager's turns, never the assistant's", () => {
+    const turns = typoReadingTurns(
+      [
+        { role: "user", content: "i coahed her" },
+        { role: "assistant", content: "i coahed her" },
+      ],
+      new Set(),
+    );
+    expect(turns.map((turn) => turn.content)).toEqual(["i coached her", "i coahed her"]);
+  });
+
+  it("corrects nothing when the directory could not be read", () => {
+    expect(typoReadingTurns([{ role: "user", content: "i coahed her" }], new Set(["*"]))[0]!.content).toBe("i coahed her");
   });
 });
