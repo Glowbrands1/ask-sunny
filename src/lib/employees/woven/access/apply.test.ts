@@ -511,7 +511,7 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     const employees = [employee("E1", { hireDate: "2026-10-05" }), employee("E2", { hireDate: "2026-10-02" }), employee("E3", { hireDate: "2026-10-04" })];
     const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2"), waiting(3, "E3")]);
     const f = fakes(plan);
-    expect(await trickle(plan, f)).toEqual({ status: "completed", sent: 1, failed: 0, waiting: 2, stoppedBy: null });
+    expect(await trickle(plan, f)).toEqual({ status: "completed", sent: 1, failed: 0, skipped: 0, waiting: 2, stoppedBy: null });
     expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
     expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e2@gmail.com", { redirectTo: REDIRECT });
   });
@@ -530,6 +530,42 @@ describe("NEW_HIRE_INVITES_ENABLED", () => {
     const f = fakes(plan, { auth: { inviteUserByEmail: vi.fn(async () => ({ data: null, error: { code: "over_email_send_rate_limit", status: 429 } })) } as never });
     expect(await trickle(plan, f, 2)).toMatchObject({ sent: 0, failed: 1, stoppedBy: "email_rate_limited" });
     expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * QA, 28 Oct 2026: "If the oldest new hire cannot be created … that person
+   * fills the slot every hour and nobody behind them ever gets a link."
+   */
+  it("an oldest hire refused before sending (already confirmed) is skipped, and the next one gets the hour's invitation", async () => {
+    const employees = [employee("E1", { hireDate: "2026-10-02" }), employee("E2", { hireDate: "2026-10-03" })];
+    const first = waiting(1, "E1");
+    const plan = planWithHires(employees, [first, waiting(2, "E2")]);
+    const f = fakes(plan, {
+      auth: {
+        getUserById: vi.fn(async (id: string) => ({
+          data: { user: { email_confirmed_at: id === first.appUserId ? "2026-10-04T00:00:00Z" : null, banned_until: null } },
+          error: null,
+        })),
+      } as never,
+    });
+    expect(await trickle(plan, f)).toEqual({ status: "completed", sent: 1, failed: 0, skipped: 1, waiting: 1, stoppedBy: null });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e2@gmail.com", { redirectTo: REDIRECT });
+  });
+
+  it("a mailer failure that is not the limit uses the hour; no redirect stops the run before spending anybody's attempts", async () => {
+    const employees = [employee("E1", { hireDate: "2026-10-02" }), employee("E2", { hireDate: "2026-10-03" })];
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2")]);
+    const broken = fakes(plan, { auth: { inviteUserByEmail: vi.fn(async () => ({ data: null, error: { code: "unexpected_failure", status: 500 } })) } as never });
+    expect(await trickle(plan, broken)).toMatchObject({ sent: 0, failed: 1, skipped: 0 });
+    expect(broken.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+    const f = fakes(plan);
+    const noRedirect = await sendNewHireInvites(
+      { config: newHireConfig(2), access: config(), now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, null, f.deps, "test") },
+    );
+    expect(noRedirect).toMatchObject({ failed: 1, stoppedBy: "redirect_not_configured" });
+    expect(f.fnsCalled().filter((fn) => fn === "employee_access_record_invite")).toHaveLength(1);
   });
 
   it("only new hires: somebody hired before the date, or never hired in Woven's record, is left to an admin", async () => {
