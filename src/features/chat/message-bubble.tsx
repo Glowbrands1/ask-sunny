@@ -24,6 +24,7 @@ import { isProposalSuperseded } from "@/lib/forms/proposal-continuation";
 import type { ChatFormInstanceRef, ChatFormProposal, ChatMessage } from "@/types";
 import { chatErrorTitle } from "./chat-error";
 import { FormPicker } from "./form-picker";
+import { CardChangePanel } from "./card-change-panel";
 import { logTurnEvent } from "@/lib/analytics/telemetry";
 import { reusedDraftNotice } from "@/lib/forms/reused-draft-notice";
 
@@ -212,6 +213,7 @@ export function MessageBubble({
               />
             </FormRevisionsMount>
           ) : null}
+          <CardChangePanel proposal={message.formProposal} created={Boolean(message.formInstanceRef)} conversation={conversation ?? []} placeLabel="Salon" onSend={onSuggestion} />
 
           {/*
             A CONVERSATION FROM BEFORE PHASE 2.
