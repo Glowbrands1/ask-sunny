@@ -452,6 +452,7 @@ const LIVE_SINCE = [
 ] as const;
 
 const { rosterSalonName } = await import("@/lib/forms/salon-mention");
+type Card = ChatFormProposal;
 const SAID = "OUT_OF_SCOPE_PLACE_SAID_ENABLED";
 const KEEPS = "OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED";
 const AT_KEARNEY = "create a ca for quinn marlowe at kearney. she was late on 10/20";
