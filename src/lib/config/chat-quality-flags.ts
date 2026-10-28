@@ -1474,3 +1474,12 @@ export function typoReadingRoutesEnabled(): boolean {
 export function amountUnknownAckEnabled(): boolean {
   return envFlag("AMOUNT_UNKNOWN_ACK_ENABLED");
 }
+
+/**
+ * A salon-scoped manager who names a salon they are not assigned to is told
+ * so in the reply (QA, 28 Oct 2026; same flag in both apps). See
+ * `ai/out-of-scope-place.ts`. Off, as before.
+ */
+export function outOfScopePlaceSaidEnabled(): boolean {
+  return envFlag("OUT_OF_SCOPE_PLACE_SAID_ENABLED");
+}
