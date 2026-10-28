@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { cardChangeEnabled } from "@/lib/forms/card-change-flag";
+import { cardChangeEnabled, cardChangeFinalizedEnabled } from "@/lib/forms/card-change-flag";
 
 import {
   actionPlanManagerOnlyEnabled,
@@ -280,6 +280,7 @@ const NEW_FLAGS = [
   "OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED",
   "FORM_TYPE_SWITCH_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
+  "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
   "RELATIVE_DATE_READER_ENABLED",
   "UNREAD_DATE_ASK_ENABLED",
@@ -550,6 +551,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(priorRowNotOnIncidentDateEnabled()).toBe(false);
     expect(jobTitleFromWordsEnabled()).toBe(false);
     expect(cardChangeEnabled()).toBe(false);
+    expect(cardChangeFinalizedEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
@@ -606,6 +608,9 @@ describe("new flags default off and wrappers are inert", () => {
       // And card-change-panel.tsx: QA-approved 2026-10-27 (owner asked for the
       // Change something button), behind NEXT_PUBLIC_CARD_CHANGE_ENABLED; off,
       // it renders nothing and the bubble's one mount line adds nothing.
+      // And finalized-change-panel.tsx: QA-approved 2026-10-28 (Pau: structured
+      // changes on a finalized form), behind NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED;
+      // off, it renders nothing and the card's one mount line adds nothing.
       expect(
         diff(uiBase, [
           ...UI_PATHS,
@@ -613,6 +618,7 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)**/*.dom.test.tsx",
           ":(exclude)src/features/chat/message-bubble.tsx",
           ":(exclude)src/features/chat/card-change-panel.tsx",
+          ":(exclude)src/features/chat/finalized-change-panel.tsx",
           ":(exclude)src/features/chat/chat-screen.tsx",
           ":(exclude)src/features/chat/composer.tsx",
           ":(exclude)src/features/chat/inline-form.tsx",

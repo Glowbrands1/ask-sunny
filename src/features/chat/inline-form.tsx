@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { Dialog, DialogActions, DialogContent } from "@/components/ui/overlays";
+import { FinalizedChangePanel } from "./finalized-change-panel";
 import { downloadFormPdf, formsFetch, FormsFetchError } from "@/features/forms/forms-fetch";
 import { onFormUpdate } from "./form-update-events";
 import {
@@ -894,6 +895,7 @@ export function InlineForm({
                   Open newer version
                 </Button>
               ) : null}
+              {!revised ? <FinalizedChangePanel instanceId={instanceId} templateName={loaded.instance.templateName} employeeName={loaded.instance.employeeName} current={edits} call={call} onOpened={showRecord} /> : null}
               <Button size="sm" onClick={() => void downloadPdf()} disabled={action.kind === "busy"}>
                 {action.kind === "busy" && action.what === "pdf" ? (
                   <Loader2 className="animate-spin" />
