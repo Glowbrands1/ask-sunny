@@ -9,6 +9,7 @@ import { classifyStatusError } from "../status";
 import { plannerAccount, plannerEmployee, plannerLocation, plannerPosition } from "./adapters";
 import { buildAccessPlan, type AccessPlan } from "./build";
 import type { DirectoryRunFacts, MappingCounts } from "./guards";
+import { readNewHireConfig } from "./new-hire";
 import type { AuthOnlyUser } from "./types";
 
 export { buildAccessPlan, type AccessPlan } from "./build";
@@ -98,6 +99,8 @@ export async function loadAccessPlan(now: Date = new Date()): Promise<AccessPlan
       locations: locations.map(plannerLocation),
       accounts,
       authOnly,
+      // NEW_HIRE_INVITES_ENABLED: who counts as a new hire. Off: null, and the plan is as before.
+      newHire: readNewHireConfig(process.env, now).rule,
     },
     { runs: runFacts.runs, mappingBaseline, directoryRunId: runFacts.latestSuccessId, now },
   );

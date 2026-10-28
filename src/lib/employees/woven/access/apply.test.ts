@@ -460,3 +460,95 @@ describe("refusalCode", () => {
     expect(refusalCode(null, "fallback")).toBe("fallback");
   });
 });
+
+/*
+ * ============================================================================
+ * NEW_HIRE_INVITES_ENABLED (Pau, 28 Oct 2026) — never a batch of invitations
+ * ============================================================================
+ *
+ * "i just dont want to bulk send link to everyone coz im limited 2 sends an
+ * hr". With the switch on, the daily run creates the accounts and emails
+ * nobody; the hourly run invites at most one (or two) new hires, oldest hire
+ * first, and stops at the mailer's limit.
+ */
+const { sendNewHireInvites } = await import("./new-hire-invites");
+const { sendInviteEmail } = await import("./apply");
+
+describe("NEW_HIRE_INVITES_ENABLED", () => {
+  const rule = { since: "2026-10-01", extraRoles: [] as never[], today: "2026-10-06" };
+  const newHireConfig = (perHour: 1 | 2 = 1) => ({ enabled: true, rule, perHour, problem: null });
+  const waiting = (n: number, id: string, attempts = 0) =>
+    account(n, {
+      email: `${id.toLowerCase()}@gmail.com`,
+      status: "invited",
+      management: "woven_linked",
+      linkedExternalEmployeeId: id,
+      linkMethod: "provisioned",
+      managedStatus: true,
+      invite: { status: attempts > 0 ? "failed" : "not_sent", sentAt: null, acceptedAt: null, attempts, error: null },
+    });
+  const planWithHires = (employees: PlannerEmployee[], accounts: PlannerAccount[]) =>
+    buildAccessPlan(
+      { employees, positions, locations, accounts, newHire: rule },
+      { runs: healthyRuns, mappingBaseline: null, directoryRunId: "11111111-1111-4111-8111-111111111111", now: NOW },
+    );
+  const trickle = (plan: AccessPlan, f: ReturnType<typeof fakes>, perHour: 1 | 2 = 1, access = config()) =>
+    sendNewHireInvites(
+      { config: newHireConfig(perHour), access, now: NOW },
+      { loadPlan: async () => plan, send: (id, email) => sendInviteEmail(id, email, REDIRECT, f.deps, "test") },
+    );
+
+  it("the daily run, held: creates the new hire's account and emails nobody, waiting ones included", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-10-05" }), employee("E2", { hireDate: "2026-10-04" })], [waiting(2, "E2")]);
+    const f = fakes(plan);
+    await applyAccessLifecycle({ requestedBy: "cron", redirectTo: REDIRECT, config: config(), now: NOW, holdInvites: true }, f.deps);
+    expect(f.auth.createUser).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+    expect(f.recorded.find((r) => r.action === "CREATE_USER" && r.is_primary !== false)).toMatchObject({ result_code: "created.invite_not_sent" });
+  });
+
+  it("the hourly run: one invitation, the oldest hire first; the rest wait", async () => {
+    const employees = [employee("E1", { hireDate: "2026-10-05" }), employee("E2", { hireDate: "2026-10-02" }), employee("E3", { hireDate: "2026-10-04" })];
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2"), waiting(3, "E3")]);
+    const f = fakes(plan);
+    expect(await trickle(plan, f)).toEqual({ status: "completed", sent: 1, failed: 0, waiting: 2, stoppedBy: null });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledWith("e2@gmail.com", { redirectTo: REDIRECT });
+  });
+
+  it("two an hour when set to 2, never more", async () => {
+    const employees = ["E1", "E2", "E3"].map((id, i) => employee(id, { hireDate: `2026-10-0${i + 2}` }));
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2"), waiting(3, "E3")]);
+    const f = fakes(plan);
+    expect(await trickle(plan, f, 2)).toMatchObject({ sent: 2, waiting: 1 });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it("the mailer's limit stops the hour at once", async () => {
+    const employees = ["E1", "E2"].map((id, i) => employee(id, { hireDate: `2026-10-0${i + 2}` }));
+    const plan = planWithHires(employees, [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan, { auth: { inviteUserByEmail: vi.fn(async () => ({ data: null, error: { code: "over_email_send_rate_limit", status: 429 } })) } as never });
+    expect(await trickle(plan, f, 2)).toMatchObject({ sent: 0, failed: 1, stoppedBy: "email_rate_limited" });
+    expect(f.auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("only new hires: somebody hired before the date, or never hired in Woven's record, is left to an admin", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-09-30" }), employee("E2")], [waiting(1, "E1"), waiting(2, "E2")]);
+    const f = fakes(plan);
+    expect(await trickle(plan, f, 2)).toMatchObject({ sent: 0, waiting: 0 });
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it("nothing is sent while the guards stop changes, or without the lifecycle's SEND_INVITE, or with the switch off", async () => {
+    const plan = planWithHires([employee("E1", { hireDate: "2026-10-05" })], [waiting(1, "E1")]);
+    const f = fakes(plan);
+    const blocked = { ...plan, guard: { ...plan.guard, mutationsAllowed: false } };
+    expect(await trickle(blocked, f)).toEqual({ status: "blocked", code: "guards" });
+    expect(await trickle(plan, f, 1, config({ applyActions: ["CREATE_USER"] }))).toEqual({ status: "off", code: "lifecycle_invites_off" });
+    expect(
+      await sendNewHireInvites({ config: { enabled: false, rule: null, perHour: 1, problem: null }, access: config(), now: NOW }, { loadPlan: async () => plan, send: async () => ({ ok: true, code: "sent" }) }),
+    ).toEqual({ status: "off", code: "new_hire_invites_off" });
+    expect(f.auth.inviteUserByEmail).not.toHaveBeenCalled();
+  });
+});
+

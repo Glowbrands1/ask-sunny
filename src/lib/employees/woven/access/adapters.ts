@@ -32,6 +32,7 @@ export function plannerEmployee(row: DirectoryRow): PlannerEmployee {
     issues: row.dataIssues,
     terminationDate: row.terminationDate,
     lastSyncedAt: row.lastSyncedAt || null,
+    hireDate: row.hireDate,
   };
 }
 
