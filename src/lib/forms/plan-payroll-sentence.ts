@@ -17,7 +17,20 @@ export function withPayrollSentence(
   plan: string,
   input: { readonly answer: PayrollDeductAnswer | null; readonly amount: string | null; readonly employeeName: string | null | undefined },
 ): string {
-  if (!planPayrollSentenceEnabled() || input.answer !== "yes" || !input.amount) return plan;
+  if (!planPayrollSentenceEnabled()) return plan;
+  return planWithPayrollSentence(plan, input);
+}
+
+/**
+ * The same sentence, without the flag: CARD_CHANGE_PLAN_REBUILD_ENABLED adds it
+ * when the finalized form's Change something panel sets payroll deduct Yes and
+ * the Payroll deduction amount (`ca-action-plan-sync.ts`).
+ */
+export function planWithPayrollSentence(
+  plan: string,
+  input: { readonly answer: PayrollDeductAnswer | null; readonly amount: string | null; readonly employeeName: string | null | undefined },
+): string {
+  if (input.answer !== "yes" || !input.amount) return plan;
   const figure = input.amount.trim().replace(/^\$?\s*/, "$");
   if (plan.includes(figure)) return plan;
   const sentence = `${employeeFirstName(input.employeeName) ?? "The employee"} will be payroll deducted ${figure}.`;

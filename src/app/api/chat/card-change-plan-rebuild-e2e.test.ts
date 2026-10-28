@@ -471,7 +471,12 @@ const plan = (id: string) =>
     (row) => row.instance_id === id && row.field_key === "action_plan",
   )?.value ?? null;
 
-async function revisedFromPanel(on: boolean, source: string | undefined = "card-change", sentences = true) {
+async function revisedFromPanel(
+  on: boolean,
+  source: string | undefined = "card-change",
+  sentences = true,
+  values: Record<string, string> = {},
+) {
   for (const name of [...ALL_FLAGS, ...LIVE_SINCE, PLAN_FLAG]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
@@ -491,7 +496,7 @@ async function revisedFromPanel(on: boolean, source: string | undefined = "card-
   const revision = (await send("POST", original, { action: "revise" })) as { instance: { id: string } };
   const draft = revision.instance.id;
   const before = plan(draft);
-  const patched = await send("PATCH", draft, { values: {}, checked: { payroll_deduct: ["yes"] }, ...(source ? { source } : {}) });
+  const patched = await send("PATCH", draft, { values, checked: { payroll_deduct: ["yes"] }, ...(source ? { source } : {}) });
   return { original, signed, draft, before, saved: patched };
 }
 
@@ -527,6 +532,40 @@ describe("payroll deduct changed from the panel", () => {
     const { draft, before, saved } = await revisedFromPanel(true);
     expect(saved.actionPlanRebuilt).toBeUndefined();
     expect(plan(draft)).toBe(before);
+  });
+});
+
+/*
+ * QA, 28 Oct 2026: "Build the 'Payroll deduction amount' box in the
+ * finalized-form panel … so the rebuilt plan reads '<first name> will be
+ * payroll deducted $25.'". Production plan wording (two sentences), and
+ * PLAN_PAYROLL_SENTENCE_ENABLED off: the sentence comes from this flag.
+ */
+describe("payroll deduct Yes and the amount from the panel", () => {
+  it("flag on: the draft's plan reads 'Quinn will be payroll deducted $25.'; the signed form is unchanged", async () => {
+    const { original, signed, draft, before, saved } = await revisedFromPanel(true, "card-change", true, {
+      payroll_deduct_amount: "$25",
+    });
+    expect(saved.rejected).toEqual([]);
+    expect(saved.actionPlanRebuilt).toBe(true);
+    expect(before).not.toContain("payroll deducted");
+    expect(plan(draft)).toContain("Quinn will be payroll deducted $25.");
+    expect(plan(original)).toBe(signed);
+  });
+
+  it("flag off: the amount is saved, the plan stays as it was (as main)", async () => {
+    const { draft, before, saved } = await revisedFromPanel(false, "card-change", true, { payroll_deduct_amount: "$25" });
+    expect(saved.actionPlanRebuilt).toBeUndefined();
+    expect(plan(draft)).toBe(before);
+  });
+
+  it("flag on, the amount changed on its own: the plan states the new figure only", async () => {
+    const { draft } = await revisedFromPanel(true, "card-change", true, { payroll_deduct_amount: "$10" });
+    expect(plan(draft)).toContain("Quinn will be payroll deducted $10.");
+    const patched = await send("PATCH", draft, { values: { payroll_deduct_amount: "$25" }, checked: {}, source: "card-change" });
+    expect(patched.actionPlanRebuilt).toBe(true);
+    expect(plan(draft)).toContain("Quinn will be payroll deducted $25.");
+    expect(plan(draft)).not.toContain("$10");
   });
 });
 

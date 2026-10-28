@@ -1123,3 +1123,11 @@ Ask Bubbles' `findOpenRevision` skips archived revision drafts; Ask Sunny's does
 ## 28 Oct 2026: a card never holds a salon the manager is not assigned to — both apps (OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED)
 
 Pau: managers must not see a card for a salon they are not assigned to, and "assigned" is the full scope (the primary salon and every salon they also cover). Here the card took KS Lawrence from a later "Salon: KS Lawrence." or "lawrence" (`keep-filled-slots.ts` and `form-card-slots.ts` read named salons with no scope check) and only Create refused it. With the flag on, `ai/keeps-own-place.ts` puts the card back after those readers: (1) the salon the manager's earlier turns give under the same scope rules (`proposeLocation`, unchanged), else (2) the manager's only salon, else (3) no salon, `needs_selection` over their salons, and the question — never a guess. With OUT_OF_SCOPE_PLACE_SAID_ENABLED the line then says "so the form stays at <own>" or asks which. No protected file is edited. Ask Bubbles: same flag; there the card already keeps the manager's own store, so it is a safety net with the same tests.
+
+## 28 Oct 2026: the archived revision draft — Pau decided (option C)
+
+Pau: Ask Bubbles drops its `.is("archived_at", null)` filter in `findOpenRevision` (that one line, approved), so "Edit as new draft" reopens an archived revision draft there as it already does here. Ask Sunny is unchanged.
+
+## 28 Oct 2026: the Change something panel's Payroll deduction amount — both apps (CARD_CHANGE_PLAN_REBUILD_ENABLED)
+
+QA / Pau: with payroll deduct Yes, the finalized form's panel also offers Payroll deduction amount (only when the server's flag is on — the form's GET carries `cardChangeAmount` — and the form has the line). The PATCH rebuild (`syncCorrectiveActionPlan(..., { amountSentence: true })`) then puts "<first name> will be payroll deducted <amount>." before the closing (`planWithPayrollSentence`, the flag-free form of `withPayrollSentence`, which is unchanged), rebuilds when only the amount changed, and drops an earlier figure. With production's two-sentence plan, where the rebuild finds nothing to change, the sentence goes on the plan the app built. No protected file is touched. Same change in Ask Bubbles.
