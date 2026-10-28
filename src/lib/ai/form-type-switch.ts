@@ -16,10 +16,12 @@ import type { AskRequest } from "./types";
  * With the flag on, while a card is open and nothing is created yet, a short
  * turn that asks for the other form is read as the request the chat already
  * switches on — "change this to a coaching form", "actually make it a ca" —
- * so the card becomes the other form and keeps the employee, the date, the
- * place and the account. Earlier turns of that shape too, so a later turn
- * keeps the new form. What the manager typed is stored as typed. After Create
- * nothing changes here (a separate decision).
+ * and the turn that asked for the old form is read as asking for the new one
+ * ("create a coaching form for …" as "create a ca for …"), so the card becomes
+ * the other form and keeps the employee, the date, the place and the account
+ * (a form's account is read from the turns that asked for it). Earlier switch
+ * turns too, so a later turn keeps the new form. What the manager typed is
+ * stored as typed. After Create nothing changes here (a separate decision).
  */
 type Family = "coaching" | "ca";
 
@@ -52,6 +54,18 @@ export function requestedForm(turn: string): Family | null {
   return coaching ? "coaching" : "ca";
 }
 
+/** The other form's name, as the manager asked for it: "create a coaching form for …". */
+const ASKED_FOR: Record<Family, RegExp> = {
+  coaching: /(\b(?:create|start|make|need|open|draft|write|fill(?:\s+out)?|do|want|give)\b[^.!?\n]{0,40}?)\bcoaching(?:\s+form)?\b/i,
+  ca: /(\b(?:create|start|make|need|open|draft|write|fill(?:\s+out)?|do|want|give)\b[^.!?\n]{0,40}?)\b(?:ca|c\/a|corrective\s+action(?:\s+form)?|write[- ]?up)\b/i,
+};
+const NAME: Record<Family, string> = { coaching: "coaching form", ca: "ca" };
+
+/** The turn that asked for `from`, read as asking for `to`; any other turn as it is. */
+function askedFor(turn: string, from: Family, to: Family): string {
+  return turn.replace(ASKED_FOR[from], (_whole, lead: string) => `${lead}${NAME[to]}`);
+}
+
 function readAs(turn: string, current: Family): string | null {
   const wanted = requestedForm(turn);
   return wanted && wanted !== current ? READ_AS[wanted] : null;
@@ -61,18 +75,22 @@ export function withFormTypeSwitch(request: AskRequest): AskRequest {
   if (!formTypeSwitchEnabled() || request.activeFormInstanceId) return request;
   const current = familyOf(request.continueProposalTemplateKey);
   if (!current) return request;
-  // An earlier switch request (never the opening request) is read the same way, so the next turn keeps the form.
-  let users = 0;
-  let changed = false;
-  const history = request.history.map((turn) => {
-    if (turn.role !== "user" || typeof turn.content !== "string") return turn;
-    users += 1;
-    const wanted = users > 1 ? requestedForm(turn.content) : null;
-    if (!wanted) return turn;
-    changed = true;
-    return { ...turn, content: READ_AS[wanted] };
-  });
   const question = readAs(request.question, current);
-  if (!question && !changed) return request;
+  // The newest switch decides the form; the turns before it are read as asking for that form.
+  const users = request.history.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.role === "user" && typeof turn.content === "string");
+  const switches = users.slice(1).filter(({ turn }) => requestedForm(turn.content as string) !== null);
+  const last = question ? null : switches.at(-1);
+  const target = question ? requestedForm(request.question)! : last ? requestedForm(last.turn.content as string)! : null;
+  if (!target) return request;
+  const from: Family = target === "coaching" ? "ca" : "coaching";
+  const before = question ? request.history.length : last!.index;
+  const switchAt = new Set(switches.map(({ index }) => index));
+  const history = request.history.map((turn, index) => {
+    if (turn.role !== "user" || typeof turn.content !== "string") return turn;
+    if (switchAt.has(index)) return { ...turn, content: READ_AS[requestedForm(turn.content)!] };
+    if (index > before) return turn;
+    const content = askedFor(turn.content, from, target);
+    return content === turn.content ? turn : { ...turn, content };
+  });
   return { ...request, question: question ?? request.question, history };
 }
