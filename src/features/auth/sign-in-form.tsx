@@ -10,6 +10,7 @@ import { FieldGroup, Input } from "@/components/ui/field";
 import { Notice } from "@/components/ui/feedback";
 import { safeInternalUrl } from "@/lib/auth/safe-navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser-client";
+import { invitedSignInAcceptsEnabled } from "@/lib/auth/invited-signin-flag";
 
 /**
  * ============================================================================
@@ -86,6 +87,18 @@ export function SignInForm({ redirectTo = "/" }: { redirectTo?: string }) {
        * the value is not sitting in a React fiber while the document unloads.
        */
       setPassword("");
+
+      /*
+       * NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED: a password that works is an
+       * accepted invitation. An account still `invited` — its link opened by a
+       * mail scanner before the person, so the set-password screen that
+       * accepts it never ran — becomes active here; the database refuses a
+       * disabled account, and an active one is unchanged. Best effort: the
+       * server's own check still decides what this person sees next.
+       */
+      if (invitedSignInAcceptsEnabled()) {
+        await fetch("/api/auth/accept-invitation", { method: "POST" }).catch(() => undefined);
+      }
 
       /*
        * ====================================================================
