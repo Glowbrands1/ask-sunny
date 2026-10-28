@@ -34,7 +34,7 @@ export interface NewHireInviteDeps {
 export type NewHireInviteOutcome =
   | { status: "off"; code: string }
   | { status: "blocked"; code: "guards" }
-  | { status: "completed"; sent: number; failed: number; waiting: number; stoppedBy: string | null };
+  | { status: "completed"; sent: number; failed: number; skipped: number; waiting: number; stoppedBy: string | null };
 
 /** Created by the lifecycle, invited, never sent (or failed under the attempt limit), active in Woven. */
 function waitingForInvite(row: PlannedRow): boolean {
@@ -69,18 +69,46 @@ export async function sendNewHireInvites(
     .filter((row) => waitingForInvite(row) && inBatch(row) && isNewHire(row.hireDate, rule))
     .sort((a, b) => (a.hireDate ?? "").localeCompare(b.hireDate ?? "") || a.key.localeCompare(b.key));
 
+  /*
+   * ONE PERSON NEVER HOLDS UP THE REST (QA, 28 Oct 2026). An account refused
+   * before the mailer was asked — already confirmed, banned, or its credential
+   * could not be read — is skipped and the next one is tried, at no cost to
+   * the hour's sends; each refusal counts as an attempt, so after
+   * MAX_AUTOMATIC_INVITE_ATTEMPTS it is no longer waiting at all. A failure
+   * the mailer gave uses a send; its limit stops the hour; a missing redirect
+   * stops the run before anybody's attempts are spent on it. At most MAX_TRIED
+   * accounts are looked at per run.
+   */
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
+  let used = 0;
   let stoppedBy: string | null = null;
-  for (const row of waiting.slice(0, config.perHour)) {
+  for (const row of waiting.slice(0, MAX_TRIED)) {
+    if (used >= config.perHour) break;
     const outcome = await deps.send(row.account!.appUserId, row.account!.email);
-    if (outcome.ok) sent += 1;
-    else failed += 1;
-    // The mailer's limit: nobody else is tried this hour.
-    if (!outcome.ok && outcome.code === "email_rate_limited") {
-      stoppedBy = "email_rate_limited";
+    if (outcome.ok) {
+      sent += 1;
+      used += 1;
+      continue;
+    }
+    if (outcome.code === "email_rate_limited" || outcome.code === "redirect_not_configured") {
+      failed += 1;
+      stoppedBy = outcome.code;
       break;
     }
+    if (REFUSED_BEFORE_SENDING.has(outcome.code)) {
+      skipped += 1;
+      continue;
+    }
+    failed += 1;
+    used += 1;
   }
-  return { status: "completed", sent, failed, waiting: waiting.length - sent, stoppedBy };
+  return { status: "completed", sent, failed, skipped, waiting: waiting.length - sent, stoppedBy };
 }
+
+/** Accounts looked at in one run, however many are refused before sending. */
+const MAX_TRIED = 25;
+
+/** `sendInviteEmail` refusals raised before the mailer was asked: they cost no send. */
+const REFUSED_BEFORE_SENDING: ReadonlySet<string> = new Set(["already_confirmed", "auth_user_banned", "auth_lookup_failed"]);
