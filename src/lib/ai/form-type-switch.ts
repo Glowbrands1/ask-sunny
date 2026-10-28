@@ -182,3 +182,45 @@ export function withSwitchNote(response: AskResponse, request: AskRequest, regis
   if (response.content.includes(note)) return response;
   return { ...response, content: `${note}\n\n${response.content}` };
 }
+
+/**
+ * THE SWITCHED FORM IS DRAFTED FROM THE ACCOUNT, NEVER FROM THE SWITCH TURN.
+ * QA live, 28 Oct 2026: after Create, the new Coaching draft read "A change to
+ * coaching was noted for <name>" — the card's draft sources (`sourceMessageIds`,
+ * the turns its draft is written from) were the turns about the new form,
+ * which after Create is only "change to coaching". With either switch flag on:
+ * a switch turn is never a draft source, and after Create the turns from the
+ * one that asked for the first form are (the account it was drafted from).
+ */
+export function withSwitchSources(response: AskResponse, request: AskRequest): AskResponse {
+  const card = response.formProposal;
+  if (!card || (!formTypeSwitchEnabled() && !formTypeSwitchAfterCreateNoteEnabled())) return response;
+  const users = request.history.filter(
+    (turn): turn is typeof turn & { id: string } => turn.role === "user" && typeof turn.content === "string" && typeof turn.id === "string",
+  );
+  // A switch turn asks for the OTHER form than the one asked for before it; "make it a written ca" on a CA is not one.
+  const dropped = new Set<string>();
+  let current: Family | null = null;
+  const read = (content: string, id: string | undefined, first: boolean) => {
+    const wanted = first ? null : requestedForm(content);
+    if (wanted && current && wanted !== current) {
+      if (id) dropped.add(id);
+      current = wanted;
+      return;
+    }
+    current = askedForm(content) ?? current;
+  };
+  users.forEach((turn, index) => read(turn.content, turn.id, index === 0));
+  if (request.switchedFromForm) {
+    if (request.questionMessageId) dropped.add(request.questionMessageId);
+  } else {
+    read(request.question, request.questionMessageId, users.length === 0);
+  }
+  let sources = card.sourceMessageIds.filter((id) => !dropped.has(id));
+  if (request.switchedFromForm) {
+    const opening = users.map((turn) => askedForm(turn.content)).lastIndexOf(request.switchedFromForm);
+    if (opening >= 0) sources = users.slice(opening).map((turn) => turn.id).filter((id) => !dropped.has(id));
+  }
+  if (sources.length === 0 || sources.join() === card.sourceMessageIds.join()) return response;
+  return { ...response, formProposal: { ...card, sourceMessageIds: sources } };
+}
