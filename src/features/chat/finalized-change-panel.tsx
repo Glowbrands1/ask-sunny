@@ -119,10 +119,10 @@ function Panel({
     });
     const draftId = revision.instance.id;
     const name = revision.instance.templateName || templateName;
-    const saved = await call<{ rejected?: { key: string; reason: string }[] }>(`/api/forms/instances/${draftId}`, {
+    const saved = await call<{ rejected?: { key: string; reason: string }[]; actionPlanRebuilt?: boolean }>(`/api/forms/instances/${draftId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ values, checked }),
+      body: JSON.stringify({ values, checked, source: "card-change" }),
     });
     const rejected = saved.rejected ?? [];
     if (rejected.length > 0) {
@@ -133,7 +133,8 @@ function Panel({
       });
       return;
     }
-    if (checked.payroll_deduct) {
+    // CARD_CHANGE_PLAN_REBUILD_ENABLED: the server rebuilt the Action Plan, so there is nothing to check.
+    if (checked.payroll_deduct && !saved.actionPlanRebuilt) {
       setOpened({
         id: draftId,
         name,

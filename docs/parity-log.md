@@ -1111,3 +1111,11 @@ Pau's decision A: once this conversation's form exists, a request for the other 
 ## 28 Oct 2026: a switched form is drafted from the account, never from the switch turn — both apps (FORM_TYPE_SWITCH_ENABLED / FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED)
 
 QA live (Ask Bubbles, after-Create note on): the new Coaching draft read "A change to coaching was noted for <name>" — the lateness was lost. A card's draft is written from its `sourceMessageIds`, the turns about that form; after Create that was only the switch turn, and before Create the switch turn was one of them. `withSwitchSources` (`ai/form-type-switch.ts`) now leaves out every turn that asked for the other form, and after Create takes the turns from the one that asked for the first form. Same change in both apps.
+
+## 28 Oct 2026: payroll deduct changed from the finalized form's panel rebuilds the draft's Action Plan — both apps (CARD_CHANGE_PLAN_REBUILD_ENABLED)
+
+Pau: when payroll deduct goes No → Yes through the Change something panel, the new revision draft's Action Plan is rebuilt with the existing `syncCorrectiveActionPlan` (only a plan the app built; never the signed form). The panel's save carries `source: "card-change"`; an ordinary save is untouched. With production's plan wording (`ACTION_PLAN_SENTENCES_ENABLED`) the plan names a deduction only with an amount, so Yes alone rebuilds nothing and the panel keeps its "check the Action Plan" notice. Same change in Ask Bubbles.
+
+## 28 Oct 2026: an archived revision draft and "Edit as new draft" — open finding, waiting on Pau
+
+Ask Bubbles' `findOpenRevision` skips archived revision drafts; Ask Sunny's does not. The unique index `form_instances_one_open_revision` (both apps) still counts an archived draft, so in Ask Bubbles "Edit as new draft" on a form whose only open revision draft is archived fails ("duplicate key … form_instances_one_open_revision"), while Ask Sunny reopens that draft. Both `instances.ts` files are protected; the fix (filter, index, or neither) is Pau's decision.
