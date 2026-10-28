@@ -160,6 +160,7 @@ import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
+import { withFormTypeSwitch } from "./form-type-switch";
 import { withUnreadDateAsk } from "./unread-date-ask";
 import { withStatedAmount } from "./amount-answer-saved";
 import { withWarningLevelFromClause } from "./warning-level-clause";
@@ -302,7 +303,8 @@ async function answerQuestionChecked(
     // NAME_BEFORE_TITLE_ENABLED: a two-word name right before a job title is the name.
     // TYPO_READING_COPY_ENABLED: "coahed", "amont", "Manger" are read as the words they can only be; names never.
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
-    const response = await answerQuestionUntraced(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(request, names))), actor, memory);
+    // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
+    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(request, names)))), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.
