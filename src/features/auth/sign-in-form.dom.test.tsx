@@ -330,3 +330,63 @@ describe("where each role ends up, decided on the server", () => {
     }
   });
 });
+
+/*
+ * QA, 28 Oct 2026: "a user whose email is confirmed and who completes
+ * sign-in/reset becomes active, never an admin-disabled or revoked account".
+ * An invitation link a mail scanner opened first left accounts `invited`
+ * (email confirmed seconds after the invitation, a password set, every
+ * sign-in refused). NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED, default off.
+ * The database function behind the endpoint refuses a disabled account; that
+ * refusal is pinned in `src/app/api/auth/accept-invitation/route.test.ts`.
+ */
+describe("a successful sign-in accepts a stuck invitation (NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED)", () => {
+  const FLAG = "NEXT_PUBLIC_INVITED_SIGNIN_ACCEPTS_ENABLED";
+  const order: string[] = [];
+  const fetchMock = vi.fn(async () => {
+    order.push("accept");
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  });
+
+  beforeEach(() => {
+    order.length = 0;
+    fetchMock.mockClear();
+    vi.stubGlobal("fetch", fetchMock);
+    locationReplace.mockImplementation(() => void order.push("navigate"));
+  });
+  afterEach(() => {
+    delete process.env[FLAG];
+    vi.unstubAllGlobals();
+  });
+
+  it("on: the invitation is accepted, then the document navigates", async () => {
+    process.env[FLAG] = "true";
+    await signIn();
+    await waitFor(() => expect(locationReplace).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/accept-invitation", { method: "POST" });
+    expect(order).toEqual(["accept", "navigate"]);
+  });
+
+  it("on, the acceptance refused or unreachable: still navigates; the server decides what this person sees", async () => {
+    process.env[FLAG] = "true";
+    fetchMock.mockImplementationOnce(async () => {
+      throw new Error("offline");
+    });
+    await signIn();
+    await waitFor(() => expect(locationReplace).toHaveBeenCalledTimes(1));
+  });
+
+  it("a failed sign-in never asks", async () => {
+    process.env[FLAG] = "true";
+    supabase.signInWithPassword.mockResolvedValueOnce({ data: {}, error: { message: "Invalid login credentials" } });
+    await signIn();
+    await screen.findByText(/Could not sign in/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("off (the default): nothing is asked, as before", async () => {
+    await signIn();
+    await waitFor(() => expect(locationReplace).toHaveBeenCalledTimes(1));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
