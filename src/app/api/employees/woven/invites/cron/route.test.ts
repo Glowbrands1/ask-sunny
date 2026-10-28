@@ -25,7 +25,7 @@ async function loadRoute(env: Partial<Record<(typeof ENV_KEYS)[number], string>>
   vi.doMock("@/lib/employees/woven/access/apply-run", () => ({
     runNewHireInvites: async (...args: unknown[]) => {
       runs.push(args);
-      return { status: "completed", sent: 1, failed: 0, waiting: 0, stoppedBy: null };
+      return { status: "completed", sent: 1, failed: 0, skipped: 0, waiting: 0, stoppedBy: null };
     },
   }));
   const route = await import("./route");
@@ -63,7 +63,7 @@ describe("the hourly new-hire invitation route", () => {
 
   it("on: the hourly run, and only codes and counts come back", async () => {
     const { GET, runs } = await loadRoute({ CRON_SECRET: SECRET, NEW_HIRE_INVITES_ENABLED: "true", NEW_HIRE_INVITE_SINCE: "2026-10-28" });
-    expect(await (await GET(request(SECRET))).json()).toEqual({ status: "completed", sent: 1, failed: 0, waiting: 0, stoppedBy: null });
+    expect(await (await GET(request(SECRET))).json()).toEqual({ status: "completed", sent: 1, failed: 0, skipped: 0, waiting: 0, stoppedBy: null });
     expect(runs).toHaveLength(1);
   });
 });
