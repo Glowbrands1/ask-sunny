@@ -152,7 +152,15 @@ describe("the guard chain still runs on what comes back", () => {
      * the model produced. See `groundedSourceWithFormDate`.
      */
     expect(ROUTE).toMatch(/guardNarrativeDraft\(dated\.values, fields, groundingSource\)/);
-    expect(ROUTE).toMatch(/groundedSourceWithFormDate\(notes, resolvedFormDate\)/);
+    /*
+     * Changed on purpose (UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED, QA 29 Oct
+     * 2026): the form date travels as `narrativeFormDate`, which IS
+     * `resolvedFormDate` unless the manager wrote only an unread day ("last
+     * week") and the form kept today's date — then today is not a date they
+     * supplied. Off, it is `resolvedFormDate` exactly as before.
+     */
+    expect(ROUTE).toMatch(/groundedSourceWithFormDate\(notes, narrativeFormDate\)/);
+    expect(ROUTE).toMatch(/const narrativeFormDate = unreadDay \? null : resolvedFormDate;/);
   });
 
   it("does not send a narrative field's stored help alongside the contract", () => {
