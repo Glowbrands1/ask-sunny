@@ -566,6 +566,7 @@ describe("the exit form's shortcuts fill their fields (EXIT_SHORTCUT_WORDS_ENABL
 
   it("headline, the whole message as typed: the Immediate Voluntary box and the key", async () => {
     const content = await readback(WORDS, true);
+    expect(content).toContain("- **Minimum Wage / Bonus Forfeiture:** Employee will be dropped to minimum wage and forfeit bonus.");
     expect(content).toContain("- **Resignation Details:** Immediate Voluntary Resignation");
     expect(content).toContain("- **Salon Key Returned:** Salon key was not returned.");
   });
