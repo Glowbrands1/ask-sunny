@@ -392,6 +392,14 @@ const MONITORING_TABLE = "src/features/forms/monitoring-table.tsx";
 const MONITORING_MOUNT = [
   '+import { RegisterRowActions } from "@/form-revisions/register-row-actions";',
   "+                            <RegisterRowActions form={form} />",
+  /*
+   * Pau approved, via QA on 29 Oct 2026, both apps, no flag: the row menu
+   * "…" shows only when it has an item. A role that may track but not manage
+   * got an empty menu on a row that is not followed up ("wanted to delete
+   * some form but the ... is not showing when clicked").
+   */
+  "-                            {mayManage || mayTrack ? (",
+  "+                            {mayManage || (form.followedUpAt && mayTrack) ? (",
 ];
 
 /*
