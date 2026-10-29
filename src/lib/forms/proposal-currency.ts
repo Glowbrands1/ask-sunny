@@ -1,5 +1,8 @@
 import "server-only";
 
+import { firstNameSuggestAccepted } from "@/lib/ai/first-name-suggest";
+import { partialNameCardCurrentEnabled } from "@/lib/config/chat-quality-flags";
+
 import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
 import { employeeState, managerContext, samePerson } from "./proposal";
@@ -79,7 +82,28 @@ export function checkProposalIsCurrent(input: {
    * `acceptedNameSuggestions`. The proposal path re-checked it against the
    * actor's scoped roster before the card ever offered it.
    */
-  const accepted = acceptedNameSuggestions(input.conversation).some(
+  /*
+   * FIRST_NAME_SUGGEST_ENABLED: a name accepted from "Is this for **…**?" /
+   * "Did you mean …" covers what the manager typed for it — "katrin dov",
+   * "katrin dovtail", "kit dov", "ashby": every word the conversation reads
+   * begins a word of the accepted name, or the manager had already typed it
+   * when they answered. A later turn naming somebody else is still a
+   * correction.
+   */
+  const suggested = firstNameSuggestAccepted(input.conversation).some(
+    ({ name, answeredAt }) =>
+      name.trim().toLowerCase() === input.employeeName.trim().toLowerCase() &&
+      resolution.kind === "resolved" &&
+      (typedFor(resolution.employeeName, name) || typedBy(input.conversation.slice(0, answeredAt + 1), resolution.employeeName)),
+  );
+  /*
+   * PARTIAL_NAME_CARD_CURRENT_ENABLED: the AI reader filled "katrin dov" as
+   * the roster's Katrin Dovetail, with no question asked; the card is still
+   * the person the manager typed.
+   */
+  const partial =
+    partialNameCardCurrentEnabled() && resolution.kind === "resolved" && typedFor(resolution.employeeName, input.employeeName);
+  const accepted = suggested || partial || acceptedNameSuggestions(input.conversation).some(
     (name) => name.trim().toLowerCase() === input.employeeName.trim().toLowerCase(),
   );
   if (
@@ -133,4 +157,19 @@ function partOfName(said: string, card: string): boolean {
   const full = words(card);
   const part = words(said);
   return part.length > 0 && part.every((word) => full.includes(word));
+}
+
+/** A manager turn up to the answer already said `typed`. */
+function typedBy(turns: readonly { readonly role: string; readonly content: string }[], typed: string): boolean {
+  const plain = (text: string) => ` ${(text.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? []).join(" ")} `;
+  const said = plain(typed);
+  return said.trim().length > 0 && turns.some((turn) => turn.role === "user" && plain(turn.content).includes(said));
+}
+
+/** Every word of `typed` begins a word of `name`: "katrin dov" and "ashby" were typed for Katrin Dovetail and Quinn Ashby. */
+function typedFor(typed: string, name: string): boolean {
+  const words = (text: string) => text.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
+  const full = words(name);
+  const said = words(typed);
+  return said.length > 0 && said.every((word) => word.length >= 2 && full.some((part) => part.startsWith(word)));
 }
