@@ -749,3 +749,195 @@ describe("after a Did you mean answer, the person stays confirmed (QA review)", 
     if (next.formProposal) expect(next.formProposal.employeeName).toBe("Quinn Ashby");
   });
 });
+
+/*
+ * Pau, live, 29 Oct 2026 (FIRST_NAME_SUGGEST_ENABLED on): "pls create a
+ * coaching form for katrin dov" → "Is this for **<full name>**? Tell me if
+ * that should change." → "yes" → the card was right, but Create answered
+ * "This proposal is out of date: the conversation now says the form is for
+ * katrin dov, not <full name>." The creation check read the first turn's
+ * "katrin dov" as the person and did not count the name the manager had just
+ * accepted. The same shape with an invented roster person: a first name and
+ * a partial surname.
+ */
+describe("a name accepted from the question is the card's person at Create", () => {
+  const withReader = (roster: unknown[]) => {
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    production(true, roster);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+  };
+
+  it('"pls create a coaching form for katrin dov" → "yes" → Create makes the form', async () => {
+    withReader([person("e-7", "Katrin", "Dovetail"), person("e-3", "Rowan", "Kestrel")]);
+    const thread = new Thread();
+    const asked = (await thread.say("pls create a coaching form for katrin dov")) as { content: string };
+    expect(asked.content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    const card = (await thread.say("yes")) as { formProposal?: Card };
+    expect(card.formProposal?.employeeName).toBe("Katrin Dovetail");
+    await thread.create();
+    expect(store.form_instances).toHaveLength(1);
+    expect(store.form_instances[0]!.employee_name).toBe("Katrin Dovetail");
+  });
+
+  it('Did you mean, answered "ashby" → Create makes the form for Quinn Ashby', async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[2]!, "ashby");
+    expect(answer.formProposal?.employeeName).toBe("Quinn Ashby");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Quinn Ashby");
+  });
+
+  it('Did you mean, answered "the second" → Create makes the form', async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[2]!, "the second");
+    expect(answer.formProposal?.employeeName).toBeTruthy();
+    await thread.create();
+    expect(store.form_instances).toHaveLength(1);
+  });
+
+  it('"no, Quinn Ashby" → Create makes the form for Quinn Ashby', async () => {
+    const { thread, answer } = await said(true, "two", WORDINGS[2]!, "no, Quinn Ashby");
+    expect(answer.formProposal?.employeeName).toBe("Quinn Ashby");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Quinn Ashby");
+  });
+
+  /*
+   * QA / Pau, 29 Oct 2026: "if we pick the suggested name, then creates the
+   * form on that name, it says expired so fix that too" — every way of
+   * accepting the suggested name, then Create, and the saved form carries it.
+   * (The question has no buttons or chips: it is answered by typing.)
+   */
+  const KATRIN = [
+    { ...person("e-7", "Katrin", "Dovetail"), preferredFirstName: "Kit" },
+    person("e-3", "Rowan", "Kestrel"),
+  ];
+  const acceptedThenCreated = async (first: string, answer: string) => {
+    withReader(KATRIN);
+    const thread = new Thread();
+    const asked = (await thread.say(first)) as { content: string };
+    expect(asked.content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    const card = (await thread.say(answer)) as { content: string; formProposal?: Card };
+    expect(card.formProposal?.employeeName).toBe("Katrin Dovetail");
+    await thread.create();
+    expect(store.form_instances).toHaveLength(1);
+    expect(store.form_instances[0]!.employee_name).toBe("Katrin Dovetail");
+  };
+
+  it('"pls create a coaching form for katrin dov" → the full name typed → Create', () =>
+    acceptedThenCreated("pls create a coaching form for katrin dov", "Katrin Dovetail"));
+
+  /*
+   * Here (unlike Ask Bubbles) a misspelled surname or a preferred first name
+   * with a partial surname is not filled from the roster: the card holds the
+   * name as typed and no question is asked, so Create has nothing to refuse.
+   * Pinned so a change to that shows up here.
+   */
+  const typedThenCreated = async (first: string, typed: string) => {
+    withReader(KATRIN);
+    const thread = new Thread();
+    const card = (await thread.say(first)) as { formProposal?: Card };
+    expect(card.formProposal?.employeeName).toBe(typed);
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe(typed);
+  };
+
+  it('a misspelled surname: "pls create a coaching form for katrin dovtail" → Create, never refused', () =>
+    typedThenCreated("pls create a coaching form for katrin dovtail", "Katrin Dovtail"));
+
+  it('the preferred name: "pls create a coaching form for kit dov" → Create, never refused', () =>
+    typedThenCreated("pls create a coaching form for kit dov", "Kit Dov"));
+
+  it('reader-filled: "katrin was late on 10/20, write her up" → "yes" → Create', async () => {
+    withReader(KATRIN);
+    const thread = new Thread();
+    const asked = (await thread.say("katrin was late on 10/20, write her up")) as { content: string };
+    expect(asked.content).toBe("Is this for **Katrin Dovetail**? Tell me if that should change.");
+    const card = (await thread.say("yes")) as { formProposal?: Card };
+    expect(card.formProposal?.employeeName).toBe("Katrin Dovetail");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Katrin Dovetail");
+  });
+
+  it('after "katrin dovtail", a later turn naming somebody else still makes the card stale', async () => {
+    withReader(KATRIN);
+    const thread = new Thread();
+    await thread.say("pls create a coaching form for katrin dovtail");
+    const stale = thread.proposal!;
+    await thread.say("actually this is for Rowan Kestrel, not Katrin");
+    thread.proposal = stale;
+    await expect(thread.create()).rejects.toThrow(/out of date/);
+  });
+
+  /*
+   * FIRST_NAME_SUGGEST off with the reader on: no question, the reader fills
+   * the roster's Katrin Dovetail from "katrin dov" at once, and Create refused
+   * it as out of date — so turning the question off did not unblock Pau.
+   * PARTIAL_NAME_CARD_CURRENT_ENABLED lets it through; off, as main.
+   */
+  const offThenCreate = async (partial: boolean) => {
+    withReader(KATRIN);
+    delete process.env[FLAG_ON];
+    if (!saved.has(PARTIAL)) saved.set(PARTIAL, process.env[PARTIAL]);
+    delete process.env[PARTIAL];
+    if (partial) process.env[PARTIAL] = "true";
+    const thread = new Thread();
+    const card = (await thread.say("pls create a coaching form for katrin dov")) as { formProposal?: Card };
+    expect(card.formProposal?.employeeName).toBe("Katrin Dovetail");
+    return thread;
+  };
+  const PARTIAL = "PARTIAL_NAME_CARD_CURRENT_ENABLED";
+
+  it("question off, PARTIAL_NAME_CARD_CURRENT on: the reader's card for \"katrin dov\" is created for Katrin Dovetail", async () => {
+    const thread = await offThenCreate(true);
+    await thread.create();
+    expect(store.form_instances).toHaveLength(1);
+    expect(store.form_instances[0]!.employee_name).toBe("Katrin Dovetail");
+  });
+
+  it("question off, PARTIAL_NAME_CARD_CURRENT on: a later turn naming somebody else still makes it stale", async () => {
+    const thread = await offThenCreate(true);
+    const stale = thread.proposal!;
+    await thread.say("actually this is for Rowan Kestrel, not Katrin");
+    thread.proposal = stale;
+    await expect(thread.create()).rejects.toThrow(/out of date/);
+  });
+
+  it("question off, PARTIAL_NAME_CARD_CURRENT off: as main, Create refuses it", async () => {
+    const thread = await offThenCreate(false);
+    await expect(thread.create()).rejects.toThrow(/out of date: the conversation now says the form is for katrin dov/);
+  });
+
+  /*
+   * Audit, 29 Oct 2026: with either flag on, "this isn't for katrin
+   * dovetail" after the name was accepted let the old card through — the
+   * acceptance paths ran before the exclusion. Main refuses it.
+   */
+  for (const flags of [
+    { suggest: true, partial: false },
+    { suggest: false, partial: true },
+    { suggest: true, partial: true },
+  ]) {
+    it(`"this isn't for katrin dovetail" after the name was accepted still refuses the old card (${JSON.stringify(flags)})`, async () => {
+      withReader(KATRIN);
+      if (!flags.suggest) delete process.env[FLAG_ON];
+      if (!saved.has("PARTIAL_NAME_CARD_CURRENT_ENABLED")) saved.set("PARTIAL_NAME_CARD_CURRENT_ENABLED", process.env.PARTIAL_NAME_CARD_CURRENT_ENABLED);
+      delete process.env.PARTIAL_NAME_CARD_CURRENT_ENABLED;
+      if (flags.partial) process.env.PARTIAL_NAME_CARD_CURRENT_ENABLED = "true";
+      const thread = new Thread();
+      const first = (await thread.say("create a ca for katrin dov. she was late on 10/20")) as { content: string };
+      if (/^Is this for/.test(first.content)) await thread.say("yes");
+      const stale = thread.proposal!;
+      expect(stale.employeeName).toBe("Katrin Dovetail");
+      await thread.say("this isn't for katrin dovetail");
+      thread.proposal = stale;
+      await expect(thread.create()).rejects.toThrow(/out of date/);
+    });
+  }
+
+  it("a later correction to somebody else still makes the old card stale", async () => {
+    const { thread } = await said(true, "one", WORDINGS[1]!, "yes");
+    const stale = thread.proposal!;
+    await thread.say("actually this is for Rowan Kestrel, not Quinn");
+    thread.proposal = stale;
+    await expect(thread.create()).rejects.toThrow(/out of date/);
+  });
+});

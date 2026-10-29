@@ -172,9 +172,36 @@ const ORDINALS: readonly RegExp[] = [/\b(?:first|1st|one)\b|^\s*1\b/i, /\b(?:sec
  * Marlowe. she was late …"), since no card holds it. Anything else is read as
  * it is.
  */
-export function withFirstNameAnswer(request: AskRequest): AskRequest {
+export function withFirstNameAnswer(request: AskRequest, aliases: Aliases = () => []): AskRequest {
   if (!firstNameSuggestEnabled()) return request;
-  return answeredNow(withEarlierAnswers(request));
+  return answeredNow(withEarlierAnswers(request, aliases), aliases);
+}
+
+/** The first and preferred names of the roster person with this full name. */
+type Aliases = (fullName: string) => readonly string[];
+
+/**
+ * QA / Pau, 29 Oct 2026: "pls create a coaching form for kit dov" (Kit is
+ * Katrin Dovetail's preferred name) → "Is this for **Katrin Dovetail**?" →
+ * "yes" lost the request: the turn that gave the name was found by "Katrin",
+ * which the manager never typed. When the conversation has asked this
+ * question, the roster is read so the preferred name finds that turn too.
+ */
+export async function withFirstNameAnswerFor(request: AskRequest, actor: ChatActor): Promise<AskRequest> {
+  if (!firstNameSuggestEnabled()) return request;
+  const asked = (request.history ?? []).some((turn) => turn.role === "assistant" && (ONE.test(turn.content) || MANY.test(turn.content)));
+  if (!asked) return withFirstNameAnswer(request);
+  const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
+  const roster = await loadScopedRoster(actor.scope);
+  return withFirstNameAnswer(request, (fullName) =>
+    roster.filter((person) => displayName(person).toLowerCase() === fullName.trim().toLowerCase()).flatMap(firstNamesOf),
+  );
+}
+
+/** The first name the question was asked about, or the chosen person's own first or preferred name. */
+function firstNamePattern(options: readonly string[], chosen: string, aliases: Aliases): RegExp {
+  const names = [...new Set([words(options[0]!)[0]!, ...aliases(chosen)])].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b(?:${names.join("|")})\\b`, "i");
 }
 
 /**
@@ -185,19 +212,11 @@ export function withFirstNameAnswer(request: AskRequest): AskRequest {
  * the conversation that the manager answered puts the chosen name, in full,
  * into the manager's turn that gave the first name, as the answer itself did.
  */
-function withEarlierAnswers(request: AskRequest): AskRequest {
+function withEarlierAnswers(request: AskRequest, aliases: Aliases): AskRequest {
   const history = request.history ?? [];
   let next: ChatMessage[] | null = null;
-  history.forEach((turn, index) => {
-    const reply = history[index + 1];
-    if (turn.role !== "assistant" || reply?.role !== "user") return;
-    const one = ONE.exec(turn.content);
-    const many = one ? null : MANY.exec(turn.content);
-    if (!one && !many) return;
-    const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
-    const chosen = chosenName(reply.content.trim(), options, Boolean(one));
-    if (!chosen) return;
-    const first = new RegExp(`\\b${words(options[0]!)[0]!}\\b`, "i");
+  for (const { index, reply, options, chosen } of answeredQuestions(history)) {
+    const first = firstNamePattern(options, chosen.name, aliases);
     const turns: ChatMessage[] = next ?? [...history];
     for (let at = index - 1; at >= 0; at -= 1) {
       const said = turns[at]!;
@@ -209,11 +228,43 @@ function withEarlierAnswers(request: AskRequest): AskRequest {
     // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
     turns[index + 1] = { ...reply, content: `${chosen.name}${chosen.rest}` };
     next = turns;
-  });
+  }
   return next ? { ...request, history: next } : request;
 }
 
-function answeredNow(request: AskRequest): AskRequest {
+/** Every question of this kind in the conversation that the manager's next turn answered, with the name chosen. */
+function answeredQuestions<T extends { readonly role: string; readonly content: string }>(conversation: readonly T[]) {
+  const answered: { index: number; reply: T; options: string[]; chosen: { name: string; rest: string } }[] = [];
+  conversation.forEach((turn, index) => {
+    const reply = conversation[index + 1];
+    if (turn.role !== "assistant" || reply?.role !== "user") return;
+    const one = ONE.exec(turn.content);
+    const many = one ? null : MANY.exec(turn.content);
+    if (!one && !many) return;
+    const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
+    const chosen = chosenName(reply.content.trim(), options, Boolean(one));
+    if (chosen) answered.push({ index, reply, options, chosen });
+  });
+  return answered;
+}
+
+/**
+ * The names the manager accepted from this question in the conversation —
+ * "yes" to "Is this for **Katrin Dovetail**?", "ashby" or "the second" from
+ * "Did you mean …", or a full name typed in answer. Pau, live, 29 Oct 2026
+ * (her wording, the name invented): "pls create a coaching form for katrin
+ * dov" → "yes" → Create refused the card as "out of date: the conversation
+ * now says the form is for katrin dov", because the creation check (`proposal-currency.ts`) counted only the
+ * older close-match questions as accepted. Off: none.
+ */
+export function firstNameSuggestAccepted(
+  conversation: readonly { readonly role: string; readonly content: string }[],
+): { name: string; answeredAt: number }[] {
+  if (!firstNameSuggestEnabled()) return [];
+  return answeredQuestions(conversation).map(({ index, chosen }) => ({ name: chosen.name, answeredAt: index + 1 }));
+}
+
+function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   const asked = lastAssistant(request);
   const reply = request.question.trim();
   const one = ONE.exec(asked);
@@ -222,13 +273,11 @@ function answeredNow(request: AskRequest): AskRequest {
   const options = one ? [one[1]!] : [...many![1]!.matchAll(/\*\*([^*]+)\*\*/g)].map((match) => match[1]!.trim());
   const chosen = chosenName(reply, options, Boolean(one));
   if (!chosen) return request;
-  const first = words(options[0]!)[0]!;
-  const said = [...(request.history ?? [])]
-    .reverse()
-    .find((turn) => turn.role === "user" && new RegExp(`\\b${first}\\b`, "i").test(turn.content));
+  const first = firstNamePattern(options, chosen.name, aliases);
+  const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
   return {
     ...request,
-    question: said ? said.content.replace(new RegExp(`\\b${first}\\b`, "i"), chosen.name) + chosen.rest : chosen.name + chosen.rest,
+    question: said ? said.content.replace(first, chosen.name) + chosen.rest : chosen.name + chosen.rest,
   };
 }
 
