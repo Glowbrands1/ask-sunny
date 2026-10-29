@@ -1,4 +1,4 @@
-import { firstNameSuggestEnabled } from "@/lib/config/chat-quality-flags";
+import { firstNameSuggestEnabled, partialSurnameAskEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 
 import type { ChatActor } from "./form-proposal";
@@ -123,6 +123,33 @@ function alreadyConfirmed(fullName: string, request: AskRequest): boolean {
   );
 }
 
+/**
+ * PARTIAL_SURNAME_ASK_ENABLED. QA live, 29 Oct 2026 (Pau's wording, the name
+ * invented here): "pls create a coaching form for marisol co" asked "Is this
+ * for **Marisol Corvane**?" only when the AI reader happened to read
+ * "marisol"; when it read "marisol co" its name was rejected and the card
+ * kept the raw "marisol co", which Create then saved. The card's name as
+ * typed — a first or preferred name and the start of a surname — is matched
+ * against the manager's roster here, in code: the people it fits, or none.
+ */
+function partialSurnamePeople(name: string | null | undefined, request: AskRequest, roster: readonly RosterEmployee[]): RosterEmployee[] {
+  if (!partialSurnameAskEnabled()) return [];
+  const parts = words(name ?? "");
+  if (parts.length < 2 || !typedInFull(parts, request)) return [];
+  if (roster.some((person) => displayName(person).toLowerCase() === parts.join(" "))) return [];
+  const [first, ...rest] = parts;
+  return roster.filter(
+    (person) =>
+      firstNamesOf(person).includes(first!) &&
+      rest.every((part) => part.length >= 2 && words(person.lastName).some((last) => last.startsWith(part))),
+  );
+}
+
+function typedInFull(parts: readonly string[], request: AskRequest): boolean {
+  const said = everythingSaid(request);
+  return parts.every((part) => said.has(part));
+}
+
 /** Cheap first look, before the roster is read: a card name whose last word the manager never typed. */
 function cardNameNotTypedInFull(name: string | null | undefined, request: AskRequest): boolean {
   const parts = words(name ?? "");
@@ -140,6 +167,10 @@ export function withFirstNameSuggest(
   if (ONE.test(asked) || MANY.test(asked)) return response;
   const card = response.formProposal;
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
+  const partial = oneWordCard ? [] : partialSurnamePeople(card?.employeeName, request, roster);
+  if (partial.length > 0 && !partial.some((person) => alreadyConfirmed(displayName(person), request))) {
+    return { ...response, content: suggestion([...new Set(partial.map(displayName))]), formProposal: undefined };
+  }
   // The card's full name was filled from a first name the manager typed alone ("katherine was late …").
   const filledFirst = oneWordCard ? null : filledFromFirstName(card?.employeeName, request, roster);
   if (!oneWordCard && !filledFirst && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
@@ -151,13 +182,14 @@ export function withFirstNameSuggest(
   if (!first || first === own) return response;
   const people = roster.filter((person) => firstNamesOf(person).includes(first));
   if (people.length === 0) return response;
-  const names = [...new Set(people.map(displayName))];
-  const content =
-    names.length === 1
-      ? `Is this for **${names[0]}**? Tell me if that should change.`
-      : `Did you mean ${bold(names)}? Tell me which, or give the full name.`;
   // Only the question: the card waits for the answer.
-  return { ...response, content, formProposal: undefined };
+  return { ...response, content: suggestion([...new Set(people.map(displayName))]), formProposal: undefined };
+}
+
+function suggestion(names: readonly string[]): string {
+  return names.length === 1
+    ? `Is this for **${names[0]}**? Tell me if that should change.`
+    : `Did you mean ${bold(names)}? Tell me which, or give the full name.`;
 }
 
 const YES =
@@ -319,7 +351,9 @@ export async function withFirstNameSuggestFor(
   const card = response.formProposal;
   const oneWordCard = Boolean(card?.employeeName && !/\s/.test(card.employeeName.trim()));
   const maybeFilled = cardNameNotTypedInFull(card?.employeeName, request);
-  if (!oneWordCard && !maybeFilled && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  // PARTIAL_SURNAME_ASK_ENABLED: "marisol co" as typed may be the start of a roster name.
+  const maybePartial = partialSurnameAskEnabled() && words(card?.employeeName ?? "").length > 1 && !maybeFilled;
+  if (!oneWordCard && !maybeFilled && !maybePartial && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
   const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
   return withFirstNameSuggest(response, request, await loadScopedRoster(actor.scope));
 }

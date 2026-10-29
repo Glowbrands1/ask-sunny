@@ -1574,3 +1574,14 @@ export function unreadDayNotIncidentDateEnabled(): boolean {
 export function partialNameCardCurrentEnabled(): boolean {
   return envFlag("PARTIAL_NAME_CARD_CURRENT_ENABLED");
 }
+
+/**
+ * A card whose name, as typed, is a first or preferred name and the start of
+ * a surname ("marisol co") is asked about from the manager's roster — "Is
+ * this for **Marisol Corvane**?" or "Did you mean …" — in code, whatever the
+ * AI reader read (QA and Pau, 29 Oct 2026; same flag in both apps). See
+ * `ai/first-name-suggest.ts`. Needs FIRST_NAME_SUGGEST_ENABLED. Off, as before.
+ */
+export function partialSurnameAskEnabled(): boolean {
+  return envFlag("PARTIAL_SURNAME_ASK_ENABLED");
+}
