@@ -1565,6 +1565,17 @@ export function unreadDayNotIncidentDateEnabled(): boolean {
 }
 
 /**
+ * The card's question about a day it cannot read says plainly that it can't
+ * guess, and shows the format to type: I can't guess "last week" - what date
+ * was it? Type it like 9/11/26. (Pau, 29 Oct 2026; same flag in both apps.)
+ * Only with UNREAD_DATE_ASK_ENABLED, which asks the question. Off, the
+ * question reads as before.
+ */
+export function unreadDatePlainAskEnabled(): boolean {
+  return envFlag("UNREAD_DATE_PLAIN_ASK_ENABLED");
+}
+
+/**
  * Create accepts a card whose roster name the manager typed in part ("katrin
  * dov" for Katrin Dovetail, filled by the AI reader): every word they typed
  * begins a word of the card's name. A later turn naming somebody else still

@@ -131,6 +131,7 @@ import {
   firstNameSuggestEnabled,
   otherWriteInGuardEnabled,
   unreadDayNotIncidentDateEnabled,
+  unreadDatePlainAskEnabled,
   partialNameCardCurrentEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
@@ -298,6 +299,7 @@ const NEW_FLAGS = [
   "FIRST_NAME_SUGGEST_ENABLED",
   "OTHER_WRITE_IN_GUARD_ENABLED",
   "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
+  "UNREAD_DATE_PLAIN_ASK_ENABLED",
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
   "PARTIAL_SURNAME_ASK_ENABLED",
   "SUGGEST_ANSWER_REPLACES_TYPED_ENABLED",
@@ -402,6 +404,14 @@ const MONITORING_TABLE = "src/features/forms/monitoring-table.tsx";
 const MONITORING_MOUNT = [
   '+import { RegisterRowActions } from "@/form-revisions/register-row-actions";',
   "+                            <RegisterRowActions form={form} />",
+  /*
+   * Pau approved, via QA on 29 Oct 2026, both apps, no flag: the row menu
+   * "…" shows only when it has an item. A role that may track but not manage
+   * got an empty menu on a row that is not followed up ("wanted to delete
+   * some form but the ... is not showing when clicked").
+   */
+  "-                            {mayManage || mayTrack ? (",
+  "+                            {mayManage || (form.followedUpAt && mayTrack) ? (",
 ];
 
 /*
@@ -495,6 +505,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(firstNameSuggestEnabled()).toBe(false);
     expect(otherWriteInGuardEnabled()).toBe(false);
     expect(unreadDayNotIncidentDateEnabled()).toBe(false);
+    expect(unreadDatePlainAskEnabled()).toBe(false);
     expect(partialNameCardCurrentEnabled()).toBe(false);
     expect(partialSurnameAskEnabled()).toBe(false);
     expect(suggestAnswerReplacesTypedEnabled()).toBe(false);
