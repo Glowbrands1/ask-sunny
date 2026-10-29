@@ -198,6 +198,7 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
+import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
 import {
   MANAGER_FOLLOW_UP_RULES,
   guardManagerFollowUp,
@@ -1186,9 +1187,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       { values: timeframe.values, checked: drafted.checked ?? {} },
       notes,
     );
-    const framing = isCoachingFamily
+    const framed = isCoachingFamily
       ? guardCoachingFraming({ values: followUp.values, checked: followUp.checked }, notes)
       : { values: followUp.values, checked: followUp.checked, adjusted: [] as string[], underperformanceRefused: false };
+    // OTHER_WRITE_IN_GUARD_ENABLED: a ticked "Other" gets its write-in in the manager's words, or is unticked.
+    const framing = guardOtherWriteIn(framed, notes, new Set(fields.map((field) => field.key)));
 
     /*
      * ========================================================================

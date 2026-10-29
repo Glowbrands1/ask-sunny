@@ -1159,3 +1159,7 @@ QA / Pau: a test account here (and a District Manager in Ask Bubbles) stayed `in
 ## 28 Oct 2026: a card whose full name was filled from a first name alone is asked about too — both apps (FIRST_NAME_SUGGEST_ENABLED)
 
 QA, live in Ask Bubbles: "katherine was late on 10/20, write her up" with one Katherine on the roster gave a card for her full name at once — the AI reader (AI_READS_CODE_CHECKS_ENABLED) found the one roster person the first name fits and filled the card, so the first-name question never fired. The same reader path fills it here (`first-name-suggest-e2e.test.ts`, flag off). Now a card whose employee is a roster person whose last name the manager never typed, and whose first name they did, is asked about like a one-word card — unless the previous question already named that person ("Did you mean 1. **…**" — "2"). Same change in Ask Bubbles.
+
+## 29 Oct 2026: a ticked "Other" is never left with its write-in empty — both apps (OTHER_WRITE_IN_GUARD_ENABLED, default off)
+
+QA, a tester's live Ask Bubbles draft: "she was late three times last week" drafted Topic of Coaching "Other" with the Other write-in empty. `forms/other-write-in.ts` (after the coaching framing guard in the draft route) fills the write-in with what happened in the manager's words, else unticks "Other". The Coaching details help now names the three sections the draft prompt already writes (wording only; no template revision). Same flag and mechanism in both apps.

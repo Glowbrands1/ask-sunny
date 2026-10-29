@@ -216,7 +216,8 @@ export function coachingDocument(): FormDocument {
         field: field("coaching_details", "Details of Coaching", "ai", "long_text", {
           help:
             'Written as "Observed:" — what happened — then "Expectation:" — what the ' +
-            "manager told the employee to do differently. One field, two labelled sections.",
+            'manager told the employee to do differently — then "Going Forward:" — what ' +
+            "the employee will do from now on. One field, three labelled sections.",
           /*
            * The one narrative field on this form. A record that names the event
            * but not the expectation cannot show that anything was communicated,
