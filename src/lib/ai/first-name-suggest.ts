@@ -1,4 +1,4 @@
-import { firstNameSuggestEnabled, partialSurnameAskEnabled } from "@/lib/config/chat-quality-flags";
+import { firstNameSuggestEnabled, partialSurnameAskEnabled, suggestAnswerReplacesTypedEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
 
@@ -236,6 +236,34 @@ function firstNamePattern(options: readonly string[], chosen: string, aliases: A
 }
 
 /**
+ * SUGGEST_ANSWER_REPLACES_TYPED_ENABLED. QA live, 29 Oct 2026 (invented here):
+ * "pls create a coaching form for marisol co" → "Is this for …?" → "no,
+ * jordan testperson" gave a card for "jordan testperson co": only the first
+ * name was replaced, and the surname piece typed after it stayed. The typed
+ * name is the first name and a following word that begins, or has in order,
+ * a surname of the people asked about; the whole of it is replaced. Off:
+ * the first name alone, as before.
+ */
+function replaceTyped(text: string, first: RegExp, options: readonly string[], name: string): string {
+  if (!suggestAnswerReplacesTypedEnabled()) return text.replace(first, name);
+  const found = first.exec(text);
+  if (!found) return text;
+  let end = found.index + found[0].length;
+  const next = /^\s+([A-Za-z][A-Za-z'’-]*)/.exec(text.slice(end));
+  const typed = found[0].toLowerCase();
+  if (
+    next &&
+    options.some((option) => {
+      const surname = words(option).slice(1).join(" ");
+      return surname !== "" && looseFits(`${typed} ${next[1]}`, { name: `${typed} ${surname}`, preferred: null });
+    })
+  ) {
+    end += next[0].length;
+  }
+  return text.slice(0, found.index) + name + text.slice(end);
+}
+
+/**
  * QA review, 28 Oct 2026: the answer only rewrote ITS turn, so the turns
  * after it ("make it a written warning", "create it") read the raw history
  * again — the first name alone, "yes" — lost the person, and the question was
@@ -253,7 +281,7 @@ function withEarlierAnswers(request: AskRequest, aliases: Aliases): AskRequest {
       const said = turns[at]!;
       if (said.role !== "user" || !first.test(said.content)) continue;
       if (said.content.toLowerCase().includes(chosen.name.toLowerCase())) break;
-      turns[at] = { ...said, content: said.content.replace(first, chosen.name) };
+      turns[at] = { ...said, content: replaceTyped(said.content, first, options, chosen.name) };
       break;
     }
     // The answer itself ("ashby", "the second", "yes") is that name, so no later reading takes "ashby" for one.
@@ -308,7 +336,7 @@ function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
   return {
     ...request,
-    question: said ? said.content.replace(first, chosen.name) + chosen.rest : chosen.name + chosen.rest,
+    question: said ? replaceTyped(said.content, first, options, chosen.name) + chosen.rest : chosen.name + chosen.rest,
   };
 }
 
