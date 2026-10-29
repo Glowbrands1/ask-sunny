@@ -52,6 +52,7 @@ import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen
 import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
 import { checkProposalIsCurrent } from "@/lib/forms/proposal-currency";
+import { rosterNamesFor } from "@/lib/forms/roster-names";
 import { allowsTeamSubject, isTeamSubject } from "@/lib/forms/team-subject";
 import { isDemoMode } from "@/lib/config/runtime";
 import { getTemplateByKey } from "@/lib/forms/repository";
@@ -223,6 +224,8 @@ export async function POST(request: Request) {
         conversation: switchReadConversation(parseHistory(body.conversation)),
         templateKey: body.templateKey,
         employeeName: body.employeeName,
+        // STALE_NEEDS_ROSTER_PERSON_ENABLED: "drop wage" and "forfeit bonus" are not more people. Off: undefined, and no roster read.
+        rosterNames: await rosterNamesFor(actor.scope),
       });
       if (!currency.current) {
         return NextResponse.json({ error: currency.reason, code: "proposal_superseded" }, { status: 409 });
