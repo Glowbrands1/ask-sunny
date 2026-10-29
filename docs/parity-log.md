@@ -1168,6 +1168,12 @@ QA, a tester's live Ask Bubbles draft: "she was late three times last week" draf
 
 QA: the card asked "I couldn't read "last week" — which date?", the manager pressed Create without answering, the form was dated today, and the Corrective Action draft was told today was the incident's date ("use exactly <today> and no other date"). With the flag on, when the notes hold an unread day, no calendar incident date and no "today", and the form kept its default date, `forms/unread-day-date.ts` replaces that brief (today is NOT the incident date; say it in the manager's words), stops treating today as a date the manager gave (a sentence stating it is not kept as the incident's date), and the draft says: "The form is dated today; you wrote "last week" - set the incident date on the form." A date the manager gave, and the Coaching Form (never told a form date), are unchanged. Same flag and mechanism in both apps.
 
+- 29 Oct 2026: the Forms Register row menu "…" shows only when it has an item (a track-only role got an empty menu on a draft) — both apps, no flag, Pau-approved one line in monitoring-table.tsx.
+
+## 29 Oct 2026: the unread-date question says plainly it can't guess — both apps (UNREAD_DATE_PLAIN_ASK_ENABLED, default off)
+
+Pau: when the card can't read a day phrase, the question should say plainly that it can't guess and show the date format to type. With UNREAD_DATE_ASK_ENABLED and this flag on, `ai/unread-date-ask.ts` asks: I can't guess "last week" - what date was it? Type it like 9/11/26. Off, the question reads as before. Same flag and wording in both apps.
+
 ## 29 Oct 2026: a name accepted from the first-name question is the card's person at Create — both apps (FIRST_NAME_SUGGEST_ENABLED)
 
 Pau, live: "pls create a coaching form for katrin dov" → "Is this for **<full name>**?" → "yes" → Create refused the card: "This proposal is out of date: the conversation now says the form is for katrin dov, not <full name>". The creation check (`proposal-currency.ts`) counted only the older close-match questions as accepted. A name accepted from this question ("yes", a full name, the surname or an ordinal) now covers what the manager typed for it (every word the conversation reads begins a word of that name); a later turn naming somebody else still makes the card stale. Same mechanism in both apps.
@@ -1195,3 +1201,7 @@ A manager in Ask Bubbles: a right Resignation/Exit card was refused at Create as
 ## 29 Oct 2026: a correction on an open card makes the card that person — Sunny-only for now (CORRECTED_EMPLOYEE_SLOT_ENABLED)
 
 QA live here: on an open Resignation/Exit card, "actually this is for <another person>" (and "actually it's for rowan kestrel", on the roster) came back with the card still naming the first person; Create would have filed the exit for the wrong person. The person resolver read the correction, but the intent slots (`intent-slots.ts`, on with INTENT_EXTRACTION_ENABLED) fell back to the first roster person in the conversation, and the card's name (`form-card-slots.ts`) was matched to the roster from the whole conversation. With this new flag (default off): when the turn names the person the manager's turns now settle on, that person is the employee, and the card's name is matched from this turn. Not ported: Ask Bubbles has no `form-card-slots.ts`, its intent extraction is off in production, and its `mergeSlots` does not fall back to the roster-order name; there the same correction switches the card (a name not on its roster gets "I couldn't find … in the Woven roster", said openly).
+
+## 29 Oct 2026: "no, <name>" to the first-name question replaces the whole typed name — both apps (SUGGEST_ANSWER_REPLACES_TYPED_ENABLED)
+
+QA live in Ask Bubbles: "pls create a coaching form for paulyne co" → "Is this for …?" → "no, jordan testperson" gave the card "jordan testperson co". This app does the same once CORRECTED_EMPLOYEE_SLOT_ENABLED is on (off, the card falls back to the person first asked about). With this new flag (default off) the answer replaces the whole typed name: the first name and a following surname piece of the people asked about. Same change in Ask Bubbles.
