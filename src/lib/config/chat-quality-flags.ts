@@ -1627,3 +1627,14 @@ export function staleNeedsRosterPersonEnabled(): boolean {
 export function correctedEmployeeSlotEnabled(): boolean {
   return envFlag("CORRECTED_EMPLOYEE_SLOT_ENABLED");
 }
+
+/**
+ * A name candidate made only of the exit form's own words ("drop wage",
+ * "forfeit bonus", "salon key not returned") is not a person: the chat does
+ * not ask "Which of them … — <the person>, drop wage or forfeit bonus?" (a
+ * manager in the sibling app, 29 Oct 2026; same flag in both apps). See
+ * `forms/answer-not-a-name.ts`. Off, as before.
+ */
+export function exitTermsNotNamesEnabled(): boolean {
+  return envFlag("EXIT_TERMS_NOT_NAMES_ENABLED");
+}

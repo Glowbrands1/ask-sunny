@@ -1,4 +1,4 @@
-import { answerNotANameEnabled, dateAnswerAppliedEnabled } from "@/lib/config/chat-quality-flags";
+import { answerNotANameEnabled, dateAnswerAppliedEnabled, exitTermsNotNamesEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isPayrollWords } from "./payroll-words";
 
@@ -11,6 +11,26 @@ const DATE_ANSWER_WORDS = /^(?:the\s+)?(?:most\s+recent|latest|newest|last(?:\s+
 
 function isDateAnswer(name: string): boolean {
   return dateAnswerAppliedEnabled() && DATE_ANSWER_WORDS.test(name.trim());
+}
+
+/**
+ * EXIT_TERMS_NOT_NAMES_ENABLED (port from the sibling app, 29 Oct 2026): a
+ * manager's exit there, "… drop wage and forfeit bonus. not eligible for
+ * rehire …", was asked "Which of them is this Resignation/Exit Form for —
+ * <the person>, drop wage or forfeit bonus?". The exit form's own shortcut
+ * words name nobody: a candidate made only of them is not a name.
+ */
+const EXIT_TERMS = new Set([
+  "drop", "wage", "wages", "minimum", "forfeit", "forfeited", "forfeits", "bonus", "bonuses",
+  "salon", "key", "keys", "item", "items", "returned", "notice", "given", "rehire", "eligible",
+  "immediate", "voluntary", "involuntary", "term", "termination", "terminated",
+  "payroll", "deduct", "deducted", "deduction", "applies", "apply", "not", "no", "and",
+]);
+
+export function isExitTerms(name: string): boolean {
+  if (!exitTermsNotNamesEnabled()) return false;
+  const words = name.toLowerCase().match(/[a-z]+/g) ?? [];
+  return words.length > 0 && words.every((word) => EXIT_TERMS.has(word));
 }
 
 /**
@@ -28,6 +48,7 @@ function isDateAnswer(name: string): boolean {
  * only a date answer is not a name. Off, every candidate is kept: main.
  */
 export function namesSomebody(name: string): boolean {
+  if (isExitTerms(name)) return false;
   if (!answerNotANameEnabled()) return true;
   return !isPayrollWords(name) && !isDateAnswer(name);
 }
