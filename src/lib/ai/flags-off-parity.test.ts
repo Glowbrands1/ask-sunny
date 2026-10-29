@@ -132,6 +132,7 @@ import {
   otherWriteInGuardEnabled,
   unreadDayNotIncidentDateEnabled,
   partialNameCardCurrentEnabled,
+  partialSurnameAskEnabled,
   preferredNameCardCurrentEnabled,
   switchKeepsNamedFormEnabled,
   severalFormsStayCurrentEnabled,
@@ -299,6 +300,7 @@ const NEW_FLAGS = [
   "OTHER_WRITE_IN_GUARD_ENABLED",
   "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
+  "PARTIAL_SURNAME_ASK_ENABLED",
   "PREFERRED_NAME_CARD_CURRENT_ENABLED",
   "SWITCH_KEEPS_NAMED_FORM_ENABLED",
   "SEVERAL_FORMS_STAY_CURRENT_ENABLED",
@@ -488,6 +490,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(otherWriteInGuardEnabled()).toBe(false);
     expect(unreadDayNotIncidentDateEnabled()).toBe(false);
     expect(partialNameCardCurrentEnabled()).toBe(false);
+    expect(partialSurnameAskEnabled()).toBe(false);
     expect(preferredNameCardCurrentEnabled()).toBe(false);
     expect(switchKeepsNamedFormEnabled()).toBe(false);
     expect(severalFormsStayCurrentEnabled()).toBe(false);

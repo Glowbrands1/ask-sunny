@@ -65,3 +65,37 @@ describe("a card filled from a first name alone", () => {
     expect(withFirstNameSuggest(CARD, carded, ROSTER)).toBe(CARD);
   });
 });
+
+/*
+ * QA live, 29 Oct 2026 (conv_mvtpjnvj2rcmsxb; the name invented here): the AI
+ * reader's employee was rejected, and the reply came back as a card for the
+ * raw typed name with no question — exactly this shape. With
+ * PARTIAL_SURNAME_ASK_ENABLED the card's name is matched against the roster
+ * and the question replaces the card.
+ */
+describe("the live raw-name card (PARTIAL_SURNAME_ASK_ENABLED)", () => {
+  const MARISOL = [
+    { id: "e-8", firstName: "Marisol", lastName: "Corvane", preferredFirstName: null },
+    { id: "e-3", firstName: "Rowan", lastName: "Kestrel", preferredFirstName: null },
+  ] as unknown as RosterEmployee[];
+  const RAW: AskResponse = {
+    content:
+      "Here is what I would put on a **Coaching Form**. Everything I need is here, drawn from your message above. I have **marisol co**.\n\nWhich store is this for? Name it here or on the form.\n\nWhat is **marisol co**'s position (job title)? I don't have one from Woven.\n\nI couldn't verify a store for **marisol** from Woven, so I haven't put one on the form.",
+    formProposal: { templateKey: "coaching", employeeName: "marisol co", employeeRole: null, locationId: null },
+  } as unknown as AskResponse;
+  const asked = { question: "pls create a coaching form for marisol co", history: [] } as unknown as AskRequest;
+  afterEach(() => {
+    delete process.env.PARTIAL_SURNAME_ASK_ENABLED;
+  });
+
+  it("is replaced by the question", () => {
+    process.env.PARTIAL_SURNAME_ASK_ENABLED = "true";
+    const answer = withFirstNameSuggest(RAW, asked, MARISOL);
+    expect(answer.content).toBe("Is this for **Marisol Corvane**? Tell me if that should change.");
+    expect(answer.formProposal).toBeUndefined();
+  });
+
+  it("off: the card as it came", () => {
+    expect(withFirstNameSuggest(RAW, asked, MARISOL)).toBe(RAW);
+  });
+});
