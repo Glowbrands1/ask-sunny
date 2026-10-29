@@ -1574,3 +1574,14 @@ export function unreadDayNotIncidentDateEnabled(): boolean {
 export function partialNameCardCurrentEnabled(): boolean {
   return envFlag("PARTIAL_NAME_CARD_CURRENT_ENABLED");
 }
+
+/**
+ * At Create, a name in the conversation that is neither the card's person nor
+ * anybody on the manager's roster ("drop wage", "forfeit bonus" in an exit
+ * request) does not make the card name "more than one person" (a manager in
+ * the sibling app, 29 Oct 2026; same flag in both apps). See
+ * `forms/proposal-currency.ts`. Off, as before.
+ */
+export function staleNeedsRosterPersonEnabled(): boolean {
+  return envFlag("STALE_NEEDS_ROSTER_PERSON_ENABLED");
+}
