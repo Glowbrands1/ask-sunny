@@ -133,6 +133,7 @@ import {
   unreadDayNotIncidentDateEnabled,
   unreadDatePlainAskEnabled,
   partialNameCardCurrentEnabled,
+  staleNeedsRosterPersonEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -295,6 +296,7 @@ const NEW_FLAGS = [
   "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
   "UNREAD_DATE_PLAIN_ASK_ENABLED",
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
+  "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -479,6 +481,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(unreadDayNotIncidentDateEnabled()).toBe(false);
     expect(unreadDatePlainAskEnabled()).toBe(false);
     expect(partialNameCardCurrentEnabled()).toBe(false);
+    expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
