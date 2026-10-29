@@ -1,7 +1,7 @@
 import "server-only";
 
 import { firstNameSuggestAccepted } from "@/lib/ai/first-name-suggest";
-import { partialNameCardCurrentEnabled } from "@/lib/config/chat-quality-flags";
+import { firstNameSuggestEnabled, partialNameCardCurrentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
@@ -90,6 +90,20 @@ export function checkProposalIsCurrent(input: {
    * when they answered. A later turn naming somebody else is still a
    * correction.
    */
+  /*
+   * "This isn't for katrin dovetail" after "katrin dov" was accepted: the
+   * manager excluded the card's own person, so neither acceptance below may
+   * let the card through (audit, 29 Oct 2026). Only with those paths on.
+   */
+  if (
+    (firstNameSuggestEnabled() || partialNameCardCurrentEnabled()) &&
+    excluded.some((not) => samePerson(not, input.employeeName) || typedFor(not, input.employeeName))
+  ) {
+    return {
+      current: false,
+      reason: `This proposal is out of date: you said the form is not for ${input.employeeName}. Tell Sunny who it is for.`,
+    };
+  }
   const suggested = firstNameSuggestAccepted(input.conversation).some(
     ({ name, answeredAt }) =>
       name.trim().toLowerCase() === input.employeeName.trim().toLowerCase() &&

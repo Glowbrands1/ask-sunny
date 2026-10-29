@@ -906,6 +906,33 @@ describe("a name accepted from the question is the card's person at Create", () 
     await expect(thread.create()).rejects.toThrow(/out of date: the conversation now says the form is for katrin dov/);
   });
 
+  /*
+   * Audit, 29 Oct 2026: with either flag on, "this isn't for katrin
+   * dovetail" after the name was accepted let the old card through — the
+   * acceptance paths ran before the exclusion. Main refuses it.
+   */
+  for (const flags of [
+    { suggest: true, partial: false },
+    { suggest: false, partial: true },
+    { suggest: true, partial: true },
+  ]) {
+    it(`"this isn't for katrin dovetail" after the name was accepted still refuses the old card (${JSON.stringify(flags)})`, async () => {
+      withReader(KATRIN);
+      if (!flags.suggest) delete process.env[FLAG_ON];
+      if (!saved.has("PARTIAL_NAME_CARD_CURRENT_ENABLED")) saved.set("PARTIAL_NAME_CARD_CURRENT_ENABLED", process.env.PARTIAL_NAME_CARD_CURRENT_ENABLED);
+      delete process.env.PARTIAL_NAME_CARD_CURRENT_ENABLED;
+      if (flags.partial) process.env.PARTIAL_NAME_CARD_CURRENT_ENABLED = "true";
+      const thread = new Thread();
+      const first = (await thread.say("create a ca for katrin dov. she was late on 10/20")) as { content: string };
+      if (/^Is this for/.test(first.content)) await thread.say("yes");
+      const stale = thread.proposal!;
+      expect(stale.employeeName).toBe("Katrin Dovetail");
+      await thread.say("this isn't for katrin dovetail");
+      thread.proposal = stale;
+      await expect(thread.create()).rejects.toThrow(/out of date/);
+    });
+  }
+
   it("a later correction to somebody else still makes the old card stale", async () => {
     const { thread } = await said(true, "one", WORDINGS[1]!, "yes");
     const stale = thread.proposal!;
