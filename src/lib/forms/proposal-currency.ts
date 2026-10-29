@@ -1,6 +1,7 @@
 import "server-only";
 
 import { firstNameSuggestAccepted } from "@/lib/ai/first-name-suggest";
+import { staleNeedsRosterPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { firstNameSuggestEnabled, partialNameCardCurrentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { acceptedNameSuggestions } from "./employee-match";
@@ -45,6 +46,11 @@ export function checkProposalIsCurrent(input: {
   conversation: readonly { id?: string; role: ChatMessage["role"]; content: string }[];
   templateKey: string;
   employeeName: string;
+  /**
+   * STALE_NEEDS_ROSTER_PERSON_ENABLED: the manager's roster, from
+   * `rosterNamesFor`. Undefined: names are read as before.
+   */
+  rosterNames?: readonly string[];
 }): ProposalCurrency {
   // An answer to "Which date goes on the form?" ("most recent") is not a name: see `dateAnswerTurns`.
   const answers = dateAnswerTurns(input.conversation);
@@ -67,7 +73,16 @@ export function checkProposalIsCurrent(input: {
   // STATE_CODE_NOT_A_PERSON_ENABLED: "at Dodge, NE" is a place; the turns are read again without it.
   const placed = stateCodePlaceContext(context, state.resolution);
   if (placed) state = employeeState(placed);
-  const { resolution, excluded } = state;
+  const { excluded } = state;
+  /*
+   * STALE_NEEDS_ROSTER_PERSON_ENABLED. A manager's exit in the sibling app, 29 Oct
+   * 2026: "… drop wage and forfeit bonus. not eligible for rehire …" — a right
+   * card refused as the conversation "now names more than one person
+   * (<the person>, drop wage, forfeit bonus)". With the manager's roster, a
+   * name that is neither the card's person (as typed) nor somebody on the
+   * roster is not another person; two people on the roster still refuse.
+   */
+  const resolution = notOtherPeople(state.resolution, input);
 
   if (resolution.kind === "ambiguous") {
     return {
@@ -171,6 +186,25 @@ function partOfName(said: string, card: string): boolean {
   const full = words(card);
   const part = words(said);
   return part.length > 0 && part.every((word) => full.includes(word));
+}
+
+function notOtherPeople(
+  resolution: ReturnType<typeof employeeState>["resolution"],
+  input: { employeeName: string; rosterNames?: readonly string[] },
+): ReturnType<typeof employeeState>["resolution"] {
+  const roster = input.rosterNames;
+  if (!staleNeedsRosterPersonEnabled() || resolution.kind !== "ambiguous" || !roster || roster.length === 0) return resolution;
+  const cardPerson = (name: string) => samePerson(name, input.employeeName) || typedFor(name, input.employeeName);
+  const onRoster = (name: string) => {
+    const said = name.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
+    return roster.some((person) => {
+      const words = person.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
+      return said.length > 0 && said[0] === words[0] && (said.length === 1 || typedFor(name, person));
+    });
+  };
+  const people = resolution.candidates.filter((name) => cardPerson(name) || onRoster(name));
+  if (!people.some(cardPerson) || people.some((name) => !cardPerson(name))) return resolution;
+  return { kind: "resolved", employeeName: people.find(cardPerson)! };
 }
 
 /** A manager turn up to the answer already said `typed`. */
