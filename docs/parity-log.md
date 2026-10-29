@@ -1201,3 +1201,7 @@ QA live here: on an open Resignation/Exit card, "actually this is for <another p
 ## 29 Oct 2026: "no, <name>" to the first-name question replaces the whole typed name — both apps (SUGGEST_ANSWER_REPLACES_TYPED_ENABLED)
 
 QA live in Ask Bubbles: "pls create a coaching form for paulyne co" → "Is this for …?" → "no, jordan testperson" gave the card "jordan testperson co". This app does the same once CORRECTED_EMPLOYEE_SLOT_ENABLED is on (off, the card falls back to the person first asked about). With this new flag (default off) the answer replaces the whole typed name: the first name and a following surname piece of the people asked about. Same change in Ask Bubbles.
+
+## 29 Oct 2026: the Corrective Action form's payroll shortcuts — both apps (CA_SHORTCUT_WORDS_ENABLED, default off)
+
+Pau: "recognize all form wording … so when manager type shortcuts, it can understand it". Offline inventory of the Corrective Action card's shortcuts: "no PD", "PD applies", "pd yes", "PD: no" and "deduct 25" answered nothing and the card asked again. With this flag `normalizePayrollWording` (`forms/payroll-deduct-answer.ts`, which imports nothing and reads the flag itself) reads "PD" as payroll deduct and a bare figure after "deduct" as dollars; "late 25 min" is not an amount. The amount itself is still read only with "$" (the amount reader is in protected `payroll-deduct.ts`). `ca-shortcut-fields-e2e.test.ts`. Same change in Ask Bubbles.

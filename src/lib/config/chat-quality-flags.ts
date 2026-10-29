@@ -1638,3 +1638,14 @@ export function staleNeedsRosterPersonEnabled(): boolean {
 export function correctedEmployeeSlotEnabled(): boolean {
   return envFlag("CORRECTED_EMPLOYEE_SLOT_ENABLED");
 }
+
+/**
+ * The Corrective Action form's shortcuts fill their fields: "no PD", "PD
+ * applies", "deduct 25" the payroll deduction (Pau, 29 Oct 2026: "recognize
+ * all form wording … so when manager type shortcuts, it can understand it";
+ * same flag in both apps). Read inline by `forms/payroll-deduct-answer.ts`,
+ * which imports nothing. Off, as before.
+ */
+export function caShortcutWordsEnabled(): boolean {
+  return envFlag("CA_SHORTCUT_WORDS_ENABLED");
+}

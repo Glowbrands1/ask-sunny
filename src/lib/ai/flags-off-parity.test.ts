@@ -138,6 +138,7 @@ import {
   partialNameLooseMatchEnabled,
   staleNeedsRosterPersonEnabled,
   correctedEmployeeSlotEnabled,
+  caShortcutWordsEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -305,6 +306,7 @@ const NEW_FLAGS = [
   "PARTIAL_NAME_LOOSE_MATCH_ENABLED",
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "CORRECTED_EMPLOYEE_SLOT_ENABLED",
+  "CA_SHORTCUT_WORDS_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -502,6 +504,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(partialNameLooseMatchEnabled()).toBe(false);
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(correctedEmployeeSlotEnabled()).toBe(false);
+    expect(caShortcutWordsEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
