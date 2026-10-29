@@ -11,6 +11,7 @@ import {
   warningLevelManagerOnlyEnabled,
   followUpNotPriorEnabled,
   followUpReadbackCueEnabled,
+  correctedEmployeeSlotEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { templateHasWarningLevel } from "@/lib/forms/warning-level";
 import { followUpDatesByRules } from "./edit-date-rules";
@@ -99,7 +100,8 @@ export function enrichFormCard(input: {
   const proposed = proposal.employeeName ? stripFieldLabels(proposal.employeeName) : null;
   const savedName = input.saved?.employeeName ? stripFieldLabels(input.saved.employeeName) : null;
   const statedName = statedEmployee(said) ?? savedName;
-  const employeeName = preferRosterName(proposed ?? statedName, said, input.people);
+  // CORRECTED_EMPLOYEE_SLOT_ENABLED: a name the proposal settled is matched to the roster from this turn, not from the first person in the conversation.
+  const employeeName = preferRosterName(proposed ?? statedName, correctedEmployeeSlotEnabled() && proposed ? withoutStateSentences(input.question) : said, input.people);
   // REMAP_INCIDENT_FIX_ENABLED: "empire, sd" is a place and its state, not Salon Director.
   const fixed = remapIncidentFixEnabled();
   const titleBlob = fixed ? withoutStateCodes(blob) : blob;
