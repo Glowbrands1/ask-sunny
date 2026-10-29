@@ -3,7 +3,8 @@ import "server-only";
 import { firstNameSuggestAccepted } from "@/lib/ai/first-name-suggest";
 import { staleNeedsRosterPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { requestedForm } from "@/lib/ai/form-type-switch";
-import { firstNameSuggestEnabled, partialNameCardCurrentEnabled, severalFormsStayCurrentEnabled } from "@/lib/config/chat-quality-flags";
+import { firstNameSuggestEnabled, partialNameCardCurrentEnabled, partialNameLooseMatchEnabled, severalFormsStayCurrentEnabled } from "@/lib/config/chat-quality-flags";
+import { looseFitsOnly, type LoosePerson } from "./loose-name";
 
 import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
@@ -55,6 +56,11 @@ export function checkProposalIsCurrent(input: {
    * person; every other check still runs. Empty: as before.
    */
   alsoCalled?: readonly string[];
+  /**
+   * PARTIAL_NAME_LOOSE_MATCH_ENABLED: the manager's roster, from
+   * `looseRosterFor`. Undefined: the typed name must begin the card's name.
+   */
+  looseRoster?: readonly LoosePerson[];
   /**
    * STALE_NEEDS_ROSTER_PERSON_ENABLED: the manager's roster, from
    * `rosterNamesFor`. Undefined: names are read as before.
@@ -150,7 +156,9 @@ export function checkProposalIsCurrent(input: {
     ({ name, answeredAt }) =>
       name.trim().toLowerCase() === input.employeeName.trim().toLowerCase() &&
       resolution.kind === "resolved" &&
-      (typedFor(resolution.employeeName, name) || typedBy(input.conversation.slice(0, answeredAt + 1), resolution.employeeName)),
+      (typedFor(resolution.employeeName, name) ||
+        typedBy(input.conversation.slice(0, answeredAt + 1), resolution.employeeName) ||
+        looselyTyped(resolution.employeeName, name, input.looseRoster)),
   );
   /*
    * PARTIAL_NAME_CARD_CURRENT_ENABLED: the AI reader filled "katrin dov" as
@@ -158,7 +166,9 @@ export function checkProposalIsCurrent(input: {
    * the person the manager typed.
    */
   const partial =
-    partialNameCardCurrentEnabled() && resolution.kind === "resolved" && typedFor(resolution.employeeName, input.employeeName);
+    partialNameCardCurrentEnabled() &&
+    resolution.kind === "resolved" &&
+    (typedFor(resolution.employeeName, input.employeeName) || looselyTyped(resolution.employeeName, input.employeeName, input.looseRoster));
   const preferred =
     resolution.kind === "resolved" && alsoCalled.some((name) => typedFor(resolution.employeeName, name));
   const accepted = suggested || partial || preferred || acceptedNameSuggestions(input.conversation).some(
@@ -288,6 +298,15 @@ function severalStillStand(
     return true;
   }
   return false;
+}
+
+/**
+ * PARTIAL_NAME_LOOSE_MATCH_ENABLED: "marisol co" was typed for Marisol
+ * Camarillo — a partial of her name ("co" has camarillo's letters in order),
+ * and of nobody else's on the manager's roster. See `forms/loose-name.ts`.
+ */
+function looselyTyped(typed: string, name: string, roster: readonly LoosePerson[] | undefined): boolean {
+  return Boolean(roster && roster.length > 0 && partialNameLooseMatchEnabled() && looseFitsOnly(typed, name, roster));
 }
 
 function notOtherPeople(

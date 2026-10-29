@@ -135,6 +135,7 @@ import {
   preferredNameCardCurrentEnabled,
   switchKeepsNamedFormEnabled,
   severalFormsStayCurrentEnabled,
+  partialNameLooseMatchEnabled,
   staleNeedsRosterPersonEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
@@ -300,6 +301,7 @@ const NEW_FLAGS = [
   "PREFERRED_NAME_CARD_CURRENT_ENABLED",
   "SWITCH_KEEPS_NAMED_FORM_ENABLED",
   "SEVERAL_FORMS_STAY_CURRENT_ENABLED",
+  "PARTIAL_NAME_LOOSE_MATCH_ENABLED",
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
@@ -487,6 +489,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(preferredNameCardCurrentEnabled()).toBe(false);
     expect(switchKeepsNamedFormEnabled()).toBe(false);
     expect(severalFormsStayCurrentEnabled()).toBe(false);
+    expect(partialNameLooseMatchEnabled()).toBe(false);
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
