@@ -1180,6 +1180,10 @@ Pau, live: "pls create a coaching form for katrin dov" → "Is this for **<full 
 
 QA / Pau: "if we pick the suggested name, then creates the form on that name, it says expired so fix that too". The answer finds the turn by the person's preferred name too ("kit dov" → "yes" no longer loses the request), and Create accepts a suggested name the manager had already typed in some form ("katrin dovtail"). New PARTIAL_NAME_CARD_CURRENT_ENABLED (default off): with the question off and the AI reader on, "katrin dov" filled as Katrin Dovetail was refused at Create; it is now current, and a later turn naming somebody else still makes it stale. Same change in Ask Bubbles.
 
+## 29 Oct 2026: a surname piece that is not a prefix is the card's person when nobody else on the roster fits — both apps (PARTIAL_NAME_LOOSE_MATCH_ENABLED)
+
+QA live here with PARTIAL_NAME_CARD_CURRENT on: "pls create a coaching form for paulyne co" gave a card for the roster person and Create refused it as "out of date", because "co" does not begin the surname. With this new flag (default off) the route passes the manager's roster into the creation check: a surname piece that begins the surname or has its letters in order from the same first letter is the card's person when nobody else on the roster fits. Two fits and corrections still refuse. A misspelled full surname is kept as typed here, as before. Same change in Ask Bubbles.
+
 ## 29 Oct 2026: an exit request's own words are not more people at Create — both apps (STALE_NEEDS_ROSTER_PERSON_ENABLED)
 
 A manager in Ask Bubbles: a right Resignation/Exit card was refused at Create as naming "more than one person (<the person>, drop wage, forfeit bonus)"; removing "drop wage and forfeit bonus" let it create. This app refused the same request in its own words. With this new flag (default off) the route passes the manager's roster into the creation check: a name that is neither the card's person nor anybody on the roster is not another person. Two roster people still refuse, and so does a correction to another person. `exit-shortcut-terms-e2e.test.ts`, `stale-needs-roster-person.test.ts`. Same change in Ask Bubbles.
