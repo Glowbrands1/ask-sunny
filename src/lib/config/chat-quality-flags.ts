@@ -1563,3 +1563,14 @@ export function otherWriteInGuardEnabled(): boolean {
 export function unreadDayNotIncidentDateEnabled(): boolean {
   return envFlag("UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED");
 }
+
+/**
+ * The card's question about a day it cannot read says plainly that it can't
+ * guess, and shows the format to type: I can't guess "last week" - what date
+ * was it? Type it like 9/11/26. (Pau, 29 Oct 2026; same flag in both apps.)
+ * Only with UNREAD_DATE_ASK_ENABLED, which asks the question. Off, the
+ * question reads as before.
+ */
+export function unreadDatePlainAskEnabled(): boolean {
+  return envFlag("UNREAD_DATE_PLAIN_ASK_ENABLED");
+}

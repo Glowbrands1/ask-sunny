@@ -1167,3 +1167,7 @@ QA, a tester's live Ask Bubbles draft: "she was late three times last week" draf
 ## 29 Oct 2026: "she was late last week" is never drafted as today's date — both apps (UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED, default off)
 
 QA: the card asked "I couldn't read "last week" — which date?", the manager pressed Create without answering, the form was dated today, and the Corrective Action draft was told today was the incident's date ("use exactly <today> and no other date"). With the flag on, when the notes hold an unread day, no calendar incident date and no "today", and the form kept its default date, `forms/unread-day-date.ts` replaces that brief (today is NOT the incident date; say it in the manager's words), stops treating today as a date the manager gave (a sentence stating it is not kept as the incident's date), and the draft says: "The form is dated today; you wrote "last week" - set the incident date on the form." A date the manager gave, and the Coaching Form (never told a form date), are unchanged. Same flag and mechanism in both apps.
+
+## 29 Oct 2026: the unread-date question says plainly it can't guess — both apps (UNREAD_DATE_PLAIN_ASK_ENABLED, default off)
+
+Pau: when the card can't read a day phrase, the question should say plainly that it can't guess and show the date format to type. With UNREAD_DATE_ASK_ENABLED and this flag on, `ai/unread-date-ask.ts` asks: I can't guess "last week" - what date was it? Type it like 9/11/26. Off, the question reads as before. Same flag and wording in both apps.
