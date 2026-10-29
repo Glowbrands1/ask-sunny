@@ -1,7 +1,8 @@
 import "server-only";
 
 import { firstNameSuggestAccepted } from "@/lib/ai/first-name-suggest";
-import { firstNameSuggestEnabled, partialNameCardCurrentEnabled } from "@/lib/config/chat-quality-flags";
+import { requestedForm } from "@/lib/ai/form-type-switch";
+import { firstNameSuggestEnabled, partialNameCardCurrentEnabled, severalFormsStayCurrentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { acceptedNameSuggestions } from "./employee-match";
 import { isQuestion } from "./employment-change";
@@ -45,6 +46,14 @@ export function checkProposalIsCurrent(input: {
   conversation: readonly { id?: string; role: ChatMessage["role"]; content: string }[];
   templateKey: string;
   employeeName: string;
+  /**
+   * PREFERRED_NAME_CARD_CURRENT_ENABLED: other names the card's person goes
+   * by on the manager's roster ("Kit Dovetail" for Katrin Dovetail), from
+   * `preferredNamesOf`. What the conversation typed for one of them is the
+   * card's person, and "this isn't for kit dovetail" excludes the card's
+   * person; every other check still runs. Empty: as before.
+   */
+  alsoCalled?: readonly string[];
 }): ProposalCurrency {
   // An answer to "Which date goes on the form?" ("most recent") is not a name: see `dateAnswerTurns`.
   const answers = dateAnswerTurns(input.conversation);
@@ -59,6 +68,17 @@ export function checkProposalIsCurrent(input: {
   );
   const last = turns[turns.length - 1];
   if (!last) return { current: true };
+
+  /*
+   * SEVERAL_FORMS_STAY_CURRENT_ENABLED (audit, 29 Oct 2026): "create a coaching
+   * form for Katrin Dovetail and a CA for Rowan Kestrel" — Sunny asks which to
+   * start with, the manager answers "1", the Coaching Form card for Katrin
+   * Dovetail is right, and Create refused it as the conversation "now names
+   * more than one person". The message that asked for several forms still
+   * stands behind each of its own cards while the turns after it name nobody
+   * else, exclude nobody on it, and ask for no other form.
+   */
+  if (severalFormsStayCurrentEnabled() && severalStillStand(turns, input)) return { current: true };
 
   // An id is provenance only; one the history arrived without is simply absent.
   const prior = turns.slice(0, -1).map((turn) => ({ id: turn.id ?? "", role: turn.role, content: turn.content }));
@@ -104,6 +124,13 @@ export function checkProposalIsCurrent(input: {
       reason: `This proposal is out of date: you said the form is not for ${input.employeeName}. Tell Sunny who it is for.`,
     };
   }
+  const alsoCalled = input.alsoCalled ?? [];
+  if (excluded.some((not) => alsoCalled.some((name) => samePerson(not, name) || typedFor(not, name)))) {
+    return {
+      current: false,
+      reason: `This proposal is out of date: you said the form is not for ${input.employeeName}. Tell Sunny who it is for.`,
+    };
+  }
   const suggested = firstNameSuggestAccepted(input.conversation).some(
     ({ name, answeredAt }) =>
       name.trim().toLowerCase() === input.employeeName.trim().toLowerCase() &&
@@ -117,7 +144,9 @@ export function checkProposalIsCurrent(input: {
    */
   const partial =
     partialNameCardCurrentEnabled() && resolution.kind === "resolved" && typedFor(resolution.employeeName, input.employeeName);
-  const accepted = suggested || partial || acceptedNameSuggestions(input.conversation).some(
+  const preferred =
+    resolution.kind === "resolved" && alsoCalled.some((name) => typedFor(resolution.employeeName, name));
+  const accepted = suggested || partial || preferred || acceptedNameSuggestions(input.conversation).some(
     (name) => name.trim().toLowerCase() === input.employeeName.trim().toLowerCase(),
   );
   if (
@@ -171,6 +200,79 @@ function partOfName(said: string, card: string): boolean {
   const full = words(card);
   const part = words(said);
   return part.length > 0 && part.every((word) => full.includes(word));
+}
+
+type FormRequest = { templateKey: string; employeeName: string };
+
+/**
+ * The forms one turn asked for, each with its person: "create a coaching form
+ * for A and a CA for B" is coaching/A and dpoa/B. A part naming a form and no
+ * person ("a coaching form and a CA for A") is not a request of its own.
+ */
+function formRequestsIn(content: string): FormRequest[] {
+  if (isQuestion(content)) return [];
+  const requests: FormRequest[] = [];
+  for (const part of content.split(/\s*(?:[,;]|\band\b|\balso\b)\s*/i)) {
+    const templateKey = askedTemplate(part, true);
+    if (!templateKey) continue;
+    const { resolution } = employeeState(managerContext([], { content: part }));
+    if (resolution.kind !== "resolved") continue;
+    if (!requests.some((one) => one.templateKey === templateKey && samePerson(one.employeeName, resolution.employeeName))) {
+      requests.push({ templateKey, employeeName: resolution.employeeName });
+    }
+  }
+  return requests;
+}
+
+/** The form a turn names: an explicit form, or a Corrective Action asked for ("a CA for …" counts in a list). */
+function askedTemplate(content: string, inList = false): string | null {
+  const intent = detectTemplateIntent(content);
+  if (intent.kind === "explicit") return intent.templateKey;
+  if (intent.kind === "corrective_action" && (intent.requestedCreation || inList)) return "dpoa";
+  return null;
+}
+
+function severalStillStand(
+  turns: readonly { id?: string; content: string }[],
+  input: { templateKey: string; employeeName: string; alsoCalled?: readonly string[] },
+): boolean {
+  const cardPerson = (name: string) =>
+    samePerson(name, input.employeeName) || (input.alsoCalled ?? []).some((other) => samePerson(name, other));
+  for (let at = turns.length - 1; at >= 0; at -= 1) {
+    const requests = formRequestsIn(turns[at]!.content);
+    if (requests.length < 2) continue;
+    if (!requests.some((request) => request.templateKey === input.templateKey && cardPerson(request.employeeName))) return false;
+    const named = requests.map((request) => request.employeeName);
+    const onTheRequest = (name: string) => named.some((one) => samePerson(one, name) || typedFor(name, one));
+    const later = turns.slice(at + 1);
+    for (const turn of later) {
+      if (isQuestion(turn.content)) continue;
+      const form = askedTemplate(turn.content);
+      if (form === null) continue;
+      // "make it a CA instead": a switch is a new request, never one of these.
+      if (requestedForm(turn.content) !== null) return false;
+      // "the coaching form" answers which to start with; a form for somebody must be one of the pairs asked for.
+      const { resolution } = employeeState(managerContext([], { content: turn.content }));
+      const pair =
+        resolution.kind === "resolved"
+          ? requests.some((request) => request.templateKey === form && (samePerson(request.employeeName, resolution.employeeName) || typedFor(resolution.employeeName, request.employeeName)))
+          : resolution.kind === "missing" && requests.some((request) => request.templateKey === form);
+      if (!pair) return false;
+    }
+    if (later.length === 0) return true;
+    const latest = later.at(-1)!;
+    const { resolution, excluded } = employeeState(
+      managerContext(
+        later.slice(0, -1).map((turn) => ({ id: turn.id ?? "", role: "user" as const, content: turn.content })),
+        { id: latest.id, content: latest.content },
+      ),
+    );
+    if (excluded.some((not) => cardPerson(not) || typedFor(not, input.employeeName))) return false;
+    if (resolution.kind === "resolved") return onTheRequest(resolution.employeeName);
+    if (resolution.kind === "ambiguous") return resolution.candidates.every(onTheRequest);
+    return true;
+  }
+  return false;
 }
 
 /** A manager turn up to the answer already said `typed`. */
