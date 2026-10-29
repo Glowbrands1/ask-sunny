@@ -1563,3 +1563,14 @@ export function otherWriteInGuardEnabled(): boolean {
 export function unreadDayNotIncidentDateEnabled(): boolean {
   return envFlag("UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED");
 }
+
+/**
+ * Create accepts a card whose roster name the manager typed in part ("katrin
+ * dov" for Katrin Dovetail, filled by the AI reader): every word they typed
+ * begins a word of the card's name. A later turn naming somebody else still
+ * makes the card stale (QA and Pau, 29 Oct 2026; same flag in both apps). See
+ * `forms/proposal-currency.ts`. Off, as before.
+ */
+export function partialNameCardCurrentEnabled(): boolean {
+  return envFlag("PARTIAL_NAME_CARD_CURRENT_ENABLED");
+}
