@@ -19,6 +19,7 @@ import {
   warningLevelManagerOnlyEnabled,
   checkedReadingEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { withCorrectedEmployee } from "./corrected-employee";
 import { payrollDeductAmount, payrollDeductFromConversation, type PayrollDeductAnswer } from "@/lib/forms/payroll-deduct";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { lateOpenOn, newestStatedDate, withYearlessDatesWritten } from "@/lib/forms/late-open";
@@ -266,7 +267,13 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
    * the slot model's "Test", or nobody, is replaced by the name as typed.
    */
   const typedEmployee = keepFormEmployeeEnabled() && !choice?.person ? typedEmployeeName(input.question) : null;
-  const employee = merge.employee(typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded);
+  // CORRECTED_EMPLOYEE_SLOT_ENABLED: "actually it's for rowan kestrel" on an open card is Rowan Kestrel, not the first person named.
+  const employee = withCorrectedEmployee(
+    merge.employee(typedEmployee ? withTypedEmployee(grounded, typedEmployee) : grounded),
+    input.history,
+    input.question,
+    input.people,
+  );
   const userText = [input.question, ...input.history.filter((turn) => turn.role !== "assistant").map((turn) => turn.content)]
     .filter((part) => part.trim() !== "")
     .join("\n");

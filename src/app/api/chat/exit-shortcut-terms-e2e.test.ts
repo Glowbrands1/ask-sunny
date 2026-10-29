@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createId } from "@/lib/utils/id";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
@@ -28,7 +29,12 @@ const store: FakeStore = {
   form_templates: [],
   form_template_current: [],
   form_template_assets: [],
-};
+  chat_conversations: [],
+  chat_messages: [],
+  chat_traces: [],
+  chat_form_state: [],
+  chat_form_incidents: [],
+} as unknown as FakeStore;
 
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
@@ -374,7 +380,8 @@ class Thread {
   proposal: ChatFormProposal | null = null;
   instanceId: string | null = null;
   private sequence = 0;
-  private readonly conversationId = `conv-${randomUUID()}`;
+  // A "conv_…" id keeps the intake state between turns, as the browser's does; the default keeps none.
+  constructor(private readonly conversationId = `conv-${randomUUID()}`) {}
 
   async say(question: string): Promise<Answer> {
     const history = this.messages.map(({ id, role, content }) => ({ id, role, content }));
@@ -574,6 +581,51 @@ describe("real staleness is still refused", () => {
       await thread.say(correction);
       thread.proposal = old;
       await expect(thread.create()).rejects.toThrow(/out of date/);
+    });
+  }
+});
+
+/*
+ * QA live, 29 Oct 2026 (this app; the person invented): after the exit card,
+ * "actually this is for jordan testperson" left the new card on the first
+ * person, and so did "actually it's for rowan kestrel" (on the roster) —
+ * Create would have filed the exit for the wrong person.
+ * CORRECTED_EMPLOYEE_SLOT_ENABLED: the card becomes the person the
+ * correction names. With and without the intake state kept between turns.
+ */
+describe("a correction on the exit card (CORRECTED_EMPLOYEE_SLOT_ENABLED)", () => {
+  const FIXED = "CORRECTED_EMPLOYEE_SLOT_ENABLED";
+  const corrected = async (on: boolean, stateful: boolean, correction: string) => {
+    if (!saved.has(FIXED)) saved.set(FIXED, process.env[FIXED]);
+    live(true, MARNIE, "marnie holloway");
+    delete process.env[FIXED];
+    if (on) process.env[FIXED] = "true";
+    const thread = stateful ? new Thread(createId("conv")) : new Thread();
+    const first = (await thread.say(WORDS)) as { formProposal?: Card };
+    expect(first.formProposal?.employeeName?.toLowerCase()).toBe("marnie holloway");
+    // The intake state is kept between turns only for a client chat id.
+    expect(((store as unknown as { chat_form_state: unknown[] }).chat_form_state ?? []).length > 0).toBe(stateful);
+    const answer = (await thread.say(correction)) as { content: string; formProposal?: Card };
+    return { thread, answer };
+  };
+
+  for (const stateful of [false, true]) {
+    const label = stateful ? "with the intake state" : "without it";
+    it(`"actually it's for rowan kestrel" (on the roster) → the card is Rowan Kestrel → Create saves him (${label})`, async () => {
+      const { thread, answer } = await corrected(true, stateful, "actually it's for rowan kestrel");
+      expect(answer.formProposal?.employeeName).toBe("Rowan Kestrel");
+      await thread.create();
+      expect(String(store.form_instances.at(-1)!.employee_name)).toBe("Rowan Kestrel");
+    });
+
+    it(`"actually this is for jordan testperson" (not on the roster) → the card is that person (${label})`, async () => {
+      const { answer } = await corrected(true, stateful, "actually this is for jordan testperson");
+      expect(answer.formProposal?.employeeName?.toLowerCase()).toBe("jordan testperson");
+    });
+
+    it(`off: the card stays on the first person, as live (${label})`, async () => {
+      const { answer } = await corrected(false, stateful, "actually it's for rowan kestrel");
+      expect(answer.formProposal?.employeeName?.toLowerCase()).toBe("marnie holloway");
     });
   }
 });
