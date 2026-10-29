@@ -131,6 +131,7 @@ import {
   firstNameSuggestEnabled,
   otherWriteInGuardEnabled,
   unreadDayNotIncidentDateEnabled,
+  unreadDatePlainAskEnabled,
   partialNameCardCurrentEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
@@ -297,6 +298,7 @@ const NEW_FLAGS = [
   "FIRST_NAME_SUGGEST_ENABLED",
   "OTHER_WRITE_IN_GUARD_ENABLED",
   "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
+  "UNREAD_DATE_PLAIN_ASK_ENABLED",
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
   "PARTIAL_SURNAME_ASK_ENABLED",
   "SUGGEST_ANSWER_REPLACES_TYPED_ENABLED",
@@ -493,6 +495,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(firstNameSuggestEnabled()).toBe(false);
     expect(otherWriteInGuardEnabled()).toBe(false);
     expect(unreadDayNotIncidentDateEnabled()).toBe(false);
+    expect(unreadDatePlainAskEnabled()).toBe(false);
     expect(partialNameCardCurrentEnabled()).toBe(false);
     expect(partialSurnameAskEnabled()).toBe(false);
     expect(suggestAnswerReplacesTypedEnabled()).toBe(false);

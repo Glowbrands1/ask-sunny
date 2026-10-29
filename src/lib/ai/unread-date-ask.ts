@@ -1,4 +1,4 @@
-import { unreadDateAskEnabled } from "@/lib/config/chat-quality-flags";
+import { unreadDateAskEnabled, unreadDatePlainAskEnabled } from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -55,6 +55,9 @@ export function withUnreadDateAsk(response: AskResponse, request: AskRequest): A
   const history = (request.history ?? []) as readonly Turn[];
   const said = unreadDayIn([...history.filter((turn) => turn.role === "user").map((turn) => turn.content), request.question]);
   if (!said) return response;
-  const line = `**Date:** I couldn't read "${said}" — which date? (for example 10/20), or set it on the form.`;
+  // UNREAD_DATE_PLAIN_ASK_ENABLED (Pau, 29 Oct 2026): it says plainly it can't guess, and shows the format to type.
+  const line = unreadDatePlainAskEnabled()
+    ? `**Date:** I can't guess "${said}" - what date was it? Type it like 9/11/26.`
+    : `**Date:** I couldn't read "${said}" — which date? (for example 10/20), or set it on the form.`;
   return { ...response, content: withLine(response.content, line) };
 }

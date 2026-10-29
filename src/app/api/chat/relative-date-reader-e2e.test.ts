@@ -565,3 +565,42 @@ describe(`${UA} off: as main`, () => {
     expect(content).not.toContain("**Date:**");
   });
 });
+
+/*
+ * UNREAD_DATE_PLAIN_ASK_ENABLED (Pau, 29 Oct 2026): "she wants the question
+ * to say plainly that it can't guess, and show the date format to type":
+ * I can't guess "last week" - what date was it? Type it like 9/11/26.
+ */
+const PA = "UNREAD_DATE_PLAIN_ASK_ENABLED";
+
+function plainProduction(plain: boolean) {
+  unreadProduction(true, true);
+  if (!saved.has(PA)) saved.set(PA, process.env[PA]);
+  delete process.env[PA];
+  if (plain) process.env[PA] = "true";
+}
+
+describe(`${PA} on`, () => {
+  it.each([["last week"], ["the other day"], ["3 days ago"]])('"she was late %s" is asked about in Pau\'s words', async (day) => {
+    plainProduction(true);
+    const { content, date } = await reply(`she was late ${day}`);
+    expect(date).toBeNull();
+    expect(content).toContain(`**Date:** I can't guess "${day}" - what date was it? Type it like 9/11/26.`);
+    expect(content).not.toContain("I couldn't read");
+  });
+
+  it("a day the reader reads, or no day at all: nothing is asked", async () => {
+    plainProduction(true);
+    expect((await reply("she was late last tuesday")).content).not.toContain("I can't guess");
+    expect((await reply("she was late")).content).not.toContain("I can't guess");
+  });
+});
+
+describe(`${PA} off: the question as before`, () => {
+  it('"she was late last week"', async () => {
+    plainProduction(false);
+    const { content } = await reply("she was late last week");
+    expect(content).toContain('**Date:** I couldn\'t read "last week" — which date? (for example 10/20), or set it on the form.');
+    expect(content).not.toContain("I can't guess");
+  });
+});
