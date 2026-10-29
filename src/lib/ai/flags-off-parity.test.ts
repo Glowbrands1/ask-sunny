@@ -656,6 +656,10 @@ describe("new flags default off and wrappers are inert", () => {
           ":(exclude)src/app/(app)/layout.tsx",
           ":(exclude)src/app/(app)/forms/monitoring/page.tsx",
           `:(exclude)${MONITORING_TABLE}`,
+          // INVITE_LINK_HOLD_ENABLED (QA approved 28 Oct 2026, both apps): the new
+          // invitation Continue page and its form. Off, the page never shows Continue.
+          ":(exclude)src/app/auth/invite-continue/page.tsx",
+          ":(exclude)src/features/auth/invite-continue-form.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
         ]),
       ).toBe("");
