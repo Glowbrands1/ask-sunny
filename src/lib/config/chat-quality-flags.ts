@@ -1587,6 +1587,17 @@ export function partialNameCardCurrentEnabled(): boolean {
 }
 
 /**
+ * A card whose name, as typed, is a first or preferred name and the start of
+ * a surname ("marisol co") is asked about from the manager's roster — "Is
+ * this for **Marisol Corvane**?" or "Did you mean …" — in code, whatever the
+ * AI reader read (QA and Pau, 29 Oct 2026; same flag in both apps). See
+ * `ai/first-name-suggest.ts`. Needs FIRST_NAME_SUGGEST_ENABLED. Off, as before.
+ */
+export function partialSurnameAskEnabled(): boolean {
+  return envFlag("PARTIAL_SURNAME_ASK_ENABLED");
+}
+
+/**
  * At Create, a typed surname piece that does not begin the card's surname
  * but has its letters in order ("marisol co" for Marisol Camarillo,
  * "dovtail" for Dovetail) is the card's person when nobody else on the

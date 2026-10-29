@@ -39,6 +39,8 @@ const state = vi.hoisted(() => ({
   revisionCalls: 0,
   chatModelCalls: 0,
   directory: [] as unknown[],
+  /** The name the AI reader and the intent slots read as typed ("marisol co"), as the live models sometimes do. */
+  typedName: null as string | null,
   /** What the AI reader reads as the employee, as typed ("marisol"), when set. */
   readerName: null as string | null,
 }));
@@ -103,9 +105,10 @@ vi.mock("@/lib/ai/call-claude", () => ({
     const text = JSON.stringify(input.messages ?? []);
     const manager = (text.split("Manager: ").pop() ?? "").split("\\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
     const name = (state.readerName && manager.toLowerCase().includes(state.readerName) ? state.readerName : null) ?? /\b(katrin)\b/i.exec(manager)?.[1] ?? null;
+    const typed = state.typedName && manager.toLowerCase().includes(state.typedName) ? state.typedName : null;
     return {
       input: {
-        employee: name ? { value: name, evidence: manager } : null,
+        employee: typed ? { value: typed, evidence: manager } : name ? { value: name, evidence: manager } : null,
         incident: /late/.test(manager) ? { value: "late", evidence: manager } : null,
         incidentDate: /10\/20/.test(manager) ? { value: "2026-10-20", evidence: "10/20" } : null,
       },
@@ -144,8 +147,9 @@ vi.mock("@/lib/ai/call-claude", () => ({
         policyHeading: null,
       };
     }
+    const typed = state.typedName && JSON.stringify(input.messages ?? []).toLowerCase().includes(state.typedName) ? state.typedName : null;
     return {
-      employee: null,
+      employee: typed,
       salon: null,
       title: null,
       incidentType: null,
@@ -439,6 +443,7 @@ beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
+  state.typedName = null;
   state.readerName = null;
   state.remapObservation = null;
   state.draft = { values: {} };
@@ -942,6 +947,141 @@ describe("a name accepted from the question is the card's person at Create", () 
     await thread.say("actually this is for Rowan Kestrel, not Quinn");
     thread.proposal = stale;
     await expect(thread.create()).rejects.toThrow(/out of date/);
+  });
+});
+
+/*
+ * QA live, 29 Oct 2026 (Pau's wording; the name invented here): "pls create a
+ * coaching form for paulyne co" sometimes asked "Is this for **…**?" and
+ * sometimes, when the AI reader's employee was rejected, gave a card for the
+ * raw "paulyne co" — no position, no store — and Create saved that. The typed
+ * first (or preferred) name plus a surname prefix is matched against the
+ * manager's roster in code (PARTIAL_SURNAME_ASK_ENABLED), not by the reader.
+ * Here the reader reads nothing for this name.
+ */
+describe("a first name and a surname prefix are asked about from the roster, without the reader", () => {
+  const MARISOL = [
+    { ...person("e-8", "Marisol", "Corvane"), preferredFirstName: "Mari" },
+    person("e-9", "Rowan", "Kestrel"),
+  ];
+  const TWO = [person("e-8", "Marisol", "Corvane"), person("e-10", "Marisol", "Cortland"), person("e-9", "Rowan", "Kestrel")];
+  const ASK = "PARTIAL_SURNAME_ASK_ENABLED";
+  const withAsk = (on: boolean, roster: unknown[], typed = "marisol co") => {
+    // The reader and the slots read the name as typed; the reader's is rejected (no roster person has "co" in their name).
+    state.typedName = typed;
+    if (!saved.has("AI_READS_CODE_CHECKS_ENABLED")) saved.set("AI_READS_CODE_CHECKS_ENABLED", process.env.AI_READS_CODE_CHECKS_ENABLED);
+    if (!saved.has(ASK)) saved.set(ASK, process.env[ASK]);
+    production(true, roster);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+    // One way, offline, to the card QA saw live: the raw typed name on the card. (ANTI_LOOP_ENABLED is off live; the fix reads the card, whatever kept the name.)
+    if (!saved.has("ANTI_LOOP_ENABLED")) saved.set("ANTI_LOOP_ENABLED", process.env.ANTI_LOOP_ENABLED);
+    process.env.ANTI_LOOP_ENABLED = "true";
+    delete process.env[ASK];
+    if (on) process.env[ASK] = "true";
+  };
+
+  it('"pls create a coaching form for marisol co" → "Is this for Marisol Corvane?" → "yes" → Create saves Marisol Corvane', async () => {
+    withAsk(true, MARISOL);
+    const thread = new Thread();
+    const asked = (await thread.say("pls create a coaching form for marisol co")) as { content: string; formProposal?: Card };
+    expect(asked.content).toBe("Is this for **Marisol Corvane**? Tell me if that should change.");
+    expect(asked.formProposal).toBeUndefined();
+    const card = (await thread.say("yes")) as { formProposal?: Card };
+    expect(card.formProposal?.employeeName).toBe("Marisol Corvane");
+    await thread.create();
+    expect(store.form_instances).toHaveLength(1);
+    expect(store.form_instances[0]!.employee_name).toBe("Marisol Corvane");
+  });
+
+  it('the same wording asks every time (three chats)', async () => {
+    withAsk(true, MARISOL);
+    for (let chat = 0; chat < 3; chat += 1) {
+      const asked = (await new Thread().say("pls create a coaching form for marisol co")) as { content: string };
+      expect(asked.content).toBe("Is this for **Marisol Corvane**? Tell me if that should change.");
+    }
+  });
+
+  it('the preferred name: "pls create a coaching form for mari corv" → asked → "yes" → Create', async () => {
+    withAsk(true, MARISOL, "mari corv");
+    const thread = new Thread();
+    const asked = (await thread.say("pls create a coaching form for mari corv")) as { content: string };
+    expect(asked.content).toBe("Is this for **Marisol Corvane**? Tell me if that should change.");
+    await thread.say("yes");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Marisol Corvane");
+  });
+
+  it('two people fit "marisol cor" → Did you mean → "cortland" → Create saves Marisol Cortland', async () => {
+    withAsk(true, TWO, "marisol cor");
+    const thread = new Thread();
+    const asked = (await thread.say("pls create a coaching form for marisol cor")) as { content: string };
+    expect(asked.content).toMatch(/^Did you mean /);
+    expect(asked.content).toContain("**Marisol Corvane**");
+    expect(asked.content).toContain("**Marisol Cortland**");
+    await thread.say("cortland");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Marisol Cortland");
+  });
+
+  it('the full name typed ("marisol corvane") is never asked about', async () => {
+    withAsk(true, MARISOL, "marisol corvane");
+    const answer = (await new Thread().say("pls create a coaching form for marisol corvane")) as { content: string; formProposal?: Card };
+    expect(answer.content).not.toMatch(/^(?:Is this for|Did you mean)/);
+    expect(answer.formProposal?.employeeName).toBe("Marisol Corvane");
+  });
+
+  it('after "yes", a later turn keeps the card and does not ask again', async () => {
+    withAsk(true, MARISOL);
+    const thread = new Thread();
+    await thread.say("pls create a coaching form for marisol co");
+    await thread.say("yes");
+    const later = (await thread.say("she was late on 10/20")) as { content: string; formProposal?: Card };
+    expect(later.content).not.toMatch(/^(?:Is this for|Did you mean)/);
+    expect(later.formProposal?.employeeName).toBe("Marisol Corvane");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Marisol Corvane");
+  });
+
+  /*
+   * QA live, 29 Oct 2026 (the sibling app and this one; Pau's own name, invented
+   * here): "paulyne cam" and "paulyne camach" were filed as typed, and "paulyne
+   * co" only matched at Create. The question reads the same loose match as
+   * Create (`loose-fit.ts`): a surname's start or its letters in order.
+   */
+  const CAMARILLO = [person("e-11", "Marisol", "Camarillo"), person("e-9", "Rowan", "Kestrel")];
+  for (const typed of ["marisol cam", "marisol camar", "marisol co"]) {
+    it(`"pls create a coaching form for ${typed}" → "Is this for **Marisol Camarillo**?" → "yes" → Create saves her`, async () => {
+      withAsk(true, CAMARILLO, typed);
+      const thread = new Thread();
+      const asked = (await thread.say(`pls create a coaching form for ${typed}`)) as { content: string };
+      expect(asked.content).toBe("Is this for **Marisol Camarillo**? Tell me if that should change.");
+      await thread.say("yes");
+      await thread.create();
+      expect(store.form_instances[0]!.employee_name).toBe("Marisol Camarillo");
+    });
+  }
+
+  it('"marisol co" with Marisol Camarillo and Marisol Corvane both on the roster → Did you mean', async () => {
+    withAsk(true, [...CAMARILLO, person("e-8", "Marisol", "Corvane")], "marisol co");
+    const asked = (await new Thread().say("pls create a coaching form for marisol co")) as { content: string };
+    expect(asked.content).toMatch(/^Did you mean /);
+    expect(asked.content).toContain("**Marisol Camarillo**");
+    expect(asked.content).toContain("**Marisol Corvane**");
+  });
+
+  it('nobody fits ("marisol zz"): as before, no question', async () => {
+    withAsk(true, MARISOL, "marisol zz");
+    const answer = (await new Thread().say("pls create a coaching form for marisol zz")) as { content: string; formProposal?: Card };
+    expect(answer.content).not.toMatch(/^(?:Is this for|Did you mean)/);
+    expect(answer.formProposal?.employeeName?.toLowerCase()).toBe("marisol zz");
+  });
+
+  it("off: as main", async () => {
+    withAsk(false, MARISOL);
+    const answer = (await new Thread().say("pls create a coaching form for marisol co")) as { content: string; formProposal?: Card };
+    // The live shape QA saw: a card for the raw typed name, no question.
+    expect(answer.content).not.toMatch(/^Is this for/);
+    expect(answer.formProposal?.employeeName?.toLowerCase()).toBe("marisol co");
   });
 });
 
