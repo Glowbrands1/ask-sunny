@@ -228,6 +228,7 @@ import {
   groundedSourceWithFormDate,
   resolveFormDate,
 } from "@/lib/forms/form-date-grounding";
+import { unreadDayBrief, unreadDayNotice, unreadIncidentDay } from "@/lib/forms/unread-day-date";
 
 /**
  * POST /api/forms/instances/[id]/draft
@@ -731,6 +732,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       loaded.instance.layoutFamily === "corrective"
         ? resolveFormDate(loaded.instance.formDate)
         : null;
+    /*
+     * UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED: "she was late last week", no date
+     * read, the form left at today — today is not the incident's date, and is
+     * not treated as one the manager gave. See `unread-day-date.ts`.
+     */
+    const unreadDay = resolvedFormDate
+      ? unreadIncidentDay({
+          notes,
+          incidentDates: draftBriefDates(notes, businessToday()),
+          formDate: loaded.instance.formDate,
+          today: businessToday(),
+        })
+      : null;
+    const narrativeFormDate = unreadDay ? null : resolvedFormDate;
 
     /*
      * The narrative fields, named once: the date correction runs on exactly
@@ -746,7 +761,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * spellings travel with the notes — and a correctly-written date can no
      * longer cost the sentence around it.
      */
-    const groundingSource = groundedSourceWithFormDate(notes, resolvedFormDate);
+    const groundingSource = groundedSourceWithFormDate(notes, narrativeFormDate);
 
     /*
      * THE PLAN-OF-ACTION CONTRACT IS CONDITIONAL, and the condition is the
@@ -848,7 +863,11 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
        * and the model was told the form's date was the only one to write.
        */
       ...(resolvedFormDate
-        ? [formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday()))]
+        ? [
+            unreadDay
+              ? unreadDayBrief(resolvedFormDate, unreadDay)
+              : formDateBrief(resolvedFormDate, draftBriefDates(notes, businessToday())),
+          ]
         : []),
       /*
        * THE PLAN OF ACTION — three beats, in order, and nothing else.
@@ -1126,7 +1145,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       drafted.values = withoutInventedDetail(drafted.values, narrativeKeys, {
         notes,
         managerWords: () => managerWordsObservation(notes, loaded.instance.employeeName),
-        formDate: resolvedFormDate?.long ?? null,
+        formDate: narrativeFormDate?.long ?? null,
         employeeName: loaded.instance.employeeName,
         datesIn: (text) => datesInText(text, businessToday()),
       });
@@ -1158,7 +1177,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       cleaned.values,
       narrativeKeys,
       notes,
-      resolvedFormDate,
+      narrativeFormDate,
       businessToday(),
     );
 
@@ -2279,6 +2298,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
           ? POLICY_ATTRIBUTION_REMOVED_NOTICE
           : null,
         sensitive.anyRefused ? SENSITIVE_ACTION_NOTICE : null,
+        // UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED: only when no date was read and the form kept today's.
+        unreadDay ? unreadDayNotice(unreadDay) : null,
         exit && exit.detailsRemoved.length > 0 ? EXIT_DETAILS_TRIMMED_NOTICE : null,
         caPolicy && !eventSection ? caPolicyAmbiguousNotice(caPolicy) : null,
         policyLeftForManager && !managerOffense
