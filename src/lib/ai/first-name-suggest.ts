@@ -1,5 +1,6 @@
 import { firstNameSuggestEnabled, partialSurnameAskEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
+import { looseFits } from "@/lib/forms/loose-fit";
 
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest, AskResponse } from "./types";
@@ -137,11 +138,9 @@ function partialSurnamePeople(name: string | null | undefined, request: AskReque
   const parts = words(name ?? "");
   if (parts.length < 2 || !typedInFull(parts, request)) return [];
   if (roster.some((person) => displayName(person).toLowerCase() === parts.join(" "))) return [];
-  const [first, ...rest] = parts;
-  return roster.filter(
-    (person) =>
-      firstNamesOf(person).includes(first!) &&
-      rest.every((part) => part.length >= 2 && words(person.lastName).some((last) => last.startsWith(part))),
+  // "cam", "camach" begin Camacho; "co" has its letters in order (`loose-fit.ts`).
+  return roster.filter((person) =>
+    looseFits(parts.join(" "), { name: displayName(person), preferred: person.preferredFirstName?.trim() || null }),
   );
 }
 

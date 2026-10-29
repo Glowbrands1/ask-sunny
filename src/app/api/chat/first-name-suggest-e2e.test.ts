@@ -1042,6 +1042,33 @@ describe("a first name and a surname prefix are asked about from the roster, wit
     expect(store.form_instances[0]!.employee_name).toBe("Marisol Corvane");
   });
 
+  /*
+   * QA live, 29 Oct 2026 (the sibling app and this one; Pau's own name, invented
+   * here): "paulyne cam" and "paulyne camach" were filed as typed, and "paulyne
+   * co" only matched at Create. The question reads the same loose match as
+   * Create (`loose-fit.ts`): a surname's start or its letters in order.
+   */
+  const CAMARILLO = [person("e-11", "Marisol", "Camarillo"), person("e-9", "Rowan", "Kestrel")];
+  for (const typed of ["marisol cam", "marisol camar", "marisol co"]) {
+    it(`"pls create a coaching form for ${typed}" → "Is this for **Marisol Camarillo**?" → "yes" → Create saves her`, async () => {
+      withAsk(true, CAMARILLO, typed);
+      const thread = new Thread();
+      const asked = (await thread.say(`pls create a coaching form for ${typed}`)) as { content: string };
+      expect(asked.content).toBe("Is this for **Marisol Camarillo**? Tell me if that should change.");
+      await thread.say("yes");
+      await thread.create();
+      expect(store.form_instances[0]!.employee_name).toBe("Marisol Camarillo");
+    });
+  }
+
+  it('"marisol co" with Marisol Camarillo and Marisol Corvane both on the roster → Did you mean', async () => {
+    withAsk(true, [...CAMARILLO, person("e-8", "Marisol", "Corvane")], "marisol co");
+    const asked = (await new Thread().say("pls create a coaching form for marisol co")) as { content: string };
+    expect(asked.content).toMatch(/^Did you mean /);
+    expect(asked.content).toContain("**Marisol Camarillo**");
+    expect(asked.content).toContain("**Marisol Corvane**");
+  });
+
   it('nobody fits ("marisol zz"): as before, no question', async () => {
     withAsk(true, MARISOL, "marisol zz");
     const answer = (await new Thread().say("pls create a coaching form for marisol zz")) as { content: string; formProposal?: Card };
