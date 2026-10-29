@@ -74,8 +74,7 @@ interface SdkUsage {
 
 const tokens = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
 
-function record(model: unknown, usage: SdkUsage | null | undefined): void {
-  const meter = storage.getStore();
+function record(model: unknown, usage: SdkUsage | null | undefined, meter = storage.getStore()): void {
   if (!meter || !usage) return;
   meter.calls.push({
     model: typeof model === "string" && model !== "" ? model : null,
@@ -110,9 +109,23 @@ async function* observedStream(stream: AsyncIterable<unknown>, model: unknown): 
   }
 }
 
+/**
+ * The SDK's stream object, still itself (its `controller`, `tee` …), with its
+ * events read through `observedStream` so the usage is recorded when it ends.
+ */
+function observedStreamObject(stream: AsyncIterable<unknown> & object, model: unknown): unknown {
+  return new Proxy(stream, {
+    get(target, prop) {
+      if (prop === Symbol.asyncIterator) return () => observedStream(target, model)[Symbol.asyncIterator]();
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 function observed(result: unknown, model: unknown): unknown {
   if (isAsyncIterable(result) && !(typeof result === "object" && result !== null && "content" in result)) {
-    return observedStream(result, model);
+    return observedStreamObject(result, model);
   }
   const message = result as { model?: string; usage?: SdkUsage } | null;
   record(message?.model ?? model, message?.usage);
@@ -121,20 +134,50 @@ function observed(result: unknown, model: unknown): unknown {
 
 type CreatesMessages = { messages: { create: (...args: never[]) => unknown } };
 
+/** The SDK's own promise: `withResponse()` and the rest stay on what it returns. */
+type SdkPromise = Promise<unknown> & { _thenUnwrap?: (transform: (data: unknown) => unknown) => unknown };
+
+/** The SDK's streaming helper: its final message carries the whole reply's usage. */
+type SdkStream = { on?: (event: "finalMessage", listener: (message: { model?: string; usage?: SdkUsage }) => void) => unknown };
+
 /**
- * The client, with `messages.create` recording its usage into the request's
- * meter. Off, the client itself.
+ * The client, with `messages.create` and `messages.stream` recording their
+ * usage into the request's meter. Off, the client itself.
+ *
+ * Production outage, 29 Oct 2026: `create` was wrapped in an `async`
+ * function, so it returned a plain Promise. The SDK's `messages.stream()`
+ * calls `this.create(...).withResponse()`, which only its own promise has, so
+ * every streamed chat answer failed in 0 ms before reaching the network. Now
+ * the SDK's promise is kept (`_thenUnwrap` maps its result and keeps
+ * `withResponse`), a streamed `create` keeps the SDK's stream object (read
+ * through a proxy that records its usage), and `messages.stream` — which
+ * calls the SDK's own `create` — records the usage of its final message.
  */
 export function meteredClient<C extends CreatesMessages>(client: C): C {
   if (!spendGuardAllCallsEnabled()) return client;
   const messages = new Proxy(client.messages, {
     get(target, prop, receiver) {
-      if (prop !== "create") return Reflect.get(target, prop, receiver);
-      return async (...args: unknown[]) => {
-        const params = args[0] as { model?: unknown } | undefined;
-        const result = await (target.create as (...a: unknown[]) => unknown).apply(target, args);
-        return observed(result, params?.model);
-      };
+      if (prop === "create") {
+        return (...args: unknown[]) => {
+          const params = args[0] as { model?: unknown; stream?: unknown } | undefined;
+          const pending = (target.create as (...a: unknown[]) => unknown).apply(target, args) as SdkPromise;
+          if (typeof pending?._thenUnwrap === "function") return pending._thenUnwrap((result) => observed(result, params?.model));
+          return Promise.resolve(pending).then((result) => observed(result, params?.model));
+        };
+      }
+      if (prop === "stream") {
+        const stream = Reflect.get(target, prop, receiver) as ((...a: unknown[]) => unknown) | undefined;
+        if (typeof stream !== "function") return stream;
+        return (...args: unknown[]) => {
+          const meter = storage.getStore();
+          const params = args[0] as { model?: unknown } | undefined;
+          // Called on the SDK's own messages, so its create (and withResponse) is the SDK's.
+          const running = stream.apply(target, args) as SdkStream;
+          running?.on?.("finalMessage", (message) => record(message?.model ?? params?.model, message?.usage, meter));
+          return running;
+        };
+      }
+      return Reflect.get(target, prop, receiver);
     },
   });
   return new Proxy(client, {
