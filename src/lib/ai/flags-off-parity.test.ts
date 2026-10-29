@@ -137,6 +137,7 @@ import {
   severalFormsStayCurrentEnabled,
   partialNameLooseMatchEnabled,
   staleNeedsRosterPersonEnabled,
+  correctedEmployeeSlotEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -303,6 +304,7 @@ const NEW_FLAGS = [
   "SEVERAL_FORMS_STAY_CURRENT_ENABLED",
   "PARTIAL_NAME_LOOSE_MATCH_ENABLED",
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
+  "CORRECTED_EMPLOYEE_SLOT_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -491,6 +493,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(severalFormsStayCurrentEnabled()).toBe(false);
     expect(partialNameLooseMatchEnabled()).toBe(false);
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
+    expect(correctedEmployeeSlotEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);

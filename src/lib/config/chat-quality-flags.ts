@@ -1628,3 +1628,13 @@ export function partialNameLooseMatchEnabled(): boolean {
 export function staleNeedsRosterPersonEnabled(): boolean {
   return envFlag("STALE_NEEDS_ROSTER_PERSON_ENABLED");
 }
+
+/**
+ * On an open card, "actually this is for <another person>" makes the card
+ * that person: the intent slots and the card's name no longer fall back to
+ * the first person named in the conversation (QA live, 29 Oct 2026; same
+ * flag in both apps). See `ai/corrected-employee.ts`. Off, as before.
+ */
+export function correctedEmployeeSlotEnabled(): boolean {
+  return envFlag("CORRECTED_EMPLOYEE_SLOT_ENABLED");
+}
