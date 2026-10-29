@@ -130,6 +130,7 @@ import {
   spendGuardAllCallsEnabled,
   firstNameSuggestEnabled,
   otherWriteInGuardEnabled,
+  unreadDayNotIncidentDateEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -289,6 +290,7 @@ const NEW_FLAGS = [
   "SPEND_GUARD_ALL_CALLS_ENABLED",
   "FIRST_NAME_SUGGEST_ENABLED",
   "OTHER_WRITE_IN_GUARD_ENABLED",
+  "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -470,6 +472,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(spendGuardAllCallsEnabled()).toBe(false);
     expect(firstNameSuggestEnabled()).toBe(false);
     expect(otherWriteInGuardEnabled()).toBe(false);
+    expect(unreadDayNotIncidentDateEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
