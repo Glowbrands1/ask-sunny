@@ -158,7 +158,7 @@ import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase } fro
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
-import { withFirstNameAnswer, withFirstNameSuggestFor } from "./first-name-suggest";
+import { withFirstNameAnswerFor, withFirstNameSuggestFor } from "./first-name-suggest";
 import { withAmountUnknownAck } from "./amount-unknown-ack";
 import { withOutOfScopePlace } from "./out-of-scope-place";
 import { withOwnPlace } from "./keeps-own-place";
@@ -307,7 +307,7 @@ async function answerQuestionChecked(
     const names = typoReadingCopyEnabled() ? await protectedNameWords() : new Set<string>();
     // FORM_TYPE_SWITCH_ENABLED: "change to coaching" with the card open switches it to the other form.
     // FIRST_NAME_SUGGEST_ENABLED: "yes" to "Is this for **Quinn Marlowe**?" is read as that name.
-    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(withFirstNameAnswer(request), names)))), actor, memory);
+    const response = await answerQuestionUntraced(withFormTypeSwitch(withTerseSlots(withNameBeforeTitle(withTypoReadingCopy(await withFirstNameAnswerFor(request, actor), names)))), actor, memory);
     noteTraceOutcome(response);
     // Last on every path, after the reply check too: the Action Plan is the manager's or none.
     // CA_ASKS_WHAT_HAPPENED_ENABLED: a Corrective Action card with no account asks what happened.

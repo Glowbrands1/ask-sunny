@@ -1171,3 +1171,11 @@ QA: the card asked "I couldn't read "last week" — which date?", the manager pr
 ## 29 Oct 2026: the unread-date question says plainly it can't guess — both apps (UNREAD_DATE_PLAIN_ASK_ENABLED, default off)
 
 Pau: when the card can't read a day phrase, the question should say plainly that it can't guess and show the date format to type. With UNREAD_DATE_ASK_ENABLED and this flag on, `ai/unread-date-ask.ts` asks: I can't guess "last week" - what date was it? Type it like 9/11/26. Off, the question reads as before. Same flag and wording in both apps.
+
+## 29 Oct 2026: a name accepted from the first-name question is the card's person at Create — both apps (FIRST_NAME_SUGGEST_ENABLED)
+
+Pau, live: "pls create a coaching form for katrin dov" → "Is this for **<full name>**?" → "yes" → Create refused the card: "This proposal is out of date: the conversation now says the form is for katrin dov, not <full name>". The creation check (`proposal-currency.ts`) counted only the older close-match questions as accepted. A name accepted from this question ("yes", a full name, the surname or an ordinal) now covers what the manager typed for it (every word the conversation reads begins a word of that name); a later turn naming somebody else still makes the card stale. Same mechanism in both apps.
+
+## 29 Oct 2026: every way of accepting the first-name suggestion reaches Create; a partial name the reader filled is current — both apps (FIRST_NAME_SUGGEST_ENABLED, PARTIAL_NAME_CARD_CURRENT_ENABLED)
+
+QA / Pau: "if we pick the suggested name, then creates the form on that name, it says expired so fix that too". The answer finds the turn by the person's preferred name too ("kit dov" → "yes" no longer loses the request), and Create accepts a suggested name the manager had already typed in some form ("katrin dovtail"). New PARTIAL_NAME_CARD_CURRENT_ENABLED (default off): with the question off and the AI reader on, "katrin dov" filled as Katrin Dovetail was refused at Create; it is now current, and a later turn naming somebody else still makes it stale. Same change in Ask Bubbles.

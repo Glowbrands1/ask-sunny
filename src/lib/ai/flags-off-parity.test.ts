@@ -132,6 +132,7 @@ import {
   otherWriteInGuardEnabled,
   unreadDayNotIncidentDateEnabled,
   unreadDatePlainAskEnabled,
+  partialNameCardCurrentEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -293,6 +294,7 @@ const NEW_FLAGS = [
   "OTHER_WRITE_IN_GUARD_ENABLED",
   "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
   "UNREAD_DATE_PLAIN_ASK_ENABLED",
+  "PARTIAL_NAME_CARD_CURRENT_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -476,6 +478,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(otherWriteInGuardEnabled()).toBe(false);
     expect(unreadDayNotIncidentDateEnabled()).toBe(false);
     expect(unreadDatePlainAskEnabled()).toBe(false);
+    expect(partialNameCardCurrentEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
