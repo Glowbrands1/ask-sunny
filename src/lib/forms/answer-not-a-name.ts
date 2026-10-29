@@ -1,4 +1,4 @@
-import { answerNotANameEnabled, dateAnswerAppliedEnabled, exitTermsNotNamesEnabled } from "@/lib/config/chat-quality-flags";
+import { answerNotANameEnabled, dateAnswerAppliedEnabled, exitTermsNotNamesEnabled, streetAddressNotANameEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isPayrollWords } from "./payroll-words";
 
@@ -51,4 +51,35 @@ export function namesSomebody(name: string): boolean {
   if (isExitTerms(name)) return false;
   if (!answerNotANameEnabled()) return true;
   return !isPayrollWords(name) && !isDateAnswer(name);
+}
+
+/**
+ * STREET_ADDRESS_NOT_A_NAME_ENABLED (QA, 29 Oct 2026, both apps): an exit's
+ * "marnie's address is 125 Ne Oakfield Lane, kearney, NE. 68847" made the
+ * chat ask "Which of them … — marnie holloway or Ne Oakfield Lane?". A
+ * street address runs from a house number through its street word ("Lane",
+ * "St", "Dr" …) to the ZIP code or the end of the sentence; a candidate whose
+ * words all sit inside one is part of the address, not a person. "jordan
+ * lane" with no house number before it is still a person.
+ */
+const STREET_WORD =
+  "lane|ln|street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|court|ct|circle|cir|way|place|pl|terrace|ter|trail|trl|parkway|pkwy|highway|hwy|loop|square|sq";
+const STREET_ADDRESS = new RegExp(
+  `\\b\\d{1,6}\\s+(?:[a-z0-9'.-]+\\s+){0,4}?(?:${STREET_WORD})\\b\\.?(?:[^\\n]{0,60}?\\b\\d{5}(?:-\\d{4})?\\b|[^.\\n]*)`,
+  "gi",
+);
+
+function addressWords(text: string): Set<string>[] {
+  return [...text.matchAll(STREET_ADDRESS)].map((match) => new Set(match[0].toLowerCase().match(/[a-z0-9]+/g) ?? []));
+}
+
+/** A filter for the name reader: keeps every name with the flag off. */
+export function notInStreetAddress(text: string): (name: string) => boolean {
+  if (!streetAddressNotANameEnabled()) return () => true;
+  const addresses = addressWords(text);
+  if (addresses.length === 0) return () => true;
+  return (name) => {
+      const words = name.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    return !(words.length > 0 && addresses.some((address) => words.every((word) => address.has(word))));
+  };
 }
