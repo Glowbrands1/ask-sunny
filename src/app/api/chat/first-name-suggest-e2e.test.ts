@@ -39,6 +39,8 @@ const state = vi.hoisted(() => ({
   revisionCalls: 0,
   chatModelCalls: 0,
   directory: [] as unknown[],
+  /** What the AI reader reads as the employee, as typed ("marisol"), when set. */
+  readerName: null as string | null,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
@@ -100,7 +102,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
   callClaudeToolTimed: async (input: { messages?: { content?: unknown }[] }) => {
     const text = JSON.stringify(input.messages ?? []);
     const manager = (text.split("Manager: ").pop() ?? "").split("\\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
-    const name = /\b(katrin)\b/i.exec(manager)?.[1] ?? null;
+    const name = (state.readerName && manager.toLowerCase().includes(state.readerName) ? state.readerName : null) ?? /\b(katrin)\b/i.exec(manager)?.[1] ?? null;
     return {
       input: {
         employee: name ? { value: name, evidence: manager } : null,
@@ -437,6 +439,7 @@ beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
+  state.readerName = null;
   state.remapObservation = null;
   state.draft = { values: {} };
   state.revision = { values: {} };
@@ -940,4 +943,84 @@ describe("a name accepted from the question is the card's person at Create", () 
     thread.proposal = stale;
     await expect(thread.create()).rejects.toThrow(/out of date/);
   });
+});
+
+/*
+ * QA live, 29 Oct 2026 (Ask Sunny, Pau's own name; invented here): "pls create
+ * a coaching form for marisol co" — no question, the card came back for
+ * Marisol Camarillo (the reader read "marisol"), and Create refused it as "out
+ * of date: the conversation now says the form is for marisol co", because
+ * "co" does not begin "camarillo". PARTIAL_NAME_LOOSE_MATCH_ENABLED: a surname
+ * piece with the surname's letters in order is the card's person when nobody
+ * else on the manager's roster fits.
+ */
+describe("a surname piece that is not a prefix (PARTIAL_NAME_LOOSE_MATCH_ENABLED)", () => {
+  const CAMARILLO = [person("e-11", "Marisol", "Camarillo"), person("e-3", "Rowan", "Kestrel")];
+  const LOOSE = "PARTIAL_NAME_LOOSE_MATCH_ENABLED";
+  const PARTIAL = "PARTIAL_NAME_CARD_CURRENT_ENABLED";
+  const setUp = (question: boolean, loose: boolean, roster: unknown[] = CAMARILLO) => {
+    for (const name of [LOOSE, PARTIAL, "AI_READS_CODE_CHECKS_ENABLED"]) if (!saved.has(name)) saved.set(name, process.env[name]);
+    production(question, roster);
+    process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
+    process.env[PARTIAL] = "true";
+    delete process.env[LOOSE];
+    if (loose) process.env[LOOSE] = "true";
+    state.readerName = "marisol";
+  };
+  const cardFor = async (words: string) => {
+    const thread = new Thread();
+    const answer = (await thread.say(words)) as { content: string; formProposal?: Card };
+    return { thread, answer };
+  };
+
+  // "marisol camrillo" (a misspelled full surname) is kept as typed here, as main does — see "a misspelled surname" above.
+  for (const typed of ["marisol co", "marisol camar", "marisol cam"]) {
+    it(`question off: "pls create a coaching form for ${typed}" → the reader's Marisol Camarillo card → Create`, async () => {
+      setUp(false, true);
+      const { thread, answer } = await cardFor(`pls create a coaching form for ${typed}`);
+      expect(answer.formProposal?.employeeName).toBe("Marisol Camarillo");
+      await thread.create();
+      expect(store.form_instances[0]!.employee_name).toBe("Marisol Camarillo");
+    });
+  }
+
+  it('off: "pls create a coaching form for marisol co" is refused, as live', async () => {
+    setUp(false, false);
+    const { thread, answer } = await cardFor("pls create a coaching form for marisol co");
+    expect(answer.formProposal?.employeeName).toBe("Marisol Camarillo");
+    await expect(thread.create()).rejects.toThrow(/out of date: the conversation now says the form is for marisol co/);
+  });
+
+  it('question on: "Is this for **Marisol Camarillo**?" → "yes" → Create', async () => {
+    setUp(true, true);
+    const { thread, answer } = await cardFor("pls create a coaching form for marisol co");
+    expect(answer.content).toBe("Is this for **Marisol Camarillo**? Tell me if that should change.");
+    await thread.say("yes");
+    await thread.create();
+    expect(store.form_instances[0]!.employee_name).toBe("Marisol Camarillo");
+  });
+
+  it("two roster people fit the typed words: still refused", async () => {
+    setUp(false, true, [person("e-11", "Marisol", "Camarillo"), person("e-12", "Marisol", "Cortez"), person("e-3", "Rowan", "Kestrel")]);
+    // The reader read the one it chose; "co" fits Cortez as well as Camarillo, so the card is not taken as typed for her.
+    state.readerName = "marisol camarillo";
+    const thread = new Thread();
+    await thread.say("pls create a coaching form for marisol camarillo");
+    const card = thread.proposal!;
+    expect(card.employeeName).toBe("Marisol Camarillo");
+    await thread.say("pls create a coaching form for marisol co");
+    thread.proposal = card;
+    await expect(thread.create()).rejects.toThrow(/out of date/);
+  });
+
+  for (const correction of ["actually it's for rowan kestrel", "no, rowan kestrel"]) {
+    it(`"${correction}" after the card still refuses it`, async () => {
+      setUp(false, true);
+      const { thread } = await cardFor("pls create a coaching form for marisol co");
+      const card = thread.proposal!;
+      await thread.say(correction);
+      thread.proposal = card;
+      await expect(thread.create()).rejects.toThrow(/out of date/);
+    });
+  }
 });
