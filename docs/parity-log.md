@@ -1201,3 +1201,7 @@ QA live here: on an open Resignation/Exit card, "actually this is for <another p
 ## 29 Oct 2026: "no, <name>" to the first-name question replaces the whole typed name — both apps (SUGGEST_ANSWER_REPLACES_TYPED_ENABLED)
 
 QA live in Ask Bubbles: "pls create a coaching form for paulyne co" → "Is this for …?" → "no, jordan testperson" gave the card "jordan testperson co". This app does the same once CORRECTED_EMPLOYEE_SLOT_ENABLED is on (off, the card falls back to the person first asked about). With this new flag (default off) the answer replaces the whole typed name: the first name and a following surname piece of the people asked about. Same change in Ask Bubbles.
+
+## 29 Oct 2026: the exit form's own words are not people — both apps (EXIT_TERMS_NOT_NAMES_ENABLED, default off)
+
+Port from Ask Bubbles (a817306f). A manager's exit there for somebody not on the roster ("… drop wage and forfeit bonus. not eligible for rehire …") asked "Which of them is this Resignation/Exit Form for — <the person>, drop wage or forfeit bonus?". This app asks the same with the same words. With this flag a candidate made only of the exit form's own words is not a person: `isExitTerms` in `forms/answer-not-a-name.ts`, read by `namesSomebody` and by two lines in protected `forms/proposal.ts` (approved by Pau via QA, 29 Oct 2026). Two real people still ask which of them. Not fixed here: the address in the same message ("125 Ne Oakfield Lane") is still offered as a person when she is not on the roster.
