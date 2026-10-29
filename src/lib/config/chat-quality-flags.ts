@@ -1574,3 +1574,14 @@ export function unreadDayNotIncidentDateEnabled(): boolean {
 export function partialNameCardCurrentEnabled(): boolean {
   return envFlag("PARTIAL_NAME_CARD_CURRENT_ENABLED");
 }
+
+/**
+ * At Create, a typed surname piece that does not begin the card's surname
+ * but has its letters in order ("marisol co" for Marisol Camarillo,
+ * "dovtail" for Dovetail) is the card's person when nobody else on the
+ * manager's roster fits (QA and Pau, 29 Oct 2026; same flag in both apps).
+ * See `forms/loose-name.ts`. Off, as before.
+ */
+export function partialNameLooseMatchEnabled(): boolean {
+  return envFlag("PARTIAL_NAME_LOOSE_MATCH_ENABLED");
+}
