@@ -970,7 +970,7 @@ describe("a first name and a surname prefix are asked about from the roster, wit
     if (!saved.has(ASK)) saved.set(ASK, process.env[ASK]);
     production(true, roster);
     process.env.AI_READS_CODE_CHECKS_ENABLED = "true";
-    // Live in production, 29 Oct 2026: with it on, a name not on the roster stays on the card as typed.
+    // One way, offline, to the card QA saw live: the raw typed name on the card. (ANTI_LOOP_ENABLED is off live; the fix reads the card, whatever kept the name.)
     if (!saved.has("ANTI_LOOP_ENABLED")) saved.set("ANTI_LOOP_ENABLED", process.env.ANTI_LOOP_ENABLED);
     process.env.ANTI_LOOP_ENABLED = "true";
     delete process.env[ASK];
