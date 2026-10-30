@@ -1,5 +1,5 @@
 import { salonById } from "@/data/salons";
-import { priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { levelRequestDateEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
@@ -163,7 +163,7 @@ function turnIncident(
   for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
-    const requested = REQUEST_LEAD.test(sentence) || LEVEL_REQUEST.test(sentence);
+    const requested = REQUEST_LEAD.test(sentence) || levelRequest().test(sentence);
     let kept = false;
     for (const clause of keepDates ? withDateListsJoined(sentence.split(",")) : sentence.split(",")) {
       const text = clause.trim();
@@ -184,6 +184,20 @@ function turnIncident(
 /** "do verbal for team member …": a level and "for" is a request too. */
 const LEVEL_REQUEST =
   /^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+for\b/i;
+
+/**
+ * LEVEL_REQUEST_DATE_ENABLED (QA, live, 30 Oct 2026): "create a written on
+ * 10/20 for <name> …" — a date between the level and "for" is still the
+ * request, so the Observation is not "create a written on 10/20 …".
+ */
+const LEVEL_REQUEST_DATED = new RegExp(
+  String.raw`^\s*(?:please\s+)?(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+(?:on\s+)?${DATE}\s+for\b`,
+  "i",
+);
+
+function levelRequest(): RegExp {
+  return levelRequestDateEnabled() ? new RegExp(`${LEVEL_REQUEST_DATED.source}|${LEVEL_REQUEST.source}`, "i") : LEVEL_REQUEST;
+}
 
 /** "I need to coach an employee": the manager asking for help, not the account. */
 const ASKS_FOR_HELP = /^(?:i\s+)?(?:need|want|have|would\s+like)\s+to\s+(?:coach|write\s+up|discipline|document|create|make|do)\b/i;
@@ -304,7 +318,7 @@ function withDateListsJoined(clauses: readonly string[]): string[] {
 }
 
 function clauseOffense(clause: string, employeeName: string | null, keepDates = false): string | null {
-  let text = clause.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+  let text = clause.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ");
   // "violation is that on 10-16-26 Testy was not measuring and weighing product"
   text = text.replace(/^\s*(?:the\s+)?(?:violation|incident|issue|offen[cs]e|what\s+happened|reason)\s+(?:is|was)(?:\s+that)?\s*[:-]?\s*/i, "");
   // "She was on her cell phone for 30+ minutes at the front desk"
@@ -341,7 +355,7 @@ function clauseOffense(clause: string, employeeName: string | null, keepDates = 
   if (/^(?:for|a|an|the|form|location|store|draft)$/i.test(text)) return null;
   // "create a coaching document for Test Employee": a repeat request names the
   // person, it is no new incident (QA, 25 Oct 2026, conv_mvnt95q52gmu047).
-  if ((REQUEST_LEAD.test(clause) || LEVEL_REQUEST.test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
+  if ((REQUEST_LEAD.test(clause) || levelRequest().test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
   // "jba manual 11-1-25" answers the prior-coaching question.
   if (/^(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+ack\w*)?$/i.test(text)) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
@@ -539,7 +553,7 @@ export function accountSentences(
         .filter((part) => !isPriorStep(part))
         // A clause that only names or places them is never the account (QA, 25
         // Oct 2026; with MANAGER_WORDS_ONLY_ENABLED or without it).
-        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").trim(), employeeName))
+        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ").trim(), employeeName))
         .map((part) => (options.managerOnly ? withoutPlace(part) : part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
@@ -568,8 +582,8 @@ function accountSlot(part: string): boolean {
 }
 
 function accountPart(part: string, employeeName: string | null): string | null {
-  const requested = REQUEST_LEAD.test(part) || LEVEL_REQUEST.test(part);
-  let text = part.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ");
+  const requested = REQUEST_LEAD.test(part) || levelRequest().test(part);
+  let text = part.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ");
   // "Please create a CA form so I can document": the rest of a request is not the account.
   if (requested && /^\s*(?:so|to|with|from|because|now)\b/i.test(text)) return null;
   if (employeeName) text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
@@ -634,9 +648,9 @@ export function managerAccount(sentence: string, employeeName: string | null): s
   for (const clause of body.split(",")) {
     let text = clause.trim();
     if (!text) continue;
-    if (REQUEST_LEAD.test(text) || LEVEL_REQUEST.test(text)) {
+    if (REQUEST_LEAD.test(text) || levelRequest().test(text)) {
       requested = true;
-      text = text.replace(REQUEST_LEAD, " ").replace(LEVEL_REQUEST, " ").replace(/\s+/g, " ").trim();
+      text = text.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ").replace(/\s+/g, " ").trim();
       // "create a CA form so I can document": the rest of a request is not the account.
       if (!text || /^(?:so|to|with|from|because|now)\b/i.test(text)) continue;
       if (onlyNamesThem(text, employeeName) || /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) continue;

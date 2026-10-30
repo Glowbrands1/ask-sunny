@@ -1,5 +1,5 @@
 import { businessToday } from "@/lib/business-date";
-import { jobTitleNotIncidentEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
+import { jobTitleNotIncidentEnabled, levelRequestDateEnabled, requestLineAccountEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 import { JOIN } from "./bounded-context";
@@ -265,6 +265,13 @@ export function readDraftedCall(
 const NEGATED_ACCOUNT = /\b(?:never|did\s+not|didn['’]?t|no[- ]call)\s+[a-z]/i;
 const ASKS_FOR_THE_FORM =
   /\b(?:warning|write[- ]?up|corrective\s+action(?:\s+form)?|ca|c\/a|dpoa)\s+(?:for|about|over|regarding|re:?)\s/i;
+/** LEVEL_REQUEST_DATED_ASK: "create a written on 10/20 for …" asks for the form too (LEVEL_REQUEST_DATE_ENABLED). */
+const LEVEL_REQUEST_DATED_ASK =
+  /\b(?:create|make|start|open|do|file|write|draft)\s+(?:a\s+|an\s+)?(?:verbal|written|final)(?:\s+warning)?\s+(?:on\s+)?(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])\s+for\s/i;
+
+function asksForTheForm(sentence: string): boolean {
+  return ASKS_FOR_THE_FORM.test(sentence) || (levelRequestDateEnabled() && LEVEL_REQUEST_DATED_ASK.test(sentence));
+}
 const NOT_THE_INCIDENT =
   /\b(?:payroll\s+deduct|previous\s+coaching|prior\s+(?:coaching|actions?)|jba\s+(?:policy\s+)?manual)\b/i;
 /* A negation that denies a fault: what follows it within a few words is the fault denied. */
@@ -276,7 +283,7 @@ const CONVERSATIONAL =
 const ACCOUNT_LIMIT = 400;
 
 function isAccountSentence(sentence: string): boolean {
-  if (ASKS_FOR_THE_FORM.test(sentence) || NOT_THE_INCIDENT.test(sentence)) return false;
+  if (asksForTheForm(sentence) || NOT_THE_INCIDENT.test(sentence)) return false;
   if (EXONERATING.test(sentence) || CONVERSATIONAL.test(sentence)) return false;
   return NEGATED_ACCOUNT.test(sentence) || describesIncident(sentence);
 }
@@ -290,7 +297,7 @@ function isAccountSentence(sentence: string): boolean {
  * read clause by clause after its first comma. Off, unchanged.
  */
 function requestLineClauses(sentence: string): string[] {
-  if (!requestLineAccountEnabled() || !ASKS_FOR_THE_FORM.test(sentence)) return [sentence];
+  if (!requestLineAccountEnabled() || !asksForTheForm(sentence)) return [sentence];
   const clauses = sentence.split(/,\s*/).map((clause) => clause.trim());
   return [sentence, ...clauses.slice(1)];
 }
