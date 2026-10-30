@@ -1,5 +1,6 @@
 import { envFlag } from "@/lib/config/chat-quality-flags";
 import { ADMIN_CONSOLE_ROLES } from "@/lib/permissions";
+import { assistantManagerCreateEnabled, hiddenFromAssistantManager } from "@/lib/permissions/assistant-manager-create";
 import type { Role } from "@/types";
 
 /**
@@ -34,9 +35,9 @@ function privateCreatorIds(): ReadonlySet<string> {
   );
 }
 
-/** On, with at least one account listed. */
+/** On, with at least one account listed; or the Assistant Salon Director's own-forms rule on. */
 export function privateCreatorsActive(): boolean {
-  return privateCreatorFormsEnabled() && privateCreatorIds().size > 0;
+  return (privateCreatorFormsEnabled() && privateCreatorIds().size > 0) || assistantManagerCreateEnabled();
 }
 
 /** Whether this form is private to somebody other than this reader. */
@@ -44,7 +45,9 @@ export function hiddenAsPrivate(
   reader: { id: string; role: Role | null },
   instance: { createdBy: string },
 ): boolean {
-  if (!privateCreatorsActive()) return false;
+  // NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED: an Assistant Salon Director sees only the forms they created.
+  if (hiddenFromAssistantManager(reader, instance)) return true;
+  if (!(privateCreatorFormsEnabled() && privateCreatorIds().size > 0)) return false;
   if (!privateCreatorIds().has(instance.createdBy)) return false;
   if (instance.createdBy === reader.id) return false;
   return !(reader.role !== null && ADMIN_CONSOLE_ROLES.includes(reader.role));

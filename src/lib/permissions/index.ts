@@ -1,3 +1,4 @@
+import { ASSISTANT_MANAGER_CREATES, assistantManagerCreateEnabled } from "./assistant-manager-create";
 import type { Permission, PermissionMatrix, Role } from "@/types";
 
 /**
@@ -278,7 +279,16 @@ export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
     "ask_questions",
     "create_coaching",
     "view_daily_stats",
-    ...(asdNoFormMonitoringEnabled() ? [] : (["view_form_monitoring"] as Permission[])),
+    /*
+     * NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED (Pau, 30 Oct 2026): the Salon
+     * Director's forms to create, and Form Monitoring back even with the ASD
+     * flag on, limited to their own forms (`private-creators.ts`).
+     */
+    ...(assistantManagerCreateEnabled()
+      ? (["view_form_monitoring", ...ASSISTANT_MANAGER_CREATES] as Permission[])
+      : asdNoFormMonitoringEnabled()
+        ? []
+        : (["view_form_monitoring"] as Permission[])),
     "view_videos",
     "view_google_reviews",
     // Previously reachable, so still reachable — see SALON_DIRECTOR_PERMISSIONS.
