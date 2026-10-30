@@ -24,6 +24,7 @@ import {
 import { lastFirstReading } from "./reader/last-first";
 import { readFormRequest, type ReaderResult } from "./reader/read";
 import { priorShorthand, requestScopedHistory, startsNewForm } from "./remap-incident";
+import { startsFormForAnotherPerson } from "./new-person-request";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -51,7 +52,9 @@ export async function applyIntentExtraction(input: {
   try {
     // REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident
     // is a new form, so the old form's stored slots are not carried onto it.
-    const newForm = remapIncidentFixEnabled() && startsNewForm(input.request.history, input.request.question);
+    // NEW_PERSON_REQUEST_ENABLED: "also create a ca for <another> …" is a new form for that person too.
+    const anotherPerson = startsFormForAnotherPerson(input.request.history, input.request.question);
+    const newForm = (remapIncidentFixEnabled() && startsNewForm(input.request.history, input.request.question)) || anotherPerson;
     const saved = newForm ? null : await readSaved(input.actor.subject, input.request.conversationId);
     const [people, manual, templates] = await Promise.all([
       loadPeople(input.actor),
@@ -59,7 +62,7 @@ export async function applyIntentExtraction(input: {
       loadTemplates(),
     ]);
     const salons = PRODUCTION_SALONS.map((salon) => ({ id: salon.id, name: salon.name }));
-    const turns = requestScopedHistory(input.request.history, input.request.question);
+    const turns = anotherPerson ? [] : requestScopedHistory(input.request.history, input.request.question);
     const checkContext = {
       managerTurns: [...turns.filter((turn) => turn.role === "user").map((turn) => turn.content), input.request.question],
       people,
@@ -101,7 +104,9 @@ export async function applyIntentExtraction(input: {
     const fixed = remapIncidentFixEnabled();
     const decision = decideIntentTurn({
       question: fixed ? priorShorthand(input.request.question) : input.request.question,
-      history: fixed
+      history: anotherPerson
+        ? []
+        : fixed
         ? requestScopedHistory(input.request.history, input.request.question).map((turn) =>
             turn.role === "user" ? { ...turn, content: priorShorthand(turn.content) } : turn,
           )
