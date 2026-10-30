@@ -65,6 +65,94 @@ describe("optional prior coaching", () => {
     expect(text).toContain("Create the draft here");
   });
 
+  /**
+   * Live conv conv_mvmeuuth27eykk3: "There's no prior coaching on file."
+   * The note said prior coaching was on file. A denial is not a note.
+   */
+  it.each([
+    "There's no prior coaching on file.",
+    "no prior coaching",
+    "none of the prior coaching is on file",
+    "not prior coaching",
+    "never had prior coaching",
+    "without prior coaching",
+    "he hasn't had prior coaching",
+  ])("does not claim prior coaching exists for %j", (managerText) => {
+    expect(typedPriorCoachingNote(managerText)).toBeNull();
+    const text = applyOptionalPriorCoaching(HELD, {
+      enabled: true,
+      records: [],
+      managerText,
+    });
+    expect(text).toContain("the line stays blank");
+    expect(text).not.toContain("Prior coaching note:");
+    expect(text).not.toContain("prior coaching on file");
+    expect(text).not.toContain("No finalized record was required");
+    expect(text).toContain("The draft can still be created.");
+  });
+
+  it("keeps prior coaching stated after 'but'", () => {
+    const managerText = "no write-up but prior coaching was done verbally";
+    expect(typedPriorCoachingNote(managerText)).toBe("prior coaching was done verbally");
+    const text = applyOptionalPriorCoaching(HELD, {
+      enabled: true,
+      records: [],
+      managerText,
+    });
+    expect(text).toContain("Prior coaching note: prior coaching was done verbally");
+    expect(text).toContain("No finalized record was required.");
+  });
+
+  it("keeps prior coaching when the denial governs a different verb", () => {
+    const managerText = "She didn't improve after prior coaching in September";
+    expect(typedPriorCoachingNote(managerText)).toBe("prior coaching in September");
+    const text = applyOptionalPriorCoaching(HELD, {
+      enabled: true,
+      records: [],
+      managerText,
+    });
+    expect(text).toContain("Prior coaching note: prior coaching in September");
+  });
+
+  it("does not take a question plus 'none' as a prior-coaching note", () => {
+    expect(typedPriorCoachingNote("prior coaching? none")).toBeNull();
+    const text = applyOptionalPriorCoaching(HELD, {
+      enabled: true,
+      records: [],
+      managerText: "prior coaching? none",
+    });
+    expect(text).toContain("the line stays blank");
+    expect(text).not.toContain("Prior coaching note:");
+    expect(text).not.toContain("No finalized record was required");
+  });
+
+  it("leaves the line blank when the manager never mentions prior coaching", () => {
+    expect(typedPriorCoachingNote("She was late opening the salon today.")).toBeNull();
+    const text = applyOptionalPriorCoaching(HELD, {
+      enabled: true,
+      records: [],
+      managerText: "She was late opening the salon today.",
+    });
+    expect(text).toContain("the line stays blank");
+    expect(text).not.toContain("Prior coaching note:");
+    expect(text).not.toContain("No finalized record was required");
+  });
+
+  it("keeps a later positive note after a denial in an earlier sentence", () => {
+    expect(
+      typedPriorCoachingNote("There's no prior coaching on file.\nShe was coached verbally in July"),
+    ).toBe("coached verbally in July");
+  });
+
+  it("does not change the card for a denial while the flag is off", () => {
+    const text = applyOptionalPriorCoaching(HELD, {
+      enabled: false,
+      records: [],
+      managerText: "There's no prior coaching on file.",
+    });
+    expect(text).toBe(HELD);
+  });
+
   it("drops only the prior-coaching hold when the warning level is still open", () => {
     const text = applyOptionalPriorCoaching(BOTH, {
       enabled: true,
