@@ -1702,3 +1702,14 @@ export function caShortcutWordsEnabled(): boolean {
 export function streetAddressNotANameEnabled(): boolean {
   return envFlag("STREET_ADDRESS_NOT_A_NAME_ENABLED");
 }
+
+/**
+ * A job title the manager typed keeps a word that is also a field label:
+ * "assistant salon manager" is not cut to "assistant" at "salon" (QA, Sunny
+ * live, 30 Oct 2026; same flag in both apps). See `ai/form-card-slots.ts`.
+ * Off, as before.
+ */
+export function titleKeepsLabelWordsEnabled(): boolean {
+  return envFlag("TITLE_KEEPS_LABEL_WORDS_ENABLED");
+}
+
