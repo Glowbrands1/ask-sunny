@@ -625,3 +625,43 @@ describe("a new request for another person is that person's card (NEW_PERSON_REQ
     expect(thread.proposal?.employeeName).toBe("Katrin Dovetail");
   });
 });
+
+/*
+ * QA, this app live with the flag on (30 Oct 2026, conv_mvusmqe020iu23t):
+ * the new card was the second person's, but its reply read "Observation of
+ * Offense: <first person>. she was late on 10/20. also create a ca for
+ * <second> …" — the first person's name and sentence inside the second
+ * person's card. The step that holds the card's slots was read from every
+ * earlier turn. The created draft was already the second person's turn only.
+ */
+describe("the first person's words stay off the new card (NEW_PERSON_REQUEST_ENABLED)", () => {
+  const FIRST = "create a ca for katrin dovetail at kearney. she was late on 10/20.";
+
+  it("QA's live shape: Rowan's Observation holds nothing of Katrin's", async () => {
+    setUp(A, true);
+    const thread = new Thread();
+    await thread.say(FIRST);
+    const answer = await thread.say(ALSO);
+    expect(thread.proposal?.employeeName).toBe("Rowan Kestrel");
+    const observation = /\*\*Observation of Offense:\*\* ([^\n]+)/.exec(answer.content)?.[1] ?? "";
+    expect(observation).toContain("he was late on 10/20");
+    expect(observation.toLowerCase()).not.toContain("katrin");
+    expect(observation).not.toContain("she was late");
+    expect(answer.content).toContain("**Date:** 10/20/2026");
+  });
+
+  it("the created draft is written from Rowan's turn only", async () => {
+    setUp(A, true);
+    const thread = new Thread();
+    await thread.say(FIRST);
+    await thread.say(ALSO);
+    expect(thread.proposal?.sourceMessageIds).toEqual(["m2"]);
+    const result = await attempt(thread);
+    expect(outcome(result)).toBe("created");
+    const values = (store.form_instance_values as unknown as { instance_id: string; value: unknown }[]).filter(
+      (row) => row.instance_id === (result as { row: Row }).row.id,
+    );
+    expect(JSON.stringify(values).toLowerCase()).not.toContain("katrin");
+  });
+});
+
