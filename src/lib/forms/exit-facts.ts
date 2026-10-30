@@ -1,5 +1,5 @@
 import { shiftDays, weekdayOf } from "@/lib/business-date";
-import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled } from "@/lib/config/chat-quality-flags";
+import { exitFulfilledIsLastDayEnabled, exitIntakeFixEnabled, exitShortcutWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 import {
   EXIT_DATE_FIELDS,
@@ -474,12 +474,39 @@ function completedInvoluntary(q: string): boolean {
   return false;
 }
 
+/**
+ * EXIT_SHORTCUT_WORDS_ENABLED. The shorthand a manager copies from the form or
+ * types in a hurry (Pau, 29 Oct 2026: "recognize all form wording … so when
+ * manager type shortcuts, it can understand it"):
+ *
+ *   voluntary    "immediate voluntary term", "voluntary resignation, no notice
+ *                given", "quit, did not give notice" — leaving by choice
+ *                with no notice is the Immediate Voluntary box. "Quit" or
+ *                "voluntary" alone says nothing about notice, and ticks nothing.
+ *   abandoned    "abandoned job", "job abandonment", "abandoned her job" — Pau
+ *                (29 Oct 2026): the No Call No Show box, as NCNS.
+ * The involuntary box still needs the act in a sentence ("she was fired"):
+ * QA kept that, so "termination form" never becomes the act.
+ */
+export const JOB_ABANDONED = /\babandon(?:ed|s|ing)?\s+(?:(?:her|his|their|the|this|my|our)\s+)?(?:job|position|shift)s?\b|\bjob\s+abandonment\b/;
+const NO_NOTICE =
+  /\b(?:no notice(?: given)?|without (?:any |giving |a )?notice|gave no notice|did ?n[o']?t give (?:any |a |her |his |their )?notice|didn't give (?:any |a |her |his |their )?notice|no (?:two|2)[- ]weeks?(?: notice)?)\b/;
+
+function shorthandVoluntary(q: string): boolean {
+  for (const sentence of q.split(/[.!?\n]+/)) {
+    if (/\bimmediate\s+voluntary\b/.test(sentence)) return true;
+  }
+  return /\b(?:voluntary|voluntarily|quit|quits|resigned|resigns)\b/.test(q) && NO_NOTICE.test(q);
+}
+
+
 function readSeparation(text: string): SeparationReading {
   const q = text.toLowerCase();
 
   const noCallNoShow =
     /\bno[\s-]*call[\s,/&-]*(?:and\s+)?no[\s-]*show(?:s|ed)?\b|\bncns\b/.test(q) ||
-    (exitIntakeFixEnabled() && NO_CALL_FOR_SHIFT.test(q));
+    (exitIntakeFixEnabled() && NO_CALL_FOR_SHIFT.test(q)) ||
+    (exitShortcutWordsEnabled() && JOB_ABANDONED.test(q) && !NEGATED_BEFORE.test(q.slice(0, q.search(JOB_ABANDONED))));
 
   const notFulfilled =
     new RegExp(
@@ -532,7 +559,13 @@ function readSeparation(text: string): SeparationReading {
 
   const involuntary = completedInvoluntary(q);
 
-  return { fulfilled, notFulfilled, voluntary, noCallNoShow, involuntary };
+  return {
+    fulfilled,
+    notFulfilled,
+    voluntary: voluntary || (exitShortcutWordsEnabled() && !involuntary && shorthandVoluntary(q)),
+    noCallNoShow,
+    involuntary,
+  };
 }
 
 /* ------------------------------------------------------------- reading -- */

@@ -1683,6 +1683,19 @@ export function exitTermsNotNamesEnabled(): boolean {
 }
 
 /**
+ * The exit form's shortcuts fill their fields: "drop wage" the minimum-wage
+ * line, "deducted for salon key" the key line, "called to quit" How Employee
+ * Resigned, "immediate voluntary term" / "quit, no notice given" the
+ * Immediate Voluntary box, "abandoned job" / "job abandonment" No Call No
+ * Show (Pau, 29 Oct 2026: "recognize all form wording … prioritize the exit form";
+ * same flag in both apps). See `forms/exit-details.ts`, `forms/exit-facts.ts`.
+ * Off, as before.
+ */
+export function exitShortcutWordsEnabled(): boolean {
+  return envFlag("EXIT_SHORTCUT_WORDS_ENABLED");
+}
+
+/**
  * The Corrective Action form's shortcuts fill their fields: "no PD", "PD
  * applies", "deduct 25" the payroll deduction (Pau, 29 Oct 2026: "recognize
  * all form wording … so when manager type shortcuts, it can understand it";

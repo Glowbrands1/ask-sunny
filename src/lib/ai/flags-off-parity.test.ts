@@ -142,6 +142,7 @@ import {
   staleNeedsRosterPersonEnabled,
   correctedEmployeeSlotEnabled,
   exitTermsNotNamesEnabled,
+  exitShortcutWordsEnabled,
   caShortcutWordsEnabled,
   streetAddressNotANameEnabled,
   accountOnlyPolicyQueryEnabled,
@@ -315,6 +316,7 @@ const NEW_FLAGS = [
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "CORRECTED_EMPLOYEE_SLOT_ENABLED",
   "EXIT_TERMS_NOT_NAMES_ENABLED",
+  "EXIT_SHORTCUT_WORDS_ENABLED",
   "CA_SHORTCUT_WORDS_ENABLED",
   "STREET_ADDRESS_NOT_A_NAME_ENABLED",
   "TITLE_KEEPS_LABEL_WORDS_ENABLED",
@@ -544,6 +546,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(correctedEmployeeSlotEnabled()).toBe(false);
     expect(exitTermsNotNamesEnabled()).toBe(false);
+    expect(exitShortcutWordsEnabled()).toBe(false);
     expect(caShortcutWordsEnabled()).toBe(false);
     expect(streetAddressNotANameEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
