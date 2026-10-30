@@ -4,6 +4,7 @@ import { PRODUCTION_SALONS } from "@/data/salons";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import {
   managerWordsOnlyEnabled,
+  titleKeepsLabelWordsEnabled,
   formChoiceStatedEnabled,
   payrollAmountFieldEnabled,
   remapIncidentFixEnabled,
@@ -392,11 +393,31 @@ function statedEmployee(text: string): string | null {
   return around ? stripFieldLabels(around) : null;
 }
 
+/** The last word names a job: "assistant salon manager", not "assistant salon". */
+const TITLE_ENDS_IN_A_JOB =
+  /\b(?:manager|director|consultant|associate|lead|supervisor|keyholder|specialist|assistant|coordinator|trainee|stylist|technician|attendant|cashier|clerk|representative|trainer)$/i;
+
 function statedTitle(said: string, saved: string | null): string | null {
   const text = managerWordsOnlyEnabled() ? titleTextFromQuestion(said) : said;
   const labelled = managerWordsOnlyEnabled() ? labelledTitleByLine(text) : titleAfterJobTitleLabel(text);
-  if (labelled) return extractJobTitle(labelled) ?? labelled;
   const marked = /Job title:\s*([^.\n]+)\./i.exec(text)?.[1]?.trim();
+  /*
+   * TITLE_KEEPS_LABEL_WORDS_ENABLED (QA, Sunny live, 30 Oct 2026): "Job title:
+   * assistant salon manager." was read as "assistant" — the label reader
+   * stops at a word that is also a field label ("salon"). When what it read
+   * is only the start of the whole line, and the line ends in a job word, the
+   * line is the title.
+   */
+  if (
+    labelled &&
+    titleKeepsLabelWordsEnabled() &&
+    marked &&
+    marked.toLowerCase().startsWith(`${labelled.toLowerCase()} `) &&
+    TITLE_ENDS_IN_A_JOB.test(marked)
+  ) {
+    return extractJobTitle(marked) ?? marked;
+  }
+  if (labelled) return extractJobTitle(labelled) ?? labelled;
   if (marked && !isFieldLabelWord(marked)) return marked;
   if (saved && text.toLowerCase().includes(saved.toLowerCase())) return saved;
   return extractJobTitle(text);
