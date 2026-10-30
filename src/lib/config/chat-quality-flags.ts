@@ -1702,3 +1702,12 @@ export function titleKeepsLabelWordsEnabled(): boolean {
   return envFlag("TITLE_KEEPS_LABEL_WORDS_ENABLED");
 }
 
+/**
+ * A directory title is not read from the first words of a different title
+ * the manager typed: "assistant salon manager" is not "Assistant Salon" (the
+ * start of "Assistant Salon Director") (QA, Sunny live, 30 Oct 2026). See
+ * `ai/keep-filled-slots.ts`. Off, as before.
+ */
+export function spokenTitleWholeEnabled(): boolean {
+  return envFlag("SPOKEN_TITLE_WHOLE_ENABLED");
+}

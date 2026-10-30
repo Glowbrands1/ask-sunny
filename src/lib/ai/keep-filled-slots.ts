@@ -27,6 +27,7 @@ import {
   intentExtractionEnabled,
   warningLevelManagerOnlyEnabled,
   managerWordsOnlyEnabled,
+  spokenTitleWholeEnabled,
   remapIncidentFixEnabled,
   placeSpanGuardEnabled,
   notANameGuardEnabled,
@@ -539,6 +540,24 @@ function keepPolicyLines(content: string, previous: string): string {
  * title. The person's own title is used whole when it starts with those
  * words. Someone who is not on the roster keeps only the words they said.
  */
+/*
+ * SPOKEN_TITLE_WHOLE_ENABLED (QA, Sunny live conv_mvubbfs32obszty, 30 Oct
+ * 2026): "assistant salon manager at kearney" for somebody not on the roster
+ * read back Job Title "Assistant Salon" — the first two words of the
+ * directory's "Assistant Salon Director". When the words after the typed
+ * start name another job ("manager"), the manager typed a different title.
+ */
+const ANOTHER_JOB =
+  /^\s+(?:manager|director|consultant|associate|lead|supervisor|keyholder|specialist|assistant|coordinator|trainee|stylist|technician|attendant|cashier|clerk|representative|trainer)\b/i;
+
+function endsInAnotherJob(text: string, prefix: string): boolean {
+  const at = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
+  for (const match of text.matchAll(at)) {
+    if (!ANOTHER_JOB.test(text.slice(match.index! + match[0].length))) return false;
+  }
+  return true;
+}
+
 function spokenDirectoryTitle(
   text: string,
   people: readonly GroundedPerson[],
@@ -555,6 +574,8 @@ function spokenDirectoryTitle(
       const prefix = words.slice(0, length).join(" ");
       const pattern = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
       if (!pattern.test(text)) continue;
+      // SPOKEN_TITLE_WHOLE_ENABLED: "assistant salon manager" is not the start of "Assistant Salon Director".
+      if (spokenTitleWholeEnabled() && length < words.length && endsInAnotherJob(text, prefix)) continue;
       if (!best || length > best.words) best = { prefix, words: length };
       break;
     }

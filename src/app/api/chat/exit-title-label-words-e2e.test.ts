@@ -47,6 +47,8 @@ const state = vi.hoisted(() => ({
   directory: [] as unknown[],
   /** What the AI reader reads as the employee, as typed: a roster name it fills, or a phrase it is refused. */
   readerName: null as string | null,
+  /** The AI reader fails, as live (slots.reader {"fallback":"timeout"}): its reading is not used. */
+  readerFails: false,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
@@ -106,6 +108,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
    * lone first name: the name exactly as typed, with its sentence as evidence.
    */
   callClaudeToolTimed: async (input: { messages?: { content?: unknown }[] }) => {
+    if (state.readerFails) throw new Error("reader timed out");
     const text = JSON.stringify(input.messages ?? []);
     const manager = (text.split("Manager: ").pop() ?? "").split("\\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
     const name = state.readerName && manager.toLowerCase().includes(state.readerName) ? state.readerName : null;
@@ -251,7 +254,18 @@ vi.mock("@/lib/forms/employee-roster", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/forms/employee-roster")>();
   return {
     ...actual,
-    readDirectoryFacts: async () => [],
+    // The directory's titles (position_name), from the people in the roster.
+    readDirectoryFacts: async () =>
+      (state.directory as { id: string; firstName: string; lastName: string; salonIds: string[]; positionName?: string | null }[]).map((row) => ({
+        id: row.id,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        preferredFirstName: null,
+        salonIds: row.salonIds,
+        title: row.positionName ?? null,
+        primaryLocationName: null,
+        primarySalonId: row.salonIds[0] ?? null,
+      })),
     loadScopedRoster: async (scope: AccessScope | null) => actual.scopeRoster(state.directory as never, scope),
   };
 });
@@ -448,6 +462,7 @@ beforeEach(async () => {
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
   state.readerName = null;
+  state.readerFails = false;
   state.remapObservation = null;
   state.slotTitle = null;
   state.draft = { values: {} };
@@ -577,3 +592,63 @@ describe("the job title keeps a word that is also a field label (TITLE_KEEPS_LAB
     expect(await title(words, "assistant salon kearney", true)).toBe(await title(words, "assistant salon kearney", false));
   });
 });
+
+/*
+ * SPOKEN_TITLE_WHOLE_ENABLED (QA, this app's live chat conv_mvubbfs32obszty,
+ * 30 Oct 2026, with TITLE_KEEPS_LABEL_WORDS_ENABLED on): the same request
+ * without the address, for somebody not on the roster, still read back "Job
+ * Title: Assistant Salon". The directory's only assistant title is "Assistant
+ * Salon Director"; its first two words were matched inside "assistant salon
+ * manager". The AI reader timed out on that turn.
+ */
+const LIVE_30_OCT =
+  "create an exit for marnie holloway, assistant salon manager at kearney, ne. last day worked 10-26-26. salon items not returned and $25 will be payroll deducted for salon key. immediate voluntary term, no notice given. payroll deduct applies. drop wage and forfeit bonus. not eligible for rehire.";
+const WHOLE = "SPOKEN_TITLE_WHOLE_ENABLED";
+const LIVE_TITLE_FLAGS = [
+  KEEP,
+  "INTENT_EXTRACTION_ENABLED",
+  "JOB_TITLE_READBACK_CASE_ENABLED",
+  "AI_READS_CODE_CHECKS_ENABLED",
+  "EXIT_TERMS_NOT_NAMES_ENABLED",
+  "STREET_ADDRESS_NOT_A_NAME_ENABLED",
+] as const;
+// Somebody else on the roster carries the directory's assistant title; the person in the request is not on it.
+const WITH_DIRECTOR = [{ ...person("e-3", "Rowan", "Kestrel"), positionName: "Assistant Salon Director" }];
+
+async function readBack(words: string, on: boolean) {
+  live(true, WITH_DIRECTOR);
+  for (const name of [...LIVE_TITLE_FLAGS, WHOLE]) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    delete process.env[name];
+  }
+  for (const name of LIVE_TITLE_FLAGS) process.env[name] = "true";
+  if (on) process.env[WHOLE] = "true";
+  state.readerFails = true;
+  state.slotTitle = /assistant salon (\w+)/i.exec(words)?.[0] ?? null;
+  const answer = (await new Thread().say(words)) as { content: string; formProposal?: Card };
+  expect(answer.formProposal?.templateKey, answer.content).toBe("stc-exit");
+  return { role: answer.formProposal?.employeeRole ?? null, line: /\*\*Job Title:\*\* ([^\n]+)/.exec(answer.content)?.[1] ?? null };
+}
+
+describe("a directory title's first words are not the title typed (SPOKEN_TITLE_WHOLE_ENABLED)", () => {
+  it("QA's live request, word for word: Assistant Salon Manager on the card and in the reply", async () => {
+    const { role, line } = await readBack(LIVE_30_OCT, true);
+    expect(role?.toLowerCase()).toBe("assistant salon manager");
+    expect(line?.toLowerCase()).toBe("assistant salon manager");
+  });
+
+  it("off, as live: Assistant Salon", async () => {
+    expect(await readBack(LIVE_30_OCT, false)).toEqual({ role: "Assistant Salon", line: "Assistant Salon" });
+  });
+
+  it("the directory's own title is still read as before", async () => {
+    const words = "create an exit for marnie holloway, assistant salon director at kearney, ne. last day worked 10-26-26.";
+    expect(await readBack(words, true)).toEqual(await readBack(words, false));
+  });
+
+  it("its first words alone still read as before", async () => {
+    const words = "create an exit for marnie holloway, assistant salon at kearney, ne. last day worked 10-26-26.";
+    expect(await readBack(words, true)).toEqual(await readBack(words, false));
+  });
+});
+
