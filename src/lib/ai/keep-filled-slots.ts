@@ -17,6 +17,7 @@ import { readPlaceState } from "@/lib/forms/place-state";
 import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { NOT_A_NAME, NOT_A_TYPED_NAME } from "@/lib/forms/name-words";
+import { newRequestWithOwnDate } from "./new-request-own-date";
 import { isNotAName, maskNotANameText, saidInReply } from "@/lib/forms/not-a-name";
 import {
   actionPlanManagerOnlyEnabled,
@@ -187,7 +188,13 @@ export function holdFilledSlots(input: {
    * over the intent read's "It happened on …" line, which took one of them.
    */
   const stated = priorSentenceFixEnabled() && next.templateKey === "dpoa"
-    ? statedFormDate([...input.history, { role: "user", content: input.question }], input.today)
+    ? statedFormDate(
+        // NEW_REQUEST_OWN_DATE_ENABLED: a new create request with its own date is read alone.
+        newRequestWithOwnDate(withoutStateLead(input.question), input.today)
+          ? [{ role: "user", content: input.question }]
+          : [...input.history, { role: "user", content: input.question }],
+        input.today,
+      )
     : null;
   if (stated && (stated.iso ?? null) !== (next.formDate ?? null)) next = { ...next, formDate: stated.iso };
   if (payrollDeduct && payrollDeduct !== next.payrollDeduct) next = { ...next, payrollDeduct };
