@@ -1748,10 +1748,12 @@ export function levelRequestDateEnabled(): boolean {
 }
 
 /**
- * A job title shortcut prints spelled out: "asd" is still read as the title,
- * and the card and the reply say "Assistant Salon Director" (Pau, 30 Oct
- * 2026; this app only). See `ai/job-title-from-words.ts`. Off, "ASD" as
- * before.
+ * A job title shortcut prints spelled out: "asd", "sdit", "tsd", "dmit" and
+ * "fttc" are still read as the title, and the card and the reply say
+ * "Assistant Salon Director", "Salon Director in Training", "Training Salon
+ * Director", "District Manager in Training", "Full-Time Tanning Consultant"
+ * (Pau, 30 Oct 2026; this app only). See `ai/job-title-from-words.ts`. Off,
+ * the acronym as before.
  */
 export function titleSpelledOutEnabled(): boolean {
   return envFlag("TITLE_SPELLED_OUT_ENABLED");

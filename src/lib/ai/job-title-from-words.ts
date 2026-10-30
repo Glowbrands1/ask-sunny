@@ -126,6 +126,11 @@ export function withJobTitleFromWords(response: AskResponse, request: AskRequest
  */
 const SPELLED_OUT: Readonly<Record<string, string>> = {
   ASD: "Assistant Salon Director",
+  // Pau, 30 Oct 2026: "the app should understand abbreviations of those"; spellings from the title list's own patterns.
+  SDIT: "Salon Director in Training",
+  TSD: "Training Salon Director",
+  DMIT: "District Manager in Training",
+  FTTC: "Full-Time Tanning Consultant",
 };
 
 export function withSpelledOutTitle(response: AskResponse): AskResponse {
