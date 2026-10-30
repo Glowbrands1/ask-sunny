@@ -1770,3 +1770,13 @@ export function newPersonRequestEnabled(): boolean {
   return envFlag("NEW_PERSON_REQUEST_ENABLED");
 }
 
+/**
+ * "also create a ca for <name>, he was late on 10/20" ("now", "and", "then"
+ * too) is read as the request, so the card's Observation is what happened,
+ * not the request (QA, live, 30 Oct 2026; this app only). See
+ * `ai/remap-incident.ts`. Off, as before.
+ */
+export function requestLeadFillerEnabled(): boolean {
+  return envFlag("REQUEST_LEAD_FILLER_ENABLED");
+}
+

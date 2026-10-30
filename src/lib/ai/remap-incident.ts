@@ -1,5 +1,5 @@
 import { salonById } from "@/data/salons";
-import { levelRequestDateEnabled, priorSentenceFixEnabled } from "@/lib/config/chat-quality-flags";
+import { levelRequestDateEnabled, priorSentenceFixEnabled, requestLeadFillerEnabled } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
@@ -46,6 +46,17 @@ const REQUEST_LEAD = new RegExp(
   String.raw`^\s*(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:(?:i\s+)?(?:need|want)\s+(?:to\s+)?)?(?:(?:create|make|start|open|do|file|write|draft|fill\s+out|put\s+together)\s+(?:me\s+)?)?${LEVEL_WORDS}${FORM_WORDS}\b\s*(?:for\s+)?`,
   "i",
 );
+
+/**
+ * REQUEST_LEAD_FILLER_ENABLED (QA, live, 30 Oct 2026): "also create a ca for
+ * <name>, he was late on 10/20" (and "now", "and", "then" in front) was not
+ * read as the request, so the whole sentence was the card's Observation.
+ */
+const REQUEST_LEAD_FILLED = new RegExp(String.raw`^\s*(?:also|now|and|then)\s+(?:${REQUEST_LEAD.source.replace(/^\^\\s\*/, "")})`, "i");
+
+function requestLead(): RegExp {
+  return requestLeadFillerEnabled() ? new RegExp(`${REQUEST_LEAD_FILLED.source}|${REQUEST_LEAD.source}`, "i") : REQUEST_LEAD;
+}
 
 /** A whole date: 10-15-26, 10/11, 1/1/2026. Never part of one ("10-1" of "10-15-26"). */
 const DATE = String.raw`(?<![\d/-])\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?(?![\d/-])`;
@@ -163,7 +174,7 @@ function turnIncident(
   for (const raw of withoutPriorList(turn).split(/[.!?;]+(?=\s|$)/)) {
     const sentence = raw.trim();
     if (!sentence || isEditTurn(sentence) || TALKS_TO_THE_APP.test(sentence) || ASKS_FOR_HELP.test(sentence)) continue;
-    const requested = REQUEST_LEAD.test(sentence) || levelRequest().test(sentence);
+    const requested = requestLead().test(sentence) || levelRequest().test(sentence);
     let kept = false;
     for (const clause of keepDates ? withDateListsJoined(sentence.split(",")) : sentence.split(",")) {
       const text = clause.trim();
@@ -318,7 +329,7 @@ function withDateListsJoined(clauses: readonly string[]): string[] {
 }
 
 function clauseOffense(clause: string, employeeName: string | null, keepDates = false): string | null {
-  let text = clause.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ");
+  let text = clause.replace(requestLead(), " ").replace(levelRequest(), " ");
   // "violation is that on 10-16-26 Testy was not measuring and weighing product"
   text = text.replace(/^\s*(?:the\s+)?(?:violation|incident|issue|offen[cs]e|what\s+happened|reason)\s+(?:is|was)(?:\s+that)?\s*[:-]?\s*/i, "");
   // "She was on her cell phone for 30+ minutes at the front desk"
@@ -355,7 +366,7 @@ function clauseOffense(clause: string, employeeName: string | null, keepDates = 
   if (/^(?:for|a|an|the|form|location|store|draft)$/i.test(text)) return null;
   // "create a coaching document for Test Employee": a repeat request names the
   // person, it is no new incident (QA, 25 Oct 2026, conv_mvnt95q52gmu047).
-  if ((REQUEST_LEAD.test(clause) || levelRequest().test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
+  if ((requestLead().test(clause) || levelRequest().test(clause)) && /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) return null;
   // "jba manual 11-1-25" answers the prior-coaching question.
   if (/^(?:the\s+)?(?:jba\s+)?(?:policy\s+)?manual(?:\s+ack\w*)?$/i.test(text)) return null;
   if (/\b(?:she|he|they|i|we)\b/i.test(text)) return null;
@@ -395,7 +406,7 @@ export function isRequestLeftover(summary: string | null | undefined, employeeNa
     return true;
   }
   if (STRIPPED_REQUEST.test(text)) return true;
-  return clauseOffense(text, employeeName) === null && REQUEST_LEAD.test(text);
+  return clauseOffense(text, employeeName) === null && requestLead().test(text);
 }
 
 /**
@@ -553,7 +564,7 @@ export function accountSentences(
         .filter((part) => !isPriorStep(part))
         // A clause that only names or places them is never the account (QA, 25
         // Oct 2026; with MANAGER_WORDS_ONLY_ENABLED or without it).
-        .filter((part) => !onlyWhoOrWhere(part.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ").trim(), employeeName))
+        .filter((part) => !onlyWhoOrWhere(part.replace(requestLead(), " ").replace(levelRequest(), " ").trim(), employeeName))
         .map((part) => (options.managerOnly ? withoutPlace(part) : part))
         .map((part) => accountPart(part, employeeName))
         .filter((part): part is string => part !== null);
@@ -582,8 +593,8 @@ function accountSlot(part: string): boolean {
 }
 
 function accountPart(part: string, employeeName: string | null): string | null {
-  const requested = REQUEST_LEAD.test(part) || levelRequest().test(part);
-  let text = part.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ");
+  const requested = requestLead().test(part) || levelRequest().test(part);
+  let text = part.replace(requestLead(), " ").replace(levelRequest(), " ");
   // "Please create a CA form so I can document": the rest of a request is not the account.
   if (requested && /^\s*(?:so|to|with|from|because|now)\b/i.test(text)) return null;
   if (employeeName) text = text.replace(new RegExp(escape(employeeName), "ig"), " ");
@@ -648,9 +659,9 @@ export function managerAccount(sentence: string, employeeName: string | null): s
   for (const clause of body.split(",")) {
     let text = clause.trim();
     if (!text) continue;
-    if (REQUEST_LEAD.test(text) || levelRequest().test(text)) {
+    if (requestLead().test(text) || levelRequest().test(text)) {
       requested = true;
-      text = text.replace(REQUEST_LEAD, " ").replace(levelRequest(), " ").replace(/\s+/g, " ").trim();
+      text = text.replace(requestLead(), " ").replace(levelRequest(), " ").replace(/\s+/g, " ").trim();
       // "create a CA form so I can document": the rest of a request is not the account.
       if (!text || /^(?:so|to|with|from|because|now)\b/i.test(text)) continue;
       if (onlyNamesThem(text, employeeName) || /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) continue;
