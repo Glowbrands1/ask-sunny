@@ -1771,6 +1771,16 @@ export function newPersonRequestEnabled(): boolean {
 }
 
 /**
+ * "also create a ca for <name>, he was late on 10/20" ("now", "and", "then"
+ * too) is read as the request, so the card's Observation is what happened,
+ * not the request (QA, live, 30 Oct 2026; this app only). See
+ * `ai/remap-incident.ts`. Off, as before.
+ */
+export function requestLeadFillerEnabled(): boolean {
+  return envFlag("REQUEST_LEAD_FILLER_ENABLED");
+}
+
+/**
  * A new create request that states its own date ("also create a ca for
  * <name>, she was late on 10/21") is dated by that date, not left blank by
  * the earlier form's date in the same chat (QA, live, 30 Oct 2026). See
