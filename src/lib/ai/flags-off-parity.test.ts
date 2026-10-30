@@ -135,11 +135,15 @@ import {
   partialNameCardCurrentEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
+  preferredNameCardCurrentEnabled,
+  switchKeepsNamedFormEnabled,
+  severalFormsStayCurrentEnabled,
   partialNameLooseMatchEnabled,
   staleNeedsRosterPersonEnabled,
   correctedEmployeeSlotEnabled,
   exitTermsNotNamesEnabled,
   exitShortcutWordsEnabled,
+  streetAddressNotANameEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
   unreadDateAskEnabled,
@@ -304,11 +308,15 @@ const NEW_FLAGS = [
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
   "PARTIAL_SURNAME_ASK_ENABLED",
   "SUGGEST_ANSWER_REPLACES_TYPED_ENABLED",
+  "PREFERRED_NAME_CARD_CURRENT_ENABLED",
+  "SWITCH_KEEPS_NAMED_FORM_ENABLED",
+  "SEVERAL_FORMS_STAY_CURRENT_ENABLED",
   "PARTIAL_NAME_LOOSE_MATCH_ENABLED",
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "CORRECTED_EMPLOYEE_SLOT_ENABLED",
   "EXIT_TERMS_NOT_NAMES_ENABLED",
   "EXIT_SHORTCUT_WORDS_ENABLED",
+  "STREET_ADDRESS_NOT_A_NAME_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
   "ACCOUNT_ONLY_POLICY_QUERY_ENABLED",
@@ -375,6 +383,14 @@ const PROTECTED = [
  * samePerson(not, name)) && !isExitTerms(name))`. Behind
  * EXIT_TERMS_NOT_NAMES_ENABLED, default off; off, isExitTerms is false and
  * every name is kept.
+ *
+ * The user (Pau) approved, via QA on 29 Oct 2026 ("ok address line"), the
+ * same two lines again in src/lib/forms/proposal.ts, both apps: the import
+ * `import { isExitTerms, namesSomebody, notInStreetAddress } from
+ * "./answer-not-a-name";` and in employeeState `… && !isExitTerms(name) &&
+ * notInStreetAddress(message.content)(name)`. Behind
+ * STREET_ADDRESS_NOT_A_NAME_ENABLED, default off; off, notInStreetAddress
+ * keeps every name.
  *
  * The user (Pau) approved, in the Code session on 27 Oct 2026 ("yes, name
  * question form-proposal.ts both apps"), two lines in src/lib/ai/form-proposal.ts
@@ -511,11 +527,15 @@ describe("new flags default off and wrappers are inert", () => {
     expect(partialNameCardCurrentEnabled()).toBe(false);
     expect(partialSurnameAskEnabled()).toBe(false);
     expect(suggestAnswerReplacesTypedEnabled()).toBe(false);
+    expect(preferredNameCardCurrentEnabled()).toBe(false);
+    expect(switchKeepsNamedFormEnabled()).toBe(false);
+    expect(severalFormsStayCurrentEnabled()).toBe(false);
     expect(partialNameLooseMatchEnabled()).toBe(false);
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(correctedEmployeeSlotEnabled()).toBe(false);
     expect(exitTermsNotNamesEnabled()).toBe(false);
     expect(exitShortcutWordsEnabled()).toBe(false);
+    expect(streetAddressNotANameEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);

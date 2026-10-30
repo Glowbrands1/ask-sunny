@@ -1587,6 +1587,38 @@ export function partialNameCardCurrentEnabled(): boolean {
 }
 
 /**
+ * Create accepts a card whose roster person was typed by preferred name and
+ * last name ("kit dovetail" for Katrin Dovetail, preferred name Kit) — the
+ * creation check otherwise reads the typed name as somebody else (audit, 29
+ * Oct 2026; same flag in both apps). See `forms/preferred-name-current.ts`.
+ * Off, as before.
+ */
+export function preferredNameCardCurrentEnabled(): boolean {
+  return envFlag("PREFERRED_NAME_CARD_CURRENT_ENABLED");
+}
+
+/**
+ * A switch turn that names a form of its own ("make it a follow up coaching")
+ * is read as typed, not as "change this to a coaching form" (audit, 29 Oct
+ * 2026; same flag in both apps). See `ai/form-type-switch.ts`. Off, as
+ * before.
+ */
+export function switchKeepsNamedFormEnabled(): boolean {
+  return envFlag("SWITCH_KEEPS_NAMED_FORM_ENABLED");
+}
+
+/**
+ * Each card from a message that asked for several forms ("a coaching form for
+ * A and a CA for B") stays current at Create after later turns that name
+ * nobody else, exclude nobody on it and ask for no other form (audit, 29 Oct
+ * 2026; same flag in both apps). See `forms/proposal-currency.ts`. Off, as
+ * before.
+ */
+export function severalFormsStayCurrentEnabled(): boolean {
+  return envFlag("SEVERAL_FORMS_STAY_CURRENT_ENABLED");
+}
+
+/**
  * A card whose name, as typed, is a first or preferred name and the start of
  * a surname ("marisol co") is asked about from the manager's roster — "Is
  * this for **Marisol Corvane**?" or "Did you mean …" — in code, whatever the
@@ -1661,4 +1693,14 @@ export function exitTermsNotNamesEnabled(): boolean {
  */
 export function exitShortcutWordsEnabled(): boolean {
   return envFlag("EXIT_SHORTCUT_WORDS_ENABLED");
+}
+
+/**
+ * A name candidate inside a street address ("Ne Oakfield Lane", "kearney ne"
+ * in "125 Ne Oakfield Lane, kearney, NE. 68847") is not a person (QA, 29 Oct
+ * 2026; same flag in both apps). See `forms/answer-not-a-name.ts`. Off, as
+ * before.
+ */
+export function streetAddressNotANameEnabled(): boolean {
+  return envFlag("STREET_ADDRESS_NOT_A_NAME_ENABLED");
 }
