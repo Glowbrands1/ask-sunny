@@ -629,3 +629,45 @@ describe("a correction on the exit card (CORRECTED_EMPLOYEE_SLOT_ENABLED)", () =
     });
   }
 });
+
+/*
+ * The sibling app live, 29 Oct 2026 (QA; the manager's words, the person
+ * invented and not on the roster): the chat asked "Which of them is this
+ * Resignation/Exit Form for — Marnie Holloway, drop wage or forfeit bonus?".
+ * EXIT_TERMS_NOT_NAMES_ENABLED: the exit form's own words are never offered
+ * as people.
+ */
+describe("the exit wording, the person not on the roster (EXIT_TERMS_NOT_NAMES_ENABLED)", () => {
+  const TERMS = "EXIT_TERMS_NOT_NAMES_ENABLED";
+  const unrostered = (on: boolean) => {
+    // No roster person for her, as a new hire not yet in Woven.
+    live(true, [], "marnie holloway");
+    if (!saved.has(TERMS)) saved.set(TERMS, process.env[TERMS]);
+    delete process.env[TERMS];
+    if (on) process.env[TERMS] = "true";
+  };
+
+  // Here the address ("Ne Oakfield Lane") is also offered as a person, with the flag on or off: a separate
+  // reading this flag does not change (reported to QA, 29 Oct 2026). This flag takes out the exit form's words.
+  it("on: drop wage and forfeit bonus are not offered as people", async () => {
+    unrostered(true);
+    const answer = (await new Thread().say(WORDS)) as { content: string };
+    expect(answer.content).toMatch(/\*\*marnie holloway\*\*/i);
+    expect(answer.content).not.toMatch(/\*\*(?:drop wage|forfeit bonus)\*\*/i);
+  });
+
+  it("off: as live, the question lists the form's words as people", async () => {
+    unrostered(false);
+    const answer = (await new Thread().say(WORDS)) as { content: string };
+    expect(answer.content).toMatch(/which of them[\s\S]*\*\*drop wage\*\*[\s\S]*\*\*forfeit bonus\*\*/i);
+  });
+
+  it("two real people: the reply is the same with the flag on as off", async () => {
+    const words = "create an exit for marnie holloway and rowan kestrel";
+    unrostered(false);
+    const off = ((await new Thread().say(words)) as { content: string }).content;
+    unrostered(true);
+    const on = ((await new Thread().say(words)) as { content: string }).content;
+    expect(on).toBe(off);
+  });
+});

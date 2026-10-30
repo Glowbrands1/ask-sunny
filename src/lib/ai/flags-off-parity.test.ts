@@ -135,9 +135,13 @@ import {
   partialNameCardCurrentEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
+  preferredNameCardCurrentEnabled,
+  switchKeepsNamedFormEnabled,
+  severalFormsStayCurrentEnabled,
   partialNameLooseMatchEnabled,
   staleNeedsRosterPersonEnabled,
   correctedEmployeeSlotEnabled,
+  exitTermsNotNamesEnabled,
   caShortcutWordsEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
@@ -303,9 +307,13 @@ const NEW_FLAGS = [
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
   "PARTIAL_SURNAME_ASK_ENABLED",
   "SUGGEST_ANSWER_REPLACES_TYPED_ENABLED",
+  "PREFERRED_NAME_CARD_CURRENT_ENABLED",
+  "SWITCH_KEEPS_NAMED_FORM_ENABLED",
+  "SEVERAL_FORMS_STAY_CURRENT_ENABLED",
   "PARTIAL_NAME_LOOSE_MATCH_ENABLED",
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "CORRECTED_EMPLOYEE_SLOT_ENABLED",
+  "EXIT_TERMS_NOT_NAMES_ENABLED",
   "CA_SHORTCUT_WORDS_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_ENABLED",
   "NEXT_PUBLIC_CARD_CHANGE_FINALIZED_ENABLED",
@@ -365,6 +373,14 @@ const PROTECTED = [
  * readEmployeeMentions' return filters its candidates through `namesSomebody`,
  * which keeps every one with the flag off. It stays on the PROTECTED list;
  * only the diff check leaves it out.
+ *
+ * The user (Pau) approved, via QA on 29 Oct 2026 ("yes do that please"),
+ * two more lines in src/lib/forms/proposal.ts, both apps: the import
+ * `import { isExitTerms, namesSomebody } from "./answer-not-a-name";` and in
+ * employeeState `reading.names.filter((name) => !excluded.some((not) =>
+ * samePerson(not, name)) && !isExitTerms(name))`. Behind
+ * EXIT_TERMS_NOT_NAMES_ENABLED, default off; off, isExitTerms is false and
+ * every name is kept.
  *
  * The user (Pau) approved, in the Code session on 27 Oct 2026 ("yes, name
  * question form-proposal.ts both apps"), two lines in src/lib/ai/form-proposal.ts
@@ -501,9 +517,13 @@ describe("new flags default off and wrappers are inert", () => {
     expect(partialNameCardCurrentEnabled()).toBe(false);
     expect(partialSurnameAskEnabled()).toBe(false);
     expect(suggestAnswerReplacesTypedEnabled()).toBe(false);
+    expect(preferredNameCardCurrentEnabled()).toBe(false);
+    expect(switchKeepsNamedFormEnabled()).toBe(false);
+    expect(severalFormsStayCurrentEnabled()).toBe(false);
     expect(partialNameLooseMatchEnabled()).toBe(false);
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(correctedEmployeeSlotEnabled()).toBe(false);
+    expect(exitTermsNotNamesEnabled()).toBe(false);
     expect(caShortcutWordsEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);

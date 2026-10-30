@@ -18,7 +18,7 @@ import {
   TEAM_SUBJECT_LABEL,
 } from "./team-subject";
 import { proposeLocation } from "./location-scope";
-import { namesSomebody } from "./answer-not-a-name";
+import { isExitTerms, namesSomebody } from "./answer-not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -1568,7 +1568,7 @@ export function employeeState(context: ManagerContext): EmployeeState {
       }
     }
     const names = peopleNamed(
-      reading.names.filter((name) => !excluded.some((not) => samePerson(not, name))),
+      reading.names.filter((name) => !excluded.some((not) => samePerson(not, name)) && !isExitTerms(name)),
     );
     if (names.length === 0) continue;
 
