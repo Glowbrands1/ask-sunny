@@ -593,6 +593,21 @@ describe("the Corrective Action form's payroll shortcuts (CA_SHORTCUT_WORDS_ENAB
     expect(answer.content).not.toMatch(/couldn't find \*\*PD\*\*/);
   });
 
+  /*
+   * The amount (Pau, 30 Oct 2026: "Ok amount line" — the two approved lines
+   * in protected payroll-deduct.ts read the shortcut's wording).
+   */
+  for (const shortcut of ["deduct 25", "PD 25"]) {
+    it(`"${shortcut}" → payroll deduct yes, $25`, async () => {
+      const proposal = await card(`${BASE} ${shortcut}`, true);
+      expect(proposal?.payrollDeduct).toBe("yes");
+      expect(proposal?.payrollDeductAmount).toBe("$25");
+    });
+    it(`off: "${shortcut}" states no amount`, async () => {
+      expect((await card(`${BASE} ${shortcut}`, false))?.payrollDeductAmount ?? null).toBeNull();
+    });
+  }
+
   /* Not the deduction. */
   for (const words of ["late 25 min", "she updated the schedule", "she paid for her drink"]) {
     it(`"${words}" answers nothing`, async () => {
@@ -635,7 +650,7 @@ describe("a prior step's date in shorthand keeps the card's Date (CA_SHORTCUT_WO
  * The warning level's shorthand (QA, 29 Oct 2026): "1st written" / "first
  * written" is Written. "final warning" is no level the form prints (Verbal or
  * Written only); the level is asked, never left silent. Whether "final
- * written" is Written waits on Pau.
+ * written" is Written: Pau, 30 Oct 2026, "Tick written".
  */
 describe("the warning level's shorthand (CA_SHORTCUT_WORDS_ENABLED)", () => {
   const ASKED = "You'll set the verbal/written warning level on the form — I won't guess at it.";
@@ -648,7 +663,8 @@ describe("the warning level's shorthand (CA_SHORTCUT_WORDS_ENABLED)", () => {
     return { content: answer.content, level: thread.proposal?.warningLevel ?? null };
   };
 
-  for (const words of ["1st written", "first written", "First written"]) {
+  // "final written" too (Pau, 30 Oct 2026: "Tick written").
+  for (const words of ["1st written", "first written", "First written", "final written", "Final written"]) {
     it(`"${words}" → Written`, async () => {
       expect((await reply(`${BASE} ${words}.`, true)).level).toBe("written");
     });

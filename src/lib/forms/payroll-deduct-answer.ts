@@ -270,6 +270,15 @@ export function normalizePayrollWording(text: string): string {
  * turn still belongs to the open Corrective Action Form: it withdraws an
  * earlier answer, and the card asks again (QA, 22 Oct 2026).
  */
+/**
+ * The text the deducted amount is read from. With CA_SHORTCUT_WORDS_ENABLED,
+ * the shortcuts' wording ("deduct 25", "PD 25" → "$25"); off, the text as
+ * typed. Read by `payrollDeductAmount` (Pau, 30 Oct 2026: "Ok amount line").
+ */
+export function payrollAmountWording(text: string): string {
+  return caShortcutWordsOn() ? normalizePayrollWording(text) : text;
+}
+
 export function payrollDeductUnclear(text: string): boolean {
   return readPayrollDeduct(text) === "unclear";
 }
