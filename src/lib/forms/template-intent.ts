@@ -23,7 +23,7 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
-import { formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+import { caShortcutWordsEnabled, formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
@@ -1452,6 +1452,15 @@ const POLITE_REQUEST =
  */
 /* A level followed by its noun ("a written CA") is read by the corrective-action rules, not here. */
 const LEVEL_FOLLOW = String.raw`(?=\s*(?:$|[.,;:!—–-]|for\b|on\b|about\b|because|regarding|over\b|this\b|today|please|pls|and\b|since|due|after|then\b|is\s+(?:fine|enough|ok)))`;
+/**
+ * CA_SHORTCUT_WORDS_ENABLED: "create a written on 10/20 for katrin dovetail",
+ * "make her a verbal" — asking to create the level is asking for the
+ * Corrective Action form. A question about one is not (`informational`).
+ */
+const CREATE_LEVEL = new RegExp(
+  String.raw`\b(?:create|make|draft|prepare|write)\s+(?:her\s+|him\s+|them\s+)?an?\s+(?:verbal|written)\b(?:\s+(?:warning|one))?${LEVEL_FOLLOW}`,
+);
+
 const LEVEL_AS_DOCUMENT = new RegExp(
   String.raw`\b(?:(?:issue|issuing|give|giving)\s+(?:[a-z'’-]+\s+){0,2}?|(?:put\s+(?:[a-z'’-]+\s+){1,3}?on|start|do|need|needs|want|document|doc|file|log|(?:i|we)'?d\s+like|(?:i|we)\s+would\s+like|write\s+(?:her|him|them)\s+up\s+with)\s+(?:her\s+|him\s+|them\s+)?)(?:an?\s+)?(?:final\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}|\b(?:just|only)\s+(?:a\s+)?(?:verbal|written)\b${LEVEL_FOLLOW}`,
 );
@@ -1530,6 +1539,8 @@ export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
 
   /* "issue a verbal", "put tess varga on a written" — see `LEVEL_AS_DOCUMENT`. */
   if (!informational && LEVEL_AS_DOCUMENT.test(q)) return { kind: "explicit", templateKey: "dpoa" };
+  // CA_SHORTCUT_WORDS_ENABLED: "create a written on 10/20 for …", "make her a verbal" — the level names the form.
+  if (caShortcutWordsEnabled() && !informational && CREATE_LEVEL.test(q)) return { kind: "explicit", templateKey: "dpoa" };
 
   /*
    * THE NAME OF THE PROGRESSION, with no document named alongside it — and not

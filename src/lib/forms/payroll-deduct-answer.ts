@@ -220,15 +220,36 @@ export function readPayrollDeduct(text: string): ClauseReading {
   return answer;
 }
 
+/**
+ * CA_SHORTCUT_WORDS_ENABLED (Pau, 29 Oct 2026: "recognize all form wording …
+ * so when manager type shortcuts, it can understand it"). Read here, not
+ * through `chat-quality-flags`, because this module imports nothing.
+ */
+function caShortcutWordsOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+}
+
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */
 export function normalizePayrollWording(text: string): string {
-  return (text ?? "")
+  const read = (text ?? "")
     .toLowerCase()
     .replace(/[’‘]/g, "'")
     // "payroll-deduct", "payroll‑deduction"
     .replace(/[‐‑–—]/g, "-")
     .replace(/\bpayroll-deduct/g, "payroll deduct")
     .replace(/[^\S\n]+/g, " ");
+  if (!caShortcutWordsOn()) return read;
+  return (
+    read
+      // CA_SHORTCUT_WORDS_ENABLED: "no PD", "PD applies", "pd yes", "PD $25" — the form's own abbreviation.
+      .replace(/\bp\.?\s?d\.?(?=\s|:|=|-|,|;|\.|!|$)/g, "payroll deduct")
+      // "deduct 25", "payroll deduct 25" — an amount with no dollar sign, not a time or a count.
+      .replace(
+        /\b(payroll deduct(?:ion)?|deduct(?:ion)?)\s+(\d{1,4}(?:\.\d{2})?)\b(?!\s*(?:%|min|mins|minutes|hrs?|hours?|days?|weeks?|times|x\b|am\b|pm\b))/g,
+        "$1 $$$2",
+      )
+  );
 }
 
 /**
@@ -249,6 +270,15 @@ export function normalizePayrollWording(text: string): string {
  * turn still belongs to the open Corrective Action Form: it withdraws an
  * earlier answer, and the card asks again (QA, 22 Oct 2026).
  */
+/**
+ * The text the deducted amount is read from. With CA_SHORTCUT_WORDS_ENABLED,
+ * the shortcuts' wording ("deduct 25", "PD 25" → "$25"); off, the text as
+ * typed. Read by `payrollDeductAmount` (Pau, 30 Oct 2026: "Ok amount line").
+ */
+export function payrollAmountWording(text: string): string {
+  return caShortcutWordsOn() ? normalizePayrollWording(text) : text;
+}
+
 export function payrollDeductUnclear(text: string): boolean {
   return readPayrollDeduct(text) === "unclear";
 }

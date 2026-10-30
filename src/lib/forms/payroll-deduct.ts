@@ -1,6 +1,7 @@
 import {
   DENIAL,
   normalizePayrollWording as normalize,
+  payrollAmountWording,
   readPayrollDeduct,
   statedPayrollDeduct as statedAnswer,
 } from "./payroll-deduct-answer";
@@ -359,7 +360,7 @@ const AMOUNT_PATTERNS: readonly RegExp[] = [
 
 /** The amount the manager said would be deducted — "$3.25" — or null. The latest one stated wins. */
 export function payrollDeductAmount(text: string): string | null {
-  const amount = latestAmount(text);
+  const amount = latestAmount(payrollAmountWording(text));
   return amount === null || isZero(amount) ? null : amount;
 }
 

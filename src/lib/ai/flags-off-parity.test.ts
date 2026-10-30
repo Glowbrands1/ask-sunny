@@ -143,6 +143,7 @@ import {
   correctedEmployeeSlotEnabled,
   exitTermsNotNamesEnabled,
   exitShortcutWordsEnabled,
+  caShortcutWordsEnabled,
   streetAddressNotANameEnabled,
   accountOnlyPolicyQueryEnabled,
   relativeDateReaderEnabled,
@@ -316,6 +317,7 @@ const NEW_FLAGS = [
   "CORRECTED_EMPLOYEE_SLOT_ENABLED",
   "EXIT_TERMS_NOT_NAMES_ENABLED",
   "EXIT_SHORTCUT_WORDS_ENABLED",
+  "CA_SHORTCUT_WORDS_ENABLED",
   "STREET_ADDRESS_NOT_A_NAME_ENABLED",
   "TITLE_KEEPS_LABEL_WORDS_ENABLED",
   "SPOKEN_TITLE_WHOLE_ENABLED",
@@ -405,9 +407,17 @@ const PROTECTED = [
  * `return withWiderDates(text ?? "", today, found);`. Behind
  * WIDER_DATE_READER_ENABLED, default off; off, the dates found are returned
  * as they were.
+ *
+ * The user (Pau) approved, via QA on 30 Oct 2026 ("Ok amount line"), two
+ * lines in src/lib/forms/payroll-deduct.ts, this app only: the import
+ * `payrollAmountWording,` from "./payroll-deduct-answer", and in
+ * payrollDeductAmount `const amount = latestAmount(payrollAmountWording(text));`.
+ * Behind CA_SHORTCUT_WORDS_ENABLED, default off; off, payrollAmountWording
+ * returns the text unchanged.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
+  ":(exclude)src/lib/forms/payroll-deduct.ts",
   ":(exclude)src/lib/forms/form-date-answer.ts",
   ":(exclude)src/lib/ai/form-proposal.ts",
 ];
@@ -537,6 +547,7 @@ describe("new flags default off and wrappers are inert", () => {
     expect(correctedEmployeeSlotEnabled()).toBe(false);
     expect(exitTermsNotNamesEnabled()).toBe(false);
     expect(exitShortcutWordsEnabled()).toBe(false);
+    expect(caShortcutWordsEnabled()).toBe(false);
     expect(streetAddressNotANameEnabled()).toBe(false);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
