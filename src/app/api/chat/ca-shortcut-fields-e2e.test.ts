@@ -628,3 +628,42 @@ describe("a prior step's date in shorthand keeps the card's Date (CA_SHORTCUT_WO
   }
 
 });
+
+
+/*
+ * The warning level's shorthand (QA, 29 Oct 2026): "1st written" / "first
+ * written" is Written. "final warning" is no level the form prints (Verbal or
+ * Written only); the level is asked, never left silent. Whether "final
+ * written" is Written waits on Pau.
+ */
+describe("the warning level's shorthand (CA_SHORTCUT_WORDS_ENABLED)", () => {
+  const ASKED = "You'll set the verbal/written warning level on the form — I won't guess at it.";
+  const reply = async (words: string, on: boolean) => {
+    if (!saved.has(SHORTCUTS)) saved.set(SHORTCUTS, process.env[SHORTCUTS]);
+    delete process.env[SHORTCUTS];
+    configure({ ...A, extra: on ? [SHORTCUTS] : [] });
+    const thread = new Thread();
+    const answer = await thread.say(words);
+    return { content: answer.content, level: thread.proposal?.warningLevel ?? null };
+  };
+
+  for (const words of ["1st written", "first written", "First written"]) {
+    it(`"${words}" → Written`, async () => {
+      expect((await reply(`${BASE} ${words}.`, true)).level).toBe("written");
+    });
+    it(`off: "${words}" states no level`, async () => {
+      expect((await reply(`${BASE} ${words}.`, false)).level).toBeNull();
+    });
+  }
+
+  it('"final warning": no level, and the level is asked', async () => {
+    const { content, level } = await reply(`${BASE} final warning.`, true);
+    expect(level).toBeNull();
+    // The app's own level question, in either of its wordings.
+    expect(content).toMatch(/warning level on the form — I won't guess at it|\*\*Verbal Warning\*\* or a \*\*Written Warning\*\*/);
+  });
+
+  it('off: "final warning" leaves the level line out, as reported', async () => {
+    expect((await reply(`${BASE} final warning.`, false)).content).not.toContain(ASKED);
+  });
+});

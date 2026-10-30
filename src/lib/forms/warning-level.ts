@@ -15,7 +15,15 @@ import { statedPayrollDeduct } from "./payroll-deduct-answer";
 
 /** Lower-cased, with horizontal runs collapsed and newlines kept (the same reading as the intake's). */
 function normalize(text: string): string {
-  return (text ?? "").toLowerCase().replace(/[^\S\n]+/g, " ");
+  const read = (text ?? "").toLowerCase().replace(/[^\S\n]+/g, " ");
+  // CA_SHORTCUT_WORDS_ENABLED: "1st written", "first written" — the same level as "written".
+  return caShortcutWordsOn() ? read.replace(/\b(?:1st|first)\s+(?=(?:verbal|written)\b)/g, "") : read;
+}
+
+/** CA_SHORTCUT_WORDS_ENABLED, read here because this module imports only the payroll reader. */
+function caShortcutWordsOn(): boolean {
+  const raw = typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
 /*
