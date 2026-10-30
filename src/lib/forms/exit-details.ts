@@ -1,9 +1,9 @@
-import { exitIntakeFixEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
+import { exitIntakeFixEnabled, exitShortcutWordsEnabled, resignMethodFollowupEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
 import { isQuestion } from "./employment-change";
 import { EXIT_DETAIL_FIELDS, EXIT_NOTICE_GROUP, EXIT_TYPE_GROUP } from "./exit-library";
-import { EXIT_DERIVED_KEYS, exitFactValues, NO_CALL_FOR_SHIFT, readExitFacts, type ExitFacts } from "./exit-facts";
+import { EXIT_DERIVED_KEYS, exitFactValues, JOB_ABANDONED, NO_CALL_FOR_SHIFT, readExitFacts, type ExitFacts } from "./exit-facts";
 
 /**
  * ============================================================================
@@ -211,6 +211,12 @@ function returnsIn(clause: string): Returns {
   objects(RETURN_VERB, (at) => (negatedAt(clause, at) ? "no" : "yes"));
   objects(KEPT_VERB, () => "no");
 
+  // EXIT_SHORTCUT_WORDS_ENABLED: "$25 will be payroll deducted for salon key" — a key is deducted for only when it did not come back.
+  if (exitShortcutWordsEnabled()) {
+    const deducted = /\bdeduct(?:ed|ing|ion|ions)?\b[^.;!?\n]{0,40}?\bfor\s+(?:the\s+|her\s+|his\s+|their\s+)?(?:store\s+|salon\s+)?keys?\b/.exec(clause);
+    if (deducted && !negatedAt(clause, deducted.index)) key = add(key, "no");
+  }
+
   const passive =
     /\b(store items?|items?|uniforms?|shirts?|polos?|name ?tags?|badges?|aprons?|keys?)\b(?:\s+\w+){0,2}?\s+(?:(?:was|were|has been|have been|got|is|are|been|wasn't|weren't|hasn't been|haven't been|isn't|aren't)\s+)?(?:all\s+|also\s+)?(not\s+|never\s+)?(?:returned|turned in|brought back|given back|handed in|dropped off)\b/g;
   for (const match of clause.matchAll(passive)) {
@@ -297,6 +303,11 @@ function minimumWage(clause: string): Reading {
   const labelled = labelledAnswer(clause, /\bmin(?:imum|\.)?\s*wage/);
   if (labelled) return labelled;
   const match = /\bmin(?:imum|\.)?\s*wage\b/.exec(clause);
+  // EXIT_SHORTCUT_WORDS_ENABLED: "drop wage", "dropped her pay" — the form's shortcut for dropping to minimum wage.
+  if (!match && exitShortcutWordsEnabled()) {
+    const dropped = /\b(?:drop|dropped|dropping|drops|reduce|reduced|reduces|lower|lowered)\s+(?:her\s+|his\s+|their\s+|the\s+)?(?:wage|wages|pay|rate)\b/.exec(clause);
+    if (dropped) return negatedAt(clause, dropped.index) ? "no" : "yes";
+  }
   if (!match) return undefined;
   const before = clause.slice(0, match.index);
   // "drop her to minimum wage", "dropped to min wage", "paid minimum wage"
@@ -410,6 +421,19 @@ function methodsIn(turn: string): string[] {
     // EXIT_INTAKE_FIX_ENABLED: "she did not call in for her last two shifts" (`NO_CALL_FOR_SHIFT`).
     if (exitIntakeFixEnabled() && NO_CALL_FOR_SHIFT.test(sentence) && !found.includes("No call/no show")) {
       found.push("No call/no show");
+    }
+    // EXIT_SHORTCUT_WORDS_ENABLED: "abandoned job", "job abandonment" — No call/no show, as Pau decided (29 Oct 2026).
+    if (exitShortcutWordsEnabled() && JOB_ABANDONED.test(sentence) && !negatedAt(sentence, sentence.search(JOB_ABANDONED)) && !found.includes("No call/no show")) {
+      found.push("No call/no show");
+    }
+    // EXIT_SHORTCUT_WORDS_ENABLED: "called to quit", "called me and quit" — the phone was the channel.
+    if (
+      exitShortcutWordsEnabled() &&
+      /\bcalled\s+(?:me\s+|us\s+|in\s+)?(?:to|and)\s+(?:quit|resign(?:ed)?|said (?:she|he|they) (?:quit|was quitting|is quitting))\b/.test(sentence) &&
+      !/\bsick\b/.test(sentence) &&
+      !found.includes("Phone call")
+    ) {
+      found.push("Phone call");
     }
     for (const method of METHODS) {
       for (const match of sentence.matchAll(method.pattern)) {
