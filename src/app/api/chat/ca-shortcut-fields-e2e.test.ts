@@ -556,6 +556,7 @@ async function talk(thread: Thread, steps: readonly Step[]) {
  * for both apps"). Each shortcut is added to a Corrective Action request
  * (names invented) and read through the chat to the card.
  */
+const { detectTemplateIntent } = await import("@/lib/forms/template-intent");
 const SHORTCUTS = "CA_SHORTCUT_WORDS_ENABLED";
 const BASE = "create a ca for katrin dovetail. she was late on 10/20.";
 
@@ -665,5 +666,42 @@ describe("the warning level's shorthand (CA_SHORTCUT_WORDS_ENABLED)", () => {
 
   it('off: "final warning" leaves the level line out, as reported', async () => {
     expect((await reply(`${BASE} final warning.`, false)).content).not.toContain(ASKED);
+  });
+});
+
+/*
+ * "create a written on 10/20 for katrin dovetail, she was late again" (QA, 29
+ * Oct 2026): the level named the form, but nothing read it as a request for
+ * the Corrective Action form, so there was no card at all and no Date.
+ */
+describe("asking to create the level asks for the Corrective Action form (CA_SHORTCUT_WORDS_ENABLED)", () => {
+  const ask = async (words: string, on: boolean) => {
+    if (!saved.has(SHORTCUTS)) saved.set(SHORTCUTS, process.env[SHORTCUTS]);
+    delete process.env[SHORTCUTS];
+    configure({ ...A, extra: on ? [SHORTCUTS] : [] });
+    const thread = new Thread();
+    await thread.say(words);
+    return thread.proposal;
+  };
+
+  for (const words of ["create a written on 10/20 for katrin dovetail, she was late again", "create a written for katrin dovetail, she was late again on 10/20", "make a verbal for katrin dovetail. she was late on 10/20"]) {
+    it(`"${words}" → the Corrective Action card, dated 10/20`, async () => {
+      const card = await ask(words, true);
+      expect(card?.templateKey).toBe("dpoa");
+      expect(card?.employeeName).toBe("Katrin Dovetail");
+      expect(card?.formDate).toBe("2026-10-20");
+    });
+    // Off (and the question below): no card, which in this harness is the policy answer it does not run; read at the form reader.
+    it(`off: "${words}" is not read as a form request`, async () => {
+      vi.stubEnv(SHORTCUTS, "");
+      expect(detectTemplateIntent(words)).not.toEqual({ kind: "explicit", templateKey: "dpoa" });
+      vi.unstubAllEnvs();
+    });
+  }
+
+  it("a question about a written is not a request", () => {
+    vi.stubEnv(SHORTCUTS, "true");
+    expect(detectTemplateIntent("how do i create a written for someone?")).not.toEqual({ kind: "explicit", templateKey: "dpoa" });
+    vi.unstubAllEnvs();
   });
 });
