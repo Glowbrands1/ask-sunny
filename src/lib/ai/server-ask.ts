@@ -154,7 +154,7 @@ import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
 import { mayDescribeSection } from "@/lib/forms/named-policy-section";
 import { pinnedManualBlock } from "./policy-citation-fields";
 import { deliverFormProposal } from "./grounded-turn";
-import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase } from "./job-title-from-words";
+import { withJobTitleCase, withJobTitleFromWords, withJobTitleReadBackCase, withSpelledOutTitle } from "./job-title-from-words";
 import { withTerseSlots } from "./terse-slots";
 import { withCaWhatHappened } from "./ca-what-happened";
 import { withFirstNameAsk } from "./first-name-ask";
@@ -327,7 +327,7 @@ async function answerQuestionChecked(
         withUnreadDateAsk(
           withStatedAmount(
             withFirstNameAsk(
-              withWarningLevelFromClause(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request))), request),
+              withWarningLevelFromClause(withSpelledOutTitle(withJobTitleReadBackCase(withJobTitleCase(withJobTitleFromWords(withCaWhatHappened(await applyQuietQuality(response), request), request)))), request),
               request,
             ),
             request,
