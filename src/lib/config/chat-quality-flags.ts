@@ -1747,3 +1747,13 @@ export function levelRequestDateEnabled(): boolean {
   return envFlag("LEVEL_REQUEST_DATE_ENABLED");
 }
 
+/**
+ * A job title shortcut prints spelled out: "asd" is still read as the title,
+ * and the card and the reply say "Assistant Salon Director" (Pau, 30 Oct
+ * 2026; this app only). See `ai/job-title-from-words.ts`. Off, "ASD" as
+ * before.
+ */
+export function titleSpelledOutEnabled(): boolean {
+  return envFlag("TITLE_SPELLED_OUT_ENABLED");
+}
+

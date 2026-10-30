@@ -1,4 +1,11 @@
-import { exitReadbackJobTitleEnabled, jobTitleAppositionEnabled, jobTitleCaseEnabled, jobTitleFromWordsEnabled, jobTitleReadbackCaseEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  exitReadbackJobTitleEnabled,
+  jobTitleAppositionEnabled,
+  jobTitleCaseEnabled,
+  jobTitleFromWordsEnabled,
+  jobTitleReadbackCaseEnabled,
+  titleSpelledOutEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import type { AskRequest, AskResponse } from "./types";
 
@@ -109,3 +116,25 @@ export function withJobTitleFromWords(response: AskResponse, request: AskRequest
   const content = exitReadbackJobTitleEnabled() ? withJobTitleReadBack(response.content, title) : response.content;
   return { ...response, content, formProposal: { ...proposal, employeeRole: title } };
 }
+
+/**
+ * TITLE_SPELLED_OUT_ENABLED (Pau, 30 Oct 2026: "yeah i mean spell it out but
+ * app must understand ASD meaning, its a shortcut for assistant salon
+ * director"). The title list reads the shortcut and prints it as "ASD"; the
+ * card and the reply's Job Title line print it the way the directory writes
+ * it. The list itself, and what it understands, are unchanged.
+ */
+const SPELLED_OUT: Readonly<Record<string, string>> = {
+  ASD: "Assistant Salon Director",
+};
+
+export function withSpelledOutTitle(response: AskResponse): AskResponse {
+  const role = response.formProposal?.employeeRole?.trim();
+  const full = role && titleSpelledOutEnabled() ? SPELLED_OUT[role] : undefined;
+  if (!full) return response;
+  const content = response.content.replace(/^(\s*(?:-\s*)?\*\*Job title:\*\*\s*)(\S[^\n]*)$/gim, (line, label: string, said: string) =>
+    said.trim() === role ? `${label}${full}` : line,
+  );
+  return { ...response, content, formProposal: { ...response.formProposal!, employeeRole: full } };
+}
+

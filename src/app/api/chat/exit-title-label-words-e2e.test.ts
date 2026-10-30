@@ -652,3 +652,62 @@ describe("a directory title's first words are not the title typed (SPOKEN_TITLE_
   });
 });
 
+
+/*
+ * TITLE_SPELLED_OUT_ENABLED (Pau, 30 Oct 2026, via QA: "yeah i mean spell it
+ * out but app must understand ASD meaning, its a shortcut for assistant salon
+ * director"). The shortcut is still read as the title; the card and the reply
+ * print it spelled out, the way the directory writes it. The person invented.
+ */
+const SPELLED = "TITLE_SPELLED_OUT_ENABLED";
+
+async function spelled(words: string, slot: string | null, on: boolean) {
+  live(true, MARNIE);
+  for (const name of [...LIVE_TITLE_FLAGS, SPELLED]) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    delete process.env[name];
+  }
+  for (const name of LIVE_TITLE_FLAGS) process.env[name] = "true";
+  if (on) process.env[SPELLED] = "true";
+  state.slotTitle = slot;
+  const answer = (await new Thread().say(words)) as { content: string; formProposal?: Card };
+  expect(answer.formProposal?.templateKey, answer.content).toBe("stc-exit");
+  return { role: answer.formProposal?.employeeRole ?? null, line: /\*\*Job Title:\*\* ([^\n]+)/i.exec(answer.content)?.[1] ?? null };
+}
+
+describe("the ASD shortcut prints spelled out (TITLE_SPELLED_OUT_ENABLED)", () => {
+  const AFTER = "last day worked 10-26-26.";
+  for (const [words, slot] of [
+    [`create an exit for marnie holloway, asd at kearney, ne. ${AFTER}`, "asd"],
+    [`create an exit for marnie holloway, ASD at kearney, ne. ${AFTER}`, "ASD"],
+    [`create an exit for marnie holloway at kearney, ne. she is an asd. ${AFTER}`, "asd"],
+    [`create an exit for marnie holloway, assistant salon director at kearney, ne. ${AFTER}`, "assistant salon director"],
+  ] as const) {
+    it(`"${words}" → Assistant Salon Director on the card and in the reply`, async () => {
+      expect(await spelled(words, slot, true)).toEqual({ role: "Assistant Salon Director", line: "Assistant Salon Director" });
+    });
+  }
+
+  it("a Corrective Action card: \"create a ca for … asd …\" → Assistant Salon Director", async () => {
+    live(true, MARNIE);
+    for (const name of [...LIVE_TITLE_FLAGS, SPELLED]) {
+      if (!saved.has(name)) saved.set(name, process.env[name]);
+      delete process.env[name];
+    }
+    for (const name of [...LIVE_TITLE_FLAGS, SPELLED]) process.env[name] = "true";
+    state.slotTitle = "asd";
+    const answer = (await new Thread().say("create a ca for marnie holloway, asd at kearney, ne. she was late on 10/20.")) as { content: string; formProposal?: Card };
+    expect(answer.formProposal?.employeeRole).toBe("Assistant Salon Director");
+    expect(answer.content).toContain("**Job title:** Assistant Salon Director");
+  });
+
+  it("off, as today: ASD", async () => {
+    const words = `create an exit for marnie holloway, asd at kearney, ne. ${AFTER}`;
+    expect((await spelled(words, "asd", false)).role).toBe("ASD");
+  });
+
+  it("a title already spelled out is left as it is", async () => {
+    const words = `create an exit for marnie holloway, tanning consultant at kearney, ne. ${AFTER}`;
+    expect(await spelled(words, "tanning consultant", true)).toEqual(await spelled(words, "tanning consultant", false));
+  });
+});
