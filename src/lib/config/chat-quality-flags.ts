@@ -1747,3 +1747,14 @@ export function levelRequestDateEnabled(): boolean {
   return envFlag("LEVEL_REQUEST_DATE_ENABLED");
 }
 
+/**
+ * With a card open, a turn that asks to create a form for one other named
+ * person ("also create a ca for <another> …", "now create a coaching form for
+ * <another> …") starts that person's form instead of asking "Which of them"
+ * or keeping the first person (QA, 30 Oct 2026; Pau: "OK"; same flag in both
+ * apps). See `ai/new-person-request.ts`. Off, as before.
+ */
+export function newPersonRequestEnabled(): boolean {
+  return envFlag("NEW_PERSON_REQUEST_ENABLED");
+}
+
