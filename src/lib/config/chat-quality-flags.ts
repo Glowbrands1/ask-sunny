@@ -1692,3 +1692,13 @@ export function exitTermsNotNamesEnabled(): boolean {
 export function caShortcutWordsEnabled(): boolean {
   return envFlag("CA_SHORTCUT_WORDS_ENABLED");
 }
+
+/**
+ * A name candidate inside a street address ("Ne Oakfield Lane", "kearney ne"
+ * in "125 Ne Oakfield Lane, kearney, NE. 68847") is not a person (QA, 29 Oct
+ * 2026; same flag in both apps). See `forms/answer-not-a-name.ts`. Off, as
+ * before.
+ */
+export function streetAddressNotANameEnabled(): boolean {
+  return envFlag("STREET_ADDRESS_NOT_A_NAME_ENABLED");
+}
