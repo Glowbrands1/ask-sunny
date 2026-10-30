@@ -27,6 +27,7 @@ import { managerContext } from "@/lib/forms/proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { enrichFormCard } from "./form-card-slots";
 import { holdFilledSlots } from "./keep-filled-slots";
+import { startsFormForAnotherPerson } from "./new-person-request";
 import { applyEditDateRules } from "./edit-date-rules";
 import { withTypedEmployeeOnCard } from "./typed-employee-card";
 import { applyGroundedProposal, prepareGroundedQuestion, type GroundedPerson, type GroundedPrep } from "./grounded-entities";
@@ -84,7 +85,7 @@ export async function deliverFormProposal(input: {
         holdFilledSlots({
           response: enriched,
           question: input.question,
-          history: input.request.history,
+          history: heldHistory(input.request),
           today: input.request.context.todayIso,
           people: [],
         }),
@@ -99,7 +100,7 @@ export async function deliverFormProposal(input: {
   const prep = entities
     ? prepareGroundedQuestion({
         question: input.question,
-        history: input.request.history,
+        history: heldHistory(input.request),
         people,
         saved,
       })
@@ -140,7 +141,7 @@ export async function deliverFormProposal(input: {
       holdFilledSlots({
         response: settled,
         question: input.question,
-        history: input.request.history,
+        history: heldHistory(input.request),
         today: input.request.context.todayIso,
         people,
       }),
@@ -296,3 +297,16 @@ async function reopenSameIncident(
     return null;
   }
 }
+
+/**
+ * NEW_PERSON_REQUEST_ENABLED (QA, live, 30 Oct 2026): "also create a ca for
+ * <another> …" kept the first employee's sentence in the new card's
+ * Observation of Offense ("<first>. she was late on 10/20. also create a ca
+ * for <another> …"). A turn that starts another person's form holds nothing
+ * from the turns before it.
+ */
+function heldHistory(request: { readonly history: readonly HistoryTurnLike[]; readonly question: string }): readonly HistoryTurnLike[] {
+  return startsFormForAnotherPerson(request.history, request.question) ? [] : request.history;
+}
+
+type HistoryTurnLike = { readonly role: string; readonly content: string };
