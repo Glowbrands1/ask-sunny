@@ -1770,3 +1770,13 @@ export function newPersonRequestEnabled(): boolean {
   return envFlag("NEW_PERSON_REQUEST_ENABLED");
 }
 
+/**
+ * A new create request that states its own date ("also create a ca for
+ * <name>, she was late on 10/21") is dated by that date, not left blank by
+ * the earlier form's date in the same chat (QA, live, 30 Oct 2026). See
+ * `ai/edit-date-rules.ts`. Off, as before.
+ */
+export function newRequestOwnDateEnabled(): boolean {
+  return envFlag("NEW_REQUEST_OWN_DATE_ENABLED");
+}
+

@@ -5,6 +5,7 @@ import { withYearlessDatesWritten } from "@/lib/forms/late-open";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
+import { newRequestWithOwnDate } from "./new-request-own-date";
 import type { AskResponse } from "./types";
 
 /**
@@ -435,7 +436,9 @@ export function applyEditDateRules(
   if (DATED_BY_INCIDENT.has(proposal.templateKey)) {
     const prior = priorActionDates(text, input.today);
     content = withoutPriorDateQuestion(content, prior);
-    const date = formDateByRules({ managerTurns: turns, question, today: input.today, current: proposal.formDate ?? null });
+    // NEW_REQUEST_OWN_DATE_ENABLED: a new create request with its own date is dated by itself, not by the form before it.
+    const dateTurns = newRequestWithOwnDate(question, input.today) ? [question] : turns;
+    const date = formDateByRules({ managerTurns: dateTurns, question, today: input.today, current: proposal.formDate ?? null });
     if (date !== undefined && date !== proposal.formDate) next = { ...next, formDate: date };
     content = withoutLines(content, (line) => line.startsWith("**Date:**"));
     if (next.formDate) content = insertLine(content, `**Date:** ${slash(next.formDate)}`, FIELD_ORDER);
