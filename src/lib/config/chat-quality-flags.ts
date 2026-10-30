@@ -1554,6 +1554,16 @@ export function otherWriteInGuardEnabled(): boolean {
 }
 
 /**
+ * The Other write-in is never a question the manager asked: "Which forms can I
+ * create here?" a turn before the coaching request came back as the topic (QA,
+ * 30 Oct 2026; same flag in both apps). See `forms/other-write-in.ts`. Off, as
+ * before.
+ */
+export function otherWriteInNotAQuestionEnabled(): boolean {
+  return envFlag("OTHER_WRITE_IN_NOT_A_QUESTION_ENABLED");
+}
+
+/**
  * "She was late last week" with no date read and the form left at today: the
  * Corrective Action draft is told today is not the incident's date, today is
  * not treated as a date the manager gave, and the manager is told to set the

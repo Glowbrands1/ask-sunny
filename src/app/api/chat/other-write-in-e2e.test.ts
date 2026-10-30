@@ -52,7 +52,11 @@ vi.mock("@/lib/api/respond", async (importOriginal) => {
 
 vi.mock("@/lib/config/server-env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/config/server-env")>();
-  return { ...actual, liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }) };
+  return {
+    ...actual,
+    liveReadiness: () => ({ mode: "live", missing: [], problems: [], ready: true }),
+    supabaseReadiness: () => ({ ready: true, missing: [] }),
+  };
 });
 
 vi.mock("@/lib/auth/server", async () => {
@@ -219,6 +223,12 @@ vi.mock("@/lib/knowledge/providers/supabase", () => ({
       };
     }
   },
+}));
+
+/** A question that is not a form request searches the manual; nothing to embed offline. */
+vi.mock("@/lib/knowledge/recall-match", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/knowledge/recall-match")>()),
+  matchRecallKnowledge: async () => [],
 }));
 
 vi.mock("@/lib/knowledge", () => ({
@@ -518,5 +528,46 @@ describe('"she was late three times last week": Other is never ticked with nothi
     const { value, ticked } = await drafted(true, "create a coaching form for Tessa Ormond at Kearney");
     expect(ticked("coaching_topics")).not.toContain("other");
     expect(String(value("other_topic") ?? "")).toBe("");
+  });
+});
+
+/*
+ * QA, 30 Oct 2026 (Ask Sunny live). Turn 1 asked which forms there are; turn 2
+ * asked for the coaching form. The draft came back Other = "Which forms can I
+ * create here" — the first turn's question read as what happened.
+ */
+const ASKED = "Which forms can I create here?";
+const LATE = "create a coaching form for jordan testperson at kearney, he was late on 10/20";
+
+async function draftedAfterQuestion(fix: boolean) {
+  for (const name of [...ALL_FLAGS, ...LIVE_SINCE, GUARD, "OTHER_WRITE_IN_NOT_A_QUESTION_ENABLED"]) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    delete process.env[name];
+  }
+  for (const name of [...PRODUCTION, ...LIVE_SINCE, GUARD]) process.env[name] = "true";
+  if (fix) process.env.OTHER_WRITE_IN_NOT_A_QUESTION_ENABLED = "true";
+  state.directory = [
+    { id: "e-1", firstName: "Jordan", lastName: "Testperson", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"] },
+  ];
+  state.draft = JSON.parse(JSON.stringify({ ...MODEL, values: { ...MODEL.values, coaching_details: "Observed:\nJordan Testperson was late on 10/20." } }));
+  const thread = new Thread();
+  await thread.say(ASKED);
+  const card = (await thread.say(LATE)) as { formProposal?: ChatFormProposal };
+  expect(card.formProposal?.templateKey).toBe("coaching");
+  const id = await thread.create();
+  const row = (key: string) => store.form_instance_values.find((entry) => entry.instance_id === id && entry.field_key === key);
+  return { value: (key: string) => row(key)?.value, ticked: (key: string) => (row(key)?.checked as string[] | undefined) ?? [] };
+}
+
+describe('"Which forms can I create here?" then a coaching request: the question is never the Other topic', () => {
+  it("off (production today): Other = the earlier question", async () => {
+    const { value } = await draftedAfterQuestion(false);
+    expect(value("other_topic")).toBe("Which forms can I create here");
+  });
+
+  it("on: Other is what happened, in the manager's words", async () => {
+    const { value, ticked } = await draftedAfterQuestion(true);
+    expect(value("other_topic")).toMatch(/^(?:He|Jordan) was late on 10\/20$/);
+    expect(ticked("coaching_topics")).toContain("other");
   });
 });

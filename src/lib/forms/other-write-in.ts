@@ -1,4 +1,4 @@
-import { otherWriteInGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { otherWriteInGuardEnabled, otherWriteInNotAQuestionEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -29,6 +29,11 @@ const LONGEST = 120;
 /** A clause that only asks for the form, or only names who and where. */
 const REQUEST =
   /\b(?:create|make|start|draft|fill(?:\s+out)?|do|need|want|please|write\s+up)\b[^.,;\n]*\b(?:form|coaching|ca|c\/a|corrective\s+action|write-?up)\b|\b(?:coaching|corrective\s+action)\s+form\b|^(?:for|at)\b/i;
+/**
+ * A question the manager asked (OTHER_WRITE_IN_NOT_A_QUESTION_ENABLED): "Which
+ * forms can I create here?", a turn before the request, is not what happened.
+ */
+const QUESTION = /^(?:which|what|how)\b.*\b(?:can|could|do|should)\s+(?:i|we)\b/i;
 const FIELD_LINE = /^(?:employee|job title|location|date|type of warning|payroll deduct\w*|prior actions)\s*:/i;
 
 /** What happened, in the manager's own words, short enough for a write-in; or null. */
@@ -36,10 +41,12 @@ export function managerIssueWords(notes: string): string | null {
   const lines = (notes ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
   const stated = lines.find((line) => /^what happened\s*:/i.test(line));
   const source = stated ? [stated.replace(/^what happened\s*:\s*/i, "")] : lines.filter((line) => !FIELD_LINE.test(line));
+  const skipQuestions = otherWriteInNotAQuestionEnabled();
   for (const line of source) {
     for (const part of line.split(/(?<=[.!?])\s+|[,;]\s+/)) {
       const clause = part.trim().replace(/[.!?\s]+$/, "");
       if (clause.split(/\s+/).length < 3 || REQUEST.test(clause)) continue;
+      if (skipQuestions && (/\?\s*$/.test(part) || QUESTION.test(clause))) continue;
       if (clause.length > LONGEST) return null;
       return clause.charAt(0).toUpperCase() + clause.slice(1);
     }
