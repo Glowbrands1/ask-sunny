@@ -1,4 +1,4 @@
-import { nameQuestionOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { caShortcutWordsEnabled, nameQuestionOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
 import { readCaPolicy } from "./ca-policy";
 import {
@@ -452,7 +452,10 @@ export function readCorrectiveActionIntake(input: {
     form_date: any(text, DATE_GIVEN),
     what_happened: any(text, INCIDENT_TOPIC) || any(text, OBSERVATIONAL_CLAUSE),
     /* "verbal CA" and a bare "verbal." too — see `statedWarningLevel`. */
-    warning_level: any(text, WARNING_LEVEL_GIVEN) || statedWarningLevel(input.text) !== null,
+    // CA_SHORTCUT_WORDS_ENABLED: "final warning" is no level the form prints — the level is asked, not left silent.
+    warning_level:
+      any(caShortcutWordsEnabled() ? text.replace(/\bfinal(?:\s+written)?\s+warning\b/g, " ") : text, WARNING_LEVEL_GIVEN) ||
+      statedWarningLevel(input.text) !== null,
     /*
      * A STATED ABSENCE ("first time") or a STATED HISTORY ("already warned
      * her last week"). A repeated incident is neither — see
