@@ -1722,3 +1722,15 @@ export function titleKeepsLabelWordsEnabled(): boolean {
 export function spokenTitleWholeEnabled(): boolean {
   return envFlag("SPOKEN_TITLE_WHOLE_ENABLED");
 }
+
+/**
+ * A level request with a date before "for" ("create a written on 10/20 for
+ * <name>, she was late again") is the request, not the account: the card's
+ * Observation and a draft written from the manager's words start with what
+ * happened (QA, live, 30 Oct 2026; same flag in both apps). See
+ * `ai/remap-incident.ts` and `forms/draft-never-blank.ts`. Off, as before.
+ */
+export function levelRequestDateEnabled(): boolean {
+  return envFlag("LEVEL_REQUEST_DATE_ENABLED");
+}
+
