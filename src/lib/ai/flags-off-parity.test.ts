@@ -135,6 +135,9 @@ import {
   partialNameCardCurrentEnabled,
   partialSurnameAskEnabled,
   suggestAnswerReplacesTypedEnabled,
+  preferredNameCardCurrentEnabled,
+  switchKeepsNamedFormEnabled,
+  severalFormsStayCurrentEnabled,
   partialNameLooseMatchEnabled,
   staleNeedsRosterPersonEnabled,
   correctedEmployeeSlotEnabled,
@@ -303,6 +306,9 @@ const NEW_FLAGS = [
   "PARTIAL_NAME_CARD_CURRENT_ENABLED",
   "PARTIAL_SURNAME_ASK_ENABLED",
   "SUGGEST_ANSWER_REPLACES_TYPED_ENABLED",
+  "PREFERRED_NAME_CARD_CURRENT_ENABLED",
+  "SWITCH_KEEPS_NAMED_FORM_ENABLED",
+  "SEVERAL_FORMS_STAY_CURRENT_ENABLED",
   "PARTIAL_NAME_LOOSE_MATCH_ENABLED",
   "STALE_NEEDS_ROSTER_PERSON_ENABLED",
   "CORRECTED_EMPLOYEE_SLOT_ENABLED",
@@ -509,6 +515,9 @@ describe("new flags default off and wrappers are inert", () => {
     expect(partialNameCardCurrentEnabled()).toBe(false);
     expect(partialSurnameAskEnabled()).toBe(false);
     expect(suggestAnswerReplacesTypedEnabled()).toBe(false);
+    expect(preferredNameCardCurrentEnabled()).toBe(false);
+    expect(switchKeepsNamedFormEnabled()).toBe(false);
+    expect(severalFormsStayCurrentEnabled()).toBe(false);
     expect(partialNameLooseMatchEnabled()).toBe(false);
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(correctedEmployeeSlotEnabled()).toBe(false);
