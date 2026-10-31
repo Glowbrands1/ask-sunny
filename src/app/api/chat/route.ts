@@ -321,21 +321,35 @@ async function postChat(request: Request) {
           ? await (async () => {
               const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId!);
               if (!open || open.status !== "draft") return null;
-              const rewritten = (await import("@/lib/forms/form-content-turn")).formContentQuestion({
+              const content = await import("@/lib/forms/form-content-turn");
+              const rewritten = content.formContentRevision({
                 question: parsed.question,
                 history: parsed.history,
                 templateName: open.templateName,
                 employeeName: open.employeeName,
               });
-              return rewritten
-                ? (await import("@/lib/forms/chat-revision")).reviseActiveForm({
-                    request,
-                    instanceId: parsed.activeFormInstanceId!,
-                    question: rewritten,
-                    history: parsed.history,
-                    today: parsed.context.todayIso,
-                  })
-                : null;
+              if (!rewritten) return null;
+              const revised = await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
+                request,
+                instanceId: parsed.activeFormInstanceId!,
+                question: rewritten.question,
+                history: rewritten.history,
+                today: parsed.context.todayIso,
+              });
+              /*
+               * Read as content for the form and still nothing written: said
+               * so (FORM_EDIT_HONEST_REPLY_ENABLED), never the unrelated
+               * ordinary answer the turn would otherwise fall through to.
+               */
+              if (!revised && formEditHonestReplyEnabled()) {
+                return {
+                  content: content.notWrittenReply(open.templateName, open.employeeName),
+                  citations: [],
+                  coverage: "not_applicable" as const,
+                  recommendedVideoIds: [],
+                };
+              }
+              return revised;
             })()
           : null);
       /*
