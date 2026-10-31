@@ -1584,6 +1584,15 @@ export function formEditHonestReplyEnabled(): boolean {
 }
 
 /**
+ * A revised or drafted field never keeps an all-caps angle-bracket token such
+ * as "<UNKNOWN>" (Sunny live check, 31 Oct 2026; same flag in both apps). See
+ * `forms/drafted-text.ts`. Off, as before.
+ */
+export function anglePlaceholderGuardEnabled(): boolean {
+  return envFlag("ANGLE_PLACEHOLDER_GUARD_ENABLED");
+}
+
+/**
  * "Do the same coaching form for <another>": the new person's draft gets the
  * content of the manager's own earlier form of that template, name swapped
  * (ported from Ask Bubbles, QA 30 Oct 2026; same flag in both apps). See

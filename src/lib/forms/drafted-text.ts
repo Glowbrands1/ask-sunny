@@ -1,3 +1,5 @@
+import { anglePlaceholderGuardEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * A PLACEHOLDER IS NOT A VALUE
@@ -40,6 +42,13 @@
  * model invents will not be on any list.
  */
 const PLACEHOLDER = /\[[^\]\n]{1,60}\]|\{\{[^}\n]{1,60}\}\}/g;
+/**
+ * `<UNKNOWN>`, `<EMPLOYEE NAME>`: an all-caps angle-bracket token. Sunny live
+ * check, 31 Oct 2026: "add details about the towel" appended the literal
+ * "<UNKNOWN>" to the Details of Coaching. Behind ANGLE_PLACEHOLDER_GUARD_ENABLED
+ * (same flag in both apps); off, as before.
+ */
+const ANGLE_PLACEHOLDER = /<[A-Z][A-Z0-9 _-]{1,40}>/g;
 
 /** Sentence-ish spans, kept with their trailing punctuation. */
 function sentences(text: string): string[] {
@@ -48,7 +57,10 @@ function sentences(text: string): string[] {
 
 export function containsPlaceholder(text: string): boolean {
   PLACEHOLDER.lastIndex = 0;
-  return PLACEHOLDER.test(text);
+  if (PLACEHOLDER.test(text)) return true;
+  if (!anglePlaceholderGuardEnabled()) return false;
+  ANGLE_PLACEHOLDER.lastIndex = 0;
+  return ANGLE_PLACEHOLDER.test(text);
 }
 
 /**

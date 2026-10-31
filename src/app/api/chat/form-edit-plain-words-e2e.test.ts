@@ -810,6 +810,39 @@ describe('"What\'s the date on the form for these details?" with the draft open'
   });
 });
 
+/*
+ * SUNNY LIVE CHECK, 31 Oct 2026 (QA's tester, A3): "add details about the
+ * towel" with the draft open — the reply said it updated the form, and the only
+ * change on the card was the literal "<UNKNOWN>" appended to Details of
+ * Coaching. The revision model wrote it; ANGLE_PLACEHOLDER_GUARD_ENABLED drops
+ * it as the drafting guards already drop "[Employee Name]".
+ */
+describe('live check A3: "add details about the towel" and a revision that answers "<UNKNOWN>"', () => {
+  const ANGLE = "ANGLE_PLACEHOLDER_GUARD_ENABLED";
+  async function ask(on: boolean) {
+    const draft = await openDraft({});
+    if (!saved.has(ANGLE)) saved.set(ANGLE, process.env[ANGLE]);
+    delete process.env[ANGLE];
+    if (on) process.env[ANGLE] = "true";
+    state.revision = { values: { coaching_details: "Observed:\nCoaching on room turnover.\n<UNKNOWN>" } };
+    const reply = await draft.thread.say("add details about the towel");
+    return { ...draft, reply };
+  }
+
+  it("off (production today): the literal <UNKNOWN> is written into Details", async () => {
+    const { details } = await ask(false);
+    expect(state.revisionCalls).toBe(1);
+    expect(details()).toContain("<UNKNOWN>");
+  });
+
+  it("ANGLE_PLACEHOLDER_GUARD: <UNKNOWN> never reaches the card", async () => {
+    const { details } = await ask(true);
+    expect(state.revisionCalls).toBe(1);
+    expect(details() ?? "").not.toContain("<UNKNOWN>");
+    expect(details()).toContain("Coaching on room turnover.");
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });
