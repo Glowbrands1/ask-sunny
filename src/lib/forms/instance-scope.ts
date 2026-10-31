@@ -82,9 +82,14 @@ export type InstanceAction =
  * disagree, which is what a hand-written `where` clause beside a guard always
  * eventually does.
  */
-export function actorMaySeeInstance(actor: FormsActor, instance: InstanceRow): boolean {
+export function actorMaySeeInstance(
+  actor: FormsActor,
+  instance: InstanceRow,
+  /** AM_PRIOR_WARNINGS_ENABLED: see `prior-forms.ts`. Every other caller passes nothing. */
+  options: { assistantOwnFormsRule?: boolean } = {},
+): boolean {
   // PRIVATE_CREATOR_FORMS: before every other rule, global and preview included. See `private-creators.ts`.
-  if (hiddenAsPrivate(actor, instance)) return false;
+  if (hiddenAsPrivate(actor, instance, options)) return false;
   // Demo: unverified identity, no scope, no enforcement. See `location-scope`.
   const visibility = actor.visibility;
   if (!visibility) return true;
@@ -180,9 +185,10 @@ export function instanceListFilterFor(actor: FormsActor): InstanceListFilter | u
 export function visibleInstances<T extends InstanceRow>(
   actor: FormsActor,
   instances: T[],
+  options: { assistantOwnFormsRule?: boolean } = {},
 ): T[] {
   return withoutUnreadable(instances, (permission) => actorHolds(actor, permission)).filter(
-    (instance) => actorMaySeeInstance(actor, instance),
+    (instance) => actorMaySeeInstance(actor, instance, options),
   );
 }
 

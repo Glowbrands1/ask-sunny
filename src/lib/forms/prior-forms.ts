@@ -7,6 +7,7 @@ import { chatFormsActor, type FormRecordsActor } from "./chat-form-records";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances } from "./instances";
 import { privateAwareLimit } from "./private-creators";
+import { amPriorWarningsEnabled } from "@/lib/config/chat-quality-flags";
 import {
   classifyPriorForms,
   priorFormsFromRows,
@@ -90,8 +91,20 @@ async function readOnFile(input: {
       ...instanceListFilterFor(input.actor),
       employeeNameWords: words,
     });
-    const visible = visibleInstances(input.actor, read);
-    const rows = visible.slice(0, READ_LIMIT);
+    /*
+     * AM_PRIOR_WARNINGS_ENABLED (Pau, 31 Oct 2026, "Yes option A"): an
+     * Assistant Salon Director sees only their own forms, so their Corrective
+     * Action counted only the warnings they had filed and could be drafted as a
+     * first warning. The history is read without that one rule — salon scope
+     * and every other privacy rule still apply — and a form they could not
+     * open shows only its level and date: no salon, nothing else of it.
+     */
+    const ownOnly = visibleInstances(input.actor, read);
+    const visible = amPriorWarningsEnabled() ? visibleInstances(input.actor, read, { assistantOwnFormsRule: false }) : ownOnly;
+    const theirs = new Set(ownOnly.map((row) => row.id));
+    const rows = visible
+      .slice(0, READ_LIMIT)
+      .map((row) => (theirs.has(row.id) ? row : { ...row, locationName: null }));
 
     const correctiveIds = rows
       .filter((row) => row.templateKey === "dpoa" && row.status === "finalized")
