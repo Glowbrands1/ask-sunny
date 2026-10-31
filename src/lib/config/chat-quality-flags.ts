@@ -1564,6 +1564,26 @@ export function otherWriteInNotAQuestionEnabled(): boolean {
 }
 
 /**
+ * With a Coaching Form draft open, details given in plain words, "make that
+ * update", and "update the draft with these details" (the previous answer's)
+ * are written into the draft by the open-form revision (QA, 30 Oct 2026, the
+ * sibling app; same flag in both apps). See `forms/form-content-turn.ts`. Off,
+ * as before.
+ */
+export function formEditPlainWordsEnabled(): boolean {
+  return envFlag("FORM_EDIT_PLAIN_WORDS_ENABLED");
+}
+
+/**
+ * With a form open, an answer that changed nothing never says it updated the
+ * form (QA, 30 Oct 2026, the sibling app; same flag in both apps). See
+ * `forms/form-content-turn.ts` `honestFormReply`. Off, as before.
+ */
+export function formEditHonestReplyEnabled(): boolean {
+  return envFlag("FORM_EDIT_HONEST_REPLY_ENABLED");
+}
+
+/**
  * "She was late last week" with no date read and the form left at today: the
  * Corrective Action draft is told today is not the incident's date, today is
  * not treated as a date the manager gave, and the manager is told to set the
