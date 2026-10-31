@@ -1564,6 +1564,26 @@ export function otherWriteInNotAQuestionEnabled(): boolean {
 }
 
 /**
+ * With a Coaching Form draft open, details given in plain words, "make that
+ * update", and "update the draft with these details" (the previous answer's)
+ * are written into the draft by the open-form revision (ported from Ask
+ * Bubbles, QA 30 Oct 2026; same flag in both apps). See
+ * `forms/form-content-turn.ts`. Off, as before.
+ */
+export function formEditPlainWordsEnabled(): boolean {
+  return envFlag("FORM_EDIT_PLAIN_WORDS_ENABLED");
+}
+
+/**
+ * With a form open, an answer that changed nothing never says it updated the
+ * form (ported from Ask Bubbles, QA 30 Oct 2026; same flag in both apps). See
+ * `forms/form-content-turn.ts` `honestFormReply`. Off, as before.
+ */
+export function formEditHonestReplyEnabled(): boolean {
+  return envFlag("FORM_EDIT_HONEST_REPLY_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).
