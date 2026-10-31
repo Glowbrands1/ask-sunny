@@ -1220,6 +1220,10 @@ Pau: "recognize all form wording … so when manager type shortcuts, it can unde
 
 30 Oct 2026, Pau's answers via QA. "Ok amount line": the amount is read from the shortcut's wording too — "deduct 25" and "PD 25" fill $25 — through two approved lines in protected `forms/payroll-deduct.ts` (`payrollAmountWording` from `forms/payroll-deduct-answer.ts`, the text unchanged with the flag off). This app only: the sibling app's Corrective Action card carries no amount. "Tick written": "final written" is Written (`forms/warning-level.ts`), both apps; "final warning" still asks the level. Title abbreviations ("asm") are not mapped here until Pau says what they mean in this app.
 
+## 31 Oct 2026: prior forms "complete" only when every visible form was read (both apps)
+
+Independent review item 15b (same code here): while the private-creator over-read is on (4× every bounded read once NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED is on), an employee with 201–799 matching forms read "complete" though only the newest 200 were used. Now complete only when every visible row was used; with the over-read off the test is the same as before.
+
 ## 29 Oct 2026: a street address is not a person — both apps (STREET_ADDRESS_NOT_A_NAME_ENABLED, default off)
 
 QA: with the exit form's words no longer people, an exit for somebody not on the roster still asked "Which of them is this Resignation/Exit Form for — marnie holloway or Ne Oakfield Lane?": the street address ("125 Ne Oakfield Lane, kearney, NE. 68847") was read as a person, and "NE" and "kearney ne" too. With this flag a name whose words all sit inside a street address (a house number, a street word, through the ZIP or the end of the sentence) is not a person: `notInStreetAddress` in `forms/answer-not-a-name.ts`, read by the same `employeeState` line in protected `forms/proposal.ts` as the exit terms (approved by Pau via QA, 29 Oct 2026, "ok address line"). "jordan lane" with no house number is still a person; two real people still ask which of them. Same change in Ask Bubbles.

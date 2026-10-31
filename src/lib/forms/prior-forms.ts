@@ -90,7 +90,8 @@ async function readOnFile(input: {
       ...instanceListFilterFor(input.actor),
       employeeNameWords: words,
     });
-    const rows = visibleInstances(input.actor, read).slice(0, READ_LIMIT);
+    const visible = visibleInstances(input.actor, read);
+    const rows = visible.slice(0, READ_LIMIT);
 
     const correctiveIds = rows
       .filter((row) => row.templateKey === "dpoa" && row.status === "finalized")
@@ -123,7 +124,14 @@ async function readOnFile(input: {
       sameNameLocations: rows
         .filter((row) => row.id !== input.excludeInstanceId && sameName(row.employeeName, input.employeeName))
         .map((row) => row.locationId ?? null),
-      complete: read.length < privateAwareLimit(READ_LIMIT),
+      /*
+       * Complete only when every visible row was used (independent review, 31
+       * Oct 2026, item 15b): with the private-creator over-read (4× while the
+       * Assistant Manager rule is on) 201–799 matching rows read "complete"
+       * though only the newest 200 were used. Off, the read is the page, so
+       * this is the same test as before.
+       */
+      complete: visible.length <= READ_LIMIT && read.length < privateAwareLimit(READ_LIMIT),
     };
   } catch {
     return null;
