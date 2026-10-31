@@ -67,7 +67,7 @@ function useLocalHistoryImport() {
     useAppStore();
 
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ imported: number; error: string | null } | null>(
+  const [result, setResult] = useState<{ imported: number; error: string | null; anotherAccount?: number } | null>(
     null,
   );
 
@@ -79,6 +79,8 @@ function useLocalHistoryImport() {
       setResult({
         imported: summary.imported.length,
         error: summary.error,
+        // CHAT_IMPORT_OWN_ONLY: chats the server declined as another account's are said, not silently left.
+        anotherAccount: summary.declined.filter((entry) => entry.reason === "another_account").length,
       });
     } catch (error) {
       setResult({
@@ -101,6 +103,25 @@ function useLocalHistoryImport() {
     run,
     reset: () => setResult(null),
   };
+}
+
+/**
+ * Independent review, 31 Oct 2026: pressing Import on a chat another account
+ * wrote showed nothing, and the count stayed. Said plainly; nothing is deleted.
+ */
+function anotherAccountSentence(count: number): string {
+  return count === 1
+    ? "1 chat on this device belongs to another account and was not imported. It stays on this device."
+    : `${count} chats on this device belong to another account and were not imported. They stay on this device.`;
+}
+
+function AnotherAccountNote({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <p role="status" className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground">
+      {anotherAccountSentence(count)}
+    </p>
+  );
 }
 
 function importedSentence(imported: number): string {
@@ -153,6 +174,7 @@ export function ImportLocalHistoryPrompt() {
           {result.error} Nothing on this device was changed — you can try again.
         </p>
       ) : null}
+      <AnotherAccountNote count={result?.anotherAccount} />
 
       <div className="mt-2.5 flex items-center gap-2">
         <Button
@@ -282,6 +304,7 @@ export function HistoryImportButton() {
                 {result.error} Nothing on this device was changed — you can try again.
               </p>
             ) : null}
+            <AnotherAccountNote count={result?.anotherAccount} />
           </div>
 
           <DialogActions>

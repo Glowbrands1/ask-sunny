@@ -1286,3 +1286,7 @@ Independent review of the sibling app (items 4, 5, 7, 8; same code here). See th
 ## 31 Oct 2026: form-edit review item 12 — "date" is not "update"; a question after the topic stays a question; only conduct naming the employee is written (both apps)
 
 Same change as the sibling app (independent review of both apps): real verbs only for "these details"; a question after "I want to coach on …" keeps it a question; a sentence naming the employee is written only when it reads as conduct or the manager says to add/note it. The three review sentences are tested.
+
+## 31 Oct 2026: Import says when a chat belongs to another account (both apps)
+
+Independent review item 14: Import on a chat declined by CHAT_IMPORT_OWN_ONLY showed nothing and the count stayed. Now "1 chat on this device belongs to another account and was not imported. It stays on this device." Open until NEXT_PUBLIC_CHAT_LOCAL_OWNER (4b): the chat stays listed and counted on the device.
