@@ -1188,11 +1188,11 @@ Port from Ask Bubbles (fd0ceb06). Pau, via QA: "i dont want that blocker and pro
 
 ## 29 Oct 2026: a first name and the start of a surname are asked about from the roster in code — both apps (PARTIAL_SURNAME_ASK_ENABLED)
 
-QA live in Ask Bubbles: the same "pls create a coaching form for paulyne co" asked "Is this for …?" only when the AI reader read the first name alone; when it read the whole "paulyne co" its name was rejected and the card kept the raw typed name, which Create saved. This app does the same: the card holds the raw name and Create saves it. With FIRST_NAME_SUGGEST_ENABLED and this new flag (default off), a card name that is a first or preferred name plus the start of a surname is matched against the manager's roster in code: one person "Is this for", several "Did you mean", none as before. Same change in Ask Bubbles.
+QA live in Ask Bubbles: the same "pls create a coaching form for quinn co" asked "Is this for …?" only when the AI reader read the first name alone; when it read the whole "quinn co" its name was rejected and the card kept the raw typed name, which Create saved. This app does the same: the card holds the raw name and Create saves it. With FIRST_NAME_SUGGEST_ENABLED and this new flag (default off), a card name that is a first or preferred name plus the start of a surname is matched against the manager's roster in code: one person "Is this for", several "Did you mean", none as before. Same change in Ask Bubbles.
 
 ## 29 Oct 2026: a surname piece that is not a prefix is the card's person when nobody else on the roster fits — both apps (PARTIAL_NAME_LOOSE_MATCH_ENABLED)
 
-QA live here with PARTIAL_NAME_CARD_CURRENT on: "pls create a coaching form for paulyne co" gave a card for the roster person and Create refused it as "out of date", because "co" does not begin the surname. With this new flag (default off) the route passes the manager's roster into the creation check: a surname piece that begins the surname or has its letters in order from the same first letter is the card's person when nobody else on the roster fits. Two fits and corrections still refuse. A misspelled full surname is kept as typed here, as before. Same change in Ask Bubbles.
+QA live here with PARTIAL_NAME_CARD_CURRENT on: "pls create a coaching form for quinn co" gave a card for the roster person and Create refused it as "out of date", because "co" does not begin the surname. With this new flag (default off) the route passes the manager's roster into the creation check: a surname piece that begins the surname or has its letters in order from the same first letter is the card's person when nobody else on the roster fits. Two fits and corrections still refuse. A misspelled full surname is kept as typed here, as before. Same change in Ask Bubbles.
 
 ## 29 Oct 2026: an exit request's own words are not more people at Create — both apps (STALE_NEEDS_ROSTER_PERSON_ENABLED)
 
@@ -1204,7 +1204,7 @@ QA live here: on an open Resignation/Exit card, "actually this is for <another p
 
 ## 29 Oct 2026: "no, <name>" to the first-name question replaces the whole typed name — both apps (SUGGEST_ANSWER_REPLACES_TYPED_ENABLED)
 
-QA live in Ask Bubbles: "pls create a coaching form for paulyne co" → "Is this for …?" → "no, jordan testperson" gave the card "jordan testperson co". This app does the same once CORRECTED_EMPLOYEE_SLOT_ENABLED is on (off, the card falls back to the person first asked about). With this new flag (default off) the answer replaces the whole typed name: the first name and a following surname piece of the people asked about. Same change in Ask Bubbles.
+QA live in Ask Bubbles: "pls create a coaching form for quinn co" → "Is this for …?" → "no, jordan testperson" gave the card "jordan testperson co". This app does the same once CORRECTED_EMPLOYEE_SLOT_ENABLED is on (off, the card falls back to the person first asked about). With this new flag (default off) the answer replaces the whole typed name: the first name and a following surname piece of the people asked about. Same change in Ask Bubbles.
 
 ## 29 Oct 2026: the exit form's own words are not people — both apps (EXIT_TERMS_NOT_NAMES_ENABLED, default off)
 
