@@ -11,6 +11,8 @@ import { wantsSeparateDocument } from "@/lib/ai/second-form";
 import {
   chatLongMessageEnabled,
   draftActionsEnabled,
+  formEditHonestReplyEnabled,
+  formEditPlainWordsEnabled,
   questionNotFormEnabled,
   secondFormEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -266,7 +268,7 @@ async function postChat(request: Request) {
        * that, exactly like the correction above. See `lib/forms/chat-revision.ts`.
        */
       const separateDocument = secondFormEnabled() && wantsSeparateDocument(parsed.question);
-      const revision =
+      const askedRevision =
         !correction && !askedQuestion && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
@@ -276,6 +278,36 @@ async function postChat(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
+      /*
+       * FORM_EDIT_PLAIN_WORDS_ENABLED: "this is what i am wanting to coach on:
+       * …", "make that update", "update the draft with these details" — said
+       * for the open Coaching Form in words the revision does not read as an
+       * edit. Rewritten into one it does, and revised by the same path. See
+       * `lib/forms/form-content-turn.ts`.
+       */
+      const revision =
+        askedRevision ??
+        (formEditPlainWordsEnabled() && !correction && !policyChange && !redraft && !separateDocument && parsed.activeFormInstanceId
+          ? await (async () => {
+              const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId!);
+              if (!open || open.status !== "draft") return null;
+              const rewritten = (await import("@/lib/forms/form-content-turn")).formContentQuestion({
+                question: parsed.question,
+                history: parsed.history,
+                templateName: open.templateName,
+                employeeName: open.employeeName,
+              });
+              return rewritten
+                ? (await import("@/lib/forms/chat-revision")).reviseActiveForm({
+                    request,
+                    instanceId: parsed.activeFormInstanceId!,
+                    question: rewritten,
+                    history: parsed.history,
+                    today: parsed.context.todayIso,
+                  })
+                : null;
+            })()
+          : null);
       /*
        * AN ORDINARY ANSWER STILL KNOWS THE FORM IS THERE. Without this it was
        * told no card ever comes with an answer, and said "no form has been
@@ -324,6 +356,20 @@ async function postChat(request: Request) {
            */
           { memoryOwnerId: context.identity.subject },
         ));
+      /*
+       * FORM_EDIT_HONEST_REPLY_ENABLED: the ordinary answer, with a form open,
+       * changed nothing — so it never says it updated the form. See
+       * `honestFormReply` in `lib/forms/form-content-turn.ts`.
+       */
+      if (
+        formEditHonestReplyEnabled() &&
+        parsed.activeFormInstanceId &&
+        !draftAnswer && !correction && !policyChange && !redraft && !revision && !reopened &&
+        !answer.formUpdate
+      ) {
+        const honest = (await import("@/lib/forms/form-content-turn")).honestFormReply(answer.content, formEditPlainWordsEnabled());
+        if (honest) answer = { ...answer, content: honest };
+      }
     } catch (error) {
       /*
        * A FAILED ANSWER IS STILL A RECORDED TURN, closed as a failure. The row
