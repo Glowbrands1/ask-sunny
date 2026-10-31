@@ -14,6 +14,8 @@ import {
   MESSAGES_PER_REQUEST_MAX,
   partitionConversations,
 } from "@/lib/chat/payload";
+import { accountKey } from "@/lib/chat/account-key";
+import { localOwnerEnabled } from "@/lib/chat/local-owner";
 import { ownHistoryState, saveOwnConversation } from "@/lib/chat/store";
 
 /**
@@ -94,7 +96,8 @@ export async function GET(request: Request) {
      * undo the delete.
      */
     const state = await ownHistoryState(context.identity.subject);
-    return NextResponse.json(state);
+    // NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: the key this browser stamps the account's chats with.
+    return NextResponse.json(localOwnerEnabled() ? { ...state, account: accountKey(context.identity.subject) } : state);
   } catch (error) {
     return errorResponse(error, "GET /api/chat/conversations/import");
   }

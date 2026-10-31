@@ -93,6 +93,8 @@ export interface HistoryState {
   deleted: string[];
   /** When they last cleared everything, or null if they never have. */
   clearedAt: string | null;
+  /** The signed-in account's opaque key, for stamping local chats (NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED). */
+  account?: string;
 }
 
 /** What a browser knows before it has managed to ask. Suppresses nothing. */

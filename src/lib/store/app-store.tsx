@@ -27,6 +27,7 @@ import {
   importLocalHistory,
   type ImportSummary,
 } from "@/lib/chat/local-import";
+import { belongsToAnotherAccount, localOwnerEnabled, ownConversations, stampOwnConversations } from "@/lib/chat/local-owner";
 import { mergeConversations } from "@/lib/chat/merge";
 import {
   isSuppressed,
@@ -342,6 +343,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * machine in `lib/chat/suppression.ts`.
    */
   const [historyState, setHistoryState] = useState<HistoryState | null>(null);
+  /* NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's opaque key, once the account has answered. */
+  const accountKey = localOwnerEnabled() ? (historyState?.account ?? null) : null;
 
   /**
    * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
@@ -697,11 +700,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
            * difference between keeping a local copy for OUR rollback and
            * keeping one against somebody's own decision to delete.
            */
-          return suppressDeleted(mergeConversations(current, serverConversations), {
+          const kept = suppressDeleted(mergeConversations(current, serverConversations), {
             state,
             preExisting: new Set(liveConversations.map((entry) => entry.id)),
             appliedBoundary: alreadyApplied,
           });
+          /*
+           * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: the chats this account holds
+           * are stamped as its own; one this browser held before, that the
+           * account does not, is left as it is — who wrote it cannot be told.
+           */
+          return localOwnerEnabled() && state.account
+            ? stampOwnConversations(kept, state.account, {
+                stored: new Set(state.stored.map((entry) => entry.id)),
+                preExisting: new Set(liveConversations.map((entry) => entry.id)),
+              })
+            : kept;
         });
 
         /*
@@ -838,6 +852,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * somebody's real account cannot be undone by apologising for it.
        */
       if (!isClientConversationId(conversation.id)) continue;
+      // NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: another account's chat on this browser is never sent.
+      if (localOwnerEnabled() && belongsToAnotherAccount(conversation, historyState?.account)) continue;
       if (historicalIds.current.has(conversation.id)) continue;
       /*
        * AND NEVER ONE THE PERSON DELETED. Suppressed conversations are removed
@@ -854,7 +870,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       syncedSignatures.current.set(conversation.id, signature);
       sync.queue(conversation);
     }
-  }, [ready, conversations, suppression, sync]);
+  }, [ready, conversations, suppression, sync, historyState?.account]);
 
   useEffect(() => {
     if (!ready) return;
@@ -973,9 +989,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const addConversation = useCallback((conversation: ChatConversation) => {
-    setConversations((current) => [conversation, ...current]);
-  }, []);
+  const addConversation = useCallback(
+    (conversation: ChatConversation) => {
+      // NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: a chat started here is the signed-in account's.
+      const stamped = accountKey && !conversation.ownerKey ? { ...conversation, ownerKey: accountKey } : conversation;
+      setConversations((current) => [stamped, ...current]);
+    },
+    [accountKey],
+  );
 
   const updateConversation = useCallback(
     (id: string, patch: Partial<ChatConversation>) => {
@@ -1175,10 +1196,18 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * conversations that may already be on the account would ask people to
    * approve something nobody can describe correctly.
    */
+  /*
+   * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: the signed-in account's chats, and
+   * unstamped ones — never another account's that this browser also holds. They
+   * stay in `conversations` (and on disk) and are shown again to their own
+   * account. See `lib/chat/local-owner.ts`.
+   */
+  const visibleConversations = useMemo(() => ownConversations(conversations, accountKey), [conversations, accountKey]);
+
   const importableConversations = useMemo(() => {
     if (DEMO_MODE) return [];
-    return eligibleForImport(conversations, suppression);
-  }, [conversations, suppression]);
+    return eligibleForImport(visibleConversations, suppression);
+  }, [visibleConversations, suppression]);
 
   /**
    * THE ONLY PATH FROM THIS BROWSER'S OLD HISTORY TO THE ACCOUNT.
@@ -1283,7 +1312,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       videos,
       templates,
       forms,
-      conversations,
+      conversations: visibleConversations,
       permissionMatrix,
       addDocument,
       updateDocument,
@@ -1319,7 +1348,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       videos,
       templates,
       forms,
-      conversations,
+      visibleConversations,
       permissionMatrix,
       addDocument,
       updateDocument,

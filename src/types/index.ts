@@ -507,6 +507,11 @@ export interface ChatConversation {
   messages: ChatMessage[];
   /** Files attached to a conversation stay in context for its lifetime. */
   attachedDocumentIds: string[];
+  /**
+   * Local only (the server ignores it): the opaque key of the account that wrote it
+   * (NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED, `lib/chat/local-owner.ts`).
+   */
+  ownerKey?: string;
 }
 
 /**

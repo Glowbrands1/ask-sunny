@@ -157,6 +157,7 @@ export async function fetchHistoryState(): Promise<HistoryState> {
     stored: Array.isArray(payload.stored) ? payload.stored : [],
     deleted: Array.isArray(payload.deleted) ? payload.deleted : [],
     clearedAt: typeof payload.clearedAt === "string" ? payload.clearedAt : null,
+    ...(typeof payload.account === "string" && payload.account ? { account: payload.account } : {}),
   };
 }
 
