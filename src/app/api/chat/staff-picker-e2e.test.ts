@@ -629,6 +629,38 @@ describe('"can you create a coaching form for my whole staff?" (an account over 
   });
 });
 
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026: the whole-staff reading fired on "the whole
+ * store" / "the whole team" anywhere in a form request, and with a draft open
+ * it dropped the edit.
+ */
+describe("the whole store or team inside an account is not a whole-staff request", () => {
+  it('STAFF_PICKER: "Coaching form for Jordan, he yelled at customers in front of the whole salon" is Jordan\'s card', async () => {
+    flags(true);
+    directory();
+    state.directory = [
+      ...state.directory,
+      { id: "e-6", firstName: "Jordan", lastName: "Ives", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" },
+    ];
+    setScope(LOCATION_SCOPE);
+    const reply = await new Thread().say("Coaching form for Jordan, he yelled at customers in front of the whole salon", { templateKey: "coaching" });
+    expect(reply.content).not.toContain("Here is the staff at");
+    expect(reply.content).not.toContain("Which salon's staff should I list?");
+  });
+
+  it('STAFF_PICKER: with a draft open, "update the draft: he told the whole team he was quitting" is never the picker', async () => {
+    flags(true);
+    directory();
+    setScope(LOCATION_SCOPE);
+    const thread = new Thread();
+    const card = await thread.say("create a coaching form for Marnie Holloway", { templateKey: "coaching", employeeName: "Marnie Holloway" });
+    expect(card.formProposal?.templateKey).toBe("coaching");
+    await thread.create();
+    const reply = await thread.say("update the draft: he told the whole team he was quitting");
+    expect(reply.content).not.toContain("Here is the staff at");
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });
