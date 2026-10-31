@@ -1646,6 +1646,15 @@ export function staffPickerEnabled(): boolean {
 }
 
 /**
+ * The whole-staff list shows the salon's staff only — salon titles, not the
+ * office accounts the directory also affiliates with a salon (QA, 31 Oct 2026;
+ * same flag in both apps). See `forms/staff-picker.ts`. Off, as before.
+ */
+export function staffPickerStoreTitlesEnabled(): boolean {
+  return envFlag("STAFF_PICKER_STORE_TITLES_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).

@@ -693,6 +693,54 @@ describe("only a role that may create the form is shown the staff", () => {
   });
 });
 
+/*
+ * QA, 31 Oct 2026 (ported from the sibling app): the directory affiliates
+ * office accounts with a salon too. STAFF_PICKER_STORE_TITLES_ENABLED lists
+ * the salon's staff only. Names invented; the titles are this app's Woven
+ * titles.
+ */
+describe("STAFF_PICKER_STORE_TITLES: the salon's staff, not the office", () => {
+  const TITLES = "STAFF_PICKER_STORE_TITLES_ENABLED";
+  function officeToo() {
+    directory();
+    state.directory = [
+      { id: "s-1", firstName: "Marnie", lastName: "Holloway", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" },
+      { id: "s-2", firstName: "Remy", lastName: "Calder", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" },
+      { id: "s-3", firstName: "Juno", lastName: "Paxton", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Salon Director" },
+      { id: "s-4", firstName: "Ilsa", lastName: "Varden", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Assistant Salon Director" },
+      { id: "s-5", firstName: "Corin", lastName: "Ashby", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Franchise Support" },
+      { id: "s-6", firstName: "Delia", lastName: "Strand", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Loss Prevention" },
+      { id: "s-7", firstName: "Oren", lastName: "Fitch", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "District Manager" },
+      { id: "s-8", firstName: "Pell", lastName: "Mercer", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Regional Director" },
+      { id: "s-9", firstName: "Tamsin", lastName: "Reed", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: null },
+    ];
+  }
+  async function ask(on: boolean) {
+    flags(true);
+    if (!saved.has(TITLES)) saved.set(TITLES, process.env[TITLES]);
+    delete process.env[TITLES];
+    if (on) process.env[TITLES] = "true";
+    officeToo();
+    setScope(LOCATION_SCOPE);
+    const thread = new Thread();
+    await thread.say("Create a coaching form.", { templateKey: "coaching" });
+    return thread.say("for whole staff - associates", { templateKey: "coaching" });
+  }
+
+  it("off: every person the directory affiliates with the salon, office titles included", async () => {
+    const reply = await ask(false);
+    expect(reply.content).toContain("**Franchise Support**");
+    expect(reply.content).toContain("Pell Mercer");
+  });
+
+  it("on: Tanning Consultants and the salon's directors only; no title on file is kept", async () => {
+    const reply = await ask(true);
+    for (const name of ["Marnie Holloway", "Remy Calder", "Juno Paxton", "Ilsa Varden", "Tamsin Reed"]) expect(reply.content).toContain(name);
+    for (const name of ["Corin Ashby", "Delia Strand", "Oren Fitch", "Pell Mercer"]) expect(reply.content).not.toContain(name);
+    expect(reply.content).not.toMatch(/\*\*(?:Franchise Support|Loss Prevention|District Manager|Regional Director)\*\*/);
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });
