@@ -119,3 +119,13 @@ describe("independent review, 31 Oct 2026", () => {
     expect(honestFormReply("The attendance policy was last updated the first quarter.\n\nIt applies to every shift.", true)).toBeNull();
   });
 });
+
+describe("independent review item 12, 31 Oct 2026", () => {
+  it.each([
+    "What's the date on the form for these details?",
+    "I want to coach on the new dress code, what does the manual say?",
+    "Marnie asked me to move her shift on Saturday",
+  ])("never written into the Details: %s", (said) => {
+    expect(formContentQuestion({ ...OPEN, question: said, history: [PRINTED] })).toBeNull();
+  });
+});

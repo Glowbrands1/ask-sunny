@@ -34,8 +34,13 @@ const MAKE_THAT =
   /^(?:ok(?:ay)?[,.]?\s+|yes[,.]?\s+|please\s+)?(?:make|apply|do|save|put\s+in|add)\s+(?:that|those|the|these|this)\s+(?:update|updates|change|changes|edit|edits|details)(?:\s+(?:to|on|in(?:to)?)\s+(?:the\s+)?(?:draft|form|card))?(?:\s+please)?\s*[.!]*$|^(?:ok(?:ay)?[,.]?\s+)?go\s+ahead(?:\s+and\s+(?:add|update|apply)\s+(?:it|that|them))?\s*[.!]*$/i;
 
 /** "update the draft with these details" — any spelling of update the managers type. */
+/*
+ * Real verbs only (independent review, 31 Oct 2026): the optional letters of
+ * "u?p?d?ate" also matched "date" and "ate", so "What's the date on the form
+ * for these details?" became an edit with the previous answer.
+ */
 const WITH_THESE =
-  /\b(?:u?p?d?ate|upate|udpate|updte|update|add|put|fill)\b[^.?!]*\b(?:draft|form|card)\b[^.?!]*\b(?:these|those|that|the\s+above)\s+details\b/i;
+  /\b(?:update|upate|udpate|updte|updat|add|put|fill)\b[^.?!]*\b(?:draft|form|card)\b[^.?!]*\b(?:these|those|that|the\s+above)\s+details\b/i;
 
 const NOT_A_REQUEST: Readonly<Record<string, string>> = {
   start: "begin",
@@ -57,6 +62,18 @@ const NOT_A_REQUEST: Readonly<Record<string, string>> = {
  */
 const ASKS_SOMETHING =
   /\b(?:what|how|why|which|should|could|would|can\s+you|could\s+you|will\s+you|remind\s+me|let\s+me\s+know|tell\s+me|do\s+i|do\s+we|needs?\s+to|has\s+to|have\s+to)\b/i;
+/** A question asked after the coaching topic ("…, what does the manual say?"). */
+const ASKS_ABOUT = /\b(?:what|how|why|which)\s+(?:does|do|is|are|should|would|can|did)\b|\b(?:can|could|will)\s+you\b|\bremind\s+me\b/i;
+
+/*
+ * CONDUCT, NOT ANY SENTENCE WITH THEIR NAME (review, 31 Oct 2026): "Marnie
+ * asked me to move her shift on Saturday" is not something to coach. Written
+ * only when it reads as conduct or performance, or the manager says to note it.
+ */
+const CONDUCT =
+  /\b(?:late|tardy|absent|no[- ]?(?:call|show)|rude|yell(?:ed|ing)?|argu(?:ed|ing)|refus(?:ed|ing)|ignor(?:ed|ing)|forgot|missed|skipped|failed|didn't|did\s+not|wasn't|weren't|hadn't|left\s+(?:early|the|her|his|their|without)|clocked|walked\s+(?:out|off)|phone|curs(?:ed|ing)|swore|lied|incorrect(?:ly)?|wrong(?:ly)?|without|before|instead\s+of|marked|mis\w+)\b/i;
+const ADD_CUE = /^\s*(?:please\s+)?(?:add|note|put|include|write\s+down)\b/i;
+
 const PAST_ACCOUNT =
   /\b(?:\w{3,}ed|was|were|did|didn't|took|left|came|went|told|said|made|gave|got|forgot|brought|ran|wore|threw|broke|sent|spent|kept|hit|quit|wasn't|weren't|hadn't)\b/i;
 
@@ -141,7 +158,13 @@ export function formContentQuestion(input: {
     return content ? `${into}: ${content}` : null;
   }
 
-  if (STATED.test(question)) return `${into}: ${oneLine(question)}`;
+  /*
+   * A question after the coaching topic keeps it a question (review, 31 Oct
+   * 2026): "I want to coach on the new dress code, what does the manual say?"
+   */
+  if (STATED.test(question) && !/\?/.test(question) && !ASKS_ABOUT.test(question.replace(STATED, ""))) {
+    return `${into}: ${oneLine(question)}`;
+  }
 
   /*
    * A BEHAVIOUR OF THE PERSON ON THE FORM, SAID AS A STATEMENT: "Marnie took
@@ -156,6 +179,7 @@ export function formContentQuestion(input: {
     !QUESTION_START.test(question) &&
     !ASKS_SOMETHING.test(question) &&
     PAST_ACCOUNT.test(question) &&
+    (CONDUCT.test(question) || ADD_CUE.test(question)) &&
     question.split(/\s+/).length >= 6
   ) {
     return `${into}: ${oneLine(question)}`;

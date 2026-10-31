@@ -1278,3 +1278,7 @@ Ask Bubbles live check A6 (QA's tester, 31 Oct): after a how-to answer, "can you
 ## 31 Oct 2026: form-edit review fixes — the honest reply's own lines are never Details; questions and errands are never written; "make that update" is the whole turn (both apps)
 
 Independent review of the sibling app (items 4, 5, 7, 8; same code here). See the sibling's log line for the detail; same changes in `lib/forms/form-content-turn.ts`, same flags.
+
+## 31 Oct 2026: form-edit review item 12 — "date" is not "update"; a question after the topic stays a question; only conduct naming the employee is written (both apps)
+
+Same change as the sibling app (independent review of both apps): real verbs only for "these details"; a question after "I want to coach on …" keeps it a question; a sentence naming the employee is written only when it reads as conduct or the manager says to add/note it. The three review sentences are tested.
