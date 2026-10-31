@@ -164,16 +164,37 @@ function contentKeys(loaded: LoadedInstance): Set<string> {
   ]);
 }
 
-/** The first person's name, full and first, becomes the new person's in copied text. */
-function swapName(text: string, from: string, to: string): string {
+/*
+ * A NAME THAT IS ALSO A WORD IS NOT SWAPPED ON ITS OWN (independent review,
+ * 31 Oct 2026): the swap ran case-insensitively over every word, so a source
+ * employee called Will turned "this will not happen again" into "this <new
+ * name> not happen again". The full name is swapped wherever it appears; a
+ * first or last name alone only as a capitalised whole word, and never when it
+ * is also an ordinary word (then only the full name is swapped). Pronouns are
+ * not changed — the notice says to check them.
+ */
+const NAME_WORDS = new Set(
+  [
+    "will", "mark", "grace", "joy", "hope", "faith", "rose", "may", "june", "april", "art", "bill", "frank",
+    "sue", "pat", "chase", "dawn", "eve", "summer", "autumn", "ray", "rich", "sky", "star", "page", "ruby",
+    "amber", "ivy", "holly", "lane", "dean", "gene", "glen", "guy", "jack", "max", "miles", "penny", "robin",
+    "sandy", "wade", "drew", "hunter", "taylor", "carter", "parker", "brown", "young", "long", "white",
+    "black", "green", "gray", "grey", "king", "hall", "wood", "hill", "lee", "price", "cash", "early",
+  ],
+);
+
+export function swapName(text: string, from: string, to: string): string {
   const fromWords = from.trim().split(/\s+/).filter(Boolean);
   const toWords = to.trim().split(/\s+/).filter(Boolean);
   if (fromWords.length === 0 || toWords.length === 0) return text;
   let out = text.replace(new RegExp(`\\b${escaped(fromWords.join(" "))}\\b`, "gi"), toWords.join(" "));
-  out = out.replace(new RegExp(`\\b${escaped(fromWords[0]!)}\\b`, "gi"), toWords[0]!);
-  if (fromWords.length > 1) {
-    out = out.replace(new RegExp(`\\b${escaped(fromWords[fromWords.length - 1]!)}\\b`, "gi"), toWords[toWords.length - 1]!);
-  }
+  const alone = (word: string, replacement: string) => {
+    if (NAME_WORDS.has(word.toLowerCase())) return;
+    const capitalised = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    out = out.replace(new RegExp(`\\b${escaped(capitalised)}\\b`, "g"), replacement);
+  };
+  alone(fromWords[0]!, toWords[0]!);
+  if (fromWords.length > 1) alone(fromWords[fromWords.length - 1]!, toWords[toWords.length - 1]!);
   return out;
 }
 
@@ -228,7 +249,7 @@ function filledContentKeys(target: LoadedInstance, source: LoadedInstance): stri
 }
 
 export function copiedNotice(source: InstanceRow): string {
-  return `Copied the content of ${source.employeeName}'s ${source.templateName} onto this draft. Check it reads right for this person.`;
+  return `Copied the content of ${source.employeeName}'s ${source.templateName} onto this draft. Check it reads right for this person, pronouns included.`;
 }
 
 /** A sentence that adds to the open form is never a request to copy another one onto it. */
@@ -300,7 +321,7 @@ export async function copyIntoOpenForm(input: {
   const updated = [...new Set([...Object.keys(copied.values), ...Object.keys(copied.checked)])];
   if (updated.length === 0) return null;
   return {
-    content: `Copied ${source.instance.employeeName}'s ${source.instance.templateName} content onto ${loaded.instance.employeeName}'s draft, with the name changed. Who, where and when are this draft's own. Check the card reads right for ${loaded.instance.employeeName}, then save or finalize.`,
+    content: `Copied ${source.instance.employeeName}'s ${source.instance.templateName} content onto ${loaded.instance.employeeName}'s draft, with the name changed. Who, where and when are this draft's own. Check the card reads right for ${loaded.instance.employeeName} (pronouns are not changed), then save or finalize.`,
     citations: [],
     coverage: "not_applicable",
     recommendedVideoIds: [],
