@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { JOIN } from "@/lib/forms/bounded-context";
 import { parseFormDocument } from "@/lib/forms/document";
 import {
   applyAssistantDraft,
@@ -41,6 +42,16 @@ const SAME =
 
 export function asksForSameForm(text: string): boolean {
   return SAME.test(text);
+}
+
+/**
+ * The card's own request: the last manager turn of the notes the Create step
+ * sends (`boundManagerTurns` joins them with a blank line). An earlier "do the
+ * same" in the chat belongs to another card.
+ */
+export function requestTurn(notes: string): string {
+  const turns = notes.split(JOIN).map((turn) => turn.trim()).filter(Boolean);
+  return turns.at(-1) ?? "";
 }
 
 function escaped(word: string): string {

@@ -644,6 +644,34 @@ describe('"can you create the same draft that we did with marnie holloway by cha
   });
 });
 
+/*
+ * LIVE CHECK B2, 31 Oct 2026 (this app's production): in one chat, "Do the
+ * same coaching form for remy calder" (card, not created), then "create a
+ * coaching form for remy calder" -> Create. That second card cites the earlier
+ * turn too, so its notes held "the same" and Marnie's content was copied.
+ */
+describe('"create a coaching form for remy calder" after an earlier "Do the same coaching form for remy calder"', () => {
+  it("SAME_FORM_COPY: a plain request copies nothing — only the card's own request can ask for a copy", async () => {
+    // Remy's draft, created with the flag off so nothing is copied at creation.
+    flags(false);
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    const remy = await remyForm(thread);
+    expect(detailsOf(remy)).not.toContain("approved cleaner");
+    flags(true);
+    state.draft = { values: { coaching_details: "Observed:\nCoaching for Remy Calder." } };
+    // The Create notes the live card sent: the earlier "Do the same …" turn, then this card's own request.
+    await call(`/api/forms/instances/${remy}/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ notes: "Do the same coaching form for remy calder\n\ncreate a coaching form for remy calder" }),
+    });
+    expect(detailsOf(remy)).not.toContain("approved cleaner");
+    expect(detailsOf(remy)).toContain("Coaching for Remy Calder.");
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });
