@@ -1665,6 +1665,15 @@ export function staffPickerStoreTitlesEnabled(): boolean {
 }
 
 /**
+ * A card cites this person's own request turns, not the person before them
+ * (QA, live check B2, 31 Oct 2026; same flag in both apps; protected-file edit
+ * approved by Pau in writing). See `forms/this-persons-turns.ts`. Off, as before.
+ */
+export function thisPersonsTurnsEnabled(): boolean {
+  return envFlag("THIS_PERSONS_TURNS_ENABLED");
+}
+
+/**
  * With a draft open, a turn that is only "for whole staff" is the staff list,
  * not another card for the person the conversation last named (QA, live, 31 Oct
  * 2026; same flag in both apps). See `forms/staff-picker.ts`. Off, as before.

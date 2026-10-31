@@ -317,6 +317,7 @@ const NEW_FLAGS = [
   "STAFF_PICKER_ENABLED",
   "STAFF_PICKER_STORE_TITLES_ENABLED",
   "STAFF_PICKER_BARE_ANSWER_ENABLED",
+  "THIS_PERSONS_TURNS_ENABLED",
   "CHAT_IMPORT_OWN_ONLY_ENABLED",
   "CHAT_IMPORT_PROVEN_OWN_ENABLED",
   "UNREAD_DAY_NOT_INCIDENT_DATE_ENABLED",
@@ -441,6 +442,15 @@ const PROTECTED = [
  * and, before `const changed`, a value equal to the field's current text is
  * dropped from `byName.values`. Behind REVISION_SAME_VALUE_ENABLED, default
  * off; off, nothing is dropped.
+ *
+ * The user (Pau) approved in writing, via QA on 31 Oct 2026 ("Approve both"),
+ * in src/lib/forms/proposal.ts, both apps: `thisPersonsTurnsEnabled` added to
+ * the chat-quality-flags import, the import `import {
+ * turnsFromThisPersonsRequest } from "./this-persons-turns";`, and in
+ * buildProposal `sourceMessageIds: thisPersonsTurnsEnabled() ?
+ * turnsFromThisPersonsRequest(input.context, employeeName, { names:
+ * extractEmployeeNames, same: samePerson }) : input.context.ids`. Behind
+ * THIS_PERSONS_TURNS_ENABLED, default off; off, every retained turn as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",

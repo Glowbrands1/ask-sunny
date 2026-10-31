@@ -871,3 +871,44 @@ describe('"can you create the same draft that we did with marnie holloway by cha
     expect(reply.formUpdate).toBeUndefined();
   });
 });
+
+/*
+ * LIVE CHECK B2, 31 Oct 2026, the card itself: "create a coaching form for
+ * Marnie Holloway", Marnie's coaching details, then "create a coaching form
+ * for remy calder" — Remy's card cited every one of those turns, so Create
+ * drafted Remy's form from notes holding Marnie's request and details.
+ * THIS_PERSONS_TURNS_ENABLED: the card cites Remy's own request (protected-file
+ * edit to `forms/proposal.ts`, approved by Pau in writing, 31 Oct 2026).
+ */
+describe('"create a coaching form for remy calder" after Marnie\'s request and details', () => {
+  const TURNS = "THIS_PERSONS_TURNS_ENABLED";
+  async function card(on: boolean) {
+    flags(true);
+    if (!saved.has(TURNS)) saved.set(TURNS, process.env[TURNS]);
+    delete process.env[TURNS];
+    if (on) process.env[TURNS] = "true";
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    state.revision = { values: { coaching_details: DETAILS } };
+    await thread.say("this is what i am wanting to coach on: getting rooms ready between guests, Marnie takes the next guest back before the room is reset");
+    const marnieTurns = thread.messages.filter((message) => message.role === "user").map((message) => message.id);
+    thread.instanceId = null;
+    const reply = await thread.say("create a coaching form for remy calder", { templateKey: "coaching", employeeName: "Remy Calder" });
+    const remyTurn = thread.messages.filter((message) => message.role === "user").at(-1)!.id;
+    return { reply, marnieTurns, remyTurn };
+  }
+
+  it("off (production today): Remy's card cites Marnie's request and details", async () => {
+    const { reply, marnieTurns } = await card(false);
+    expect(reply.formProposal?.employeeName ?? "").toMatch(/remy calder/i);
+    expect(reply.formProposal?.sourceMessageIds).toEqual(expect.arrayContaining(marnieTurns));
+  });
+
+  it("THIS_PERSONS_TURNS: Remy's card cites only Remy's own request", async () => {
+    const { reply, marnieTurns, remyTurn } = await card(true);
+    expect(reply.formProposal?.employeeName ?? "").toMatch(/remy calder/i);
+    expect(reply.formProposal?.sourceMessageIds).toEqual([remyTurn]);
+    for (const id of marnieTurns) expect(reply.formProposal?.sourceMessageIds).not.toContain(id);
+  });
+});
