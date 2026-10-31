@@ -1586,6 +1586,16 @@ export function chatHistoryTolerantEnabled(): boolean {
 }
 
 /**
+ * An import of a chat this account does not hold yet must prove it is its
+ * own: every answered turn recorded for this account; a chat with no turn on
+ * record is declined (independent review, 31 Oct 2026; same flag in both
+ * apps). The activity read is batched. See `chat/store.ts`. Off, as before.
+ */
+export function chatImportProvenOwnEnabled(): boolean {
+  return envFlag("CHAT_IMPORT_PROVEN_OWN_ENABLED");
+}
+
+/**
  * With a Coaching Form draft open, details given in plain words, "make that
  * update", and "update the draft with these details" (the previous answer's)
  * are written into the draft by the open-form revision (ported from Ask
