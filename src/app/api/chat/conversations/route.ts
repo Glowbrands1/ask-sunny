@@ -116,7 +116,7 @@ export async function POST(request: Request) {
      * that is not yours gets — from this side both mean "that is not yours to
      * write", and distinguishing them would say which ids were once real.
      */
-    if (outcome === "suppressed") {
+    if (outcome === "suppressed" || outcome === "another_account") {
       throw new AuthError("forbidden", CONVERSATION_REFUSED);
     }
 

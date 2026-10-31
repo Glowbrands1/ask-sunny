@@ -1575,6 +1575,16 @@ export function staffPickerEnabled(): boolean {
 }
 
 /**
+ * A chat another account wrote is never saved to this one: in the sibling app
+ * an Assistant Manager's Import on a Location Manager's browser copied the
+ * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).
+ * See `chat/store.ts` `saveOwnConversation`. Off, as before.
+ */
+export function chatImportOwnOnlyEnabled(): boolean {
+  return envFlag("CHAT_IMPORT_OWN_ONLY_ENABLED");
+}
+
+/**
  * "She was late last week" with no date read and the form left at today: the
  * Corrective Action draft is told today is not the incident's date, today is
  * not treated as a date the manager gave, and the manager is told to set the
