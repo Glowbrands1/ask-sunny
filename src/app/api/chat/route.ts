@@ -197,12 +197,14 @@ async function postChat(request: Request) {
        * one person at a time. No model call. See `lib/forms/staff-picker.ts`.
        */
       const staffPick =
-        staffPickerEnabled() && !draftAction
+        // Never with a draft open: there a turn is about that draft (independent review, 31 Oct 2026).
+        staffPickerEnabled() && !draftAction && !asked.activeFormInstanceId
           ? await (await import("@/lib/forms/staff-picker")).staffPickerTurn({
               question: asked.question,
               history: asked.history,
               continuing: Boolean(asked.continueProposalTemplateKey),
               scope: context.identity.scope,
+              role: context.identity.role,
             })
           : null;
       const draftAnswer = (draftAction && "answer" in draftAction ? draftAction.answer : null) ?? staffPick;

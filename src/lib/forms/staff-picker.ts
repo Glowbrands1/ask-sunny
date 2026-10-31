@@ -1,5 +1,5 @@
 import type { AskResponse } from "@/lib/ai/types";
-import type { AccessScope, ChatMessage } from "@/types";
+import type { AccessScope, ChatMessage, Permission, Role } from "@/types";
 
 /**
  * ============================================================================
@@ -23,21 +23,35 @@ import type { AccessScope, ChatMessage } from "@/types";
  * (SAME_FORM_COPY_ENABLED). No model call; one directory read.
  */
 
-const WHOLE =
-  /\b(?:(?:my|our|the|all(?:\s+of)?(?:\s+(?:my|our|the))?|whole|entire|every)\s+(?:whole\s+|entire\s+)?(?:staff|team(?:\s+members)?|crew|associates|employees|salon|location)\b(?:\s*[-–—]\s*associates)?|\beveryone\b|\beverybody\b|\ball\s+(?:team\s+members|associates|employees|staff)\b)/i;
-const SCOPE_WORD = /\b(?:whole|entire|all|every|everyone|everybody)\b/i;
-const FORM_WORD = /\b(?:forms?|coaching|coach|corrective\s+action|ca|write[- ]?ups?|drafts?|cards?)\b/i;
+/*
+ * THE WHOLE STAFF IS WHO THE FORM IS FOR — NOT A PHRASE ANYWHERE IN THE TURN
+ * (independent review, 31 Oct 2026). "Coaching form for Jordan, he yelled at
+ * customers in front of the whole store" listed the staff instead of making
+ * Jordan's card. So: "a form for the whole / entire / my whole staff", "for
+ * everyone", "for all associates" — the "for" says the staff is the subject —
+ * or, answering the intake's "Who is this form for?", a short turn that is
+ * only that.
+ */
+const GROUP = String.raw`(?:staff|team(?:\s+members)?|crew|associates|employees)`;
+const ALL = String.raw`(?:whole|entire|all(?:\s+(?:of\s+)?(?:my|our|the))?|every)`;
+const FOR_WHOLE = new RegExp(
+  String.raw`\bfor\s+(?:the\s+|my\s+|our\s+)?${ALL}\s+${GROUP}\b|\bfor\s+(?:everyone|everybody|all\s+(?:my\s+|our\s+)?${GROUP})\b`,
+  "i",
+);
+const ANSWER = new RegExp(
+  String.raw`^\s*(?:it'?s\s+)?(?:for\s+)?(?:the\s+|my\s+|our\s+)?(?:${ALL}\s+${GROUP}|everyone|everybody|all\s+of\s+them)\b[\s\w-]{0,24}[.!]?\s*$`,
+  "i",
+);
+const FORM_WORD = /\b(?:forms?|coaching|corrective\s+action|ca|write[- ]?ups?|drafts?|cards?)\b/i;
 
 /** The marker on the "which location" question, read back from the next turn's history. */
 const ASKED_LOCATION = "Which salon's staff should I list?";
 const LISTED = "Who is this form for?";
 
-/** "whole staff", "my whole team", "all associates", "everyone" — said for a form. */
-export function asksForWholeStaff(text: string): boolean {
-  const match = WHOLE.exec(text);
-  if (!match) return false;
-  // "my staff" alone is a person's team, not all of it: "whole", "all", "every" or "everyone" says all.
-  return SCOPE_WORD.test(match[0]);
+/** "a coaching form for my whole staff", "for everyone" — the staff as the form's subject. */
+export function asksForWholeStaff(text: string, continuing = false): boolean {
+  if (FOR_WHOLE.test(text) && FORM_WORD.test(text)) return true;
+  return continuing && ANSWER.test(text);
 }
 
 function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content">[]): string {
@@ -116,8 +130,7 @@ export function staffPickerReply(input: {
 }): string | null {
   const previous = lastAssistant(input.history);
   const answeringWhich = previous.includes(ASKED_LOCATION);
-  const wholeStaff =
-    asksForWholeStaff(input.question) && (FORM_WORD.test(input.question) || input.continuing);
+  const wholeStaff = asksForWholeStaff(input.question, input.continuing);
   if (!wholeStaff && !answeringWhich) return null;
 
   const inScope = new Map(input.locations.map((location) => [location.id, location]));
@@ -150,9 +163,24 @@ export async function staffPickerTurn(input: {
   history: readonly Pick<ChatMessage, "role" | "content">[];
   continuing: boolean;
   scope: AccessScope | null;
+  /** The asker's role: the list is only for somebody who may create the form. */
+  role: Role;
 }): Promise<AskResponse | null> {
   const answeringWhich = lastAssistant(input.history).includes(ASKED_LOCATION);
-  if (!asksForWholeStaff(input.question) && !answeringWhich) return null;
+  if (!asksForWholeStaff(input.question, input.continuing) && !answeringWhich) return null;
+  /*
+   * ONLY FOR SOMEBODY WHO MAY CREATE THE FORM (independent review, 31 Oct 2026):
+   * every role may ask questions, so an employee asking for "a coaching form
+   * for my whole staff" got their location's staff by name and title. The same
+   * create permission the form needs — Coaching Form or Corrective Action Form,
+   * either for a form not named — or nothing is listed and the turn is answered
+   * as before.
+   */
+  const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+  const form = formName(`${input.question} ${lastAssistant(input.history)}`);
+  const needs: Permission[] =
+    form === "Coaching Form" ? ["create_coaching_form"] : form === "Corrective Action Form" ? ["create_corrective_action"] : ["create_coaching_form", "create_corrective_action"];
+  if (!needs.some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, permission))) return null;
   const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, roster] = await Promise.all([
     import("@/lib/forms/location-scope"),
     import("@/data/salons"),
