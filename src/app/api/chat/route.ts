@@ -295,6 +295,7 @@ async function postChat(request: Request) {
               request,
               instanceId: parsed.activeFormInstanceId,
               question: parsed.question,
+              history: parsed.history,
             })
           : null;
       const separateDocument = !sameCopy && secondFormEnabled() && wantsSeparateDocument(parsed.question);
