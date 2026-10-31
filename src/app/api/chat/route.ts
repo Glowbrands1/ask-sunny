@@ -12,6 +12,7 @@ import {
   chatLongMessageEnabled,
   draftActionsEnabled,
   questionNotFormEnabled,
+  sameFormCopyEnabled,
   secondFormEnabled,
 } from "@/lib/config/chat-quality-flags";
 import {
@@ -265,9 +266,24 @@ async function postChat(request: Request) {
        * than a new form drafted from scratch. Null for anything that is not
        * that, exactly like the correction above. See `lib/forms/chat-revision.ts`.
        */
-      const separateDocument = secondFormEnabled() && wantsSeparateDocument(parsed.question);
+      /*
+       * SAME_FORM_COPY_ENABLED: "the same draft that we did with <her>", with
+       * another employee's draft open — that form's content, copied into this
+       * one. Null unless the turn asks for the same form and names whose. See
+       * `lib/forms/same-form-copy.ts`.
+       */
+      const sameFormCopy =
+        sameFormCopyEnabled() && !correction && !policyChange && !redraft && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/same-form-copy")).copyIntoOpenForm({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+            })
+          : null;
+      const separateDocument = !sameFormCopy && secondFormEnabled() && wantsSeparateDocument(parsed.question);
       const revision =
-        !correction && !askedQuestion && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
+        sameFormCopy ??
+        (!correction && !askedQuestion && !policyChange && !redraft && parsed.activeFormInstanceId && !separateDocument
           ? await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -275,7 +291,7 @@ async function postChat(request: Request) {
               history: parsed.history,
               today: parsed.context.todayIso,
             })
-          : null;
+          : null);
       /*
        * AN ORDINARY ANSWER STILL KNOWS THE FORM IS THERE. Without this it was
        * told no card ever comes with an answer, and said "no form has been

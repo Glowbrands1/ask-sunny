@@ -1564,6 +1564,17 @@ export function otherWriteInNotAQuestionEnabled(): boolean {
 }
 
 /**
+ * "Do the same coaching form for <another employee>": the new draft carries
+ * the content of the manager's own earlier form of that template, name
+ * changed; and "the same draft that we did with <her>" copies it into the open
+ * draft (QA, 30 Oct 2026, the sibling app; same flag in both apps). See
+ * `forms/same-form-copy.ts`. Off, as before.
+ */
+export function sameFormCopyEnabled(): boolean {
+  return envFlag("SAME_FORM_COPY_ENABLED");
+}
+
+/**
  * "She was late last week" with no date read and the form left at today: the
  * Corrective Action draft is told today is not the incident's date, today is
  * not treated as a date the manager gave, and the manager is told to set the
