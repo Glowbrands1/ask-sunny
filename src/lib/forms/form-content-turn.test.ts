@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formContentQuestion, honestFormReply } from "./form-content-turn";
+import { formContentQuestion, formContentRevision, honestFormReply } from "./form-content-turn";
 
 /** Ported from Ask Bubbles (QA, 30 Oct 2026): the managers' own request wording with a Coaching Form draft open. Names are invented. */
 const OPEN = { templateName: "Coaching Form", employeeName: "Marnie Holloway" };
@@ -61,5 +61,36 @@ describe("honestFormReply", () => {
 
   it("an answer that claims nothing is left as it is", () => {
     expect(honestFormReply("Press Finalize on the card when it is ready.", true)).toBeNull();
+  });
+});
+
+describe("formContentRevision (ported from the Ask Bubbles live check, 31 Oct 2026)", () => {
+  const guide = {
+    id: "a1",
+    role: "assistant" as const,
+    content: "Spray the acrylic with the Approved Cleaner. Use Bed Status to mark it down. Submit a Help Desk request.",
+  };
+
+  it('"these details" whose words read as other people: the answer goes as the last turn, the request names nobody', () => {
+    const turn = formContentRevision({ ...OPEN, question: "can you upate the draft with these details of coaching?", history: [guide] })!;
+    expect(turn.question).toBe("Add the details in my last message to the Details of Coaching.");
+    expect(turn.history.at(-1)).toMatchObject({ role: "user", content: guide.content });
+  });
+
+  it("an answer naming nobody stays in the request, as before", () => {
+    const plain = { id: "a1", role: "assistant" as const, content: "Wipe the bed, replace the towel and check the room before the next guest." };
+    const turn = formContentRevision({ ...OPEN, question: "can you upate the draft with these details of coaching?", history: [plain] })!;
+    expect(turn.question).toBe("Add this to the Details of Coaching: Wipe the bed, replace the towel and check the room before the next guest.");
+    expect(turn.history).toEqual([plain]);
+  });
+
+  it("the manager's own words naming somebody else keep the revision's rule", () => {
+    const said = "this is what i am wanting to coach on: Jordan Blake showed the team how to clean the beds";
+    expect(formContentRevision({ ...OPEN, question: said, history: [] })!.question).toBe(`Add this to the Details of Coaching: ${said}`);
+  });
+
+  it('"make that update" after a reply that offered no update is not a change', () => {
+    const meta = { role: "assistant" as const, content: "It should update automatically — no copy-and-paste needed." };
+    expect(formContentQuestion({ ...OPEN, question: "make that update", history: [meta] })).toBeNull();
   });
 });

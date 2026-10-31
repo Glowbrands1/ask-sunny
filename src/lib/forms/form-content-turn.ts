@@ -1,3 +1,4 @@
+import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
 
 /**
@@ -47,6 +48,8 @@ const QUESTION_START = /^(?:who|what|when|where|why|how|which|is|are|was|were|do
 const CLAIM_LINE =
   /^(?:here(?:'s| is) (?:the )?(?:update|updated)\b|updated the\b|got it\b.*\bupdated\b|i(?:'ve| have) (?:updated|added|applied)\b)/i;
 
+const PRINTED_DETAILS = /\*\*details of coaching:?\*\*/i;
+
 /** The Details block a reply printed, or the reply itself without its claim line. */
 function contentOf(answer: string): string {
   const block = /\*\*details of coaching:?\*\*:?\s*([\s\S]+)/i.exec(answer)?.[1];
@@ -91,6 +94,15 @@ export function formContentQuestion(input: {
 
   if (MAKE_THAT.test(question) || WITH_THESE.test(question)) {
     const earlier = previousAnswer(input.history);
+    /*
+     * "MAKE THAT UPDATE" NEEDS AN UPDATE TO MAKE. In the sibling app's live check (31 Oct 2026) it followed
+     * "It should update automatically — no copy-and-paste needed…", which is
+     * not coaching content. So it takes the previous reply only when that reply
+     * printed the Details or offered an update; "these details" takes the
+     * previous answer whatever it was about.
+     */
+    const offered = earlier ? PRINTED_DETAILS.test(earlier) || earlier.split("\n").some((line) => CLAIM_LINE.test(line.trim().replace(/^[*_]+/, ""))) : false;
+    if (!WITH_THESE.test(question) && !offered) return null;
     const content = earlier ? oneLine(contentOf(earlier)) : "";
     return content ? `${into}: ${content}` : null;
   }
@@ -113,6 +125,55 @@ export function formContentQuestion(input: {
     return `${into}: ${oneLine(question)}`;
   }
   return null;
+}
+
+type Turn = Pick<ChatMessage, "id" | "role" | "content" | "error">;
+
+/**
+ * ============================================================================
+ * "THESE DETAILS" ARE THE BOT'S OWN WORDS — NOT SOMEBODY ELSE'S NAME
+ * ============================================================================
+ *
+ * Ported from Ask Bubbles (live check, 31 Oct 2026; same code here): after a
+ * how-to answer, "can you upate the draft with these details of coaching?"
+ * wrote nothing. The turn was rewritten, but the open-form revision drops any
+ * request that names a person other than the form's employee — and the
+ * answer's capitalised terms (a product, a system, "that's a separate process
+ * — <step>") read as people. The ordinary answer then ran instead.
+ *
+ * So when the content is the bot's previous answer and it reads as naming
+ * somebody else, it goes to the revision as the manager's latest turn (which
+ * is what the revision drafts from) and the request itself names nobody. The
+ * manager's own words are never handled this way: "add that Jordan was late"
+ * on Marnie's form is still a request about somebody else.
+ */
+const FROM_ANSWER = "Add the details in my last message to the Details of Coaching.";
+
+export function formContentRevision(input: {
+  question: string;
+  history: readonly Turn[];
+  templateName: string;
+  employeeName: string;
+}): { question: string; history: Turn[] } | null {
+  const rewritten = formContentQuestion(input);
+  if (!rewritten) return null;
+  const history = [...input.history];
+  const fromAnswer = MAKE_THAT.test(input.question.trim()) || WITH_THESE.test(input.question.trim());
+  const somebodyElse = extractEmployeeNames(rewritten).some((name) => !samePerson(name, input.employeeName));
+  if (!fromAnswer || !somebodyElse) return { question: rewritten, history };
+  const content = rewritten.slice(rewritten.indexOf(":") + 1).trim();
+  return { question: FROM_ANSWER, history: [...history, { id: "form-content-answer", role: "user", content }] };
+}
+
+/**
+ * The reply when a turn was read as content for the form and the revision
+ * still wrote nothing: said plainly, never the unrelated ordinary answer.
+ */
+export function notWrittenReply(templateName: string, employeeName: string): string {
+  return [
+    `**Nothing on the form has changed yet.** I couldn't add that to the Details of Coaching on the ${templateName} for ${employeeName}.`,
+    `Tell me in your own words what to add — for example "add that the room is checked before every guest" — or edit the card and press **Save changes**.`,
+  ].join("\n\n");
 }
 
 /**
