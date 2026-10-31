@@ -44,6 +44,8 @@ const ORIGINAL = { ...process.env };
 const importedBatches: ChatConversation[][] = [];
 let localHistory: ChatConversation[] = [];
 let storedOnAccount: { id: string; messages: number }[] = [];
+/** The server declines every chat as another account's (CHAT_IMPORT_OWN_ONLY). */
+let declineAll = false;
 
 vi.mock("@/lib/chat/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/chat/client")>(
@@ -62,6 +64,9 @@ vi.mock("@/lib/chat/client", async () => {
     clearOwnConversations: async () => {},
     importConversationBatch: async (conversations: ChatConversation[]) => {
       importedBatches.push(structuredClone(conversations));
+      if (declineAll) {
+        return { imported: [], declined: conversations.map((entry) => ({ id: entry.id, reason: "another_account" as const })) };
+      }
       return { imported: conversations.map((entry) => entry.id), declined: [] };
     },
   };
@@ -327,5 +332,31 @@ describe("the reported case: a District Manager with History and no prompt", () 
 
     await openHistory(user);
     expect(historyImportButton()).toBeTruthy();
+  });
+});
+
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026, item 14: Import on a chat another account
+ * wrote (declined by CHAT_IMPORT_OWN_ONLY) showed no message, and the count
+ * stayed. Now it says so; nothing on the device is deleted.
+ */
+describe("Import of a chat that belongs to another account", () => {
+  it("says the chat belongs to another account and was not imported", async () => {
+    declineAll = true;
+    try {
+      const user = userEvent.setup();
+      await renderChatAs("assistant_salon_director");
+      await openHistory(user);
+      await user.click(historyImportButton());
+      const dialog = await screen.findByRole("dialog", { name: /import conversations from this device/i });
+      await user.click(within(dialog).getByRole("button", { name: /^import$/i }));
+      await waitFor(() => expect(importedBatches.length).toBeGreaterThan(0));
+      expect(
+        await within(dialog).findByText(/1 chat on this device belongs to another account and was not imported\. It stays on this device\./i),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText(/is now on your account/i)).toBeNull();
+    } finally {
+      declineAll = false;
+    }
   });
 });

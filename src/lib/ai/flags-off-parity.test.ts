@@ -755,6 +755,10 @@ describe("new flags default off and wrappers are inert", () => {
           // invitation Continue page and its form. Off, the page never shows Continue.
           ":(exclude)src/app/auth/invite-continue/page.tsx",
           ":(exclude)src/features/auth/invite-continue-form.tsx",
+          // Import's "belongs to another account" line (QA, 31 Oct 2026, both apps): shown only
+          // when the server declines a chat as another account's, i.e. only with
+          // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
+          ":(exclude)src/features/chat/import-local-history.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
         ]),
       ).toBe("");
