@@ -159,4 +159,6 @@ export type IneligibleReason =
    * deleted" is a sentence somebody can act on, and a shorter history than they
    * were shown with no explanation is not.
    */
-  | "deleted";
+  | "deleted"
+  /** Another account wrote it, on a browser they shared (CHAT_IMPORT_OWN_ONLY_ENABLED). */
+  | "another_account";

@@ -171,6 +171,10 @@ export async function POST(request: Request) {
         declined.push({ id: payload.clientConversationId, reason: "deleted" });
         continue;
       }
+      if (outcome === "another_account") {
+        declined.push({ id: payload.clientConversationId, reason: "another_account" });
+        continue;
+      }
 
       imported.push(payload.clientConversationId);
     }
