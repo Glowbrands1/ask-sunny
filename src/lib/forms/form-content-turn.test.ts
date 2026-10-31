@@ -94,3 +94,38 @@ describe("formContentRevision (ported from the Ask Bubbles live check, 31 Oct 20
     expect(formContentQuestion({ ...OPEN, question: "make that update", history: [meta] })).toBeNull();
   });
 });
+
+describe("independent review, 31 Oct 2026", () => {
+  it.each([
+    "Marnie was late 3 times this week what should I put for the policy",
+    "Marnie needs to sign this before Friday, remind me",
+  ])("a question or an errand about the employee is not written: %s", (said) => {
+    expect(formContentQuestion({ ...OPEN, question: said, history: [] })).toBeNull();
+  });
+
+  it('"Add the details that she clocked out early on 10/20" gives its own details, never the previous answer', () => {
+    const turn = formContentQuestion({ ...OPEN, question: "Add the details that she clocked out early on 10/20", history: [PRINTED] });
+    expect(turn ?? "").not.toContain("rooms are checked before each guest");
+    expect(turn ?? "").not.toContain("rooms are checked before each guest");
+  });
+
+  it("the honest reply's own lines are never content for \"make that update\"", () => {
+    const honest = honestFormReply("Here's the updated **Coaching Form** for Marnie Holloway.\n\n**Details of Coaching:** Observed: late twice.", true)!;
+    const turn = formContentQuestion({ ...OPEN, question: "make that update", history: [{ role: "assistant", content: honest }] })!;
+    expect(turn).toBe("Add this to the Details of Coaching: Observed: late twice.");
+  });
+
+  it('a policy answer\'s "last updated the first quarter" is not a claim about the form', () => {
+    expect(honestFormReply("The attendance policy was last updated the first quarter.\n\nIt applies to every shift.", true)).toBeNull();
+  });
+});
+
+describe("independent review item 12, 31 Oct 2026", () => {
+  it.each([
+    "What's the date on the form for these details?",
+    "I want to coach on the new dress code, what does the manual say?",
+    "Marnie asked me to move her shift on Saturday",
+  ])("never written into the Details: %s", (said) => {
+    expect(formContentQuestion({ ...OPEN, question: said, history: [PRINTED] })).toBeNull();
+  });
+});
