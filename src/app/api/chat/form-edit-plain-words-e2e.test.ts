@@ -758,6 +758,38 @@ describe("a turn read as content for the form that the revision still refuses", 
   });
 });
 
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026, item 4: the honest reply ends "Say make
+ * that update and I'll write it into the draft, or edit the card and press
+ * Save changes" — and after "make that update" that sentence was written into
+ * the Details. Both flags on, the replies the route itself produced.
+ */
+describe("both flags on: the honest reply, then \"make that update\"", () => {
+  it("writes the Details the reply kept, never the reply's own instruction", async () => {
+    const { thread, details } = await openDraft({ plain: true, honest: true });
+    said.answer = CLAIMED;
+    const honest = await thread.say(SEEN);
+    expect(honest.content).toMatch(/^\*\*Nothing on the form has changed yet\.\*\*/);
+    expect(honest.content).toContain("make that update");
+    const reply = await thread.say("make that update");
+    expect(reply.formUpdate?.updated).toContain("coaching_details");
+    expect(details()).toContain("Rooms are cleaned, restocked and checked");
+    const asked = revisionAsked.at(-1) ?? "";
+    expect(asked).toContain("use a fresh towel, empty the trash");
+    expect(asked).not.toMatch(/press \*\*save changes\*\*|I'll write it into the draft|Nothing on the form has changed/i);
+  });
+});
+
+describe('independent review item 5: "Marnie was late 3 times this week what should I put for the policy"', () => {
+  it("FORM_EDIT_PLAIN_WORDS: answered, never written into Details", async () => {
+    const { thread, details } = await openDraft({ plain: true, honest: true });
+    const reply = await thread.say("Marnie was late 3 times this week what should I put for the policy");
+    expect(reply.formUpdate).toBeUndefined();
+    expect(state.revisionCalls).toBe(0);
+    expect(details()).not.toContain("Rooms are cleaned, restocked and checked");
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });

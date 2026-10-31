@@ -1274,3 +1274,7 @@ Ask Bubbles QA, 30 Oct 2026 (production there): "for whole staff - associates" w
 ## 31 Oct 2026: "can you upate the draft with these details of coaching?" after a how-to answer writes it; a turn that writes nothing says so — ported from Ask Bubbles (FORM_EDIT_PLAIN_WORDS / FORM_EDIT_HONEST_REPLY follow-up)
 
 Ask Bubbles live check A6 (QA's tester, 31 Oct): after a how-to answer, "can you upate the draft with these details of coaching?" wrote nothing — the answer's capitalised terms read as other people to the protected open-form revision, which drops a request about somebody else, and the ordinary answer ran. Same here: this app's name reader takes "Approved Cleaner", "Front Desk", "Help Desk", "Use Bed Status" and "that's a separate process — equipment repair" as people (tested). Same fix, same flags (`formContentRevision`): the bot's previous answer goes to the revision as the manager's latest turn when it reads as naming somebody else; a rewritten turn that still writes nothing answers "Nothing on the form has changed yet…"; "make that update" takes the previous reply only when it printed the Details or offered an update. No protected file touched.
+
+## 31 Oct 2026: form-edit review fixes — the honest reply's own lines are never Details; questions and errands are never written; "make that update" is the whole turn (both apps)
+
+Independent review of the sibling app (items 4, 5, 7, 8; same code here). See the sibling's log line for the detail; same changes in `lib/forms/form-content-turn.ts`, same flags.
