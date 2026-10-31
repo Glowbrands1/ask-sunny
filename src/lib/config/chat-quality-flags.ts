@@ -1584,6 +1584,16 @@ export function formEditHonestReplyEnabled(): boolean {
 }
 
 /**
+ * "Do the same coaching form for <another>": the new person's draft gets the
+ * content of the manager's own earlier form of that template, name swapped
+ * (ported from Ask Bubbles, QA 30 Oct 2026; same flag in both apps). See
+ * `forms/same-form-copy.ts`. Off, as before.
+ */
+export function sameFormCopyEnabled(): boolean {
+  return envFlag("SAME_FORM_COPY_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).
