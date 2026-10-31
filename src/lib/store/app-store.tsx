@@ -354,6 +354,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    */
   const heldBack = useRef<ChatConversation[]>([]);
   const ownerKey = useRef<string | null>(null);
+  /** Legacy unstamped chats this account does not hold: shown, never stamped as its own. */
+  const unclaimed = useRef<Set<string>>(new Set());
 
   /**
    * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
@@ -725,7 +727,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         if (LOCAL_OWNER) {
           const split = partitionByOwner(heldBack.current, key, new Set(state.stored.map((entry) => entry.id)));
           heldBack.current = split.others;
-          released = split.mine;
+          released = [...split.mine, ...split.unclaimed];
+          unclaimed.current = new Set(split.unclaimed.map((entry) => entry.id));
           ownerKey.current = key;
         }
         setConversations((current) => {
@@ -753,7 +756,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             preExisting: new Set(liveConversations.map((entry) => entry.id)),
             appliedBoundary: alreadyApplied,
           });
-          return LOCAL_OWNER ? stampOwner(merged, key) : merged;
+          return LOCAL_OWNER ? stampOwner(merged, key, unclaimed.current) : merged;
         });
 
         /*
@@ -849,7 +852,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
      * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's chats carry its
      * key, and the held-back chats are written back untouched beside them.
      */
-    const owned = LOCAL_OWNER ? [...stampOwner(conversations, ownerKey.current), ...heldBack.current] : conversations;
+    // Every chat this account starts is stamped at its first write; a legacy unclaimed one never is.
+    const owned = LOCAL_OWNER ? [...stampOwner(conversations, ownerKey.current, unclaimed.current), ...heldBack.current] : conversations;
     void storage.replace("chat_conversations", owned);
   }, [ready, storage, conversations]);
 
