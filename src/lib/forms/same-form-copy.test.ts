@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { asksForSameForm, requestTurn } from "./same-form-copy";
+import { asksForSameForm, requestTurn, swapName } from "./same-form-copy";
 
 /** QA, 30–31 Oct 2026: the manager's own wording, and the review's. Names are invented. */
 describe("asksForSameForm", () => {
@@ -34,6 +34,22 @@ describe("requestTurn", () => {
   it("the card's own request is the last turn of the notes", () => {
     expect(requestTurn("Do the same coaching form for remy calder\n\ncreate a coaching form for remy calder")).toBe(
       "create a coaching form for remy calder",
+    );
+  });
+});
+
+describe("swapName (independent review, 31 Oct 2026; names invented)", () => {
+  it.each([
+    ["Will Brandt", "Will Brandt was late. This will not happen again.", "Remy Calder was late. This will not happen again."],
+    ["Mark Ellery", "Mark Ellery mixed the batch wrong; mark each tub before it leaves.", "Remy Calder mixed the batch wrong; mark each tub before it leaves."],
+    ["Grace Tovey", "Grace Tovey left early. Handle guests with grace.", "Remy Calder left early. Handle guests with grace."],
+  ])("a name that is also a word is swapped only as the full name: %s", (from, text, expected) => {
+    expect(swapName(text, from, "Remy Calder")).toBe(expected);
+  });
+
+  it("an ordinary first and last name is swapped alone, capitalised only", () => {
+    expect(swapName("Marnie was late. Holloway knows the rule. marnie (lower case) is left.", "Marnie Holloway", "Remy Calder")).toBe(
+      "Remy was late. Calder knows the rule. marnie (lower case) is left.",
     );
   });
 });

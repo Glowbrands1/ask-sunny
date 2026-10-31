@@ -1283,6 +1283,10 @@ Ask Bubbles QA, 30 Oct 2026 (Bubbles #322, 7d6c60fa): with a Coaching Form draft
 
 Ask Bubbles QA, 30 Oct 2026 (production there, a location manager): after a Coaching Form for one employee had its Details, "Do the same coaching form for remy calder" gave a blank card, and "can you create the same draft that we did with marnie holloway by changing the name and position?" only printed the content (names invented). Same code here, same flag, same module (`lib/forms/same-form-copy.ts`): at Create, the draft route copies the assistant-writable content of this manager's own earlier form of the same template for another employee (never who/where/when/signatures or policy quotes), name swapped, no model call; with a draft open, the named person's form is copied onto it. Only forms the account created and may still see. Here the new person's card itself needs NEW_PERSON_REQUEST_ENABLED (on in production); the test sets it. Test: `src/app/api/chat/same-form-copy-e2e.test.ts`.
 
+## 31 Oct 2026: a copied form's name swap never changes an ordinary word (SAME_FORM_COPY, both apps)
+
+Independent review item 13 (same code in both apps): a source employee called Will, Mark or Grace changed "will", "mark", "grace" in the copied text. Now the full name is swapped wherever it appears; a first or last name alone only as a capitalised whole word, never when it is also an ordinary word. Pronouns are not changed; the reply says to check them.
+
 ## 31 Oct 2026: SAME_FORM_COPY, open-draft copy narrowed (both apps)
 
 Independent review of the sibling app (same code here): with a draft open, "Add that she did the same thing as Remy Calder last week" overwrote the draft. Now only an explicit copy request, never a sentence that adds to the form, and when the open draft already has text the copy would replace it asks first ("Say **yes, replace them**").
