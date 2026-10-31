@@ -777,3 +777,42 @@ describe('"for whole staff" with Remy\'s draft open (after "Do the same coaching
     expect(reply.content).not.toContain("I won't make one card for the whole staff");
   });
 });
+
+/*
+ * QA, live retest, 31 Oct 2026 (a Salon Director, a brand-new chat): "create a
+ * coaching form for Marnie Holloway" → Create, NO details given; then "Do the
+ * same coaching form for remy calder" gave no Remy card — it copied an EARLIER
+ * Remy Calder form of this account onto Marnie's draft ("Copied Remy Calder's
+ * Coaching Form content onto Marnie Holloway's draft"). Remy is who the new
+ * form is for, never the source.
+ */
+describe('"create a coaching form for Marnie Holloway" (no details) → "Do the same coaching form for remy calder"', () => {
+  async function run() {
+    flags(true);
+    directory();
+    // An earlier chat: Remy's coaching form, with content, on this account.
+    const earlier = new Thread();
+    await marnieForm(earlier);
+    const oldRemy = await remyForm(earlier);
+    expect(detailsOf(oldRemy)).toContain("approved cleaner");
+    // The brand-new chat.
+    const thread = new Thread();
+    state.draft = { values: {} };
+    const card = await thread.say("create a coaching form for Marnie Holloway", { templateKey: "coaching", employeeName: "Marnie Holloway" });
+    expect(card.formProposal?.employeeName).toMatch(/marnie holloway/i);
+    const marnie = await thread.create();
+    // As live: Marnie's draft has no Details yet (nothing was said about what happened).
+    for (const row of store.form_instance_values) if (row.instance_id === marnie) row.value = "";
+    const before = JSON.stringify(store.form_instance_values.filter((row) => row.instance_id === marnie));
+    const reply = await thread.say("Do the same coaching form for remy calder", { templateKey: "coaching", employeeName: "Remy Calder" });
+    return { reply, marnie, before };
+  }
+
+  it("SAME_FORM_COPY: Remy's card, and Marnie's draft is not overwritten with the earlier Remy form", async () => {
+    const { reply, marnie, before } = await run();
+    expect(reply.content).not.toMatch(/copied remy calder/i);
+    expect(reply.formUpdate).toBeUndefined();
+    expect(JSON.stringify(store.form_instance_values.filter((row) => row.instance_id === marnie))).toBe(before);
+    expect(reply.formProposal?.employeeName ?? "").toMatch(/remy calder/i);
+  });
+});

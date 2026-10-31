@@ -279,6 +279,23 @@ function lastAssistantText(history: readonly { role: string; content?: string | 
  * the draft already says something in the fields a copy would fill, it asks
  * first and copies only on "yes, replace them".
  */
+/**
+ * QA, live retest, 31 Oct 2026: with Marnie's draft open (no details yet), "Do
+ * the same coaching form for remy calder" copied an EARLIER Remy Calder form
+ * of this account onto Marnie's draft ("Copied Remy Calder's Coaching Form
+ * content onto Marnie Holloway's draft") and no Remy card came. A person named
+ * right after "the same <form> for" is who the new form is for; the open-form
+ * copy takes its source only from "the same draft that we did with <name>",
+ * "same as <name>'s". Under SAME_FORM_COPY_ENABLED.
+ */
+function namedAsTarget(text: string, employeeName: string): boolean {
+  const words = nameWords(employeeName);
+  if (words.length === 0) return false;
+  const name = `(?:${words.map(escaped).join("\\s+")}|${escaped(words[0]!)})`;
+  const form = String.raw`(?:\s+(?:coaching|corrective|action|ca|follow-?up|form|draft|card|one|thing))*`;
+  return new RegExp(String.raw`\bsame${form}\s+for\s+${name}\b`, "i").test(text);
+}
+
 export async function copyIntoOpenForm(input: {
   request: Request;
   instanceId: string;
@@ -306,6 +323,8 @@ export async function copyIntoOpenForm(input: {
     namedOnly: true,
   });
   if (!source) return null;
+  // "Do the same coaching form for remy calder": Remy is who the new form is for, never the source.
+  if (!confirmed && namedAsTarget(input.question, source.instance.employeeName)) return null;
   if (!confirmed) {
     const filled = filledContentKeys(loaded, source);
     if (filled.length > 0) {
