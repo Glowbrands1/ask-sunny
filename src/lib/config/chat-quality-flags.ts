@@ -1674,6 +1674,16 @@ export function thisPersonsTurnsEnabled(): boolean {
 }
 
 /**
+ * An Assistant Salon Director's Corrective Action counts the employee's
+ * earlier warnings filed by anyone at their salons, shown by level and date
+ * only (Pau, 31 Oct 2026, "Yes option A"; same flag in both apps). See
+ * `forms/prior-forms.ts`. Off, only their own forms, as before.
+ */
+export function amPriorWarningsEnabled(): boolean {
+  return envFlag("AM_PRIOR_WARNINGS_ENABLED");
+}
+
+/**
  * With a draft open, a turn that is only "for whole staff" is the staff list,
  * not another card for the person the conversation last named (QA, live, 31 Oct
  * 2026; same flag in both apps). See `forms/staff-picker.ts`. Off, as before.
