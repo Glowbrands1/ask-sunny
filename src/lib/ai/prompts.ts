@@ -1,9 +1,10 @@
 import { REPORTS } from "@/features/reports/reports-routes";
-import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { facsimileAskOnlyEnabled, promptCacheEnabled, typedPriorNotOnFileEnabled } from "@/lib/config/chat-quality-flags";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
 import { CHAT_STYLE_RULES } from "./chat-style-rules";
+import { withFormPromptRules } from "./form-prompt-rules";
 import { buildLastKnownGoodSystemPrompt } from "./prompts-last-known-good";
 import { PRIOR_COACHING_OPTIONAL_RULES } from "./prior-coaching-optional";
 import { RETRIEVED_NOT_SHARED_NOTE, RETRIEVED_NOT_SHARED_RULE } from "./sources-not-shared";
@@ -373,7 +374,22 @@ export function setSystemPromptRevision(next: SystemPromptRevision) {
   revision = next;
 }
 
-export function buildSystemPrompt(input: {
+/**
+ * The system prompt, with the flagged form rules (FACSIMILE_ASK_ONLY_ENABLED,
+ * TYPED_PRIOR_NOT_ON_FILE_ENABLED) applied to the current revision. Both off,
+ * or the last-known-good revision, the prompt is unchanged. See
+ * `form-prompt-rules.ts`.
+ */
+export function buildSystemPrompt(input: Parameters<typeof buildPromptText>[0]): string {
+  const prompt = buildPromptText(input);
+  if (revision === "last-known-good") return prompt;
+  return withFormPromptRules(prompt, {
+    facsimileAskOnly: facsimileAskOnlyEnabled(),
+    typedPriorNotOnFile: typedPriorNotOnFileEnabled(),
+  });
+}
+
+function buildPromptText(input: {
   assistantName: string;
   brandName: string;
   salonNoun: string;

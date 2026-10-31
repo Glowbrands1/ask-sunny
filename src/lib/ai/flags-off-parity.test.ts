@@ -58,6 +58,9 @@ import {
   priorActionsParseEnabled,
   keepFormEmployeeEnabled,
   titleWholeWordEnabled,
+  facsimileAskOnlyEnabled,
+  typedPriorNotOnFileEnabled,
+  payrollFromThisFormEnabled,
   reformatKeepsSourcesEnabled,
   frameworkGeneralSectionsEnabled,
   newestPlaceTurnEnabled,
@@ -228,6 +231,9 @@ const NEW_FLAGS = [
   "KEEP_FORM_EMPLOYEE_ENABLED",
   "TITLE_WHOLE_WORD_ENABLED",
   "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+  "FACSIMILE_ASK_ONLY_ENABLED",
+  "TYPED_PRIOR_NOT_ON_FILE_ENABLED",
+  "PAYROLL_FROM_THIS_FORM_ENABLED",
   "EXIT_INTAKE_FIX_ENABLED",
   "REFORMAT_KEEPS_SOURCES_ENABLED",
   "FRAMEWORK_GENERAL_SECTIONS_ENABLED",
@@ -623,6 +629,9 @@ describe("new flags default off and wrappers are inert", () => {
     expect(keepFormEmployeeEnabled()).toBe(false);
     expect(titleWholeWordEnabled()).toBe(false);
     expect(actionPlanManagerOnlyEnabled()).toBe(false);
+    expect(facsimileAskOnlyEnabled()).toBe(false);
+    expect(typedPriorNotOnFileEnabled()).toBe(false);
+    expect(payrollFromThisFormEnabled()).toBe(false);
     expect(exitIntakeFixEnabled()).toBe(false);
     expect(reformatKeepsSourcesEnabled()).toBe(false);
     expect(frameworkGeneralSectionsEnabled()).toBe(false);
