@@ -790,6 +790,26 @@ describe('independent review item 5: "Marnie was late 3 times this week what sho
   });
 });
 
+/*
+ * THE SIBLING APP'S LIVE CHECK, 31 Oct 2026 (QA, item 12a; same code here): "What's the date on the form
+ * for these details?" was read as an edit — nothing written, but the reply was
+ * "I haven't changed the Coaching Form … Tell me which part to change" and the
+ * question went unanswered. It is a question, answered as one.
+ */
+describe('"What\'s the date on the form for these details?" with the draft open', () => {
+  it("both flags on (as in production): answered as a question, nothing written", async () => {
+    const { thread, details } = await openDraft({ plain: true, honest: true });
+    said.answer = "The form is dated 10/26/2026 — the Date line at the top of the card.";
+    await thread.say("how do i turn a room between guests?");
+    const reply = await thread.say("What's the date on the form for these details?");
+    expect(reply.formUpdate).toBeUndefined();
+    expect(state.revisionCalls).toBe(0);
+    expect(reply.content).not.toMatch(/I haven't changed/i);
+    expect(reply.content).toContain("dated 10/26/2026");
+    expect(details()).not.toContain("Rooms are cleaned, restocked and checked");
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });
