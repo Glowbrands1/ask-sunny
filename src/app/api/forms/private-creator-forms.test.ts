@@ -252,8 +252,9 @@ describe("every read path goes through the one check", () => {
   it("actorMaySeeInstance tests privacy before any other rule", () => {
     const source = readFileSync("src/lib/forms/instance-scope.ts", "utf8");
     const body = source.slice(source.indexOf("export function actorMaySeeInstance"));
-    expect(body.indexOf("hiddenAsPrivate(actor, instance)")).toBeGreaterThan(-1);
-    expect(body.indexOf("hiddenAsPrivate(actor, instance)")).toBeLessThan(body.indexOf("visibility.level"));
+    // Changed on purpose (AM_PRIOR_WARNINGS_ENABLED, 31 Oct 2026): the call now passes an options argument; still first.
+    expect(body.indexOf("hiddenAsPrivate(actor, instance")).toBeGreaterThan(-1);
+    expect(body.indexOf("hiddenAsPrivate(actor, instance")).toBeLessThan(body.indexOf("visibility.level"));
   });
 
   it.each([
