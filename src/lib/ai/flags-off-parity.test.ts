@@ -308,6 +308,7 @@ const NEW_FLAGS = [
   "OTHER_WRITE_IN_GUARD_ENABLED",
   "OTHER_WRITE_IN_NOT_A_QUESTION_ENABLED",
   "ANGLE_PLACEHOLDER_GUARD_ENABLED",
+  "REVISION_SAME_VALUE_ENABLED",
   "CHAT_HISTORY_STATE_CHUNKED_ENABLED",
   "NEXT_PUBLIC_CHAT_HISTORY_TOLERANT_ENABLED",
   "FORM_EDIT_PLAIN_WORDS_ENABLED",
@@ -433,9 +434,17 @@ const PROTECTED = [
  * payrollDeductAmount `const amount = latestAmount(payrollAmountWording(text));`.
  * Behind CA_SHORTCUT_WORDS_ENABLED, default off; off, payrollAmountWording
  * returns the text unchanged.
+ *
+ * The user (Pau) approved in writing, via QA on 31 Oct 2026 ("Approve both"),
+ * in src/lib/forms/chat-revision.ts, both apps: the import
+ * `import { revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";`
+ * and, before `const changed`, a value equal to the field's current text is
+ * dropped from `byName.values`. Behind REVISION_SAME_VALUE_ENABLED, default
+ * off; off, nothing is dropped.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
+  ":(exclude)src/lib/forms/chat-revision.ts",
   ":(exclude)src/lib/forms/payroll-deduct.ts",
   ":(exclude)src/lib/forms/form-date-answer.ts",
   ":(exclude)src/lib/ai/form-proposal.ts",
