@@ -78,7 +78,8 @@ vi.mock("@/lib/auth/server", async () => {
   const { AuthError } = await import("@/lib/auth/types");
   return {
     authorizeRequest: async (_request: Request, permission: string) => {
-      if (!hasPermission(DEFAULT_PERMISSION_MATRIX, "district_manager" as never, permission as never)) {
+      const role = (state as { role?: string }).role ?? "district_manager";
+      if (!hasPermission(DEFAULT_PERMISSION_MATRIX, role as never, permission as never)) {
         throw new AuthError("forbidden", "Your role does not have permission to do that.");
       }
       return {
@@ -86,7 +87,7 @@ vi.mock("@/lib/auth/server", async () => {
           subject: "qa-manager",
           email: "qa-manager@example.test",
           displayName: "QA Manager",
-          role: "district_manager",
+          role,
           scope: (state as { scope?: unknown }).scope ?? { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] },
           verified: true,
         },
@@ -658,6 +659,37 @@ describe("the whole store or team inside an account is not a whole-staff request
     await thread.create();
     const reply = await thread.say("update the draft: he told the whole team he was quitting");
     expect(reply.content).not.toContain("Here is the staff at");
+  });
+});
+
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026, item 11: the picker checked only the scope.
+ * Every role may ask questions, so an employee at a salon got that salon's
+ * staff by name and title. Now only a role that may create the form.
+ */
+describe("only a role that may create the form is shown the staff", () => {
+  afterEach(() => {
+    delete (state as { role?: string }).role;
+    delete process.env.NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED;
+  });
+
+  it.each(["employee", "assistant_salon_director"])('STAFF_PICKER: "can you create a coaching form for my whole staff?" as %s (ASD create flag off): no staff list', async (role) => {
+    flags(true);
+    directory();
+    setScope(LOCATION_SCOPE);
+    (state as { role?: string }).role = role;
+    const reply = await new Thread().say("can you create a coaching form for my whole staff?", { templateKey: "coaching" });
+    expect(reply.content).not.toContain("Here is the staff at");
+    expect(reply.content).not.toContain("Remy Calder");
+  });
+
+  it("STAFF_PICKER: a salon director is shown the staff", async () => {
+    flags(true);
+    directory();
+    setScope(LOCATION_SCOPE);
+    (state as { role?: string }).role = "salon_director";
+    const reply = await new Thread().say("can you create a coaching form for my whole staff?", { templateKey: "coaching" });
+    expect(reply.content).toContain("Here is the staff at");
   });
 });
 

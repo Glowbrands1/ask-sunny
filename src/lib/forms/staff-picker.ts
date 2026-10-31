@@ -1,5 +1,5 @@
 import type { AskResponse } from "@/lib/ai/types";
-import type { AccessScope, ChatMessage } from "@/types";
+import type { AccessScope, ChatMessage, Permission, Role } from "@/types";
 
 /**
  * ============================================================================
@@ -163,9 +163,24 @@ export async function staffPickerTurn(input: {
   history: readonly Pick<ChatMessage, "role" | "content">[];
   continuing: boolean;
   scope: AccessScope | null;
+  /** The asker's role: the list is only for somebody who may create the form. */
+  role: Role;
 }): Promise<AskResponse | null> {
   const answeringWhich = lastAssistant(input.history).includes(ASKED_LOCATION);
   if (!asksForWholeStaff(input.question, input.continuing) && !answeringWhich) return null;
+  /*
+   * ONLY FOR SOMEBODY WHO MAY CREATE THE FORM (independent review, 31 Oct 2026):
+   * every role may ask questions, so an employee asking for "a coaching form
+   * for my whole staff" got their location's staff by name and title. The same
+   * create permission the form needs — Coaching Form or Corrective Action Form,
+   * either for a form not named — or nothing is listed and the turn is answered
+   * as before.
+   */
+  const { DEFAULT_PERMISSION_MATRIX, hasPermission } = await import("@/lib/permissions");
+  const form = formName(`${input.question} ${lastAssistant(input.history)}`);
+  const needs: Permission[] =
+    form === "Coaching Form" ? ["create_coaching_form"] : form === "Corrective Action Form" ? ["create_corrective_action"] : ["create_coaching_form", "create_corrective_action"];
+  if (!needs.some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, permission))) return null;
   const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, roster] = await Promise.all([
     import("@/lib/forms/location-scope"),
     import("@/data/salons"),
