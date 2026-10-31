@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { chatImportOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
 import { AuthError } from "@/lib/auth/types";
 import type { ChatConversation, ChatMessage } from "@/types";
 import { CONVERSATION_REFUSED, ChatStoreError } from "./errors";
@@ -403,7 +404,13 @@ export type SaveOutcome =
    * carry on with the rest, exactly as it does for a seeded demo thread. A
    * thrown error could only serve one of them.
    */
-  | "suppressed";
+  | "suppressed"
+  /**
+   * Refused because another account wrote it (CHAT_IMPORT_OWN_ONLY_ENABLED): a
+   * browser's store is not keyed by account, so a chat one person had on a
+   * shared browser was offered to the next person who signed in there.
+   */
+  | "another_account";
 
 export async function saveOwnConversation(
   userId: string,
@@ -433,6 +440,9 @@ export async function saveOwnConversation(
    * the delete.
    */
   if (row?.deleted_at) return "suppressed";
+
+  // CHAT_IMPORT_OWN_ONLY_ENABLED: another account's chat is not stored on this one.
+  if (chatImportOwnOnlyEnabled() && (await writtenByAnotherAccount(userId, payload))) return "another_account";
 
   /*
    * AND NOTHING FROM BEFORE A CLEAR COMES BACK EITHER. Clear History removes
@@ -714,6 +724,27 @@ async function clearBoundaryFor(userId: string): Promise<string | null> {
  * forged turn id belonging to somebody else matches nothing — this can neither
  * read another person's activity nor be used to probe whose a turn is.
  */
+/**
+ * Whether another account wrote this conversation: one of its answered turns
+ * was answered for someone else. `activity_events.actor_user_id` is set by the
+ * server, never by the browser. (Not by looking for its id in another
+ * account's chats: no chat table is ever read across accounts.)
+ */
+async function writtenByAnotherAccount(userId: string, payload: ConversationPayload): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const turnIds = [
+    ...new Set(
+      payload.messages
+        .map((message) => message.turnId)
+        .filter((turnId): turnId is string => typeof turnId === "string"),
+    ),
+  ];
+  if (turnIds.length === 0) return false;
+  const { data, error } = await supabase.from("activity_events").select("actor_user_id").in("id", turnIds);
+  if (error) unavailable("save that conversation");
+  return ((data ?? []) as { actor_user_id: string | null }[]).some((turn) => turn.actor_user_id !== null && turn.actor_user_id !== userId);
+}
+
 async function hasTurnAtOrBefore(
   userId: string,
   payload: ConversationPayload,
