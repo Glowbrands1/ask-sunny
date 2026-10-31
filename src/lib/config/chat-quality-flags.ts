@@ -1655,6 +1655,15 @@ export function staffPickerStoreTitlesEnabled(): boolean {
 }
 
 /**
+ * With a draft open, a turn that is only "for whole staff" is the staff list,
+ * not another card for the person the conversation last named (QA, live, 31 Oct
+ * 2026; same flag in both apps). See `forms/staff-picker.ts`. Off, as before.
+ */
+export function staffPickerBareAnswerEnabled(): boolean {
+  return envFlag("STAFF_PICKER_BARE_ANSWER_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).

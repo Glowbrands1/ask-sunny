@@ -55,6 +55,19 @@ export function asksForWholeStaff(text: string, continuing = false): boolean {
   return continuing && ANSWER.test(text);
 }
 
+/**
+ * STAFF_PICKER_BARE_ANSWER_ENABLED (QA, live, 31 Oct 2026): with Remy's draft
+ * open after "Do the same coaching form for remy calder", "for whole staff"
+ * made another Coaching Form card for Remy, its Observation the earlier
+ * details sentence: the turn was read as more of the form in progress. A turn
+ * that is ONLY the whole staff — nothing about the open draft in it — is the
+ * staff list; the draft is left as it is. "update the draft: he told the whole
+ * team he was quitting" is not this, and stays the draft's.
+ */
+export function isBareWholeStaff(text: string): boolean {
+  return ANSWER.test(text);
+}
+
 function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content">[]): string {
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const turn = history[index]!;
