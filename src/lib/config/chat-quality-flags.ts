@@ -1625,6 +1625,16 @@ export function anglePlaceholderGuardEnabled(): boolean {
 }
 
 /**
+ * A chat revision whose value for a field is the text already there is not a
+ * change, so the reply never says "Updated" for it (Sunny live check A3, 31
+ * Oct 2026; same flag in both apps; protected-file edit approved by Pau in
+ * writing). See `forms/chat-revision.ts`. Off, as before.
+ */
+export function revisionSameValueEnabled(): boolean {
+  return envFlag("REVISION_SAME_VALUE_ENABLED");
+}
+
+/**
  * "Do the same coaching form for <another>": the new person's draft gets the
  * content of the manager's own earlier form of that template, name swapped
  * (ported from Ask Bubbles, QA 30 Oct 2026; same flag in both apps). See

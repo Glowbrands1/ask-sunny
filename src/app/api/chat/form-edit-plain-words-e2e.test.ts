@@ -843,6 +843,46 @@ describe('live check A3: "add details about the towel" and a revision that answe
   });
 });
 
+/*
+ * The same live check A3, the reply: with the "<UNKNOWN>" sentence dropped the
+ * revision wrote Details back as they already were, and the reply still said
+ * "Updated the Coaching Form …". REVISION_SAME_VALUE_ENABLED: a value equal to
+ * what the field already holds is not a change (protected-file edit to
+ * `chat-revision.ts`, approved by Pau in writing, 31 Oct 2026).
+ */
+describe('live check A3: "add details about the towel" when the only change was "<UNKNOWN>"', () => {
+  const ANGLE = "ANGLE_PLACEHOLDER_GUARD_ENABLED";
+  const SAME = "REVISION_SAME_VALUE_ENABLED";
+  async function ask(same: boolean) {
+    const draft = await openDraft({});
+    for (const name of [ANGLE, SAME]) {
+      if (!saved.has(name)) saved.set(name, process.env[name]);
+      delete process.env[name];
+    }
+    process.env[ANGLE] = "true";
+    if (same) process.env[SAME] = "true";
+    const before = draft.details() ?? "";
+    state.revision = { values: { coaching_details: `${before}\n<UNKNOWN>` } };
+    const reply = await draft.thread.say("add details about the towel");
+    return { ...draft, reply, before };
+  }
+
+  it("ANGLE_PLACEHOLDER_GUARD only: Details are as they were, but the reply says it updated the form", async () => {
+    const { reply, details, before } = await ask(false);
+    expect(details()).toBe(before);
+    expect(reply.content).toMatch(/^Updated the \*\*Coaching Form\*\*/);
+  });
+
+  it("REVISION_SAME_VALUE: the reply says nothing was changed, and Details are as they were", async () => {
+    const { reply, details, before } = await ask(true);
+    expect(state.revisionCalls).toBe(1);
+    expect(details()).toBe(before);
+    expect(reply.content).toContain("I haven't changed the **Coaching Form** for **Marnie Holloway** — everything on it is as it was.");
+    expect(reply.content).not.toMatch(/Updated the/);
+    expect(reply.formUpdate).toBeUndefined();
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });

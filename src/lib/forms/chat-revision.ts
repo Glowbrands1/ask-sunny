@@ -3,6 +3,7 @@ import "server-only";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
+import { revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import type { ChatMessage } from "@/types";
 
@@ -505,6 +506,17 @@ export async function reviseActiveForm(input: {
         employeeName: instance.employeeName,
         knownWords: [ACTIVE_BRAND.brandName, ...(instance.locationName ? [instance.locationName] : [])],
       });
+
+  /*
+   * REVISION_SAME_VALUE_ENABLED (Sunny live check A3, 31 Oct 2026): a value
+   * equal to the field's current text — only a placeholder was dropped — is
+   * not a change, so the reply never says "Updated" for it.
+   */
+  if (revisionSameValueEnabled()) {
+    for (const key of Object.keys(byName.values)) {
+      if ((current.get(key)?.value ?? "").trim() === String(byName.values[key] ?? "").trim()) delete byName.values[key];
+    }
+  }
 
   const changed = Object.keys(byName.values).length + Object.keys(sensitive.checked).length;
   /*
