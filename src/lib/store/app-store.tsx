@@ -27,6 +27,7 @@ import {
   importLocalHistory,
   type ImportSummary,
 } from "@/lib/chat/local-import";
+import { chatLocalOwnerEnabled, partitionByOwner, stampOwner } from "@/lib/chat/local-owner";
 import { mergeConversations } from "@/lib/chat/merge";
 import { chatHistoryTolerantEnabled } from "@/lib/config/chat-quality-flags";
 import {
@@ -199,6 +200,8 @@ const CLEAR_BOUNDARY_KEY = "chat-history-clear-boundary";
  * inside a render would invite a hydration mismatch for no benefit.
  */
 const DEMO_MODE = isDemoMode();
+/** NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: another account's chats in this browser are held back. See `chat/local-owner.ts`. */
+const LOCAL_OWNER = !DEMO_MODE && chatLocalOwnerEnabled();
 
 /**
  * A cheap fingerprint of a conversation's current state.
@@ -343,6 +346,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    * machine in `lib/chat/suppression.ts`.
    */
   const [historyState, setHistoryState] = useState<HistoryState | null>(null);
+  /*
+   * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: chats in this browser that are not
+   * this account's — or not known to be, until the account answers. Never in
+   * state, so never shown, offered for Import or synced; written back to
+   * IndexedDB beside state, so nothing is deleted. See `chat/local-owner.ts`.
+   */
+  const heldBack = useRef<ChatConversation[]>([]);
+  const ownerKey = useRef<string | null>(null);
 
   /**
    * CONVERSATIONS THAT WERE ALREADY IN THIS BROWSER WHEN THE PAGE LOADED.
@@ -588,7 +599,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
        * stays primed from `liveConversations` only, so the new conversation
        * still syncs.
        */
-      if (liveConversations.length > 0) {
+      if (LOCAL_OWNER) {
+        heldBack.current = liveConversations;
+      } else if (liveConversations.length > 0) {
         if (sendAfterHydrateEnabled()) {
           setConversations((current) => mergeConversations(liveConversations, current));
         } else {
@@ -702,6 +715,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         }
 
         setHistoryState(state);
+        /*
+         * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's own chats come
+         * out of the held-back set; everybody else's stay in it. Without a
+         * key (an older server), all of them stay.
+         */
+        const key = LOCAL_OWNER ? (state.ownerKey ?? null) : null;
+        let released: ChatConversation[] = [];
+        if (LOCAL_OWNER) {
+          const split = partitionByOwner(heldBack.current, key, new Set(state.stored.map((entry) => entry.id)));
+          heldBack.current = split.others;
+          released = split.mine;
+          ownerKey.current = key;
+        }
         setConversations((current) => {
           /*
            * ==============================================================
@@ -722,11 +748,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
            * difference between keeping a local copy for OUR rollback and
            * keeping one against somebody's own decision to delete.
            */
-          return suppressDeleted(mergeConversations(current, serverConversations), {
+          const merged = suppressDeleted(mergeConversations([...current, ...released], serverConversations), {
             state,
             preExisting: new Set(liveConversations.map((entry) => entry.id)),
             appliedBoundary: alreadyApplied,
           });
+          return LOCAL_OWNER ? stampOwner(merged, key) : merged;
         });
 
         /*
@@ -818,7 +845,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (!ready) return;
-    void storage.replace("chat_conversations", conversations);
+    /*
+     * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: this account's chats carry its
+     * key, and the held-back chats are written back untouched beside them.
+     */
+    const owned = LOCAL_OWNER ? [...stampOwner(conversations, ownerKey.current), ...heldBack.current] : conversations;
+    void storage.replace("chat_conversations", owned);
   }, [ready, storage, conversations]);
 
   /**

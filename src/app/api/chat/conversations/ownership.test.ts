@@ -741,3 +741,30 @@ describe("CHAT_HISTORY_STATE_CHUNKED_ENABLED: an account with many chats (QA, 31
     expect(body.stored.every((entry) => entry.messages === 1)).toBe(true);
   });
 });
+
+describe("NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: the history state's owner key", () => {
+  const FLAG = "NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED";
+  afterEach(() => {
+    delete process.env[FLAG];
+  });
+
+  async function keyOf(subject: string): Promise<unknown> {
+    const route = await load(subject);
+    const response = await route.importRoute.GET(get("https://app.test/api/chat/conversations/import"));
+    return ((await response.json()) as { ownerKey?: unknown }).ownerKey;
+  }
+
+  it("off: no key, as before", async () => {
+    expect(await keyOf(ME)).toBeUndefined();
+  });
+
+  it("on: one key per account, the same each time, and never the account id", async () => {
+    process.env[FLAG] = "true";
+    const mine = await keyOf(ME);
+    expect(typeof mine).toBe("string");
+    expect(mine).toMatch(/^[0-9a-f]{32}$/);
+    expect(String(mine)).not.toContain(ME.replace(/-/g, "").slice(0, 8));
+    expect(await keyOf(ME)).toBe(mine);
+    expect(await keyOf(THEM)).not.toBe(mine);
+  });
+});
