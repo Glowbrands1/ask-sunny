@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { chatImportOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { chatHistoryStateChunkedEnabled, chatImportOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
 import { AuthError } from "@/lib/auth/types";
 import type { ChatConversation, ChatMessage } from "@/types";
 import { CONVERSATION_REFUSED, ChatStoreError } from "./errors";
@@ -57,6 +57,9 @@ export const MAX_CONVERSATIONS = 50;
 
 /** A hard ceiling on one read, so a pathological history cannot exhaust memory. */
 const MAX_MESSAGES_PER_READ = 5_000;
+
+/** Conversation ids per history-state read, so one request URL stays short. */
+const HISTORY_STATE_BATCH = 100;
 
 interface ConversationRow {
   id: string;
@@ -325,20 +328,32 @@ export async function ownHistoryState(userId: string): Promise<OwnHistoryState> 
    */
   const counts = new Map<string, number>();
   if (live.length > 0) {
-    const { data: messageRows, error: messageError } = await supabase
-      .from("chat_messages")
-      .select("conversation_id")
-      .eq("user_id", userId)
-      .in(
-        "conversation_id",
-        live.map((row) => row.id),
-      )
-      .limit(MAX_MESSAGES_PER_READ);
+    /*
+     * CHAT_HISTORY_STATE_CHUNKED_ENABLED: in batches. One `in` over every live
+     * conversation put up to 1,500 ids in one request URL; for an account with
+     * thousands of chats the read failed, this answered 503, and a freshly
+     * signed-in browser showed "No conversations yet" (QA, 31 Oct 2026). Off,
+     * the single read as before.
+     */
+    const ids = live.map((row) => row.id);
+    const batches = chatHistoryStateChunkedEnabled()
+      ? Array.from({ length: Math.ceil(ids.length / HISTORY_STATE_BATCH) }, (_, index) =>
+          ids.slice(index * HISTORY_STATE_BATCH, (index + 1) * HISTORY_STATE_BATCH),
+        )
+      : [ids];
+    for (const batch of batches) {
+      const { data: messageRows, error: messageError } = await supabase
+        .from("chat_messages")
+        .select("conversation_id")
+        .eq("user_id", userId)
+        .in("conversation_id", batch)
+        .limit(MAX_MESSAGES_PER_READ);
 
-    if (messageError) unavailable("check your history");
+      if (messageError) unavailable("check your history");
 
-    for (const row of (messageRows ?? []) as { conversation_id: string }[]) {
-      counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1);
+      for (const row of (messageRows ?? []) as { conversation_id: string }[]) {
+        counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1);
+      }
     }
   }
 
