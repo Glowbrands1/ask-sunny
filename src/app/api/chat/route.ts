@@ -16,6 +16,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   secondFormEnabled,
+  staffPickerBareAnswerEnabled,
   staffPickerEnabled,
 } from "@/lib/config/chat-quality-flags";
 import {
@@ -196,13 +197,18 @@ async function postChat(request: Request) {
        * for everyone: which salon, then its staff by name and position, then
        * one person at a time. No model call. See `lib/forms/staff-picker.ts`.
        */
+      // STAFF_PICKER_BARE_ANSWER_ENABLED: with a draft open, only a turn that is nothing but "for whole staff".
+      const bareWholeStaff =
+        staffPickerBareAnswerEnabled() &&
+        Boolean(asked.activeFormInstanceId) &&
+        (await import("@/lib/forms/staff-picker")).isBareWholeStaff(asked.question);
       const staffPick =
         // Never with a draft open: there a turn is about that draft (independent review, 31 Oct 2026).
-        staffPickerEnabled() && !draftAction && !asked.activeFormInstanceId
+        staffPickerEnabled() && !draftAction && (!asked.activeFormInstanceId || bareWholeStaff)
           ? await (await import("@/lib/forms/staff-picker")).staffPickerTurn({
               question: asked.question,
               history: asked.history,
-              continuing: Boolean(asked.continueProposalTemplateKey),
+              continuing: Boolean(asked.continueProposalTemplateKey) || bareWholeStaff,
               scope: context.identity.scope,
               role: context.identity.role,
             })

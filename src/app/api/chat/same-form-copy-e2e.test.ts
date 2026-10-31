@@ -725,3 +725,55 @@ describe('"Add that she did the same thing as Marnie Holloway last week" with Re
 afterEach(() => {
   said.answer = null;
 });
+
+/*
+ * QA, live retest, 31 Oct 2026 (C6, a Salon Director): after "Do the same
+ * coaching form for remy calder" with Remy's draft open, "for whole staff"
+ * made ANOTHER Coaching Form card for Remy, its Observation of Offense the
+ * earlier details sentence. With STAFF_PICKER_BARE_ANSWER_ENABLED a turn that
+ * is only the whole staff is the staff list, and Remy's draft is left as it is.
+ */
+describe('"for whole staff" with Remy\'s draft open (after "Do the same coaching form for remy calder")', () => {
+  const BARE = "STAFF_PICKER_BARE_ANSWER_ENABLED";
+  async function ask(bare: boolean) {
+    flags(true);
+    for (const name of ["STAFF_PICKER_ENABLED", BARE]) if (!saved.has(name)) saved.set(name, process.env[name]);
+    process.env.STAFF_PICKER_ENABLED = "true";
+    delete process.env[BARE];
+    if (bare) process.env[BARE] = "true";
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    const remy = await remyForm(thread);
+    const before = JSON.stringify(store.form_instance_values.filter((row) => row.instance_id === remy));
+    const forms = store.form_instances.length;
+    state.reading = { employeeName: "Remy Calder" };
+    const reply = await thread.say("for whole staff");
+    return { reply, remy, before, forms };
+  }
+
+  it("off (production today): another card for one person", async () => {
+    const { reply } = await ask(false);
+    expect(reply.formProposal?.templateKey).toBe("coaching");
+  });
+
+  it("STAFF_PICKER_BARE_ANSWER: no card — one person at a time, the staff to choose from — and Remy's draft untouched", async () => {
+    const { reply, remy, before, forms } = await ask(true);
+    expect(reply.formProposal).toBeUndefined();
+    expect(reply.content).toContain("is for one person at a time, so I won't make one card for the whole staff");
+    expect(JSON.stringify(store.form_instance_values.filter((row) => row.instance_id === remy))).toBe(before);
+    expect(store.form_instances.length).toBe(forms);
+  });
+
+  it("STAFF_PICKER_BARE_ANSWER: an edit that mentions the whole team is still the draft's, never the list", async () => {
+    flags(true);
+    process.env.STAFF_PICKER_ENABLED = "true";
+    process.env[BARE] = "true";
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    await remyForm(thread);
+    const reply = await thread.say("update the draft: he told the whole team he was quitting");
+    expect(reply.content).not.toContain("I won't make one card for the whole staff");
+  });
+});
