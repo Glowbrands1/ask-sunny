@@ -37,6 +37,7 @@ import {
   questionNotFormEnabled,
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
+  staffPickerEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -658,6 +659,21 @@ async function answerQuestionUntraced(
   }
 
   const separateLead = secondFormEnabled() ? promoteSeparateForm(managerQuestion) : null;
+  /*
+   * STAFF_PICKER_ENABLED: "for whole staff", on a form turn — the salon asked
+   * if the account covers several, its staff listed, the manager picks who.
+   * Never a blanket form. A database read, no model call. See
+   * `lib/forms/staff-picker.ts`.
+   */
+  if (staffPickerEnabled()) {
+    const staff = await (await import("@/lib/forms/staff-picker")).staffPickerTurn({
+      question: request.question,
+      history: request.history,
+      scope: actor.scope,
+    });
+    if (staff) return staff;
+  }
+
   const formsTurn =
     inventoryQuestion.kind !== "none" ||
     spokenIntent.kind !== "none" ||

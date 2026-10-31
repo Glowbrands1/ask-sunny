@@ -1564,6 +1564,17 @@ export function otherWriteInNotAQuestionEnabled(): boolean {
 }
 
 /**
+ * A form "for whole staff" is never a blanket form and never a flat refusal:
+ * the salon is asked when the account covers several, its active staff are
+ * listed (name and position), and the manager picks who (QA and Pau, 30 Oct
+ * 2026, the sibling app; same flag in both apps). See `forms/staff-picker.ts`.
+ * Off, as before.
+ */
+export function staffPickerEnabled(): boolean {
+  return envFlag("STAFF_PICKER_ENABLED");
+}
+
+/**
  * "She was late last week" with no date read and the form left at today: the
  * Corrective Action draft is told today is not the incident's date, today is
  * not treated as a date the manager gave, and the manager is told to set the
