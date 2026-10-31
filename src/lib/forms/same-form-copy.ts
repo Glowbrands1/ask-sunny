@@ -214,8 +214,35 @@ export async function copyFormContent(input: {
   return written.accepted;
 }
 
+/** The labels of content fields the target already fills that the source would replace. */
+function filledContentKeys(target: LoadedInstance, source: LoadedInstance): string[] {
+  const keys = contentKeys(target);
+  const fromSource = new Set(
+    source.values.filter((row) => keys.has(row.fieldKey) && (Boolean(row.value?.trim()) || row.checked.length > 0)).map((row) => row.fieldKey),
+  );
+  const fields = draftableFields(parseFormDocument(target.version.document), target.instance.variantKey);
+  const label = (key: string) => fields.find((field) => field.key === key)?.label ?? key;
+  return target.values
+    .filter((row) => fromSource.has(row.fieldKey) && Boolean(row.value?.trim()))
+    .map((row) => label(row.fieldKey));
+}
+
 export function copiedNotice(source: InstanceRow): string {
   return `Copied the content of ${source.employeeName}'s ${source.templateName} onto this draft. Check it reads right for this person.`;
+}
+
+/** A sentence that adds to the open form is never a request to copy another one onto it. */
+const ADDS = /^\s*(?:please\s+)?(?:add|include|note|put|write|mention|also)\b/i;
+
+/** The question this asks before replacing what the open draft already says. */
+const REPLACE_ASK = "Replace them with";
+const CONFIRMS = /^\s*(?:yes|yep|yeah|ok(?:ay)?|sure|go\s+ahead)\b[^?]*\breplace\b|^\s*(?:yes|yep|yeah)[.!]*\s*$/i;
+
+function lastAssistantText(history: readonly { role: string; content?: string | null }[]): string {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    if (history[index]!.role === "assistant") return history[index]!.content ?? "";
+  }
+  return "";
 }
 
 /**
@@ -224,13 +251,23 @@ export function copiedNotice(source: InstanceRow): string {
  * own, same template, somebody other than the open form's employee) copied
  * onto the open draft. Null unless such a form is named, so every other turn
  * is answered as before.
+ *
+ * Independent review, 31 Oct 2026: "Add that she did the same thing as Remy
+ * Calder last week" overwrote the open draft. Now only an explicit copy request
+ * (see `asksForSameForm`), never a sentence that adds to the form, and when
+ * the draft already says something in the fields a copy would fill, it asks
+ * first and copies only on "yes, replace them".
  */
 export async function copyIntoOpenForm(input: {
   request: Request;
   instanceId: string;
   question: string;
+  history?: readonly { role: string; content?: string | null }[];
 }): Promise<AskResponse | null> {
-  if (!asksForSameForm(input.question)) return null;
+  const previous = lastAssistantText(input.history ?? []);
+  const asked = previous.includes(REPLACE_ASK) ? /\*\*([^*]+)\*\*'s \w[^?]*\?\s*Say \*\*yes, replace them\*\*/.exec(previous)?.[1] ?? null : null;
+  const confirmed = asked !== null && CONFIRMS.test(input.question);
+  if (!confirmed && (ADDS.test(input.question) || !asksForSameForm(input.question))) return null;
   let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
   try {
     authorized = await authorizeInstance(input.request, input.instanceId, "edit");
@@ -244,10 +281,21 @@ export async function copyIntoOpenForm(input: {
     templateKey: loaded.instance.templateKey,
     targetInstanceId: loaded.instance.id,
     targetEmployeeName: loaded.instance.employeeName,
-    text: input.question,
+    text: confirmed ? asked! : input.question,
     namedOnly: true,
   });
   if (!source) return null;
+  if (!confirmed) {
+    const filled = filledContentKeys(loaded, source);
+    if (filled.length > 0) {
+      return {
+        content: `${loaded.instance.employeeName}'s draft already has ${filled.join(", ")}. ${REPLACE_ASK} **${source.instance.employeeName}**'s ${source.instance.templateName} content, with the name changed? Say **yes, replace them** to copy it, or tell me what to change instead.`,
+        citations: [],
+        coverage: "not_applicable",
+        recommendedVideoIds: [],
+      };
+    }
+  }
   const copied = await copyFormContent({ source, target: loaded, actorId: actor.id });
   const updated = [...new Set([...Object.keys(copied.values), ...Object.keys(copied.checked)])];
   if (updated.length === 0) return null;

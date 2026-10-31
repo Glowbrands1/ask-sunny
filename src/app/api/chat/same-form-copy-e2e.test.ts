@@ -624,7 +624,12 @@ describe('"can you create the same draft that we did with marnie holloway by cha
     const remy = await remyForm(thread);
     expect(detailsOf(remy)).not.toContain("approved cleaner");
     flags(true);
-    const reply = await thread.say(ASK);
+    // Changed on purpose (review, 31 Oct 2026): Remy's draft already has drafted Details, so it asks before replacing them.
+    const asked = await thread.say(ASK);
+    expect(asked.formUpdate).toBeUndefined();
+    expect(asked.content).toContain("Replace them with **Marnie Holloway**'s Coaching Form content");
+    expect(detailsOf(remy)).not.toContain("approved cleaner");
+    const reply = await thread.say("yes, replace them");
     expect(reply.formUpdate?.instanceId).toBe(remy);
     expect(reply.formUpdate?.updated).toContain("coaching_details");
     expect(detailsOf(remy)).toContain("Remy Calder takes the next guest back");
@@ -695,6 +700,25 @@ describe('Create notes ending "She was late again today, same thing as last week
     expect(detailsOf(remy)).not.toContain("approved cleaner");
     expect(detailsOf(remy)).toContain("Remy was late again today.");
     expect(state.draftCalls).toBeGreaterThan(0);
+  });
+});
+
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026: with Remy's draft open, "Add that she did
+ * the same thing as Remy Calder last week" (here: as Marnie Holloway) was read
+ * as a copy and overwrote the draft.
+ */
+describe('"Add that she did the same thing as Marnie Holloway last week" with Remy\'s draft open', () => {
+  it("SAME_FORM_COPY: never a copy — the open draft is not overwritten", async () => {
+    flags(false);
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    const remy = await remyForm(thread);
+    flags(true);
+    const reply = await thread.say("Add that she did the same thing as Marnie Holloway last week");
+    expect(reply.content).not.toMatch(/copied marnie holloway/i);
+    expect(detailsOf(remy)).not.toContain("approved cleaner");
   });
 });
 
