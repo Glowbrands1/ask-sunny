@@ -115,6 +115,8 @@ export async function findOwnCopySource(input: {
   text: string;
   /** Only a form whose employee the text names (with a draft open, never "the newest"). */
   namedOnly?: boolean;
+  /** Set to the named form when it is found but has nothing to copy. */
+  emptyNamed?: { found: LoadedInstance | null };
 }): Promise<LoadedInstance | null> {
   const { data, error } = await getSupabaseAdmin()
     .from("form_instance_overview")
@@ -140,6 +142,7 @@ export async function findOwnCopySource(input: {
     if (!loaded || loaded.instance.createdBy !== input.actor.id) continue;
     if (!actorMaySeeInstance(input.actor, loaded.instance)) continue;
     if (hasContent(loaded)) return loaded;
+    if (named && input.emptyNamed) input.emptyNamed.found = loaded;
   }
   return null;
 }
@@ -288,6 +291,10 @@ function lastAssistantText(history: readonly { role: string; content?: string | 
  * copy takes its source only from "the same draft that we did with <name>",
  * "same as <name>'s". Under SAME_FORM_COPY_ENABLED.
  */
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+
 function namedAsTarget(text: string, employeeName: string): boolean {
   const words = nameWords(employeeName);
   if (words.length === 0) return false;
@@ -314,6 +321,7 @@ export async function copyIntoOpenForm(input: {
   }
   const { actor, loaded } = authorized;
   if (loaded.instance.status !== "draft") return null;
+  const emptyNamed: { found: LoadedInstance | null } = { found: null };
   const source = await findOwnCopySource({
     actor,
     templateKey: loaded.instance.templateKey,
@@ -321,7 +329,26 @@ export async function copyIntoOpenForm(input: {
     targetEmployeeName: loaded.instance.employeeName,
     text: confirmed ? asked! : input.question,
     namedOnly: true,
+    emptyNamed,
   });
+  /*
+   * QA, live retest, 31 Oct 2026: with Marnie's draft holding no details,
+   * "can you create the same draft that we did with marnie holloway by
+   * changing the name and position?" found nothing to copy and said nothing,
+   * so the turn went on — here to another card for the open draft's person, in
+   * the sibling app to the answering model, which said no draft had been
+   * created for her. The named form is this account's own and has nothing to
+   * copy: said so plainly, and the open draft is left as it is.
+   */
+  const empty = emptyNamed.found;
+  if (!source && empty && !confirmed && !namedAsTarget(input.question, empty.instance.employeeName)) {
+    return {
+      content: `**${empty.instance.employeeName}**'s ${empty.instance.templateName} has no details yet, so there is nothing to copy. **${loaded.instance.employeeName}**'s draft is as it was. Tell me what happened and I'll fill it in, or add ${firstName(empty.instance.employeeName)}'s details first and ask again.`,
+      citations: [],
+      coverage: "not_applicable",
+      recommendedVideoIds: [],
+    };
+  }
   if (!source) return null;
   // "Do the same coaching form for remy calder": Remy is who the new form is for, never the source.
   if (!confirmed && namedAsTarget(input.question, source.instance.employeeName)) return null;
