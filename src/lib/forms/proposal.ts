@@ -4,7 +4,7 @@ import { businessToday } from "@/lib/business-date";
 import { PRODUCTION_SALONS } from "@/data/salons";
 import { storeNameKey } from "@/lib/reporting/store-identity";
 
-import { groundedEntitiesEnabled, intentExtractionEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { groundedEntitiesEnabled, intentExtractionEnabled, thisPersonsTurnsEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { isDocumentName, isRosterStateName } from "@/lib/ai/not-a-person";
 
 import { extractFormDate } from "./form-date-answer";
@@ -20,6 +20,7 @@ import {
 import { proposeLocation } from "./location-scope";
 import { isExitTerms, namesSomebody, notInStreetAddress } from "./answer-not-a-name";
 import { isMultiWordSalonName } from "./salon-mention";
+import { turnsFromThisPersonsRequest } from "./this-persons-turns";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
 /**
@@ -1923,7 +1924,9 @@ export function buildProposal(input: ProposalInput): ChatFormProposal {
       ? { namedLocationOutOfScope: location.outOfScopeName }
       : {}),
     status,
-    sourceMessageIds: input.context.ids,
+    sourceMessageIds: thisPersonsTurnsEnabled()
+      ? turnsFromThisPersonsRequest(input.context, employeeName, { names: extractEmployeeNames, same: samePerson })
+      : input.context.ids,
     ...(team ? { subject: "team" as const } : {}),
   };
 }
