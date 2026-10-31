@@ -1,4 +1,8 @@
+import { createHash } from "node:crypto";
+
 import { NextResponse } from "next/server";
+
+import { chatLocalOwnerEnabled } from "@/lib/chat/local-owner";
 
 import {
   assertLiveMode,
@@ -94,6 +98,16 @@ export async function GET(request: Request) {
      * undo the delete.
      */
     const state = await ownHistoryState(context.identity.subject);
+    /*
+     * NEXT_PUBLIC_CHAT_LOCAL_OWNER_ENABLED: an opaque key for this account,
+     * which the browser stamps on the chats it writes so the next account on
+     * the same browser is never shown them. A hash, never the id. See
+     * `lib/chat/local-owner.ts`.
+     */
+    if (chatLocalOwnerEnabled()) {
+      const ownerKey = createHash("sha256").update(`ask-chat-owner:${context.identity.subject}`).digest("hex").slice(0, 32);
+      return NextResponse.json({ ...state, ownerKey });
+    }
     return NextResponse.json(state);
   } catch (error) {
     return errorResponse(error, "GET /api/chat/conversations/import");
