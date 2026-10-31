@@ -301,6 +301,7 @@ an hour of headroom for an admin's own sends.
 - Its versions are the timestamps at which each migration was applied, not the file versions.
 - Some rows are named after the file and some are not.
 - `20261002001000`, `20261002002000` and `20261006001000` were applied as plain SQL, so their objects exist but have no history row.
+- `20261025233000_form_instances_one_open_revision.sql` (T9, one open revision per form) was applied with `apply_migration` on 26 Oct 2026 as version `20261026011703`, name `form_instances_one_open_revision`.
 
 **Do not re-run them** to create history rows. **Do not use `supabase db push` or `supabase migration repair` against this project:** the CLI compares file versions with history versions, and almost none match.
 
