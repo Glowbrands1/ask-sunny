@@ -44,9 +44,11 @@ export function privateCreatorsActive(): boolean {
 export function hiddenAsPrivate(
   reader: { id: string; role: Role | null },
   instance: { createdBy: string },
+  /** AM_PRIOR_WARNINGS_ENABLED: false only for the Corrective Action's count of earlier warnings. */
+  options: { assistantOwnFormsRule?: boolean } = {},
 ): boolean {
   // NEXT_PUBLIC_ASSISTANT_MANAGER_CREATE_ENABLED: an Assistant Salon Director sees only the forms they created.
-  if (hiddenFromAssistantManager(reader, instance)) return true;
+  if (options.assistantOwnFormsRule !== false && hiddenFromAssistantManager(reader, instance)) return true;
   if (!(privateCreatorFormsEnabled() && privateCreatorIds().size > 0)) return false;
   if (!privateCreatorIds().has(instance.createdBy)) return false;
   if (instance.createdBy === reader.id) return false;
