@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { chatHistoryStateChunkedEnabled, chatImportOwnOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { chatHistoryStateChunkedEnabled, chatImportOwnOnlyEnabled, chatImportProvenOwnEnabled } from "@/lib/config/chat-quality-flags";
 import { AuthError } from "@/lib/auth/types";
 import type { ChatConversation, ChatMessage } from "@/types";
 import { CONVERSATION_REFUSED, ChatStoreError } from "./errors";
@@ -458,6 +458,14 @@ export async function saveOwnConversation(
 
   // CHAT_IMPORT_OWN_ONLY_ENABLED: another account's chat is not stored on this one.
   if (chatImportOwnOnlyEnabled() && (await writtenByAnotherAccount(userId, payload))) return "another_account";
+  /*
+   * CHAT_IMPORT_PROVEN_OWN_ENABLED: an IMPORT of a chat this account does not
+   * hold yet must prove it is this account's — every answered turn recorded
+   * for this account. No turn on record (no turn id, a turn with no activity
+   * row, a turn with no actor) is not proof; it is declined (independent
+   * review, 31 Oct 2026: the check above passed such a chat).
+   */
+  if (options.imported && !row && chatImportProvenOwnEnabled() && !(await provenOwn(userId, payload))) return "another_account";
 
   /*
    * AND NOTHING FROM BEFORE A CLEAR COMES BACK EITHER. Clear History removes
@@ -745,19 +753,49 @@ async function clearBoundaryFor(userId: string): Promise<string | null> {
  * server, never by the browser. (Not by looking for its id in another
  * account's chats: no chat table is ever read across accounts.)
  */
-async function writtenByAnotherAccount(userId: string, payload: ConversationPayload): Promise<boolean> {
-  const supabase = getSupabaseAdmin();
-  const turnIds = [
+function turnIdsOf(payload: ConversationPayload): string[] {
+  return [
     ...new Set(
       payload.messages
         .map((message) => message.turnId)
         .filter((turnId): turnId is string => typeof turnId === "string"),
     ),
   ];
+}
+
+/** Turn ids per activity read, so one request URL stays short (CHAT_IMPORT_PROVEN_OWN_ENABLED). */
+const TURN_ID_BATCH = 100;
+
+/** The activity rows behind these turns: one read, or batches with CHAT_IMPORT_PROVEN_OWN_ENABLED. */
+async function turnActors(turnIds: string[]): Promise<{ id?: string; actor_user_id: string | null }[]> {
+  const supabase = getSupabaseAdmin();
+  const batches = chatImportProvenOwnEnabled()
+    ? Array.from({ length: Math.ceil(turnIds.length / TURN_ID_BATCH) }, (_, index) =>
+        turnIds.slice(index * TURN_ID_BATCH, (index + 1) * TURN_ID_BATCH),
+      )
+    : [turnIds];
+  const rows: { id?: string; actor_user_id: string | null }[] = [];
+  for (const batch of batches) {
+    const { data, error } = await supabase.from("activity_events").select("id, actor_user_id").in("id", batch);
+    if (error) unavailable("save that conversation");
+    rows.push(...((data ?? []) as { id?: string; actor_user_id: string | null }[]));
+  }
+  return rows;
+}
+
+async function writtenByAnotherAccount(userId: string, payload: ConversationPayload): Promise<boolean> {
+  const turnIds = turnIdsOf(payload);
   if (turnIds.length === 0) return false;
-  const { data, error } = await supabase.from("activity_events").select("actor_user_id").in("id", turnIds);
-  if (error) unavailable("save that conversation");
-  return ((data ?? []) as { actor_user_id: string | null }[]).some((turn) => turn.actor_user_id !== null && turn.actor_user_id !== userId);
+  return (await turnActors(turnIds)).some((turn) => turn.actor_user_id !== null && turn.actor_user_id !== userId);
+}
+
+/** Every answered turn of this chat is on record as this account's. */
+async function provenOwn(userId: string, payload: ConversationPayload): Promise<boolean> {
+  const turnIds = turnIdsOf(payload);
+  if (turnIds.length === 0) return false;
+  const rows = await turnActors(turnIds);
+  const mine = new Set(rows.filter((row) => row.actor_user_id === userId).map((row) => row.id));
+  return turnIds.every((id) => mine.has(id));
 }
 
 async function hasTurnAtOrBefore(

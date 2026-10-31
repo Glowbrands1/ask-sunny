@@ -159,3 +159,52 @@ describe("a live save of another account's chat", () => {
     expect(db.tables.chat_conversations).toHaveLength(0);
   });
 });
+
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026: CHAT_IMPORT_OWN_ONLY passed a chat with no
+ * turn evidence — no turn id (a chat whose answer was never recorded, or an
+ * older build), a turn id with no activity row, or a row with no actor — so
+ * another account's chat could still be imported on a shared browser.
+ * CHAT_IMPORT_PROVEN_OWN_ENABLED: an import must prove every answered turn is
+ * this account's.
+ */
+describe("CHAT_IMPORT_PROVEN_OWN_ENABLED: an import with no proof of whose it is", () => {
+  const PROVEN = "CHAT_IMPORT_PROVEN_OWN_ENABLED";
+  const withoutTurn = {
+    ...MANAGERS_CHAT,
+    messages: MANAGERS_CHAT.messages.map((message) => {
+      const copy: Record<string, unknown> = { ...message };
+      delete copy.turnId;
+      return copy;
+    }),
+  } as unknown as typeof MANAGERS_CHAT;
+
+  async function importChat(chat: typeof MANAGERS_CHAT, activity: { id: string; actor_user_id: string | null }[], proven: boolean) {
+    process.env[FLAG] = "true";
+    if (proven) process.env[PROVEN] = "true";
+    else delete process.env[PROVEN];
+    const db = fakeChatSupabase({ activity_events: activity.map((row) => ({ ...row, occurred_at: "2026-10-30T18:09:08.000Z" })) });
+    const { importRoute } = await load(ASSISTANT, db);
+    const response = await importRoute.POST(post("/api/chat/conversations/import", { conversations: [chat] }));
+    return (await response.json()) as { imported: string[]; declined: { id: string | null; reason: string }[] };
+  }
+
+  it("off (CHAT_IMPORT_OWN_ONLY alone): a chat with no turn id is imported into the other account", async () => {
+    expect((await importChat(withoutTurn, [], false)).imported).toEqual([MANAGERS_CHAT.id]);
+  });
+
+  it.each([
+    ["no turn id at all", withoutTurn, []],
+    ["a turn with no activity row", MANAGERS_CHAT, []],
+    ["a turn with no actor", MANAGERS_CHAT, [{ id: TURN, actor_user_id: null }]],
+  ] as const)("on: declined — %s", async (_case, chat, activity) => {
+    const payload = await importChat(chat, [...activity], true);
+    expect(payload.imported).toEqual([]);
+    expect(payload.declined).toEqual([{ id: MANAGERS_CHAT.id, reason: "another_account" }]);
+  });
+
+  it("on: a chat whose every answered turn is this account's is imported", async () => {
+    const payload = await importChat(MANAGERS_CHAT, [{ id: TURN, actor_user_id: ASSISTANT }], true);
+    expect(payload.imported).toEqual([MANAGERS_CHAT.id]);
+  });
+});
