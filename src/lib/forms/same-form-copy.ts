@@ -36,12 +36,34 @@ import {
  * manager names, else the newest for somebody else.
  */
 
-/** "the same coaching form for …", "same draft that we did with …", "do the same for …". */
-const SAME =
-  /\b(?:the\s+)?same\s+(?:(?:coaching|corrective\s+action|ca|follow[- ]?up(?:\s+coaching)?)\s+)?(?:form|draft|one|card|thing|details|content|coaching)\b|\bdo\s+the\s+same\b|\bsame\s+as\s+(?:the\s+one\s+)?(?:we\s+did\s+)?(?:for|with)\b|\b(?:copy|duplicate)\s+(?:the|that|this|her|his|their)\s+(?:form|draft|coaching|card)\b/i;
+/*
+ * A COPY IS ASKED FOR IN SO MANY WORDS (independent review, 31 Oct 2026). The
+ * first reading took "same thing", "same one", "same details" anywhere —
+ * "She was late again today, same thing as last week" filled the new form
+ * from another person's. Now only a request to make "the same coaching form /
+ * draft", to "copy <someone's> form", or "the same form as / that we did".
+ */
+const KIND = String.raw`(?:(?:coaching|corrective\s+action|ca|follow[- ]?up(?:\s+coaching)?)\s+)?(?:form|draft)`;
+const SAME = new RegExp(
+  [
+    String.raw`\b(?:do|create|make|start|draft|build|write|copy|duplicate|need|want)\b[^.?!\n]{0,40}?\bthe\s+same\s+${KIND}\b`,
+    String.raw`\b(?:copy|duplicate)\s+(?:the|that|this|her|his|their|[a-z]+'s)\s+${KIND}\b`,
+    String.raw`\bsame\s+${KIND}\s+(?:as|that\s+we\s+did|we\s+did)\b`,
+  ].join("|"),
+  "i",
+);
+
+/** An account of what happened: never a request to copy, whatever else it says. */
+const INCIDENT =
+  /\b(?:was|were|late|tardy|absent|no[- ]?(?:call|show)|yell(?:ed|ing)?|rude|left\s+early|clocked|again|today|yesterday|last\s+(?:week|night|shift)|did\s+the\s+same\s+thing)\b/i;
+
+/** At most this many words in a copy request — a longer turn is the manager's own account. */
+const MAX_REQUEST_WORDS = 25;
 
 export function asksForSameForm(text: string): boolean {
-  return SAME.test(text);
+  const turn = text.trim();
+  if (!SAME.test(turn) || INCIDENT.test(turn)) return false;
+  return turn.split(/\s+/).length <= MAX_REQUEST_WORDS;
 }
 
 /**

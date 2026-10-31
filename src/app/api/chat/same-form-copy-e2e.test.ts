@@ -672,6 +672,32 @@ describe('"create a coaching form for remy calder" after an earlier "Do the same
   });
 });
 
+/*
+ * INDEPENDENT REVIEW, 31 Oct 2026: the copy read "same thing", "same one",
+ * "same details" anywhere, so the manager's own account of what happened
+ * skipped the drafting model and filled the form from another person's.
+ */
+describe('Create notes ending "She was late again today, same thing as last week"', () => {
+  it("SAME_FORM_COPY: drafted from the manager's account, never copied", async () => {
+    flags(false);
+    directory();
+    const thread = new Thread();
+    await marnieForm(thread);
+    const remy = await remyForm(thread);
+    flags(true);
+    state.draft = { values: { coaching_details: "Observed:\nRemy was late again today." } };
+    state.draftCalls = 0;
+    await call(`/api/forms/instances/${remy}/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ notes: "create a coaching form for remy calder\n\nShe was late again today, same thing as last week" }),
+    });
+    expect(detailsOf(remy)).not.toContain("approved cleaner");
+    expect(detailsOf(remy)).toContain("Remy was late again today.");
+    expect(state.draftCalls).toBeGreaterThan(0);
+  });
+});
+
 afterEach(() => {
   said.answer = null;
 });
