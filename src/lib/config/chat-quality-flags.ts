@@ -1564,6 +1564,28 @@ export function otherWriteInNotAQuestionEnabled(): boolean {
 }
 
 /**
+ * The history-state read counts turns in batches of conversation ids, so an
+ * account with thousands of chats no longer gets a 503 from
+ * GET /api/chat/conversations/import (QA, 31 Oct 2026; same flag in both
+ * apps). See `chat/store.ts` `ownHistoryState`. Off, as before.
+ */
+export function chatHistoryStateChunkedEnabled(): boolean {
+  return envFlag("CHAT_HISTORY_STATE_CHUNKED_ENABLED");
+}
+
+/**
+ * A freshly signed-in browser shows the account's chats even when the
+ * history-state read fails: the list the server returned is merged on its own
+ * (QA, 31 Oct 2026; same flag in both apps). Read in the browser, so only a
+ * statically written `process.env.NEXT_PUBLIC_…` is inlined, at build time.
+ * See `store/app-store.tsx`. Off, as before.
+ */
+export function chatHistoryTolerantEnabled(): boolean {
+  const inlined = process.env.NEXT_PUBLIC_CHAT_HISTORY_TOLERANT_ENABLED;
+  return typeof inlined === "string" && ON.has(inlined.trim().toLowerCase());
+}
+
+/**
  * With a Coaching Form draft open, details given in plain words, "make that
  * update", and "update the draft with these details" (the previous answer's)
  * are written into the draft by the open-form revision (ported from Ask

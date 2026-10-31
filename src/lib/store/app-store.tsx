@@ -28,6 +28,7 @@ import {
   type ImportSummary,
 } from "@/lib/chat/local-import";
 import { mergeConversations } from "@/lib/chat/merge";
+import { chatHistoryTolerantEnabled } from "@/lib/config/chat-quality-flags";
 import {
   isSuppressed,
   suppressDeleted,
@@ -649,11 +650,35 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setAppliedBoundary(alreadyApplied);
 
       try {
-        const [serverConversations, state] = await Promise.all([
-          fetchOwnConversations(),
-          fetchHistoryState(),
-        ]);
+        /*
+         * NEXT_PUBLIC_CHAT_HISTORY_TOLERANT_ENABLED: the two reads are settled
+         * separately. When only the history state fails (QA, 31 Oct 2026: a 503
+         * on every fresh load for a heavy account), the account's own list is
+         * still merged — it is this person's own chats, read under their own
+         * id — and nothing is suppressed, offered for Import or released from
+         * this browser. Off, either failure leaves local chats only, as before.
+         */
+        let reads: [ChatConversation[], HistoryState];
+        if (chatHistoryTolerantEnabled()) {
+          const [listed, stated] = await Promise.allSettled([fetchOwnConversations(), fetchHistoryState()]);
+          if (cancelled) return;
+          if (listed.status === "fulfilled" && stated.status === "rejected") {
+            const serverConversations = listed.value;
+            for (const conversation of serverConversations) {
+              historicalIds.current.delete(conversation.id);
+              syncedSignatures.current.set(conversation.id, signatureOf(conversation));
+            }
+            setHistoryState(null);
+            setConversations((current) => mergeConversations(current, serverConversations));
+            return;
+          }
+          if (listed.status === "rejected" || stated.status === "rejected") throw new Error("history unavailable");
+          reads = [listed.value, stated.value];
+        } else {
+          reads = await Promise.all([fetchOwnConversations(), fetchHistoryState()]);
+        }
         if (cancelled) return;
+        const [serverConversations, state] = reads;
 
         /*
          * A conversation the account already holds is not historical: it is

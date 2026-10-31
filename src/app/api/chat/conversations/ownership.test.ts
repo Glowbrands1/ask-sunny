@@ -686,3 +686,58 @@ describe("the same account, two browsers", () => {
     expect(payload.conversations[0].attachedDocumentIds).toEqual([]);
   });
 });
+
+describe("CHAT_HISTORY_STATE_CHUNKED_ENABLED: an account with many chats (QA, 31 Oct 2026)", () => {
+  const FLAG = "CHAT_HISTORY_STATE_CHUNKED_ENABLED";
+  afterEach(() => {
+    delete process.env[FLAG];
+  });
+
+  /** 250 of my conversations, one turn each. */
+  function many(): FakeChatSupabase {
+    const conversations = Array.from({ length: 250 }, (_, index) => ({
+      id: `row-${index}`,
+      user_id: ME,
+      client_conversation_id: `conv_mfxmany${String(index).padStart(5, "0")}`,
+      title: `t${index}`,
+      created_at: "2026-09-19T14:00:00.000Z",
+      updated_at: "2026-09-19T14:05:00.000Z",
+      archived_at: null,
+    }));
+    const messages = conversations.map((row, index) => ({
+      id: `m-${index}`,
+      conversation_id: row.id,
+      user_id: ME,
+      client_message_id: `msg_mfxmany${String(index).padStart(5, "0")}`,
+      role: "user",
+      content: "hello",
+      created_at: "2026-09-19T14:00:00.000Z",
+      position: 0,
+    }));
+    return fakeChatSupabase({ chat_conversations: conversations, chat_messages: messages });
+  }
+
+  function idLists(db: FakeChatSupabase): unknown[][] {
+    return db.statements
+      .filter((statement) => statement.table === "chat_messages" && Array.isArray(statement.filters.conversation_id))
+      .map((statement) => statement.filters.conversation_id as unknown[]);
+  }
+
+  it("off: one read carries every conversation id (the request that fails for thousands of chats)", async () => {
+    const route = await load(ME, many());
+    const response = await route.importRoute.GET(get("https://app.test/api/chat/conversations/import"));
+    expect(response.status).toBe(200);
+    expect(idLists(route.db).map((ids) => ids.length)).toEqual([250]);
+  });
+
+  it("on: read in batches of at most 100, every count still right", async () => {
+    process.env[FLAG] = "true";
+    const route = await load(ME, many());
+    const response = await route.importRoute.GET(get("https://app.test/api/chat/conversations/import"));
+    const body = (await response.json()) as { stored: { id: string; messages: number }[] };
+    expect(response.status).toBe(200);
+    expect(idLists(route.db).map((ids) => ids.length)).toEqual([100, 100, 50]);
+    expect(body.stored).toHaveLength(250);
+    expect(body.stored.every((entry) => entry.messages === 1)).toBe(true);
+  });
+});
