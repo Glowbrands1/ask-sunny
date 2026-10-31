@@ -1594,6 +1594,17 @@ export function sameFormCopyEnabled(): boolean {
 }
 
 /**
+ * "A coaching form for my whole staff": no card for everyone. Several salons
+ * in scope and none named → asks which; one → lists its staff from the scoped
+ * Woven directory (name and position) and asks who the form is for (ported
+ * from Ask Bubbles; Pau, 30 Oct 2026; same flag in both apps). See
+ * `forms/staff-picker.ts`. Off, as before.
+ */
+export function staffPickerEnabled(): boolean {
+  return envFlag("STAFF_PICKER_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).

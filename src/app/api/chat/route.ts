@@ -16,6 +16,7 @@ import {
   questionNotFormEnabled,
   sameFormCopyEnabled,
   secondFormEnabled,
+  staffPickerEnabled,
 } from "@/lib/config/chat-quality-flags";
 import {
   assertLiveMode,
@@ -190,17 +191,31 @@ async function postChat(request: Request) {
             continuingTemplateKey: asked.continueProposalTemplateKey,
           })
         : null;
-      const draftAnswer = draftAction && "answer" in draftAction ? draftAction.answer : null;
+      /*
+       * STAFF_PICKER_ENABLED: "a coaching form for my whole staff" — no card
+       * for everyone: which salon, then its staff by name and position, then
+       * one person at a time. No model call. See `lib/forms/staff-picker.ts`.
+       */
+      const staffPick =
+        staffPickerEnabled() && !draftAction
+          ? await (await import("@/lib/forms/staff-picker")).staffPickerTurn({
+              question: asked.question,
+              history: asked.history,
+              continuing: Boolean(asked.continueProposalTemplateKey),
+              scope: context.identity.scope,
+            })
+          : null;
+      const draftAnswer = (draftAction && "answer" in draftAction ? draftAction.answer : null) ?? staffPick;
       /*
        * Either way the open form is not corrected or revised by this turn: it
        * was answered above, or a new incident is a new form.
        */
       // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: "change to coaching" after the form was created starts the other form; the created one is left as it is.
       const parsed = withSwitchAfterCreate(
-        draftAction
+        draftAction || staffPick
           ? {
               ...asked,
-              ...("question" in draftAction ? { question: draftAction.question } : {}),
+              ...(draftAction && "question" in draftAction ? { question: draftAction.question } : {}),
               activeFormInstanceId: undefined,
             }
           : asked,
