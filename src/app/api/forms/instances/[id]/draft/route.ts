@@ -423,7 +423,13 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     if (sameFormCopyEnabled()) {
       const copy = await import("@/lib/forms/same-form-copy");
-      if (copy.asksForSameForm(notes)) {
+      /*
+       * Only the card's own request asks for a copy — the last turn of the
+       * notes (live check B2, 31 Oct 2026: "create a coaching form for remy
+       * calder" after an earlier "Do the same coaching form for remy calder"
+       * in the same chat was copied too).
+       */
+      if (copy.asksForSameForm(copy.requestTurn(notes))) {
         const source = await copy.findOwnCopySource({
           actor,
           templateKey: loaded.instance.templateKey,
