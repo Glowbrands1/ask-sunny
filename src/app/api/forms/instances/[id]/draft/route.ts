@@ -20,6 +20,7 @@ import {
   policyPageRequiredEnabled,
   policySpecificTopicsEnabled,
   grammarAskNotAccountEnabled,
+  sameFormCopyEnabled,
   typoReadingRoutesEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
@@ -412,6 +413,37 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     );
     if (fields.length === 0 && groups.length === 0 && lists.length === 0) {
       return NextResponse.json({ values: {}, checked: {}, withheld: [], notice: null, statedFacts });
+    }
+
+    /*
+     * "DO THE SAME COACHING FORM FOR <ANOTHER PERSON>" (SAME_FORM_COPY_ENABLED).
+     * The content of the manager's own earlier form of this template, name
+     * swapped, instead of a draft from a conversation that never held it. No
+     * model call. See `lib/forms/same-form-copy.ts`.
+     */
+    if (sameFormCopyEnabled()) {
+      const copy = await import("@/lib/forms/same-form-copy");
+      if (copy.asksForSameForm(notes)) {
+        const source = await copy.findOwnCopySource({
+          actor,
+          templateKey: loaded.instance.templateKey,
+          targetInstanceId: id,
+          targetEmployeeName: loaded.instance.employeeName,
+          text: notes,
+        });
+        if (source) {
+          const copied = await copy.copyFormContent({ source, target: loaded, actorId: actor.id });
+          if (Object.keys(copied.values).length > 0 || Object.keys(copied.checked).length > 0) {
+            return NextResponse.json({
+              values: copied.values,
+              checked: copied.checked,
+              withheld: [],
+              notice: copy.copiedNotice(source.instance),
+              statedFacts,
+            });
+          }
+        }
+      }
     }
 
     /*
