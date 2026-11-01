@@ -790,6 +790,12 @@ describe("new flags default off and wrappers are inert", () => {
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
           ":(exclude)src/features/chat/import-local-history.tsx",
+          // App switcher's Leadership Hub tab (requested by Paulyne through the QA session,
+          // 1 Nov 2026 — QA to confirm): shell plumbing for a server yes/no. With
+          // LEADERSHIP_HUB_TAB_EMAILS unset the tab never renders, so the shell is as before.
+          ":(exclude)src/components/shell/app-shell.tsx",
+          ":(exclude)src/components/shell/sidebar.tsx",
+          ":(exclude)src/components/shell/app-switcher.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
         ]),
       ).toBe("");
