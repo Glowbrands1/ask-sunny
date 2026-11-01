@@ -75,3 +75,14 @@ describe("isReportName", () => {
     for (const name of ["Marnie Holloway", "Daily", "Stats Holloway", "Bea Usage"]) expect(isReportName(name), name).toBe(false);
   });
 });
+
+describe("mentionsReportName", () => {
+  it("finds the app's report names inside a sentence, and nothing else", async () => {
+    const { mentionsReportName } = await import("./not-a-person");
+    expect(mentionsReportName("Show me the most recent Daily Stats and what I need to focus on today.")).toBe(true);
+    expect(mentionsReportName("how are we doing on the comp report this month")).toBe(true);
+    // A one-word key counts only with "report": "comp time" is not the Comp Report.
+    expect(mentionsReportName("can she take comp time on friday")).toBe(false);
+    expect(mentionsReportName("she was late again today")).toBe(false);
+  });
+});
