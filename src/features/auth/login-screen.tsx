@@ -15,6 +15,7 @@ import { supabasePublicConfigured } from "@/lib/config/runtime";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/permissions";
 import { useSession } from "@/lib/session/session-context";
 import type { Role } from "@/types";
+import { PublicLinks } from "@/features/public/public-page";
 import { SignInForm } from "./sign-in-form";
 
 /**
@@ -176,6 +177,9 @@ export function LoginScreen({
               preview access.
             </Notice>
           )}
+
+          {/* Public links Google's OAuth review needs reachable from sign-in. */}
+          <PublicLinks className="mt-8 text-[12px] text-muted-foreground" />
         </div>
       </div>
 
