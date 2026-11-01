@@ -187,6 +187,7 @@ import { withTypoReadingCopy } from "./typo-reading-copy";
 import { protectedNameWords } from "./typo-name-words";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
+import { withManagerNameGuard } from "./manager-name-guard";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -340,9 +341,10 @@ async function answerQuestionChecked(
       actor,
     ), request);
   };
+  // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
-    if (!selfCheckEnabled()) return produce();
-    return keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request);
+    if (!selfCheckEnabled()) return withManagerNameGuard(await produce(), request);
+    return withManagerNameGuard(keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request), request);
   }
   const draft = openChatTrace({
     conversationId: request.conversationId,
@@ -354,8 +356,8 @@ async function answerQuestionChecked(
     ),
   });
   const response = await finishChatTrace(draft, produce);
-  if (!selfCheckEnabled()) return response;
-  return keepManagerActionPlan(await guardReply(response, { request, actor }), request);
+  if (!selfCheckEnabled()) return withManagerNameGuard(response, request);
+  return withManagerNameGuard(keepManagerActionPlan(await guardReply(response, { request, actor }), request), request);
 }
 
 /** A manager manual or another brand. Not a Sun Tan City policy source. */

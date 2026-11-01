@@ -1,5 +1,6 @@
 import { REPORTS } from "@/features/reports/reports-routes";
-import { promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { managerNameNotEmployeeEnabled, promptCacheEnabled } from "@/lib/config/chat-quality-flags";
+import { MANAGER_NAME_RULE } from "./manager-name-guard";
 import { displayLocator } from "@/lib/knowledge/locator";
 import type { AnswerMode } from "@/types";
 import { CROSS_CHAT_REPLY_RULE } from "@/lib/chat/cross-chat-guard";
@@ -791,7 +792,13 @@ ${SUNNY_VOICE}`;
      * The retrieved-sources rule joins the template after it, so the frozen
      * template above stays byte-identical. See `sources-not-shared.ts`.
      */
-    const ruled = body.replace(NEVER_CLAIM_RULE, `${NEVER_CLAIM_RULE}\n${RETRIEVED_NOT_SHARED_RULE}`);
+    /*
+     * MANAGER_NAME_NOT_EMPLOYEE_ENABLED: joined after the frozen template the
+     * same way — the manager's name is only for addressing them.
+     */
+    const listener = `You are talking to ${context.userName}, who runs ${context.locationName}.`;
+    const named = managerNameNotEmployeeEnabled() ? body.replace(listener, `${listener} ${MANAGER_NAME_RULE}`) : body;
+    const ruled = named.replace(NEVER_CLAIM_RULE, `${NEVER_CLAIM_RULE}\n${RETRIEVED_NOT_SHARED_RULE}`);
     return withFrameworkGeneralSections(
       citeManualPages
         ? ruled.replace(
@@ -816,7 +823,7 @@ ${SUNNY_VOICE}`;
     ? ""
     : "IMPORTANT: no company documents matched this question. You have NO company knowledge for it. Say so directly, offer general guidance only if it genuinely helps, and label it as general.";
   const tail = [
-    `You are talking to ${context.userName}, who runs ${context.locationName}. Today is ${context.todayIso}.`,
+    `You are talking to ${context.userName}, who runs ${context.locationName}.${managerNameNotEmployeeEnabled() ? ` ${MANAGER_NAME_RULE}` : ""} Today is ${context.todayIso}.`,
     reportBullet,
     employeeBullet,
     formRule,
