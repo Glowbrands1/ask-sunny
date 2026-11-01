@@ -1,3 +1,5 @@
+import { truncationRetryBudgetEnabled } from "@/lib/config/chat-quality-flags";
+
 import { AiError } from "./errors";
 
 /**
@@ -20,6 +22,14 @@ import { AiError } from "./errors";
 /** The budget a retry may grow to. Above the largest configured budget. */
 export const TRUNCATION_RETRY_CEILING = 16_000;
 
+/**
+ * TRUNCATION_RETRY_BUDGET_ENABLED (QA, 1 Nov 2026): a first attempt that
+ * already took longer than this starts no retry, so one turn never stacks two
+ * long attempts past the route's 120 s ceiling (`maxDuration` on /api/chat).
+ * Live, a cut-off Daily Stats briefing took about 31 s and its retry 36 s.
+ */
+export const TRUNCATION_RETRY_START_LIMIT_MS = 50_000;
+
 export function wasTruncated(stopReason: string | null | undefined): boolean {
   return stopReason === "max_tokens";
 }
@@ -38,8 +48,14 @@ export async function withTruncationRetry<T extends { readonly stopReason: strin
   call: (maxTokens: number) => Promise<T>,
   message: string,
 ): Promise<T> {
+  const started = Date.now();
   const first = await call(maxTokens);
   if (!wasTruncated(first.stopReason)) return first;
+  const took = Date.now() - started;
+  if (truncationRetryBudgetEnabled() && took > TRUNCATION_RETRY_START_LIMIT_MS) {
+    console.warn(`[ai] response cut off at max_tokens=${maxTokens} after ${took} ms; no retry (budget)`);
+    throw new AiError("truncated", message, 502);
+  }
 
   const larger = retryBudget(maxTokens);
   console.warn(`[ai] response cut off at max_tokens=${maxTokens}; retrying once with ${larger}`);
