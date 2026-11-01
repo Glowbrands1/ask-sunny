@@ -44,7 +44,8 @@ import { labelledSalonIds } from "@/lib/forms/salon-cue";
 import { newestManagerTurnSalon } from "@/lib/forms/newest-place-turn";
 import { typedEmployeeName } from "@/lib/forms/typed-employee-name";
 import { managerStatedWarningLevel, templateHasWarningLevel, warningLevelFromTurns } from "@/lib/forms/warning-level";
-import { isDocumentName, isRosterStateName } from "./not-a-person";
+import { isDocumentName, isReportName, isRosterStateName } from "./not-a-person";
+import { reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { readsAsStatedTitle, titleTextFromTurns } from "./title-words";
 import { titleInWords } from "./title-in-words";
 import { describedAttendanceKeys } from "@/lib/forms/ca-policy";
@@ -851,7 +852,11 @@ function groundEmployee(
    * Permanent Address the manager typed, names nobody — and when it was the
    * only other name read, the one person left is the form's subject.
    */
-  const notAPerson = (name: string | null | undefined) => isExitAnswerPhrase(name) || inStatedPermanentAddress(name, blob);
+  // REPORT_NAME_NOT_A_PERSON_ENABLED: "Daily Stats", "Sales Totals" — the app's own reports — name nobody.
+  const notAPerson = (name: string | null | undefined) =>
+    isExitAnswerPhrase(name) ||
+    inStatedPermanentAddress(name, blob) ||
+    (reportNameNotAPersonEnabled() && Boolean(name) && isReportName(name!));
   if (typed?.trim() && notAPerson(typed)) typed = null;
   const read = typed?.trim() ? [] : manager ? namesInTurns(manager) : extractEmployeeNames(blob);
   const named = read.filter((name) => !notAPerson(name));

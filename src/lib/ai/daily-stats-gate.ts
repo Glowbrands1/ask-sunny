@@ -84,11 +84,12 @@ import { routeReportFamilies } from "@/lib/reporting/read/family-routing";
  * Matched case-insensitively on word boundaries, so `mean` does not fire inside
  * `meaning`'s neighbours and `coach` does not fire on part of another word.
  */
+/** What managers call the daily report itself. Also never a person (`not-a-person.ts`). */
+export const DAILY_STATS_REPORT_NAMES: readonly string[] = ["daily stats", "daily stat", "quick stats"];
+
 export const DAILY_STATS_TERMS: readonly string[] = [
   // The report and the framework, for the rare manager who names them.
-  "daily stats",
-  "daily stat",
-  "quick stats",
+  ...DAILY_STATS_REPORT_NAMES,
   "interpretation framework",
   // Asking what something MEANS, which is the framework's whole job.
   "what does this mean",
