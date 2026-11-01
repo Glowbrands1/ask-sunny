@@ -1,6 +1,7 @@
 import { truncate } from "@/lib/utils/format";
 import { AiError } from "./errors";
 import type { AIProvider, ClientAskRequest, AskResponse } from "./types";
+import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
 
 /**
  * ClaudeProvider — the AIProvider the chat UI uses in live mode.
@@ -46,17 +47,39 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     );
   }
 
-  const payload = (await response.json().catch(() => ({}))) as Partial<T> & {
-    error?: string;
-    code?: string;
-    missing?: string[];
-  };
+  /*
+   * CHAT_RESPONSE_STREAM_ENABLED: a slow answer arrives as a 200 stream —
+   * keep-alive whitespace, then {status, body} — and is read to the end and
+   * unwrapped, so the rest of this function sees exactly what a plain
+   * response carries. See `api/streamed-response.ts`. A plain response (the
+   * flag off, or a fast answer) is read as before.
+   */
+  let status = response.status;
+  let payload: Partial<T> & { error?: string; code?: string; missing?: string[] };
+  if (response.headers.get(STREAM_HEADER) === "1") {
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      throw new AiError("model_failed", "Ask Sunny could not be reached. Check your connection and try again.", 503, []);
+    }
+    let unwrapped: { status: number; body: unknown };
+    try {
+      unwrapped = unwrapStreamed(text);
+    } catch {
+      unwrapped = { status: 502, body: {} };
+    }
+    status = unwrapped.status;
+    payload = (unwrapped.body ?? {}) as typeof payload;
+  } else {
+    payload = (await response.json().catch(() => ({}))) as typeof payload;
+  }
 
-  if (!response.ok) {
+  if (status < 200 || status > 299) {
     throw new AiError(
       (payload.code as AiError["code"]) ?? "model_failed",
       payload.error ?? "Ask Sunny could not answer that right now.",
-      response.status,
+      status,
       payload.missing ?? [],
     );
   }

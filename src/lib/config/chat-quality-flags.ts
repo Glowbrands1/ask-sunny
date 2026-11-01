@@ -1711,6 +1711,16 @@ export function managerNameNotEmployeeEnabled(): boolean {
 }
 
 /**
+ * /api/chat streams a slow answer (a 200 with keep-alive bytes, then the
+ * answer), so nothing between the browser and the function cuts it off at 30 s
+ * (QA, live, 1 Nov 2026; same flag in both apps). See
+ * `api/streamed-response.ts`. Off, as before.
+ */
+export function chatResponseStreamEnabled(): boolean {
+  return envFlag("CHAT_RESPONSE_STREAM_ENABLED");
+}
+
+/**
  * With a draft open, a turn that is only "for whole staff" is the staff list,
  * not another card for the person the conversation last named (QA, live, 31 Oct
  * 2026; same flag in both apps). See `forms/staff-picker.ts`. Off, as before.
