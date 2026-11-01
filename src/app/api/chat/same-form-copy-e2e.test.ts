@@ -912,3 +912,45 @@ describe('"create a coaching form for remy calder" after Marnie\'s request and d
     for (const id of marnieTurns) expect(reply.formProposal?.sourceMessageIds).not.toContain(id);
   });
 });
+
+/*
+ * QA, live retest, 1 Nov 2026 (a Salon Director, a new chat, flag on): "Show
+ * me the most recent Daily Stats and what I need to focus on today." then
+ * "create a coaching form" made a Coaching Form card for "Daily Stats" whose
+ * Observation of Offense was the Daily Stats question. The slot reader was
+ * fixed (#428); the card is built from every manager turn. With
+ * REPORT_NAME_NOT_A_PERSON_ENABLED a question about a report that names nobody
+ * is not part of the form.
+ */
+describe('"Show me the most recent Daily Stats and what I need to focus on today." → "create a coaching form"', () => {
+  const REPORT = "REPORT_NAME_NOT_A_PERSON_ENABLED";
+  async function card(on: boolean, first = "Show me the most recent Daily Stats and what I need to focus on today.") {
+    flags(false);
+    if (!saved.has(REPORT)) saved.set(REPORT, process.env[REPORT]);
+    delete process.env[REPORT];
+    if (on) process.env[REPORT] = "true";
+    directory();
+    const thread = new Thread();
+    await thread.say(first);
+    return thread.say("create a coaching form", { templateKey: "coaching" });
+  }
+
+  it("off (production before the fix): the card is for Daily Stats, the question its Observation", async () => {
+    const reply = await card(false);
+    expect(reply.formProposal?.employeeName).toBe("Daily Stats");
+    expect(reply.content).toContain("Show me the most recent Daily Stats");
+  });
+
+  it("REPORT_NAME_NOT_A_PERSON: no employee — it asks who the form is for — and the question is not the account", async () => {
+    const reply = await card(true);
+    expect(reply.formProposal?.templateKey).toBe("coaching");
+    expect(reply.formProposal?.employeeName ?? "").not.toMatch(/daily stats/i);
+    expect(reply.formProposal?.status).toBe("needs_employee");
+    expect(reply.content).not.toContain("Show me the most recent Daily Stats");
+  });
+
+  it("REPORT_NAME_NOT_A_PERSON: a report turn that names somebody is still the account (names invented)", async () => {
+    const reply = await card(true, "Marnie Holloway's numbers on the Daily Stats are down and she took the next guest back before the room was reset");
+    expect(reply.formProposal?.employeeName ?? "").toMatch(/marnie holloway/i);
+  });
+});

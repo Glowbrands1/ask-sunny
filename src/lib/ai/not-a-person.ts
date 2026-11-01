@@ -67,3 +67,14 @@ export function isReportName(name: string): boolean {
   const key = reportKey(name);
   return key !== "" && REPORT_NAMES.has(key);
 }
+
+/** The text names one of the app's reports somewhere: "the most recent Daily Stats". */
+export function mentionsReportName(text: string): boolean {
+  const words = ` ${text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join(" ")} `;
+  for (const name of REPORT_NAMES) {
+    // A one-word key ("comp", from "Comp Report") counts only as "<key> report".
+    const phrase = name.includes(" ") ? name : `${name} report`;
+    if (words.includes(` ${phrase} `) || words.includes(` ${phrase}s `)) return true;
+  }
+  return false;
+}
