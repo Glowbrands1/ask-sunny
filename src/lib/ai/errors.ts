@@ -20,7 +20,12 @@ export type AiErrorCode =
    * answer exists, and nothing was lost. Retrying is genuinely worth it, which
    * is the one thing the manager needs to know.
    */
-  | "turn_unavailable";
+  | "turn_unavailable"
+  /**
+   * TRUNCATION_RETRY_ENABLED: the model reached its token budget twice and
+   * stopped mid-answer. Nothing from the response was shown. See `truncation.ts`.
+   */
+  | "truncated";
 
 export class AiError extends Error {
   readonly code: AiErrorCode;

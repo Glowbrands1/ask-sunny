@@ -1684,6 +1684,15 @@ export function amPriorWarningsEnabled(): boolean {
 }
 
 /**
+ * A chat answer cut off at max_tokens is asked once more with a larger budget,
+ * and never shown cut off (QA, live, 1 Nov 2026; ported from Ask Bubbles, where
+ * it is always on). See `ai/truncation.ts`. Off, as before.
+ */
+export function truncationRetryEnabled(): boolean {
+  return envFlag("TRUNCATION_RETRY_ENABLED");
+}
+
+/**
  * With a draft open, a turn that is only "for whole staff" is the staff list,
  * not another card for the person the conversation last named (QA, live, 31 Oct
  * 2026; same flag in both apps). See `forms/staff-picker.ts`. Off, as before.
