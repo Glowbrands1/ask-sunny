@@ -790,6 +790,15 @@ describe("new flags default off and wrappers are inert", () => {
           // when the server declines a chat as another account's, i.e. only with
           // CHAT_IMPORT_OWN_ONLY_ENABLED on. Off, the server never declines that way, so it never shows.
           ":(exclude)src/features/chat/import-local-history.tsx",
+          // Public /about and /privacy for Google's OAuth consent screen; no chat or form
+          // behavior; requested by Pau (1 Nov 2026, ported from Ask Bubbles). Two new pages,
+          // their shared frame, and the About / Privacy links under the sign-in form.
+          // login-screen.tsx is excluded as a whole file, so later edits to it are not
+          // checked by this guard.
+          ":(exclude)src/app/about/page.tsx",
+          ":(exclude)src/app/privacy/page.tsx",
+          ":(exclude)src/features/public/public-page.tsx",
+          ":(exclude)src/features/auth/login-screen.tsx",
           `:(exclude)${SIGN_IN_FORM}`,
         ]),
       ).toBe("");
