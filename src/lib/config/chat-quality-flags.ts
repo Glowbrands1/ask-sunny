@@ -1702,6 +1702,15 @@ export function reportNameNotAPersonEnabled(): boolean {
 }
 
 /**
+ * The manager's own name is only for addressing them, never an employee's in an
+ * answer (QA, live, 1 Nov 2026; same flag in both apps). See
+ * `ai/manager-name-guard.ts`. Off, as before.
+ */
+export function managerNameNotEmployeeEnabled(): boolean {
+  return envFlag("MANAGER_NAME_NOT_EMPLOYEE_ENABLED");
+}
+
+/**
  * With a draft open, a turn that is only "for whole staff" is the staff list,
  * not another card for the person the conversation last named (QA, live, 31 Oct
  * 2026; same flag in both apps). See `forms/staff-picker.ts`. Off, as before.
