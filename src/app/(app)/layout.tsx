@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { businessToday } from "@/lib/business-date";
 import { attentionSummary } from "@/lib/forms/follow-up";
-import { pageShowsAppSwitcher } from "@/lib/auth/app-switcher";
+import { pageShowsAppSwitcher, pageShowsLeadershipHub } from "@/lib/auth/app-switcher";
 import { pageCan, pageIdentity } from "@/lib/auth/page";
 import { actorMaySeeInstance, withoutUnreadable } from "@/lib/forms/instance-scope";
 import { listOutstandingFollowUps } from "@/lib/forms/instances";
@@ -48,12 +48,19 @@ async function overdueCount(): Promise<number> {
 }
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [overdueFollowUps, showAppSwitcher] = await Promise.all([
+  const [overdueFollowUps, showAppSwitcherBase, showLeadershipHub] = await Promise.all([
     overdueCount(),
     pageShowsAppSwitcher(),
+    pageShowsLeadershipHub(),
   ]);
+  // A listed leader needs the menu to reach the tab, so the menu opens for them too.
+  const showAppSwitcher = showAppSwitcherBase || showLeadershipHub;
   return (
-    <AppShell overdueFollowUps={overdueFollowUps} showAppSwitcher={showAppSwitcher}>
+    <AppShell
+      overdueFollowUps={overdueFollowUps}
+      showAppSwitcher={showAppSwitcher}
+      showLeadershipHub={showLeadershipHub}
+    >
       {children}
     </AppShell>
   );

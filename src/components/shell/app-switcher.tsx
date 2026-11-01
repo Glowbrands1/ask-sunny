@@ -9,12 +9,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/overlays";
+import { switchableApps } from "@/lib/config/app-switcher";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * THE TWO-WAY SWITCHER BETWEEN ASK SUNNY AND ASK BUBBLES.
+ * THE SWITCHER BETWEEN ASK SUNNY, ASK BUBBLES AND THE LEADERSHIP HUB
+ * (addresses live in src/lib/config/app-switcher.ts).
  *
- * The two are separate applications — separate deployments, Supabase projects,
+ * They are separate applications — separate deployments, Supabase projects,
  * employee records, permissions and branding — and this does not change that.
  * Choosing the other app is a plain full-page navigation to its production
  * URL. Nothing is handed across: no token, no session, no account. The
@@ -30,33 +32,20 @@ import { cn } from "@/lib/utils/cn";
  * Mirrored in Ask Bubbles (src/components/shell/app-switcher.tsx) with only
  * CURRENT_APP and the rail styling changed.
  */
-export const SWITCHABLE_APPS = [
-  {
-    id: "ask-sunny",
-    emoji: "☀️",
-    name: "Ask Sunny",
-    company: "Sun Tan City",
-    url: "https://ask-sunny.vercel.app",
-  },
-  {
-    id: "ask-bubbles",
-    emoji: "🫧",
-    name: "Ask Bubbles",
-    company: "Buff City Soap",
-    url: "https://askbubbles.vercel.app",
-  },
-] as const;
-
 const CURRENT_APP = "ask-sunny";
 
 export function AppSwitcher({
   collapsed,
   className,
+  showLeadershipHub,
 }: {
   collapsed?: boolean;
   className?: string;
+  /** The server's yes/no (`pageShowsLeadershipHub`). Absent means no. */
+  showLeadershipHub?: boolean;
 }) {
-  const current = SWITCHABLE_APPS.find((app) => app.id === CURRENT_APP)!;
+  const apps = switchableApps({ showLeadershipHub });
+  const current = apps.find((app) => app.id === CURRENT_APP)!;
 
   return (
     <DropdownMenu>
@@ -102,7 +91,7 @@ export function AppSwitcher({
         className="w-64 max-w-[calc(100vw-2rem)]"
       >
         <DropdownMenuLabel>Switch app</DropdownMenuLabel>
-        {SWITCHABLE_APPS.map((app) => {
+        {apps.map((app) => {
           const active = app.id === CURRENT_APP;
           const body = (
             <>
