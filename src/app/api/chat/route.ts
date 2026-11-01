@@ -68,6 +68,14 @@ import type { AnswerMode, ChatMessage } from "@/types";
  * that spends money at an external vendor.
  */
 export const runtime = "nodejs";
+/*
+ * A LONG ANSWER IS NOT CUT OFF AT 30 SECONDS (QA, live, 1 Nov 2026). With no
+ * export the platform's default stopped this route at 30 s: in 7 days 10
+ * managers got "could not produce an answer" while the answer finished on the
+ * server seconds later, paid for and thrown away. The same ceiling the draft
+ * route uses; the model calls inside it are bounded on their own.
+ */
+export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 const MODES: AnswerMode[] = ["quick", "standard", "detailed"];
