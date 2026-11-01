@@ -8,6 +8,8 @@ import { selectLongContext } from "./long-context";
 import { noteModelCall } from "./model-failure";
 import { modelRequestOptions, modelUnavailable } from "./model-retry";
 import { cachedSystem, cachedUserContent, systemWithCachedManual } from "./prompt-cache";
+import { withTruncationRetry } from "./truncation";
+import { truncationRetryEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -267,11 +269,24 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     const options = modelRequestOptions();
     // Stream so the first text delta can be timed. A caller that returns a
     // finished message is still accepted, with first_token_ms left empty.
-    const streamed = { ...params, stream: true as const };
-    const created = options
-      ? await client.messages.create(streamed, options)
-      : await client.messages.create(streamed);
-    const response = await collectModelResult(created, started);
+    const attempt = async (maxTokens: number) => {
+      const streamed = { ...params, max_tokens: maxTokens, stream: true as const };
+      const created = options
+        ? await client.messages.create(streamed, options)
+        : await client.messages.create(streamed);
+      return collectModelResult(created, started);
+    };
+    /*
+     * TRUNCATION_RETRY_ENABLED: an answer cut off at max_tokens is asked once
+     * more with a larger budget, and never shown cut off. See `truncation.ts`.
+     */
+    const response = truncationRetryEnabled()
+      ? await withTruncationRetry(
+          input.maxTokens,
+          attempt,
+          "Sunny ran out of room before finishing that answer, so it was not shown. Try asking for less at once, or split the question into parts.",
+        )
+      : await attempt(input.maxTokens);
 
     const noted = {
       model: CLAUDE_MODEL,

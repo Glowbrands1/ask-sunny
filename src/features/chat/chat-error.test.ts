@@ -67,6 +67,12 @@ describe("toChatTurnError", () => {
     expect(turn.retryable).toBe(false);
   });
 
+  it("TRUNCATION_RETRY: maps an answer cut off twice to a retryable state that keeps the server's words", () => {
+    const message = "Sunny ran out of room before finishing that answer, so it was not shown. Try asking for less at once, or split the question into parts.";
+    const turn = toChatTurnError(new AiError("truncated", message, 502), QUESTION);
+    expect(turn).toMatchObject({ kind: "model_failed", message, retryable: true });
+  });
+
   it("maps a model refusal to a non-retryable state", () => {
     const turn = toChatTurnError(new AiError("refused", "Sunny could not…", 422), QUESTION);
     expect(turn.kind).toBe("model_failed");
