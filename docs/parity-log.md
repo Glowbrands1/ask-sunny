@@ -1394,3 +1394,7 @@ Independent review of the sibling app (items 4, 5, 7, 8; same code here). See th
 ## 31 Oct 2026: form-edit review item 12 — "date" is not "update"; a question after the topic stays a question; only conduct naming the employee is written (both apps)
 
 Same change as the sibling app (independent review of both apps): real verbs only for "these details"; a question after "I want to coach on …" keeps it a question; a sentence naming the employee is written only when it reads as conduct or the manager says to add/note it. The three review sentences are tested.
+
+## 1 Nov 2026: app switcher gains a Leadership Hub tab (Ask Sunny first; each app builds its own)
+
+The switcher links Ask Sunny, Ask Bubbles and the Leadership Hub (plain links, addresses in `src/lib/config/app-switcher.ts`, overridable by `NEXT_PUBLIC_ASK_BUBBLES_URL` / `NEXT_PUBLIC_LEADERSHIP_HUB_URL`). The Hub tab shows only to signed-in emails on the server-only `LEADERSHIP_HUB_TAB_EMAILS`. Ask Bubbles gets the same feature from its own session; not ported from here.

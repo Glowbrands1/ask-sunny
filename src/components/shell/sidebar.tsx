@@ -19,6 +19,7 @@ export function SidebarNav({
   variant = "desktop",
   overdueFollowUps = 0,
   showAppSwitcher = false,
+  showLeadershipHub = false,
 }: {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -28,6 +29,8 @@ export function SidebarNav({
   overdueFollowUps?: number;
   /** Decided on the server by the (app) layout: administrators only. */
   showAppSwitcher?: boolean;
+  /** Server-decided yes/no for the Leadership Hub tab. */
+  showLeadershipHub?: boolean;
 }) {
   const pathname = usePathname();
   const { can, isAdmin, demoMode } = useSession();
@@ -237,7 +240,11 @@ export function SidebarNav({
         ) : null}
         <UserMenu collapsed={isCollapsed} onNavigate={onNavigate} />
         {/* Last on the rail, below the profile: administrators only. */}
-        {showAppSwitcher ? <AppSwitcher collapsed={isCollapsed} className="mt-1.5" /> : null}
+        {showAppSwitcher ? <AppSwitcher
+            collapsed={isCollapsed}
+            showLeadershipHub={showLeadershipHub}
+            className="mt-1.5"
+          /> : null}
       </div>
     </div>
   );

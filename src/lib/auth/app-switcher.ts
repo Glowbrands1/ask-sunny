@@ -45,3 +45,39 @@ export async function pageShowsAppSwitcher(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Whether an email is on the LEADERSHIP_HUB_TAB_EMAILS list (comma-separated,
+ * trimmed, case-insensitive). Missing or empty list: nobody.
+ */
+export function emailOnLeadershipHubList(email: string | undefined | null): boolean {
+  const raw = process.env.LEADERSHIP_HUB_TAB_EMAILS;
+  if (typeof raw !== "string" || typeof email !== "string") return false;
+  const wanted = email.trim().toLowerCase();
+  if (!wanted) return false;
+  return raw
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .some((entry) => entry !== "" && entry === wanted);
+}
+
+/**
+ * WHETHER THIS RENDER SHOWS THE "LEADERSHIP HUB" TAB — a short list of leaders.
+ *
+ * The list is the SERVER-ONLY environment variable LEADERSHIP_HUB_TAB_EMAILS
+ * (never NEXT_PUBLIC_, never committed). It is compared here, on the server,
+ * with the VERIFIED signed-in email; only this yes/no is passed to the client
+ * component. Fails closed: demo mode, signed out, unverified, an unset or empty
+ * variable, or any error all answer false. Like the switcher it is a link
+ * only — the Leadership Hub's own sign-in decides what happens on arrival.
+ */
+export async function pageShowsLeadershipHub(): Promise<boolean> {
+  try {
+    if (!pageAuthorizationEnforced()) return false;
+    const identity = await pageIdentity();
+    if (!identity?.verified) return false;
+    return emailOnLeadershipHubList(identity.email);
+  } catch {
+    return false;
+  }
+}
