@@ -1693,6 +1693,15 @@ export function truncationRetryEnabled(): boolean {
 }
 
 /**
+ * With TRUNCATION_RETRY_ENABLED, a first attempt that took over 50 s starts no
+ * retry, so a turn never stacks past the chat route's 120 s ceiling (QA, 1 Nov
+ * 2026; same flag in both apps). See `ai/truncation.ts`. Off, as before.
+ */
+export function truncationRetryBudgetEnabled(): boolean {
+  return envFlag("TRUNCATION_RETRY_BUDGET_ENABLED");
+}
+
+/**
  * The app's own report names ("Daily Stats", "Sales Totals") are never read as
  * an employee (QA, live, 1 Nov 2026; same flag in both apps). See
  * `ai/not-a-person.ts`. Off, as before.

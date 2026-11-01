@@ -1285,6 +1285,10 @@ QA, live (a real chat): "Show me the most recent Daily Stats and what I need to 
 
 QA, live retest of #430 with this app's production flags: the same two lines still made a card for "Daily Stats" (the report question was no longer its account). CORRECTED_EMPLOYEE_SLOT_ENABLED (`ai/corrected-employee.ts`, on in production) read turn 1 itself as a correction ("actually it's for …") to "Daily Stats" and saved it as the conversation's employee; turn 2 carried that saved state onto the card. Found by replaying the two lines through the chat route with production's flag names on and narrowing to the one flag. With the flag, a report name (`isReportName`) is never a correction. Test: `src/app/api/chat/same-form-copy-e2e.test.ts` (the two lines, with the flag on and slot state carried). Ask Bubbles has no corrected-employee reader, so nothing to port.
 
+## 1 Nov 2026: a slow first attempt starts no truncation retry (TRUNCATION_RETRY_BUDGET_ENABLED, default off, both apps)
+
+QA, live: with TRUNCATION_RETRY on, a cut-off Daily Stats briefing took about 31 s and its retry 36 s — 67 s for one turn. With the flag, `withTruncationRetry` (`ai/truncation.ts`) starts no retry when the first attempt already took over 50 s, and the turn ends with the same "ran out of room" message, so one turn never stacks two long attempts past /api/chat's 120 s ceiling. Test: `src/lib/ai/truncation-retry.test.ts`. Ported to Ask Bubbles (its own `truncation.ts`, every caller).
+
 ## 1 Nov 2026: /api/chat may run up to 120 seconds (maxDuration, both apps, no flag)
 
 QA, live: the route exported no `maxDuration`, so the platform default stopped it at 30 s. In 7 days 10 managers were shown "Sunny could not produce an answer" exactly 30 s after asking while the answer finished on the server 0–29 s later — paid for and thrown away (8 of the 10 before TRUNCATION_RETRY, which makes a long answer longer). `export const maxDuration = 120;`, the ceiling the draft route already uses. Test: `src/app/api/chat/route-max-duration.test.ts`. Ask Bubbles: same line (no 30 s cases there in 7 days; its answers come back sooner).
