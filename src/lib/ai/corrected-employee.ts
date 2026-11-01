@@ -1,8 +1,9 @@
-import { correctedEmployeeSlotEnabled } from "@/lib/config/chat-quality-flags";
+import { correctedEmployeeSlotEnabled, reportNameNotAPersonEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, matchEmployeeName } from "@/lib/forms/employee-match";
 import { employeeState, managerContext, readEmployeeMentions } from "@/lib/forms/proposal";
 
 import type { GroundedPerson } from "./grounded-entities";
+import { isReportName } from "./not-a-person";
 
 type Grounded = {
   readonly person: GroundedPerson | null;
@@ -37,6 +38,13 @@ export function withCorrectedEmployee<T extends Grounded>(
   const state = employeeState(managerContext(prior, { content: question }));
   if (state.resolution.kind !== "resolved") return grounded;
   const settled = state.resolution.employeeName;
+  /*
+   * REPORT_NAME_NOT_A_PERSON_ENABLED (QA, live retest, 1 Nov 2026): "Show me the
+   * most recent Daily Stats and what I need to focus on today." was read here as
+   * a correction to "Daily Stats" and saved as the conversation's employee, so
+   * the next "create a coaching form" was for "Daily Stats". A report names nobody.
+   */
+  if (reportNameNotAPersonEnabled() && isReportName(settled)) return grounded;
   const same = (a: string | null | undefined, b: string) => (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
   if (!named.some((name) => same(name, settled))) return grounded;
   if (grounded.name && same(grounded.name, settled)) return grounded;

@@ -954,3 +954,37 @@ describe('"Show me the most recent Daily Stats and what I need to focus on today
     expect(reply.formProposal?.employeeName ?? "").toMatch(/marnie holloway/i);
   });
 });
+
+/*
+ * QA, live retest of #430, 1 Nov 2026 (the same two lines, a new chat, with
+ * this app's production flags): the card was still for "Daily Stats" and did
+ * not ask who. CORRECTED_EMPLOYEE_SLOT_ENABLED (on in production) read turn 1
+ * itself as a correction to "Daily Stats" and saved it as the conversation's
+ * employee; turn 2 carried the saved state onto the card. A report is never a
+ * correction either.
+ */
+describe('"Show me the most recent Daily Stats …" → "create a coaching form", with CORRECTED_EMPLOYEE_SLOT_ENABLED and slot state carried', () => {
+  const REPORT = "REPORT_NAME_NOT_A_PERSON_ENABLED";
+  const CORRECTED = "CORRECTED_EMPLOYEE_SLOT_ENABLED";
+  async function card(on: boolean) {
+    flags(false);
+    for (const name of [REPORT, CORRECTED]) if (!saved.has(name)) saved.set(name, process.env[name]);
+    process.env[CORRECTED] = "true";
+    delete process.env[REPORT];
+    if (on) process.env[REPORT] = "true";
+    directory();
+    const thread = new Thread();
+    await thread.say("Show me the most recent Daily Stats and what I need to focus on today.");
+    return thread.say("create a coaching form", { templateKey: "coaching" });
+  }
+
+  it("REPORT_NAME_NOT_A_PERSON off: the card is for Daily Stats", async () => {
+    expect((await card(false)).formProposal?.employeeName).toBe("Daily Stats");
+  });
+
+  it("REPORT_NAME_NOT_A_PERSON: no employee carried from turn 1 — it asks who the form is for", async () => {
+    const reply = await card(true);
+    expect(reply.formProposal?.employeeName ?? "").not.toMatch(/daily stats/i);
+    expect(reply.formProposal?.status).toBe("needs_employee");
+  });
+});
