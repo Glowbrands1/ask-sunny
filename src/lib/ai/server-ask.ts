@@ -187,7 +187,7 @@ import { withTypoReadingCopy } from "./typo-reading-copy";
 import { protectedNameWords } from "./typo-name-words";
 import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
-import { withManagerNameGuard } from "./manager-name-guard";
+import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -321,7 +321,8 @@ async function answerQuestionChecked(
     // OUT_OF_SCOPE_PLACE_SAID_ENABLED: "Salon: KS Lawrence." from a manager not assigned there is told so.
     // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: the form already created is said to stay as it is.
     // FIRST_NAME_SUGGEST_ENABLED: a first name alone is asked about from the manager's own roster.
-    return keepManagerActionPlan(await withFirstNameSuggestFor(
+    // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last — the manager's own name is never the employee.
+    return withManagerNameGuard(keepManagerActionPlan(await withFirstNameSuggestFor(
       // OUT_OF_SCOPE_PLACE_KEEPS_OWN_ENABLED: the card goes back to the manager's own salon, or asks which.
       // FORM_TYPE_SWITCH: the switched card is drafted from the account, never from the switch turn.
       withSwitchSources(withSwitchNote(withOutOfScopePlace(withOwnPlace(withAmountUnknownAck(
@@ -339,11 +340,11 @@ async function answerQuestionChecked(
       ), request, actor), request, actor), request, "Form Monitoring"), request),
       request,
       actor,
-    ), request);
+    ), request), request);
   };
   // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: last on every path — the manager's own name is never the employee.
   if (!chatTraceEnabled()) {
-    if (!selfCheckEnabled()) return withManagerNameGuard(await produce(), request);
+    if (!selfCheckEnabled()) return produce();
     return withManagerNameGuard(keepManagerActionPlan(await guardReply(await produce(), { request, actor }), request), request);
   }
   const draft = openChatTrace({
@@ -356,7 +357,7 @@ async function answerQuestionChecked(
     ),
   });
   const response = await finishChatTrace(draft, produce);
-  if (!selfCheckEnabled()) return withManagerNameGuard(response, request);
+  if (!selfCheckEnabled()) return response;
   return withManagerNameGuard(keepManagerActionPlan(await guardReply(response, { request, actor }), request), request);
 }
 
@@ -1610,7 +1611,7 @@ async function answerQuestionUntraced(
     ? buildFormInventoryBlock(buildFormInventory(settledSummaries.rows, actor))
     : null;
 
-  const system = buildSystemPrompt({
+  const builtSystem = buildSystemPrompt({
     assistantName: ACTIVE_BRAND.assistantName,
     brandName: ACTIVE_BRAND.brandName,
     salonNoun: ACTIVE_BRAND.vocabulary.salonNoun,
@@ -1674,6 +1675,8 @@ async function answerQuestionUntraced(
       ? { fewShot: await fewShotBlock({ question: request.question, scopeId: request.scopeId }) }
       : {}),
   });
+  // MANAGER_NAME_NOT_EMPLOYEE_ENABLED: the manager's name is only for addressing them. See `manager-name-guard.ts`.
+  const system = withManagerNameRule(builtSystem);
 
   const longContext = longContextEnabled()
     ? await prepareLongContext({

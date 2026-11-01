@@ -24,6 +24,17 @@ import type { AskRequest, AskResponse } from "./types";
 export const MANAGER_NAME_RULE =
   "Their name is only for addressing them. It is never an employee's name: when the manager has not named an employee, say \"the employee\" (or \"the team member\"), never their name.";
 
+/**
+ * The built system prompt with the rule after its "You are talking to …, who
+ * runs …." sentence, in either prompt variant. Joined here, not in
+ * `prompts.ts`, so that file — and the replay scoreboard's hash of it — is
+ * unchanged. Flag off, the prompt itself.
+ */
+export function withManagerNameRule(system: string): string {
+  if (!managerNameNotEmployeeEnabled()) return system;
+  return system.replace(/(You are talking to [^\n]*?, who runs [^\n]*?\.)( Today is )/, `$1 ${MANAGER_NAME_RULE}$2`);
+}
+
 function escaped(word: string): string {
   return word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

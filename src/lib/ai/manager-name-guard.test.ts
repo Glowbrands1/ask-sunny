@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MANAGER_NAME_RULE, withManagerNameGuard, withoutManagerNameAsEmployee } from "./manager-name-guard";
+import { MANAGER_NAME_RULE, withManagerNameGuard, withManagerNameRule, withoutManagerNameAsEmployee } from "./manager-name-guard";
 import type { AskRequest, AskResponse } from "./types";
 
 /**
@@ -68,14 +68,14 @@ describe("the prompt", () => {
   it("MANAGER_NAME_NOT_EMPLOYEE: says the manager's name is only for addressing them", async () => {
     vi.stubEnv("MANAGER_NAME_NOT_EMPLOYEE_ENABLED", "true");
     const { buildSystemPrompt } = await import("./prompts");
-    const prompt = buildSystemPrompt({
+    const prompt = withManagerNameRule(buildSystemPrompt({
       assistantName: "Sunny",
       brandName: "Sun Tan City",
       salonNoun: "salon",
       context: { userName: MANAGER, locationName: "NE Kearney", todayIso: "2026-10-31" },
       mode: "standard",
       hasContext: true,
-    } as never);
+    } as never));
     expect(prompt).toContain(`You are talking to ${MANAGER}, who runs NE Kearney. ${MANAGER_NAME_RULE}`);
   });
 
@@ -83,28 +83,28 @@ describe("the prompt", () => {
     vi.stubEnv("MANAGER_NAME_NOT_EMPLOYEE_ENABLED", "true");
     vi.stubEnv("PROMPT_CACHE_ENABLED", "true");
     const { buildSystemPrompt } = await import("./prompts");
-    const prompt = buildSystemPrompt({
+    const prompt = withManagerNameRule(buildSystemPrompt({
       assistantName: "Sunny",
       brandName: "Sun Tan City",
       salonNoun: "salon",
       context: { userName: MANAGER, locationName: "NE Kearney", todayIso: "2026-10-31" },
       mode: "standard",
       hasContext: true,
-    } as never);
+    } as never));
     expect(prompt).toContain("---DYNAMIC---");
     expect(prompt).toContain(`You are talking to ${MANAGER}, who runs NE Kearney. ${MANAGER_NAME_RULE}`);
   });
 
   it("off: the line is as before", async () => {
     const { buildSystemPrompt } = await import("./prompts");
-    const prompt = buildSystemPrompt({
+    const prompt = withManagerNameRule(buildSystemPrompt({
       assistantName: "Sunny",
       brandName: "Sun Tan City",
       salonNoun: "salon",
       context: { userName: MANAGER, locationName: "NE Kearney", todayIso: "2026-10-31" },
       mode: "standard",
       hasContext: true,
-    } as never);
+    } as never));
     expect(prompt).toContain(`You are talking to ${MANAGER}, who runs NE Kearney. Today is 2026-10-31.`);
     expect(prompt).not.toContain(MANAGER_NAME_RULE);
   });
