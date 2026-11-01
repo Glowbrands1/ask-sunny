@@ -270,11 +270,18 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     // Stream so the first text delta can be timed. A caller that returns a
     // finished message is still accepted, with first_token_ms left empty.
     const attempt = async (maxTokens: number) => {
+      /*
+       * FIRST TOKEN IS TIMED PER ATTEMPT (QA, 1 Nov 2026): timed from the start
+       * of the whole call, a retried answer's first token included the entire
+       * cut-off first attempt (~30 s) and read as 31–43 s. Ask Bubbles already
+       * times each attempt. Trace-only: nothing about the answer changes.
+       */
+      const attemptStarted = Date.now();
       const streamed = { ...params, max_tokens: maxTokens, stream: true as const };
       const created = options
         ? await client.messages.create(streamed, options)
         : await client.messages.create(streamed);
-      return collectModelResult(created, started);
+      return collectModelResult(created, attemptStarted);
     };
     /*
      * TRUNCATION_RETRY_ENABLED: an answer cut off at max_tokens is asked once
