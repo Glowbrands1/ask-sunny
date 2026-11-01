@@ -56,7 +56,9 @@ async function post<T>(url: string, body: unknown): Promise<T> {
    */
   let status = response.status;
   let payload: Partial<T> & { error?: string; code?: string; missing?: string[] };
-  if (response.headers.get(STREAM_HEADER) === "1") {
+  // Read defensively: a fetch stand-in without `headers` (as several chat
+  // screen tests use) is a plain response, exactly as before this flag.
+  if (response.headers?.get?.(STREAM_HEADER) === "1") {
     let text: string;
     try {
       text = await response.text();

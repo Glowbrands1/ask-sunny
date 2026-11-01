@@ -85,4 +85,11 @@ describe("the client reads a streamed answer exactly like a plain one", () => {
   it("a plain response (flag off) is read as before", async () => {
     await expect(ask(json(ANSWER))).resolves.toEqual(ANSWER);
   });
+
+  // QA, 1 Nov 2026: both streaming PRs went red in CI — the chat-screen tests
+  // stub fetch with { ok, status, json } and no `headers`, and reading the
+  // stream header threw. A response without headers is a plain response.
+  it("a fetch stand-in without headers is read as a plain response", async () => {
+    await expect(ask({ ok: true, status: 200, json: async () => ANSWER } as unknown as Response)).resolves.toEqual(ANSWER);
+  });
 });
