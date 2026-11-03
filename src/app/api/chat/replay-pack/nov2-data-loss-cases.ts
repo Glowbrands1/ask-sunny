@@ -12,7 +12,8 @@ export const NOV2_DATA_LOSS_CASES: readonly ReplayCase[] = [
     // "She had 24 tans and was below in … Avg Club …" reads "Avg Club" as another person, so the card's
     // source turns start after it (this-persons-turns) and the draft never sees her account. The shared
     // "is this a person?" guard (plan A) fixes it; add its flag to fixFlags then.
-    status: { open: "a metric ('Avg Club') is read as another person" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["PERSON_GUARD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -32,7 +33,8 @@ export const NOV2_DATA_LOSS_CASES: readonly ReplayCase[] = [
     title: "the next message about the open draft does not start a new draft",
     report:
       "\"Details managers had typed were lost … her next message started a new draft without what she'd typed, and that generic version is the one that got finalized.\"",
-    status: { open: "OPEN_DRAFT_KEEPS_TURNS_ENABLED is off" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["OPEN_DRAFT_KEEPS_TURNS_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -56,7 +58,8 @@ export const NOV2_DATA_LOSS_CASES: readonly ReplayCase[] = [
     title: "a new request for the same person is drafted from its own turns, not the earlier incident's",
     report:
       "\"The card showed 'Late Opening' as the policy, but the saved draft says Standards of Conduct. In the same chat, a new late-opening request reused an older trash-and-rugs incident\"",
-    status: { open: "a card's turns run back over an earlier request for the same person" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["NEW_REQUEST_OWN_TURNS_ENABLED"],
     async run(t) {
       t.directory(STAFF);
