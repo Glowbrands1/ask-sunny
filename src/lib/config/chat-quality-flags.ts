@@ -2163,3 +2163,13 @@ export function newRequestOwnDateEnabled(): boolean {
 export function rosterStoreScopedEnabled(): boolean {
   return envFlag("ROSTER_STORE_SCOPED_ENABLED");
 }
+
+/**
+ * With a form open, a capitalised word in the manager's edit is "another
+ * person" only when it matches somebody active at the manager's own salons
+ * (master plan step 2, 3 Nov 2026; same flag in both apps). See
+ * `forms/roster-name-gate.ts`. Off, as before.
+ */
+export function formEditNameGateRosterEnabled(): boolean {
+  return envFlag("FORM_EDIT_NAME_GATE_ROSTER_ENABLED");
+}
