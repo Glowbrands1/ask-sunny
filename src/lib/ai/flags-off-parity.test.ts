@@ -475,6 +475,14 @@ const PROTECTED = [
  * turnsFromThisPersonsRequest(input.context, employeeName, { names:
  * extractEmployeeNames, same: samePerson }) : input.context.ids`. Behind
  * THIS_PERSONS_TURNS_ENABLED, default off; off, every retained turn as before.
+ *
+ * The user (Pau) approved in the Code session on 3 Nov 2026 ("Approve chat
+ * revisions"), in src/lib/forms/chat-revision.ts, both apps: the import
+ * `import { namesOnRoster } from "./roster-name-gate";` and the existing
+ * `const named = extractEmployeeNames(...).filter(...)` wrapped as
+ * `await namesOnRoster(<the same filtered list>, actor.scope)`. Behind
+ * FORM_EDIT_NAME_GATE_ROSTER_ENABLED, default off; off, namesOnRoster returns
+ * the list unchanged and reads nothing.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
