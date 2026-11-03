@@ -21,6 +21,10 @@ export interface EvalCriteria {
   readonly policy: string | null;
   readonly noBlockingQuestion: boolean;
   readonly noLeakedInternalText: boolean;
+  /** Words the last reply must contain (each, case-insensitive). Optional. */
+  readonly replyIncludes?: readonly string[];
+  /** Words the last reply must not contain (each, case-insensitive). Optional. */
+  readonly replyExcludes?: readonly string[];
 }
 
 /** One person on the Woven-synced directory, for a case that needs a roster. */
@@ -31,6 +35,8 @@ export interface EvalRosterPerson {
   readonly preferredFirstName?: string | null;
   readonly employmentStatus?: string;
   readonly positionName?: string | null;
+  /** Woven's employee id (`external_employee_id`); defaults to `woven-<id>`. */
+  readonly wovenEmployeeId?: string;
   /** `loc-<code>` ids. */
   readonly locationIds: readonly string[];
 }
@@ -43,6 +49,8 @@ export interface EvalCase {
   readonly today?: string;
   readonly roster?: readonly EvalRosterPerson[];
   readonly actor?: { readonly role: string; readonly scope: Record<string, unknown> };
+  /** Flags this case needs on in BOTH columns (a feature the case exercises), on top of production. */
+  readonly flags?: readonly string[];
 }
 
 export interface EvalResult {
@@ -115,6 +123,7 @@ export function rosterTables(people: readonly EvalRosterPerson[]): Record<string
   for (const person of people) {
     directory.push({
       id: person.id,
+      external_employee_id: person.wovenEmployeeId ?? `woven-${person.id}`,
       first_name: person.firstName,
       last_name: person.lastName,
       preferred_first_name: person.preferredFirstName ?? null,
@@ -178,6 +187,12 @@ export function judgeCase(input: {
   }
   if (criteria.noBlockingQuestion && BLOCKING_QUESTION.test(lastReply)) misses.push("blocking question");
   if (criteria.noLeakedInternalText && LEAKED_INTERNAL.test(lastReply)) misses.push("leaked internal text");
+  for (const word of criteria.replyIncludes ?? []) {
+    if (!lastReply.toLowerCase().includes(word.toLowerCase())) misses.push(`reply lacks "${word}"`);
+  }
+  for (const word of criteria.replyExcludes ?? []) {
+    if (lastReply.toLowerCase().includes(word.toLowerCase())) misses.push(`reply has "${word}"`);
+  }
   return {
     id: item.id,
     pass: misses.length === 0,

@@ -2675,5 +2675,89 @@
         ]
       }
     ]
+  },
+  {
+    "id": "r1",
+    "source": "Master plan step 1 (3 Nov 2026): the whole-staff list at one salon; QA 30 Oct 2026 wording \"can you create a coaching form for my whole staff?\". Invented people.",
+    "turns": [
+      "can you create a coaching form for my whole staff?"
+    ],
+    "criteria": {
+      "employee": null,
+      "salon": null,
+      "date": null,
+      "policy": null,
+      "noBlockingQuestion": false,
+      "noLeakedInternalText": true,
+      "replyIncludes": [
+        "Dana Hollisworth",
+        "Eli Brackwater"
+      ],
+      "replyExcludes": [
+        "Fern Ostrander",
+        "Hale Wintermoor",
+        "Gus Penhallow"
+      ]
+    },
+    "actor": {
+      "role": "salon_director",
+      "scope": {
+        "level": "salon",
+        "primaryAreaId": "loc-0462",
+        "alsoCoversAreaIds": []
+      }
+    },
+    "flags": [
+      "STAFF_PICKER_ENABLED"
+    ],
+    "roster": [
+      {
+        "id": "r-dana",
+        "firstName": "Dana",
+        "lastName": "Hollisworth",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-eli",
+        "firstName": "Eli",
+        "lastName": "Brackwater",
+        "positionName": "Salon Director",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-fern",
+        "firstName": "Fern",
+        "lastName": "Ostrander",
+        "positionName": "Tanning Consultant",
+        "employmentStatus": "terminated",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-hale",
+        "firstName": "Hale",
+        "lastName": "Wintermoor",
+        "positionName": "Tanning Consultant",
+        "employmentStatus": "unknown",
+        "locationIds": [
+          "loc-0462"
+        ]
+      },
+      {
+        "id": "r-gus",
+        "firstName": "Gus",
+        "lastName": "Penhallow",
+        "positionName": "Tanning Consultant",
+        "locationIds": [
+          "loc-0309"
+        ]
+      }
+    ]
   }
 ]
