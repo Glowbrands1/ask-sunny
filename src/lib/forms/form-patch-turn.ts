@@ -141,6 +141,15 @@ export async function patchActiveForm(input: {
       latest: input.question,
     });
     if (!("ok" in reading) || reading.turn !== "this_form") return null;
+    /*
+     * QA, 3 Nov 2026 (blocker before the Step B flip; ported from Ask
+     * Bubbles): "make it sound more professional" is about this form, but the
+     * manager gives nothing to set from their own words. A patch that sets and
+     * clears nothing is not this path's turn: null, so the redraft and
+     * revision paths run as before. (A patch whose sets were all refused still
+     * answers from its diff.)
+     */
+    if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return null;
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes
