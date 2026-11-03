@@ -2,10 +2,10 @@ import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { formEditDateRulesEnabled, primarySalonNotEditEnabled } from "@/lib/config/chat-quality-flags";
 import { datesInText, listIncidentDates, priorSteps } from "@/lib/forms/form-date-answer";
 import { withYearlessDatesWritten } from "@/lib/forms/late-open";
+import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal, SourceCitation } from "@/types";
 
-import { PRIMARY_SALON_STATEMENT } from "./keep-filled-slots";
 import { newRequestWithOwnDate } from "./new-request-own-date";
 import type { AskResponse } from "./types";
 

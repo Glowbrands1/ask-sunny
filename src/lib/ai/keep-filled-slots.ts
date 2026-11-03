@@ -54,6 +54,7 @@ import type { GroundedPerson } from "./grounded-entities";
 import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
+import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
 
 /**
  * Slots the conversation already filled, put back on this turn's proposal.
@@ -433,9 +434,6 @@ function salonIds(text: string): string[] {
  * the one this account is about. A later turn that names none keeps the
  * one already named. The Woven primary is only the guess when nobody named one.
  */
-/** "primary salon is Omaha Center": where the employee usually works, not the form's salon. Shared with `edit-date-rules.ts`. */
-export const PRIMARY_SALON_STATEMENT = /\bprimary\s+salon\s+is\s+[^.\n]+/gi;
-
 function keptSalon(
   turns: readonly string[],
   current: string | null,
