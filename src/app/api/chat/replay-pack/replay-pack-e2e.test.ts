@@ -325,6 +325,7 @@ process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
 
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
+const { stillAsks } = await import("@/lib/forms/reply-guards");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
 const chatRoute = await import("../route");
 const instancesRoute = await import("../../forms/instances/route");
@@ -407,6 +408,10 @@ class Thread {
     );
     const payload = (await response.json()) as Answer & { error?: string };
     expect(response.status, JSON.stringify(payload)).toBe(200);
+    // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
+    if (/^I still need\b/m.test(payload.content ?? "")) {
+      expect(stillAsks(payload.content), `"I still need" without a question:\n${payload.content}`).not.toBeNull();
+    }
     this.messages.push(
       { id, role: "user", content: question, createdAt: `${TODAY}T12:28:00Z` } as ChatMessage,
       {
