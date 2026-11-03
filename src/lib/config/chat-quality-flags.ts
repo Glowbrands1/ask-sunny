@@ -2326,3 +2326,25 @@ export function firstNameYesKeepsRequestEnabled(): boolean {
 export function slotNameOnFormRequestEnabled(): boolean {
   return envFlag("SLOT_NAME_ON_FORM_REQUEST_ENABLED");
 }
+
+/**
+ * A chat edit or a redraft of an open form is read as a patch (field, value,
+ * how, the manager's words it came from) and merged by code: typed fields are
+ * never blanked, a "replace" on one needs the manager's own words, dates and
+ * amounts must be ones the manager stated, prior actions are de-duplicated
+ * (Step B, 3 Nov 2026; same flag in both apps). See `forms/form-reducer.ts`
+ * and `forms/form-patch-model.ts`. Nothing reads it yet. Off, as before.
+ */
+export function formPatchReducerEnabled(): boolean {
+  return envFlag("FORM_PATCH_REDUCER_ENABLED");
+}
+
+/**
+ * The reply to a form edit says what the saved form now holds: "Changed
+ * <Label> to <value>" per changed field, or that nothing changed — never
+ * "Updated" without a change (Step B, 3 Nov 2026; same flag in both apps).
+ * See `forms/form-diff-reply.ts`. Nothing reads it yet. Off, as before.
+ */
+export function formReplyFromDiffEnabled(): boolean {
+  return envFlag("FORM_REPLY_FROM_DIFF_ENABLED");
+}
