@@ -13,6 +13,7 @@ import {
   draftActionsEnabled,
   formEditHonestReplyEnabled,
   personGuardEnabled,
+  newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
@@ -456,6 +457,13 @@ async function postChat(request: Request) {
            */
           { memoryOwnerId: context.identity.subject },
         ));
+      // NEW_REQUEST_OWN_TURNS_ENABLED: a new request for the same person is drafted from its own turns. See `lib/forms/new-request-turns.ts`.
+      if (newRequestOwnTurnsEnabled() && answer.formProposal) {
+        answer = (await import("@/lib/forms/new-request-turns")).withOwnRequestTurns(answer, [
+          ...parsed.history,
+          { id: parsed.questionMessageId, role: "user", content: asked.question },
+        ]);
+      }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
       /*

@@ -51,4 +51,29 @@ export const NOV2_DATA_LOSS_CASES: readonly ReplayCase[] = [
       expect(t.values(first).observation).toContain("below the salon average");
     },
   },
+  {
+    id: "nov2-p2-new-request-old-incident",
+    title: "a new request for the same person is drafted from its own turns, not the earlier incident's",
+    report:
+      "\"The card showed 'Late Opening' as the policy, but the saved draft says Standards of Conduct. In the same chat, a new late-opening request reused an older trash-and-rugs incident\"",
+    status: { open: "a card's turns run back over an earlier request for the same person" },
+    fixFlags: ["NEW_REQUEST_OWN_TURNS_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("What does our policy say about attendance?");
+      await thread.say("i need another for failure to complete opening duties");
+      await thread.say("a CA");
+      await thread.say("Rowan Kestrel failed to take trash out and put rugs out untl 12;30pm");
+      t.draftWrites({ observation: "Rowan did not take the trash out or put the rugs out until 12:30pm." });
+      await thread.create();
+      await thread.say("make me a CA for Rowan Kestrel for being late to opening this morning");
+      t.draftWrites({});
+      await thread.create();
+      const second = t.draftPrompts().at(-1) ?? "";
+      expect(second).toContain("late to opening");
+      expect(second, "the late-opening draft was given the earlier trash-and-rugs incident").not.toMatch(/trash|rugs/i);
+    },
+  },
 ];
