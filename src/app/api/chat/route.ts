@@ -13,6 +13,7 @@ import {
   draftActionsEnabled,
   formEditHonestReplyEnabled,
   claimGuardEnabled,
+  policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
   newRequestOwnTurnsEnabled,
@@ -291,7 +292,7 @@ async function postChat(request: Request) {
        * is open. The manual's own words, found by its own heading; no model
        * writes them. Null for anything else. See `lib/forms/chat-policy-change.ts`.
        */
-      const policyChange =
+      const policyChangeOnly =
         !correction && !askedQuestion && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-policy-change")).changeActiveFormPolicy({
               request,
@@ -300,6 +301,17 @@ async function postChat(request: Request) {
               history: parsed.history,
             })
           : null;
+      // POLICY_CHANGE_REST_OF_TURN_ENABLED: the rest of the same message is not dropped. See `lib/forms/policy-rest-of-turn.ts`.
+      const policyChange =
+        policyChangeOnly && policyChangeRestOfTurnEnabled()
+          ? await (await import("@/lib/forms/policy-rest-of-turn")).withRestOfPolicyTurn({
+              request,
+              policyChange: policyChangeOnly,
+              question: parsed.question,
+              history: parsed.history,
+              today: parsed.context.todayIso,
+            })
+          : policyChangeOnly;
       /*
        * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
        * a name alone — the form on screen is redrafted from it, citation

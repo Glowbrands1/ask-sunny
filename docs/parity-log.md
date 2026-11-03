@@ -91,6 +91,15 @@ production's flags; the same guards are ported behind the same flags. With
 them forced on, the chat and forms suites pass except the tests that pin the
 old "off" claims.
 
+## 3 Nov 2026: a policy named with more in the same message — the rest is not dropped — both apps (POLICY_CHANGE_REST_OF_TURN_ENABLED, default off)
+
+Found here (the 2 Nov scan): '… with "Bonus Policy" from the Policy Manual.
+Previous Coaching is when she signed the Policy manual May 2025' — the policy
+path cited the policy, said "Everything else on the form is as it was", and
+Prior Actions stayed empty. On, the sentences that are not the policy request
+go to the revision of the same draft; if nothing is written the reply says
+what is not on the form. Ported to Ask Bubbles with the same flag.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft

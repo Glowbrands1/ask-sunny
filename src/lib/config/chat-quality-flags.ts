@@ -1659,6 +1659,17 @@ export function formEditRefersBackEnabled(): boolean {
 }
 
 /**
+ * A policy named with more in the same message: the rest goes to the revision
+ * of the same draft, and the reply never says "everything else is as it was"
+ * over a sentence it dropped (the 2 Nov 2026 scan: "Previous Coaching is when
+ * she signed the Policy manual May 2025" left Prior Actions empty; same flag
+ * in both apps). See `forms/policy-rest-of-turn.ts`. Off, as before.
+ */
+export function policyChangeRestOfTurnEnabled(): boolean {
+  return envFlag("POLICY_CHANGE_REST_OF_TURN_ENABLED");
+}
+
+/**
  * No reply says the form changed, or that something was checked against the
  * records, unless this turn changed the form: "now reads …", "Confirmed
  * against records … matching Woven" are caught on every line about the form,
