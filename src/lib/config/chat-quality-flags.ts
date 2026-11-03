@@ -1883,6 +1883,18 @@ export function staffPickerNoRepeatEnabled(): boolean {
 }
 
 /**
+ * "Create this coaching form for everyone on my team": one DRAFT Coaching Form
+ * per person at the open draft's salon, each with the open draft's Details,
+ * after one confirmation listing who (ported from Ask Bubbles; Pau, 3 Nov
+ * 2026: "also having to replicate that coaching verbiage to all coaching forms
+ * so she doesn't have to copy paste"; same flag in both apps). See
+ * `forms/coaching-for-everyone.ts`. Off, as before.
+ */
+export function coachingForEveryoneEnabled(): boolean {
+  return envFlag("COACHING_FOR_EVERYONE_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).

@@ -121,7 +121,8 @@ const MAX_LISTED = 40;
  */
 const SALON_TITLES = new Set(["Tanning Consultant", "Salon Director", "Assistant Salon Director"].map((title) => title.toLowerCase()));
 
-function salonStaff(person: StaffPerson): boolean {
+/** A salon's staff, not the office: the titles above, or no title on file. Also read by `coaching-for-everyone.ts`. */
+export function salonStaff(person: StaffPerson): boolean {
   const title = person.positionName?.trim();
   return !title || SALON_TITLES.has(title.toLowerCase());
 }

@@ -137,6 +137,18 @@ form's name is chat-correctable (this app has no generic header correction),
 so on these wordings the reply says to edit the Employee Name line on the
 card — never "updated". Same flag, same reader.
 
+## 3 Nov 2026: "create this coaching form for everyone on my team" makes one draft each — ported from Ask Bubbles (9041920) (COACHING_FOR_EVERYONE_ENABLED, default off)
+
+Pau, 3 Nov 2026 (an Ask Bubbles Location Manager): "also having to replicate
+that coaching verbiage to all coaching forms so she doesn't have to copy
+paste". Same mechanism: one confirmation listing the people at the draft's
+salon (roster with Woven titles, salon titles), "create all" makes one draft
+each through the unchanged create path with the content copied and the name
+swapped; no model call, nothing finalized, at most 40, a second "create all"
+makes nothing new. Here the source in the test is one person's draft: the
+team card can be created once WHOLE_TEAM_COACHING_ENABLED (#438) keeps its
+label.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
