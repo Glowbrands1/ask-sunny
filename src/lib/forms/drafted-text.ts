@@ -1,4 +1,4 @@
-import { anglePlaceholderGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { anglePlaceholderGuardEnabled, formPlaceholderWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -50,6 +50,28 @@ const PLACEHOLDER = /\[[^\]\n]{1,60}\]|\{\{[^}\n]{1,60}\}\}/g;
  */
 const ANGLE_PLACEHOLDER = /<[A-Z][A-Z0-9 _-]{1,40}>/g;
 
+/**
+ * FORM_PLACEHOLDER_WORDS_ENABLED (master plan step 5, 3 Nov 2026): the
+ * placeholders a model writes in words — "Follow-up date: TBD." — handled
+ * exactly as the bracketed ones, the whole sentence left out (see WHY REMOVING
+ * THE WHOLE SENTENCE above), a field that was only that left empty. Whole
+ * words only, so "TBDs" in a name or a word that merely contains the letters is
+ * untouched.
+ *
+ * "N/A" (Pau, 3 Nov 2026, option A): a placeholder only when it is the WHOLE
+ * value of a field the model wrote, and never on a payroll or prior-actions
+ * field, where "N/A" is the answer ("payroll deduct is N/A", no prior action).
+ * Inside a sentence it is never one.
+ */
+const PLACEHOLDER_WORD = /\b(?:TBD|TBA|TBC)\b|\bto be (?:determined|confirmed)\b/i;
+const WHOLE_VALUE_NA = /^\s*n\/a\.?\s*$/i;
+/** Field keys where "N/A" is an answer, not a placeholder (`payroll_deduct`, `prior_actions`, …). */
+const NA_IS_AN_ANSWER = /payroll|prior/i;
+
+function placeholderOnlyNA(key: string, value: string): boolean {
+  return formPlaceholderWordsEnabled() && WHOLE_VALUE_NA.test(value) && !NA_IS_AN_ANSWER.test(key);
+}
+
 /** Sentence-ish spans, kept with their trailing punctuation. */
 function sentences(text: string): string[] {
   return text.split(/(?<=[.!?])\s+/);
@@ -58,6 +80,7 @@ function sentences(text: string): string[] {
 export function containsPlaceholder(text: string): boolean {
   PLACEHOLDER.lastIndex = 0;
   if (PLACEHOLDER.test(text)) return true;
+  if (formPlaceholderWordsEnabled() && PLACEHOLDER_WORD.test(text)) return true;
   if (!anglePlaceholderGuardEnabled()) return false;
   ANGLE_PLACEHOLDER.lastIndex = 0;
   return ANGLE_PLACEHOLDER.test(text);
@@ -106,6 +129,11 @@ export function stripPlaceholdersFromDraft(values: Record<string, string>): {
   const emptied: string[] = [];
 
   for (const [key, value] of Object.entries(values)) {
+    if (typeof value === "string" && placeholderOnlyNA(key, value)) {
+      cleaned.push(key);
+      emptied.push(key);
+      continue;
+    }
     if (typeof value !== "string" || !containsPlaceholder(value)) {
       next[key] = value;
       continue;
