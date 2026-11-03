@@ -9,7 +9,8 @@ export const NOV3_CARD_OBSERVATION_CASES: readonly ReplayCase[] = [
     title: "a new request's card reads back only that request as the Observation, not the earlier incident",
     report:
       'the new card for "make me a CA for <name> for being late to opening this morning" read "Observation of Offense: …rugs untl 12;30pm <name> for being late to opening this morning" (QA live check)',
-    status: { open: "the card's Observation is read from every turn of the chat" },
+    // Fixed in production: the flag on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["CARD_OBSERVATION_OWN_REQUEST_ENABLED"],
     async run(t) {
       t.directory(STAFF);

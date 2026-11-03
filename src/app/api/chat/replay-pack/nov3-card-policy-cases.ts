@@ -10,7 +10,8 @@ export const NOV3_CARD_POLICY_CASES: readonly ReplayCase[] = [
     id: "nov3-draft-cites-card-policy",
     title: "the draft cites the policy its card cited",
     report: 'the card for "make me a CA for <name> for being late to opening this morning" read "Policy: Late Opening p.15"; the draft made from it, Attendance p.14 (QA live check)',
-    status: { open: "the draft reads its policy again, apart from the card" },
+    // Fixed in production: the flag on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED"],
     async run(t) {
       t.directory(STAFF);

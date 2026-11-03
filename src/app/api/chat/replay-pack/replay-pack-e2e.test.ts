@@ -422,6 +422,16 @@ class Thread {
     return payload;
   }
 
+  /** The card on screen reads this line (what the live model put on it that the stand-in cannot); a line with the same label is replaced. */
+  cardReads(line: string): void {
+    const card = [...this.messages].reverse().find((message) => message.role === "assistant" && message.formProposal);
+    expect(card, "no card on screen").toBeTruthy();
+    // A line the card already has ("**Policy:** …") is replaced; any other is added.
+    const label = /^(\*\*[^*]+:\*\*)/.exec(line)?.[1];
+    const existing = label ? new RegExp(`${label.replace(/[*]/g, "\\*")}[^\n]*`) : null;
+    card!.content = existing && existing.test(card!.content) ? card!.content.replace(existing, line) : `${card!.content}\n\n${line}`;
+  }
+
   /** The card's Create, as the browser does it. */
   async create(): Promise<string> {
     expect(this.proposal, "no card to create from").not.toBeNull();
