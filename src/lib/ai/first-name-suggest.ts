@@ -1,4 +1,4 @@
-import { firstNameSuggestEnabled, partialSurnameAskEnabled, suggestAnswerReplacesTypedEnabled } from "@/lib/config/chat-quality-flags";
+import { firstNameSuggestEnabled, firstNameYesKeepsRequestEnabled, partialSurnameAskEnabled, suggestAnswerReplacesTypedEnabled } from "@/lib/config/chat-quality-flags";
 import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
 
@@ -334,10 +334,25 @@ function answeredNow(request: AskRequest, aliases: Aliases): AskRequest {
   if (!chosen) return request;
   const first = firstNamePattern(options, chosen.name, aliases);
   const said = [...(request.history ?? [])].reverse().find((turn) => turn.role === "user" && first.test(turn.content));
-  return {
-    ...request,
-    question: said ? replaceTyped(said.content, first, options, chosen.name) + chosen.rest : chosen.name + chosen.rest,
-  };
+  const answered = said ? replaceTyped(said.content, first, options, chosen.name) + chosen.rest : chosen.name + chosen.rest;
+  return { ...request, question: withAskingTurn(answered, said, request) };
+}
+
+/**
+ * FIRST_NAME_YES_KEEPS_REQUEST_ENABLED (ported from Ask Bubbles, replay set
+ * b2, 3 Nov 2026; same flag in both apps): the first name was given in an
+ * account and the form asked for in a LATER turn, which is the turn the
+ * question answered. "Yes" became the account alone, so the request was lost.
+ * With the flag, that later turn follows the account, so the answer is the
+ * account and the request together. Off, the account alone, as before.
+ */
+function withAskingTurn(answered: string, said: ChatMessage | undefined, request: AskRequest): string {
+  if (!firstNameYesKeepsRequestEnabled() || !said) return answered;
+  const history = request.history ?? [];
+  const askedAt = history.map((turn) => turn.role).lastIndexOf("assistant");
+  const asking = askedAt > 0 ? history[askedAt - 1] : undefined;
+  if (!asking || asking.role !== "user" || asking === said || !asking.content.trim()) return answered;
+  return `${answered}\n${asking.content}`;
 }
 
 function chosenName(reply: string, options: readonly string[], single: boolean): { name: string; rest: string } | null {
