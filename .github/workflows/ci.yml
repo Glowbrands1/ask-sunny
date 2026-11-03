@@ -34,3 +34,20 @@ jobs:
         run: npx tsc --noEmit -p .
       - name: Tests
         run: npm test
+
+  # The replay eval (evals/): every replay case through the real chat route,
+  # flags off (must equal evals/baseline.json) and with the step's flags on
+  # (may break no case, at most 25% slower). Local and deterministic: an
+  # in-memory database and neutral model stand-ins, no secrets, no network.
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Replay eval
+        run: npm run eval
