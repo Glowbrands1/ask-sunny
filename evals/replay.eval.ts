@@ -32,8 +32,8 @@ import {
  * case. Each case in `evals/replay_set.json` is replayed turn by turn through
  * the real chat route, twice:
  *
- *   OFF  today's app: the production flags in `evals/flags.json`
- *        ("production") and nothing else. Must equal `evals/baseline.json`
+ *   OFF  today's app: production's flags (`src/config/production-flags.json`,
+ *        "on" and "assumedOn") and nothing else. Must equal `evals/baseline.json`
  *        exactly, case by case. A case that changed with every new flag off is
  *        a change to today's app, which the plan forbids.
  *   ON   the same, plus the step's own flags (`evals/flags.json` "on"). No
@@ -184,11 +184,28 @@ vi.mock("@/lib/reporting/read/employee-facts", () => ({
 process.env.NEXT_PUBLIC_DEMO_MODE = "false";
 vi.setConfig({ hookTimeout: 60_000, testTimeout: 120_000 });
 
+/*
+ * TODAY'S PRODUCTION IS `src/config/production-flags.json` ("on" and
+ * "assumedOn"), the same file the replay pack reads and QA keeps in step with
+ * Vercel. `evals/flags.json` holds only the step's own flags.
+ */
+const PRODUCTION_FLAGS = JSON.parse(readFileSync("src/config/production-flags.json", "utf8")) as { on: string[]; assumedOn?: string[] };
+const FLAGS = readEvalFlags({
+  production: [...new Set([...PRODUCTION_FLAGS.on, ...(PRODUCTION_FLAGS.assumedOn ?? [])])],
+  on: (JSON.parse(readFileSync("evals/flags.json", "utf8")) as { on: unknown }).on,
+});
+/*
+ * SET BEFORE THE APP IS IMPORTED. Some production flags are read once, when a
+ * module loads (a NEXT_PUBLIC_ flag is read at build time), so they must be on
+ * before the first import, as in production.
+ */
+for (const flag of FLAGS.production) process.env[flag] = "true";
+
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const chatRoute = await import("@/app/api/chat/route");
 
 const CASES = JSON.parse(readFileSync("evals/replay_set.json", "utf8")) as EvalCase[];
-const FLAGS = readEvalFlags(JSON.parse(readFileSync("evals/flags.json", "utf8")));
+
 const BASELINE_PATH = "evals/baseline.json";
 const DEFAULT_TODAY = "2026-10-23";
 const RUNS = 3;
