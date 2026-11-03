@@ -496,10 +496,44 @@ describe("individual and team-wide coaching", () => {
     const { payrollDeductAmount } = await import("@/lib/forms/payroll-deduct");
     expect(payrollDeductAmount(expandTerseRequest(TERSE, "2026-10-01"))).toBe("$25");
     expect(response!.formProposal?.formDate).toBe("2026-09-20");
-    // The account stays in the manager's words.
-    expect(expandTerseRequest(TERSE, "2026-10-01")).toBe(
-      "Create a corrective action form for avery stone. On 9-20-26 avery stone opened late 15 min. This is a verbal warning. Payroll deduct applies and $25 will be deducted.",
-    );
+    // The account stays in the manager's words. TERSE_INCIDENT_NO_NAME off here, whatever the run sets.
+    const noName = process.env.TERSE_INCIDENT_NO_NAME_ENABLED;
+    delete process.env.TERSE_INCIDENT_NO_NAME_ENABLED;
+    try {
+      expect(expandTerseRequest(TERSE, "2026-10-01")).toBe(
+        "Create a corrective action form for avery stone. On 9-20-26 avery stone opened late 15 min. This is a verbal warning. Payroll deduct applies and $25 will be deducted.",
+      );
+    } finally {
+      if (noName !== undefined) process.env.TERSE_INCIDENT_NO_NAME_ENABLED = noName;
+    }
+  });
+
+  /*
+   * CHANGED ON PURPOSE, TERSE_INCIDENT_NO_NAME_ENABLED on (QA, 26 Oct 2026): the
+   * incident sentence no longer repeats the name ("On 9-20-26, opened late 15
+   * min"); the name, date, level and deduction are all still there. Flag off
+   * keeps the old string (the test above).
+   */
+  it("TERSE_SLOT_READ_ENABLED + TERSE_INCIDENT_NO_NAME_ENABLED on: the incident sentence without the name", async () => {
+    const { expandTerseRequest } = await import("@/lib/ai/terse-slots");
+    const before = { slot: process.env.TERSE_SLOT_READ_ENABLED, noName: process.env.TERSE_INCIDENT_NO_NAME_ENABLED };
+    process.env.TERSE_SLOT_READ_ENABLED = "true";
+    process.env.TERSE_INCIDENT_NO_NAME_ENABLED = "true";
+    try {
+      expect(expandTerseRequest(TERSE, "2026-10-01")).toBe(
+        "Create a corrective action form for avery stone. On 9-20-26, opened late 15 min. This is a verbal warning. Payroll deduct applies and $25 will be deducted.",
+      );
+      const response = await propose([said(expandTerseRequest(TERSE, "2026-10-01"))]);
+      expect(response!.formProposal?.employeeName?.toLowerCase()).toBe("avery stone");
+      expect(response!.formProposal?.warningLevel).toBe("verbal");
+      expect(response!.formProposal?.payrollDeduct).toBe("yes");
+      expect(response!.formProposal?.formDate).toBe("2026-09-20");
+    } finally {
+      if (before.slot === undefined) delete process.env.TERSE_SLOT_READ_ENABLED;
+      else process.env.TERSE_SLOT_READ_ENABLED = before.slot;
+      if (before.noName === undefined) delete process.env.TERSE_INCIDENT_NO_NAME_ENABLED;
+      else process.env.TERSE_INCIDENT_NO_NAME_ENABLED = before.noName;
+    }
   });
 
   it("refuses a team subject on a form that is about one person", async () => {

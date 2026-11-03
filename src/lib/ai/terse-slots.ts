@@ -1,4 +1,4 @@
-import { terseSlotReadEnabled } from "@/lib/config/chat-quality-flags";
+import { terseIncidentNoNameEnabled, terseSlotReadEnabled } from "@/lib/config/chat-quality-flags";
 import { extractJobTitle } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 
@@ -187,7 +187,16 @@ export function expandTerseRequest(text: string, today: string): string {
     const facts = account.join(" ").trim();
     return facts ? `${parts[0]} ${facts}.` : parts[0]!;
   }
-  if (account.length > 0) parts.push(`${date ? `On ${date} ` : ""}${who} ${account.join(" ")}.`);
+  /*
+   * TERSE_INCIDENT_NO_NAME_ENABLED (QA, 26 Oct 2026): "On 10/11/26 devon harlan
+   * dress code" put the employee's name inside What happened. The request
+   * sentence above already says who the form is for; the incident is the
+   * account alone: "On 10/11/26, dress code."
+   */
+  if (account.length > 0 && terseIncidentNoNameEnabled()) {
+    const what = account.join(" ");
+    parts.push(date ? `On ${date}, ${what}.` : `${what.charAt(0).toUpperCase()}${what.slice(1)}.`);
+  } else if (account.length > 0) parts.push(`${date ? `On ${date} ` : ""}${who} ${account.join(" ")}.`);
   else if (date) parts.push(`It happened on ${date}.`);
   if (level) parts.push(`This is a ${level} warning.`);
   if (amount) parts.push(`Payroll deduct applies and $${amount} will be deducted.`);
