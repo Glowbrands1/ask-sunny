@@ -63,6 +63,12 @@ export interface CheckedReading {
   readonly priorSteps: readonly { readonly kind: PriorKind; readonly iso: string }[];
   /** The fields that were read but failed a check, for the trace. */
   readonly rejected: readonly string[];
+  /**
+   * The employee the model read, when its quote is in the manager's own turns,
+   * whether or not the roster has them (SLOT_NAME_ON_FORM_REQUEST_ENABLED: a
+   * lower-case name nobody on the roster has). Not a checked employee.
+   */
+  readonly quotedEmployee?: string | null;
 }
 
 export function checkReading(reading: FormReading, context: CheckContext): CheckedReading {
@@ -79,6 +85,10 @@ export function checkReading(reading: FormReading, context: CheckContext): Check
   };
 
   const employee = keep("employee", reading.employee, (value, evidence) => checkEmployee(value, evidence, context.people));
+  const quotedEmployee =
+    reading.employee.value?.trim() && reading.employee.evidence && quoted(reading.employee.evidence, context.managerTurns)
+      ? reading.employee.value.trim()
+      : null;
   const location = keep("location", reading.location, (value, evidence) => checkLocation(value, evidence, context.locations));
   const jobTitle = keep("jobTitle", reading.jobTitle, (value, evidence) => checkTitle(value, evidence, context.people));
   const dated = (rows: FormReading["priorSteps"]) =>
@@ -127,6 +137,7 @@ export function checkReading(reading: FormReading, context: CheckContext): Check
     notIncidentDates,
     priorSteps: incidentDate ? priorSteps.filter((step) => step.iso <= incidentDate) : priorSteps,
     rejected,
+    quotedEmployee,
   };
 }
 

@@ -114,4 +114,30 @@ export const NOV3_ADDRESS_DATE_CASES: readonly ReplayCase[] = [
       expect(reply.formProposal?.employeeName).toBe("Corin Bellweather");
     },
   },
+  /*
+   * QA live check, 17:50 UTC, SLOT_NAME_ON_FORM_REQUEST on: the same first turn that gave a card at 16:26 came
+   * back "Who is this Corrective Action Form for?". Production trace: this time the slot model returned no
+   * employee (the turn was a form turn, Corrective Action), and the AI reader quoted the name but it was rejected
+   * as not on the roster. The model's variance, not the flag; the card must not depend on the slot model alone.
+   */
+  {
+    id: "nov3-lowercase-name-slot-model-silent",
+    title: "\"Corrective action: corin bellweather was rude …\" with the slot model naming nobody: the card is for Corin Bellweather",
+    report:
+      '"Corrective action: corin bellweather was rude to a guest at the front desk on Monday" → "Who is this Corrective Action Form for?", Employee "Not yet" (QA live check, 17:50 UTC; worked at 16:26)',
+    status: "fixed",
+    fixFlags: ["SLOT_NAME_ON_FORM_REQUEST_ENABLED", "AI_READS_CODE_CHECKS_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      // Production trace, 17:50 UTC: the slot model read no employee on this Corrective Action turn; the AI reader
+      // quoted "corin bellweather" (rejected: off the roster).
+      t.slotsRead({ employee: null, formType: "Corrective Action Form", formTurn: true }, "corin bellweather");
+      t.as("salon_director", KEARNEY);
+      const reply = await t.thread().say("Corrective action: corin bellweather was rude to a guest at the front desk on Monday");
+      if (process.env.SLOT_NAME_ON_FORM_REQUEST_ENABLED === "true") {
+        expect(reply.formProposal?.employeeName).toBe("Corin Bellweather");
+      }
+      expect(reply.content).not.toMatch(/street address/i);
+    },
+  },
 ];

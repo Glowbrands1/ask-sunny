@@ -465,13 +465,23 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     templates: input.templates,
   });
 
-  const question = formTurn
+  const asked = formTurn
     ? questionWithState(input.question, state, input.templates)
     : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
       ? `The employee is ${typedEmployee}.\n${input.question}`
-      : slotNameOnFormRequestEnabled() && detectTemplateIntent(input.question).kind !== "none"
-        ? withSlotEmployeeLine(input.question, state.employeeName)
-        : input.question;
+      : input.question;
+  /*
+   * SLOT_NAME_ON_FORM_REQUEST_ENABLED: the slot reading's name, or — when the
+   * slot model named nobody this time (QA live check, 17:50 UTC) — the name the
+   * AI reader quoted from the manager's words, put in front when nothing else
+   * already says who the employee is.
+   */
+  const question =
+    slotNameOnFormRequestEnabled() &&
+    detectTemplateIntent(input.question).kind !== "none" &&
+    !/^the employee is /im.test(asked)
+      ? withSlotEmployeeLine(input.question, state.employeeName ?? rawInput.checked?.quotedEmployee ?? null, asked)
+      : asked;
   // FORM_CHOICE_STATED_ENABLED: two forms in one turn is a question, not a
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
@@ -521,16 +531,18 @@ function asksForAForm(question: string): boolean {
  * working …") that the proposal, which reads capitalised names, would miss.
  * The name keeps only what `cleanPersonName` keeps of it; when that drops any
  * word ("the primary salon manager"), nothing is added. A name the code reads
- * already, or one not typed in this turn, adds nothing either.
+ * already, or one not typed in this turn, adds nothing either. The checks read
+ * the manager's turn (`question`); the line goes in front of `base`, the
+ * question as the turn would otherwise send it ("The form is the …").
  */
-export function withSlotEmployeeLine(question: string, slotName: string | null): string {
+export function withSlotEmployeeLine(question: string, slotName: string | null, base: string = question): string {
   const typed = slotName?.trim().replace(/\s+/g, " ");
-  if (!typed) return question;
+  if (!typed) return base;
   const said = new RegExp(`(?<![A-Za-z])${typed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")}(?![A-Za-z])`, "i");
-  if (!said.test(question) || extractEmployeeNames(question).length > 0) return question;
+  if (!said.test(question) || extractEmployeeNames(question).length > 0) return base;
   const name = cleanPersonName(typed, PRODUCTION_SALONS.map((salon) => salon.name));
-  if (!name || name.toLowerCase() !== typed.toLowerCase()) return question;
-  return `The employee is ${name}.\n${question}`;
+  if (!name || name.toLowerCase() !== typed.toLowerCase()) return base;
+  return `The employee is ${name}.\n${base}`;
 }
 
 /** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
