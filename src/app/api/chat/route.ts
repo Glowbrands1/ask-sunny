@@ -16,6 +16,8 @@ import {
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
+  refusalNoRepeatEnabled,
+  titleNotSpeakersManagerEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
   questionNotFormEnabled,
@@ -476,6 +478,15 @@ async function postChat(request: Request) {
         answer = (await import("@/lib/forms/new-request-turns")).withOwnRequestTurns(answer, [
           ...parsed.history,
           { id: parsed.questionMessageId, role: "user", content: asked.question },
+        ]);
+      }
+      // REFUSAL_NO_REPEAT_ENABLED, TITLE_NOT_SPEAKERS_MANAGER_ENABLED: see `lib/forms/reply-guards.ts`.
+      if (refusalNoRepeatEnabled() || titleNotSpeakersManagerEnabled()) {
+        const guards = await import("@/lib/forms/reply-guards");
+        answer = guards.withoutRepeatedRefusal(answer, parsed.history);
+        answer = guards.withoutSpeakersManagerTitle(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
         ]);
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.

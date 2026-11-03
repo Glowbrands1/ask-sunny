@@ -50,3 +50,46 @@ export const NOV2_PERSON_CASES: readonly ReplayCase[] = [
     },
   },
 ];
+
+/** P6: the metric refusal said three times, and the speaker's manager read as the employee's title. */
+export const NOV2_METRIC_LOOP_CASES: readonly ReplayCase[] = [
+  {
+    id: "nov2-p6-dm-title",
+    title: "\"my DM told me she gets one this month\" does not make the employee a District Manager",
+    report: "\"… and listed a Tanning Consultant's job title as District Manager.\"",
+    status: { open: "the card takes \"my DM\" as the employee's title" },
+    fixFlags: ["TITLE_NOT_SPEAKERS_MANAGER_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("Marnie Holloway was below the company average last month in the following categories; PPTA, LPSVA, Club Close%, and spa %");
+      await thread.say("can you make a verbal warning Ca");
+      if (!thread.proposal) await thread.say("yes");
+      const reply = await thread.say("my DM told me she gets one this month");
+      expect(reply.formProposal?.employeeRole ?? null).not.toBe("District Manager");
+      expect(reply.content).not.toMatch(/\*\*(?:Position|Job title):\*\*\s*District Manager/i);
+    },
+  },
+  {
+    id: "nov2-p6-refusal-no-repeat",
+    title: "the same refusal is never said twice in a row; the second time says what moves it on",
+    report: "\"It also gave the same refusal 3 times\" (\"A low number on its own isn't what our progression escalates on …\")",
+    status: { open: "a refusal is repeated word for word" },
+    fixFlags: ["REFUSAL_NO_REPEAT_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const refusal =
+        "A low number on its own isn't what our progression escalates on, so I won't open formal corrective action off a metric. Underperformance enters the ladder at coaching, and it reaches formal accountability through what happens after that.\n\nWhich would help?";
+      t.modelSays(refusal);
+      const first = await thread.say("what does the manual say about metrics?");
+      const second = await thread.say("my DM told me she gets one this month");
+      t.modelSays(null);
+      const opening = (text: string) => text.split(/\n\s*\n/)[0]!.trim();
+      expect(opening(second.content)).not.toBe(opening(first.content));
+      expect(second.content).toMatch(/coaching/i);
+    },
+  },
+];

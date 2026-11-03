@@ -1626,6 +1626,25 @@ export function personGuardEnabled(): boolean {
 }
 
 /**
+ * A reply that would open with the same paragraph as the one before it, with
+ * no card, is not said again — one line says what moves it on ("It also gave
+ * the same refusal 3 times", the 2 Nov 2026 scan; same flag in both apps). See
+ * `forms/reply-guards.ts`. Off, as before.
+ */
+export function refusalNoRepeatEnabled(): boolean {
+  return envFlag("REFUSAL_NO_REPEAT_ENABLED");
+}
+
+/**
+ * "my DM told me …" is the manager's own District Manager, never the
+ * employee's title on the card (the 2 Nov 2026 scan; same flag in both apps).
+ * See `forms/reply-guards.ts`. Off, as before.
+ */
+export function titleNotSpeakersManagerEnabled(): boolean {
+  return envFlag("TITLE_NOT_SPEAKERS_MANAGER_ENABLED");
+}
+
+/**
  * A new form request for a person already in the chat draws its card from its
  * own turns, not an earlier request's ("a new late-opening request reused an
  * older trash-and-rugs incident", the 2 Nov 2026 scan; same flag in both apps).
