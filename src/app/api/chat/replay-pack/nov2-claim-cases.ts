@@ -60,3 +60,35 @@ export const NOV2_POLICY_REST_CASES: readonly ReplayCase[] = [
     },
   },
 ];
+
+/** P5: the name corrections she typed. No form's name is chat-correctable here: the reply must say so, never "updated". */
+export const NOV2_NAME_CORRECTION_CASES: readonly ReplayCase[] = [
+  {
+    id: "nov2-p5-name-corrections",
+    title: "\"fix her last name …\" / \"the correct way is …\" on a Corrective Action: the name changes, or the reply says how — never \"updated\"",
+    report: "\"The bot said it updated the employee name …, but the form didn't change.\"",
+    status: { open: "her wordings go to the answering model" },
+    fixFlags: ["NAME_CORRECTION_WORDS_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("i have an employee, Delia Garza Ramso that needs a corrective action form with a customer complaint");
+      await thread.say("verbal warning, no payroll deduct, part-time team member,");
+      t.draftWrites({});
+      const id = await thread.create();
+      t.modelSays("Got it — the employee name on the draft now reads **Delia Garza Ramos**.");
+      for (const turn of ["fix her last name ramos", "okay the correct way is Delia Garza Ramos"]) {
+        const before = t.calls().chat;
+        const reply = await thread.say(turn);
+        const changed = /Ramos/.test(t.values(id).employee_name ?? "");
+        if (!changed) {
+          expect(t.calls().chat, `"${turn}" went to the answering model`).toBe(before);
+          expect(reply.content).toMatch(/Nothing on the form has changed yet/);
+        }
+      }
+      t.modelSays(null);
+    },
+  },
+];
+
