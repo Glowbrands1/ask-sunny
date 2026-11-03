@@ -325,6 +325,19 @@
         "date": null,
         "status": "ready"
       }
+    },
+    {
+      "id": "r1",
+      "pass": false,
+      "misses": [
+        "reply has \"Hale Wintermoor\""
+      ],
+      "card": {
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
+      }
     }
   ]
 }

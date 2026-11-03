@@ -98,5 +98,7 @@
     "ORDINAL_DATE_IN_DRAFT_ENABLED",
     "WIDER_DATE_READER_ENABLED"
   ],
-  "on": []
+  "on": [
+    "ROSTER_STORE_SCOPED_ENABLED"
+  ]
 }
