@@ -572,7 +572,7 @@ const FIXES = ["WHOLE_TEAM_COACHING_ENABLED", "STAFF_PICKER_REMEMBER_LOCATION_EN
 
 /** Production, plus the named fixes. */
 function production(fixes: readonly (typeof FIXES)[number][] = []) {
-  for (const name of [...ALL_FLAGS, ...LIVE, ...FIXES, "INTENT_EXTRACTION_ENABLED", "SLOT_RETENTION_ENABLED", "JOB_TITLE_FROM_WORDS_ENABLED"]) {
+  for (const name of [...ALL_FLAGS, ...LIVE, ...FIXES, "INTENT_EXTRACTION_ENABLED", "SLOT_RETENTION_ENABLED", "JOB_TITLE_FROM_WORDS_ENABLED", "TEAM_CARD_WORDING_ENABLED"]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
@@ -833,5 +833,43 @@ describe("QA's brief, 3 Nov: the same with a draft open, her complaint answered,
     setScope(ONE_SALON);
     const reply = await new Thread().say("make a corrective action form for all team members");
     expect(reply.content).not.toContain("Kearney Salon");
+  });
+});
+
+describe("TEAM_CARD_WORDING_ENABLED: QA's live check, 3 Nov 2026", () => {
+  // QA's wording, verbatim: no "coaching" in it, and it got a policy answer instead of the team card.
+  const QA_TURN = "salon wide everyone needs the reminder to call a manager for cash drawer shortages";
+
+  it("off (production today): no team card, a policy answer", async () => {
+    production([...FIXES]);
+    kearney();
+    setRole("salon_director");
+    setScope(ONE_SALON);
+    const thread = new Thread();
+    await thread.say(QA_TURN);
+    expect(thread.proposal?.subject).not.toBe("team");
+  });
+
+  it("on: the team Coaching card, at her one salon", async () => {
+    production([...FIXES]);
+    process.env.TEAM_CARD_WORDING_ENABLED = "true";
+    kearney();
+    setRole("salon_director");
+    setScope(ONE_SALON);
+    const thread = new Thread();
+    const reply = await thread.say(QA_TURN);
+    expect(reply.content).not.toMatch(REFUSAL);
+    expect(thread.proposal).toMatchObject({ ...TEAM, locationId: "loc-0309", status: "ready" });
+  });
+
+  it("on: an employee still gets no card", async () => {
+    production([...FIXES]);
+    process.env.TEAM_CARD_WORDING_ENABLED = "true";
+    kearney();
+    setRole("employee");
+    setScope(ONE_SALON);
+    const thread = new Thread();
+    await thread.say(QA_TURN);
+    expect(thread.proposal).toBeFalsy();
   });
 });
