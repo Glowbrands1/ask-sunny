@@ -8,7 +8,8 @@ export const NOV2_PERSON_CASES: readonly ReplayCase[] = [
     id: "nov2-p6-must-see-behaviors",
     title: "\"CA for must see behaviors\" is not a form for a person called Must See Behaviors",
     report: "\"In 'CA for must see behaviors,' the bot read 'Must' as a name.\"",
-    status: { open: "every name reader takes \"must see behaviors\" for a person" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["PERSON_GUARD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -21,7 +22,8 @@ export const NOV2_PERSON_CASES: readonly ReplayCase[] = [
     id: "nov2-p7-practice",
     title: "\"a mock coaching form for practice\" is not a form for a person called Practice",
     report: "\"'Practice' was saved as an employee name on a practice coaching form.\"",
-    status: { open: "every name reader takes \"practice\" for a person" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["PERSON_GUARD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -57,7 +59,8 @@ export const NOV2_METRIC_LOOP_CASES: readonly ReplayCase[] = [
     id: "nov2-p6-dm-title",
     title: "\"my DM told me she gets one this month\" does not make the employee a District Manager",
     report: "\"… and listed a Tanning Consultant's job title as District Manager.\"",
-    status: { open: "the card takes \"my DM\" as the employee's title" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["TITLE_NOT_SPEAKERS_MANAGER_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -75,7 +78,8 @@ export const NOV2_METRIC_LOOP_CASES: readonly ReplayCase[] = [
     id: "nov2-p6-refusal-no-repeat",
     title: "the same refusal is never said twice in a row; the second time says what moves it on",
     report: "\"It also gave the same refusal 3 times\" (\"A low number on its own isn't what our progression escalates on …\")",
-    status: { open: "a refusal is repeated word for word" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["REFUSAL_NO_REPEAT_ENABLED"],
     async run(t) {
       t.directory(STAFF);

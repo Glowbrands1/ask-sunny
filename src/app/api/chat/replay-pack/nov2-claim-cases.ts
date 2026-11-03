@@ -40,7 +40,8 @@ export const NOV2_POLICY_REST_CASES: readonly ReplayCase[] = [
     title: "a policy named with the prior coaching in one turn: both reach the form, or the reply says what did not",
     report:
       "\"A manager said the previous coaching was her policy manual signing in May 2025. The bot replied 'everything else is as it was,' but Prior Actions stayed empty.\"",
-    status: { open: "the policy path applies the policy only and says the rest is as it was" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["POLICY_CHANGE_REST_OF_TURN_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -67,7 +68,8 @@ export const NOV2_NAME_CORRECTION_CASES: readonly ReplayCase[] = [
     id: "nov2-p5-name-corrections",
     title: "\"fix her last name …\" / \"the correct way is …\" on a Corrective Action: the name changes, or the reply says how — never \"updated\"",
     report: "\"The bot said it updated the employee name …, but the form didn't change.\"",
-    status: { open: "her wordings go to the answering model" },
+    // Fixed in production: the scan-fix flags on (QA, 3 Nov 2026, 04:20 UTC).
+    status: "fixed",
     fixFlags: ["NAME_CORRECTION_WORDS_ENABLED"],
     async run(t) {
       t.directory(STAFF);
