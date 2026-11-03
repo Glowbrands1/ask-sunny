@@ -485,9 +485,25 @@ interface PathRun {
   /** Every saved value at the end. */
   readonly saved: Record<string, string>;
   readonly error: string | null;
+  /** T1 gave no card on the first try and the scenario was run once more (inside the same cap). */
+  readonly noCardRetried?: boolean;
 }
 
 /** One scenario, every step through the real routes, with `flags` on top of production's. */
+const NO_CARD = "no card to create from";
+
+/**
+ * QA, 3 Nov: T1 sometimes gives no card (the model's choice, run to run). Run the
+ * scenario once more, inside the same cap, and report it as "no card" — never as
+ * an edit that did not stick — so chain results stay comparable.
+ */
+async function runScenarioOnce(scenario: LiveScenario, extraFlags: readonly string[]): Promise<PathRun> {
+  const first = await runScenario(scenario, extraFlags);
+  if (first.error !== NO_CARD || live.capped) return first;
+  const second = await runScenario(scenario, extraFlags);
+  return { ...second, calls: first.calls + second.calls, noCardRetried: true };
+}
+
 async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]): Promise<PathRun> {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
@@ -512,7 +528,7 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
     await routes.ensureTemplateLibrary("system");
     for (const [index, step] of scenario.steps.entries()) {
       if ("create" in step) {
-        if (!proposal) throw new Error("no card to create from");
+        if (!proposal) throw new Error(NO_CARD);
         const result = await routes.createInlineForm({ proposal, messages, call, onCreated: () => {} });
         instanceId = toUuid(result.reference.instanceId);
         // This app's Create reports one `draftWarning` (null when the draft was written).
@@ -589,7 +605,14 @@ const results: { id: string; oldPath: PathRun; newPath: PathRun | null }[] = [];
 const repeatCalls = { value: 0 };
 const repeat: { off: { saved: string | null; losesSurname: boolean }[]; on: { saved: string | null; losesSurname: boolean }[] } = { off: [], on: [] };
 
+/** LIVE_CASES=id,id: only these cases (after LIVE_SCENARIOS), e.g. the ones a capped run did not reach. */
 function scenarios(): readonly LiveScenario[] {
+  const only = (process.env.LIVE_CASES ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+  const picked = pickScenarios();
+  return only.length ? picked.filter((scenario) => only.includes(scenario.id)) : picked;
+}
+
+function pickScenarios(): readonly LiveScenario[] {
   const which = process.env.LIVE_SCENARIOS ?? "all";
   if (which === "none") return [];
   if (which === "failures") return LIVE_FAILURE_SCENARIOS;
@@ -635,7 +658,7 @@ function writeResults(): void {
     const editTurns = oldPath.turns.filter((turn) => turn.said !== "(Create)").slice(1);
     const edited = oldPath.instanceId ? `${editTurns.filter((turn) => Object.keys(turn.diff).length > 0).length}/${editTurns.length}` : "—";
     lines.push(
-      `| ${id} | ${created} | ${edited} | ${cell(oldPath.error ? `ERROR ${oldPath.error}` : oldPath.reply)} | ${cell(changed || "—")} | ${cell(card)} | ${oldPath.ms} | ${oldPath.calls} (${oldPath.kinds.draft}/${oldPath.kinds.revision}) | ${fresh} |`,
+      `| ${id} | ${created} | ${edited} | ${cell(oldPath.error === NO_CARD ? `NO CARD at T1${oldPath.noCardRetried ? " (after one retry)" : ""}` : oldPath.error ? `ERROR ${oldPath.error}` : `${oldPath.noCardRetried ? "(T1 retried once: no card the first time) " : ""}${oldPath.reply}`)} | ${cell(changed || "—")} | ${cell(card)} | ${oldPath.ms} | ${oldPath.calls} (${oldPath.kinds.draft}/${oldPath.kinds.revision}) | ${fresh} |`,
     );
   }
   writeFileSync(`${base}.md`, `${lines.join("\n")}\n`);
@@ -684,8 +707,8 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
   it("every scenario through the real chat route, old path (and the new path with LIVE_NEW_PATH=1)", async () => {
     for (const scenario of scenarios()) {
       if (live.capped) break;
-      const oldPath = await runScenario(scenario, []);
-      const newPath = process.env.LIVE_NEW_PATH === "1" && !live.capped ? await runScenario(scenario, NEW_PATH_FLAGS) : null;
+      const oldPath = await runScenarioOnce(scenario, []);
+      const newPath = process.env.LIVE_NEW_PATH === "1" && !live.capped ? await runScenarioOnce(scenario, NEW_PATH_FLAGS) : null;
       results.push({ id: scenario.id, oldPath, newPath });
     }
     if (!DRY) return;
