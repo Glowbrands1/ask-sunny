@@ -1,4 +1,4 @@
-import { anglePlaceholderGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { anglePlaceholderGuardEnabled, formPlaceholderWordsEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -50,6 +50,17 @@ const PLACEHOLDER = /\[[^\]\n]{1,60}\]|\{\{[^}\n]{1,60}\}\}/g;
  */
 const ANGLE_PLACEHOLDER = /<[A-Z][A-Z0-9 _-]{1,40}>/g;
 
+/**
+ * FORM_PLACEHOLDER_WORDS_ENABLED (master plan step 5, 3 Nov 2026): the
+ * placeholders a model writes in words — "Follow-up date: TBD." — handled
+ * exactly as the bracketed ones, the whole sentence left out (see WHY REMOVING
+ * THE WHOLE SENTENCE above), a field that was only that left empty. Whole
+ * words only, so "TBDs" in a name or a word that merely contains the letters is
+ * untouched. "N/A" is deliberately not one: "payroll deduct is N/A" is often
+ * what the manager said, and this guard cannot see the manager's words.
+ */
+const PLACEHOLDER_WORD = /\b(?:TBD|TBA|TBC)\b|\bto be (?:determined|confirmed)\b/i;
+
 /** Sentence-ish spans, kept with their trailing punctuation. */
 function sentences(text: string): string[] {
   return text.split(/(?<=[.!?])\s+/);
@@ -58,6 +69,7 @@ function sentences(text: string): string[] {
 export function containsPlaceholder(text: string): boolean {
   PLACEHOLDER.lastIndex = 0;
   if (PLACEHOLDER.test(text)) return true;
+  if (formPlaceholderWordsEnabled() && PLACEHOLDER_WORD.test(text)) return true;
   if (!anglePlaceholderGuardEnabled()) return false;
   ANGLE_PLACEHOLDER.lastIndex = 0;
   return ANGLE_PLACEHOLDER.test(text);
