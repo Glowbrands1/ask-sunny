@@ -53,6 +53,8 @@ export interface EvalCase {
   readonly flags?: readonly string[];
   /** What the reporter expected, in prose. Informational only: never judged. */
   readonly expected?: string;
+  /** Why the case is in its recorded state (e.g. a known open failure), for the reader. Not judged. */
+  readonly note?: string;
 }
 
 export interface EvalResult {
