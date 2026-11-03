@@ -31,9 +31,11 @@ describe("a name after a house number is an address", () => {
     expect(answer.content).toMatch(/Who is this \*\*Coaching Form\*\* for\?/);
   });
 
-  it("the next turn names no one: the address from the earlier turn is still not a person", () => {
+  it("the next turn names no one: the address from the earlier turn is still not a person, and the reply just asks", () => {
     const answer = withAddressNotPerson(card("Main Street"), ["coaching form for 123 Main Street", "make a coaching form for <name>, she was late today"]);
     expect(answer.formProposal.employeeName).toBeNull();
+    // QA live check, 3 Nov 2026: the old sentence about "Main Street" was repeated word for word.
+    expect(answer.content).toBe("Who is this **Coaching Form** for? Tell me the employee's full name.");
   });
 
   for (const [name, turns] of [
