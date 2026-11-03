@@ -182,6 +182,8 @@ describe("ANGLE_PLACEHOLDER_GUARD_ENABLED (Sunny live check, 31 Oct 2026)", () =
   });
 
   it("off: <UNKNOWN> is not a placeholder, as before", () => {
+    // On by default since 3 Nov 2026 ("(E) batch 1"): "off" is "false", not unset.
+    process.env[FLAG] = "false";
     expect(containsPlaceholder("Use a fresh towel. <UNKNOWN>")).toBe(false);
   });
 

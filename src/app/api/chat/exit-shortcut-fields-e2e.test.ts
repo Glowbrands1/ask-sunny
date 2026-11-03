@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { DEFAULT_ON } from "@/lib/config/default-on";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
@@ -495,6 +496,11 @@ function production(on: boolean, roster: keyof typeof ROSTERS | unknown[], scope
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
+  // Since 3 Nov 2026 ("(E) batch 1", config/default-on.ts) an unset flag in DEFAULT_ON reads as on; "false" keeps the old "unset is off" here.
+  for (const name of DEFAULT_ON) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    process.env[name] = "false";
+  }
   for (const name of [...PRODUCTION, ...LIVE_SINCE]) process.env[name] = "true";
   if (on) process.env[FLAG_ON] = "true";
   (state as { scope?: unknown }).scope = scope;
@@ -532,7 +538,8 @@ const BASE = "create an exit for marnie holloway, assistant salon manager at kea
 async function readback(words: string, on: boolean): Promise<string> {
   live(true, MARNIE, "marnie holloway");
   if (!saved.has(SHORTCUTS)) saved.set(SHORTCUTS, process.env[SHORTCUTS]);
-  delete process.env[SHORTCUTS];
+  // On by default since 3 Nov 2026 ("(E) batch 1"): "off" is "false", not unset.
+  process.env[SHORTCUTS] = "false";
   if (on) process.env[SHORTCUTS] = "true";
   return ((await new Thread().say(words)) as { content: string }).content;
 }
