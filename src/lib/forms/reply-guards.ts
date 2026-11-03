@@ -1,4 +1,4 @@
-import { refusalNoRepeatEnabled, titleNotSpeakersManagerEnabled } from "@/lib/config/chat-quality-flags";
+import { refusalNoRepeatEnabled, sameAskNoRepeatEnabled, titleNotSpeakersManagerEnabled } from "@/lib/config/chat-quality-flags";
 
 /**
  * ============================================================================
@@ -27,7 +27,7 @@ interface Turn {
 
 interface Answer {
   content: string;
-  formProposal?: { employeeRole?: string | null } | null;
+  formProposal?: { employeeRole?: string | null; status?: string } | null;
   formUpdate?: unknown;
 }
 
@@ -48,6 +48,20 @@ export function withoutRepeatedRefusal<T extends Answer>(answer: T, history: rea
     ? "If coaching for this has already happened, say so — for example \"we already did coaching on 10/14\" — and I'll start the Corrective Action Form. Otherwise I can start a Coaching Form now."
     : "Tell me what's different, or what you'd like me to do instead.";
   return { ...answer, content: `That's the same answer as my last reply — nothing new changes it. ${onward}` };
+}
+
+/**
+ * SAME_ASK_NO_REPEAT_ENABLED (the replay pack, 3 Nov 2026): asked twice before
+ * naming the salon or store, the team card asked "Which … is this about?"
+ * twice, word for word. A card that still needs something and would repeat the
+ * last reply exactly says first that it is still waiting on the same thing.
+ * Only an exact repeat, and only on a card that is not ready.
+ */
+export function withoutRepeatedAsk<T extends Answer>(answer: T, history: readonly Turn[]): T {
+  if (!sameAskNoRepeatEnabled() || !answer.formProposal || answer.formProposal.status === "ready") return answer;
+  const previous = [...history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+  if (!previous.trim() || previous.trim() !== answer.content.trim()) return answer;
+  return { ...answer, content: `I still need the same answer before I can make this card.\n\n${answer.content}` };
 }
 
 /** "my DM", "my district manager", "my RD" … — the speaker's own manager, by role. */

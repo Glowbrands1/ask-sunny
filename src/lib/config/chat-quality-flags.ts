@@ -1616,6 +1616,17 @@ export function addressNotPersonEnabled(): boolean {
   return envFlag("ADDRESS_NOT_PERSON_ENABLED");
 }
 
+/**
+ * A card that still needs something never repeats the last reply word for
+ * word: it says first that it is still waiting on the same answer (the team
+ * card's salon/store question, asked twice; the replay pack, 3 Nov 2026).
+ * Same flag in both apps. See `forms/reply-guards.ts` `withoutRepeatedAsk`.
+ * Off, as before.
+ */
+export function sameAskNoRepeatEnabled(): boolean {
+  return envFlag("SAME_ASK_NO_REPEAT_ENABLED");
+}
+
 export function chatHistoryStateChunkedEnabled(): boolean {
   return envFlag("CHAT_HISTORY_STATE_CHUNKED_ENABLED");
 }

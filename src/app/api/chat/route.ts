@@ -27,6 +27,7 @@ import {
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
   addressNotPersonEnabled,
+  sameAskNoRepeatEnabled,
   newRequestOpenDraftEnabled,
   coachingForEveryoneEnabled,
   staffPickerEnabled,
@@ -566,6 +567,8 @@ async function postChat(request: Request) {
           { id: parsed.questionMessageId, role: "user", content: asked.question },
         ]);
       }
+      // SAME_ASK_NO_REPEAT_ENABLED: a card still waiting never repeats the last reply word for word (`lib/forms/reply-guards.ts`).
+      if (sameAskNoRepeatEnabled()) answer = (await import("@/lib/forms/reply-guards")).withoutRepeatedAsk(answer, asked.history);
       // REFUSAL_NO_REPEAT_ENABLED, TITLE_NOT_SPEAKERS_MANAGER_ENABLED: see `lib/forms/reply-guards.ts`.
       if (refusalNoRepeatEnabled() || titleNotSpeakersManagerEnabled()) {
         const guards = await import("@/lib/forms/reply-guards");
