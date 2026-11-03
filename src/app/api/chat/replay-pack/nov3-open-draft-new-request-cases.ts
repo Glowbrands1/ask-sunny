@@ -9,7 +9,8 @@ export const NOV3_OPEN_DRAFT_NEW_REQUEST_CASES: readonly ReplayCase[] = [
     title: "with her draft open, a new request for the same person with a new incident is its own card, and the open draft is untouched",
     report:
       '"a CA" → "<name> failed to take trash out and put rugs out untl 12;30pm" → Create → "make me a CA for <name> for being late to opening this morning" → "Redrafted the Corrective Action Form …", the open draft rewritten with both incidents (QA live check)',
-    status: { open: "the new request is written into the open draft" },
+    // Fixed in production: NEW_REQUEST_OPEN_DRAFT_ENABLED on (QA, 3 Nov 2026, 07:46 UTC).
+    status: "fixed",
     fixFlags: ["NEW_REQUEST_OPEN_DRAFT_ENABLED"],
     async run(t) {
       t.directory(STAFF);
