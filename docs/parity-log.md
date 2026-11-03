@@ -1527,3 +1527,12 @@ goes to the intake as a new request; the open draft is not touched. Replay
 case nov3-open-draft-new-request (the race reproduced with
 `draftNotYetSaved`). Ask Bubbles behaved correctly live; the same flag and
 case are ported there.
+
+## 3 Nov 2026: the policy on each Corrective Action history line — both apps (PRIOR_ACTIONS_POLICY_ENABLED, default off)
+
+Pau, 3 Nov 2026 (through QA): a Corrective Action's history read from Form
+Monitoring said only the step and the date. On: each earlier Corrective
+Action's "Policy violated" is named on its line — "Verbal corrective action
+(Attendance) — signed 11/02/2026" — in the chat read-back and on the drafted
+form alike. Coaching lines are unchanged (a Coaching Form has no policy
+violated). Same flag and mechanism in Ask Bubbles.
