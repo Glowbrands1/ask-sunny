@@ -47,3 +47,15 @@ model call).
 `EVAL_UPDATE_BASELINE=1 npm run eval` rewrites `baseline.json`. Only when a
 flags-off result is meant to change (a new case, or a fix that is already live),
 and the pull request says why.
+
+### Baseline changes
+
+- **3 Nov 2026, s20 and s28: "blocking question" added (judge unchanged).**
+  SAME_ASK_NO_REPEAT is on in production. When a card repeats an unanswered
+  question, it now begins "I still need to know who this is for …" (s20, after
+  "Who is it for?") or "… which location this is about …" (s28, after "Which
+  salon is this about?"). Both replies already ended on that unanswered
+  question; the judge's regex did not match those wordings and does match
+  "^I still need". The cards are unchanged (needs_employee, needs_location).
+  b10 and b12 (a card shown again that asks nothing) get no note and still
+  pass. See ask-sunny #486.

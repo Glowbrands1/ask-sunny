@@ -13,7 +13,8 @@ export const NOV2_CASES: readonly ReplayCase[] = [
     // Fixed in production: WHOLE_TEAM_COACHING_ENABLED and the staff-picker flags on (#438; QA, 3 Nov 2026).
     // TEAM_CARD_WORDING (on 3 Nov) hands both requests on as the same bare team request, so the second
     // reply repeats the salon question word for word. The refusal is gone; SAME_ASK_NO_REPEAT fixes the repeat.
-    status: { open: "the second identical request repeats the salon question word for word" },
+    // Fixed in production: SAME_ASK_NO_REPEAT on again with its note said only beside a real question (QA, 3 Nov 2026, 13:55 UTC).
+    status: "fixed",
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", TWO_SALONS);

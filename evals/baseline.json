@@ -63,7 +63,8 @@
       "id": "s28",
       "pass": false,
       "misses": [
-        "salon"
+        "salon",
+        "blocking question"
       ],
       "card": {
         "employee": "Elin Haskett",
@@ -98,8 +99,10 @@
     },
     {
       "id": "s20",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "blocking question"
+      ],
       "card": {
         "employee": null,
         "salon": null,
