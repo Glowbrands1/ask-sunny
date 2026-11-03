@@ -11,7 +11,9 @@ export const NOV2_CASES: readonly ReplayCase[] = [
       '"earlier bubbles made a coaching form for all team members. Now it is struggling to do that, it says it cannot make a coaching form for all team members, but it just did it for me earlier" (the sibling app, 1 star)',
     // Fixed by WHOLE_TEAM_COACHING_ENABLED (#438): add it to fixFlags when that is merged.
     // Fixed in production: WHOLE_TEAM_COACHING_ENABLED and the staff-picker flags on (#438; QA, 3 Nov 2026).
-    status: "fixed",
+    // TEAM_CARD_WORDING (on 3 Nov) hands both requests on as the same bare team request, so the second
+    // reply repeats the salon question word for word. The refusal is gone; SAME_ASK_NO_REPEAT fixes the repeat.
+    status: { open: "the second identical request repeats the salon question word for word" },
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", TWO_SALONS);

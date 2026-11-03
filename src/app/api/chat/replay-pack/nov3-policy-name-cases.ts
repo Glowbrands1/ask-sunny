@@ -8,7 +8,8 @@ export const NOV3_POLICY_NAME_CASES: readonly ReplayCase[] = [
     id: "nov3-policy-name-not-observation",
     title: "\"CA for must see behaviors\": the policy's name is not read back as the Observation of Offense",
     report: '"can you create a CA for must see behaviors" → "Who is this form for?" with "Observation of Offense: must see behaviors" (QA live check)',
-    status: { open: "OBSERVATION_NOT_POLICY_NAME_ENABLED is off in production" },
+    // Fixed in production: its flag on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["OBSERVATION_NOT_POLICY_NAME_ENABLED"],
     async run(t) {
       t.directory(STAFF);

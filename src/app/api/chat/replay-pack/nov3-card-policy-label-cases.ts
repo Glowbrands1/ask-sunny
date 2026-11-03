@@ -9,7 +9,8 @@ export const NOV3_CARD_POLICY_LABEL_CASES: readonly ReplayCase[] = [
     title: "the Policy Violated line cites the section the card and the quote cite, not the box's own",
     report:
       'late opening: the card said "Late Opening Policy p.15", the draft quoted Late Opening, but Policy Violated read "Attendance Policy, JBA Policy Manual p.14" (QA live check)',
-    status: { open: "CARD_POLICY_LABEL_ENABLED is off in production" },
+    // Fixed in production: its flag on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED", "CARD_POLICY_LABEL_ENABLED"],
     async run(t) {
       t.directory(STAFF);

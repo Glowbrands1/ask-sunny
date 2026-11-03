@@ -8,7 +8,8 @@ export const NOV3_STREET_NAME_CASES: readonly ReplayCase[] = [
     id: "nov3-street-address-coaching",
     title: "\"coaching form for 123 Main Street\" is not a form for a person called Main Street",
     report: '"coaching form for 123 Main Street" → a Coaching card for Employee "Main Street", no "who is this for?" (QA live check)',
-    status: { open: "a house number and a street are read as a person" },
+    // Fixed in production: ADDRESS_NOT_PERSON on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["ADDRESS_NOT_PERSON_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -21,7 +22,8 @@ export const NOV3_STREET_NAME_CASES: readonly ReplayCase[] = [
     id: "nov3-street-then-placeholder",
     title: "the next request names no one: the earlier non-person is not kept, and \"<name>\" is not a name",
     report: 'then "make a coaching form for <name>, she was late today" kept Employee "Main Street" and did not ask who (QA live check)',
-    status: { open: "the earlier employee carries over" },
+    // Fixed in production: ADDRESS_NOT_PERSON on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["ADDRESS_NOT_PERSON_ENABLED"],
     async run(t) {
       t.directory(STAFF);

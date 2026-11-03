@@ -13,7 +13,8 @@ export const NOV3_CA_NAME_CASES: readonly ReplayCase[] = [
     id: "nov3-ca-name-from-chat",
     title: "\"fix her last name …\" on a Corrective Action changes the Employee Name, and says so",
     report: '"fix her last name …" on a Corrective Action: "The name on a Corrective Action Form isn\'t changed from the chat" (Pau: it should change)',
-    status: { open: "CA_NAME_FROM_CHAT_ENABLED is off in production" },
+    // Fixed in production: its flag on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["CA_NAME_FROM_CHAT_ENABLED"],
     async run(t) {
       t.directory(WITH_CALDERON);
