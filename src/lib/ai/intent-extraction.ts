@@ -14,6 +14,7 @@ import type { ChatActor } from "./form-proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { updateChatTrace } from "./chat-trace-store";
 import { stateSentences } from "./form-state";
+import { isTeamCardTurn } from "@/lib/forms/whole-team-coaching";
 import type { GroundedPerson } from "./grounded-entities";
 import {
   decideIntentTurn,
@@ -49,6 +50,8 @@ export async function applyIntentExtraction(input: {
   readonly actor: ChatActor;
 }): Promise<{ request: AskRequest; clarification: AskResponse | null; formTurn: boolean }> {
   if (!intentExtractionEnabled()) return { request: input.request, clarification: null, formTurn: false };
+  // WHOLE_TEAM_COACHING_ENABLED: the team card is the intake's; the stored slots of a person are not its subject.
+  if (isTeamCardTurn(input.request)) return { request: input.request, clarification: null, formTurn: false };
   try {
     // REMAP_INCIDENT_FIX_ENABLED: a later create request with its own incident
     // is a new form, so the old form's stored slots are not carried onto it.

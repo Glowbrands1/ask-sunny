@@ -1,3 +1,5 @@
+import { sharedLoginNotStaffEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * IS THE NAME THE MANAGER TYPED SOMEBODY ON THEIR TEAM?
@@ -75,7 +77,23 @@ const SERVICE_NAME_WORDS = new Set([
 /** Whether a directory row's name is a department, role or system rather than a person. */
 export function isServiceAccountName(firstName: string, lastName: string): boolean {
   const words = `${firstName} ${lastName}`.toLowerCase().split(/[^a-z]+/).filter(Boolean);
-  return words.length > 0 && words.every((word) => SERVICE_NAME_WORDS.has(word));
+  if (words.length > 0 && words.every((word) => SERVICE_NAME_WORDS.has(word))) return true;
+  return sharedLoginNotStaffEnabled() && isSharedLogin(lastName);
+}
+
+/*
+ * SHARED_LOGIN_NOT_STAFF_ENABLED (ported from Ask Bubbles: a Location Manager,
+ * 2 Nov 2026): a location's shared login, kept on the directory as
+ * "<Location> Account" with a staff title, was listed as a team member — the
+ * rule above keeps it because the place's name is not a department word. A
+ * row whose LAST name is only a word for a login — Account, Accounts, Login,
+ * Logins, Shared, Generic, Store, Salon (QA, 3 Nov) — is a login, whatever
+ * its first name. Nothing is written to the directory.
+ */
+const LOGIN_SURNAMES = new Set(["account", "accounts", "login", "logins", "shared", "generic", "store", "salon"]);
+
+function isSharedLogin(lastName: string): boolean {
+  return LOGIN_SURNAMES.has(lastName.trim().toLowerCase());
 }
 
 /**
