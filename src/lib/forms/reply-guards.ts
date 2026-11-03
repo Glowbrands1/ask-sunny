@@ -67,9 +67,18 @@ export function withoutRepeatedAsk<T extends Answer>(answer: T, history: readonl
    * answer" would claim a question that is not there. The note names what the
    * reply asks for.
    */
-  const asked = STILL_ASKED.find(([pattern]) => pattern.test(answer.content));
-  if (!asked) return answer;
-  return { ...answer, content: `${asked[1]}\n\n${answer.content}` };
+  const note = stillAsks(answer.content);
+  if (!note) return answer;
+  return { ...answer, content: `${note}\n\n${answer.content}` };
+}
+
+/**
+ * The note for what a reply still asks — who the form is for, which location,
+ * which date — or null when it asks none of them. The replay pack checks every
+ * reply with it: "I still need …" is only ever said beside one of these.
+ */
+export function stillAsks(content: string): string | null {
+  return STILL_ASKED.find(([pattern]) => pattern.test(content))?.[1] ?? null;
 }
 
 /** The questions a card asks before it can be made, and the note that names each. */
