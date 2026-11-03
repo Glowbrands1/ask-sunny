@@ -40,6 +40,7 @@ import {
   guardNarrativeDraft,
 } from "./narrative-draft";
 import { extractEmployeeNames, managerContext, samePerson } from "./proposal";
+import { namesOnRoster } from "./roster-name-gate";
 import { draftableCheckboxGroups, draftableFields } from "./responsibility";
 import {
   REVISABLE_LAYOUT_FAMILIES,
@@ -152,10 +153,13 @@ export async function reviseActiveForm(input: {
      * edit was treated as being about somebody else and dropped.
      */
     const formWords = formVocabulary(parseFormDocument(loaded.version.document), instance.variantKey);
-    const named = extractEmployeeNames(input.question).filter(
-      (name) =>
-        !formWords.has(name.toLowerCase()) &&
-        !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+\\d{1,2}\\b`).test(input.question),
+    const named = await namesOnRoster(
+      extractEmployeeNames(input.question).filter(
+        (name) =>
+          !formWords.has(name.toLowerCase()) &&
+          !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+\\d{1,2}\\b`).test(input.question),
+      ),
+      actor.scope,
     );
     if (named.length > 0 && !named.some((name) => samePerson(name, instance.employeeName))) return null;
   }
