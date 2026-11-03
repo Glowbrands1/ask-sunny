@@ -221,13 +221,18 @@
     },
     {
       "id": "n2",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "salon",
+        "date",
+        "policy"
+      ],
       "card": {
-        "employee": "Corena Shardt",
-        "salon": "loc-0462",
-        "date": "2026-09-29",
-        "status": "ready"
+        "employee": null,
+        "salon": null,
+        "date": null,
+        "status": null
       }
     },
     {

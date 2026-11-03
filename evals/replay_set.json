@@ -1921,7 +1921,8 @@
           "loc-0902"
         ]
       }
-    ]
+    ],
+    "note": "KNOWN OPEN with production's flags (3 Nov 2026): FIRST_NAME_SUGGEST_ENABLED is on in Sunny production (Pau checked Vercel), so the close misspelling \"Corena Shardt\" is asked about (\"Is this for \u2026?\") instead of making the card as typed. That is the n2 rule (24 Oct: a close spelling stays as typed) meeting FIRST_NAME_SUGGEST; which should win is Pau's decision. Recorded as failing in baseline.json; no code changed to hide it."
   },
   {
     "id": "n3",
