@@ -76,6 +76,25 @@ const state = vi.hoisted(() => ({
   directory: [] as unknown[],
 }));
 
+/*
+ * STEP B'S FORM-PATCH MODEL (FORM_PATCH_REDUCER_ENABLED), scripted per case:
+ * `t.patchWrites([...])` lists the model's raw outputs in the order the calls
+ * are made; `null`, or a call past the end, is the call's fallback, and the
+ * turn runs on the old path. Only the raw output is scripted: the zod parse,
+ * the evidence and date checks, the reducer, the writes and the reload are
+ * the real ones.
+ */
+const patchScript = vi.hoisted(() => ({ outputs: [] as unknown[], calls: 0 }));
+vi.mock("@/lib/forms/form-patch-call", () => ({
+  FORM_PATCH_DEFAULT_TIMEOUT_MS: 5_000,
+  formPatchTimeoutMs: () => 5_000,
+  callFormPatchModel: async () => {
+    const output = patchScript.outputs[patchScript.calls];
+    patchScript.calls += 1;
+    return output === undefined || output === null ? { fallback: "error" } : { ok: true, output };
+  },
+}));
+
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAdmin: () => fakeSupabase(store) }));
 
 vi.mock("@/lib/api/respond", async (importOriginal) => {
@@ -478,6 +497,8 @@ beforeEach(async () => {
   state.reading = {};
   state.draft = { values: {} };
   state.revision = { values: {} };
+  patchScript.outputs = [];
+  patchScript.calls = 0;
   state.directory = [
     { id: "e-1", firstName: "Quinn", lastName: "Marlowe", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
     { id: "e-2", firstName: "Dale", lastName: "Ferris", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-66"], positionName: null },
@@ -537,8 +558,8 @@ function context(): ReplayContext {
     directory: (rows) => {
       state.directory = rows as never;
     },
-    draftWrites: (values) => {
-      state.draft = { values };
+    draftWrites: (values, checked) => {
+      state.draft = { values, ...(checked ? { checked } : {}) };
     },
     revisionWrites: (values) => {
       state.revision = { values };
@@ -550,9 +571,19 @@ function context(): ReplayContext {
       state.slotsRead = slots;
       state.readerEmployee = readerEmployee;
     },
-    calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls }),
+    patchWrites: (outputs) => {
+      patchScript.outputs = [...outputs];
+      patchScript.calls = 0;
+    },
+    calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    redraft: (instanceId, notes) =>
+      call<Record<string, unknown>>(`/api/forms/instances/${instanceId}/draft`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ notes, keepManagerValues: true }),
+      }),
     typeOnForm: (instanceId, values) => {
       for (const [key, value] of Object.entries(values)) {
         const row = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
@@ -562,6 +593,12 @@ function context(): ReplayContext {
     },
     values: (instanceId) =>
       Object.fromEntries(store.form_instance_values.filter((row) => row.instance_id === instanceId).map((row) => [String(row.field_key), String(row.value ?? "")])),
+    checked: (instanceId) =>
+      Object.fromEntries(
+        store.form_instance_values
+          .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
+          .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
+      ),
     draftNotYetSaved: (instanceId) => {
       store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
     },
