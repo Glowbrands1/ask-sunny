@@ -2311,3 +2311,18 @@ export function primarySalonNotEditEnabled(): boolean {
 export function firstNameYesKeepsRequestEnabled(): boolean {
   return envFlag("FIRST_NAME_YES_KEEPS_REQUEST_ENABLED");
 }
+
+/**
+ * QA live check, 3 Nov 2026 (16:27 UTC): "Corrective action for the primary
+ * salon manager: on Monday 10/05/2026 <name> was working …", the name typed in
+ * lower case and not on the roster, came back "Who is this Corrective Action
+ * Form for?". The slot reading held the name, but on a turn it does not call a
+ * form turn only a capitalised name the code reads was put in front of the
+ * question, and the proposal reads capitalised names only. On, a name the slot
+ * reading holds that the manager typed in this very request, and that the code
+ * reads nobody else in, is put in front as "The employee is …". See
+ * `ai/intent-slots.ts` `withSlotEmployeeLine`. Off, as before.
+ */
+export function slotNameOnFormRequestEnabled(): boolean {
+  return envFlag("SLOT_NAME_ON_FORM_REQUEST_ENABLED");
+}

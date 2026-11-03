@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   caTemplateMapEnabled,
   codeSlotsEnabled,
+  slotNameOnFormRequestEnabled,
   formChoiceStatedEnabled,
   intentPayrollManagerOnlyEnabled,
   keepFormEmployeeEnabled,
@@ -468,7 +469,9 @@ export function decideIntentTurn(rawInput: IntentTurnInput): IntentTurnDecision 
     ? questionWithState(input.question, state, input.templates)
     : typedEmployee && state.employeeName === typedEmployee && asksForAForm(input.question)
       ? `The employee is ${typedEmployee}.\n${input.question}`
-      : input.question;
+      : slotNameOnFormRequestEnabled() && detectTemplateIntent(input.question).kind !== "none"
+        ? withSlotEmployeeLine(input.question, state.employeeName)
+        : input.question;
   // FORM_CHOICE_STATED_ENABLED: two forms in one turn is a question, not a
   // card. A form turn otherwise keeps its card, and the proposal would pick
   // one of the two on its own.
@@ -507,6 +510,27 @@ function asksForAForm(question: string): boolean {
     intent.kind === "clarify" ||
     (intent.kind === "corrective_action" && intent.requestedCreation)
   );
+}
+
+/**
+ * SLOT_NAME_ON_FORM_REQUEST_ENABLED (QA live check, 3 Nov 2026): the slot
+ * reading's employee, put in front of a turn that names a form (the test
+ * `readsAForm` in `intent-extraction.ts` uses) as "The employee is …",
+ * when the manager typed that name in this request and the code's own name
+ * reader names nobody in it — a lower-case name ("… corin bellweather was
+ * working …") that the proposal, which reads capitalised names, would miss.
+ * The name keeps only what `cleanPersonName` keeps of it; when that drops any
+ * word ("the primary salon manager"), nothing is added. A name the code reads
+ * already, or one not typed in this turn, adds nothing either.
+ */
+export function withSlotEmployeeLine(question: string, slotName: string | null): string {
+  const typed = slotName?.trim().replace(/\s+/g, " ");
+  if (!typed) return question;
+  const said = new RegExp(`(?<![A-Za-z])${typed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")}(?![A-Za-z])`, "i");
+  if (!said.test(question) || extractEmployeeNames(question).length > 0) return question;
+  const name = cleanPersonName(typed, PRODUCTION_SALONS.map((salon) => salon.name));
+  if (!name || name.toLowerCase() !== typed.toLowerCase()) return question;
+  return `The employee is ${name}.\n${question}`;
 }
 
 /** `LIMITS.historyTurns` in `lib/api/validation.ts` (server-only, so not imported here). */
