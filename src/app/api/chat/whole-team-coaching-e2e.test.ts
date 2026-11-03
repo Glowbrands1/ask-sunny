@@ -901,7 +901,7 @@ describe("SAME_ASK_NO_REPEAT_ENABLED: the team card's salon question is never re
   it("on: the second reply says it is still waiting, and still asks", async () => {
     const [first, second] = await replies(true);
     expect(second!.content).not.toBe(first!.content);
-    expect(second!.content).toMatch(/^I still need the same answer/);
+    expect(second!.content).toMatch(/^I still need to know which location this is about/);
     expect(second!.content).toContain(first!.content);
   });
 });

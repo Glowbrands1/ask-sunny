@@ -61,8 +61,23 @@ export function withoutRepeatedAsk<T extends Answer>(answer: T, history: readonl
   if (!sameAskNoRepeatEnabled() || !answer.formProposal || answer.formProposal.status === "ready") return answer;
   const previous = [...history].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
   if (!previous.trim() || previous.trim() !== answer.content.trim()) return answer;
-  return { ...answer, content: `I still need the same answer before I can make this card.\n\n${answer.content}` };
+  /*
+   * ONLY A REPLY THAT STILL ASKS SOMETHING (the replay eval, 3 Nov 2026): a card
+   * shown again after "show draft" asks nothing, and "I still need the same
+   * answer" would claim a question that is not there. The note names what the
+   * reply asks for.
+   */
+  const asked = STILL_ASKED.find(([pattern]) => pattern.test(answer.content));
+  if (!asked) return answer;
+  return { ...answer, content: `${asked[1]}\n\n${answer.content}` };
 }
+
+/** The questions a card asks before it can be made, and the note that names each. */
+const STILL_ASKED: readonly [RegExp, string][] = [
+  [/\bwho is (?:this|it)\b[^?\n]*\bfor\?/i, "I still need to know who this is for before I can make this card."],
+  [/\bwhich (?:salon|store|location)\b[^?\n]*\?/i, "I still need to know which location this is about before I can make this card."],
+  [/\bwhich date goes on the form\?/i, "I still need to know which date goes on the form before I can make this card."],
+];
 
 /** "my DM", "my district manager", "my RD" … — the speaker's own manager, by role. */
 const SPEAKERS_MANAGER: readonly [RegExp, RegExp][] = [
