@@ -1616,6 +1616,16 @@ export function formEditHonestReplyEnabled(): boolean {
 }
 
 /**
+ * One answer to "is this a person?" for every reader of who a form is for:
+ * somebody on the roster always is; a policy ("Must See Behaviors"), a
+ * practice run ("Practice") or a metric ("Avg Club") never is (QA, 3 Nov
+ * 2026; same flag in both apps). See `forms/person-guard.ts`. Off, as before.
+ */
+export function personGuardEnabled(): boolean {
+  return envFlag("PERSON_GUARD_ENABLED");
+}
+
+/**
  * With a draft open, a turn that names no form, no other person and is not a
  * question is content for that draft — never a new card (the 2 Nov 2026 scan:
  * a Corrective Action's next message started a new draft without what the
