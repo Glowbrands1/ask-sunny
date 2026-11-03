@@ -38,6 +38,12 @@ jobs:
             const title = "Replay pack failed on main";
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = `The nightly replay pack failed on main: ${run}\n\nA case that was "fixed" no longer holds, an "open" case now holds (move it to fixed), or the flag file names an unknown flag. See the run's log.`;
+            // The label may not exist yet: create it once; "already exists" (422) and any other failure are fine.
+            try {
+              await github.rest.issues.createLabel({ ...context.repo, name: "replay-pack", color: "d93f0b", description: "The nightly replay pack failed on main" });
+            } catch (error) {
+              core.info(`replay-pack label: ${error.status === 422 ? "already exists" : error.message}`);
+            }
             const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, state: "open", labels: "replay-pack" });
             if (open.length > 0) {
               await github.rest.issues.createComment({ ...context.repo, issue_number: open[0].number, body });
