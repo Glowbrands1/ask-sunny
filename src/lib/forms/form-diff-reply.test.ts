@@ -12,7 +12,9 @@ describe("replyFromDiff", () => {
     expect(NOTHING_CHANGED).toBe("I didn't change anything on the form.");
   });
 
-  it("says Changed <Label> to <value> per change, never Updated", () => {
+  // Expectation changed on purpose (QA, 3 Nov 2026, Step B flip): the line says what changed — filled in, added,
+  // from/to — with each line quoted whole, never the whole value ";"-joined and cut.
+  it("says what changed per field, never Updated", () => {
     const reply = replyFromDiff(
       {
         changed: [
@@ -26,10 +28,10 @@ describe("replyFromDiff", () => {
     );
     expect(reply).toBe(
       [
-        'Changed Amount to "$3.25".',
-        'Changed Level to "written".',
-        'Changed Prior Actions to "Verbal warning — signed 05/12/2025; Coaching — signed 01/01/2026".',
-        'Changed unlabelled to "b".',
+        'Filled in Amount: "$3.25".',
+        "Level is now written.",
+        'Filled in Prior Actions: "Verbal warning — signed 05/12/2025" and "Coaching — signed 01/01/2026".',
+        'Changed unlabelled from "a" to "b".',
       ].join("\n"),
     );
     expect(reply.toLowerCase()).not.toContain("updated");
@@ -39,13 +41,39 @@ describe("replyFromDiff", () => {
     expect(replyFromDiff({ changed: [{ key: "observation", before: "x", after: "" }] }, LABELS)).toBe("Cleared Observation.");
   });
 
-  it("cuts a long value at a word", () => {
+  // Expectation changed on purpose (QA, 3 Nov 2026): a long value is described, not cut mid-sentence with "…".
+  it("a long value is described, never cut", () => {
     const long = `${"word ".repeat(60)}end`;
     const reply = replyFromDiff({ changed: [{ key: "observation", before: "", after: long }] }, LABELS);
-    const quoted = reply.slice('Changed Observation to "'.length, -2);
-    expect(quoted.endsWith("…")).toBe(true);
-    expect(quoted.length).toBeLessThanOrEqual(REPLY_VALUE_MAX + 1);
-    expect(quoted.slice(0, -1).endsWith("word")).toBe(true);
-    expect(reply.toLowerCase()).not.toContain("updated");
+    expect(reply).toBe("Filled in Observation.");
+    expect(reply).not.toContain("…");
+    expect(REPLY_VALUE_MAX).toBeGreaterThan(0);
+  });
+
+  /*
+   * QA, 3 Nov 2026 (Step B flip, Ask Sunny): "set the daily stats to 3 of 4 shifts on time" and "Add that she
+   * Must Practice the sanitizing checklist every shift." both replied 'Changed Details of Coaching to
+   * "Observed:; Dana Lane was late to open the location today.; Expectation:; Dana is expected to arrive on time
+   * and be…"' — the whole field, ";" for line breaks, cut, and not what was added. Invented person.
+   */
+  it("QA's report: an added line is named, not the whole field", () => {
+    const before = "Observed:\nDana Lane was late to open the location today.\nExpectation:\nDana is expected to arrive on time and be ready to open.";
+    const after = `${before}\nShe must practice the sanitizing checklist every shift.`;
+    const reply = replyFromDiff({ changed: [{ key: "observation", before, after }] }, LABELS);
+    expect(reply).toBe('Added to Observation: "She must practice the sanitizing checklist every shift.".');
+    expect(reply).not.toMatch(/;|…/);
+  });
+
+  it("text added at the end of a line is what the reply quotes", () => {
+    const reply = replyFromDiff(
+      { changed: [{ key: "observation", before: "She was late on Monday", after: "She was late on Monday and was also late on Tuesday." }] },
+      LABELS,
+    );
+    expect(reply).toBe('Added to Observation: "and was also late on Tuesday.".');
+  });
+
+  it("a line taken out is named", () => {
+    const reply = replyFromDiff({ changed: [{ key: "observation", before: "One.\nTwo.", after: "One." }] }, LABELS);
+    expect(reply).toBe('Removed from Observation: "Two.".');
   });
 });

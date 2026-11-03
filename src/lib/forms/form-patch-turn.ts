@@ -35,6 +35,8 @@ import type { ChatMessage } from "@/types";
  * Plan through `syncCorrectiveActionPlan` when payroll changed. The form is
  * read again and the reply is the realized diff: "Changed X to …", or "I
  * didn't change anything on the form." — never an "Updated" without a change.
+ * A patch the reducer refuses any part of, or that would change nothing, is
+ * handed back (null) before anything is written.
  *
  * Null — the old path runs — when the turn is not about this form, on any
  * model fallback, on an error, for a finalized form, and for a Corrective
@@ -146,10 +148,25 @@ export async function patchActiveForm(input: {
      * Bubbles): "make it sound more professional" is about this form, but the
      * manager gives nothing to set from their own words. A patch that sets and
      * clears nothing is not this path's turn: null, so the redraft and
-     * revision paths run as before. (A patch whose sets were all refused still
-     * answers from its diff.)
+     * revision paths run as before. (So, since QA's 3 Nov flip test, does a
+     * patch the reducer refuses any part of: see below.)
      */
     if (Object.keys(reading.patch.set).length === 0 && reading.patch.clear.length === 0) return null;
+    /*
+     * QA, 3 Nov 2026 (Step B flip, Ask Bubbles): "fix her last name, it is
+     * Quill-Hart" was read as a replace of the Observation with the model's
+     * own sentence, "Quill-Hart was late …" — the first name dropped. The
+     * evidence ("Quill-Hart") was the manager's, so the reducer let it
+     * through; what a rewrite takes out is not something it can check. A
+     * replace of a text field that already holds text is a rewrite: null, and
+     * the revision path (its name and roster gates) runs as before. Added
+     * text, options, payroll and dates stay here.
+     */
+    const textKeys = new Set(allFields.map((field) => field.key));
+    const rewrites = Object.keys(reading.patch.set).some(
+      (key) => textKeys.has(key) && reading.patch.how?.[key] === "replace" && typeof before[key]?.value === "string" && (before[key]!.value as string).trim() !== "",
+    );
+    if (rewrites) return null;
 
     /*
      * The assistant's last reply counts as accepted only when the patch quotes
@@ -186,6 +203,17 @@ export async function patchActiveForm(input: {
       },
     };
     const { diff } = applyPatch(before, reading.patch, rules);
+    /*
+     * QA, 3 Nov 2026 (Step B flip, tested worse than baseline): "redraft it
+     * and say she was also late on Tuesday", "fix her last name, it is Laine"
+     * and "make it sound more professional" were read as patches the reducer
+     * refused (the new wording is not the manager's own words), and the turn
+     * answered "I didn't change anything on the form." — where the revision
+     * path had made the change. A patch the reducer refuses any part of, or
+     * one that changes nothing, writes nothing here: null, and the redraft and
+     * revision paths run as before. Only a patch that lands whole answers.
+     */
+    if (diff.refused.length > 0 || diff.changed.length === 0) return null;
 
     const groupKeys = new Set(allGroups.map((group) => group.key));
     const assistant = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };

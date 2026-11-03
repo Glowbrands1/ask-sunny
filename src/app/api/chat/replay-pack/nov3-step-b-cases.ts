@@ -297,7 +297,8 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
       expect(reply.formProposal, "the edit offered a new card").toBeUndefined();
       expect(t.values(id).coaching_details ?? "", "the sentence is not on the form").toMatch(/sanitizing checklist every shift with Juno before Daily Stats/i);
       expect(reply.formUpdate?.updated, "the reply is not the saved diff").toEqual(["coaching_details"]);
-      expect(reply.content, "the reply is not the saved diff").toMatch(/^Changed Details of Coaching to "/);
+      // Expectation changed on purpose (QA, 3 Nov 2026, Step B flip): the reply names what was added, not the whole field.
+      expect(reply.content, "the reply is not the saved diff").toMatch(/^(?:Added to|Filled in) Details of Coaching: "[^"]*sanitizing checklist every shift with Juno before Daily Stats\./);
     },
   },
   {

@@ -49,7 +49,8 @@ describe("checkedClaim", () => {
   it("a claim on a key that did not change, while another did, names only what really changed", () => {
     const after = snapshot({ payroll_deduct: [], observation: "Observed:\nShort $3.25.", action_plan: "Plan, rebuilt." });
     const replaced = checkedClaim(PAYROLL_REPLY, BEFORE, after);
-    expect(replaced.content).toBe('Changed Action Plan to "Plan, rebuilt.".');
+    // Expectation changed on purpose (QA, 3 Nov 2026, Step B flip): the line says from what to what.
+    expect(replaced.content).toBe('Changed Action Plan from "Plan." to "Plan, rebuilt.".');
     expect(replaced.formUpdate).toEqual({ instanceId: ID, updated: ["action_plan"] });
   });
 
