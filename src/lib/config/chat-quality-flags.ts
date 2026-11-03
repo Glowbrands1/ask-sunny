@@ -2249,3 +2249,12 @@ export function formEditNameGateRosterEnabled(): boolean {
 export function formPlaceholderWordsEnabled(): boolean {
   return envFlag("FORM_PLACEHOLDER_WORDS_ENABLED");
 }
+
+/**
+ * "primary salon is X" says where the employee usually works; it is not an
+ * edit of the form's salon (replay set s21, 3 Nov 2026; same flag in both
+ * apps). See `ai/edit-date-rules.ts`. Off, as before.
+ */
+export function primarySalonNotEditEnabled(): boolean {
+  return envFlag("PRIMARY_SALON_NOT_EDIT_ENABLED");
+}

@@ -433,6 +433,9 @@ function salonIds(text: string): string[] {
  * the one this account is about. A later turn that names none keeps the
  * one already named. The Woven primary is only the guess when nobody named one.
  */
+/** "primary salon is Omaha Center": where the employee usually works, not the form's salon. Shared with `edit-date-rules.ts`. */
+export const PRIMARY_SALON_STATEMENT = /\bprimary\s+salon\s+is\s+[^.\n]+/gi;
+
 function keptSalon(
   turns: readonly string[],
   current: string | null,
@@ -442,7 +445,7 @@ function keptSalon(
 ): string | null {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index]!;
-    const stripped = turn.replace(/\bprimary\s+salon\s+is\s+[^.\n]+/gi, " ");
+    const stripped = turn.replace(PRIMARY_SALON_STATEMENT, " ");
     const ids = salonIds(stripped);
     if (ids.length === 1) return ids[0]!;
     if (stripped !== turn && ids.length === 0) {
