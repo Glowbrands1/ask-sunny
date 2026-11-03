@@ -32,3 +32,31 @@ export const NOV2_CLAIM_CASES: readonly ReplayCase[] = [
     },
   },
 ];
+
+/** P3: a policy change and more in one turn. */
+export const NOV2_POLICY_REST_CASES: readonly ReplayCase[] = [
+  {
+    id: "nov2-p3-policy-and-prior-coaching",
+    title: "a policy named with the prior coaching in one turn: both reach the form, or the reply says what did not",
+    report:
+      "\"A manager said the previous coaching was her policy manual signing in May 2025. The bot replied 'everything else is as it was,' but Prior Actions stayed empty.\"",
+    status: { open: "the policy path applies the policy only and says the rest is as it was" },
+    fixFlags: ["POLICY_CHANGE_REST_OF_TURN_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say("MSB CA for Remy Calder for underperformance in the month of October");
+      t.draftWrites({});
+      await thread.create();
+      t.revisionWrites({ prior_actions: "Coaching — signed policy manual, May 2025" });
+      const reply = await thread.say(
+        'MSB CA for Remy Calder for underperformance in the month of October with "Bonus Policy" from the Policy Manual. Previous Coaching is when she signed the Policy manual May 2025',
+      );
+      const priorWritten = reply.formUpdate?.updated.includes("prior_actions") ?? false;
+      if (!priorWritten) {
+        expect(reply.content, "said the rest was as it was, with the prior coaching dropped").not.toMatch(/everything else on the form is as it was/i);
+      }
+    },
+  },
+];
