@@ -2,7 +2,7 @@ import { formEditNameGateRosterEnabled } from "@/lib/config/chat-quality-flags";
 import type { AccessScope } from "@/types";
 
 import { matchEmployeeName, type RosterEmployee } from "./employee-match";
-import { readStoreRoster } from "./employee-roster";
+import { loadScopedRoster } from "./employee-roster";
 
 /**
  * ============================================================================
@@ -18,8 +18,10 @@ import { readStoreRoster } from "./employee-roster";
  * for the ordinary answer.
  *
  * With the flag, a capitalised word counts as a person only when it matches
- * somebody active at the manager's own salons (`readStoreRoster`, step 1) —
- * exactly, or closely enough that the name check would ask. Data, not a word
+ * somebody on the manager's scoped roster — the same roster every name check
+ * reads (`loadScopedRoster`; the manager's own salons' active people with
+ * ROSTER_STORE_SCOPED_ENABLED, step 1) — exactly, or closely enough that the
+ * name check would ask. Data, not a word
  * list. When that roster cannot be read or is empty there is nothing to check
  * against, and every candidate is kept: the flag-off reading, never "nobody
  * is ever another person".
@@ -28,13 +30,8 @@ import { readStoreRoster } from "./employee-roster";
  */
 export async function namesOnRoster(names: readonly string[], scope: AccessScope | null): Promise<string[]> {
   if (!formEditNameGateRosterEnabled() || names.length === 0) return [...names];
-  let roster: RosterEmployee[];
-  try {
-    roster = await readStoreRoster(scope);
-  } catch {
-    return [...names];
-  }
-  return keepRosterNames(names, roster);
+  // An empty roster (none to read, or a failed read) keeps every candidate: unchecked, as before.
+  return keepRosterNames(names, await loadScopedRoster(scope));
 }
 
 /** Pure: the candidates that are somebody on this roster; all of them when there is no roster. */
