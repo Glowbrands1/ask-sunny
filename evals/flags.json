@@ -1,6 +1,4 @@
 {
   "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here.",
-  "on": [
-    "FIRST_NAME_YES_KEEPS_REQUEST_ENABLED"
-  ]
+  "on": []
 }
