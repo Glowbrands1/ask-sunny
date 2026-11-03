@@ -119,6 +119,16 @@ Prior Actions stayed empty. On, the sentences that are not the policy request
 go to the revision of the same draft; if nothing is written the reply says
 what is not on the form. Ported to Ask Bubbles with the same flag.
 
+## 3 Nov 2026: a refusal is never repeated word for word; "my DM" is not the employee's title — both apps (REFUSAL_NO_REPEAT_ENABLED, TITLE_NOT_SPEAKERS_MANAGER_ENABLED, default off)
+
+Found here (the 2 Nov scan, "CA for must see behaviors"): the metric refusal
+came three times in a row, and "my DM told me she gets one this month" put
+"District Manager" on a Tanning Consultant's card. On, a refusal that opens
+like the reply before it is replaced by one line saying what moves it on,
+and a card title that is the role the manager called "my DM / my RD" loses
+it. Whether "my DM told me she gets one" should itself start the Corrective
+Action is a product question (asked of QA). Ported to Ask Bubbles.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
