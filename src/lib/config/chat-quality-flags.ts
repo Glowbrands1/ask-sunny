@@ -1580,6 +1580,16 @@ export function cardObservationOwnRequestEnabled(): boolean {
   return envFlag("CARD_OBSERVATION_OWN_REQUEST_ENABLED");
 }
 
+/**
+ * "fix her last name …" on a Corrective Action changes the Employee Name on
+ * the card and the draft, and says so (Pau, 3 Nov 2026) — only to a name that
+ * shares a first or last name with the form's and that exactly one person on
+ * the roster has. See `forms/ca-name-from-chat.ts`. Off, as before.
+ */
+export function caNameFromChatEnabled(): boolean {
+  return envFlag("CA_NAME_FROM_CHAT_ENABLED");
+}
+
 export function chatHistoryStateChunkedEnabled(): boolean {
   return envFlag("CHAT_HISTORY_STATE_CHUNKED_ENABLED");
 }

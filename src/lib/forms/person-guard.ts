@@ -87,6 +87,21 @@ function onRoster(candidate: string): boolean {
   });
 }
 
+/**
+ * CA_NAME_FROM_CHAT_ENABLED: the roster's own spelling of a whole name, when
+ * exactly one person on the actor's roster has it; otherwise null. No roster
+ * (a test, the browser, a failed read): null, so nothing is renamed.
+ */
+export function rosterFullName(candidate: string): string | null {
+  const roster = readRoster();
+  if (!roster || roster.length === 0) return null;
+  const typed = wordsOf(candidate).join(" ");
+  if (!typed || typed.split(" ").length < 2) return null;
+  // Each entry is one person: two people with the same name are two matches, and neither is chosen.
+  const matches = roster.filter((name) => wordsOf(name).join(" ") === typed);
+  return matches.length === 1 ? matches[0]! : null;
+}
+
 /* ------------------------------------------------------------ the rule -- */
 
 /** True when the guard is on and the candidate is not a person. Off, false for every candidate. */
