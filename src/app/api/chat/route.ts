@@ -26,6 +26,7 @@ import {
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
+  coachingForEveryoneEnabled,
   staffPickerEnabled,
   chatResponseStreamEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -245,7 +246,23 @@ async function postChat(request: Request) {
         wholeTeamCoachingEnabled() && !draftAction && (await import("@/lib/forms/whole-team-coaching")).pastTeamStatement(asked.question)
           ? (await import("@/lib/forms/staff-picker")).staffPickerAnswer((await import("@/lib/forms/whole-team-coaching")).pastTeamReply())
           : null;
+      /*
+       * COACHING_FOR_EVERYONE_ENABLED: "create this coaching form for everyone
+       * on my team", with a Coaching draft open — one confirmation listing
+       * who, then one draft each. No model call. See
+       * `lib/forms/coaching-for-everyone.ts`.
+       */
+      const everyone =
+        coachingForEveryoneEnabled() && !draftAction
+          ? await (await import("@/lib/forms/coaching-for-everyone")).coachingForEveryoneTurn({
+              request,
+              question: asked.question,
+              history: asked.history,
+              activeInstanceId: asked.activeFormInstanceId,
+            })
+          : null;
       const staffPick =
+        everyone ??
         pastTeam ??
         // Never with a draft open: there a turn is about that draft (independent review, 31 Oct 2026).
         (staffPickerEnabled() && !draftAction && (!asked.activeFormInstanceId || bareWholeStaff)
