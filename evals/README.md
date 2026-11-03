@@ -8,7 +8,7 @@ Each case runs twice:
 
 | Column | Flags | Rule |
 |---|---|---|
-| Flags off | `flags.json` → `production` (today's app) | Must equal `baseline.json` exactly, case by case |
+| Flags off | `src/config/production-flags.json` → `on` + `assumedOn` (today's app) | Must equal `baseline.json` exactly, case by case |
 | Flags on | the same, plus `flags.json` → `on` (the step's own flag) | No case that passes off may fail on; at most 25% slower in total (+100 ms noise floor) |
 
 Every case runs 3 times per column; each run must judge the same (the replay is
@@ -33,9 +33,8 @@ model call).
   default: owner, global).
 - `baseline.json` — the flags-off result of every case on the base branch.
   Failing cases are recorded as failing; that is the baseline, not a pass.
-- `flags.json` — `production`: today's production flags, as recorded in
-  `src/app/api/chat/live-flags-with-reader-e2e.test.ts`; keep it in step with
-  Vercel. `on`: the step's flag(s).
+- `flags.json` — `on`: the step's flag(s). Today's production flags are read
+  from `src/config/production-flags.json`, which QA keeps in step with Vercel.
 - `replay-harness.ts` — the judge, baseline comparison and timing (pure);
   `judge.eval.ts` tests it.
 - `results/latest.json`, `results/latest.md` — the last local run (git-ignored).

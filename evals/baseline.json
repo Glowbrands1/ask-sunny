@@ -13,12 +13,14 @@
     },
     {
       "id": "s9",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "date"
+      ],
       "card": {
         "employee": "Ima",
         "salon": "loc-0462",
-        "date": "2026-09-28",
+        "date": null,
         "status": "ready"
       }
     },
@@ -111,11 +113,13 @@
     },
     {
       "id": "s21",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "salon"
+      ],
       "card": {
         "employee": "Sloane Wexford",
-        "salon": "loc-0410",
+        "salon": "loc-0314",
         "date": "2026-10-05",
         "status": "ready"
       }
@@ -317,10 +321,11 @@
       "id": "g7",
       "pass": false,
       "misses": [
+        "employee",
         "salon"
       ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": "Dodge",
         "salon": null,
         "date": null,
         "status": "ready"
@@ -330,13 +335,14 @@
       "id": "r1",
       "pass": false,
       "misses": [
-        "reply has \"Hale Wintermoor\""
+        "reply lacks \"Dana Hollisworth\"",
+        "reply lacks \"Eli Brackwater\""
       ],
       "card": {
-        "employee": null,
-        "salon": null,
+        "employee": "All team members",
+        "salon": "loc-0462",
         "date": null,
-        "status": null
+        "status": "ready"
       }
     },
     {
@@ -344,9 +350,9 @@
       "pass": true,
       "misses": [],
       "card": {
-        "employee": "Test Testy",
-        "salon": "loc-0495",
-        "date": null,
+        "employee": "Test Testyone",
+        "salon": "loc-0306",
+        "date": "2026-09-23",
         "status": "ready"
       }
     },
@@ -421,7 +427,7 @@
       "pass": true,
       "misses": [],
       "card": {
-        "employee": "Romy Vandersloot",
+        "employee": "All team members",
         "salon": "loc-0312",
         "date": null,
         "status": "ready"
@@ -495,8 +501,10 @@
     },
     {
       "id": "sf-s3",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "policy"
+      ],
       "card": {
         "employee": "Odalys",
         "salon": null,
@@ -575,10 +583,10 @@
       "pass": true,
       "misses": [],
       "card": {
-        "employee": "Practice",
+        "employee": null,
         "salon": null,
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     }
   ]
