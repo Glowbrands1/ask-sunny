@@ -65,7 +65,7 @@ export function nameCorrectionQuestion(question: string, currentName: string | n
 export function nameNotCorrectedReply(open: { templateName: string; employeeName: string }): AskResponse {
   return {
     recommendedVideoIds: [],
-    content: `**Nothing on the form has changed yet.** The name on a ${open.templateName} isn't changed from the chat — edit the Employee Name line on the card and press **Save changes**. It reads **${open.employeeName}** now.`,
+    content: `**Nothing on the form has changed yet.** The name on a ${open.templateName} isn't changed from the chat — edit the Employee Name line on the card and press **Save changes**. The name on the card is **${open.employeeName}**.`,
     citations: [],
     coverage: "not_applicable",
   };

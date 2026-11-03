@@ -14,8 +14,9 @@ citation, access/auth, knowledge sync or Woven:
 1. Check whether Ask Bubbles has the same bug. Ask for `Glowbrands1/Ask-bubbles`
    to be added to the session if it is not attached.
 2. Either port the fix there in the same session (one commit per fix,
-   `Port from Ask Sunny (<sha>): …`), or add a line to
-   `docs/parity-log.md` saying why it stays Sunny-only.
+   `Port from Ask Sunny (<sha>): …`), or add an entry saying why it stays
+   Sunny-only: one new file in `docs/parity-log/` (see its README; older
+   entries are in `docs/parity-log.md`).
 3. The pull request description says which: **Sibling app: ported in <PR> /
    not needed because …**.
 
