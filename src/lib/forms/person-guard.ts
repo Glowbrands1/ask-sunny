@@ -1,6 +1,7 @@
 import { NOT_A_NAME as BUSINESS_WORDS } from "@/lib/ai/employee-performance-gate";
 import { isDocumentName, isReportName, isRosterStateName } from "@/lib/ai/not-a-person";
 import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { businessToday } from "@/lib/business-date";
 import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
 
@@ -165,7 +166,7 @@ export function withPersonOnCard<T extends { content: string; formProposal?: Car
 export function withAddressNotPerson<T extends { content: string; formProposal?: CardLike | null }>(
   answer: T,
   rawTurns: readonly string[],
-  today: string = new Date().toISOString().slice(0, 10),
+  today: string = businessToday(),
 ): T {
   const card = answer.formProposal;
   if (!addressNotPersonEnabled() || !card?.employeeName || card.subject === "team") return answer;
