@@ -209,7 +209,7 @@ async function replay(item: EvalCase, mode: "off" | "on"): Promise<EvalResult> {
   actor.scope = item.actor?.scope ?? { level: "global", primaryAreaId: null, alsoCoversAreaIds: [] };
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${item.today ?? DEFAULT_TODAY}T15:00:00Z`));
-  const restore = modeFlags(FLAGS, mode);
+  const restore = modeFlags({ production: [...FLAGS.production, ...(item.flags ?? [])], on: FLAGS.on }, mode);
   const started = performance.now();
   const messages: ChatMessage[] = [];
   // A well-formed client id, so the route keeps the intake state between turns (`isClientConversationId`).

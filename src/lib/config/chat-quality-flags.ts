@@ -1997,3 +1997,14 @@ export function newRequestOwnDateEnabled(): boolean {
   return envFlag("NEW_REQUEST_OWN_DATE_ENABLED");
 }
 
+/**
+ * Name checks and the staff list read only the manager's own salons' active
+ * people from the Woven-synced directory, paged under the database's 1,000-row
+ * cap, minus the reviewed shared logins in `forms/roster-non-person.ts` (master
+ * plan step 1, 3 Nov 2026; same flag in both apps). See `readStoreRoster` in
+ * `forms/employee-roster.ts`. Off, as before: the whole directory is read and
+ * scoped in memory.
+ */
+export function rosterStoreScopedEnabled(): boolean {
+  return envFlag("ROSTER_STORE_SCOPED_ENABLED");
+}

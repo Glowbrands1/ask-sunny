@@ -74,6 +74,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
   private orderKey: string | null = null;
   private ascending = true;
   private max: number | null = null;
+  private offset = 0;
 
   constructor(
     private store: FakeStore,
@@ -188,6 +189,12 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
     this.max = count;
     return this;
   }
+  /** Inclusive, as supabase-js: `.range(0, 999)` is the first 1,000 rows. */
+  range(from: number, to: number) {
+    this.offset = from;
+    this.max = to - from + 1;
+    return this;
+  }
   maybeSingle() {
     this.oneRow = true;
     return this;
@@ -275,7 +282,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: null }> {
       data.sort((a, b) => String(a[key]).localeCompare(String(b[key])));
       if (!this.ascending) data.reverse();
     }
-    if (this.max !== null) data = data.slice(0, this.max);
+    if (this.max !== null || this.offset > 0) data = data.slice(this.offset, this.max === null ? undefined : this.offset + this.max);
 
     return { data: this.oneRow ? (data[0] ?? null) : data, error: null };
   }
