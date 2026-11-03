@@ -32,13 +32,17 @@ import { isNotAName } from "@/lib/forms/not-a-name";
  * Off, every reader is as it was.
  */
 
-/** Words that make the whole candidate a thing, wherever they sit in it. */
+/** Words that make the whole candidate a policy or a standard, wherever they sit in it: "Must See Behaviors", "Standards of Conduct". */
 const THING_WORDS = new Set([
-  // A policy or a standard, not a person: "Must See Behaviors", "Standards of Conduct".
   "behavior", "behaviors", "behaviour", "behaviours", "policy", "policies", "standards", "conduct", "procedure", "procedures", "guideline", "guidelines", "expectations",
-  // A practice run, not a person: "a mock coaching form for practice".
-  "practice", "mock", "sample", "example",
 ]);
+
+/**
+ * A practice run, not a person: "a mock coaching form for practice". Only as
+ * the whole candidate or its first word ("Practice", "Mock Employee") — a
+ * surname like "Kaitlyn Sample" or "Marlowe Example" is still somebody.
+ */
+const PRACTICE_WORDS = new Set(["practice", "mock", "sample", "example"]);
 
 /** Days and months are first names too ("April", "June"): never a reason on their own. */
 const CALENDAR = new Set([
@@ -92,6 +96,7 @@ export function notAPerson(candidate: string | null | undefined): boolean {
   const words = wordsOf(candidate);
   if (words.length === 0) return false;
   if (words.some((word) => THING_WORDS.has(word))) return true;
+  if (PRACTICE_WORDS.has(words[0]!)) return true;
   if (words.every((word) => MEASURE_WORDS.has(word) || business(word) || /%$/.test(word))) return true;
   // "Avg Club": a measure word with business words or short metric labels only.
   if (words.some((word) => MEASURE_WORDS.has(word)) && words.every((word) => MEASURE_WORDS.has(word) || business(word) || word.length <= 4)) return true;
