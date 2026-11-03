@@ -24,10 +24,8 @@
     },
     {
       "id": "s11",
-      "pass": false,
-      "misses": [
-        "policy"
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
         "employee": "Corena Schardt",
         "salon": "loc-0468",
