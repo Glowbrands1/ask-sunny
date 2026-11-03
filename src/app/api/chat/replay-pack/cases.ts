@@ -43,6 +43,11 @@ export interface ReplayContext {
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
   modelSays(text: string | null): void;
+  /**
+   * What the slot model reads on the next turns (record_intent_slots), and the employee the AI reader quotes
+   * (checked against the roster, as in production), as a production trace shows them.
+   */
+  slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null): void;
   calls(): { chat: number; draft: number; revision: number; tool: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;

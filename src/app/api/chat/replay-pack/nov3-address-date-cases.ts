@@ -95,11 +95,16 @@ export const NOV3_ADDRESS_DATE_CASES: readonly ReplayCase[] = [
     title: "a lower-case name that is not on the roster, after a role and a date, goes on the card",
     report:
       '"Corrective action for the primary salon manager: on Monday 10/05/2026 corin bellweather was working a shift at the front desk and was rude to a guest" → "Who is this Corrective Action Form for?", Employee "Not yet" (QA live check, 16:27 UTC; same with ADDRESS_NOT_PERSON off)',
-    // Open: no reader takes a lower-case, off-roster name here. The live model reads the same name without the
-    // role prefix; this harness's stand-in model reads none, so the case fails here for that reason too.
-    status: { open: "a lower-case name that is not on the roster is not read (older reader gap, not ADDRESS_NOT_PERSON)" },
+    // Open until SLOT_NAME_ON_FORM_REQUEST is on. The slot reading held the name (production trace), but with
+    // FORM_STATE off in production it was not put in front of the question, and the proposal reads capitalised
+    // names only.
+    status: { open: "SLOT_NAME_ON_FORM_REQUEST is off: a lower-case name the slot reading holds does not reach the card" },
+    fixFlags: ["SLOT_NAME_ON_FORM_REQUEST_ENABLED"],
     async run(t) {
       t.directory(STAFF);
+      // What the live models read for this turn (production trace, 16:24 UTC): the slot model, the name in lower
+      // case, the lead-in as a job title, not a form turn; the AI reader quoted the same name (rejected: off the roster).
+      t.slotsRead({ employee: "corin bellweather", title: "primary salon manager", formTurn: false }, "corin bellweather");
       t.as("salon_director", KEARNEY);
       const reply = await t
         .thread()

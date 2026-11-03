@@ -60,6 +60,10 @@ const revisionAsked = vi.hoisted(() => [] as string[]);
 const draftAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
+  /** What the slot model (record_intent_slots) reads this turn, when a case sets it — as a production trace shows. */
+  slotsRead: {} as Record<string, unknown>,
+  /** The employee the AI reader quotes this turn, when a case sets it (it is checked against the roster as in production). */
+  readerEmployee: null as string | null,
   remapObservation: null as string | null,
   /** What the form-reading model returns for this turn (extract_form_fields). */
   reading: {} as Record<string, unknown>,
@@ -140,7 +144,8 @@ vi.mock("@/lib/ai/call-claude", () => ({
     const text = JSON.stringify(input.messages ?? []);
     const manager = (text.split("Manager: ").pop() ?? "").split("\n")[0]!.replace(/\\"/g, '"').replace(/"\}.*$/, "");
     const named = String(state.reading.employeeName ?? "");
-    const name = /\b(katrin)\b/i.exec(manager)?.[1] ?? (named && manager.toLowerCase().includes(named.toLowerCase()) ? named : null);
+    const asked = state.readerEmployee ?? named;
+    const name = /\b(katrin)\b/i.exec(manager)?.[1] ?? (asked && manager.toLowerCase().includes(asked.toLowerCase()) ? asked : null);
     return {
       input: {
         employee: name ? { value: name, evidence: manager } : null,
@@ -197,6 +202,7 @@ vi.mock("@/lib/ai/call-claude", () => ({
       formType: state.slotReading === "ca" ? "Corrective Action Form" : null,
       formTurn: state.slotReading === "ca",
       policyHeading: null,
+      ...state.slotsRead,
     };
   },
 }));
@@ -466,6 +472,8 @@ beforeEach(async () => {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
   state.slotReading = "none";
+  state.slotsRead = {};
+  state.readerEmployee = null;
   state.remapObservation = null;
   state.reading = {};
   state.draft = { values: {} };
@@ -537,6 +545,10 @@ function context(): ReplayContext {
     },
     modelSays: (text) => {
       said.answer = text;
+    },
+    slotsRead: (slots, readerEmployee = null) => {
+      state.slotsRead = slots;
+      state.readerEmployee = readerEmployee;
     },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls }),
     forms: () => store.form_instances as never,
