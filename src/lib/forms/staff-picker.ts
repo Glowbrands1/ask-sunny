@@ -39,6 +39,8 @@ import type { AccessScope, ChatMessage, Permission, Role } from "@/types";
  * only that.
  */
 const GROUP = String.raw`(?:staff|team(?:\s+members)?|crew|associates|employees)`;
+/** WHOLE_TEAM_COACHING_ENABLED (QA, 3 Nov 2026): "the whole salon", "salon wide", "all staff" are the whole staff too. */
+const STORE_GROUP = String.raw`(?:staff|team(?:\s+members)?|crew|associates|employees|salon|store|location)`;
 const ALL = String.raw`(?:whole|entire|all(?:\s+(?:of\s+)?(?:my|our|the))?|every)`;
 const FOR_WHOLE = new RegExp(
   String.raw`\bfor\s+(?:the\s+|my\s+|our\s+)?${ALL}\s+${GROUP}\b|\bfor\s+(?:everyone|everybody|all\s+(?:my\s+|our\s+)?${GROUP})\b`,
@@ -55,8 +57,14 @@ const ASKED_LOCATION = "Which salon's staff should I list?";
 const LISTED = "Who is this form for?";
 
 /** "a coaching form for my whole staff", "for everyone" — the staff as the form's subject. */
+const FOR_WHOLE_STORE = new RegExp(
+  String.raw`\bfor\s+(?:the\s+|my\s+|our\s+)?${ALL}\s+${STORE_GROUP}\b|\b(?:salon|store)[- ]wide\b|\ball\s+staff\b`,
+  "i",
+);
+
 export function asksForWholeStaff(text: string, continuing = false): boolean {
   if (FOR_WHOLE.test(text) && FORM_WORD.test(text)) return true;
+  if (wholeTeamCoachingEnabled() && FOR_WHOLE_STORE.test(text) && FORM_WORD.test(text)) return true;
   return continuing && ANSWER.test(text);
 }
 

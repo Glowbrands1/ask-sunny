@@ -87,10 +87,10 @@ export function isServiceAccountName(firstName: string, lastName: string): boole
  * "<Location> Account" with a staff title, was listed as a team member — the
  * rule above keeps it because the place's name is not a department word. A
  * row whose LAST name is only a word for a login — Account, Accounts, Login,
- * Logins, Shared, Generic — is a login, whatever its first name. Nothing is
- * written to the directory.
+ * Logins, Shared, Generic, Store, Salon (QA, 3 Nov) — is a login, whatever
+ * its first name. Nothing is written to the directory.
  */
-const LOGIN_SURNAMES = new Set(["account", "accounts", "login", "logins", "shared", "generic"]);
+const LOGIN_SURNAMES = new Set(["account", "accounts", "login", "logins", "shared", "generic", "store", "salon"]);
 
 function isSharedLogin(lastName: string): boolean {
   return LOGIN_SURNAMES.has(lastName.trim().toLowerCase());

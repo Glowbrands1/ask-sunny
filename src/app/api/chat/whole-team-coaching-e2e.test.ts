@@ -779,3 +779,59 @@ describe("the staff picker for one-person forms", () => {
     }
   });
 });
+
+describe("QA's brief, 3 Nov: the same with a draft open, her complaint answered, \"salon\" words", () => {
+  async function remysDraft(): Promise<Thread> {
+    kearney();
+    setRole("salon_director");
+    setScope(ONE_SALON);
+    const thread = new Thread();
+    await thread.say("Create a coaching form for Remy Calder");
+    state.draft = { values: { coaching_details: "Coaching on the front desk." } };
+    await thread.create();
+    return thread;
+  }
+
+  for (const turn of ["coaching form for all team members", "whole staff", "create a coaching form for the whole salon"]) {
+    it(`with another person's draft open, ${JSON.stringify(turn)} is the team card`, async () => {
+      production([...FIXES]);
+      const thread = await remysDraft();
+      const reply = await thread.say(turn);
+      expect(reply.content).not.toMatch(REFUSAL);
+      expect(reply.formUpdate).toBeUndefined();
+      expect(reply.formProposal).toMatchObject({ ...TEAM, locationId: "loc-0309" });
+    });
+  }
+
+  it("her complaint is a statement about the past, answered with what to do — never the refusal", async () => {
+    production([...FIXES]);
+    kearney();
+    setRole("salon_director");
+    setScope(HER_SCOPE);
+    const thread = new Thread();
+    await thread.say("coaching form for all team members");
+    const reply = await thread.say("earlier you made a caoching form for all team members for me");
+    expect(reply.content).not.toMatch(REFUSAL);
+    expect(reply.content).toMatch(/team card/);
+  });
+
+  for (const turn of ["a corrective action form for the whole salon", "corrective action for all staff", "a corrective action form for everybody"]) {
+    it(`the picker reads ${JSON.stringify(turn)} as the whole staff`, async () => {
+      production([...FIXES]);
+      kearney();
+      setRole("salon_director");
+      setScope(ONE_SALON);
+      expect((await new Thread().say(turn)).content).toContain("Marnie Holloway");
+    });
+  }
+
+  it("SHARED_LOGIN_NOT_STAFF_ENABLED: a \"<Salon> Salon\" row is a login too", async () => {
+    production(["SHARED_LOGIN_NOT_STAFF_ENABLED"]);
+    kearney();
+    state.directory.push({ id: "e-9", firstName: "Kearney", lastName: "Salon", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" });
+    setRole("salon_director");
+    setScope(ONE_SALON);
+    const reply = await new Thread().say("make a corrective action form for all team members");
+    expect(reply.content).not.toContain("Kearney Salon");
+  });
+});

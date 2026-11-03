@@ -17,6 +17,7 @@ import {
   sameFormCopyEnabled,
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
+  wholeTeamCoachingEnabled,
   staffPickerEnabled,
   chatResponseStreamEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -214,9 +215,15 @@ async function postChat(request: Request) {
         staffPickerBareAnswerEnabled() &&
         Boolean(asked.activeFormInstanceId) &&
         (await import("@/lib/forms/staff-picker")).isBareWholeStaff(asked.question);
+      // WHOLE_TEAM_COACHING_ENABLED: "earlier you made a coaching form for all team members" is about the past — what to do, not a refusal.
+      const pastTeam =
+        wholeTeamCoachingEnabled() && !draftAction && (await import("@/lib/forms/whole-team-coaching")).pastTeamStatement(asked.question)
+          ? (await import("@/lib/forms/staff-picker")).staffPickerAnswer((await import("@/lib/forms/whole-team-coaching")).pastTeamReply())
+          : null;
       const staffPick =
+        pastTeam ??
         // Never with a draft open: there a turn is about that draft (independent review, 31 Oct 2026).
-        staffPickerEnabled() && !draftAction && (!asked.activeFormInstanceId || bareWholeStaff)
+        (staffPickerEnabled() && !draftAction && (!asked.activeFormInstanceId || bareWholeStaff)
           ? await (await import("@/lib/forms/staff-picker")).staffPickerTurn({
               question: asked.question,
               history: asked.history,
@@ -225,17 +232,35 @@ async function postChat(request: Request) {
               scope: context.identity.scope,
               role: context.identity.role,
             })
-          : null;
+          : null);
       const draftAnswer = (draftAction && "answer" in draftAction ? draftAction.answer : null) ?? staffPick;
       /*
        * Either way the open form is not corrected or revised by this turn: it
        * was answered above, or a new incident is a new form.
        */
       // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: "change to coaching" after the form was created starts the other form; the created one is left as it is.
-      // WHOLE_TEAM_COACHING_ENABLED: "whole staff" said to the open Coaching card is that card for the team. See `lib/forms/whole-team-coaching.ts`.
-      const teamQuestion =
-        !draftAction && !staffPick && !asked.activeFormInstanceId
-          ? (await import("@/lib/forms/whole-team-coaching")).wholeTeamQuestion(asked.question, asked.continueProposalTemplateKey)
+      /*
+       * WHOLE_TEAM_COACHING_ENABLED: a whole-team coaching request is the team
+       * card, the same with or without a draft open — handed to the intake as
+       * a request of its own, with the salon already named. See
+       * `lib/forms/whole-team-coaching.ts`.
+       */
+      const team =
+        wholeTeamCoachingEnabled() && !draftAction && !staffPick
+          ? await (async () => {
+              const wtc = await import("@/lib/forms/whole-team-coaching");
+              const staff = await import("@/lib/forms/staff-picker");
+              const open =
+                asked.activeFormInstanceId && staff.isBareWholeStaff(asked.question)
+                  ? await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId)
+                  : null;
+              return wtc.wholeTeamRequest({
+                question: asked.question,
+                history: asked.history,
+                continuingTemplateKey: asked.continueProposalTemplateKey,
+                openTemplateName: open?.templateName ?? null,
+              });
+            })()
           : null;
       const parsed = withSwitchAfterCreate(
         draftAction || staffPick
@@ -244,8 +269,14 @@ async function postChat(request: Request) {
               ...(draftAction && "question" in draftAction ? { question: draftAction.question } : {}),
               activeFormInstanceId: undefined,
             }
-          : teamQuestion
-            ? { ...asked, question: teamQuestion }
+          : team
+            ? {
+                ...asked,
+                question: team.question,
+                history: team.history,
+                activeFormInstanceId: undefined,
+                continueProposalTemplateKey: undefined,
+              }
             : asked,
       );
       /*

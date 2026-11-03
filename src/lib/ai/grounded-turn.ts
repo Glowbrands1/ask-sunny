@@ -10,6 +10,7 @@ import {
   policyCitationEnabled,
   secondFormEnabled,
   slotRetentionEnabled,
+  wholeTeamCoachingEnabled,
 } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 import { conversationKeyOf } from "@/lib/forms/conversation-key";
@@ -20,6 +21,7 @@ import { findResentDraft } from "@/lib/forms/draft-reopen";
 import { historyWantsSeparateDocument } from "@/lib/ai/second-form";
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest } from "./types";
+import { isTeamCardTurn } from "@/lib/forms/whole-team-coaching";
 
 import { captureFormState, prependFormState, type ConversationFormState } from "./form-state";
 import { oneSalonVisibleIn } from "./proposal-question";
@@ -95,7 +97,16 @@ export async function deliverFormProposal(input: {
     );
   }
 
-  const saved = await readSaved(stateOn, input.actor.subject, input.request.conversationId);
+  /*
+   * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles, 3 Nov 2026): the
+   * team card's subject is the team, not the person this conversation's saved
+   * form state remembers ("The employee is …" was put back in front of
+   * "Coaching Form for the whole team"). While the team card is being made or
+   * is the card on screen, the saved state is neither read nor written.
+   */
+  const team = wholeTeamCoachingEnabled() && (isTeamCardTurn(input.request) || isTeamCardTurn({ ...input.request, question: input.question }));
+  const keepState = stateOn && !team;
+  const saved = await readSaved(keepState, input.actor.subject, input.request.conversationId);
   const people = entities ? await loadPeople(input.actor) : [];
   const prep = entities
     ? prepareGroundedQuestion({
@@ -151,10 +162,10 @@ export async function deliverFormProposal(input: {
   );
   const reopened = await reopenSameIncident(dedupe, input, held);
   if (reopened) {
-    await writeSaved(stateOn, input, saved, held, prep);
+    await writeSaved(keepState, input, saved, held, prep);
     return reopened;
   }
-  await writeSaved(stateOn, input, saved, held, prep);
+  await writeSaved(keepState, input, saved, held, prep);
   return held;
 }
 
