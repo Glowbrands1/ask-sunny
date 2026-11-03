@@ -535,6 +535,9 @@ function context(): ReplayContext {
     },
     values: (instanceId) =>
       Object.fromEntries(store.form_instance_values.filter((row) => row.instance_id === instanceId).map((row) => [String(row.field_key), String(row.value ?? "")])),
+    draftNotYetSaved: (instanceId) => {
+      store.form_instance_values = store.form_instance_values.filter((row) => !(row.instance_id === instanceId && row.filled_by === "ai"));
+    },
   };
 }
 
