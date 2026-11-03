@@ -1,5 +1,5 @@
 {
-  "_about": "This app's PRODUCTION chat flags, for the replay pack (src/app/api/chat/replay-pack). 'on': read as on in Vercel production (QA, 3 Nov 2026, incl. the 9 scan-fix flags turned on at 04:20 UTC). 'assumedOn': encrypted or not visible to the Vercel reader (it lists 100 of the entries), taken as on from the earlier decrypted reading the chat harnesses use; FORM_STATE is OFF (3 Nov 2026: chat_form_state rows are written by the intent read whatever the flag, so they are no evidence; none of the 2,278 rows has the 'incident' the card path writes when FORM_STATE is on), INTENT_EXTRACTION is taken as on from that reading. 'off': known off. QA messages every flag flipped; update this file in the same pull request as the change it tests.",
+  "_about": "This app's PRODUCTION chat flags, for the replay pack (src/app/api/chat/replay-pack). 'on': read as on in Vercel production (QA, 3 Nov 2026, incl. the 9 scan-fix flags turned on at 04:20 UTC). 'assumedOn': encrypted or not visible to the Vercel reader (it lists 100 of the entries), taken as on from the earlier decrypted reading the chat harnesses use; FORM_STATE is OFF (3 Nov 2026: chat_form_state rows are written by the intent read whatever the flag, so they are no evidence; none of the 2,278 rows has the 'incident' the card path writes when FORM_STATE is on), INTENT_EXTRACTION is taken as on from that reading. AI_READS_CODE_CHECKS is on: all 139 chat_traces rows with a slots.reader entry from 2026-11-01 18:00 to 2026-11-03 18:00 UTC show the AI reader was called (132 carry slots.reader.model, 7 slots.reader.fallback, 0 the last_first source); see PR #497 for the query. 'off': known off. QA messages every flag flipped; update this file in the same pull request as the change it tests.",
   "updated": "2026-11-03",
   "on": [
     "ADDRESS_NOT_PERSON_ENABLED",
@@ -81,6 +81,7 @@
   ],
   "assumedOn": [
     "ACTION_PLAN_MANAGER_ONLY_ENABLED",
+    "AI_READS_CODE_CHECKS_ENABLED",
     "ACTION_PLAN_SENTENCES_ENABLED",
     "APP_PASSWORD_HELP_ENABLED",
     "ATTENDANCE_POLICY_CITATION_ENABLED",

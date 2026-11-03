@@ -29,4 +29,15 @@ describe("the slot reading's name goes in front of a form request the code reads
   it("no slot name: nothing added", () => {
     expect(withSlotEmployeeLine(QA, null)).toBe(QA);
   });
+
+  /*
+   * QA live check, 17:50 UTC: on a Corrective Action turn the slot model named nobody, and the AI reader quoted
+   * the name (off the roster). The line goes in front of the question the turn sends ("The form is the …").
+   */
+  it("QA's 17:50 words: the line goes in front of the form turn's question", () => {
+    const turn = "Corrective action: corin bellweather was rude to a guest at the front desk on Monday";
+    const base = `The form is the Corrective Action Form.\n${turn}`;
+    expect(withSlotEmployeeLine(turn, "corin bellweather", base)).toBe(`The employee is Corin Bellweather.\n${base}`);
+    expect(withSlotEmployeeLine(turn, null, base)).toBe(base);
+  });
 });
