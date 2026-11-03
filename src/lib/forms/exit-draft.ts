@@ -1,4 +1,5 @@
 import { shiftDays } from "@/lib/business-date";
+import { exitProseFactsEnabled } from "@/lib/config/chat-quality-flags";
 
 import { EXIT_DERIVED_KEYS, exitFactValues, readExitFacts, type ExitFacts } from "./exit-facts";
 import { datesInText } from "./form-date-answer";
@@ -61,6 +62,54 @@ const DECISION_TOPICS: RegExp[] = [
   /\bfired\b|\bterminat(?:e|ed|ion)\b|\blet (?:her|him|them) go\b|\blet go\b|\binvoluntar(?:y|ily)\b|\bdismiss(?:ed|al)?\b|\bdischarged\b/i,
 ];
 
+/*
+ * EXIT_PROSE_FACTS_ENABLED (QA, 25 Oct 2026): Additional Details said the
+ * employee "worked through it" next to "did not call in" — a notice worked
+ * that the manager never described. Working the notice and calling in or
+ * showing up are subjects a Details sentence may raise only when the notes did.
+ */
+const ACCOUNT_TOPICS: RegExp[] = [
+  /\bwork(?:ed|s|ing)?\s+(?:(?:through|thru|out)\s+)?(?:it|(?:her|his|their|the|a)\s+(?:full\s+|entire\s+)?(?:notice|two weeks|2 weeks)|(?:two|2)[- ]weeks?'?\s+notice)\b|\bfulfill(?:s|ed|ing)?\b|\bserved\s+(?:her|his|their|the|a)\s+(?:notice|two weeks)\b/i,
+  /\bcall(?:s|ed|ing)?\s+(?:in|out|off)\b|\bno[\s-]*call\b|\bshow(?:s|ed)?\s+up\b|\bno[\s-]*show\b|\bncns\b/i,
+];
+
+/*
+ * And the notes' own polarity (QA / dispatcher, 26 Oct 2026): "she never worked
+ * her notice" or "she did not call in" raises the subject but says it did not
+ * happen, so a sentence saying it did is still not the manager's.
+ */
+const ACCOUNT_NEGATED_BEFORE = /\b(?:no|not|never|didn't|didnt|did not|wasn't|was not|hasn't|has not)\s+(?:[\w'-]+\s+){0,3}$/i;
+
+/*
+ * The negation is read in the match's own clause: "she did not give notice
+ * but worked it" affirms the second half (QA-3, 26 Oct 2026). And "no call",
+ * "no show" and "ncns" are themselves the negation: notes saying "no call no
+ * show" never affirm that she called in.
+ */
+const CLAUSE_BREAK = /,|;|\bbut\b/gi;
+const SELF_NEGATED = /^(?:no\b|ncns\b)/i;
+
+function affirms(text: string, topic: RegExp): boolean {
+  for (const match of text.matchAll(new RegExp(topic.source, "gi"))) {
+    if (SELF_NEGATED.test(match[0])) continue;
+    const before = text.slice(0, match.index ?? 0);
+    const breaks = [...before.matchAll(CLAUSE_BREAK)];
+    const last = breaks[breaks.length - 1];
+    const clause = last ? before.slice((last.index ?? 0) + last[0].length) : before;
+    if (!ACCOUNT_NEGATED_BEFORE.test(clause)) return true;
+  }
+  return false;
+}
+
+/** The sentence says it happened; the notes only ever say it did not. */
+function affirmedAgainstNotes(sentence: string, notes: string): boolean {
+  return exitProseFactsEnabled() && ACCOUNT_TOPICS.some((topic) => affirms(sentence, topic) && !affirms(notes, topic));
+}
+
+function guardedTopics(): RegExp[] {
+  return exitProseFactsEnabled() ? [...DECISION_TOPICS, ...ACCOUNT_TOPICS] : DECISION_TOPICS;
+}
+
 export interface ExitDetailsGuard {
   value: string;
   /** Sentences removed, for the response. */
@@ -88,9 +137,9 @@ export function guardExitDetails(value: string, notes: string, today: string): E
   const kept: string[] = [];
   const removed: string[] = [];
   for (const sentence of sentences) {
-    const unraised = DECISION_TOPICS.some(
-      (topic) => topic.test(sentence) && !topic.test(notes),
-    );
+    const unraised =
+      guardedTopics().some((topic) => topic.test(sentence) && !topic.test(notes)) ||
+      affirmedAgainstNotes(sentence, notes);
     const undated = datesInText(sentence, today).some((found) => !allowedDates.has(found.iso));
     if (unraised || undated) removed.push(sentence);
     else kept.push(sentence);
