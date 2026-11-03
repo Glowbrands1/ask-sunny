@@ -82,6 +82,15 @@ them. The "listed twice" prior action was two forms really signed the same
 day with identical lines (a wording question for QA, no data bug). Ported to
 Ask Bubbles with the same flag.
 
+## 3 Nov 2026: no reply claims a change or a check it did not make — ported from Ask Bubbles (4c4a9c1) (CLAIM_GUARD_ENABLED, OPEN_FORM_NO_SELECTION_ENABLED, default off)
+
+Found in Ask Bubbles (the 2 Nov scan): "now reads …" and "Confirmed against
+records … matching Woven" with nothing changed or read, and replies ending
+with an empty "I can prepare:". Replayed here that case already holds with
+production's flags; the same guards are ported behind the same flags. With
+them forced on, the chat and forms suites pass except the tests that pin the
+old "off" claims.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
