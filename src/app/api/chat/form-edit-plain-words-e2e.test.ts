@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { DEFAULT_ON } from "@/lib/config/default-on";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { continuationFor } from "@/lib/forms/proposal-continuation";
@@ -505,6 +506,11 @@ function setProduction(on: boolean) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
+  // Since 3 Nov 2026 ("(E) batch 1", config/default-on.ts) an unset flag in DEFAULT_ON reads as on; "false" keeps the old "unset is off" here.
+  for (const name of DEFAULT_ON) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    process.env[name] = "false";
+  }
   for (const name of PRODUCTION) process.env[name] = "true";
   // Live in this app.
   for (const name of [FLAG, "POSITION_ANSWER_GUARD_ENABLED", "PRIOR_STEP_SENTENCE_ENABLED", "DATE_ANSWER_APPLIED_ENABLED", "DATE_ANSWER_KEEPS_OPEN_ENABLED", "NAME_QUESTION_ONLY_ENABLED"]) process.env[name] = "true";
@@ -530,7 +536,8 @@ async function openDraft(flags: { plain?: boolean; honest?: boolean }) {
   setProduction(false);
   for (const name of [PLAIN, HONEST]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
-    delete process.env[name];
+    // On by default since 3 Nov 2026 ("(E) batch 1"): "off" is "false", not unset.
+    process.env[name] = "false";
   }
   if (flags.plain) process.env[PLAIN] = "true";
   if (flags.honest) process.env[HONEST] = "true";
@@ -822,7 +829,8 @@ describe('live check A3: "add details about the towel" and a revision that answe
   async function ask(on: boolean) {
     const draft = await openDraft({});
     if (!saved.has(ANGLE)) saved.set(ANGLE, process.env[ANGLE]);
-    delete process.env[ANGLE];
+    // On by default since 3 Nov 2026 ("(E) batch 1"): "off" is "false", not unset.
+    process.env[ANGLE] = "false";
     if (on) process.env[ANGLE] = "true";
     state.revision = { values: { coaching_details: "Observed:\nCoaching on room turnover.\n<UNKNOWN>" } };
     const reply = await draft.thread.say("add details about the towel");

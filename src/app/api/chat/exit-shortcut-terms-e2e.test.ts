@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { DEFAULT_ON } from "@/lib/config/default-on";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createId } from "@/lib/utils/id";
@@ -497,6 +498,11 @@ function production(on: boolean, roster: keyof typeof ROSTERS | unknown[], scope
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
   }
+  // Since 3 Nov 2026 ("(E) batch 1", config/default-on.ts) an unset flag in DEFAULT_ON reads as on; "false" keeps the old "unset is off" here.
+  for (const name of DEFAULT_ON) {
+    if (!saved.has(name)) saved.set(name, process.env[name]);
+    process.env[name] = "false";
+  }
   for (const name of [...PRODUCTION, ...LIVE_SINCE]) process.env[name] = "true";
   if (on) process.env[FLAG_ON] = "true";
   (state as { scope?: unknown }).scope = scope;
@@ -688,7 +694,8 @@ describe("a street address in an exit is not a person (STREET_ADDRESS_NOT_A_NAME
     live(true, [], "marnie holloway");
     for (const name of ["EXIT_TERMS_NOT_NAMES_ENABLED", ADDRESS]) if (!saved.has(name)) saved.set(name, process.env[name]);
     process.env.EXIT_TERMS_NOT_NAMES_ENABLED = "true";
-    delete process.env[ADDRESS];
+    // On by default since 3 Nov 2026 ("(E) batch 1"): "off" is "false", not unset.
+    process.env[ADDRESS] = "false";
     if (on) process.env[ADDRESS] = "true";
   };
 

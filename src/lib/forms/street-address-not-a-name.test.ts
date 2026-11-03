@@ -22,6 +22,8 @@ describe("a street address is not a person", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("off: a part of the address is read as a person", () => {
+    // On by default since 3 Nov 2026 ("(E) batch 1"): "off" is "false", not unset.
+    vi.stubEnv("STREET_ADDRESS_NOT_A_NAME_ENABLED", "false");
     expect(people(HER_WORDS).map((name) => name.toLowerCase())).toEqual(expect.arrayContaining([expect.stringMatching(/oakfield|kearney|^ne$/)]));
   });
 
