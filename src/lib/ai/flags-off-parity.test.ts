@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_ON } from "@/lib/config/default-on";
+
 import { cardChangeEnabled, cardChangeFinalizedEnabled } from "@/lib/forms/card-change-flag";
 
 import {
@@ -155,6 +157,7 @@ import {
   ordinalDateInDraftEnabled,
   widerDateReaderEnabled,
   aiReadsCodeChecksEnabled,
+  envFlag,
 } from "@/lib/config/chat-quality-flags";
 
 import { augmentIntakeQuestion } from "./intake-augment";
@@ -619,9 +622,11 @@ describe("new flags default off and wrappers are inert", () => {
     expect(staleNeedsRosterPersonEnabled()).toBe(false);
     expect(correctedEmployeeSlotEnabled()).toBe(false);
     expect(exitTermsNotNamesEnabled()).toBe(false);
-    expect(exitShortcutWordsEnabled()).toBe(false);
+    // On by default since 3 Nov 2026 ("(E) batch 1", config/default-on.ts): unset is on; "off" still turns it off (checked below).
+    expect(exitShortcutWordsEnabled()).toBe(true);
     expect(caShortcutWordsEnabled()).toBe(false);
-    expect(streetAddressNotANameEnabled()).toBe(false);
+    // On by default since 3 Nov 2026 ("(E) batch 1", config/default-on.ts): unset is on; "off" still turns it off (checked below).
+    expect(streetAddressNotANameEnabled()).toBe(true);
     expect(accountOnlyPolicyQueryEnabled()).toBe(false);
     expect(relativeDateReaderEnabled()).toBe(false);
     expect(unreadDateAskEnabled()).toBe(false);
@@ -756,6 +761,13 @@ describe("new flags default off and wrappers are inert", () => {
         chunks: [],
       }).values,
     ).toBe(values);
+
+    // The flags on by default still turn off when the variable says so (the emergency off switch).
+    for (const name of DEFAULT_ON) {
+      process.env[name] = "off";
+      expect(envFlag(name), name).toBe(false);
+      delete process.env[name];
+    }
 
     for (const name of NEW_FLAGS) {
       const saved = previous[name];
