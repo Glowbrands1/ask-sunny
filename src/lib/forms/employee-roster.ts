@@ -377,7 +377,9 @@ export async function readStoreRoster(scope: AccessScope | null): Promise<Direct
           .select("employee_id, woven_location_id")
           .eq("active", true)
           .in("woven_location_id", wovenIds)
+          // A unique order (employee, location), so no row is skipped or repeated between pages.
           .order("employee_id", { ascending: true })
+          .order("woven_location_id", { ascending: true })
           .range(from, to),
       )),
     );

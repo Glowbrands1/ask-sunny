@@ -58,9 +58,9 @@ vi.mock("./roster-non-person", async (importOriginal) => {
 
 const { loadScopedRoster, readDirectoryFacts, readStoreRoster } = await import("./employee-roster");
 
-const KEARNEY = "loc-0309";
-const DODGE = "loc-0462";
-const DODGE_LOGIN = SHARED_LOGIN;
+const SALON_A = "loc-0309";
+const SALON_B = "loc-0462";
+const SHARED_LOGIN_ID = SHARED_LOGIN;
 
 function person(id: string, first: string, last: string, store: string, extra: Record<string, unknown> = {}) {
   tables.employee_access_directory!.push({
@@ -90,20 +90,20 @@ beforeEach(() => {
     { id: "salon-b", salon_number: "0462" },
   ];
   tables.woven_location_map = [
-    { woven_location_id: `w-${KEARNEY}`, salon_id: "salon-a", status: "mapped" },
-    { woven_location_id: `w-${DODGE}`, salon_id: "salon-b", status: "mapped" },
+    { woven_location_id: `w-${SALON_A}`, salon_id: "salon-a", status: "mapped" },
+    { woven_location_id: `w-${SALON_B}`, salon_id: "salon-b", status: "mapped" },
     { woven_location_id: "w-unmapped", salon_id: null, status: "unmapped" },
   ];
   reads.length = 0;
   cap.rows = 1000;
-  person("p1", "Avery", "Quill", KEARNEY);
-  person("p2", "Blair", "Fennick", KEARNEY, { employment_status: "terminated" });
-  person("p3", "Casey", "Morrow", KEARNEY, { employment_status: "unknown" });
-  person("p4", "Dana", "Hollis", DODGE);
-  person("login", "Shared", "Login", DODGE, { external_employee_id: DODGE_LOGIN, position_name: "Tanning Consultant" });
-  person("p5", "Risk", "Management", DODGE);
+  person("p1", "Avery", "Quill", SALON_A);
+  person("p2", "Blair", "Fennick", SALON_A, { employment_status: "terminated" });
+  person("p3", "Casey", "Morrow", SALON_A, { employment_status: "unknown" });
+  person("p4", "Dana", "Hollis", SALON_B);
+  person("login", "Shared", "Login", SALON_B, { external_employee_id: SHARED_LOGIN_ID, position_name: "Tanning Consultant" });
+  person("p5", "Risk", "Management", SALON_B);
   // An inactive affiliation is not a store's person.
-  tables.employee_location_affiliations.push({ employee_id: "p4", woven_location_id: `w-${KEARNEY}`, active: false });
+  tables.employee_location_affiliations.push({ employee_id: "p4", woven_location_id: `w-${SALON_A}`, active: false });
 });
 
 afterEach(() => {
@@ -112,8 +112,8 @@ afterEach(() => {
 
 describe("ROSTER_STORE_SCOPED_ENABLED off", () => {
   it("is today's roster: the whole directory, scoped in memory, the shared login and unknown statuses included", async () => {
-    expect(names(await loadScopedRoster(storeScope(DODGE)))).toEqual(["Dana Hollis", "Shared Login"]);
-    expect(names(await loadScopedRoster(storeScope(KEARNEY)))).toEqual(["Avery Quill", "Casey Morrow"]);
+    expect(names(await loadScopedRoster(storeScope(SALON_B)))).toEqual(["Dana Hollis", "Shared Login"]);
+    expect(names(await loadScopedRoster(storeScope(SALON_A)))).toEqual(["Avery Quill", "Casey Morrow"]);
     const directory = reads.filter((read) => read.table === "employee_access_directory");
     expect(directory.length).toBeGreaterThan(0);
     expect(directory.every((read) => read.calls.includes("limit(5000)"))).toBe(true);
@@ -126,23 +126,23 @@ describe("ROSTER_STORE_SCOPED_ENABLED on", () => {
   });
 
   it("leaves out a reviewed shared login, by its Woven id", async () => {
-    expect(names(await loadScopedRoster(storeScope(DODGE)))).toEqual(["Dana Hollis"]);
+    expect(names(await loadScopedRoster(storeScope(SALON_B)))).toEqual(["Dana Hollis"]);
   });
 
   it("leaves out terminated and unknown statuses: active people only", async () => {
-    expect(names(await loadScopedRoster(storeScope(KEARNEY)))).toEqual(["Avery Quill"]);
+    expect(names(await loadScopedRoster(storeScope(SALON_A)))).toEqual(["Avery Quill"]);
   });
 
   it("a store roster is exactly the store's active, affiliated people", async () => {
-    const roster = await loadScopedRoster(storeScope(KEARNEY));
+    const roster = await loadScopedRoster(storeScope(SALON_A));
     const expected = tables.employee_location_affiliations!.filter(
       (row) =>
         row.active === true &&
-        row.woven_location_id === `w-${KEARNEY}` &&
+        row.woven_location_id === `w-${SALON_A}` &&
         tables.employee_access_directory!.find((entry) => entry.id === row.employee_id)?.employment_status === "active",
     );
     expect(roster).toHaveLength(expected.length);
-    expect(roster[0]!.salonIds).toEqual([KEARNEY]);
+    expect(roster[0]!.salonIds).toEqual([SALON_A]);
   });
 
   it("a global scope is every salon, still without the login or the service account", async () => {
@@ -150,7 +150,7 @@ describe("ROSTER_STORE_SCOPED_ENABLED on", () => {
   });
 
   it("never loads the whole directory: every directory read is filtered to the store's people and paged", async () => {
-    await loadScopedRoster(storeScope(KEARNEY));
+    await loadScopedRoster(storeScope(SALON_A));
     const directory = reads.filter((read) => read.table === "employee_access_directory");
     expect(directory.length).toBeGreaterThan(0);
     for (const read of directory) {
@@ -165,22 +165,22 @@ describe("ROSTER_STORE_SCOPED_ENABLED on", () => {
   });
 
   it("pages past the 1,000-row cap instead of being cut short", async () => {
-    for (let index = 0; index < 1205; index += 1) person(`bulk-${String(index).padStart(4, "0")}`, "Bulk", `Person${index}`, KEARNEY);
-    const roster = await readStoreRoster(storeScope(KEARNEY));
+    for (let index = 0; index < 1205; index += 1) person(`bulk-${String(index).padStart(4, "0")}`, "Bulk", `Person${index}`, SALON_A);
+    const roster = await readStoreRoster(storeScope(SALON_A));
     expect(roster).toHaveLength(1206);
     // Flag off, the same directory is cut at the cap with no error.
     delete process.env.ROSTER_STORE_SCOPED_ENABLED;
-    expect((await loadScopedRoster(storeScope(KEARNEY))).length).toBeLessThan(1206);
+    expect((await loadScopedRoster(storeScope(SALON_A))).length).toBeLessThan(1206);
   });
 
   it("a read error is unchecked (empty, the typed name used as typed), never everyone", async () => {
     delete (tables as Record<string, unknown>).employee_location_affiliations;
-    await expect(loadScopedRoster(storeScope(KEARNEY))).resolves.toEqual([]);
-    await expect(readDirectoryFacts(storeScope(KEARNEY))).resolves.toEqual([]);
+    await expect(loadScopedRoster(storeScope(SALON_A))).resolves.toEqual([]);
+    await expect(readDirectoryFacts(storeScope(SALON_A))).resolves.toEqual([]);
   });
 
   it("the grounded facts read the same store roster, with title", async () => {
-    const facts = await readDirectoryFacts(storeScope(DODGE));
+    const facts = await readDirectoryFacts(storeScope(SALON_B));
     expect(facts.map((fact) => [fact.firstName, fact.title])).toEqual([["Dana", "Tanning Consultant"]]);
   });
 
