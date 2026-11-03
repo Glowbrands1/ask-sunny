@@ -12,7 +12,6 @@
  */
 
 import { statedPayrollDeduct } from "./payroll-deduct-answer";
-import { flagFromEnv } from "@/lib/config/default-on";
 
 /** Lower-cased, with horizontal runs collapsed and newlines kept (the same reading as the intake's). */
 function normalize(text: string): string {
@@ -26,8 +25,8 @@ function normalize(text: string): string {
 
 /** CA_SHORTCUT_WORDS_ENABLED, read here because this module imports only the payroll reader. */
 function caShortcutWordsOn(): boolean {
-  // On by default since 3 Nov 2026 ("(E) batch 1"); "0"/"false"/"off" still turns it off. See `config/default-on.ts`.
-  return flagFromEnv("CA_SHORTCUT_WORDS_ENABLED", typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED);
+  const raw = typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED;
+  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
 }
 
 /*

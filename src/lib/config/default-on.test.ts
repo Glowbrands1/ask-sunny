@@ -15,8 +15,7 @@ describe("flags on by default", () => {
   it("QA's validated batch 1, and nothing else", () => {
     expect([...DEFAULT_ON].sort()).toEqual([
       "ANGLE_PLACEHOLDER_GUARD_ENABLED",
-      "CA_SHORTCUT_WORDS_ENABLED",
-      "EXIT_SHORTCUT_WORDS_ENABLED",
+          "EXIT_SHORTCUT_WORDS_ENABLED",
       "FORM_EDIT_HONEST_REPLY_ENABLED",
       "FORM_EDIT_PLAIN_WORDS_ENABLED",
       "LEVEL_REQUEST_DATE_ENABLED",
