@@ -1,6 +1,7 @@
 import { NOT_A_NAME as BUSINESS_WORDS } from "@/lib/ai/employee-performance-gate";
 import { isDocumentName, isReportName, isRosterStateName } from "@/lib/ai/not-a-person";
 import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
 
 /**
@@ -163,12 +164,16 @@ export function withPersonOnCard<T extends { content: string; formProposal?: Car
  */
 export function withAddressNotPerson<T extends { content: string; formProposal?: CardLike | null }>(
   answer: T,
-  turns: readonly string[],
+  rawTurns: readonly string[],
+  today: string = new Date().toISOString().slice(0, 10),
 ): T {
   const card = answer.formProposal;
   if (!addressNotPersonEnabled() || !card?.employeeName || card.subject === "team") return answer;
   const words = card.employeeName.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const afterNumber = new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "i");
+  // A date's digits are never a house number ("On 10-20-26 Jane Doe was late"; QA live check, 3 Nov 2026):
+  // every date the existing date reader finds is blanked before the house-number test.
+  const turns = rawTurns.map((turn) => withoutDates(turn, today));
   if (!turns.some((turn) => afterNumber.test(turn))) return answer;
   const form = card.templateName ?? "form";
   // The address is named only on the turn that gave it; a later turn just asks (QA live check, 3 Nov 2026).
@@ -180,6 +185,13 @@ export function withAddressNotPerson<T extends { content: string; formProposal?:
       : `Who is this **${form}** for? Tell me the employee's full name.`,
     formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
   };
+}
+
+/** The turn with each date `datesInText` reads blanked to spaces (same length, so nothing else moves). */
+function withoutDates(turn: string, today: string): string {
+  let out = turn;
+  for (const found of datesInText(turn, today)) out = out.slice(0, found.index) + " ".repeat(found.end - found.index) + out.slice(found.end);
+  return out;
 }
 
 interface CardLike {
