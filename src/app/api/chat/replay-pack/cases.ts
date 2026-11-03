@@ -25,7 +25,8 @@ export interface ReplayAnswer {
 }
 
 export interface ReplayThread {
-  say(text: string): Promise<ReplayAnswer>;
+  /** `reading`: what the stand-in form-reading model returns this turn (e.g. `{ employeeName }`); none by default. */
+  say(text: string, reading?: Record<string, unknown>): Promise<ReplayAnswer>;
   create(): Promise<string>;
   /** The card on screen also reads this line — what the live model put on it that the stand-in cannot. */
   cardReads(line: string): void;
