@@ -34,7 +34,10 @@ model call).
 - `baseline.json` — the flags-off result of every case on the base branch.
   Failing cases are recorded as failing; that is the baseline, not a pass.
 - `flags.json` — `on`: the step's flag(s). Today's production flags are read
-  from `src/config/production-flags.json`, which QA keeps in step with Vercel.
+  from `src/config/production-flags.json` (`on` + `assumedOn`), which QA keeps
+  in step with Vercel. `assumedOn` is QA's reading of flags Vercel shows
+  encrypted — taken as on, not confirmed — so a baseline change after QA edits
+  that file is a change in what production is believed to run, not in code.
 - `replay-harness.ts` — the judge, baseline comparison and timing (pure);
   `judge.eval.ts` tests it.
 - `results/latest.json`, `results/latest.md` — the last local run (git-ignored).
