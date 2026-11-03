@@ -836,36 +836,46 @@ describe("new flags default off and wrappers are inert", () => {
 
 const CHILD = process.env.FLAGS_OFF_PARITY_CHILD === "1";
 
+/*
+ * The child run is split in two (QA, 3 Nov 2026): as one run over all four
+ * folders it took about 526 s of its 540 s on CI and timed out (ETIMEDOUT)
+ * whenever the runner was busy. Each half now has the whole budget; the
+ * folders, the flags and what must pass are unchanged.
+ */
+const HALVES: readonly (readonly string[])[] = [
+  ["src/lib/ai", "src/lib/forms"],
+  ["src/app/api/chat", "src/app/api/forms"],
+];
+
 describe("existing chat and form suites with every new flag off", () => {
-  it.skipIf(CHILD)(
-    "passes the suites whose expectations are already on main",
-    () => {
-      const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1" };
-      delete env.VITEST;
-      delete env.VITEST_WORKER_ID;
-      delete env.VITEST_POOL_ID;
-      for (const name of NEW_FLAGS) env[name] = "off";
-      const output = execFileSync(
-        process.execPath,
-        [
-          "node_modules/vitest/vitest.mjs",
-          "run",
-          "--project",
-          "unit",
-          "--maxWorkers=2",
-          "--exclude",
-          "src/lib/ai/flags-off-parity.test.ts",
-          "src/lib/ai",
-          "src/lib/forms",
-          "src/app/api/chat",
-          "src/app/api/forms",
-        ],
-        // The child's output (every suite's logs) passed Node's 1 MB default
-        // buffer on CI and failed with ENOBUFS before any test failed.
-        { env, encoding: "utf8", timeout: 540_000, stdio: "pipe", maxBuffer: 256 * 1024 * 1024 },
-      );
-      expect(output).toMatch(/Test Files[\s\S]*passed/);
-    },
-    560_000,
-  );
+  for (const folders of HALVES) {
+    it.skipIf(CHILD)(
+      `passes the suites whose expectations are already on main: ${folders.join(", ")}`,
+      () => {
+        const env: NodeJS.ProcessEnv = { ...process.env, FLAGS_OFF_PARITY_CHILD: "1" };
+        delete env.VITEST;
+        delete env.VITEST_WORKER_ID;
+        delete env.VITEST_POOL_ID;
+        for (const name of NEW_FLAGS) env[name] = "off";
+        const output = execFileSync(
+          process.execPath,
+          [
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "--project",
+            "unit",
+            "--maxWorkers=2",
+            "--exclude",
+            "src/lib/ai/flags-off-parity.test.ts",
+            ...folders,
+          ],
+          // The child's output (every suite's logs) passed Node's 1 MB default
+          // buffer on CI and failed with ENOBUFS before any test failed.
+          { env, encoding: "utf8", timeout: 540_000, stdio: "pipe", maxBuffer: 256 * 1024 * 1024 },
+        );
+        expect(output).toMatch(/Test Files[\s\S]*passed/);
+      },
+      560_000,
+    );
+  }
 });
