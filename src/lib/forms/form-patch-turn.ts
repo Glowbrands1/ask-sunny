@@ -1,0 +1,233 @@
+import "server-only";
+
+import type { AskResponse } from "@/lib/ai/types";
+import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
+import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
+import { replyFromDiff } from "./form-diff-reply";
+import { readFormPatch } from "./form-patch-model";
+import type { FormPatchField, FormPatchReadOnly, FormPatchTurn } from "./form-patch-prompt";
+import { MANAGER_STATED_KEYS, statedDates, templateRules } from "./form-reducer-draft";
+import { applyPatch, draftFromRows, fold, type FieldValue, type PatchRules } from "./form-reducer";
+import { formLabels, snapshotDiff, snapshotOf } from "./form-snapshot";
+import { authorizeInstance } from "./instance-scope";
+import { applyAssistantRevision, applyStatedFacts, loadInstance, saveInstanceValues } from "./instances";
+import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { draftableCheckboxGroups, draftableFields } from "./responsibility";
+import type { ChatMessage } from "@/types";
+
+/**
+ * ============================================================================
+ * A CHAT TURN ON THE OPEN DRAFT, AS ONE PATCH (FORM_PATCH_REDUCER_ENABLED)
+ * ============================================================================
+ *
+ * Step B. With a draft open, the manager's latest message is read once by the
+ * form-patch model (`form-patch-model.ts`) into a patch — field, value, add or
+ * replace, and the words it came from — and `applyPatch` in edit mode decides
+ * what of it reaches the form: the evidence must be the manager's own words
+ * (or the assistant's offer they accepted), a typed field is never blanked or
+ * replaced by offered text, payroll and its amount only as stated, a date
+ * only one the manager gave.
+ *
+ * The write goes through the existing writers: the assistant's keys through
+ * `applyAssistantRevision`, a field the manager typed through
+ * `saveInstanceValues` (it stays theirs), the payroll answer and amount through
+ * `applyStatedFacts` (manager's statement, empty fields only), and the Action
+ * Plan through `syncCorrectiveActionPlan` when payroll changed. The form is
+ * read again and the reply is the realized diff: "Changed X to …", or "I
+ * didn't change anything on the form." — never an "Updated" without a change.
+ *
+ * Null — the old path runs — when the turn is not about this form, on any
+ * model fallback, on an error, for a finalized form, and for a Corrective
+ * Action Form the assistant has written nothing on (the cited redraft owns it).
+ */
+
+/** The template's input, in the words the prompt uses. */
+function kindOf(input: string): string {
+  return input === "long_text" ? "long text" : input;
+}
+
+function shownValue(value: FieldValue | undefined): FieldValue {
+  return value ?? "";
+}
+
+function managerTurns(history: readonly Pick<ChatMessage, "role" | "content" | "error">[], question: string): string[] {
+  return [...history.filter((turn) => turn.role === "user" && !turn.error).map((turn) => turn.content), question];
+}
+
+function lastAssistant(history: readonly Pick<ChatMessage, "role" | "content" | "error">[]): string | undefined {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role === "assistant" && !turn.error) return turn.content;
+  }
+  return undefined;
+}
+
+export async function patchActiveForm(input: {
+  request: Request;
+  instanceId: string;
+  question: string;
+  history: Pick<ChatMessage, "id" | "role" | "content" | "error">[];
+  /** The business day, YYYY-MM-DD. */
+  today: string;
+}): Promise<AskResponse | null> {
+  try {
+    let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
+    try {
+      authorized = await authorizeInstance(input.request, input.instanceId, "edit");
+    } catch {
+      return null;
+    }
+    const { actor, loaded } = authorized;
+    if (loaded.instance.status !== "draft") return null;
+
+    const document = parseFormDocument(loaded.version.document);
+    const variantKey = loaded.instance.variantKey;
+    const aiFields = draftableFields(document, variantKey);
+    const aiGroups = draftableCheckboxGroups(document, variantKey);
+
+    /* A blank Corrective Action Form: the cited redraft (`chat-redraft.ts`) drafts it whole. */
+    const corrective = aiFields.some((field) => field.key === "policy_language") && aiGroups.some((group) => group.key === "offense_type");
+    const assistantWrote = loaded.values.some(
+      (row) => row.filledBy === "ai" && ((row.value ?? "").trim() !== "" || row.checked.length > 0),
+    );
+    if (corrective && !assistantWrote) return null;
+
+    const template = templateRules(loaded);
+    const before = draftFromRows(loaded.values);
+    const allFields = fieldsForVariant(document, variantKey);
+    const allGroups = checkboxGroupsForVariant(document, variantKey);
+    const labels = formLabels(loaded);
+
+    /* What the model may set: the reducer's keys, and the payroll answer and amount where the form has them. */
+    const stated = new Set([...allFields.map((field) => field.key), ...allGroups.map((group) => group.key)].filter((key) => MANAGER_STATED_KEYS.has(key)));
+    const writable = new Set([...template.writable, ...stated]);
+    const fields: FormPatchField[] = [];
+    const readOnly: FormPatchReadOnly[] = [];
+    for (const field of allFields) {
+      const current = before[field.key];
+      if (writable.has(field.key)) {
+        fields.push({ key: field.key, label: labels[field.key] ?? field.key, kind: kindOf(field.input), filledBy: current?.owner ?? "empty", value: shownValue(current?.value) });
+      } else if (field.responsibility !== "signature" && current && current.owner !== "empty") {
+        readOnly.push({ label: labels[field.key] ?? field.key, value: current.value });
+      }
+    }
+    for (const group of allGroups) {
+      const current = before[group.key];
+      if (writable.has(group.key)) {
+        fields.push({
+          key: group.key,
+          label: labels[group.key] ?? group.key,
+          kind: "checkbox",
+          filledBy: current?.owner ?? "empty",
+          value: shownValue(current?.value),
+          options: group.options.map((option) => option.key),
+          single: group.single === true,
+        });
+      } else if (current && current.owner !== "empty") {
+        readOnly.push({ label: labels[group.key] ?? group.key, value: current.value });
+      }
+    }
+
+    const turns: FormPatchTurn[] = input.history
+      .filter((turn) => !turn.error && (turn.role === "user" || turn.role === "assistant"))
+      .map((turn) => ({ role: turn.role === "user" ? "manager" : "assistant", content: turn.content }));
+    const reading = await readFormPatch({
+      today: input.today,
+      templateName: loaded.instance.templateName,
+      employeeName: loaded.instance.employeeName || null,
+      fields,
+      readOnly,
+      turns,
+      latest: input.question,
+    });
+    if (!("ok" in reading) || reading.turn !== "this_form") return null;
+
+    /*
+     * The assistant's last reply counts as accepted only when the patch quotes
+     * it: some evidence is in that reply and not in the manager's words. A
+     * turn that is about this form but quotes only the manager does not make
+     * every word of the reply "said" (the reducer's half-the-words floor reads
+     * the accepted offer too).
+     */
+    const said = managerTurns(input.history, input.question).join("\n");
+    const offered = lastAssistant(input.history);
+    const quotesOffer =
+      offered !== undefined &&
+      Object.values(reading.patch.evidence ?? {}).some((evidence) => {
+        const want = fold(evidence);
+        return want !== "" && !fold(said).includes(want) && fold(offered).includes(want);
+      });
+    const groups = Object.fromEntries(
+      allGroups.filter((group) => writable.has(group.key)).map((group) => [group.key, { options: group.options.map((option) => option.key), single: group.single === true }]),
+    );
+    const rules: PatchRules = {
+      mode: "edit",
+      writable,
+      managerStated: stated,
+      dateKeys: template.dateKeys,
+      datesIn: statedDates(input.today),
+      checkboxGroups: groups,
+      listKeys: new Set([PRIOR_ACTIONS_KEY]),
+      listNone: NO_PRIOR_ACTION,
+      sources: {
+        manager: said,
+        managerTurns: managerTurns(input.history, input.question),
+        offered,
+        accepted: reading.turn === "this_form" && quotesOffer,
+      },
+    };
+    const { diff } = applyPatch(before, reading.patch, rules);
+
+    const groupKeys = new Set(allGroups.map((group) => group.key));
+    const assistant = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
+    const statement = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
+    /*
+     * QA, 3 Nov 2026 (option A): an "add" to a field the manager typed stays
+     * the manager's. The merged text is saved as their own edit
+     * (`saveInstanceValues`, filled by the manager), so a later redraft keeps
+     * it like any typed line. Only a field the saved row already says is the
+     * manager's (`draftFromRows`), nothing wider.
+     */
+    const typed = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
+    const cleared: string[] = [];
+    for (const change of diff.changed) {
+      const target = stated.has(change.key) ? statement : before[change.key]?.owner === "manager" ? typed : assistant;
+      const after = change.after;
+      const empty = typeof after === "string" ? after.trim() === "" : after.length === 0;
+      if (empty) {
+        if (!stated.has(change.key)) cleared.push(change.key);
+        continue;
+      }
+      if (groupKeys.has(change.key)) target.checked[change.key] = typeof after === "string" ? [after] : [...after];
+      else target.values[change.key] = typeof after === "string" ? after : after.join("\n");
+    }
+
+    if (Object.keys(assistant.values).length + Object.keys(assistant.checked).length + cleared.length > 0) {
+      await applyAssistantRevision(input.instanceId, assistant, cleared, actor.id);
+    }
+    if (Object.keys(typed.values).length + Object.keys(typed.checked).length > 0) {
+      await saveInstanceValues(input.instanceId, typed, actor.id);
+    }
+    const statedWritten =
+      Object.keys(statement.values).length + Object.keys(statement.checked).length > 0
+        ? await applyStatedFacts(input.instanceId, statement, actor.id, stated)
+        : [];
+    /* Payroll changed: the Action Plan Ask Sunny built says so (never a plan a person wrote). */
+    if (statedWritten.length > 0) {
+      await syncCorrectiveActionPlan(input.instanceId, actor.id, { amountSentence: true, notes: input.question });
+    }
+
+    const reloaded = await loadInstance(input.instanceId);
+    if (!reloaded) return null;
+    const changed = snapshotDiff(snapshotOf(loaded), snapshotOf(reloaded));
+    return {
+      content: replyFromDiff({ changed }, labels),
+      citations: [],
+      coverage: "not_applicable",
+      recommendedVideoIds: [],
+      ...(changed.length > 0 ? { formUpdate: { instanceId: input.instanceId, updated: changed.map((change) => change.key) } } : {}),
+    };
+  } catch {
+    return null;
+  }
+}

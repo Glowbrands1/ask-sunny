@@ -38,7 +38,7 @@ export interface ReplayContext {
   as(role: string, scope: unknown): void;
   directory(rows: readonly DirectoryRow[]): void;
   /** What the drafting model writes at Create. */
-  draftWrites(values: Record<string, string>): void;
+  draftWrites(values: Record<string, string>, checked?: Record<string, string[]>): void;
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
@@ -48,11 +48,17 @@ export interface ReplayContext {
    * (checked against the roster, as in production), as a production trace shows them.
    */
   slotsRead(slots: Record<string, unknown>, readerEmployee?: string | null): void;
-  calls(): { chat: number; draft: number; revision: number; tool: number };
+  /** Step B's form-patch model: its raw outputs, one per call in order (null: the call falls back). Unscripted calls fall back. */
+  patchWrites(outputs: readonly unknown[]): void;
+  calls(): { chat: number; draft: number; revision: number; tool: number; patch: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
+  /** The ticked options of each checkbox group (form_instance_values.checked); groups with none are left out. */
+  checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
+  redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
   /** Production's race: the next message arrives before the drafting model's values are saved. */
@@ -87,6 +93,28 @@ const CLAIM = /\b(?:updated|now reads|now says|applied|is on the card|that'?s on
 export function noClaimWithoutUpdate(reply: ReplayAnswer): void {
   if (reply.formUpdate || reply.formOpened) return;
   expect(reply.content.split("\n").filter((line) => CLAIM.test(line) && /\b(?:form|draft|card|name|details|records?|woven)\b/i.test(line))).toEqual([]);
+}
+
+/** Step B: a reply that says the form changed — a `formUpdate`, or words saying so about the form. */
+const CHANGE_CLAIM = /\b(?:updated|added|now reads|now says|applied|is on the card|that'?s on the card|reflected on)\b/i;
+export function claimsFormChange(reply: ReplayAnswer): boolean {
+  if (reply.formUpdate?.updated.length) return true;
+  return reply.content.split("\n").some((line) => CHANGE_CLAIM.test(line) && /\b(?:form|draft|card|details|observation)\b/i.test(line));
+}
+
+/** What is saved on a form: its text values and its ticked options. */
+export function savedForm(t: Pick<ReplayContext, "values" | "checked">, instanceId: string): string {
+  return JSON.stringify({ values: t.values(instanceId), checked: t.checked(instanceId) });
+}
+
+/**
+ * Step B (FORM_REPLY_FROM_DIFF_ENABLED): a reply with a `formUpdate`, or words
+ * claiming a change, needs a real change in the saved values. `before` is
+ * `savedForm` taken before the turn.
+ */
+export function replyMatchesDiff(t: Pick<ReplayContext, "values" | "checked">, instanceId: string, before: string, reply: ReplayAnswer, said: string): void {
+  if (!claimsFormChange(reply)) return;
+  expect(savedForm(t, instanceId), `"${said}": the reply says the form changed, and the saved form did not`).not.toBe(before);
 }
 
 /** The same reply, word for word, twice in a row. */

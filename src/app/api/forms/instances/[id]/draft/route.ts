@@ -23,6 +23,7 @@ import {
   sameFormCopyEnabled,
   typoReadingRoutesEnabled,
   cardPolicyToDraftEnabled,
+  formPatchReducerEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
 } from "@/lib/config/chat-quality-flags";
@@ -2217,9 +2218,24 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         })
       : draftedPayload;
     const writtenProvenance: Record<string, Record<string, unknown>> = { ...planned.provenance, ...cited.provenance };
+    /*
+     * FORM_PATCH_REDUCER_ENABLED: the same draft, merged by the reducer — only
+     * what changes is written, a typed line is kept, Prior Actions are united.
+     * See `lib/forms/form-reducer-draft.ts`.
+     */
+    const reduced = formPatchReducerEnabled()
+      ? await (await import("@/lib/forms/form-reducer-draft")).reduceDraftWrite({
+          id,
+          values: kept.values,
+          checked: kept.checked,
+          typedExempt: new Set(derivedPolicy.derived.filter((key) => DERIVED_POLICY_FIELD_KEYS.has(key))),
+          notes,
+          actorId: actor.id,
+        })
+      : null;
     const guarded = await applyAssistantDraft(
       id,
-      kept,
+      reduced ? reduced.write : kept,
       actor.id,
       fallback
         ? {
@@ -2269,7 +2285,10 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       }
     }
 
+    // FORM_PATCH_REDUCER_ENABLED: the plan's payroll sentence (none while the plan is manager-only), then what the write really changed.
+    const formDiff = reduced ? await reduced.settle() : null;
     return NextResponse.json({
+      ...(reduced ? { formDiff } : {}),
       values: guarded.accepted.values,
       checked: guarded.accepted.checked,
       /*
