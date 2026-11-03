@@ -129,6 +129,14 @@ and a card title that is the role the manager called "my DM / my RD" loses
 it. Whether "my DM told me she gets one" should itself start the Corrective
 Action is a product question (asked of QA). Ported to Ask Bubbles.
 
+## 3 Nov 2026: "fix her last name …" is answered plainly — ported from Ask Bubbles (09a3b38) (NAME_CORRECTION_WORDS_ENABLED, default off)
+
+Found in Ask Bubbles (the 2 Nov scan): name corrections in the manager's own
+words went to the answering model, which said the name was updated. Here no
+form's name is chat-correctable (this app has no generic header correction),
+so on these wordings the reply says to edit the Employee Name line on the
+card — never "updated". Same flag, same reader.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft

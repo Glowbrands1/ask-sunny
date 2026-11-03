@@ -13,6 +13,7 @@ import {
   draftActionsEnabled,
   formEditHonestReplyEnabled,
   claimGuardEnabled,
+  nameCorrectionWordsEnabled,
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
   personGuardEnabled,
@@ -318,11 +319,21 @@ async function postChat(request: Request) {
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
       const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      // NAME_CORRECTION_WORDS_ENABLED: the open draft, for "fix her last name …". See `lib/forms/name-correction-words.ts`.
+      const nameFix =
+        nameCorrectionWordsEnabled() && parsed.activeFormInstanceId
+          ? await (async () => {
+              const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId!);
+              const question = (await import("@/lib/forms/name-correction-words")).nameCorrectionQuestion(parsed.question, open?.employeeName ?? null);
+              return question && open ? { question, open } : null;
+            })()
+          : null;
       const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,
             instanceId: parsed.activeFormInstanceId,
-            question: parsed.question,
+            // NAME_CORRECTION_WORDS_ENABLED: "fix her last name …" is read as "change her name to …". See `lib/forms/name-correction-words.ts`.
+            question: nameFix?.question ?? parsed.question,
             today: parsed.context.todayIso,
             history: parsed.history,
           })
@@ -493,6 +504,8 @@ async function postChat(request: Request) {
       answer =
         draftAnswer ??
         correction ??
+        // A name correction this form does not take in chat: said plainly, never a model's "updated".
+        (nameFix && !correction ? (await import("@/lib/forms/name-correction-words")).nameNotCorrectedReply(nameFix.open) : null) ??
         policyChange ??
         redraft ??
         sameCopy ??

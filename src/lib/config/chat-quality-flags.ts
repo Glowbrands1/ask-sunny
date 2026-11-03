@@ -1700,6 +1700,16 @@ export function claimGuardEnabled(): boolean {
 }
 
 /**
+ * "fix her last name …", "the name is supposed to be …", "the correct way is
+ * …" correct the name on the open draft, as "change her name to …" does (the
+ * 2 Nov 2026 scan; same flag in both apps). See `forms/name-correction-words.ts`.
+ * Off, as before.
+ */
+export function nameCorrectionWordsEnabled(): boolean {
+  return envFlag("NAME_CORRECTION_WORDS_ENABLED");
+}
+
+/**
  * With a draft open, a reply never offers a form selection ("Based on what
  * you've described, I can prepare:") — that heading was all the manager saw
  * (the 2 Nov 2026 scan; same flag in both apps). Off, as before.
