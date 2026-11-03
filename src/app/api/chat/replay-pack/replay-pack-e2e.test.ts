@@ -12,7 +12,8 @@ import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import { JBA_MANUAL_CA_CHUNKS } from "@/test/fixtures/jba-manual-ca-sections";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
-import { CASES, type ReplayContext } from "./cases";
+import type { ReplayContext } from "./cases";
+import { CASES } from "./index";
 
 /**
  * ============================================================================
