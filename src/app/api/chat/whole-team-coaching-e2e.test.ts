@@ -873,3 +873,35 @@ describe("TEAM_CARD_WORDING_ENABLED: QA's live check, 3 Nov 2026", () => {
     expect(thread.proposal).toBeFalsy();
   });
 });
+
+describe("SAME_ASK_NO_REPEAT_ENABLED: the team card's salon question is never repeated word for word", () => {
+  // The replay pack's nov2-whole-team, 3 Nov 2026: with TEAM_CARD_WORDING on, both requests reach the
+  // intake as the same bare team request, so the second reply was the first one again.
+  const TURNS = ["coaching form for all team members", "make a coaching form for all team members"];
+
+  async function replies(sameAsk: boolean) {
+    production([...FIXES]);
+    process.env.TEAM_CARD_WORDING_ENABLED = "true";
+    if (!saved.has("SAME_ASK_NO_REPEAT_ENABLED")) saved.set("SAME_ASK_NO_REPEAT_ENABLED", process.env.SAME_ASK_NO_REPEAT_ENABLED);
+    process.env.SAME_ASK_NO_REPEAT_ENABLED = sameAsk ? "true" : "false";
+    kearney();
+    setRole("salon_director");
+    setScope(HER_SCOPE);
+    const thread = new Thread();
+    const out: Answer[] = [];
+    for (const turn of TURNS) out.push(await thread.say(turn));
+    return out;
+  }
+
+  it("off (as production today): the second reply is the first, word for word", async () => {
+    const [first, second] = await replies(false);
+    expect(second!.content).toBe(first!.content);
+  });
+
+  it("on: the second reply says it is still waiting, and still asks", async () => {
+    const [first, second] = await replies(true);
+    expect(second!.content).not.toBe(first!.content);
+    expect(second!.content).toMatch(/^I still need the same answer/);
+    expect(second!.content).toContain(first!.content);
+  });
+});
