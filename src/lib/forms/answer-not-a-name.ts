@@ -1,5 +1,6 @@
 import { answerNotANameEnabled, dateAnswerAppliedEnabled, exitTermsNotNamesEnabled, streetAddressNotANameEnabled } from "@/lib/config/chat-quality-flags";
 
+import { notAPerson } from "./person-guard";
 import { isPayrollWords } from "./payroll-words";
 
 /*
@@ -49,6 +50,8 @@ export function isExitTerms(name: string): boolean {
  */
 export function namesSomebody(name: string): boolean {
   if (isExitTerms(name)) return false;
+  // PERSON_GUARD_ENABLED: one answer for every reader — see `person-guard.ts`.
+  if (notAPerson(name)) return false;
   if (!answerNotANameEnabled()) return true;
   return !isPayrollWords(name) && !isDateAnswer(name);
 }

@@ -13,6 +13,7 @@ export const NOV2_DATA_LOSS_CASES: readonly ReplayCase[] = [
     // source turns start after it (this-persons-turns) and the draft never sees her account. The shared
     // "is this a person?" guard (plan A) fixes it; add its flag to fixFlags then.
     status: { open: "a metric ('Avg Club') is read as another person" },
+    fixFlags: ["PERSON_GUARD_ENABLED"],
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);

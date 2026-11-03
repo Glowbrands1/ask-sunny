@@ -53,6 +53,20 @@ no form, no other person and is not a question is revised into that draft,
 or answered "Nothing on the form has changed yet …" — never a new card.
 Replay-pack case nov2-p1b. Ported to Ask Bubbles with the same flag.
 
+## 3 Nov 2026: one answer to "is this a person?" for every reader — both apps (PERSON_GUARD_ENABLED, default off)
+
+Found here (the 2 Nov scan): "Must See Behaviors" and "Practice" became the
+employee on a card, and "Avg Club" in a manager's account of what happened
+was read as another person, so the card's draft skipped her account and was
+written "does not describe a specific incident". Each earlier fix taught one
+reader one word. On, one rule (forms/person-guard.ts): somebody on the
+manager's roster is always a person; otherwise a policy, a practice run, a
+metric, a report, the manual's title, a state code or the not-a-name lists
+never are. Read by namesSomebody (so the protected proposal reader needs no
+edit), by the turns a card is drawn from, and once more on every card the
+route returns. Each app keeps its own vocabulary. Ported to Ask Bubbles with
+the same flag.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
