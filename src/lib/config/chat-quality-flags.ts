@@ -6,12 +6,17 @@
  * try one change without the others.
  */
 
+import { flagFromEnv } from "./default-on";
+
 const ON = new Set(["1", "true", "on", "yes"]);
 
+/**
+ * A flag's value from the environment. A flag in `DEFAULT_ON` (Pau, 3 Nov
+ * 2026, "(E) batch 1") is on unless its variable says "0"/"false"/"off"/"no";
+ * every other flag is off unless its variable says on. See `default-on.ts`.
+ */
 export function envFlag(name: string): boolean {
-  const raw = process.env[name];
-  if (typeof raw !== "string") return false;
-  return ON.has(raw.trim().toLowerCase());
+  return flagFromEnv(name, process.env[name]);
 }
 
 /** Claude tool-use reading of a form turn, and routing that reading off search. */

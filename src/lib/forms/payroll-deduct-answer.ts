@@ -1,3 +1,5 @@
+import { flagFromEnv } from "@/lib/config/default-on";
+
 /**
  * The payroll-deduct answer ONE message states — "no payroll deduct", "payroll
  * deduct of $3.25 is applicable", "we aren't docking her pay" — read with the
@@ -223,11 +225,11 @@ export function readPayrollDeduct(text: string): ClauseReading {
 /**
  * CA_SHORTCUT_WORDS_ENABLED (Pau, 29 Oct 2026: "recognize all form wording …
  * so when manager type shortcuts, it can understand it"). Read here, not
- * through `chat-quality-flags`, because this module imports nothing.
+ * through `chat-quality-flags`, because this module imports only `config/default-on`.
  */
 function caShortcutWordsOn(): boolean {
-  const raw = typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED;
-  return typeof raw === "string" && ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+  // On by default since 3 Nov 2026 ("(E) batch 1"); "0"/"false"/"off" still turns it off. See `config/default-on.ts`.
+  return flagFromEnv("CA_SHORTCUT_WORDS_ENABLED", typeof process === "undefined" ? undefined : process.env.CA_SHORTCUT_WORDS_ENABLED);
 }
 
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */
