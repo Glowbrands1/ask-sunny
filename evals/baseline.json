@@ -179,10 +179,8 @@
     },
     {
       "id": "b10",
-      "pass": false,
-      "misses": [
-        "salon"
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
         "employee": "Testy Testerson",
         "salon": null,
@@ -192,10 +190,8 @@
     },
     {
       "id": "b11",
-      "pass": false,
-      "misses": [
-        "salon"
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
         "employee": "Testy Testerson",
         "salon": null,
@@ -271,10 +267,8 @@
     },
     {
       "id": "g3",
-      "pass": false,
-      "misses": [
-        "salon"
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
         "employee": "Sarah Test",
         "salon": null,
@@ -319,8 +313,7 @@
       "id": "g7",
       "pass": false,
       "misses": [
-        "employee",
-        "salon"
+        "employee"
       ],
       "card": {
         "employee": "Dodge",
@@ -331,16 +324,13 @@
     },
     {
       "id": "r1",
-      "pass": false,
-      "misses": [
-        "reply lacks \"Dana Hollisworth\"",
-        "reply lacks \"Eli Brackwater\""
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
-        "employee": "All team members",
-        "salon": "loc-0462",
+        "employee": null,
+        "salon": null,
         "date": null,
-        "status": "ready"
+        "status": null
       }
     },
     {

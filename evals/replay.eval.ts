@@ -204,6 +204,21 @@ for (const flag of FLAGS.production) process.env[flag] = "true";
 const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const chatRoute = await import("@/app/api/chat/route");
 
+/*
+ * A SALON THE APP DOES NOT HAVE IS NOT JUDGED. Cases copied word for word from
+ * the priority replay fixture (b10, b11, g3, g7) expect "loc-0903" ("Dodge"),
+ * a test-only salon that `priority-replay.test.ts` adds to its own mock of
+ * `@/data/salons`; the real salon list has no such salon, so no card here can
+ * carry it. The fixture stays as written (`judge.eval.ts` checks it); the
+ * criterion is skipped for that salon only.
+ */
+const { PRODUCTION_SALONS } = await import("@/data/salons");
+const KNOWN_SALONS = new Set(PRODUCTION_SALONS.map((salon) => salon.id));
+function judgedAs(item: EvalCase): EvalCase {
+  if (item.criteria.salon === null || KNOWN_SALONS.has(item.criteria.salon)) return item;
+  return { ...item, criteria: { ...item.criteria, salon: null } };
+}
+
 const CASES = JSON.parse(readFileSync("evals/replay_set.json", "utf8")) as EvalCase[];
 
 const BASELINE_PATH = "evals/baseline.json";
@@ -274,7 +289,7 @@ async function replay(item: EvalCase, mode: "off" | "on"): Promise<EvalResult> {
     vi.useRealTimers();
   }
   const ms = Math.round(performance.now() - started);
-  return judgeCase({ item, proposal, lastReply: last, error, ms });
+  return judgeCase({ item: judgedAs(item), proposal, lastReply: last, error, ms });
 }
 
 describe("replay eval", () => {
