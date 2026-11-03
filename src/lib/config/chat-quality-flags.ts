@@ -1616,6 +1616,18 @@ export function formEditHonestReplyEnabled(): boolean {
 }
 
 /**
+ * With a Coaching draft open, "yes, do that", "the details we just
+ * discussed!!!" and "include the details of …" are written into the draft's
+ * Details, and the answer's "Updating the draft now" / "That's on the card"
+ * claims are caught too (ported from Ask Bubbles: a Location Manager, 30 Oct
+ * 2026, 2 stars; same flag in both apps). See `forms/form-content-turn.ts`.
+ * Off, as before.
+ */
+export function formEditRefersBackEnabled(): boolean {
+  return envFlag("FORM_EDIT_REFERS_BACK_ENABLED");
+}
+
+/**
  * A revised or drafted field never keeps an all-caps angle-bracket token such
  * as "<UNKNOWN>" (Sunny live check, 31 Oct 2026; same flag in both apps). See
  * `forms/drafted-text.ts`. Off, as before.

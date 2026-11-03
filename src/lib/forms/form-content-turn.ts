@@ -1,3 +1,4 @@
+import { formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
 
@@ -32,6 +33,14 @@ const STATED =
  */
 const MAKE_THAT =
   /^(?:ok(?:ay)?[,.]?\s+|yes[,.]?\s+|please\s+)?(?:make|apply|do|save|put\s+in|add)\s+(?:that|those|the|these|this)\s+(?:update|updates|change|changes|edit|edits|details)(?:\s+(?:to|on|in(?:to)?)\s+(?:the\s+)?(?:draft|form|card))?(?:\s+please)?\s*[.!]*$|^(?:ok(?:ay)?[,.]?\s+)?go\s+ahead(?:\s+and\s+(?:add|update|apply)\s+(?:it|that|them))?\s*[.!]*$/i;
+
+/** FORM_EDIT_REFERS_BACK_ENABLED: "yes, do that", "ok do it", "do that please". */
+const DO_THAT = /^(?:(?:ok(?:ay)?|yes|yeah|yep|sure)[,.!]?\s+)*(?:please\s+)?(?:do|add|write|use)\s+(?:that|it|this|those)(?:\s+please)?\s*[.!]*$/i;
+/** FORM_EDIT_REFERS_BACK_ENABLED: "the details we just discussed!!!", "what we talked about". */
+const DISCUSSED =
+  /^(?:(?:ok(?:ay)?|yes|no)[,.!]?\s+)?(?:(?:add|put|use|write|include)\s+)?(?:the\s+)?(?:details|stuff|things?|what)\s+(?:we|you|i)\s+(?:just\s+)?(?:discussed|talked\s+about|went\s+over|wrote|said|came\s+up\s+with)\b[\s.!]*$/i;
+/** FORM_EDIT_REFERS_BACK_ENABLED: "…, but include the details of rolling rack." */
+const INCLUDE_DETAILS_OF = /\b(?:include|add|put\s+in)\s+(?:the\s+)?details\s+(?:of|about|on|for)\s+(?:the\s+)?([^.?!]{2,60})/i;
 
 /** "update the draft with these details" — any spelling of update the managers type. */
 /*
@@ -142,6 +151,27 @@ export function formContentQuestion(input: {
       .replace(/\s*\n+\s*/g, " ")
       .replace(/\b(?:start|create)(?:s|d|ed|ing)?\b/gi, (word) => NOT_A_REQUEST[word.toLowerCase()] ?? word)
       .trim();
+
+  /*
+   * FORM_EDIT_REFERS_BACK_ENABLED (ported from Ask Bubbles: a Location Manager,
+   * 30 Oct 2026, 2 stars:
+   * "it would never automatically put it in the coaching form, I had to copy
+   * and paste it myself"; replayed 3 Nov). With the draft open she said "yes,
+   * do that" to an answer that offered the details, then "the details we just
+   * discussed!!!", and in another chat "ok, create the draft, but include the
+   * details of rolling rack." — each went to the answering model, which said
+   * the card was updated. The first two take the previous answer as the
+   * content; the third asks for the details it names from this conversation.
+   */
+  if (formEditRefersBackEnabled()) {
+    const earlier = previousAnswer(input.history);
+    if (DO_THAT.test(question) || DISCUSSED.test(question)) {
+      const content = earlier ? oneLine(contentOf(earlier)) : "";
+      if (content) return `${into}: ${content}`;
+    }
+    const named = INCLUDE_DETAILS_OF.exec(question)?.[1]?.replace(/[.!]+$/, "").trim();
+    if (named) return `${into}: the details about ${named} we discussed earlier in this conversation`;
+  }
 
   if (MAKE_THAT.test(question) || WITH_THESE.test(question)) {
     const earlier = previousAnswer(input.history);
@@ -258,7 +288,17 @@ const CLAIM =
  * claim to drop.
  */
 const ABOUT_THE_FORM = /\b(?:form|draft|card|details\s+of\s+coaching)\b/i;
-const claims = (line: string) => CLAIM.test(line) && (ABOUT_THE_FORM.test(line) || /no copy[- ]paste needed/i.test(line));
+/*
+ * FORM_EDIT_REFERS_BACK_ENABLED: the claims production wrote that the list
+ * above missed (30 Oct 2026): "Updating the draft now.", "That's on the card.",
+ * "That's the detail reflected on the draft card.", "Got it — updating the
+ * **Details of Coaching** field on …'s Coaching Form now".
+ */
+const MORE_CLAIMS =
+  /\b(?:updating\s+the\b|(?:that'?s|that\s+is|it'?s|it\s+is|they'?re|they\s+are)\s+(?:now\s+)?on\s+the\s+(?:card|draft|form)\b|reflected\s+(?:on|in)\s+the\b)/i;
+const claims = (line: string) =>
+  (CLAIM.test(line) || (formEditRefersBackEnabled() && MORE_CLAIMS.test(line))) &&
+  (ABOUT_THE_FORM.test(line) || /no copy[- ]paste needed/i.test(line));
 
 export function honestFormReply(content: string, canWrite: boolean): string | null {
   if (!content.split("\n").some(claims)) return null;
