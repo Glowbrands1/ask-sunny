@@ -67,6 +67,24 @@ type RosterRead = () => readonly string[] | undefined;
 let readRoster: RosterRead = () => undefined;
 
 /** The server installs the actor's roster reader (`person-roster-store.ts`). Unset — a test, the browser — no roster. */
+/**
+ * OBSERVATION_NOT_POLICY_NAME_ENABLED (QA live check, 3 Nov 2026): "can you
+ * create a CA for must see behaviors" put "**Observation of Offense:** must
+ * see behaviors" under the "Who is this form for?" card. Words that only name
+ * a policy or a standard — at most four of them, one a policy word — are what
+ * the form is about, not something that happened.
+ */
+const FILLER = new Set(["the", "a", "an", "for", "on", "of", "in", "our", "my", "woven", "about", "re", "regarding", "and"]);
+
+export function namesOnlyAPolicy(sentence: string): boolean {
+  const words = sentence
+    .toLowerCase()
+    .replace(/[^a-z\s'-]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word && !FILLER.has(word));
+  return words.length > 0 && words.length <= 4 && words.some((word) => THING_WORDS.has(word));
+}
+
 export function installPersonRoster(read: RosterRead): void {
   readRoster = read;
 }
