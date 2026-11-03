@@ -20,6 +20,8 @@ const DRAFT = {
   next_follow_up: "TBD",
   additional_coaching: "Reviewed the checklist together. Next review to be determined.",
   payroll_deduct_amount: "N/A",
+  prior_actions: "N/A",
+  specific_evidence: "N/A",
   employee_job_title: "Tanning Consultant",
 };
 
@@ -37,19 +39,22 @@ describe("placeholder words", () => {
       "Observed:\nAvery left the opening checklist unfinished on 10/20.\n\nExpectation:\nThe checklist is finished before the doors open.",
     );
     expect(result.values.additional_coaching).toBe("Reviewed the checklist together.");
-    expect(result.cleaned.sort()).toEqual(["additional_coaching", "coaching_details", "next_follow_up"]);
+    expect(result.cleaned.sort()).toEqual(["additional_coaching", "coaching_details", "next_follow_up", "specific_evidence"]);
   });
 
   it("on: a field that was only a placeholder is left empty, for the manager", () => {
     process.env[FLAG] = "true";
     const result = stripPlaceholdersFromDraft(DRAFT);
     expect(result.values).not.toHaveProperty("next_follow_up");
-    expect(result.emptied).toEqual(["next_follow_up"]);
+    expect(result.emptied.sort()).toEqual(["next_follow_up", "specific_evidence"]);
   });
 
-  it("on: \"N/A\" is not a placeholder — it is often the manager's answer", () => {
+  it("on: \"N/A\" as a whole field the model wrote is a placeholder — but never on a payroll or prior-actions field, and never inside a sentence", () => {
     process.env[FLAG] = "true";
-    expect(stripPlaceholdersFromDraft(DRAFT).values.payroll_deduct_amount).toBe("N/A");
+    const result = stripPlaceholdersFromDraft(DRAFT);
+    expect(result.values).not.toHaveProperty("specific_evidence");
+    expect(result.values.payroll_deduct_amount).toBe("N/A");
+    expect(result.values.prior_actions).toBe("N/A");
     expect(containsPlaceholder("Payroll deduct: N/A.")).toBe(false);
   });
 

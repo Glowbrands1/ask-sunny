@@ -2214,8 +2214,9 @@ export function formEditNameGateRosterEnabled(): boolean {
  * "TBD", "TBA", "TBC", "to be determined", "to be confirmed" in a drafted field
  * are placeholders like `[Follow-Up Date]`: the sentence carrying one is left
  * out, and a field that was only that is left empty for the manager (master
- * plan step 5, 3 Nov 2026; same flag in both apps). "N/A" is not one — it is
- * often the manager's own answer. See `forms/drafted-text.ts`. Off, as before.
+ * plan step 5, 3 Nov 2026; same flag in both apps). "N/A" is one only as the
+ * whole value of a field the model wrote, never on a payroll or prior-actions
+ * field. See `forms/drafted-text.ts`. Off, as before.
  */
 export function formPlaceholderWordsEnabled(): boolean {
   return envFlag("FORM_PLACEHOLDER_WORDS_ENABLED");
