@@ -1,6 +1,6 @@
 import { NOT_A_NAME as BUSINESS_WORDS } from "@/lib/ai/employee-performance-gate";
 import { isDocumentName, isReportName, isRosterStateName } from "@/lib/ai/not-a-person";
-import { personGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { isNotAName } from "@/lib/forms/not-a-name";
 
 /**
@@ -149,6 +149,31 @@ export function withPersonOnCard<T extends { content: string; formProposal?: Car
   return {
     ...answer,
     content: `Who is this **${form}** for? "${card.employeeName}" isn't a person on your team — tell me the employee's full name, and I'll put it on the card.`,
+    formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
+  };
+}
+
+/**
+ * ADDRESS_NOT_PERSON_ENABLED (QA live check, 3 Nov 2026): "coaching form for
+ * 123 Main Street" made a card for "Main Street", and the next request — "make
+ * a coaching form for <name>, she was late today" — kept it. A card's name that
+ * follows a house number in any of the manager's turns ("123 Main Street") is
+ * an address, not a person: the name is cleared and the card asks who it is
+ * for. A street word alone is never enough (Lane, Court, Way are surnames).
+ */
+export function withAddressNotPerson<T extends { content: string; formProposal?: CardLike | null }>(
+  answer: T,
+  turns: readonly string[],
+): T {
+  const card = answer.formProposal;
+  if (!addressNotPersonEnabled() || !card?.employeeName || card.subject === "team") return answer;
+  const words = card.employeeName.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const afterNumber = new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "i");
+  if (!turns.some((turn) => afterNumber.test(turn))) return answer;
+  const form = card.templateName ?? "form";
+  return {
+    ...answer,
+    content: `Who is this **${form}** for? "${card.employeeName}" reads as a street address, not a person — tell me the employee's full name, and I'll put it on the card.`,
     formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
   };
 }

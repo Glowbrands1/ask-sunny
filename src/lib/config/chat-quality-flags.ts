@@ -1606,6 +1606,16 @@ export function cardPolicyLabelEnabled(): boolean {
   return envFlag("CARD_POLICY_LABEL_ENABLED");
 }
 
+/**
+ * A card's name that follows a house number in the manager's turns ("coaching
+ * form for 123 Main Street") is an address, not a person: the card asks who
+ * the form is for, and the next request does not keep it (QA live check, 3 Nov
+ * 2026). See `forms/person-guard.ts` `withAddressNotPerson`. Off, as before.
+ */
+export function addressNotPersonEnabled(): boolean {
+  return envFlag("ADDRESS_NOT_PERSON_ENABLED");
+}
+
 export function chatHistoryStateChunkedEnabled(): boolean {
   return envFlag("CHAT_HISTORY_STATE_CHUNKED_ENABLED");
 }

@@ -26,6 +26,7 @@ import {
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
+  addressNotPersonEnabled,
   newRequestOpenDraftEnabled,
   coachingForEveryoneEnabled,
   staffPickerEnabled,
@@ -576,6 +577,12 @@ async function postChat(request: Request) {
       }
       // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
       if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
+      // ADDRESS_NOT_PERSON_ENABLED: "coaching form for 123 Main Street" names an address, not a person (QA, 3 Nov 2026).
+      if (addressNotPersonEnabled())
+        answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(answer, [
+          ...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content)),
+          asked.question,
+        ]);
       /*
        * FORM_EDIT_HONEST_REPLY_ENABLED: the ordinary answer, with a form open,
        * changed nothing — so it never says it updated the form. See
