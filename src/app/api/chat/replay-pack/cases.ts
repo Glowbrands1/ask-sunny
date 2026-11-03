@@ -44,6 +44,10 @@ export interface ReplayContext {
   calls(): { chat: number; draft: number; revision: number; tool: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
+  /** What the drafting model was given, one entry per draft written. */
+  draftPrompts(): string[];
+  /** The manager types on the form and saves (filled by the manager). */
+  typeOnForm(instanceId: string, values: Record<string, string>): void;
 }
 
 export interface DirectoryRow {

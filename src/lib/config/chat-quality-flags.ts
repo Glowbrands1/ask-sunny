@@ -1616,6 +1616,17 @@ export function formEditHonestReplyEnabled(): boolean {
 }
 
 /**
+ * With a draft open, a turn that names no form, no other person and is not a
+ * question is content for that draft — never a new card (the 2 Nov 2026 scan:
+ * a Corrective Action's next message started a new draft without what the
+ * manager had typed, and that one was finalized; same flag in both apps). See
+ * `forms/open-draft-turn.ts`. Off, as before.
+ */
+export function openDraftKeepsTurnsEnabled(): boolean {
+  return envFlag("OPEN_DRAFT_KEEPS_TURNS_ENABLED");
+}
+
+/**
  * With a Coaching draft open, "yes, do that", "the details we just
  * discussed!!!" and "include the details of …" are written into the draft's
  * Details, and the answer's "Updating the draft now" / "That's on the card"

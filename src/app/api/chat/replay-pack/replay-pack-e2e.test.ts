@@ -56,6 +56,8 @@ vi.hoisted(() => {
 });
 
 const revisionAsked = vi.hoisted(() => [] as string[]);
+/** What the drafting model was given, per Create. */
+const draftAsked = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   slotReading: "none" as "none" | "ca" | "copy",
   remapObservation: null as string | null,
@@ -204,7 +206,10 @@ vi.mock("@/lib/ai/anthropic", () => ({
     messages: {
       create: async (request: { tool_choice?: { name?: string } }) => {
         const revising = request.tool_choice?.name === "revise_form_fields";
-        if (!revising) state.draftCalls += 1;
+        if (!revising) {
+          state.draftCalls += 1;
+          draftAsked.push(JSON.stringify((request as { messages?: unknown; system?: unknown }).messages ?? []));
+        }
         if (revising) {
           state.revisionCalls += 1;
           revisionAsked.push(JSON.stringify((request as { messages?: unknown }).messages ?? []));
@@ -519,6 +524,14 @@ function context(): ReplayContext {
     },
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls }),
     forms: () => store.form_instances as never,
+    draftPrompts: () => [...draftAsked],
+    typeOnForm: (instanceId, values) => {
+      for (const [key, value] of Object.entries(values)) {
+        const row = store.form_instance_values.find((entry) => entry.instance_id === instanceId && entry.field_key === key);
+        if (row) Object.assign(row, { value, filled_by: "manager" });
+        else store.form_instance_values.push({ id: `typed-${key}`, instance_id: instanceId, field_key: key, value, checked: [], filled_by: "manager", provenance: {}, updated_at: new Date().toISOString() } as never);
+      }
+    },
     values: (instanceId) =>
       Object.fromEntries(store.form_instance_values.filter((row) => row.instance_id === instanceId).map((row) => [String(row.field_key), String(row.value ?? "")])),
   };
