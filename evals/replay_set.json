@@ -2678,9 +2678,9 @@
   },
   {
     "id": "r1",
-    "source": "Master plan step 1 (3 Nov 2026): the whole-staff list at one salon; QA 30 Oct 2026 wording \"can you create a coaching form for my whole staff?\". Invented people.",
+    "source": "Master plan step 1 (3 Nov 2026): the whole-staff list at one salon; asked for a Corrective Action Form (a Coaching Form for the whole staff is the team card in production: WHOLE_TEAM_COACHING). Invented people.",
     "turns": [
-      "can you create a coaching form for my whole staff?"
+      "can you create a corrective action form for my whole staff?"
     ],
     "criteria": {
       "employee": null,
@@ -2923,7 +2923,7 @@
       "help me create a coaching form",
       "1.  Can I keep this field blank to use this coaching form with multiple staff?\n2. October 1st\n3. it's for october promotions, can i upload the pdf to read off of?\n4. tanning consultant",
       "1. employee name is blank\n2. knowledge on october promotions",
-      "Timeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• $5 Red Light Visits\n• Eight Red Light Visits for $35\n• Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n➢ BOT Restored Prep Spray\n➢ BOT Restored Post Cream\n➢ BOT Restored Target Serum\n➢ Five Wellness Visits\nTimeline: October 1 – October 31\nOffers: \n• ",
+      "Timeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 $5 Red Light Visits\n\u2022 Eight Red Light Visits for $35\n\u2022 Wellness Product Bundle: KIT Restored Red Light for $79.99 ($64.98 Savings + $6 Bonus)\n\u27a2 BOT Restored Prep Spray\n\u27a2 BOT Restored Post Cream\n\u27a2 BOT Restored Target Serum\n\u27a2 Five Wellness Visits\nTimeline: October 1 \u2013 October 31\nOffers: \n\u2022 ",
       "for rozlin quellmar.  all of it if possible",
       "oh lets create a follow-up coaching form instead then",
       "red light visits and mentioning them on every client check-in.",
@@ -3355,7 +3355,7 @@
         "alsoCoversAreaIds": []
       }
     },
-    "expected": "Prior Actions gets 'JBA Policy Manual — signed May 2025' and the reply says so."
+    "expected": "Prior Actions gets 'JBA Policy Manual \u2014 signed May 2025' and the reply says so."
   },
   {
     "id": "sf-s9",
