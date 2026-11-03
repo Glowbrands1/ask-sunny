@@ -1,6 +1,8 @@
 import { NOT_A_NAME as BUSINESS_WORDS } from "@/lib/ai/employee-performance-gate";
 import { isDocumentName, isReportName, isRosterStateName } from "@/lib/ai/not-a-person";
 import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-quality-flags";
+import { businessToday } from "@/lib/business-date";
+import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
 
 /**
@@ -164,15 +166,28 @@ export function withPersonOnCard<T extends { content: string; formProposal?: Car
 export function withAddressNotPerson<T extends { content: string; formProposal?: CardLike | null }>(
   answer: T,
   turns: readonly string[],
+  today: string = businessToday(),
 ): T {
   const card = answer.formProposal;
   if (!addressNotPersonEnabled() || !card?.employeeName || card.subject === "team") return answer;
   const words = card.employeeName.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const afterNumber = new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "i");
-  if (!turns.some((turn) => afterNumber.test(turn))) return answer;
+  const afterNumber = new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "gi");
+  /*
+   * A number the app's date reader reads as part of a date is not a house
+   * number: "On 10-20-26 Jane Doe was late" names a person (QA, 3 Nov 2026).
+   * `datesInText` is the one reader of date shapes, so whatever it calls a
+   * date ("10/05/2026", "Oct 20", "10.20.26") is never an address here.
+   */
+  const namesAddress = (turn: string): boolean => {
+    const dates = datesInText(turn, today);
+    return [...turn.matchAll(afterNumber)].some(
+      (match) => !dates.some((date) => (match.index ?? 0) >= date.index && (match.index ?? 0) < date.end),
+    );
+  };
+  if (!turns.some(namesAddress)) return answer;
   const form = card.templateName ?? "form";
   // The address is named only on the turn that gave it; a later turn just asks (QA live check, 3 Nov 2026).
-  const saidNow = afterNumber.test(turns[turns.length - 1] ?? "");
+  const saidNow = namesAddress(turns[turns.length - 1] ?? "");
   return {
     ...answer,
     content: saidNow

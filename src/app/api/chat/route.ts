@@ -585,7 +585,7 @@ async function postChat(request: Request) {
         answer = (await import("@/lib/forms/person-guard")).withAddressNotPerson(answer, [
           ...asked.history.filter((turn) => turn.role === "user").map((turn) => String(turn.content)),
           asked.question,
-        ]);
+        ], asked.context.todayIso);
       /*
        * FORM_EDIT_HONEST_REPLY_ENABLED: the ordinary answer, with a form open,
        * changed nothing — so it never says it updated the form. See

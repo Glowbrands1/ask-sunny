@@ -48,6 +48,32 @@ describe("a name after a house number is an address", () => {
     });
   }
 
+  /*
+   * QA, 3 Nov 2026: a number that is part of a date is not a house number.
+   * Tester sessions' exact wording; the people are invented.
+   */
+  for (const [name, turns] of [
+    ["Jane Doe", ["On 10-20-26 Jane Doe was late to open"]],
+    [
+      "Corin Bellweather",
+      [
+        "Put together a written CA for corin bellweather, primary salon is Manhattan. But on Monday 10/05/2026 corin bellweather was working a shift at Lawrence and did not complete the 10 minute disinfect",
+      ],
+    ],
+    ["Jane Doe", ["Create a CA for Jane Doe, she was late on 10-20-26"]],
+    ["Jane Doe", ["On Oct 20 Jane Doe was late to open"]],
+    ["Jane Doe", ["On 10.20.26 Jane Doe was late to open"]],
+  ] as const) {
+    it(`date before ${JSON.stringify(name)}: a person, kept (${turns[0].slice(0, 40)}…)`, () => {
+      expect(withAddressNotPerson(card(name), [...turns], "2026-11-03").formProposal.employeeName).toBe(name);
+    });
+  }
+
+  it("a date elsewhere in the turn does not hide the address", () => {
+    const answer = withAddressNotPerson(card("Main Street"), ["coaching form for 123 Main Street, late on 10-20-26"], "2026-11-03");
+    expect(answer.formProposal.employeeName).toBeNull();
+  });
+
   it("off: kept", () => {
     process.env.ADDRESS_NOT_PERSON_ENABLED = "false";
     expect(withAddressNotPerson(card("Main Street"), ["coaching form for 123 Main Street"]).formProposal.employeeName).toBe("Main Street");
