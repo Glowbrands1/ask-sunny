@@ -43,6 +43,16 @@ the draft. On, they are revisions of the open draft, and the answer's
 "Updating the draft now." / "That's on the card." claims are caught. The test
 uses this app's salons and invented people.
 
+## 3 Nov 2026: with a draft open, a turn about it goes to it — never a new card — both apps (OPEN_DRAFT_KEEPS_TURNS_ENABLED, default off)
+
+Found here (the 2 Nov scan): a Salon Director's verbal Corrective Action
+draft, typed on by hand, then "underperformance for the month of october" —
+a new card for the same person, whose Create made a second draft without her
+words, and that one was finalized. On, with a draft open, a turn that names
+no form, no other person and is not a question is revised into that draft,
+or answered "Nothing on the form has changed yet …" — never a new card.
+Replay-pack case nov2-p1b. Ported to Ask Bubbles with the same flag.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
