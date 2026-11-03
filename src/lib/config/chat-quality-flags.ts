@@ -1569,6 +1569,17 @@ export function otherWriteInNotAQuestionEnabled(): boolean {
  * GET /api/chat/conversations/import (QA, 31 Oct 2026; same flag in both
  * apps). See `chat/store.ts` `ownHistoryState`. Off, as before.
  */
+/**
+ * A new request's card reads back as its Observation of Offense only the
+ * turns of that request, never an earlier incident in the same chat (QA live
+ * check, 3 Nov 2026: "…rugs untl 12;30pm <name> for being late to opening this
+ * morning" on the late-opening card). See `ai/keep-filled-slots.ts`. Off, as
+ * before.
+ */
+export function cardObservationOwnRequestEnabled(): boolean {
+  return envFlag("CARD_OBSERVATION_OWN_REQUEST_ENABLED");
+}
+
 export function chatHistoryStateChunkedEnabled(): boolean {
   return envFlag("CHAT_HISTORY_STATE_CHUNKED_ENABLED");
 }
