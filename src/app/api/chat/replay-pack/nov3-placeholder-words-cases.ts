@@ -13,7 +13,8 @@ export const NOV3_PLACEHOLDER_WORDS_CASES: readonly ReplayCase[] = [
     id: "nov3-placeholder-tbd",
     title: "a drafted \"TBD\" never reaches the form; every other sentence of the draft does",
     report: "QA (master plan, 3 Nov 2026): placeholder values such as TBD are written into drafted fields.",
-    status: { open: "\"TBD\" is not a placeholder to the guard" },
+    // Fixed in production: FORM_PLACEHOLDER_WORDS_ENABLED on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["FORM_PLACEHOLDER_WORDS_ENABLED"],
     async run(t) {
       t.directory(STAFF);
