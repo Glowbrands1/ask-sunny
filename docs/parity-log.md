@@ -34,6 +34,15 @@ manager turn used keeps a rewritten query only when the rewrite still has
 one of them; otherwise it is searched on its own words (glossary-expanded).
 Ask Bubbles gets the same check after `rewriteRetrievalQuery`.
 
+## 3 Nov 2026: "yes, do that" and "the details we just discussed!!!" are written into the open Coaching draft — ported from Ask Bubbles (c834166) (FORM_EDIT_REFERS_BACK_ENABLED, default off)
+
+Found in Ask Bubbles (a Location Manager, 30 Oct 2026, 2 stars: "it would
+never automatically put it in the coaching form"). Here, with the draft open,
+the same turns offered a second card for the same person instead of writing
+the draft. On, they are revisions of the open draft, and the answer's
+"Updating the draft now." / "That's on the card." claims are caught. The test
+uses this app's salons and invented people.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
