@@ -1626,6 +1626,16 @@ export function personGuardEnabled(): boolean {
 }
 
 /**
+ * A new form request for a person already in the chat draws its card from its
+ * own turns, not an earlier request's ("a new late-opening request reused an
+ * older trash-and-rugs incident", the 2 Nov 2026 scan; same flag in both apps).
+ * See `forms/this-persons-turns.ts`. Off, as before.
+ */
+export function newRequestOwnTurnsEnabled(): boolean {
+  return envFlag("NEW_REQUEST_OWN_TURNS_ENABLED");
+}
+
+/**
  * With a draft open, a turn that names no form, no other person and is not a
  * question is content for that draft — never a new card (the 2 Nov 2026 scan:
  * a Corrective Action's next message started a new draft without what the

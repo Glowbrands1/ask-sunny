@@ -86,6 +86,21 @@ edit), by the turns a card is drawn from, and once more on every card the
 route returns. Each app keeps its own vocabulary. Ported to Ask Bubbles with
 the same flag.
 
+## 3 Nov 2026: a new request for the same person is drafted from its own turns — both apps (NEW_REQUEST_OWN_TURNS_ENABLED, default off)
+
+Found here (the 2 Nov scan): "make me a CA for <the same person> for being
+late to opening this morning", after a Corrective Action asked for in pieces
+("a CA", then "<name> failed to take trash out and put rugs out untl
+12;30pm"), was drafted from both incidents and its policy from the older one
+(the card said Late Opening, the draft Standards of Conduct). The protected
+reader restarts a new request only when the earlier request named the
+person; on, forms/new-request-turns.ts trims the card's turns, whichever
+reader made it, to start at the latest request that names the person and
+says what it is about, when an earlier turn of the card was already about
+them. The "listed twice" prior action was two forms really signed the same
+day with identical lines (a wording question for QA, no data bug). Ported to
+Ask Bubbles with the same flag.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft
