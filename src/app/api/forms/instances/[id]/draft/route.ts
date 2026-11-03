@@ -22,6 +22,7 @@ import {
   grammarAskNotAccountEnabled,
   sameFormCopyEnabled,
   typoReadingRoutesEnabled,
+  cardPolicyToDraftEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
@@ -112,6 +113,7 @@ import {
   unconfirmedManualNotice,
 } from "@/lib/forms/official-policy-manual";
 import { manualGroundedPolicies, policyFieldValue } from "@/lib/forms/policy-citation";
+import { cardPolicyPhrase } from "@/lib/forms/card-policy";
 import {
   EPP_POLICY_REFERENCE_KEY,
   EPP_POLICY_RULES,
@@ -268,6 +270,12 @@ interface DraftBody {
    * `lib/forms/chat-redraft.ts`.
    */
   keepManagerValues?: boolean;
+  /**
+   * NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED: the policy heading the card the
+   * manager pressed Create on cited ("Late Opening"). Used only where the
+   * pinned manual has that heading. See `lib/forms/card-policy.ts`.
+   */
+  cardPolicy?: string;
 }
 
 function fieldBrief(field: FormField, variantLabel: string | null): string {
@@ -679,10 +687,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * under the box that section is cited under. Only when no policy
      * `ca-policy.ts` knows by name was stated. See `named-policy-section.ts`.
      */
-    const namedSection =
-      caPolicy && caPolicy.stated === null && manual.ok
-        ? namedManualSection({ text: notes, chunks: manual.chunks })
+    /*
+     * THE POLICY THE CARD CITED (NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED, QA
+     * live check, 3 Nov 2026): the card read "Late Opening p.15" and the draft
+     * made from it "Attendance p.14". Where the pinned manual has the card's
+     * heading, it is the policy named — over the account's own reading.
+     */
+    const cardHeading =
+      caPolicy && manual.ok && cardPolicyToDraftEnabled() && typeof body.cardPolicy === "string" && body.cardPolicy.trim()
+        ? namedManualSection({ text: cardPolicyPhrase(body.cardPolicy), chunks: manual.chunks })
         : null;
+    // Only where it ticks the box the manager's own words tick, or they tick none: a card's generic
+    // "Attendance" never turns a missed meeting (Absenteeism) into Tardiness.
+    const ownKeys = cardHeading && caPolicy ? statedOffenseKeys(caPolicy, notes) : null;
+    const cardSection = cardHeading && (!ownKeys || ownKeys.includes(cardHeading.offenseKey)) ? cardHeading : null;
+    const namedSection =
+      cardSection ??
+      (caPolicy && caPolicy.stated === null && manual.ok
+        ? namedManualSection({ text: notes, chunks: manual.chunks })
+        : null);
     /*
      * NO POLICY NAMED, BUT ONE DESCRIBED — "talking on her cell phone" is the
      * manual's Cell Phone/Smart Watch Policy (District Manager feedback, 21
@@ -1637,7 +1660,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         ? describedSection
         : null);
     const statedKeys = caPolicy
-      ? (statedOffenseKeys(caPolicy, notes) ??
+      ? ((cardSection ? [cardSection.offenseKey] : null) ??
+        statedOffenseKeys(caPolicy, notes) ??
         (policySection ? [policySection.offenseKey] : null))
       : null;
     const statedOffense = statedKeys
