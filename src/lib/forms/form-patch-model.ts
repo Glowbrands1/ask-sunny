@@ -1,0 +1,33 @@
+import { z } from "zod/v4";
+
+import { callFormPatchModel } from "./form-patch-call";
+import { buildFormPatchUserMessage, FORM_PATCH_SYSTEM_PROMPT, type FormPatchInput } from "./form-patch-prompt";
+import { patchOutputSchema, toPatch, type PatchOutput } from "./form-patch-schema";
+import type { FormPatch } from "./form-reducer";
+
+/**
+ * The open form's patch from the manager's latest message
+ * (FORM_PATCH_REDUCER_ENABLED). The model's raw object is parsed here with
+ * the template's schema; a timeout, an error, or an object the schema
+ * refuses is a fallback, and the whole turn runs on the old path. Nothing
+ * here writes: the reducer decides what reaches the form.
+ */
+
+export type FormPatchReading =
+  | { readonly ok: true; readonly turn: PatchOutput["turn"]; readonly patch: FormPatch }
+  | { readonly fallback: "timeout" | "error" | "invalid" | "no_fields" };
+
+export async function readFormPatch(input: FormPatchInput): Promise<FormPatchReading> {
+  const keys = input.fields.map((field) => field.key);
+  if (keys.length === 0) return { fallback: "no_fields" };
+  const schema = patchOutputSchema(keys as [string, ...string[]]);
+  const called = await callFormPatchModel({
+    system: FORM_PATCH_SYSTEM_PROMPT,
+    prompt: buildFormPatchUserMessage(input),
+    schema: z.toJSONSchema(schema) as Record<string, unknown>,
+  });
+  if (!("ok" in called)) return { fallback: called.fallback };
+  const parsed = schema.safeParse(called.output);
+  if (!parsed.success) return { fallback: "invalid" };
+  return { ok: true, turn: parsed.data.turn, patch: toPatch(parsed.data) };
+}

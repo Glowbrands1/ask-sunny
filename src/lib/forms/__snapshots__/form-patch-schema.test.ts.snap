@@ -1,0 +1,97 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`patchOutputSchema > the JSON schema the model is given 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "clear": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string",
+          },
+          "field": {
+            "enum": [
+              "observation",
+              "incident_date",
+              "level",
+            ],
+            "type": "string",
+          },
+        },
+        "required": [
+          "field",
+          "evidence",
+        ],
+        "type": "object",
+      },
+      "maxItems": 10,
+      "type": "array",
+    },
+    "set": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "type": "string",
+          },
+          "field": {
+            "enum": [
+              "observation",
+              "incident_date",
+              "level",
+            ],
+            "type": "string",
+          },
+          "how": {
+            "enum": [
+              "add",
+              "replace",
+            ],
+            "type": "string",
+          },
+          "options": {
+            "items": {
+              "type": "string",
+            },
+            "maxItems": 10,
+            "type": "array",
+          },
+          "value": {
+            "maxLength": 4000,
+            "type": "string",
+          },
+        },
+        "required": [
+          "field",
+          "how",
+          "evidence",
+        ],
+        "type": "object",
+      },
+      "maxItems": 20,
+      "type": "array",
+    },
+    "turn": {
+      "enum": [
+        "this_form",
+        "question",
+        "other",
+      ],
+      "type": "string",
+    },
+  },
+  "required": [
+    "turn",
+    "set",
+    "clear",
+  ],
+  "type": "object",
+}
+`;

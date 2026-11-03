@@ -78,6 +78,8 @@ import {
   formRevisionsEnabled,
   formRevisionsUiEnabled,
   sensitiveDefaultsRedactEnabled,
+  formPatchReducerEnabled,
+  formReplyFromDiffEnabled,
   appPasswordHelpEnabled,
   policyCleaningIncidentEnabled,
   policySpecificTopicsEnabled,
@@ -336,6 +338,8 @@ const NEW_FLAGS = [
   "ADDRESS_NOT_PERSON_ENABLED",
   "SLOT_NAME_ON_FORM_REQUEST_ENABLED",
   "FIRST_NAME_YES_KEEPS_REQUEST_ENABLED",
+  "FORM_PATCH_REDUCER_ENABLED",
+  "FORM_REPLY_FROM_DIFF_ENABLED",
   "CARD_OBSERVATION_OWN_REQUEST_ENABLED",
   "CA_NAME_FROM_CHAT_ENABLED",
   "NEW_REQUEST_OPEN_DRAFT_ENABLED",
@@ -749,6 +753,8 @@ describe("new flags default off and wrappers are inert", () => {
     expect(jobTitleFromWordsEnabled()).toBe(false);
     expect(cardChangeEnabled()).toBe(false);
     expect(cardChangeFinalizedEnabled()).toBe(false);
+    expect(formPatchReducerEnabled()).toBe(false);
+    expect(formReplyFromDiffEnabled()).toBe(false);
 
     const question = "create a verbal corrective action for Avery Holt at Lawrence on 10-1";
     expect(
