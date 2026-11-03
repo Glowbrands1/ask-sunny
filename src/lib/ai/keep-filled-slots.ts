@@ -38,6 +38,7 @@ import {
   levelStepNotAccountEnabled,
   grammarAskNotAccountEnabled,
   priorSentenceFixEnabled,
+  cardObservationOwnRequestEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { statedFormDate } from "@/lib/forms/incident-dates";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
@@ -241,7 +242,9 @@ export function holdFilledSlots(input: {
       const build = (given: string, account: readonly string[]) =>
         fixed ? withAccount(given, account, next.employeeName) : withObservation(given, account, next.employeeName, next.templateKey === "dpoa" ? input.today : undefined);
       // AMOUNT_ANSWER_NOT_ACCOUNT_ENABLED: "i dont know the amount" says nothing that happened.
-      const said = withoutAmountAnswers(turns);
+      // CARD_OBSERVATION_OWN_REQUEST_ENABLED (QA live check, 3 Nov 2026): a new request's card reads back only
+      // that request's turns, never the earlier incident ("…rugs untl 12;30pm <name> for being late to opening").
+      const said = withoutAmountAnswers(cardObservationOwnRequestEnabled() ? currentRequestTurns(turns, next.employeeName) : turns);
       // FORM_EDIT_DATE_RULES_ENABLED: an edit replaces, adds to, or never touches the Observation.
       if (formEditDateRulesEnabled()) content = observationByRules(content, said, build);
       else if (grammarAskNotAccountEnabled()) content = withGrammarAnswered(build(content, said.map(withoutAsksToTheApp)), turns);
