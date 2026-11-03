@@ -1901,6 +1901,19 @@ export function priorActionsPolicyEnabled(): boolean {
 }
 
 /**
+ * Two more team-card wordings (QA live check, 3 Nov 2026), read only with
+ * WHOLE_TEAM_COACHING on: "salon wide everyone needs the reminder to call a
+ * manager for cash drawer shortages" — the team, then what it needs, with no
+ * "coaching" in it — is the team Coaching card when no draft is open; and
+ * words that only name the audience ("for the whole salon") are not handed on
+ * as the card's content, so the Observation does not echo them. Same flag in
+ * both apps. See `forms/whole-team-coaching.ts`. Off, as before.
+ */
+export function teamCardWordingEnabled(): boolean {
+  return envFlag("TEAM_CARD_WORDING_ENABLED");
+}
+
+/**
  * The staff picker reads a short salon name ("kearney") among the account's
  * own salons and reuses the salon this conversation already settled, instead
  * of asking "Which salon's staff…" again (same report; same flag in both
