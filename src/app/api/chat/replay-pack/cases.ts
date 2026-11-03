@@ -73,11 +73,11 @@ export interface ReplayCase {
 /* ------------------------------------------------------------ invariants -- */
 
 /** A claim that the form changed, said with no change made. */
-const CLAIM = /\b(?:updated|now reads|now says|applied|is on the card|that'?s on the card|reflected on|confirmed against)\b/i;
+const CLAIM = /\b(?:updated|now reads|now says|applied|is on the card|that'?s on the card|reflected on|confirmed against|matching woven)\b/i;
 
 export function noClaimWithoutUpdate(reply: ReplayAnswer): void {
   if (reply.formUpdate || reply.formOpened) return;
-  expect(reply.content.split("\n").filter((line) => CLAIM.test(line) && /\b(?:form|draft|card|name|details)\b/i.test(line))).toEqual([]);
+  expect(reply.content.split("\n").filter((line) => CLAIM.test(line) && /\b(?:form|draft|card|name|details|records?|woven)\b/i.test(line))).toEqual([]);
 }
 
 /** The same reply, word for word, twice in a row. */

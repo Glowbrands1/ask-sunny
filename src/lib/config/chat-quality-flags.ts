@@ -1659,6 +1659,26 @@ export function formEditRefersBackEnabled(): boolean {
 }
 
 /**
+ * No reply says the form changed, or that something was checked against the
+ * records, unless this turn changed the form: "now reads …", "Confirmed
+ * against records … matching Woven" are caught on every line about the form,
+ * the name or the record (the 2 Nov 2026 scan; same flag in both apps). See
+ * `forms/form-content-turn.ts`. Off, as before.
+ */
+export function claimGuardEnabled(): boolean {
+  return envFlag("CLAIM_GUARD_ENABLED");
+}
+
+/**
+ * With a draft open, a reply never offers a form selection ("Based on what
+ * you've described, I can prepare:") — that heading was all the manager saw
+ * (the 2 Nov 2026 scan; same flag in both apps). Off, as before.
+ */
+export function openFormNoSelectionEnabled(): boolean {
+  return envFlag("OPEN_FORM_NO_SELECTION_ENABLED");
+}
+
+/**
  * A revised or drafted field never keeps an all-caps angle-bracket token such
  * as "<UNKNOWN>" (Sunny live check, 31 Oct 2026; same flag in both apps). See
  * `forms/drafted-text.ts`. Off, as before.

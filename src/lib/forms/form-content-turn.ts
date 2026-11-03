@@ -1,4 +1,4 @@
-import { formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
+import { claimGuardEnabled, formEditRefersBackEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import type { ChatMessage } from "@/types";
 
@@ -296,9 +296,26 @@ const ABOUT_THE_FORM = /\b(?:form|draft|card|details\s+of\s+coaching)\b/i;
  */
 const MORE_CLAIMS =
   /\b(?:updating\s+the\b|(?:that'?s|that\s+is|it'?s|it\s+is|they'?re|they\s+are)\s+(?:now\s+)?on\s+the\s+(?:card|draft|form)\b|reflected\s+(?:on|in)\s+the\b)/i;
+/*
+ * CLAIM_GUARD_ENABLED (the 2 Nov 2026 scan: "The bot said it updated the
+ * employee name …, but the form didn't change. Later it said the name was
+ * 'confirmed against records' without checking"). Every way production has
+ * said a change or a check it did not make — "now reads", "is now", "now
+ * shows", "confirmed against records", "matching Woven", "checked against",
+ * "verified" — and lines about the name or the record, not only the form.
+ * The route sends such a line only when this turn changed the form; nothing
+ * here reads the directory, so a "confirmed against records" is never true.
+ */
+const CHECK_CLAIMS =
+  /\b(?:now\s+(?:reads|says|shows|lists)|(?:is|are)\s+now\b|confirmed\s+against|checked\s+against|verified\s+(?:against|with)|match(?:es|ing)\s+(?:woven|the\s+(?:directory|records?|roster))|(?:updated|changed|corrected|fixed)\s+(?:the|her|his|their)\b)/i;
+const ABOUT_THE_RECORD = /\b(?:name|employee|record|records|woven|directory|roster|field|line)\b/i;
 const claims = (line: string) =>
-  (CLAIM.test(line) || (formEditRefersBackEnabled() && MORE_CLAIMS.test(line))) &&
-  (ABOUT_THE_FORM.test(line) || /no copy[- ]paste needed/i.test(line));
+  ((CLAIM.test(line) || (formEditRefersBackEnabled() && MORE_CLAIMS.test(line))) &&
+    (ABOUT_THE_FORM.test(line) || /no copy[- ]paste needed/i.test(line))) ||
+  (claimGuardEnabled() &&
+    (CLAIM.test(line) || MORE_CLAIMS.test(line) || CHECK_CLAIMS.test(line)) &&
+    (ABOUT_THE_FORM.test(line) || ABOUT_THE_RECORD.test(line)));
+
 
 export function honestFormReply(content: string, canWrite: boolean): string | null {
   if (!content.split("\n").some(claims)) return null;

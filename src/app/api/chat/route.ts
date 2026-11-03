@@ -12,6 +12,8 @@ import {
   chatLongMessageEnabled,
   draftActionsEnabled,
   formEditHonestReplyEnabled,
+  claimGuardEnabled,
+  openFormNoSelectionEnabled,
   personGuardEnabled,
   newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
@@ -511,13 +513,23 @@ async function postChat(request: Request) {
        * `honestFormReply` in `lib/forms/form-content-turn.ts`.
        */
       if (
-        formEditHonestReplyEnabled() &&
+        (formEditHonestReplyEnabled() || claimGuardEnabled()) &&
         parsed.activeFormInstanceId &&
         !draftAnswer && !correction && !policyChange && !redraft && !revision && !reopened &&
         !answer.formUpdate
       ) {
         const honest = (await import("@/lib/forms/form-content-turn")).honestFormReply(answer.content, formEditPlainWordsEnabled());
         if (honest) answer = { ...answer, content: honest };
+      }
+      /*
+       * OPEN_FORM_NO_SELECTION_ENABLED: with a draft open, no form selection —
+       * its heading ("Based on what you've described, I can prepare:") was all
+       * the manager saw, under a reply about the open draft.
+       */
+      if (openFormNoSelectionEnabled() && parsed.activeFormInstanceId && answer.formSelection) {
+        const { formSelection: _dropped, ...rest } = answer;
+        void _dropped;
+        answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
     } catch (error) {
       /*
