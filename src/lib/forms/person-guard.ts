@@ -171,9 +171,13 @@ export function withAddressNotPerson<T extends { content: string; formProposal?:
   const afterNumber = new RegExp(`\\b\\d+[a-z]?\\s+${words.join("\\s+")}\\b`, "i");
   if (!turns.some((turn) => afterNumber.test(turn))) return answer;
   const form = card.templateName ?? "form";
+  // The address is named only on the turn that gave it; a later turn just asks (QA live check, 3 Nov 2026).
+  const saidNow = afterNumber.test(turns[turns.length - 1] ?? "");
   return {
     ...answer,
-    content: `Who is this **${form}** for? "${card.employeeName}" reads as a street address, not a person — tell me the employee's full name, and I'll put it on the card.`,
+    content: saidNow
+      ? `Who is this **${form}** for? "${card.employeeName}" reads as a street address, not a person — tell me the employee's full name, and I'll put it on the card.`
+      : `Who is this **${form}** for? Tell me the employee's full name.`,
     formProposal: { ...card, employeeName: null, employeeRole: null, status: "needs_employee", supportsInlineDraft: false },
   };
 }
