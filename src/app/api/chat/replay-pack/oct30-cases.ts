@@ -42,7 +42,8 @@ export const OCT30_CASES: readonly ReplayCase[] = [
       id: `oct30-refers-back-${turn.startsWith("yes") ? "do-that" : "discussed"}`,
       title: `"${turn}" with the draft open writes the offered Details`,
       report: '"it would never automatically put it in the coaching form, I had to copy and paste it myself"',
-      status: { open: "FORM_EDIT_REFERS_BACK_ENABLED is off in production" },
+      // Fixed in production: FORM_EDIT_REFERS_BACK_ENABLED on (QA, 3 Nov 2026).
+      status: "fixed",
       fixFlags: ["FORM_EDIT_REFERS_BACK_ENABLED"],
       async run(t) {
         t.directory(STAFF);
@@ -66,7 +67,8 @@ export const OCT30_CASES: readonly ReplayCase[] = [
     id: "oct30-claims",
     title: "the answer's \"Updating the draft now.\" / \"That's on the card.\" with nothing written",
     report: "\"Updating the draft now … That's on the card\" while the card was unchanged",
-    status: { open: "FORM_EDIT_REFERS_BACK_ENABLED is off in production" },
+    // Fixed in production: FORM_EDIT_REFERS_BACK_ENABLED on (QA, 3 Nov 2026).
+      status: "fixed",
     fixFlags: ["FORM_EDIT_REFERS_BACK_ENABLED"],
     async run(t) {
       t.directory(STAFF);
