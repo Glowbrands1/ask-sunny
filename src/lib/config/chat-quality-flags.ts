@@ -2302,3 +2302,12 @@ export function formPlaceholderWordsEnabled(): boolean {
 export function primarySalonNotEditEnabled(): boolean {
   return envFlag("PRIMARY_SALON_NOT_EDIT_ENABLED");
 }
+
+/**
+ * "Yes" to "Is this for <name>?" keeps the form request the manager made in a
+ * later turn than the one that gave the first name (replay set b2, 3 Nov 2026;
+ * same flag in both apps). See `ai/first-name-suggest.ts`. Off, as before.
+ */
+export function firstNameYesKeepsRequestEnabled(): boolean {
+  return envFlag("FIRST_NAME_YES_KEEPS_REQUEST_ENABLED");
+}
