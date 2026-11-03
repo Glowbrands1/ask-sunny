@@ -65,4 +65,48 @@ export const NOV3_ADDRESS_DATE_CASES: readonly ReplayCase[] = [
       expect(reply.formProposal?.employeeName).toBe("Jane Doe");
     },
   },
+  /*
+   * QA live check, 16:27 UTC, with ADDRESS_NOT_PERSON on: the sentence below
+   * gave "Who is this Corrective Action Form for?" with no employee. The same
+   * reply comes with the flag OFF through this route, and the address guard's
+   * own reply always names the street address, so it is not the guard: the
+   * name is a lower-case name that is not on the roster, and nothing reads it.
+   */
+  {
+    id: "nov3-lowercase-name-not-an-address",
+    title: "\"… on Monday 10/05/2026 corin bellweather …\" after a role: the address guard never calls it a street address",
+    report:
+      '"Corrective action for the primary salon manager: on Monday 10/05/2026 corin bellweather was working a shift at the front desk and was rude to a guest" (QA live check, 16:27 UTC)',
+    status: "fixed",
+    fixFlags: ["ADDRESS_NOT_PERSON_ENABLED"],
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const reply = await t
+        .thread()
+        .say(
+          "Corrective action for the primary salon manager: on Monday 10/05/2026 corin bellweather was working a shift at the front desk and was rude to a guest",
+        );
+      expect(reply.content).not.toMatch(/street address/i);
+    },
+  },
+  {
+    id: "nov3-lowercase-name-off-roster",
+    title: "a lower-case name that is not on the roster, after a role and a date, goes on the card",
+    report:
+      '"Corrective action for the primary salon manager: on Monday 10/05/2026 corin bellweather was working a shift at the front desk and was rude to a guest" → "Who is this Corrective Action Form for?", Employee "Not yet" (QA live check, 16:27 UTC; same with ADDRESS_NOT_PERSON off)',
+    // Open: no reader takes a lower-case, off-roster name here. The live model reads the same name without the
+    // role prefix; this harness's stand-in model reads none, so the case fails here for that reason too.
+    status: { open: "a lower-case name that is not on the roster is not read (older reader gap, not ADDRESS_NOT_PERSON)" },
+    async run(t) {
+      t.directory(STAFF);
+      t.as("salon_director", KEARNEY);
+      const reply = await t
+        .thread()
+        .say(
+          "Corrective action for the primary salon manager: on Monday 10/05/2026 corin bellweather was working a shift at the front desk and was rude to a guest",
+        );
+      expect(reply.formProposal?.employeeName).toBe("Corin Bellweather");
+    },
+  },
 ];
