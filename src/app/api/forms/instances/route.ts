@@ -48,6 +48,7 @@ import {
 import { instanceListFilterFor, visibleInstances } from "@/lib/forms/instance-scope";
 import { privateAwareLimit, privateCreatorsActive } from "@/lib/forms/private-creators";
 import { historySaysDifferentIncident } from "@/lib/forms/draft-actions";
+import { newRequestSinceDraft } from "@/lib/forms/new-request-turns";
 import { findOpenIncidentDraft, findResentDraft } from "@/lib/forms/draft-reopen";
 import type { SameChat } from "@/lib/forms/draft-same-chat";
 import { authorizeLocation } from "@/lib/forms/location-scope";
@@ -378,7 +379,11 @@ export async function POST(request: Request) {
         turns: chatTurns,
         ...(sameChatOnly && cardDate ? { formDate: cardDate } : {}),
       }).catch(() => null);
-      if (same) {
+      // DRAFT_REUSE_NEW_REQUEST_ENABLED: a new request for this person since that draft is its own draft.
+      const newRequest =
+        same !== null &&
+        newRequestSinceDraft({ turns: chatTurns, lastTurnId: same.lastTurnId, employeeName: body.employeeName.trim().slice(0, 120) });
+      if (same && !newRequest) {
         /*
          * The facts said since that draft was made, then this card's own
          * stated answers where the draft is still blank — never over a value.
