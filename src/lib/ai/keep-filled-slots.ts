@@ -39,7 +39,9 @@ import {
   grammarAskNotAccountEnabled,
   priorSentenceFixEnabled,
   cardObservationOwnRequestEnabled,
+  observationNotPolicyNameEnabled,
 } from "@/lib/config/chat-quality-flags";
+import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { statedFormDate } from "@/lib/forms/incident-dates";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -670,6 +672,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // form, name the employee or give their place (QA, 25 Oct 2026).
       const sentence = managerOnly ? managerAccount(said, employeeName) : said;
       if (!sentence) continue;
+      // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
+      if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
       if (sentences.some((kept) => kept.toLowerCase() === sentence.toLowerCase())) continue;
       sentences.push(sentence);
@@ -738,7 +742,10 @@ function stateCodeTitle(text: string, role: string): boolean {
  */
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
   const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
-    (sentence) => !content.toLowerCase().includes(sentence.toLowerCase()),
+    (sentence) =>
+      !content.toLowerCase().includes(sentence.toLowerCase()) &&
+      // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
+      !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),
   );
   if (sentences.length === 0) return content;
   return `${content}\n\n**Observation of Offense:** ${sentences.join(". ")}`.trim();

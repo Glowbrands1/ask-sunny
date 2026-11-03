@@ -1929,6 +1929,18 @@ export function teamCardWordingEnabled(): boolean {
 }
 
 /**
+ * Words that only name a policy ("must see behaviors") are not read back as
+ * the Observation of Offense on the card (QA live check, 3 Nov 2026: "can you
+ * create a CA for must see behaviors" → "**Observation of Offense:** must see
+ * behaviors" under "Who is this form for?"). Same flag in both apps where the
+ * read-back exists. See `forms/person-guard.ts` `namesOnlyAPolicy`. Off, as
+ * before.
+ */
+export function observationNotPolicyNameEnabled(): boolean {
+  return envFlag("OBSERVATION_NOT_POLICY_NAME_ENABLED");
+}
+
+/**
  * The staff picker reads a short salon name ("kearney") among the account's
  * own salons and reuses the salon this conversation already settled, instead
  * of asking "Which salon's staff…" again (same report; same flag in both
