@@ -13,7 +13,8 @@ export const NOV3_EDIT_NAME_GATE_CASES: readonly ReplayCase[] = [
     title: "with her Coaching draft open, an edit with capitalised words that are nobody on the roster is written into her draft",
     report:
       "QA (master plan, 3 Nov 2026): \"Names from capitals; form edit dropped\" — Must / Practice / Daily Stats / Dez read as other people in an edit to the open form.",
-    status: { open: "the edit is read as naming somebody else and dropped" },
+    // Fixed in production: FORM_EDIT_NAME_GATE_ROSTER_ENABLED on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["FORM_EDIT_NAME_GATE_ROSTER_ENABLED"],
     async run(t) {
       t.directory(STAFF);
