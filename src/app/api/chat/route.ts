@@ -221,6 +221,7 @@ async function postChat(request: Request) {
               question: asked.question,
               history: asked.history,
               continuing: Boolean(asked.continueProposalTemplateKey) || bareWholeStaff,
+              templateKey: asked.continueProposalTemplateKey ?? null,
               scope: context.identity.scope,
               role: context.identity.role,
             })
@@ -231,6 +232,11 @@ async function postChat(request: Request) {
        * was answered above, or a new incident is a new form.
        */
       // FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED: "change to coaching" after the form was created starts the other form; the created one is left as it is.
+      // WHOLE_TEAM_COACHING_ENABLED: "whole staff" said to the open Coaching card is that card for the team. See `lib/forms/whole-team-coaching.ts`.
+      const teamQuestion =
+        !draftAction && !staffPick && !asked.activeFormInstanceId
+          ? (await import("@/lib/forms/whole-team-coaching")).wholeTeamQuestion(asked.question, asked.continueProposalTemplateKey)
+          : null;
       const parsed = withSwitchAfterCreate(
         draftAction || staffPick
           ? {
@@ -238,7 +244,9 @@ async function postChat(request: Request) {
               ...(draftAction && "question" in draftAction ? { question: draftAction.question } : {}),
               activeFormInstanceId: undefined,
             }
-          : asked,
+          : teamQuestion
+            ? { ...asked, question: teamQuestion }
+            : asked,
       );
       /*
        * A CORRECTION TO A FORM THIS CONVERSATION ALREADY CREATED — "change her

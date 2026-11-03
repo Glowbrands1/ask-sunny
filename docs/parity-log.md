@@ -43,6 +43,25 @@ the draft. On, they are revisions of the open draft, and the answer's
 "Updating the draft now." / "That's on the card." claims are caught. The test
 uses this app's salons and invented people.
 
+## 3 Nov 2026: "coaching form for all team members" is the team card in every chat — ported from Ask Bubbles (e9ee64a) (WHOLE_TEAM_COACHING_ENABLED, STAFF_PICKER_REMEMBER_LOCATION_ENABLED, SHARED_LOGIN_NOT_STAFF_ENABLED, STAFF_PICKER_NO_REPEAT_ENABLED, all default off)
+
+Found in Ask Bubbles (a Location Manager covering two stores, 2 Nov 2026,
+rated 1 star): the staff picker refused a coaching form for all team members
+six times, asked for the store again, and listed a shared "<Store> Account"
+login, while other wordings made the team card. Pau, 3 Nov: "I need all
+managers to have it". Replayed here with this app's flags it was worse: a
+bare salon name ("kearney") did not answer "Which salon's staff…", the team
+card lost its "All team members" label in keep-filled-slots (code slots
+read no person in the turns), so it could never be created, and a later turn
+put the first listed person on a card. On: the picker steps aside for a
+coaching form; a bare "whole staff" said to an open Coaching card is that
+card; the team card keeps its label; the picker reads a short name of one of
+the account's own salons, reuses the salon already named and, once it has
+listed the staff, says what to do next; a directory row whose last name is
+only Account/Login/Shared is never a team member. The label fix and the
+short-name reader are ported back to Ask Bubbles. The test uses this app's
+salons and invented people.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft

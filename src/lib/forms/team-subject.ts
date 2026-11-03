@@ -1,3 +1,5 @@
+import { wholeTeamCoachingEnabled } from "@/lib/config/chat-quality-flags";
+
 /**
  * ============================================================================
  * COACHING THAT IS FOR THE WHOLE TEAM, NOT ONE PERSON
@@ -52,9 +54,24 @@ const TEAM_PHRASES: readonly RegExp[] = [
   /\b(?:coaching|form|training)\s+(?:\w+\s+){0,3}?for\s+(?:everyone|everybody|all)\b/i,
 ];
 
+/**
+ * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles: a Location Manager,
+ * 2 Nov 2026; Pau, 3 Nov: "I need all managers to have it"). The wordings
+ * production met that the list above missed, so the same request is the team
+ * card in every chat: "for the whole salon" (or store), and a turn that is ONLY the whole staff — "whole
+ * staff", "for whole staff - associates", "everyone" — which is how a manager
+ * answers "Who is this form for?". A sentence that merely mentions the team
+ * ("she yelled in front of the whole team") is still not this.
+ */
+const WHOLE_TEAM_EXTRA: readonly RegExp[] = [
+  /\bfor\s+(?:the\s+|my\s+|our\s+)?(?:whole|entire)\s+(?:store|salon|location|shop)\b/i,
+  /^\s*(?:it'?s\s+)?(?:for\s+)?(?:the\s+|my\s+|our\s+)?(?:(?:whole|entire|all(?:\s+(?:of\s+)?(?:my|our|the))?|every)\s+(?:staff|team(?:\s+members)?|crew|associates|employees|store|salon)|everyone|everybody|all\s+of\s+them)\b[\s\w-]{0,24}[.!]?\s*$/i,
+];
+
 /** Whether the manager's words make this coaching about the team. */
 export function readsAsTeamSubject(text: string): boolean {
-  return TEAM_PHRASES.some((pattern) => pattern.test(text ?? ""));
+  if (TEAM_PHRASES.some((pattern) => pattern.test(text ?? ""))) return true;
+  return wholeTeamCoachingEnabled() && WHOLE_TEAM_EXTRA.some((pattern) => pattern.test(text ?? ""));
 }
 
 /**

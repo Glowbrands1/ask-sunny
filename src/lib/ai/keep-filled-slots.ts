@@ -23,6 +23,7 @@ import {
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   codeSlotsEnabled,
+  wholeTeamCoachingEnabled,
   globalSalonAskEnabled,
   groundedEntitiesEnabled,
   intentExtractionEnabled,
@@ -103,6 +104,14 @@ export function holdFilledSlots(input: {
     }
     employeeName = named;
   }
+  /*
+   * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles, 3 Nov 2026): the
+   * team Coaching card's subject is the label "All team members", which no
+   * turn names as a person — so the name readers above dropped it and the card
+   * could never be created ("A form type and an employee are required."). A
+   * team card keeps its label.
+   */
+  if (wholeTeamCoachingEnabled() && proposal.subject === "team") employeeName = proposal.employeeName;
   const slotsOn = intentExtractionEnabled() || groundedEntitiesEnabled();
   const spokenRole = slotsOn ? spokenDirectoryTitle(turns.join("\n"), input.people, employeeName) : null;
   const managerOnly = managerWordsOnlyEnabled();

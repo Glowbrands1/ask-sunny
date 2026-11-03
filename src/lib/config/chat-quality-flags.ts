@@ -1751,6 +1751,47 @@ export function staffPickerBareAnswerEnabled(): boolean {
 }
 
 /**
+ * "coaching form for all team members" makes the team Coaching card ("All
+ * team members", one salon) for every role that may create a coaching form,
+ * in every chat — the staff picker no longer refuses it (ported from Ask
+ * Bubbles: a Location Manager, 2 Nov 2026, rated 1 star; Pau, 3 Nov: "I need
+ * all managers to have it"). Same flag in both apps. See
+ * `forms/whole-team-coaching.ts`. Off, as before.
+ */
+export function wholeTeamCoachingEnabled(): boolean {
+  return envFlag("WHOLE_TEAM_COACHING_ENABLED");
+}
+
+/**
+ * The staff picker reads a short salon name ("kearney") among the account's
+ * own salons and reuses the salon this conversation already settled, instead
+ * of asking "Which salon's staff…" again (same report; same flag in both
+ * apps). See `forms/staff-picker.ts`. Off, as before.
+ */
+export function staffPickerRememberLocationEnabled(): boolean {
+  return envFlag("STAFF_PICKER_REMEMBER_LOCATION_ENABLED");
+}
+
+/**
+ * A directory row that is a shared or salon login ("<Salon> Account") is
+ * never a team member: not listed, suggested or matched (same report; same
+ * flag in both apps). See `forms/employee-match.ts`. Off, as before.
+ */
+export function sharedLoginNotStaffEnabled(): boolean {
+  return envFlag("SHARED_LOGIN_NOT_STAFF_ENABLED");
+}
+
+/**
+ * Once the staff picker has listed a salon's staff in this conversation,
+ * another whole-staff turn is told what to do next in one line, never the
+ * same refusal and list again (same report; same flag in both apps). See
+ * `forms/staff-picker.ts`. Off, as before.
+ */
+export function staffPickerNoRepeatEnabled(): boolean {
+  return envFlag("STAFF_PICKER_NO_REPEAT_ENABLED");
+}
+
+/**
  * A chat another account wrote is never saved to this one: in the sibling app
  * an Assistant Manager's Import on a Location Manager's browser copied the
  * manager's chats into their account (QA, 30 Oct 2026; same flag in both apps).

@@ -1,5 +1,10 @@
 import type { AskResponse } from "@/lib/ai/types";
-import { staffPickerStoreTitlesEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  staffPickerNoRepeatEnabled,
+  staffPickerRememberLocationEnabled,
+  staffPickerStoreTitlesEnabled,
+  wholeTeamCoachingEnabled,
+} from "@/lib/config/chat-quality-flags";
 import type { AccessScope, ChatMessage, Permission, Role } from "@/types";
 
 /**
@@ -170,14 +175,75 @@ export function staffPickerReply(input: {
 
   const form = formName(`${input.question} ${previous}`);
   const one = form === "form" ? "A form" : `A ${form}`;
-  if (named.length === 1) return listStaff(inScope.get(named[0]!)!, input.roster, form);
-  if (inScope.size === 1) return listStaff([...inScope.values()][0]!, input.roster, form);
+  const chosen = named.length === 1 ? inScope.get(named[0]!)! : inScope.size === 1 ? [...inScope.values()][0]! : null;
+  if (chosen && staffPickerNoRepeatEnabled()) {
+    const onward = alreadyListed(input.history, chosen, form);
+    if (onward) return onward;
+  }
+  if (chosen) return listStaff(chosen, input.roster, form);
   if (inScope.size === 0) {
     return `${one} is for one person at a time, and I can't list a staff for your account. Tell me the name of the person it is for.`;
   }
   const names = [...inScope.values()].map((location) => location.name).sort((a, b) => a.localeCompare(b));
   const choices = names.length <= 15 ? `\n\n${names.map((name) => `- ${name}`).join("\n")}` : "";
   return `${one} is for one person at a time, so I won't make one card for the whole staff. ${ASKED_LOCATION} Your account covers ${names.length} salons.${choices}`;
+}
+
+/** Words that say where without naming which: "the kearney salon" is "kearney". */
+const PLACE_FILLER = new Set(["the", "at", "in", "for", "its", "it's", "it", "is", "salon", "salons", "store", "stores", "location", "one", "please", "ne", "ia", "ks", "mo", "sd", "co"]);
+
+/**
+ * A short name of ONE of the account's own locations — every word the
+ * manager typed (fillers aside) is a word of that location's name and of no
+ * other in scope. Only among the account's own locations, so a word shared by
+ * two of them names neither.
+ */
+function shortLocationName(text: string, locations: readonly StaffLocation[]): string[] {
+  const words = text.toLowerCase().split(/[^a-z0-9']+/).filter((word) => word && !PLACE_FILLER.has(word));
+  if (words.length === 0 || words.length > 4) return [];
+  const matches = locations.filter((location) => {
+    const name = new Set(location.name.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean));
+    return words.every((word) => name.has(word));
+  });
+  return matches.length === 1 ? [matches[0]!.id] : [];
+}
+
+/** The latest location, in scope, that the manager named in this conversation. */
+function rememberedLocation(
+  history: readonly Pick<ChatMessage, "role" | "content">[],
+  read: (text: string) => string[],
+  allowed: ReadonlySet<string>,
+): string[] {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index]!;
+    if (turn.role !== "user" || typeof turn.content !== "string") continue;
+    const ids = [...new Set(read(turn.content).filter((id) => allowed.has(id)))];
+    if (ids.length === 1) return ids;
+  }
+  return [];
+}
+
+/** "Here is the staff at **<salon>** on the directory": the list already given in this conversation. */
+const LISTED_AT = /Here is the staff at \*\*([^*]+)\*\* on the directory/;
+
+/**
+ * STAFF_PICKER_NO_REPEAT_ENABLED (ported from Ask Bubbles: six turns, the
+ * same refusal and the same list each time). Once this conversation listed a
+ * salon's staff, another whole-staff turn for that salon is told what to do
+ * next in one line — never the refusal and the list again.
+ */
+function alreadyListed(
+  history: readonly Pick<ChatMessage, "role" | "content">[],
+  location: StaffLocation,
+  form: string,
+): string | null {
+  const listed = history.some(
+    (turn) => turn.role === "assistant" && typeof turn.content === "string" && LISTED_AT.exec(turn.content)?.[1] === location.name,
+  );
+  if (!listed) return null;
+  const one = form === "form" ? "a form" : `a **${form}**`;
+  const next = form === "form" ? "the same form" : `the same ${form}`;
+  return `The staff at **${location.name}** is listed above. To go on, name one person from that list and I'll start ${one} for them; once it's created, say **do ${next} for <next name>** and I'll copy it onto the next person's card.`;
 }
 
 export function staffPickerAnswer(content: string): AskResponse {
@@ -192,6 +258,8 @@ export async function staffPickerTurn(input: {
   question: string;
   history: readonly Pick<ChatMessage, "role" | "content">[];
   continuing: boolean;
+  /** The form the intake is still asking about, if any ("coaching", "dpoa", …). */
+  templateKey?: string | null;
   scope: AccessScope | null;
   /** The asker's role: the list is only for somebody who may create the form. */
   role: Role;
@@ -211,6 +279,19 @@ export async function staffPickerTurn(input: {
   const needs: Permission[] =
     form === "Coaching Form" ? ["create_coaching_form"] : form === "Corrective Action Form" ? ["create_corrective_action"] : ["create_coaching_form", "create_corrective_action"];
   if (!needs.some((permission) => hasPermission(DEFAULT_PERMISSION_MATRIX, input.role, permission))) return null;
+  /*
+   * WHOLE_TEAM_COACHING_ENABLED (ported from Ask Bubbles: a Location Manager,
+   * 2 Nov 2026, 1 star: "it says it cannot make a coaching form for all team
+   * members, but it just did it for me earlier"; Pau, 3 Nov: "I need all
+   * managers to have it"). A COACHING form for the whole staff is the team
+   * card ("All team members", one salon) the form intake already makes — so
+   * the picker steps aside and the intake answers, the same in every chat. A
+   * form not named steps aside too: the intake asks which, and the Coaching
+   * Form is the team card. A Corrective Action Form is still one person at a
+   * time.
+   */
+  if (wholeTeamCoachingEnabled() && (form === "Coaching Form" || input.templateKey === "coaching")) return null;
+  if (wholeTeamCoachingEnabled() && form === "form" && !input.templateKey) return null;
   const [{ authorizedSalonIds }, { PRODUCTION_SALONS, salonById }, { readSalonMentions }, roster] = await Promise.all([
     import("@/lib/forms/location-scope"),
     import("@/data/salons"),
@@ -231,7 +312,25 @@ export async function staffPickerTurn(input: {
     .map((id) => salonById(id))
     .filter((salon): salon is NonNullable<typeof salon> => Boolean(salon))
     .map((salon) => ({ id: salon.id, name: salon.name }));
-  const namedLocationIds = readSalonMentions(input.question).flatMap((mention) => [...mention.salonIds]);
+  const allowed = new Set(locations.map((location) => location.id));
+  const inTurn = (text: string) => {
+    const read = readSalonMentions(text).flatMap((mention) => [...mention.salonIds]);
+    return read.length > 0 || !staffPickerRememberLocationEnabled() ? read : shortLocationName(text, locations);
+  };
+  const said = inTurn(input.question);
+  /*
+   * STAFF_PICKER_REMEMBER_LOCATION_ENABLED (ported from Ask Bubbles: a Location
+   * Manager covering two locations, 2 Nov 2026): she answered with the short
+   * name, then asked again for "a coaching form for all team members" and was
+   * asked "Which … staff should I list?" a second time. A short name of one of
+   * the account's own salons ("kearney") answers it, and a salon this
+   * conversation's manager already named — the latest in scope — is reused; a
+   * turn naming a salon still wins, and a conversation naming none is asked.
+   */
+  const namedLocationIds =
+    said.some((id) => allowed.has(id)) || !staffPickerRememberLocationEnabled()
+      ? said
+      : rememberedLocation(input.history, inTurn, allowed);
   // Asked first without the roster: the salon question needs no directory read.
   const draft = staffPickerReply({ ...input, locations, namedLocationIds, roster: [] });
   if (draft === null) return null;
