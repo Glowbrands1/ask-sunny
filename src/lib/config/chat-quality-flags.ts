@@ -1595,6 +1595,17 @@ export function caNameFromChatEnabled(): boolean {
   return envFlag("CA_NAME_FROM_CHAT_ENABLED");
 }
 
+/**
+ * With the card's policy section in force (NEXT_PUBLIC_CARD_POLICY_TO_DRAFT),
+ * the "Policy Violated" line cites the sections Direct policy quotes, the
+ * card's first — not the box's own section (QA live check, 3 Nov 2026: the
+ * quote was Late Opening p.15, the line "Attendance Policy, JBA Policy Manual
+ * p.14"). See the draft route. Off, as before.
+ */
+export function cardPolicyLabelEnabled(): boolean {
+  return envFlag("CARD_POLICY_LABEL_ENABLED");
+}
+
 export function chatHistoryStateChunkedEnabled(): boolean {
   return envFlag("CHAT_HISTORY_STATE_CHUNKED_ENABLED");
 }

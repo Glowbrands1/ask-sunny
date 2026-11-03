@@ -27,6 +27,8 @@ export interface ReplayAnswer {
 export interface ReplayThread {
   say(text: string): Promise<ReplayAnswer>;
   create(): Promise<string>;
+  /** The card on screen also reads this line — what the live model put on it that the stand-in cannot. */
+  cardReads(line: string): void;
   readonly proposal: ReplayAnswer["formProposal"] | null;
   readonly instanceId: string | null;
 }

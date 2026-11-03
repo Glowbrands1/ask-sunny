@@ -24,6 +24,7 @@ import {
   typoReadingRoutesEnabled,
   cardPolicyToDraftEnabled,
   teamCardWordingEnabled,
+  cardPolicyLabelEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
@@ -2165,7 +2166,15 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             attendance: attendanceOn,
             pageRequired: pageOn,
             values: cited.values,
-            sections: (() => {
+            /*
+             * CARD_POLICY_LABEL_ENABLED (QA live check, 3 Nov 2026): with the card's
+             * section in force, Direct policy quoted Late Opening p.15 and this line
+             * still read "Attendance Policy, JBA Policy Manual p.14". The line now
+             * cites the sections the quote cites, the card's first.
+             */
+            sections: cardSection && cardPolicyLabelEnabled() && manualSections.some((section) => section.page > 0)
+              ? manualSections
+              : (() => {
               const reading = readCaPolicy(notes);
               const keys = statedOffenseKeys(reading, notes) ?? describedAttendanceKeys(notes) ?? [];
               const resolved = manualSectionsFor({ chunks: manual.chunks, offenseKeys: keys, notes });
