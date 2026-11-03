@@ -61,3 +61,6 @@ next-env.d.ts
 # A local roster export for no-real-people.test.ts. Real names; never commit it.
 /.real-people-roster.txt
 support/variation-report/out/
+
+# npm run eval output (results of the last local run)
+evals/results/
