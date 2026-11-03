@@ -51,6 +51,8 @@ export interface EvalCase {
   readonly actor?: { readonly role: string; readonly scope: Record<string, unknown> };
   /** Flags this case needs on in BOTH columns (a feature the case exercises), on top of production. */
   readonly flags?: readonly string[];
+  /** What the reporter expected, in prose. Informational only: never judged. */
+  readonly expected?: string;
 }
 
 export interface EvalResult {
