@@ -7,7 +7,7 @@ import { chatFormsActor, type FormRecordsActor } from "./chat-form-records";
 import { instanceListFilterFor, visibleInstances } from "./instance-scope";
 import { listInstances } from "./instances";
 import { privateAwareLimit } from "./private-creators";
-import { amPriorWarningsEnabled } from "@/lib/config/chat-quality-flags";
+import { amPriorWarningsEnabled, priorActionsPolicyEnabled } from "@/lib/config/chat-quality-flags";
 import {
   classifyPriorForms,
   priorFormsFromRows,
@@ -125,12 +125,32 @@ async function readOnFile(input: {
       }
     }
 
+    /*
+     * PRIOR_ACTIONS_POLICY_ENABLED (Pau, 3 Nov 2026): each Corrective Action's
+     * "Policy violated" is named on its line. Read only with the flag on; a
+     * failed read names no policy and the lines read as before.
+     */
+    const policies = new Map<string, string>();
+    if (priorActionsPolicyEnabled() && correctiveIds.length > 0) {
+      const { data, error } = await getSupabaseAdmin()
+        .from("form_instance_values")
+        .select("instance_id, value")
+        .eq("field_key", "policy_violated")
+        .in("instance_id", correctiveIds);
+      if (!error) {
+        for (const row of data ?? []) {
+          if (typeof row.value === "string" && row.value.trim()) policies.set(String(row.instance_id), row.value);
+        }
+      }
+    }
+
     const forms = priorFormsFromRows({
       rows,
       employeeName: input.employeeName,
       excludeInstanceId: input.excludeInstanceId,
       before: input.before,
       warningLevels,
+      policies,
     });
     return {
       forms,

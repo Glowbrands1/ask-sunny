@@ -1865,6 +1865,18 @@ export function newRequestOpenDraftEnabled(): boolean {
 }
 
 /**
+ * Each line of a Corrective Action's "List previously received coaching
+ * and/or corrective action with date signed" read from Form Monitoring names
+ * the earlier form's policy: "Verbal corrective action (Attendance) — signed
+ * 11/02/2026" (Pau, 3 Nov 2026). Coaching lines are unchanged: a Coaching Form
+ * has no policy violated. Same flag in both apps. See `forms/prior-forms.ts`.
+ * Off, as before.
+ */
+export function priorActionsPolicyEnabled(): boolean {
+  return envFlag("PRIOR_ACTIONS_POLICY_ENABLED");
+}
+
+/**
  * The staff picker reads a short salon name ("kearney") among the account's
  * own salons and reuses the salon this conversation already settled, instead
  * of asking "Which salon's staff…" again (same report; same flag in both
