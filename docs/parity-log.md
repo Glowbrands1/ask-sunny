@@ -62,6 +62,81 @@ only Account/Login/Shared is never a team member. The label fix and the
 short-name reader are ported back to Ask Bubbles. The test uses this app's
 salons and invented people.
 
+## 3 Nov 2026: with a draft open, a turn about it goes to it — never a new card — both apps (OPEN_DRAFT_KEEPS_TURNS_ENABLED, default off)
+
+Found here (the 2 Nov scan): a Salon Director's verbal Corrective Action
+draft, typed on by hand, then "underperformance for the month of october" —
+a new card for the same person, whose Create made a second draft without her
+words, and that one was finalized. On, with a draft open, a turn that names
+no form, no other person and is not a question is revised into that draft,
+or answered "Nothing on the form has changed yet …" — never a new card.
+Replay-pack case nov2-p1b. Ported to Ask Bubbles with the same flag.
+
+## 3 Nov 2026: one answer to "is this a person?" for every reader — both apps (PERSON_GUARD_ENABLED, default off)
+
+Found here (the 2 Nov scan): "Must See Behaviors" and "Practice" became the
+employee on a card, and "Avg Club" in a manager's account of what happened
+was read as another person, so the card's draft skipped her account and was
+written "does not describe a specific incident". Each earlier fix taught one
+reader one word. On, one rule (forms/person-guard.ts): somebody on the
+manager's roster is always a person; otherwise a policy, a practice run, a
+metric, a report, the manual's title, a state code or the not-a-name lists
+never are. Read by namesSomebody (so the protected proposal reader needs no
+edit), by the turns a card is drawn from, and once more on every card the
+route returns. Each app keeps its own vocabulary. Ported to Ask Bubbles with
+the same flag.
+
+## 3 Nov 2026: a new request for the same person is drafted from its own turns — both apps (NEW_REQUEST_OWN_TURNS_ENABLED, default off)
+
+Found here (the 2 Nov scan): "make me a CA for <the same person> for being
+late to opening this morning", after a Corrective Action asked for in pieces
+("a CA", then "<name> failed to take trash out and put rugs out untl
+12;30pm"), was drafted from both incidents and its policy from the older one
+(the card said Late Opening, the draft Standards of Conduct). The protected
+reader restarts a new request only when the earlier request named the
+person; on, forms/new-request-turns.ts trims the card's turns, whichever
+reader made it, to start at the latest request that names the person and
+says what it is about, when an earlier turn of the card was already about
+them. The "listed twice" prior action was two forms really signed the same
+day with identical lines (a wording question for QA, no data bug). Ported to
+Ask Bubbles with the same flag.
+
+## 3 Nov 2026: no reply claims a change or a check it did not make — ported from Ask Bubbles (4c4a9c1) (CLAIM_GUARD_ENABLED, OPEN_FORM_NO_SELECTION_ENABLED, default off)
+
+Found in Ask Bubbles (the 2 Nov scan): "now reads …" and "Confirmed against
+records … matching Woven" with nothing changed or read, and replies ending
+with an empty "I can prepare:". Replayed here that case already holds with
+production's flags; the same guards are ported behind the same flags. With
+them forced on, the chat and forms suites pass except the tests that pin the
+old "off" claims.
+
+## 3 Nov 2026: a policy named with more in the same message — the rest is not dropped — both apps (POLICY_CHANGE_REST_OF_TURN_ENABLED, default off)
+
+Found here (the 2 Nov scan): '… with "Bonus Policy" from the Policy Manual.
+Previous Coaching is when she signed the Policy manual May 2025' — the policy
+path cited the policy, said "Everything else on the form is as it was", and
+Prior Actions stayed empty. On, the sentences that are not the policy request
+go to the revision of the same draft; if nothing is written the reply says
+what is not on the form. Ported to Ask Bubbles with the same flag.
+
+## 3 Nov 2026: a refusal is never repeated word for word; "my DM" is not the employee's title — both apps (REFUSAL_NO_REPEAT_ENABLED, TITLE_NOT_SPEAKERS_MANAGER_ENABLED, default off)
+
+Found here (the 2 Nov scan, "CA for must see behaviors"): the metric refusal
+came three times in a row, and "my DM told me she gets one this month" put
+"District Manager" on a Tanning Consultant's card. On, a refusal that opens
+like the reply before it is replaced by one line saying what moves it on,
+and a card title that is the role the manager called "my DM / my RD" loses
+it. Whether "my DM told me she gets one" should itself start the Corrective
+Action is a product question (asked of QA). Ported to Ask Bubbles.
+
+## 3 Nov 2026: "fix her last name …" is answered plainly — ported from Ask Bubbles (09a3b38) (NAME_CORRECTION_WORDS_ENABLED, default off)
+
+Found in Ask Bubbles (the 2 Nov scan): name corrections in the manager's own
+words went to the answering model, which said the name was updated. Here no
+form's name is chat-correctable (this app has no generic header correction),
+so on these wordings the reply says to edit the Employee Name line on the
+card — never "updated". Same flag, same reader.
+
 ## 25 Oct 2026: FRAMEWORK_UNPIN_ENABLED — Ask Bubbles only
 
 Ask Bubbles' new default-off `FRAMEWORK_UNPIN_ENABLED` stops its forms draft

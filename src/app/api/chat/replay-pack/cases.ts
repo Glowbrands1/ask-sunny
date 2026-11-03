@@ -19,7 +19,7 @@ import { expect } from "vitest";
 
 export interface ReplayAnswer {
   content: string;
-  formProposal?: { templateKey?: string; employeeName?: string | null; status?: string; subject?: string; locationId?: string | null };
+  formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
 }
@@ -44,6 +44,10 @@ export interface ReplayContext {
   calls(): { chat: number; draft: number; revision: number; tool: number };
   forms(): Record<string, unknown>[];
   values(instanceId: string): Record<string, string>;
+  /** What the drafting model was given, one entry per draft written. */
+  draftPrompts(): string[];
+  /** The manager types on the form and saves (filled by the manager). */
+  typeOnForm(instanceId: string, values: Record<string, string>): void;
 }
 
 export interface DirectoryRow {
@@ -69,11 +73,11 @@ export interface ReplayCase {
 /* ------------------------------------------------------------ invariants -- */
 
 /** A claim that the form changed, said with no change made. */
-const CLAIM = /\b(?:updated|now reads|now says|applied|is on the card|that'?s on the card|reflected on|confirmed against)\b/i;
+const CLAIM = /\b(?:updated|now reads|now says|applied|is on the card|that'?s on the card|reflected on|confirmed against|matching woven)\b/i;
 
 export function noClaimWithoutUpdate(reply: ReplayAnswer): void {
   if (reply.formUpdate || reply.formOpened) return;
-  expect(reply.content.split("\n").filter((line) => CLAIM.test(line) && /\b(?:form|draft|card|name|details)\b/i.test(line))).toEqual([]);
+  expect(reply.content.split("\n").filter((line) => CLAIM.test(line) && /\b(?:form|draft|card|name|details|records?|woven)\b/i.test(line))).toEqual([]);
 }
 
 /** The same reply, word for word, twice in a row. */

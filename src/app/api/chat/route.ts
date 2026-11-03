@@ -12,6 +12,14 @@ import {
   chatLongMessageEnabled,
   draftActionsEnabled,
   formEditHonestReplyEnabled,
+  claimGuardEnabled,
+  nameCorrectionWordsEnabled,
+  policyChangeRestOfTurnEnabled,
+  openFormNoSelectionEnabled,
+  personGuardEnabled,
+  refusalNoRepeatEnabled,
+  titleNotSpeakersManagerEnabled,
+  newRequestOwnTurnsEnabled,
   formEditPlainWordsEnabled,
   questionNotFormEnabled,
   sameFormCopyEnabled,
@@ -187,6 +195,23 @@ async function postChat(request: Request) {
     try {
       const asked = parseAskRequest(body);
       /*
+       * PERSON_GUARD_ENABLED: the actor's roster, for the rule that somebody on
+       * it is always a person. One directory read per turn, only with the flag
+       * on. See `lib/forms/person-guard.ts`.
+       */
+      if (personGuardEnabled()) {
+        const [{ loadScopedRoster }, { enterPersonRoster }] = await Promise.all([
+          import("@/lib/forms/employee-roster"),
+          import("@/lib/forms/person-roster-store"),
+        ]);
+        // Never holds the turn up: no roster in 1.5 s and the guard runs without it.
+        const roster = await Promise.race([
+          loadScopedRoster(context.identity.scope).catch(() => []),
+          new Promise<[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
+        ]);
+        enterPersonRoster(roster.map((person) => `${person.preferredFirstName?.trim() || person.firstName} ${person.lastName}`));
+      }
+      /*
        * "DELETE THAT DRAFT", "SAME INCIDENT" (QA F8). Ahead of every open-form
        * path: the revision path read "delete that draft" as a change and said
        * "I haven't changed…". Deletes a draft only under the forms API's own
@@ -294,11 +319,21 @@ async function postChat(request: Request) {
        * `lib/ai/question-not-form.ts`. Behind QUESTION_NOT_FORM_ENABLED.
        */
       const askedQuestion = questionNotFormEnabled() && isQuestionNotForm(parsed.question, parsed.history);
+      // NAME_CORRECTION_WORDS_ENABLED: the open draft, for "fix her last name …". See `lib/forms/name-correction-words.ts`.
+      const nameFix =
+        nameCorrectionWordsEnabled() && parsed.activeFormInstanceId
+          ? await (async () => {
+              const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId!);
+              const question = (await import("@/lib/forms/name-correction-words")).nameCorrectionQuestion(parsed.question, open?.employeeName ?? null);
+              return question && open ? { question, open } : null;
+            })()
+          : null;
       const correction = parsed.activeFormInstanceId && !askedQuestion
         ? await (await import("@/lib/forms/chat-correction")).correctActiveForm({
             request,
             instanceId: parsed.activeFormInstanceId,
-            question: parsed.question,
+            // NAME_CORRECTION_WORDS_ENABLED: "fix her last name …" is read as "change her name to …". See `lib/forms/name-correction-words.ts`.
+            question: nameFix?.question ?? parsed.question,
             today: parsed.context.todayIso,
             history: parsed.history,
           })
@@ -309,7 +344,7 @@ async function postChat(request: Request) {
        * is open. The manual's own words, found by its own heading; no model
        * writes them. Null for anything else. See `lib/forms/chat-policy-change.ts`.
        */
-      const policyChange =
+      const policyChangeOnly =
         !correction && !askedQuestion && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-policy-change")).changeActiveFormPolicy({
               request,
@@ -318,6 +353,17 @@ async function postChat(request: Request) {
               history: parsed.history,
             })
           : null;
+      // POLICY_CHANGE_REST_OF_TURN_ENABLED: the rest of the same message is not dropped. See `lib/forms/policy-rest-of-turn.ts`.
+      const policyChange =
+        policyChangeOnly && policyChangeRestOfTurnEnabled()
+          ? await (await import("@/lib/forms/policy-rest-of-turn")).withRestOfPolicyTurn({
+              request,
+              policyChange: policyChangeOnly,
+              question: parsed.question,
+              history: parsed.history,
+              today: parsed.context.todayIso,
+            })
+          : policyChangeOnly;
       /*
        * "HERE'S WHAT HAPPENED" after a Corrective Action Form was created from
        * a name alone — the form on screen is redrafted from it, citation
@@ -375,7 +421,7 @@ async function postChat(request: Request) {
        * edit. Rewritten into one it does, and revised by the same path. See
        * `lib/forms/form-content-turn.ts`.
        */
-      const revision =
+      const plainRevision =
         askedRevision ??
         (formEditPlainWordsEnabled() && !sameCopy && !correction && !policyChange && !redraft && !separateDocument && parsed.activeFormInstanceId
           ? await (async () => {
@@ -413,6 +459,22 @@ async function postChat(request: Request) {
             })()
           : null);
       /*
+       * OPEN_DRAFT_KEEPS_TURNS_ENABLED: with a draft open, a turn about it that
+       * no path above read is content for that draft — never a new card. See
+       * `lib/forms/open-draft-turn.ts`.
+       */
+      const revision =
+        plainRevision ??
+        (!sameCopy && !correction && !askedQuestion && !policyChange && !redraft && !separateDocument && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/open-draft-turn")).openDraftTurn({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+              today: parsed.context.todayIso,
+            })
+          : null);
+      /*
        * AN ORDINARY ANSWER STILL KNOWS THE FORM IS THERE. Without this it was
        * told no card ever comes with an answer, and said "no form has been
        * created yet" beside the draft on screen.
@@ -442,6 +504,8 @@ async function postChat(request: Request) {
       answer =
         draftAnswer ??
         correction ??
+        // A name correction this form does not take in chat: said plainly, never a model's "updated".
+        (nameFix && !correction ? (await import("@/lib/forms/name-correction-words")).nameNotCorrectedReply(nameFix.open) : null) ??
         policyChange ??
         redraft ??
         sameCopy ??
@@ -461,19 +525,47 @@ async function postChat(request: Request) {
            */
           { memoryOwnerId: context.identity.subject },
         ));
+      // NEW_REQUEST_OWN_TURNS_ENABLED: a new request for the same person is drafted from its own turns. See `lib/forms/new-request-turns.ts`.
+      if (newRequestOwnTurnsEnabled() && answer.formProposal) {
+        answer = (await import("@/lib/forms/new-request-turns")).withOwnRequestTurns(answer, [
+          ...parsed.history,
+          { id: parsed.questionMessageId, role: "user", content: asked.question },
+        ]);
+      }
+      // REFUSAL_NO_REPEAT_ENABLED, TITLE_NOT_SPEAKERS_MANAGER_ENABLED: see `lib/forms/reply-guards.ts`.
+      if (refusalNoRepeatEnabled() || titleNotSpeakersManagerEnabled()) {
+        const guards = await import("@/lib/forms/reply-guards");
+        answer = guards.withoutRepeatedRefusal(answer, parsed.history);
+        answer = guards.withoutSpeakersManagerTitle(answer, [
+          ...parsed.history.filter((turn) => turn.role === "user").map((turn) => turn.content),
+          asked.question,
+        ]);
+      }
+      // PERSON_GUARD_ENABLED: whichever reader named the card's employee, a name that is not a person never stays on it.
+      if (personGuardEnabled()) answer = (await import("@/lib/forms/person-guard")).withPersonOnCard(answer);
       /*
        * FORM_EDIT_HONEST_REPLY_ENABLED: the ordinary answer, with a form open,
        * changed nothing — so it never says it updated the form. See
        * `honestFormReply` in `lib/forms/form-content-turn.ts`.
        */
       if (
-        formEditHonestReplyEnabled() &&
+        (formEditHonestReplyEnabled() || claimGuardEnabled()) &&
         parsed.activeFormInstanceId &&
         !draftAnswer && !correction && !policyChange && !redraft && !revision && !reopened &&
         !answer.formUpdate
       ) {
         const honest = (await import("@/lib/forms/form-content-turn")).honestFormReply(answer.content, formEditPlainWordsEnabled());
         if (honest) answer = { ...answer, content: honest };
+      }
+      /*
+       * OPEN_FORM_NO_SELECTION_ENABLED: with a draft open, no form selection —
+       * its heading ("Based on what you've described, I can prepare:") was all
+       * the manager saw, under a reply about the open draft.
+       */
+      if (openFormNoSelectionEnabled() && parsed.activeFormInstanceId && answer.formSelection) {
+        const { formSelection: _dropped, ...rest } = answer;
+        void _dropped;
+        answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
       }
     } catch (error) {
       /*

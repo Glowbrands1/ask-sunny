@@ -10,7 +10,8 @@ export const NOV2_CASES: readonly ReplayCase[] = [
     report:
       '"earlier bubbles made a coaching form for all team members. Now it is struggling to do that, it says it cannot make a coaching form for all team members, but it just did it for me earlier" (the sibling app, 1 star)',
     // Fixed by WHOLE_TEAM_COACHING_ENABLED (#438): add it to fixFlags when that is merged.
-    status: { open: "the staff picker refuses a whole-team coaching form; #438 not merged" },
+    // Fixed in production: WHOLE_TEAM_COACHING_ENABLED and the staff-picker flags on (#438; QA, 3 Nov 2026).
+    status: "fixed",
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", TWO_SALONS);
@@ -36,7 +37,8 @@ export const NOV2_CASES: readonly ReplayCase[] = [
     title: "a question about the card gets an answer, not the same card again",
     report:
       '"When a manager asked the bot something, it sent the same card again without answering and pasted her question into the Observation field. A CA got the same card 4 times" ',
-    status: { open: "QUESTION_NOT_FORM_ENABLED is off in production" },
+    // Fixed in production: QUESTION_NOT_FORM_ENABLED on (QA, 3 Nov 2026).
+    status: "fixed",
     fixFlags: ["QUESTION_NOT_FORM_ENABLED"],
     async run(t) {
       t.directory(STAFF);

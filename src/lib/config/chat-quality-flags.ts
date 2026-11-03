@@ -1616,6 +1616,56 @@ export function formEditHonestReplyEnabled(): boolean {
 }
 
 /**
+ * One answer to "is this a person?" for every reader of who a form is for:
+ * somebody on the roster always is; a policy ("Must See Behaviors"), a
+ * practice run ("Practice") or a metric ("Avg Club") never is (QA, 3 Nov
+ * 2026; same flag in both apps). See `forms/person-guard.ts`. Off, as before.
+ */
+export function personGuardEnabled(): boolean {
+  return envFlag("PERSON_GUARD_ENABLED");
+}
+
+/**
+ * A reply that would open with the same paragraph as the one before it, with
+ * no card, is not said again — one line says what moves it on ("It also gave
+ * the same refusal 3 times", the 2 Nov 2026 scan; same flag in both apps). See
+ * `forms/reply-guards.ts`. Off, as before.
+ */
+export function refusalNoRepeatEnabled(): boolean {
+  return envFlag("REFUSAL_NO_REPEAT_ENABLED");
+}
+
+/**
+ * "my DM told me …" is the manager's own District Manager, never the
+ * employee's title on the card (the 2 Nov 2026 scan; same flag in both apps).
+ * See `forms/reply-guards.ts`. Off, as before.
+ */
+export function titleNotSpeakersManagerEnabled(): boolean {
+  return envFlag("TITLE_NOT_SPEAKERS_MANAGER_ENABLED");
+}
+
+/**
+ * A new form request for a person already in the chat draws its card from its
+ * own turns, not an earlier request's ("a new late-opening request reused an
+ * older trash-and-rugs incident", the 2 Nov 2026 scan; same flag in both apps).
+ * See `forms/this-persons-turns.ts`. Off, as before.
+ */
+export function newRequestOwnTurnsEnabled(): boolean {
+  return envFlag("NEW_REQUEST_OWN_TURNS_ENABLED");
+}
+
+/**
+ * With a draft open, a turn that names no form, no other person and is not a
+ * question is content for that draft — never a new card (the 2 Nov 2026 scan:
+ * a Corrective Action's next message started a new draft without what the
+ * manager had typed, and that one was finalized; same flag in both apps). See
+ * `forms/open-draft-turn.ts`. Off, as before.
+ */
+export function openDraftKeepsTurnsEnabled(): boolean {
+  return envFlag("OPEN_DRAFT_KEEPS_TURNS_ENABLED");
+}
+
+/**
  * With a Coaching draft open, "yes, do that", "the details we just
  * discussed!!!" and "include the details of …" are written into the draft's
  * Details, and the answer's "Updating the draft now" / "That's on the card"
@@ -1625,6 +1675,47 @@ export function formEditHonestReplyEnabled(): boolean {
  */
 export function formEditRefersBackEnabled(): boolean {
   return envFlag("FORM_EDIT_REFERS_BACK_ENABLED");
+}
+
+/**
+ * A policy named with more in the same message: the rest goes to the revision
+ * of the same draft, and the reply never says "everything else is as it was"
+ * over a sentence it dropped (the 2 Nov 2026 scan: "Previous Coaching is when
+ * she signed the Policy manual May 2025" left Prior Actions empty; same flag
+ * in both apps). See `forms/policy-rest-of-turn.ts`. Off, as before.
+ */
+export function policyChangeRestOfTurnEnabled(): boolean {
+  return envFlag("POLICY_CHANGE_REST_OF_TURN_ENABLED");
+}
+
+/**
+ * No reply says the form changed, or that something was checked against the
+ * records, unless this turn changed the form: "now reads …", "Confirmed
+ * against records … matching Woven" are caught on every line about the form,
+ * the name or the record (the 2 Nov 2026 scan; same flag in both apps). See
+ * `forms/form-content-turn.ts`. Off, as before.
+ */
+export function claimGuardEnabled(): boolean {
+  return envFlag("CLAIM_GUARD_ENABLED");
+}
+
+/**
+ * "fix her last name …", "the name is supposed to be …", "the correct way is
+ * …" correct the name on the open draft, as "change her name to …" does (the
+ * 2 Nov 2026 scan; same flag in both apps). See `forms/name-correction-words.ts`.
+ * Off, as before.
+ */
+export function nameCorrectionWordsEnabled(): boolean {
+  return envFlag("NAME_CORRECTION_WORDS_ENABLED");
+}
+
+/**
+ * With a draft open, a reply never offers a form selection ("Based on what
+ * you've described, I can prepare:") — that heading was all the manager saw
+ * (the 2 Nov 2026 scan; same flag in both apps). Off, as before.
+ */
+export function openFormNoSelectionEnabled(): boolean {
+  return envFlag("OPEN_FORM_NO_SELECTION_ENABLED");
 }
 
 /**

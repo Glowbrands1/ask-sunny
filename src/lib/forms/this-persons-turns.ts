@@ -1,4 +1,5 @@
 import type { BoundedContext } from "./bounded-context";
+import { notAPerson } from "./person-guard";
 import { detectTemplateIntent } from "./template-intent";
 
 /**
@@ -27,7 +28,8 @@ export function turnsFromThisPersonsRequest(
 ): string[] {
   if (!employeeName) return context.ids;
   const turns = context.messages;
-  const named = turns.map((turn) => read.names(turn.content));
+  // PERSON_GUARD_ENABLED: "Avg Club" in an account of what happened is not another person.
+  const named = turns.map((turn) => read.names(turn.content).filter((name) => !notAPerson(name)));
   let last = -1;
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     if (named[index]!.some((name) => read.same(name, employeeName))) {
