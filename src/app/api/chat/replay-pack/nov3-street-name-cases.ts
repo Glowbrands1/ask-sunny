@@ -8,9 +8,8 @@ export const NOV3_STREET_NAME_CASES: readonly ReplayCase[] = [
     id: "nov3-street-address-coaching",
     title: "\"coaching form for 123 Main Street\" is not a form for a person called Main Street",
     report: '"coaching form for 123 Main Street" → a Coaching card for Employee "Main Street", no "who is this for?" (QA live check)',
-    // Open again: QA rolled ADDRESS_NOT_PERSON back to 0 in production (3 Nov 2026, ~15:05 UTC) because it
-    // refused real names after a date ("On 10-20-26 Jane Doe was late", "on 10/05/2026 <name> was working").
-    status: { open: "ADDRESS_NOT_PERSON is off in production (rolled back: a date's digits before a name read as a house number)" },
+    // Fixed in production: ADDRESS_NOT_PERSON back on after the date fix (#490), QA live check 3 Nov 2026 ~16:25 UTC.
+    status: "fixed",
     fixFlags: ["ADDRESS_NOT_PERSON_ENABLED"],
     async run(t) {
       t.directory(STAFF);
@@ -23,9 +22,8 @@ export const NOV3_STREET_NAME_CASES: readonly ReplayCase[] = [
     id: "nov3-street-then-placeholder",
     title: "the next request names no one: the earlier non-person is not kept, and \"<name>\" is not a name",
     report: 'then "make a coaching form for <name>, she was late today" kept Employee "Main Street" and did not ask who (QA live check)',
-    // Open again: QA rolled ADDRESS_NOT_PERSON back to 0 in production (3 Nov 2026, ~15:05 UTC) because it
-    // refused real names after a date ("On 10-20-26 Jane Doe was late", "on 10/05/2026 <name> was working").
-    status: { open: "ADDRESS_NOT_PERSON is off in production (rolled back: a date's digits before a name read as a house number)" },
+    // Fixed in production: ADDRESS_NOT_PERSON back on after the date fix (#490), QA live check 3 Nov 2026 ~16:25 UTC.
+    status: "fixed",
     fixFlags: ["ADDRESS_NOT_PERSON_ENABLED"],
     async run(t) {
       t.directory(STAFF);

@@ -2,6 +2,7 @@
   "_about": "This app's PRODUCTION chat flags, for the replay pack (src/app/api/chat/replay-pack). 'on': read as on in Vercel production (QA, 3 Nov 2026, incl. the 9 scan-fix flags turned on at 04:20 UTC). 'assumedOn': encrypted or not visible to the Vercel reader (it lists 100 of the entries), taken as on from the earlier decrypted reading the chat harnesses use; FORM_STATE is on (chat_form_state is written in production), INTENT_EXTRACTION is taken as on from that reading. 'off': known off. QA messages every flag flipped; update this file in the same pull request as the change it tests.",
   "updated": "2026-11-03",
   "on": [
+    "ADDRESS_NOT_PERSON_ENABLED",
     "AM_PRIOR_WARNINGS_ENABLED",
     "ANGLE_PLACEHOLDER_GUARD_ENABLED",
     "CARD_OBSERVATION_OWN_REQUEST_ENABLED",
@@ -145,7 +146,6 @@
   ],
   "off": [
     "ANSWER_NOT_A_NAME_ENABLED",
-    "SLOT_RETENTION_ENABLED",
-    "ADDRESS_NOT_PERSON_ENABLED"
+    "SLOT_RETENTION_ENABLED"
   ]
 }
