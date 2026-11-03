@@ -48,6 +48,8 @@ export interface ReplayContext {
   draftPrompts(): string[];
   /** The manager types on the form and saves (filled by the manager). */
   typeOnForm(instanceId: string, values: Record<string, string>): void;
+  /** Production's race: the next message arrives before the drafting model's values are saved. */
+  draftNotYetSaved(instanceId: string): void;
 }
 
 export interface DirectoryRow {

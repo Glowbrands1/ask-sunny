@@ -26,6 +26,7 @@ import {
   secondFormEnabled,
   staffPickerBareAnswerEnabled,
   wholeTeamCoachingEnabled,
+  newRequestOpenDraftEnabled,
   coachingForEveryoneEnabled,
   staffPickerEnabled,
   chatResponseStreamEnabled,
@@ -304,8 +305,22 @@ async function postChat(request: Request) {
               });
             })()
           : null;
+      /*
+       * NEW_REQUEST_OPEN_DRAFT_ENABLED: with her draft open, "make me a CA for
+       * <her> for <a new incident>" is a new card — never written into the open
+       * draft (QA live check, 3 Nov 2026). See `lib/forms/new-request-open-draft.ts`.
+       */
+      const newRequestOpen =
+        !draftAction && !staffPick && !team && asked.activeFormInstanceId && newRequestOpenDraftEnabled()
+          ? (await import("@/lib/forms/new-request-open-draft")).newRequestForOpenDraft({
+              question: asked.question,
+              history: asked.history,
+              employeeName: (await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, asked.activeFormInstanceId))
+                ?.employeeName,
+            })
+          : false;
       const parsed = withSwitchAfterCreate(
-        draftAction || staffPick
+        draftAction || staffPick || newRequestOpen
           ? {
               ...asked,
               ...(draftAction && "question" in draftAction ? { question: draftAction.question } : {}),

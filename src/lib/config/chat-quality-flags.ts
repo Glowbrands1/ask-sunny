@@ -1854,6 +1854,17 @@ export function wholeTeamCoachingEnabled(): boolean {
 }
 
 /**
+ * With a draft open, "make me a CA for <the same person> for being late to
+ * opening this morning" — a request for a form, for that person, mostly about
+ * something not said before — is a new card, and the open draft is not
+ * touched (QA live check, 3 Nov 2026: the open draft was redrafted from both
+ * incidents). See `forms/new-request-open-draft.ts`. Off, as before.
+ */
+export function newRequestOpenDraftEnabled(): boolean {
+  return envFlag("NEW_REQUEST_OPEN_DRAFT_ENABLED");
+}
+
+/**
  * The staff picker reads a short salon name ("kearney") among the account's
  * own salons and reuses the salon this conversation already settled, instead
  * of asking "Which salon's staff…" again (same report; same flag in both

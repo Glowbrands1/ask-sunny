@@ -1513,3 +1513,17 @@ Same change as the sibling app (independent review of both apps): real verbs onl
 ## 1 Nov 2026: app switcher gains a Leadership Hub tab (Ask Sunny first; each app builds its own)
 
 The switcher links Ask Sunny, Ask Bubbles and the Leadership Hub (plain links, addresses in `src/lib/config/app-switcher.ts`, overridable by `NEXT_PUBLIC_ASK_BUBBLES_URL` / `NEXT_PUBLIC_LEADERSHIP_HUB_URL`). The Hub tab shows only to signed-in emails on the server-only `LEADERSHIP_HUB_TAB_EMAILS`. Ask Bubbles gets the same feature from its own session; not ported from here.
+
+## 3 Nov 2026: with her draft open, a new request for her is a new card — both apps (NEW_REQUEST_OPEN_DRAFT_ENABLED, default off)
+
+Found here (QA live check, 3 Nov 2026, fresh chat): "a CA" → "<name> failed
+to take trash out and put rugs out untl 12;30pm" → Create → "make me a CA for
+<name> for being late to opening this morning" redrafted the open draft from
+both incidents; the late opening got no card. The message arrived before the
+first draft was saved (event log: drafted 04:25:13, redrafted 04:25:16), so
+the redraft path read the draft as blank. On: a turn that asks for a form,
+names the open draft's person and is mostly about something not said before
+goes to the intake as a new request; the open draft is not touched. Replay
+case nov3-open-draft-new-request (the race reproduced with
+`draftNotYetSaved`). Ask Bubbles behaved correctly live; the same flag and
+case are ported there.
