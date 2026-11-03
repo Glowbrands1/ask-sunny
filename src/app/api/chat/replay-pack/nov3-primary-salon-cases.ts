@@ -17,7 +17,7 @@ export const NOV3_PRIMARY_SALON_CASES: readonly ReplayCase[] = [
     title: "\"primary salon is X … working a shift at Y\": the card's salon is Y, where it happened",
     report:
       "Replay set s21: \"Put together a written CA for <name>, primary salon is Omaha Center. But on Monday 10/05/2026 <name> was working a shift at Omaha Pacific and did not complete the 10 minute disenfect\"",
-    status: { open: "\"primary salon is Omaha Center\" is read as an edit of the salon" },
+    status: "fixed",
     fixFlags: ["PRIMARY_SALON_NOT_EDIT_ENABLED"],
     async run(t) {
       t.directory([

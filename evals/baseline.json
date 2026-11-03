@@ -111,13 +111,11 @@
     },
     {
       "id": "s21",
-      "pass": false,
-      "misses": [
-        "salon"
-      ],
+      "pass": true,
+      "misses": [],
       "card": {
         "employee": "Sloane Wexford",
-        "salon": "loc-0314",
+        "salon": "loc-0410",
         "date": "2026-10-05",
         "status": "ready"
       }
