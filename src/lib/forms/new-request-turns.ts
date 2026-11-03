@@ -1,4 +1,4 @@
-import { newRequestOwnTurnsEnabled } from "@/lib/config/chat-quality-flags";
+import { draftReuseNewRequestEnabled, newRequestOwnTurnsEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 
@@ -37,16 +37,20 @@ interface Card {
   readonly sourceMessageIds: readonly string[];
 }
 
-/** "for being late to opening this morning": the request says more than the form and the name. */
-function saysWhatItIsAbout(text: string, employeeName: string): boolean {
+/** The words of a request beyond the form and the name. */
+function aboutWords(text: string, employeeName: string): string[] {
   const name = new Set(employeeName.toLowerCase().split(/\s+/));
-  const rest = text
+  return text
     .toLowerCase()
     .replace(/[^a-z0-9\s']/g, " ")
     .split(/\s+/)
     .filter((word) => word && !name.has(word))
     .filter((word) => !/^(?:make|me|a|an|the|create|start|do|please|can|you|for|ca|c\/a|corrective|action|form|coaching|verbal|written|warning|new|another|i|need|want|to)$/.test(word));
-  return rest.length >= 3;
+}
+
+/** "for being late to opening this morning": the request says more than the form and the name. */
+function saysWhatItIsAbout(text: string, employeeName: string): boolean {
+  return aboutWords(text, employeeName).length >= 3;
 }
 
 export function withOwnRequestTurns<T extends { formProposal?: Card | null }>(
@@ -74,4 +78,43 @@ export function withOwnRequestTurns<T extends { formProposal?: Card | null }>(
   if (!earlierAccount) return answer;
   const kept = new Set(manager.slice(requestAt).map((turn) => turn.id!));
   return { ...answer, formProposal: { ...card, sourceMessageIds: card.sourceMessageIds.filter((id) => kept.has(id)) } };
+}
+
+/*
+ * DRAFT_REUSE_NEW_REQUEST_ENABLED (the 2 Nov scan, nov2-p2; QA: "yes", 3 Nov
+ * 2026). With CONVERSATION_DRAFT_REUSE on, Create in a chat that already made
+ * a draft of this form for this person reuses that draft — right for "add
+ * this to it", wrong for a new incident. "make me a CA for <name> for being
+ * late to opening this morning", said after the trash-and-rugs draft, reused
+ * that draft, so the late opening never got its own. A manager turn since the
+ * earlier draft that asks for this form for this person AND says what it is
+ * about is a new request: the earlier draft is not reused.
+ */
+export function newRequestSinceDraft(input: {
+  readonly turns: readonly Turn[];
+  /** The last turn the earlier draft was made from; null when it recorded none. */
+  readonly lastTurnId: string | null;
+  readonly employeeName: string;
+}): boolean {
+  if (!draftReuseNewRequestEnabled() || !input.lastTurnId || !input.employeeName.trim()) return false;
+  const at = input.turns.findIndex((turn) => turn.id === input.lastTurnId);
+  if (at < 0) return false;
+  // Everything said before a request: the earlier draft's account and the changes made to it since. A
+  // request that says it again ("the same long request sent twice") is the same incident, reused as before.
+  return input.turns.some((turn, index) => {
+    if (index <= at || turn.role !== "user") return false;
+    if (detectTemplateIntent(turn.content).kind === "none") return false;
+    if (!extractEmployeeNames(turn.content).some((name) => samePerson(name, input.employeeName))) return false;
+    const said = new Set(
+      input.turns
+        .slice(0, index)
+        .filter((earlier) => earlier.role === "user")
+        .flatMap((earlier) => aboutWords(earlier.content, input.employeeName)),
+    );
+    // New when most of what it is about was not said before: "late to opening this morning" after the
+    // trash and rugs. A few new words in a request that repeats the account are the same incident.
+    const about = aboutWords(turn.content, input.employeeName);
+    const fresh = about.filter((word) => !said.has(word)).length;
+    return fresh >= 3 && fresh * 2 >= about.length;
+  });
 }

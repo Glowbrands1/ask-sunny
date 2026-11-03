@@ -1952,6 +1952,19 @@ export function observationNotPolicyNameEnabled(): boolean {
 }
 
 /**
+ * With CONVERSATION_DRAFT_REUSE on, Create reuses this chat's earlier draft of
+ * the same form for the same person. A manager turn since that draft that asks
+ * for the form for that person and is mostly about something not said before
+ * is a new incident: it gets its own draft (ported from Ask Bubbles: the 2 Nov
+ * scan, replay case nov2-p2; QA, 3 Nov 2026). Here CONVERSATION_DRAFT_REUSE is
+ * off in production, so this changes nothing until both are on. See
+ * `forms/new-request-turns.ts`. Off, as before.
+ */
+export function draftReuseNewRequestEnabled(): boolean {
+  return envFlag("DRAFT_REUSE_NEW_REQUEST_ENABLED");
+}
+
+/**
  * The staff picker reads a short salon name ("kearney") among the account's
  * own salons and reuses the salon this conversation already settled, instead
  * of asking "Which salon's staff…" again (same report; same flag in both
