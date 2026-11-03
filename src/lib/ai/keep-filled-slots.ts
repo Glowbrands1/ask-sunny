@@ -56,6 +56,7 @@ import type { GroundedPerson } from "./grounded-entities";
 import { accountSentences, currentRequestTurns, managerAccount, priorShorthand, withoutPriorList, withoutStateCodes, withoutStateLead } from "./remap-incident";
 import { statedPriorActions } from "@/lib/forms/prior-actions";
 import { displayTypedName, repairSpeaksAsValidator, scrubRosterBlock } from "./roster-reply";
+import { PRIMARY_SALON_STATEMENT } from "@/lib/forms/primary-salon-statement";
 
 /**
  * Slots the conversation already filled, put back on this turn's proposal.
@@ -444,7 +445,7 @@ function keptSalon(
 ): string | null {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index]!;
-    const stripped = turn.replace(/\bprimary\s+salon\s+is\s+[^.\n]+/gi, " ");
+    const stripped = turn.replace(PRIMARY_SALON_STATEMENT, " ");
     const ids = salonIds(stripped);
     if (ids.length === 1) return ids[0]!;
     if (stripped !== turn && ids.length === 0) {
