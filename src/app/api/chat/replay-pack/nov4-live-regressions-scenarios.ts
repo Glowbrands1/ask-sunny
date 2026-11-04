@@ -153,9 +153,15 @@ export const DRY_SCRIPTS: Readonly<Record<string, DryScript>> = {
     checked: { offense_type: ["tardiness"] },
     revisions: [],
   },
-  "ca-sales-negative-cleaning": { draft: { observation: "Observed:\nThe tanning beds were left dirty at close." }, revisions: [] },
+  // The cleaning negatives: the stand-in ticks Other, never the Standards of Conduct.
+  "ca-sales-negative-cleaning": { draft: { observation: "Observed:\nThe tanning beds were left dirty at close." }, checked: { offense_type: ["other"] }, revisions: [] },
+  "ca-sales-negative-cleaning-duties": {
+    draft: { observation: "Observed:\nAnsgar Whitlowe did not complete his daily cleaning duties." },
+    checked: { offense_type: ["other"] },
+    revisions: [],
+  },
   "ca-sales-wrong-items": {
-    draft: { observation: "Observed:\nCorwen Fenwhistle rang up the wrong items on a guest's sale." },
+    draft: { observation: "Observed:\nCorwen Fenwhistle rang up the wrong items on a guest's order." },
     checked: { offense_type: ["under_performance"] },
     revisions: [],
   },
@@ -343,10 +349,11 @@ const SALES_WRONG_ITEMS = at("lf-corwen-fenwhistle", "Corwen", "Fenwhistle");
 const SALES_ATTENDANCE = at("lf-dagny-ravensholt", "Dagny", "Ravensholt");
 const SALES_CLEANING = at("lf-elowen-gorselandt", "Elowen", "Gorselandt");
 const SALES_NO_REASON = at("lf-ingram-brackenridge", "Ingram", "Brackenridge");
+const SALES_CLEANING_DUTIES = at("lf-ansgar-whitlowe", "Ansgar", "Whitlowe");
 
 /** The invented people of the flag sets (a function: not read as cases). */
 export function flagSetPeople(): readonly DirectoryRow[] {
-  return [GLOSSARY_CA, GLOSSARY_COACHING, SALES_MSB, SALES_LOW, SALES_WRONG_ITEMS, SALES_ATTENDANCE, SALES_CLEANING, SALES_NO_REASON];
+  return [GLOSSARY_CA, GLOSSARY_COACHING, SALES_MSB, SALES_LOW, SALES_WRONG_ITEMS, SALES_ATTENDANCE, SALES_CLEANING, SALES_NO_REASON, SALES_CLEANING_DUTIES];
 }
 
 const FLAG_SET_ROSTER: readonly DirectoryRow[] = [...STAFF, ...flagSetPeople()];
@@ -389,6 +396,23 @@ export const GLOSSARY_SCENARIOS: readonly CheckedScenario[] = [
   },
 ];
 
+/** The offense boxes Create ticked. */
+const offenses = (run: LiveOutcome): readonly string[] => run.checked.offense_type ?? [];
+
+/** A cleaning Corrective Action is not a Standards of Conduct one: Other is ticked, the Standards of Conduct is not, on the card or the draft. */
+const cleaningNegative = (name: string): LiveExpect => ({
+  says: "offense_type includes other and not standards_of_conduct; neither the card nor Policy Violated names the Standards of Conduct",
+  check: (run) =>
+    all(
+      noError(run),
+      cardFor(run, "dpoa", name),
+      SOC.test(policyLine(run.replies[0] ?? "")) && "the card cites the Standards of Conduct for cleaning",
+      !offenses(run).includes("other") && `offense_type does not include other: [${offenses(run).join(", ")}]`,
+      offenses(run).includes("standards_of_conduct") && "offense_type includes standards_of_conduct",
+      SOC.test(run.saved.policy_violated ?? "") && "Policy Violated is Standards of Conduct",
+    ),
+});
+
 /** LIVE_SCENARIOS=ca-sales, for CA_SALES_POLICY_ENABLED: `nov4-ca-sales-policy-cases.ts`'s cases (this app's wordings), live. */
 export const CA_SALES_SCENARIOS: readonly CheckedScenario[] = [
   {
@@ -427,10 +451,17 @@ export const CA_SALES_SCENARIOS: readonly CheckedScenario[] = [
     id: "ca-sales-wrong-items",
     roster: FLAG_SET_ROSTER,
     field: "policy_language",
-    steps: [{ say: "create a corrective action for Corwen Fenwhistle for ringing up the wrong items on a guest's sale" }, { create: true }],
+    // QA's wording for the live script ("a guest's order"; the replay case says "sale").
+    steps: [{ say: "create a corrective action for Corwen Fenwhistle for ringing up the wrong items on a guest's order" }, { create: true }],
     expect: {
-      says: "after Create, the draft cites the Standards of Conduct with a page (the card's own citation is still open)",
-      check: (run) => all(noError(run), cardFor(run, "dpoa", "Corwen Fenwhistle"), savedCitesSoc(run)),
+      says: "after Create, offense_type includes standards_of_conduct and Policy Violated names the Standards of Conduct",
+      check: (run) =>
+        all(
+          noError(run),
+          cardFor(run, "dpoa", "Corwen Fenwhistle"),
+          !offenses(run).includes("standards_of_conduct") && `offense_type is not standards_of_conduct: [${offenses(run).join(", ")}]`,
+          !SOC.test(run.saved.policy_violated ?? "") && `Policy Violated is not Standards of Conduct: "${run.saved.policy_violated ?? ""}"`,
+        ),
     },
   },
   {
@@ -455,16 +486,14 @@ export const CA_SALES_SCENARIOS: readonly CheckedScenario[] = [
     roster: FLAG_SET_ROSTER,
     field: "policy_violated",
     steps: [{ say: "make a corrective action for Elowen Gorselandt, the tanning beds were left dirty at close" }, { create: true }],
-    expect: {
-      says: "neither the card nor the draft cites the Standards of Conduct",
-      check: (run) =>
-        all(
-          noError(run),
-          cardFor(run, "dpoa", "Elowen Gorselandt"),
-          SOC.test(policyLine(run.replies[0] ?? "")) && "the card cites the Standards of Conduct for cleaning",
-          SOC.test(run.saved.policy_violated ?? "") && "Policy Violated is Standards of Conduct",
-        ),
-    },
+    expect: cleaningNegative("Elowen Gorselandt"),
+  },
+  {
+    id: "ca-sales-negative-cleaning-duties",
+    roster: FLAG_SET_ROSTER,
+    field: "policy_violated",
+    steps: [{ say: "make a corrective action for Ansgar Whitlowe, he did not complete daily cleaning duties" }, { create: true }],
+    expect: cleaningNegative("Ansgar Whitlowe"),
   },
   {
     id: "ca-sales-negative-no-reason",
@@ -682,7 +711,116 @@ export function applicableCriteria(criteria: readonly LiveCriterion[], flagsOn: 
   return criteria.filter((criterion) => !criterion.applies || criterion.applies(flagsOn));
 }
 
-export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.map((message): CriteriaScenario => {
+/* ------------------------------- metrics and an off-roster name, as people -- */
+
+/*
+ * PAU'S MESSAGE 1, LIVE (4 Nov 2026): "I need a corrective action verbal for
+ * <name>. This is for Under Performance on PPTA, LPSVA, Club Average, Club
+ * Close %, and Spa %." The metric words must never be read as people, and a
+ * typed name that is NOT on the roster must not be swapped for a roster
+ * person who shares its first name.
+ *
+ *   no-metric-person  no metric phrase (Club Close, Under, Club Average, PPTA,
+ *                     LPSVA, Spa), bold or not, appears as a name: not in a
+ *                     "couldn't find" note, not in a "Which of them" question,
+ *                     not as the card's employee, not in an "Is this for …?";
+ *                     on mgr-1 and on the off-roster case;
+ *   no-wrong-person   the card is never for the roster person who shares the
+ *                     typed first name, and there is no "Is this for <them>?";
+ *   slot-card         a card for the typed name (acceptable here: this app
+ *                     has no "unchecked with a close name" branch); FAIL
+ *                     records what came instead, either way only recorded.
+ *
+ * The live script only: the replay case for mgr-1 (`nov4-manager-msb-cases.ts`)
+ * keeps `managerCriteria`. Every person is invented; the typed name is on no
+ * directory, the trap is on this case's roster only.
+ */
+
+/** The typed name: on no roster. */
+export const OFF_ROSTER_TYPED = "Leofric Arkwell";
+/** The trap: on the case's roster, the typed first name with another surname. */
+export const OFF_ROSTER_TRAP = at("lf-leofric-dunmarrow", "Leofric", "Dunmarrow");
+const OFF_ROSTER_ROSTER: readonly DirectoryRow[] = [...MANAGER_ROSTER, OFF_ROSTER_TRAP];
+
+/** The metric phrases of Pau's message 1, as a name would show them. */
+const METRIC_AS_NAME = /\b(?:club close|club average|under|ppta|lpsva|spa)\b/i;
+
+const nameList = (list: string) =>
+  list
+    .split(/,\s*|\s+or\s+|\s+and\s+/i)
+    .map((name) => name.replace(/\*/g, "").trim())
+    .filter(Boolean);
+
+/** The names a reply's "I couldn't find … in the Woven roster" note gives as not found. */
+export function notFoundNames(reply: string): string[] {
+  return [...reply.matchAll(/(?:couldn'?t|could not|can'?t|cannot) find ([^.?!\n]*?)(?= (?:in|on) the (?:woven )?(?:roster|directory)|[.?!\n]|$)/gi)].flatMap((match) => nameList(match[1] ?? ""));
+}
+
+/** The names a reply asks about as people: "Which of them is this … for — A or B?", "Is this for A?", "a close match for A". */
+export function askedNames(reply: string): string[] {
+  return [
+    ...[...reply.matchAll(/which of (?:them|these)[^?\n]*?—([^?\n]*)\?/gi)].flatMap((match) => nameList(match[1] ?? "")),
+    ...[...reply.matchAll(/is this for ([^?\n]*)\?/gi)].flatMap((match) => nameList(match[1] ?? "")),
+    ...[...reply.matchAll(/close match for ([^.?!\n,]*)/gi)].flatMap((match) => nameList(match[1] ?? "")),
+  ];
+}
+
+const everyCard = (run: LiveOutcome) => [...(run.turnCards ?? []), run.card];
+const sameName = (a: string | null | undefined, b: string) => (a ?? "").replace(/\*/g, "").trim().toLowerCase() === b.toLowerCase();
+
+export const NO_METRIC_PERSON: LiveCriterion = {
+  name: "no-metric-person",
+  check: (run) => {
+    const shown = [...new Set(run.replies.flatMap((reply) => [...notFoundNames(reply), ...askedNames(reply)]).filter((name) => METRIC_AS_NAME.test(name)))];
+    const card = everyCard(run).find((entry) => METRIC_AS_NAME.test(entry?.employeeName ?? ""));
+    return all(
+      card && `a card names "${card.employeeName}"`,
+      METRIC_AS_NAME.test(run.saved.employee_name ?? "") && `"${run.saved.employee_name}" is saved as the employee`,
+      shown.length > 0 && `a reply shows ${shown.map((name) => `"${name}"`).join(", ")} as a person`,
+    );
+  },
+};
+
+export function offRosterCriteria(typed: string, trap: DirectoryRow): readonly LiveCriterion[] {
+  const trapName = fullName(trap);
+  return [
+    NO_METRIC_PERSON,
+    {
+      name: "no-wrong-person",
+      check: (run) =>
+        all(
+          everyCard(run).some((card) => sameName(card?.employeeName, trapName)) && `a card is for ${trapName}`,
+          sameName(run.saved.employee_name, trapName) && `"${trapName}" is saved as the employee`,
+          run.replies.some((reply) => [...reply.matchAll(/is this for ([^?\n]*)\?/gi)].some((match) => sameName(match[1], trapName))) && `asks "Is this for ${trapName}?"`,
+        ),
+    },
+    {
+      name: "slot-card",
+      check: (run) => {
+        if (sameName(run.card?.employeeName, typed)) return null;
+        const missing = [...new Set(run.replies.flatMap(notFoundNames))];
+        return `no card for ${typed} (card: ${run.card ? `${run.card.templateKey ?? "?"} / ${run.card.employeeName ?? "—"}` : "none"}; not found: ${missing.length ? missing.map((name) => `"${name}"`).join(", ") : "none"})`;
+      },
+    },
+  ];
+}
+
+const offRosterCriteriaFor = offRosterCriteria(OFF_ROSTER_TYPED, OFF_ROSTER_TRAP);
+
+/** LIVE_SCENARIOS=managers, after the five: Pau's message 1 with a typed name on no roster. */
+export const OFF_ROSTER_SCENARIO: CriteriaScenario = {
+  id: "mgr-1-off-roster-name",
+  roster: OFF_ROSTER_ROSTER,
+  field: null,
+  steps: [{ say: `I need a corrective action verbal for ${OFF_ROSTER_TYPED}. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.` }],
+  criteria: offRosterCriteriaFor,
+  expect: {
+    says: `no metric shown as a person; never ${fullName(OFF_ROSTER_TRAP)}; a card for ${OFF_ROSTER_TYPED}`,
+    check: (run) => all(...offRosterCriteriaFor.map((criterion) => criterion.check(run))),
+  },
+};
+
+const MANAGER_MESSAGE_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.map((message): CriteriaScenario => {
   if (message.id === "mgr-5-msb-soc" && message.person) {
     const criteria = msb5LiveCriteria(message.person);
     return {
@@ -697,7 +835,8 @@ export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.m
       },
     };
   }
-  const criteria = managerCriteria(message);
+  // mgr-1 also: its metric words are never a name (the live script only; the replay case keeps managerCriteria).
+  const criteria = message.id === "mgr-1-verbal-metrics" ? [...managerCriteria(message), NO_METRIC_PERSON] : managerCriteria(message);
   return {
     id: message.id,
     roster: MANAGER_ROSTER,
@@ -710,6 +849,8 @@ export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.m
     },
   };
 });
+
+export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = [...MANAGER_MESSAGE_SCENARIOS, OFF_ROSTER_SCENARIO];
 
 /** The stand-in draft for a manager message's Create (LIVE_DRY=1), with the Under Performance tick the flag turns into the Standards of Conduct. */
 export function managerDryScripts(): Record<string, DryScript> {
