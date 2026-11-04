@@ -1476,7 +1476,7 @@ const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|t
  * here; the policy reading still sees it in the manager's own words. Off,
  * the question is unchanged.
  */
-function withoutLeadingGlossaryTerm(question: string): string {
+export function withoutLeadingGlossaryTerm(question: string): string {
   if (!caSalesPolicyEnabled()) return question;
   const match = /^\s*([a-z0-9.&-]+)\s+(?=\S)/i.exec(question);
   return match && foldsToGlossaryTerm(match[1]!) ? question.slice(match[0].length) : question;

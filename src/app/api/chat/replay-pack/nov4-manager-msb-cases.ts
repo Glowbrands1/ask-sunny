@@ -31,7 +31,12 @@ type T = ReplayContext;
 
 const REPORT = "Pau via QA, 4 Nov 2026 (11:30 UTC), real manager messages";
 
-async function runMessage(t: T, message: ManagerMessage): Promise<void> {
+/**
+ * `modelObservation` is the Observation the stand-in draft model writes; blank
+ * (nov4-mgr-4) lets the route write it from the manager's words, the path a
+ * request-shaped Observation would come from.
+ */
+async function runOutcome(t: T, message: ManagerMessage, modelObservation?: string): Promise<LiveOutcome> {
   vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
   t.directory(MANAGER_ROSTER);
   t.as("salon_director", KEARNEY);
@@ -42,7 +47,7 @@ async function runMessage(t: T, message: ManagerMessage): Promise<void> {
   let checked: Record<string, string[]> = {};
   if (message.person && card?.employeeName) {
     t.draftWrites(
-      { observation: `Observed:\n${message.person.firstName} ${message.person.lastName} did not meet the expected performance standards.` },
+      { observation: modelObservation ?? `Observed:\n${message.person.firstName} ${message.person.lastName} did not meet the expected performance standards.` },
       { offense_type: ["under_performance"] },
     );
     const id = await thread.create();
@@ -54,7 +59,15 @@ async function runMessage(t: T, message: ManagerMessage): Promise<void> {
     .map((criterion) => ({ name: criterion.name, why: criterion.check(run) }))
     .filter((entry) => entry.why);
   expect(failed, `"${message.text}" fails ${failed.map((entry) => `${entry.name} (${entry.why})`).join("; ")}\n${reply.content}`).toEqual([]);
+  return run;
 }
+
+async function runMessage(t: T, message: ManagerMessage): Promise<void> {
+  await runOutcome(t, message);
+}
+
+/** MSB read as an unknown word: looked up as a person, or asked about. */
+const MSB_UNKNOWN = /couldn'?t find \*\*msb\*\*|\bmsb (?:gaps?|language)\b|what (?:is|does|do you mean by) msb/i;
 
 const byId = (id: string): ManagerMessage => MANAGER_MESSAGES.find((message) => message.id === id)!;
 
@@ -93,9 +106,27 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     report: `${REPORT}, #4`,
     // Run 4 Nov 2026 on main before #512: OPEN, a card for the person, but no Standards of Conduct citation on the card or the draft.
     // Holds with production's flags since Corrective Action revision 8 (#512): the draft's Under Performance tick is the Standards of Conduct box, so the draft cites it.
-    status: "fixed",
-    fixFlags: ["CA_SALES_POLICY_ENABLED"],
-    run: (t) => runMessage(t, byId("mgr-4-msb-october")),
+    // Open again with QA's live finding (4 Nov 2026, 13:23 UTC), asserted below: with production's flags the card's Observation is the whole request.
+    status: { open: "the card's Observation of Offense is the whole request (\"MSB CA for <name> for underperformance in the month of October\") with production's flags" },
+    // CHAT_GLOSSARY_ENABLED is on in production since 4 Nov 2026 (13:07 UTC); the case holds with both, as in Ask Bubbles.
+    fixFlags: ["CA_SALES_POLICY_ENABLED", "CHAT_GLOSSARY_ENABLED"],
+    /*
+     * QA, 4 Nov 2026 (13:23 UTC), live with CHAT_GLOSSARY_ENABLED on: Ask Sunny's
+     * Observation was the whole request ("MSB CA for <name> for underperformance
+     * in the month of October"); Ask Bubbles asked about "MSB gaps" / "MSB
+     * language" as if MSB were unknown. Neither, with the flags on.
+     */
+    async run(t) {
+      const message = byId("mgr-4-msb-october");
+      const run = await runOutcome(t, message, "");
+      const observation = run.saved.observation ?? "";
+      expect(observation, "the Observation is empty").not.toBe("");
+      expect(observation, `the Observation holds the request words:\n${observation}`).not.toMatch(/\bMSB\s+CA\b|\bCA\s+for\b/i);
+      expect(observation, `the Observation does not hold the account (underperformance in October):\n${observation}`).toMatch(/underperform/i);
+      const cardObservation = run.reply.split("\n").find((line) => /Observation of Offense/i.test(line)) ?? "";
+      expect(cardObservation, `the card's Observation holds the request words:\n${run.reply}`).not.toMatch(/\bMSB\s+CA\b|\bCA\s+for\b/i);
+      expect(run.reply, `MSB is treated as unknown:\n${run.reply}`).not.toMatch(MSB_UNKNOWN);
+    },
   },
   {
     id: "nov4-mgr-5-msb-soc",
