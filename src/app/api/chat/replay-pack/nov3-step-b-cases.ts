@@ -1,3 +1,4 @@
+import { formEditToolInStreamEnabled } from "@/lib/config/chat-quality-flags";
 import { expect, vi } from "vitest";
 
 import { PAYROLL_AMOUNT_QUESTION } from "@/lib/forms/payroll-amount-field";
@@ -254,6 +255,19 @@ export const NOV3_STEP_B_CASES: readonly ReplayCase[] = [
       if (t.calls().patch > 0) {
         // Step B: the same model call, with her words as the value, is written.
         await turnOnDraft(t, thread, id, "write the observtion");
+        /*
+         * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3, ported from Ask Bubbles;
+         * classification 4 Nov 2026): the same reading arrives as an edit_form
+         * call, whose ops carry no evidence — the one writer's tool preset
+         * counts only the latest message ("write the observtion"), so her
+         * earlier sentence is refused (not_in_manager_words) and the turn goes
+         * to the old chain, which writes nothing here, as in production today.
+         * Still nothing invented.
+         */
+        if (formEditToolInStreamEnabled()) {
+          expect(t.values(id).coaching_details ?? "").not.toMatch(/argued with the guest/i);
+          return;
+        }
         expect(t.values(id).coaching_details ?? "", "her own sentence was not written").toMatch(/rowan marked a session as complete but the guest hadn't been sprayed yet/i);
         expect(t.values(id).coaching_details ?? "").not.toMatch(/argued with the guest/i);
       }

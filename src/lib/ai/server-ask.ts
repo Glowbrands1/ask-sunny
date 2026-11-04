@@ -359,9 +359,23 @@ async function answerQuestionChecked(
       request.continueProposalTemplateKey || request.openForm || request.activeFormInstanceId,
     ),
   });
+  // FORM_EDIT_TOOL_IN_STREAM_ENABLED: slots.form_edit, keys and reasons only.
+  if (request.formEditTool) draft.formEdit = request.formEditTool.trace;
   const response = await finishChatTrace(draft, produce);
   if (!selfCheckEnabled()) return response;
   return withManagerNameGuard(keepManagerActionPlan(await guardReply(response, { request, actor }), request), request);
+}
+
+/**
+ * The card is the form already open again (FORM_EDIT_TOOL_IN_STREAM_ENABLED):
+ * its template, for the open form's employee or for nobody yet ("Who is this
+ * form for?"). A card that names another person is a new request and stands.
+ */
+function reproposesOpenForm(answer: AskResponse, open: AskRequest["openForm"]): boolean {
+  const card = answer.formProposal;
+  if (!card || !open) return false;
+  const fold = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+  return fold(card.templateName) === fold(open.templateName) && (fold(card.employeeName) === "" || fold(card.employeeName) === fold(open.employeeName));
 }
 
 /** A manager manual or another brand. Not a Sun Tan City policy source. */
@@ -843,7 +857,16 @@ async function answerQuestionUntraced(
     }),
     });
     // if (proposal) return proposal;
-    if (proposal) return proposal;
+    /*
+     * FORM_EDIT_TOOL_IN_STREAM_ENABLED (this app's half of Step 3): with
+     * `edit_form` offered, a card for the form that is already open — the same
+     * template, for the same employee or for nobody yet — is not this turn's
+     * answer. The turn is
+     * an edit of that draft (the chat route decided: a draft open, not a
+     * question, a correction or a policy change), so it goes on to the main
+     * call, which carries the tool. Without the offer, unchanged.
+     */
+    if (proposal && !(request.formEditTool?.offer && reproposesOpenForm(proposal, request.openForm))) return proposal;
   }
 
   /*
@@ -1719,35 +1742,74 @@ async function answerQuestionUntraced(
     : uncachedGrounding;
   const reportText = briefing?.text ?? null;
   updateChatTrace({ prompt: redactTraceText(system) });
-  const written = await callClaude({
-    system,
-    grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
-    reportData: reviewBlock
-      ? [reportText, reviewBlock.text, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
-      : dataAddition.data
-        ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
-        : reportText,
-    /*
-     * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
-     *
-     * `employeeFacts.available` used to be read as a boolean and the block
-     * itself was never passed anywhere — so the day a real dataset landed, its
-     * figures would have flipped a prompt flag and then been dropped on the
-     * floor. The block travels to the model as its own section now.
-     */
-    employeeData: employeeFacts?.block ?? null,
-    formsLibrary: formInventoryBlock,
-    formRecords: formRecords?.block ?? null,
-    personMemory,
-    history: request.history,
-    ...(longContext
-      ? { historyPolicy: "budget" as const, priorSummary: longContext.summary }
-      : {}),
-    question: request.question,
-    maxTokens: CLAUDE_MAX_TOKENS[request.mode],
-    manualBlock,
-    fullManualBlock,
-  });
+  /*
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): with a draft open, this call is
+   * offered `edit_form` and the open form as JSON. A tool call is applied
+   * through the one writer and the turn ends here — no second call, and the
+   * model's text is not shown; the chat route answers from the saved diff or
+   * hands the turn to the old chain. Absent, the call is as before.
+   */
+  const formEdit = request.formEditTool?.offer ? request.formEditTool : null;
+  let toolInput: { readonly input: unknown } | null = null;
+  /*
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED: a failed main call is recorded on the
+   * trace (the chat route hands the turn to the old chain) and rethrown —
+   * never fail-open.
+   */
+  let written: string;
+  try {
+    written = await callClaude({
+      system,
+      grounding: dataAddition.help ? `${groundingText}\n\n${dataAddition.help}` : groundingText,
+      reportData: reviewBlock
+        ? [reportText, reviewBlock.text, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+        : dataAddition.data
+          ? [reportText, dataAddition.data].filter((part) => part && part.length > 0).join("\n\n")
+          : reportText,
+      /*
+       * THE EMPLOYEE FACTS BLOCK, WIRED THROUGH RATHER THAN COUNTED.
+       *
+       * `employeeFacts.available` used to be read as a boolean and the block
+       * itself was never passed anywhere — so the day a real dataset landed, its
+       * figures would have flipped a prompt flag and then been dropped on the
+       * floor. The block travels to the model as its own section now.
+       */
+      employeeData: employeeFacts?.block ?? null,
+      formsLibrary: formInventoryBlock,
+      formRecords: formRecords?.block ?? null,
+      personMemory,
+      history: request.history,
+      ...(longContext
+        ? { historyPolicy: "budget" as const, priorSummary: longContext.summary }
+        : {}),
+      question: request.question,
+      maxTokens: CLAUDE_MAX_TOKENS[request.mode],
+      manualBlock,
+      fullManualBlock,
+      ...(formEdit && formEdit.offer
+        ? {
+            formEditTool: {
+              tool: formEdit.offer.tool,
+              data: formEdit.offer.data,
+              onToolUse: (input: unknown) => {
+                toolInput ??= { input };
+              },
+            },
+          }
+        : {}),
+    });
+  } catch (error) {
+    formEdit?.failed();
+    throw error;
+  }
+  if (formEdit) {
+    formEdit.sent();
+    const called = toolInput as { readonly input: unknown } | null;
+    if (called) {
+      await formEdit.apply(called.input);
+      return { content: "", citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+    }
+  }
   /*
    * THE BACKSTOP to the labelled block above: with the guard on and no refer-back
    * in this conversation, a sentence saying the manager raised or sent

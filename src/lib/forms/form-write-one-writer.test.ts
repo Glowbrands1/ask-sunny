@@ -307,3 +307,49 @@ describe("QA condition 3 (static): form-write is loaded only by a guarded `await
     expect(source).not.toContain("RegExp(");
   });
 });
+
+/*
+ * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): the edit tool's path. Its only
+ * write is `writeFormEdits` with path "tool" — no scanned writer (the scan
+ * above covers it like every file), and form-write reached only by the
+ * guarded import (the test above). No regular expression and no phrase list.
+ */
+describe("the edit tool's path (FORM_EDIT_TOOL_IN_STREAM_ENABLED) writes only through the one writer", () => {
+  const TOOL = "src/lib/forms/form-edit-tool.ts";
+
+  it('calls writeFormEdits once, with path "tool", and no other writer', () => {
+    const file = parse(TOOL);
+    const calls: string[] = [];
+    const paths: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node)) {
+        const name = calledName(node);
+        if (name === "writeFormEdits" || (name && WRITERS.has(name))) calls.push(name);
+        if (name === "writeFormEdits") {
+          const rules = node.arguments[2];
+          if (rules && ts.isObjectLiteralExpression(rules)) {
+            for (const property of rules.properties) {
+              if (ts.isPropertyAssignment(property) && property.name.getText(file) === "path") paths.push(property.initializer.getText(file));
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(calls).toEqual(["writeFormEdits"]);
+    expect(paths).toEqual(['"tool"']);
+  });
+
+  it("holds no regular expression", () => {
+    const file = parse(TOOL);
+    const found: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) found.push(node.getText(file));
+      if (ts.isNewExpression(node) && node.expression.getText(file) === "RegExp") found.push(node.getText(file));
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    expect(found).toEqual([]);
+  });
+});

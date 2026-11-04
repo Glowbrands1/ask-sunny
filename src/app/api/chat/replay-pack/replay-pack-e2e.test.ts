@@ -152,6 +152,8 @@ vi.mock("@/lib/analytics/record", async (importOriginal) => ({
 const ANSWER = "A grounded answer from the policy manual.";
 /** What the answering model says this turn, when a case sets it. */
 const said = { answer: null as string | null };
+/** FORM_EDIT_TOOL_IN_STREAM_ENABLED: the edit_form call the answering model makes next, and the offers it saw. */
+const editTool = { input: null as unknown, offered: 0, lastData: null as string | null };
 
 vi.mock("@/lib/ai/call-claude", () => ({
   /*
@@ -174,8 +176,36 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async () => {
+  callClaude: async (input?: { formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    if (input?.formEditTool) {
+      editTool.offered += 1;
+      editTool.lastData = input.formEditTool.data;
+      if (editTool.input !== null) {
+        const call = editTool.input;
+        editTool.input = null;
+        input.formEditTool.onToolUse(call);
+      } else if (patchScript.calls < patchScript.outputs.length) {
+        /*
+         * FORM_EDIT_TOOL_IN_STREAM_ENABLED skips Step B's patch turn: the main
+         * model reads the turn instead. A case's scripted patch reading is the
+         * same decision made as an edit_form call — "this_form" with its sets
+         * (add → append, replace → set) and clears, anything else no call — so
+         * the Step B cases run on the tool path with the model's same choices.
+         * The ops carry no evidence: the tool's words are the latest message's.
+         */
+        const output = patchScript.outputs[patchScript.calls] as
+          | { turn?: string; set?: { field: string; value?: string; options?: string[]; how?: string }[]; clear?: { field: string }[] }
+          | null
+          | undefined;
+        patchScript.calls += 1;
+        const ops = [
+          ...(output?.set ?? []).map((entry) => ({ op: entry.how === "replace" ? "set" : "append", field: entry.field, value: entry.options ?? entry.value ?? "" })),
+          ...(output?.clear ?? []).map((entry) => ({ op: "clear", field: entry.field })),
+        ];
+        if (output?.turn === "this_form" && ops.length > 0) input.formEditTool.onToolUse({ ops });
+      }
+    }
     return said.answer ?? ANSWER;
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
@@ -572,6 +602,9 @@ afterEach(() => {
   setScope(undefined);
   setRole(undefined);
   said.answer = null;
+  editTool.input = null;
+  editTool.offered = 0;
+  editTool.lastData = null;
   draftAsked.length = 0;
 });
 
@@ -598,6 +631,10 @@ function context(): ReplayContext {
       state.slotsRead = slots;
       state.readerEmployee = readerEmployee;
     },
+    modelCallsEditTool: (input) => {
+      editTool.input = input;
+    },
+    editToolOffers: () => ({ offered: editTool.offered, lastData: editTool.lastData }),
     patchWrites: (outputs) => {
       patchScript.outputs = [...outputs];
       patchScript.calls = 0;

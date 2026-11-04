@@ -246,7 +246,14 @@ vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
 const FLAG = "FORM_EDIT_SINGLE_WRITER_ENABLED";
 const STEP_B = ["FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED"] as const;
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn];
-const TOUCHED = [...new Set([FLAG, ...STEP_B, ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
+/*
+ * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3) is pinned off here like the Step B
+ * flags: this file is about the single writer alone, and the edit tool makes
+ * the answering call ahead of the old chain (its own tests:
+ * form-edit-tool-in-stream-*.test.ts). Classification, 4 Nov 2026: the
+ * control's model count read the shell's tool flag.
+ */
+const TOUCHED = [...new Set([FLAG, ...STEP_B, "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
 const saved = new Map<string, string | undefined>();
 
 beforeAll(() => {

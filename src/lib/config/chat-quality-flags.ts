@@ -2362,3 +2362,20 @@ export function formReplyFromDiffEnabled(): boolean {
 export function formEditSingleWriterEnabled(): boolean {
   return envFlag("FORM_EDIT_SINGLE_WRITER_ENABLED");
 }
+
+/**
+ * The edit tool in the main call (Step 3, 4 Nov 2026; ported from Ask
+ * Bubbles, same flag in both apps): with a draft form open and a turn that is
+ * not a question, a correction or a policy change, the answering call is
+ * offered one tool, `edit_form`, with the open form as JSON in one extra data
+ * block. A tool call is written through `writeFormEdits` (path "tool", all or
+ * nothing) and the reply is the saved diff; the model's text is not shown. No
+ * call, a refusal or nothing changed: the turn goes to the redraft, the copy
+ * and the revision as before. One model call, no tool result round trip. See
+ * `forms/form-edit-tool.ts`. Needs FORM_EDIT_SINGLE_WRITER_ENABLED too: off
+ * unless both are on. Off, the main request is byte for byte as before and the
+ * Step B patch turn runs as it did.
+ */
+export function formEditToolInStreamEnabled(): boolean {
+  return envFlag("FORM_EDIT_TOOL_IN_STREAM_ENABLED") && formEditSingleWriterEnabled();
+}

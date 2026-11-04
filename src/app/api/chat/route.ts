@@ -34,6 +34,7 @@ import {
   chatResponseStreamEnabled,
   formPatchReducerEnabled,
   formReplyFromDiffEnabled,
+  formEditToolInStreamEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import {
@@ -420,13 +421,68 @@ async function postChat(request: Request) {
        * the manager needs, not one field revised in place.
        */
       /*
+       * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3, ported from Ask Bubbles
+       * c5534279): with a draft open and a turn that is not a question, a
+       * correction, a name fix or a policy change, the ordinary answering call
+       * is made HERE, offered the `edit_form` tool. A tool edit that was written
+       * is this turn's reply (the saved diff), in the redraft's place so no
+       * path below runs; otherwise the paths below run as before and, if none
+       * answers, this call's answer is the answer. One model call: nothing is
+       * sent back. Off, nothing here runs. See `lib/forms/form-edit-tool.ts`.
+       */
+      const chatActor = {
+        role: context.identity.role,
+        scope: context.identity.scope,
+        subject: context.identity.subject,
+        verified: context.identity.verified,
+      };
+      const formEditTool =
+        formEditToolInStreamEnabled() && !correction && !nameFix && !policyChange && parsed.activeFormInstanceId
+          ? await (await import("@/lib/forms/form-edit-tool")).prepareFormEditTool({
+              request,
+              instanceId: parsed.activeFormInstanceId,
+              question: parsed.question,
+              history: parsed.history,
+              today: parsed.context.todayIso,
+              /*
+               * The existing question reading, decided by code: an ask to act on
+               * the form ("can you change …?", "is it possible to change …?") is
+               * an edit request, never a question. With QUESTION_NOT_FORM off it
+               * is still never offered on a question.
+               */
+              gate: (await import("@/lib/ai/question-not-form")).readQuestion(parsed.question, parsed.history, { asksToActAnyAction: true }),
+              scope: context.identity.scope,
+            })
+          : null;
+      /*
+       * A failed main call (a model or configuration error) is no offer: the
+       * paths below answer the turn as with the flag off, and the last
+       * fallback makes its own call (classification fix, 4 Nov 2026).
+       */
+      const toolMain = formEditTool?.turn.offer
+        ? await answerQuestion(
+            {
+              ...parsed,
+              openForm: await (await import("@/lib/forms/open-form-summary")).describeOpenForm(request, parsed.activeFormInstanceId!),
+              formEditTool: formEditTool.turn,
+            },
+            chatActor,
+            { memoryOwnerId: context.identity.subject },
+          ).catch(() => {
+            formEditTool.turn.failed();
+            return null;
+          })
+        : null;
+      const toolEdit = formEditTool?.edited() ?? null;
+      /*
        * FORM_PATCH_REDUCER_ENABLED: the turn on the open draft, read once as a
        * patch and merged by code; the reply is the realized diff. Null — the
        * paths below run as before — for a turn not about this form, a blank
        * Corrective Action Form, or any fallback. See `lib/forms/form-patch-turn.ts`.
+       * FORM_EDIT_TOOL_IN_STREAM_ENABLED: skipped; the tool reads the turn instead.
        */
       const patchTurn =
-        formPatchReducerEnabled() && !correction && !askedQuestion && !policyChange && parsed.activeFormInstanceId
+        formPatchReducerEnabled() && !formEditToolInStreamEnabled() && !correction && !askedQuestion && !policyChange && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/form-patch-turn")).patchActiveForm({
               request,
               instanceId: parsed.activeFormInstanceId,
@@ -435,7 +491,7 @@ async function postChat(request: Request) {
               today: parsed.context.todayIso,
             })
           : null;
-      const redraft = patchTurn ?? (
+      const redraft = toolEdit ?? patchTurn ?? (
         !correction && !askedQuestion && !policyChange && parsed.activeFormInstanceId
           ? await (await import("@/lib/forms/chat-redraft")).redraftActiveForm({
               request,
@@ -573,8 +629,12 @@ async function postChat(request: Request) {
         sameCopy ??
         revision ??
         reopened ??
+        // FORM_EDIT_TOOL_IN_STREAM_ENABLED: the tool was called and wrote nothing — said so, never the model's text.
+        (formEditTool?.calledWithoutEdit() ? (await import("@/lib/forms/form-edit-tool")).nothingChangedAnswer() : null) ??
+        toolMain ??
         (await answerQuestion(
-          { ...parsed, openForm },
+          // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a turn the tool was not offered on carries only its trace (and a failed main call's fallback, no offer).
+          { ...parsed, openForm, ...(formEditTool && !formEditTool.turn.offer ? { formEditTool: formEditTool.turn } : {}) },
           {
             role: context.identity.role,
             scope: context.identity.scope,
@@ -601,6 +661,7 @@ async function postChat(request: Request) {
         formReplyFromDiffEnabled() &&
         !draftAnswer &&
         !patchTurn &&
+        !toolEdit &&
         [correction, policyChange, redraft, sameCopy, revision].includes(answer) &&
         answer.formUpdate?.instanceId === formBefore.instanceId
       ) {

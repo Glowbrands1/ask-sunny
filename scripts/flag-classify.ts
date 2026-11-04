@@ -3,7 +3,11 @@
  * WHICH TESTS A FLAG CHANGES, AND WHY (QA CONDITION 6; dev only, no network)
  * ============================================================================
  *
- *   node scripts/flag-classify.ts [--flag NAME] [--runs 3] [--keep] [path ...]
+ *   node scripts/flag-classify.ts [--flag NAME] [--with NAME,...] [--runs 3] [--keep] [path ...]
+ *
+ * `--with` names flags turned on in BOTH modes — the flags the flag under
+ * test needs (FORM_EDIT_TOOL_IN_STREAM_ENABLED needs
+ * FORM_EDIT_SINGLE_WRITER_ENABLED), so only the flag's own change is diffed.
  *
  * Runs `vitest run --reporter=json` RUNS times with the flag off and RUNS
  * times with it on, each as a child process with a clean environment (only
@@ -63,8 +67,9 @@ function argument(name: string): string | null {
 
 const FLAG = argument("--flag") ?? "FORM_EDIT_SINGLE_WRITER_ENABLED";
 const RUNS = Number(argument("--runs") ?? "3");
+const WITH = (argument("--with") ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
 const KEEP = process.argv.includes("--keep");
-const PATHS = process.argv.slice(2).filter((value, index, all) => !value.startsWith("--") && !["--flag", "--runs"].includes(all[index - 1] ?? ""));
+const PATHS = process.argv.slice(2).filter((value, index, all) => !value.startsWith("--") && !["--flag", "--runs", "--with"].includes(all[index - 1] ?? ""));
 const DOCS = join("docs", "flag-classification");
 const CLASSES = join(DOCS, `${FLAG}.classes.json`);
 const OUT = join(DOCS, `${FLAG}.md`);
@@ -80,7 +85,9 @@ function run(mode: "off" | "on", index: number, scratch: string): { statuses: Ma
     LANG: process.env.LANG ?? "C.UTF-8",
     NODE_ENV: "test",
     REPLAY_RECORD: replay,
-    ...(mode === "on" ? { [FLAG]: "true", FLAG_CLASSIFY_ON: FLAG } : {}),
+    ...Object.fromEntries(WITH.map((name) => [name, "true"])),
+    ...(WITH.length > 0 ? { FLAG_CLASSIFY_ON: WITH.join(",") } : {}),
+    ...(mode === "on" ? { [FLAG]: "true", FLAG_CLASSIFY_ON: [...WITH, FLAG].join(",") } : {}),
   };
   const started = Date.now();
   const child = spawnSync(
@@ -207,7 +214,7 @@ function main(): void {
   const lines = [
     `# ${FLAG}: which tests it changes, and why`,
     "",
-    `Written by \`node scripts/flag-classify.ts\` (${RUNS} runs off, ${RUNS} on, each a child process with a clean env). Paths: ${PATHS.length > 0 ? PATHS.map((path) => `\`${path}\``).join(", ") : "the whole suite"}. Classifications are kept in \`${CLASSES}\`.`,
+    `Written by \`node scripts/flag-classify.ts\` (${RUNS} runs off, ${RUNS} on, each a child process with a clean env${WITH.length > 0 ? `; on in both: ${WITH.map((name) => `\`${name}\``).join(", ")}` : ""}). Paths: ${PATHS.length > 0 ? PATHS.map((path) => `\`${path}\``).join(", ") : "the whole suite"}. Classifications are kept in \`${CLASSES}\`.`,
     "",
     `Tests run: ${ids.length}. Changed: ${rows.length}. ${(["INTENDED", "INTENDED-HARNESS", "REGRESSION", "FLAKY", "UNCLASSIFIED"] as const).map((category) => `${category} ${counts.get(category) ?? 0}`).join(", ")}.`,
     "",

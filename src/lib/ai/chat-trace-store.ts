@@ -33,6 +33,8 @@ export interface ChatTraceDraft {
   succeeded: boolean | null;
   /** Slots after this turn. Absent when the turn did not settle a form. */
   slots?: Record<string, unknown> | null;
+  /** FORM_EDIT_TOOL_IN_STREAM_ENABLED: `slots.form_edit` — keys and reasons only. Absent when the flag is off. */
+  formEdit?: Record<string, unknown>;
   /**
    * The form extraction for this turn, when FORM_FULL_REMAP_ENABLED is on.
    * `slots` is the same record the card was filled from.

@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { CA_CHAIN, DRY_SCRIPTS, LIVE_FAILURE_SCENARIOS, LIVE_ROSTER, NAME_SCENARIOS, type LiveScenario } from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
+import { CA_CHAIN, DRY_SCRIPTS, GATE_SCENARIOS, LIVE_FAILURE_SCENARIOS, LIVE_ROSTER, NAME_SCENARIOS, type LiveScenario } from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -41,15 +41,17 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * evals/results/live-regressions.dry.{json,md}. LIVE=1 wins if both are set.
  *
  * MODES (env, read only with LIVE=1):
- *   LIVE_SCENARIOS=all|failures|names|none  which scenarios (default all: the
- *                          live failures first, then the 40 name runs).
+ *   LIVE_SCENARIOS=all|failures|names|gate|none  which scenarios (default all:
+ *                          the live failures, the 40 name runs, then the 8
+ *                          edit-tool gate wordings on an open Corrective Action).
  *   LIVE_CREATE_REPEAT=1   also: the same Corrective Action (T1, then Create)
  *                          5 times with Step B's flags OFF and 5 times ON;
  *                          counts the saved Observations that lose the
  *                          surname (do not contain "Jane Doe"). Runs first.
- *   LIVE_NEW_PATH=1        also run each scenario on the new path. PLACEHOLDER:
- *                          step 3's FORM_EDIT_TOOL_IN_STREAM_ENABLED is not
- *                          read by the app yet, so today it equals the old path.
+ *   LIVE_NEW_PATH=1        also run each scenario on the new path: step 3's
+ *                          FORM_EDIT_TOOL_IN_STREAM_ENABLED with the single
+ *                          writer it needs. Each run records how many answering
+ *                          calls were offered `edit_form`.
  *
  * SPEND: every model call — the Anthropic client (`getAnthropicClient`, which
  * `callClaude*`, the drafting and the revision calls use) and the AI SDK
@@ -88,6 +90,8 @@ const live = vi.hoisted(() => {
     CAP: 100,
     BASE_URL: "https://api.anthropic.com",
     calls: 0,
+    /** Answering calls whose request offered the `edit_form` tool (step 3). */
+    offered: 0,
     /** The calls by kind: draft (write_form_fields), revision (revise_form_fields), answer (text), tool (any other tool), patch (AI SDK). */
     kinds: { draft: 0, revision: 0, answer: 0, tool: 0, patch: 0 } as Record<"draft" | "revision" | "answer" | "tool" | "patch", number>,
     /** LIVE_DRY=1: what the stand-in drafting and revision models write next. */
@@ -147,15 +151,20 @@ vi.mock("@/lib/ai/anthropic", async () => {
     return { role: "assistant", model: live.HAIKU, stop_reason: "end_turn", content: [{ type: "text", text: kind === "answer" ? "A grounded answer." : "" }], usage };
   };
   const dry = () => process.env.LIVE !== "1" && process.env.LIVE_DRY === "1";
+  const noteOffer = (body: unknown) => {
+    if ((body as { tools?: { name?: string }[] }).tools?.some((tool) => tool.name === "edit_form")) live.offered += 1;
+  };
   const messages = {
     create: async (body: Body, options?: Options) => {
       live.take(kindOf(body));
+      noteOffer(body);
       const response = dry() ? standIn(body) : await real().messages.create({ ...body, model: live.HAIKU } as Body, { ...options, maxRetries: 0 });
       live.add((response as { usage?: Parameters<typeof live.add>[0] }).usage);
       return response;
     },
     stream: (body: Parameters<InstanceType<typeof Anthropic>["messages"]["stream"]>[0], options?: Options) => {
       live.take(kindOf(body));
+      noteOffer(body);
       if (dry()) {
         const message = standIn(body);
         live.add(message.usage);
@@ -367,8 +376,8 @@ vi.setConfig({ hookTimeout: 120_000, testTimeout: 1_800_000 });
 const PRODUCTION_FLAGS = JSON.parse(readFileSync("src/config/production-flags.json", "utf8")) as { on: string[]; assumedOn?: string[]; off?: string[] };
 const PRODUCTION = [...new Set([...PRODUCTION_FLAGS.on, ...(PRODUCTION_FLAGS.assumedOn ?? [])])];
 const STEP_B_FLAGS = ["FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED"];
-/** PLACEHOLDER for step 3 (FORM_EDIT_TOOL_IN_STREAM): not read by the app yet. */
-const NEW_PATH_FLAGS = ["FORM_EDIT_TOOL_IN_STREAM_ENABLED"];
+/** Step 3: the edit tool in the main call, with the single writer it needs. */
+const NEW_PATH_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"];
 
 function setFlags(extra: readonly string[]): () => void {
   const names = [...PRODUCTION, ...(PRODUCTION_FLAGS.off ?? []), ...STEP_B_FLAGS, ...NEW_PATH_FLAGS];
@@ -478,6 +487,8 @@ interface PathRun {
   readonly fieldValue: string | null;
   readonly ms: number;
   readonly calls: number;
+  /** Answering calls offered `edit_form` during this scenario. */
+  readonly offered: number;
   /** The calls by kind during this scenario. */
   readonly kinds: Record<string, number>;
   /** The form Create made (null: none). */
@@ -503,6 +514,7 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${TODAY}T15:30:00Z`));
   const callsBefore = live.calls;
+  const offeredBefore = live.offered;
   const kindsBefore = { ...live.kinds };
   const script = DRY_SCRIPTS[scenario.id];
   live.dry.draft = script?.draft ?? {};
@@ -582,6 +594,7 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
     fieldValue: scenario.field ? (saved[scenario.field] ?? null) : null,
     ms: Math.round(performance.now() - started),
     calls: live.calls - callsBefore,
+    offered: live.offered - offeredBefore,
     kinds: Object.fromEntries(Object.entries(live.kinds).map(([kind, count]) => [kind, count - kindsBefore[kind as keyof typeof kindsBefore]])),
     instanceId,
     saved,
@@ -608,7 +621,8 @@ function pickScenarios(): readonly LiveScenario[] {
   if (which === "none") return [];
   if (which === "failures") return LIVE_FAILURE_SCENARIOS;
   if (which === "names") return NAME_SCENARIOS;
-  return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS];
+  if (which === "gate") return GATE_SCENARIOS;
+  return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS, ...GATE_SCENARIOS];
 }
 
 const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 160);
@@ -644,7 +658,7 @@ function writeResults(): void {
     const last = oldPath.turns.at(-1);
     const changed = last ? Object.entries(last.diff).map(([key, value]) => `${key}: ${value.after}`).join("; ") : "";
     const card = oldPath.card ? `${oldPath.card.templateKey ?? "?"} / ${oldPath.card.employeeName ?? "—"}` : "—";
-    const fresh = newPath ? cell(newPath.error ?? newPath.reply) : "not available yet";
+    const fresh = newPath ? `${cell(newPath.error ?? newPath.reply)} (calls ${newPath.calls}: answer ${newPath.kinds.answer}, revision ${newPath.kinds.revision}; offered edit_form ${newPath.offered})` : "not run (LIVE_NEW_PATH=1)";
     const created = oldPath.instanceId ? "yes" : "no";
     const editTurns = oldPath.turns.filter((turn) => turn.said !== "(Create)").slice(1);
     const edited = oldPath.instanceId ? `${editTurns.filter((turn) => Object.keys(turn.diff).length > 0).length}/${editTurns.length}` : "—";
@@ -712,6 +726,12 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
       expect(oldPath.error, `${id}: ${oldPath.error}`).toBeNull();
       // A turn the app answers in code (the street address, the Jane Doe card) makes no model call.
       if (!(id in DRY_SCRIPTS)) continue;
+      // The gate scenarios: a draft, and no tool offered on the old path; their own checks below.
+      if (id.startsWith("gate-")) {
+        expect(oldPath.instanceId, `${id}: Create made no form`).not.toBeNull();
+        expect(oldPath.offered, `${id}: edit_form offered with the flag off`).toBe(0);
+        continue;
+      }
       expect(oldPath.calls, `${id}: the counter counted no stand-in call`).toBeGreaterThan(0);
       expect(oldPath.instanceId, `${id}: Create made no form`).not.toBeNull();
       expect(oldPath.kinds.draft, `${id}: Create never reached the drafting call`).toBeGreaterThan(0);
@@ -720,7 +740,20 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
       const editTurns = oldPath.turns.filter((turn) => turn.said !== "(Create)").slice(1);
       expect(editTurns.some((turn) => Object.keys(turn.diff).length > 0), `${id}: no edit turn changed the saved form`).toBe(true);
     }
-    expect(live.calls, "the counter is the sum of the scenarios' calls").toBe(results.reduce((sum, run) => sum + run.oldPath.calls, 0) + repeatCalls.value);
+    /*
+     * Step 3's gate, on the new path: an edit asked as a question reaches
+     * edit_form (its last turn's main call offered it); a question does not.
+     * The stand-in never calls the tool, so each edit is handed to the old chain.
+     */
+    for (const { id, newPath } of results) {
+      if (!newPath || !id.startsWith("gate-")) continue;
+      expect(newPath.error, `${id}: ${newPath.error}`).toBeNull();
+      if (id.startsWith("gate-edit-")) expect(newPath.offered, `${id}: edit_form was not offered`).toBe(1);
+      else expect(newPath.offered, `${id}: edit_form offered on a question`).toBe(0);
+    }
+    expect(live.calls, "the counter is the sum of the scenarios' calls").toBe(
+      results.reduce((sum, run) => sum + run.oldPath.calls + (run.newPath?.calls ?? 0), 0) + repeatCalls.value,
+    );
   });
 });
 
