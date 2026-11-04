@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { caSalesPolicyPeople } from "@/app/api/chat/replay-pack/nov4-ca-sales-policy-cases";
 
@@ -13,25 +13,9 @@ import { CA_SALES_POLICY_RULE, withSalesOffense } from "./ca-sales-policy";
  * of Conduct. Every name here is invented (the repository is public).
  */
 
-/*
- * THE CHAT GLOSSARY IS NOT ON MAIN YET (PR #506): `ca-sales-glossary.ts`
- * answers false for every word. `glossaryMerged` stands in for #506's table
- * in the one test that shows the MSB reading once it merges; everywhere else
- * the seam answers as it does on main.
- */
-const glossary = vi.hoisted(() => ({ merged: false }));
-vi.mock("./ca-sales-glossary", async (importOriginal) => {
-  const real = await importOriginal<typeof import("./ca-sales-glossary")>();
-  return {
-    foldsToChatGlossaryTerm: (candidate: string | null | undefined) =>
-      glossary.merged ? (candidate ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "") === "msb" : real.foldsToChatGlossaryTerm(candidate),
-  };
-});
-
 const FLAG = "CA_SALES_POLICY_ENABLED";
 const saved = process.env[FLAG];
 afterEach(() => {
-  glossary.merged = false;
   if (saved === undefined) delete process.env[FLAG];
   else process.env[FLAG] = saved;
 });
@@ -53,9 +37,8 @@ describe("CA_SALES_POLICY_ENABLED off: the reading and the card line are as on m
     expect(caPolicyProposalLine(reading) ?? "").not.toMatch(/Must See Behaviors|sales performance against goals/);
   });
 
-  it("off, even with the glossary merged, the MSB request suggests no policy", () => {
+  it("the MSB request suggests no policy (fails before the fix with the flag on, see below)", () => {
     off();
-    glossary.merged = true;
     expect(readCaPolicy(MSB).suggestion).toBeNull();
     expect(statedOffenseKeys(readCaPolicy(MSB), MSB)).toBeNull();
   });
@@ -68,20 +51,12 @@ describe("CA_SALES_POLICY_ENABLED off: the reading and the card line are as on m
 });
 
 describe("CA_SALES_POLICY_ENABLED on", () => {
-  it("(a) MSB, a chat glossary term, reads as the Standards of Conduct once Ask Sunny's glossary (#506) is on main", () => {
+  it("(a) MSB, a chat glossary term, reads as the Standards of Conduct", () => {
     on();
-    glossary.merged = true;
     const reading = readCaPolicy(MSB);
     expect(reading).toMatchObject({ stated: null, suggestion: "standards_of_conduct", source: "msb", ambiguous: null });
     expect(statedOffenseKeys(reading, MSB)).toEqual(["standards_of_conduct"]);
     expect(caPolicyProposalLine(reading)).toMatch(/^\*\*Policy:\*\* Standards of Conduct — Must See Behaviors \(MSB\)/);
-  });
-
-  it("(a) until #506 merges, MSB is no glossary term here: the reading is as with the flag off", () => {
-    on();
-    const reading = readCaPolicy(MSB);
-    off();
-    expect(reading).toEqual(readCaPolicy(MSB));
   });
 
   it("(b) low sales / not hitting goals (the Under Performance reading) reads as the Standards of Conduct", () => {

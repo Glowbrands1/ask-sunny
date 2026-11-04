@@ -78,14 +78,7 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
     title: "a CA for MSB (Must See Behaviors) cites the Standards of Conduct, heading and page",
     report: `${REPORT}: (a) a CA for MSB`,
     status: { open: "no policy is cited for an MSB corrective action" },
-    /*
-     * NO fixFlags YET IN ASK SUNNY (fixed with the flag in Ask Bubbles). MSB is
-     * read from the approved chat glossary, and Ask Sunny's
-     * (`src/lib/ai/chat-glossary.ts`, PR #506) is not on main: until it merges
-     * `ca-sales-glossary.ts` reads no term, so the card cites no policy. With
-     * #506's table in its place this case holds with CA_SALES_POLICY_ENABLED
-     * on (checked when ported); add `fixFlags: [FLAG]` back when wiring it.
-     */
+    fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("I need a corrective action for Saffira Tolleston for MSB");

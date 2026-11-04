@@ -1,7 +1,7 @@
+import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 import { caSalesPolicyEnabled, formEditDateRulesEnabled, policyCleaningIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
-import { foldsToChatGlossaryTerm } from "./ca-sales-glossary";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
@@ -406,8 +406,8 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
  * NO NEW WORDS ARE MATCHED HERE. "Sales performance" is the reading this file
  * already makes for the Under Performance offense type (`TARGET`, or the
  * manager naming Under Performance); "MSB" is a term of the approved chat
- * glossary, read through `foldsToChatGlossaryTerm` — a no-op until Ask Sunny's
- * chat glossary (PR #506) is on main, see `ca-sales-glossary.ts`.
+ * glossary (`ai/chat-glossary.ts`, read through `foldsToGlossaryTerm`), not a
+ * list kept here.
  *
  * WHAT IT LEAVES ALONE. A policy the manager named other than Under
  * Performance; an account that reads as attendance or a missed meeting. Off,
@@ -419,7 +419,7 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
   if (reading.missedEvent !== null) return reading;
   const sentences = statements(normalize(rawText));
   const msb = sentences.some((sentence) =>
-    sentence.split(/[^a-z0-9.]+/).some((word) => foldsToChatGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
+    sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
   );
   const target = reading.stated === "under_performance" || sentences.some((s) => TARGET.test(s));
   if (!msb && !target) return reading;

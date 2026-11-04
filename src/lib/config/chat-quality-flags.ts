@@ -2403,9 +2403,9 @@ export function chatGlossaryEnabled(): boolean {
  * glossary (MSB, Must See Behaviors) is read as the Standards of Conduct: the
  * card says so, the draft ticks that box and Direct policy cites the manual's
  * section by heading and page. The drafting model is also told so, in one
- * added line. Ask Sunny's chat glossary is not on main yet (PR #506), so the
- * glossary part reads no term until it merges (`forms/ca-sales-glossary.ts`).
- * Off, every reading, card line, prompt and draft is byte for byte as before.
+ * added line. The glossary is `ai/chat-glossary.ts`, read through
+ * `foldsToGlossaryTerm` (which ignores CHAT_GLOSSARY_ENABLED, as in Ask
+ * Bubbles). Off, every reading, card line, prompt and draft is byte for byte as before.
  * See `forms/ca-sales-policy.ts`.
  */
 export function caSalesPolicyEnabled(): boolean {

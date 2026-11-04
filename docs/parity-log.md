@@ -1536,21 +1536,3 @@ Action's "Policy violated" is named on its line — "Verbal corrective action
 (Attendance) — signed 11/02/2026" — in the chat read-back and on the drafted
 form alike. Coaching lines are unchanged (a Coaching Form has no policy
 violated). Same flag and mechanism in Ask Bubbles.
-
-## 4 Nov 2026: sales and MSB corrective actions cite the Standards of Conduct — ported from Ask Bubbles (6c825944, #422) (CA_SALES_POLICY_ENABLED, default off)
-
-Pau's client request B1, 4 Nov 2026. On: a Corrective Action whose account
-reads as the Under Performance offense type (`TARGET`, or Under Performance
-named) or uses a term of the approved chat glossary (MSB) is read as the
-Standards of Conduct; the card says so, the draft ticks that box and Direct
-policy cites the manual's section by heading and page; the drafting model's
-Under Performance tick becomes the Standards of Conduct box; one added prompt
-line. Same mechanism and flag as Ask Bubbles; no word list. Ask Sunny
-difference: the chat glossary (`src/lib/ai/chat-glossary.ts`, PR #506) is not
-on main, and `src/lib/ai/glossary.ts` here is the house form shorthands, so
-the glossary read goes through `src/lib/forms/ca-sales-glossary.ts`, which
-reads no term until #506 merges. Replay cases in
-`nov4-ca-sales-policy-cases.ts`: the MSB case stays OPEN here with no
-fixFlags until #506 merges (fixed with the flag in Ask Bubbles); low sales and
-the wrong-items card stay OPEN for Pau as in Ask Bubbles; the wrong-items
-draft and both negative controls hold with the flag on.

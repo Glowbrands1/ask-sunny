@@ -14,8 +14,6 @@ import { STANDARDS_OF_CONDUCT, withStatedOffense } from "./ca-policy";
  *   THE READING (`ca-policy.ts`, `withSalesPolicy`): an account that reads as
  *     the Under Performance offense type, or uses a chat glossary term, is read
  *     as the Standards of Conduct; the card says so and the draft ticks it.
- *     The glossary part is a no-op until Ask Sunny's chat glossary (PR #506)
- *     is on main: see `ca-sales-glossary.ts`.
  *   THE OFFENSE TYPE (`withSalesOffense`, here): the drafting model's Under
  *     Performance tick is the Standards of Conduct box, where nothing else
  *     settled the box first.
