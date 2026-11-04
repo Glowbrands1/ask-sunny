@@ -35,6 +35,7 @@ import {
   formPatchReducerEnabled,
   formReplyFromDiffEnabled,
   formEditToolInStreamEnabled,
+  formEditNoopGuardEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { streamWhenSlow } from "@/lib/api/streamed-response";
 import {
@@ -67,7 +68,7 @@ import { mayAskToReopen } from "@/lib/forms/reopen-cue";
 import { parseChatReportContext } from "@/lib/reporting/read/chat-report-context";
 import { businessToday } from "@/lib/business-date";
 import { isClientConversationId } from "@/lib/chat/client-ids";
-import type { AskRequest } from "@/lib/ai/types";
+import type { AskRequest, AskResponse } from "@/lib/ai/types";
 import type { AnswerMode, ChatMessage } from "@/types";
 
 /**
@@ -455,6 +456,16 @@ async function postChat(request: Request) {
             })
           : null;
       /*
+       * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): on a turn the edit tool is
+       * offered, the open form as saved before the tool or the old chain
+       * writes, so the reply about it is the saved diff. See
+       * `lib/forms/form-noop-reply.ts`.
+       */
+      const noopBefore =
+        formEditNoopGuardEnabled() && formEditTool?.turn.offer
+          ? await (await import("@/lib/forms/form-noop-reply")).formBeforeTurn(parsed.activeFormInstanceId!, request)
+          : null;
+      /*
        * A failed main call (a model or configuration error) is no offer: the
        * paths below answer the turn as with the flag off, and the last
        * fallback makes its own call (classification fix, 4 Nov 2026).
@@ -619,6 +630,7 @@ async function postChat(request: Request) {
               continuingTemplateKey: parsed.continueProposalTemplateKey,
             })
           : null;
+      let toolNothing: Awaited<ReturnType<typeof answerQuestion>> | null = null;
       answer =
         draftAnswer ??
         correction ??
@@ -630,7 +642,7 @@ async function postChat(request: Request) {
         revision ??
         reopened ??
         // FORM_EDIT_TOOL_IN_STREAM_ENABLED: the tool was called and wrote nothing — said so, never the model's text.
-        (formEditTool?.calledWithoutEdit() ? (await import("@/lib/forms/form-edit-tool")).nothingChangedAnswer() : null) ??
+        (toolNothing = formEditTool?.calledWithoutEdit() ? (await import("@/lib/forms/form-edit-tool")).nothingChangedAnswer() : null) ??
         toolMain ??
         (await answerQuestion(
           // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a turn the tool was not offered on carries only its trace (and a failed main call's fallback, no offer).
@@ -647,6 +659,24 @@ async function postChat(request: Request) {
            */
           { memoryOwnerId: context.identity.subject },
         ));
+      /*
+       * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): the tool was offered and handed
+       * the turn off (not called, refused, or nothing to change) — the old
+       * chain's reply about the form is the saved diff, one "Updated:" line
+       * per real change, or "I didn't change anything on the form. Tell me
+       * which part to change and what it should say." A copy that wrote
+       * nothing and claims nothing (its "replace them?") is kept. The tool's
+       * own edit is already the diff (`form-edit-tool.ts`).
+       */
+      const handedOff: AskResponse = answer;
+      if (noopBefore && !toolEdit && [redraft, sameCopy, revision, toolNothing].some((path) => path !== null && path === handedOff)) {
+        answer = await (await import("@/lib/forms/form-noop-reply")).replyFromSavedDiff({
+          request,
+          before: noopBefore,
+          answer: handedOff,
+          keepUnchanged: handedOff === sameCopy && !handedOff.formUpdate,
+        });
+      }
       /*
        * FORM_REPLY_FROM_DIFF_ENABLED: a correction, policy, redraft, copy or
        * revision reply that claims a change (`formUpdate`) is checked against

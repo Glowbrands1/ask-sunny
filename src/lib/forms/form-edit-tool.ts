@@ -2,11 +2,11 @@ import "server-only";
 
 import { editFormSchema, editFormTool } from "@/lib/ai/form-tool-schema";
 import type { AskResponse, FormEditToolTurn } from "@/lib/ai/types";
-import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditNoopGuardEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 import type { AccessScope, ChatMessage } from "@/types";
 
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
-import { NOTHING_CHANGED, replyFromDiff } from "./form-diff-reply";
+import { NOTHING_CHANGED, UNCHANGED_FORM_REPLY, replyFromDiff, updatedLines } from "./form-diff-reply";
 import { MANAGER_STATED_KEYS, templateRules } from "./form-reducer-draft";
 import { draftFromRows, type FieldValue } from "./form-reducer";
 import { formLabels } from "./form-snapshot";
@@ -257,7 +257,10 @@ export async function prepareFormEditTool(input: {
         }
         trace.applied = result.changed.map((change) => change.key);
         edited = {
-          content: replyFromDiff({ changed: result.changed }, labels),
+          // FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): "Updated: <label>: <value>" per saved change.
+          content: formEditNoopGuardEnabled()
+            ? updatedLines(result.changed, labels, (await import("./form-noop-reply")).optionLabelsOf(loaded))
+            : replyFromDiff({ changed: result.changed }, labels),
           citations: [],
           coverage: "not_applicable",
           recommendedVideoIds: [],
@@ -301,5 +304,6 @@ export async function prepareFormEditTool(input: {
 
 /** The tool was called and wrote nothing, and no old path answered: said plainly, never "Updated". */
 export function nothingChangedAnswer(): AskResponse {
-  return { content: NOTHING_CHANGED, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
+  // FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): the plain reply says what to do next.
+  return { content: formEditNoopGuardEnabled() ? UNCHANGED_FORM_REPLY : NOTHING_CHANGED, citations: [], coverage: "not_applicable", recommendedVideoIds: [] };
 }

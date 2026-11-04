@@ -3,6 +3,7 @@ import "server-only";
 import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
+import { formEditNoopGuardEnabled } from "@/lib/config/chat-quality-flags";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
@@ -80,6 +81,10 @@ import { copiedContent } from "./same-form-copy";
  *               line unless `typedExempt`, never blanking one.
  *   revision    (2b; `writeRevisionEdits`) draft mode over the AI fields, the
  *               protected values checked on every rewrite.
+ *
+ * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): the tool, patch, revision and
+ * correction presets also refuse an op that changes nothing (`same_value`)
+ * and one that copies the latest message (`copies_message`).
  *
  * Every preset checks the PROTECTED VALUES (QA condition 2) on a whole-text
  * rewrite, and the write-in rule. Ops marked `derived` (what code computes
@@ -236,8 +241,35 @@ export function protectedValuesFor(loaded: LoadedInstance, latest: string, today
   };
 }
 
+/**
+ * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): on the paths that write the manager's
+ * edit — the tool, the patch turn, the revision and the correction (a reopen
+ * is a correction; there only when nothing it states changes) — an op that
+ * changes nothing is refused as `same_value`,
+ * and a value that holds her whole latest message as `copies_message`. Both
+ * hand the turn off, all or nothing. Code's own values (`derived`) and the
+ * draft paths are not checked. Off: the rules as before.
+ */
+const NOOP_GUARDED_PATHS: ReadonlySet<FormEditPath> = new Set(["tool", "patch", "revision", "correction", "reopen"]);
+
 /** The reducer's rules for the path. */
 export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
+  const preset = basePresetRules(loaded, ops, rules);
+  if (!NOOP_GUARDED_PATHS.has(rules.path) || !formEditNoopGuardEnabled()) return preset;
+  /*
+   * A correction states facts its readers read, a restated one beside the
+   * changed one ("change the payroll deduction to $5.00" restates the Yes):
+   * same_value only when nothing it states changes, and never when the
+   * Action Plan follows it (the same Yes with a new amount moves the plan).
+   * Classification, 4 Nov 2026: refusing each restated value lost a real
+   * payroll correction (qa-oct21-audit, Issue 4).
+   */
+  const correction = rules.path === "correction" || rules.path === "reopen";
+  const refuseSameValue = !correction ? true : (rules.syncPlan?.after.length ?? 0) > 0 ? false : "whole_patch";
+  return { ...preset, patchRules: { ...preset.patchRules, refuseSameValue, copiesMessage: rules.latest ?? "" } };
+}
+
+function basePresetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], rules: FormEditRules): { patchRules: PatchRules; writable: ReadonlySet<string> } {
   const today = rules.today ?? businessToday();
   const latest = rules.latest ?? "";
   // A draft is written from all of the manager's notes: on a draft path they are what names a value that may change.
