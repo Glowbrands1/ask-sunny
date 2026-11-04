@@ -841,10 +841,16 @@ export const OFF_ROSTER_SCENARIO: CriteriaScenario = {
  * shares the first name.
  */
 
-export function rosterPersonCriterion(person: DirectoryRow): LiveCriterion {
+/**
+ * `metrics`: the message gives a metric shortfall, which with
+ * CA_SALES_POLICY_ENABLED off gets the metric-only answer (no card, no
+ * question) — so the criterion applies only with that flag on.
+ */
+export function rosterPersonCriterion(person: DirectoryRow, metrics = true): LiveCriterion {
   const name = fullName(person);
   return {
     name: "roster-person",
+    ...(metrics ? { applies: (flagsOn: readonly string[]) => flagsOn.includes("CA_SALES_POLICY_ENABLED") } : {}),
     check: (run) => {
       if (sameName(run.card?.employeeName, name)) return null;
       if (run.replies.some((reply) => [...reply.matchAll(/is this for ([^?\n]*)\?/gi)].some((match) => sameName(match[1], name)))) return null;
@@ -871,8 +877,86 @@ export const ROSTER_SHORT_SCENARIOS: readonly CriteriaScenario[] = ROSTER_SHORT_
     steps: [{ say: `I need a corrective action verbal for ${typed(person)}. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.` }],
     criteria,
     expect: {
-      says: `typed "${typed(person)}": no metric shown as a person; a card for ${fullName(person)} or "Is this for ${fullName(person)}?"`,
-      check: (run) => all(...criteria.map((criterion) => criterion.check(run))),
+      says: `typed "${typed(person)}": no metric shown as a person; a card for ${fullName(person)} or "Is this for ${fullName(person)}?" (CA_SALES_POLICY_ENABLED on)`,
+      check: (run) => all(...applicableCriteria(criteria, run.flagsOn ?? []).map((criterion) => criterion.check(run))),
+    },
+  };
+});
+
+/*
+ * QA, 4 NOV 2026, 19:26–19:41 UTC (CA_SALES_POLICY_ENABLED OFF in production):
+ * the tester was thought to have typed Employee R's FULL roster name (8
+ * letters, 4 letters, copied from the staff picker), and production gave
+ *   (A) "Create a Corrective Action for <full name>" → a card with an EMPTY
+ *       employee and "Who is this form for?" (conv_mw2id8ky2do6is8);
+ *   (B) "I need a corrective action for <full name>. This is for Under
+ *       Performance on Club Close % and Spa %." → a card for "Club Close"
+ *       (conv_mw2idhu42wdjlet);
+ *   (P1) Pau's message 1 → a card for "Club Close" (conv_mw2ibcm02l42nya).
+ * The stored messages show the pasted "name" was "Coaching Form" (see the
+ * form-name scenarios below). These stay as controls: an invented Tanning
+ * Consultant of that shape, typed in full, at mgr-1's salon; criteria
+ * no-metric-person and roster-person.
+ */
+export const EMPLOYEE_R_SHAPED = at("lf-marigold-vess", "Marigold", "Vess");
+const EMPLOYEE_R_ROSTER: readonly DirectoryRow[] = [...MANAGER_ROSTER, EMPLOYEE_R_SHAPED];
+
+export const QA_FULL_NAME_SCENARIOS: readonly CriteriaScenario[] = (
+  [
+    ["qa-full-a-alone", `Create a Corrective Action for ${fullName(EMPLOYEE_R_SHAPED)}`],
+    ["qa-full-b-metrics", `I need a corrective action for ${fullName(EMPLOYEE_R_SHAPED)}. This is for Under Performance on Club Close % and Spa %.`],
+    ["qa-full-p1", `I need a corrective action verbal for ${fullName(EMPLOYEE_R_SHAPED)}. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.`],
+  ] as const
+).map(([id, say]) => {
+  const criteria = [NO_METRIC_PERSON, rosterPersonCriterion(EMPLOYEE_R_SHAPED, id !== "qa-full-a-alone")];
+  return {
+    id,
+    roster: EMPLOYEE_R_ROSTER,
+    field: null,
+    steps: [{ say }],
+    criteria,
+    expect: {
+      says: `no metric shown as a person; a card for ${fullName(EMPLOYEE_R_SHAPED)} or "Is this for ${fullName(EMPLOYEE_R_SHAPED)}?"`,
+      check: (run: LiveOutcome) => all(...applicableCriteria(criteria, run.flagsOn ?? []).map((criterion) => criterion.check(run))),
+    },
+  };
+});
+
+/*
+ * The same three production messages as stored: "Coaching Form" where the
+ * person goes. The named form wins (a Coaching Form card) and "Club Close"
+ * became its employee, with CA_SALES off.
+ *
+ *   no-metric-person  as above;
+ *   asks-who          a card with no employee asks "Who is this form for?",
+ *                     and no reply says "I have the employee".
+ */
+const ASKS_WHO_CRITERION: LiveCriterion = {
+  name: "asks-who",
+  check: (run) =>
+    all(
+      run.replies.some((reply) => /I have the employee/i.test(reply)) && "a reply says it has the employee",
+      run.card && !run.card.employeeName && !run.replies.some((reply) => /Who is this (?:\*\*[^*]+\*\* |form )?for\?/.test(reply)) && "a card with no employee does not ask who",
+    ),
+};
+
+export const QA_FORM_NAME_SCENARIOS: readonly CriteriaScenario[] = (
+  [
+    ["qa-form-name-a-alone", "Create a Corrective Action for Coaching Form"],
+    ["qa-form-name-b-metrics", "I need a corrective action for Coaching Form. This is for Under Performance on Club Close % and Spa %."],
+    ["qa-form-name-p1", "I need a corrective action verbal for Coaching Form. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."],
+  ] as const
+).map(([id, say]) => {
+  const criteria = [NO_METRIC_PERSON, ASKS_WHO_CRITERION];
+  return {
+    id,
+    roster: MANAGER_ROSTER,
+    field: null,
+    steps: [{ say }],
+    criteria,
+    expect: {
+      says: "no metric shown as a person or on the card; a card with no employee asks who",
+      check: (run: LiveOutcome) => all(...criteria.map((criterion) => criterion.check(run))),
     },
   };
 });
@@ -907,7 +991,7 @@ const MANAGER_MESSAGE_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.
   };
 });
 
-export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = [...MANAGER_MESSAGE_SCENARIOS, OFF_ROSTER_SCENARIO, ...ROSTER_SHORT_SCENARIOS];
+export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = [...MANAGER_MESSAGE_SCENARIOS, OFF_ROSTER_SCENARIO, ...ROSTER_SHORT_SCENARIOS, ...QA_FULL_NAME_SCENARIOS, ...QA_FORM_NAME_SCENARIOS];
 
 /** The stand-in draft for a manager message's Create (LIVE_DRY=1), with the Under Performance tick the flag turns into the Standards of Conduct. */
 export function managerDryScripts(): Record<string, DryScript> {

@@ -269,4 +269,41 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
       },
     }),
   ),
+  /*
+   * QA, 4 NOV 2026, 19:21–19:41 UTC, production with CA_SALES_POLICY_ENABLED
+   * OFF. The tester's "employee" was a form's name pasted where the person's
+   * goes: the stored messages read "… for Coaching Form. …"
+   * (conv_mw2i2avm22egfhe, conv_mw2ibcm02l42nya, conv_mw2idhu42wdjlet,
+   * conv_mw2id8ky2do6is8). The named form wins (a Coaching Form card), so the
+   * Corrective Action's metric-only answer never runs, and the next
+   * capitalised phrase, "Club Close", became the employee: "Here is what I
+   * would put on a **Coaching Form**. … I have the employee and the salon."
+   * With FORM_NAME_FROM_ROSTER_ENABLED (which no longer needs the sales
+   * policy), "Club Close" is a list item or outside the request slot, never a
+   * candidate, and the card with no employee asks who. Exact wording.
+   */
+  ...(
+    [
+      ["b", "I need a corrective action for Coaching Form. This is for Under Performance on Club Close % and Spa %.", { open: "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"" }],
+      ["p1", say("Coaching Form"), { open: "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"" }],
+      // QA's (A): no metric in the message; production already asks who (the negative control).
+      ["a", "Create a Corrective Action for Coaching Form", "fixed"],
+    ] as const
+  ).map(
+    ([key, text, status]): ReplayCase => ({
+      id: `nov4-qa-form-name-as-person-${key}`,
+      title: `QA 4 Nov (CA_SALES off): "${text.slice(0, 60)}…": no metric is the employee; a card with no employee asks who`,
+      report: `QA, 4 Nov 2026, production with CA_SALES off: "${text}"`,
+      status,
+      fixFlags: [FLAG],
+      async run(t) {
+        const thread = start(t);
+        const reply = await thread.say(text);
+        const card = thread.proposal?.employeeName ?? "";
+        expect(card, `a metric is the card's employee:\n${reply.content}`).not.toMatch(/club close|club average|^under$|ppta|lpsva|spa/i);
+        expect(reply.content, `the reply says it has the employee:\n${reply.content}`).not.toMatch(/I have the employee/i);
+        if (thread.proposal && !card) expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
+      },
+    }),
+  ),
 ];
