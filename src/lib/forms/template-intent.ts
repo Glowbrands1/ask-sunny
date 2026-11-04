@@ -1163,6 +1163,28 @@ function mentionsUnnegated(haystack: string, phrase: string): boolean {
 }
 
 /**
+ * FORM_NAME_FROM_ROSTER_ENABLED (Pau, via QA, 4 Nov 2026): the CORRECTIVE
+ * ACTION WINS. "I need a corrective action for Coaching Form. This is for
+ * Under Performance on …" — another form's name where the person goes — made
+ * a Coaching Form card, and its employee "Club Close". A form from the
+ * registry (`TEMPLATE_INTENT`) named as the object of "for", after a request
+ * for a corrective action, is not the form asked for: the request reads as a
+ * Corrective Action, and the form's name is never its employee
+ * (`request-slot.ts`). Off, as before.
+ */
+function caForAnotherForm(key: string, before: string): boolean {
+  if (!formNameFromRosterEnabled() || key === "dpoa" || !/\bfor\s+$/.test(before)) return false;
+  return CORRECTIVE_ACTION_REQUEST.some((phrase) => mentionsUnnegated(before, phrase));
+}
+
+/** FORM_NAME_FROM_ROSTER_ENABLED: the phrase is a form's name from the registry ("Coaching Form"), whole. */
+export function namesAForm(phrase: string): boolean {
+  const q = canonicalFormWording(normalize(phrase)).trim();
+  if (!q) return false;
+  return TEMPLATE_INTENT.some((entry) => entry.matchers.includes(q));
+}
+
+/**
  * ============================================================================
  * WHICH FORM WAS ASKED FOR, AND WHICH ONE IS ONLY WHAT IT IS ABOUT
  * ============================================================================
@@ -1192,28 +1214,6 @@ function mentionsUnnegated(haystack: string, phrase: string): boolean {
  * "Policy Review for Avery Testperson" names one form in a request position,
  * so it is still the standalone Policy Review.
  */
-/**
- * FORM_NAME_FROM_ROSTER_ENABLED (Pau, via QA, 4 Nov 2026): the CORRECTIVE
- * ACTION WINS. "I need a corrective action for Coaching Form. This is for
- * Under Performance on …" — another form's name where the person goes — made
- * a Coaching Form card, and its employee "Club Close". A form from the
- * registry (`TEMPLATE_INTENT`) named as the object of "for", after a request
- * for a corrective action, is not the form asked for: the request reads as a
- * Corrective Action, and the form's name is never its employee
- * (`request-slot.ts`). Off, as before.
- */
-function caForAnotherForm(key: string, before: string): boolean {
-  if (!formNameFromRosterEnabled() || key === "dpoa" || !/\bfor\s+$/.test(before)) return false;
-  return CORRECTIVE_ACTION_REQUEST.some((phrase) => mentionsUnnegated(before, phrase));
-}
-
-/** FORM_NAME_FROM_ROSTER_ENABLED: the phrase is a form's name from the registry ("Coaching Form"), whole. */
-export function namesAForm(phrase: string): boolean {
-  const q = canonicalFormWording(normalize(phrase)).trim();
-  if (!q) return false;
-  return TEMPLATE_INTENT.some((entry) => entry.matchers.includes(q));
-}
-
 function requestedNaming(q: string, original: string): { key: string; phrase: string } | null {
   type Naming = { key: string; phrase: string; start: number; end: number; order: number };
   const found: Naming[] = [];
