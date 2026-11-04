@@ -342,7 +342,7 @@ function keptName(
   people: readonly GroundedPerson[],
   replies: readonly string[] = [],
 ): string | null {
-  // KEEP_ROSTER_EXACT_NAME_ENABLED: an exact roster name is never a fragment ("QA Test ASD One": "one").
+  // KEEP_ROSTER_EXACT_NAME_ENABLED: an exact roster name is never a fragment (a roster name ending in "One").
   const exact = (name: string | null | undefined): string | null => (keepRosterExactNameEnabled() ? rosterSpelling(name, people) : null);
   const fragment = (name: string | null | undefined): boolean => isFragment(name) && exact(name) === null;
   const question = turns[turns.length - 1] ?? "";
@@ -437,7 +437,7 @@ function newestName(turns: readonly string[]): string | null {
 /**
  * KEEP_ROSTER_EXACT_NAME_ENABLED: the roster's spelling when the name is
  * somebody's whole roster name (first or preferred, then last), else null.
- * Whole names, not word by word: a first name of two words ("QA Test") is one
+ * Whole names, not word by word: a first name of two words ("QA Probe") is one
  * roster first name, which `matchEmployeeName` does not read as exact.
  */
 function rosterSpelling(name: string | null | undefined, people: readonly GroundedPerson[]): string | null {
