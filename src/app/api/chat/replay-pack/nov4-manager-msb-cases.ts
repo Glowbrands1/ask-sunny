@@ -81,8 +81,9 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     id: "nov4-mgr-3-salon-metrics",
     title: `"${byId("mgr-3-salon-metrics").text}" — a CA card, no "what happened", cites the Standards of Conduct`,
     report: `${REPORT}, #3`,
-    // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "the card says \"Under Performance, as you said. The policy manual has no single section to quote for it\": no Standards of Conduct citation, on the card or the draft" },
+    // Run 4 Nov 2026 on main before #512: OPEN, the card says "Under Performance, as you said. The policy manual has no single section to quote for it": no Standards of Conduct citation, on the card or the draft.
+    // Holds with production's flags since Corrective Action revision 8 (#512): the form replaces Under Performance with the Standards of Conduct, so the card and the draft cite it.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED"],
     run: (t) => runMessage(t, byId("mgr-3-salon-metrics")),
   },
@@ -90,8 +91,9 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     id: "nov4-mgr-4-msb-october",
     title: `"${byId("mgr-4-msb-october").text}" — a CA card, MSB never a name, cites the Standards of Conduct`,
     report: `${REPORT}, #4`,
-    // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "a card for the person, but no Standards of Conduct citation on the card or the draft" },
+    // Run 4 Nov 2026 on main before #512: OPEN, a card for the person, but no Standards of Conduct citation on the card or the draft.
+    // Holds with production's flags since Corrective Action revision 8 (#512): the draft's Under Performance tick is the Standards of Conduct box, so the draft cites it.
+    status: "fixed",
     fixFlags: ["CA_SALES_POLICY_ENABLED"],
     run: (t) => runMessage(t, byId("mgr-4-msb-october")),
   },
