@@ -69,8 +69,7 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-tanning-beds-not-conduct",
     title: "\"the tanning beds were left dirty at close\": the model's Standards of Conduct tick moves to Other, no Standards of Conduct citation",
     report: `${REPORT}: QA's live wording`,
-    // CA_SALES_POLICY_ENABLED is on in this app's production (4 Nov 2026): holds with production's flags.
-    status: "fixed",
+    status: { open: "with production's flags the model's Standards of Conduct tick stands and is cited (p.12)" },
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -159,8 +158,7 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-basis-upkeep-duties",
     title: "\"did not complete daily cleaning duties\" with the model's upkeep basis: Other",
     report: `${REPORT}: Pau's wording, with offense_basis`,
-    // CA_SALES_POLICY_ENABLED is on in this app's production (4 Nov 2026): holds with production's flags.
-    status: "fixed",
+    status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
