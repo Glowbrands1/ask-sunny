@@ -155,3 +155,42 @@ describe("an offense after \"for\" is not a person", () => {
   });
 });
 
+
+/*
+ * Pau, via QA, 4 Nov 2026: the CORRECTIVE ACTION WINS. QA's production
+ * messages (CA_SALES off) named another form where the person goes, and made
+ * a Coaching Form card whose employee was "Club Close". Exact wording.
+ */
+describe("a corrective action for another form's name", () => {
+  const A = "Create a Corrective Action for Coaching Form";
+  const B = "I need a corrective action for Coaching Form. This is for Under Performance on Club Close % and Spa %.";
+  const P1 = say("Coaching Form");
+
+  it("off (main): the named form wins, and \"Club Close\" is a candidate", async () => {
+    const { detectTemplateIntent } = await import("./template-intent");
+    expect(detectTemplateIntent(B)).toEqual({ kind: "explicit", templateKey: "coaching" });
+    installRequestMessage(() => B);
+    expect(readEmployeeMentions(B).names).toContain("Club Close");
+  });
+
+  it("on: the request is a corrective action, for all three wordings", async () => {
+    on();
+    const { detectTemplateIntent } = await import("./template-intent");
+    for (const text of [A, B, P1]) expect(detectTemplateIntent(text).kind, text).toBe("corrective_action");
+  });
+
+  it("on: the form's name is no person, and nothing else in the message is one", () => {
+    on();
+    expect(requestSlotNames(B)).toEqual([]);
+    for (const candidate of ["Coaching Form", "Club Close", "Under"]) expect(outsideRequestSlot(candidate, B), candidate).toBe(true);
+    installRequestMessage(() => B);
+    expect(readEmployeeMentions(B).names).toEqual([]);
+  });
+
+  it("on, controls: a Coaching Form asked for by name, and a corrective action for a person, are unchanged", async () => {
+    on();
+    const { detectTemplateIntent } = await import("./template-intent");
+    expect(detectTemplateIntent("Create a Coaching Form for Perpetua Thornquist")).toEqual({ kind: "explicit", templateKey: "coaching" });
+    expect(requestSlotNames("I need a corrective action for Perpetua Thornquist, she was rude to a guest")).toEqual(["Perpetua Thornquist"]);
+  });
+});

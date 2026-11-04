@@ -321,39 +321,62 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
   ),
   /*
    * QA, 4 NOV 2026, 19:21–19:41 UTC, production with CA_SALES_POLICY_ENABLED
-   * OFF. The tester's "employee" was a form's name pasted where the person's
+   * OFF. The tester's "employee" was a form's name pasted where the person
    * goes: the stored messages read "… for Coaching Form. …"
    * (conv_mw2i2avm22egfhe, conv_mw2ibcm02l42nya, conv_mw2idhu42wdjlet,
-   * conv_mw2id8ky2do6is8). The named form wins (a Coaching Form card), so the
-   * Corrective Action's metric-only answer never runs, and the next
+   * conv_mw2id8ky2do6is8). The named form won (a Coaching Form card), so the
+   * Corrective Action's metric-only answer never ran, and the next
    * capitalised phrase, "Club Close", became the employee: "Here is what I
    * would put on a **Coaching Form**. … I have the employee and the salon."
-   * With FORM_NAME_FROM_ROSTER_ENABLED (which no longer needs the sales
-   * policy), "Club Close" is a list item or outside the request slot, never a
-   * candidate, and the card with no employee asks who. Exact wording.
+   *
+   * Pau's decision (via QA, 4 Nov 2026): the CORRECTIVE ACTION WINS. With
+   * FORM_NAME_FROM_ROSTER_ENABLED (which no longer needs the sales policy) a
+   * registry form named after "for", after a request for a corrective action,
+   * is not the form asked for and is never the employee
+   * (`forms/template-intent.ts` caForAnotherForm, `forms/request-slot.ts`):
+   * a Corrective Action, no metric on it, and a card with no employee asks
+   * who. With the sales policy off, a metrics message gets the metric-only
+   * answer (no card), which is the policy's answer. Each wording runs with
+   * FORM_NAME alone and with FORM_NAME, the sales policy and the glossary.
+   * Exact wording.
    */
   ...(
     [
-      ["b", "I need a corrective action for Coaching Form. This is for Under Performance on Club Close % and Spa %.", { open: "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"" }],
-      ["p1", say("Coaching Form"), { open: "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"" }],
-      // QA's (A): no metric in the message; production already asks who (the negative control).
-      ["a", "Create a Corrective Action for Coaching Form", "fixed"],
+      ["b", "I need a corrective action for Coaching Form. This is for Under Performance on Club Close % and Spa %."],
+      ["p1", say("Coaching Form")],
+      // QA's (A): no metric in the message. Production asks who, but on a Coaching Form card.
+      ["a", "Create a Corrective Action for Coaching Form"],
     ] as const
-  ).map(
-    ([key, text, status]): ReplayCase => ({
-      id: `nov4-qa-form-name-as-person-${key}`,
-      title: `QA 4 Nov (CA_SALES off): "${text.slice(0, 60)}…": no metric is the employee; a card with no employee asks who`,
-      report: `QA, 4 Nov 2026, production with CA_SALES off: "${text}"`,
-      status,
-      fixFlags: [FLAG],
-      async run(t) {
-        const thread = start(t);
-        const reply = await thread.say(text);
-        const card = thread.proposal?.employeeName ?? "";
-        expect(card, `a metric is the card's employee:\n${reply.content}`).not.toMatch(/club close|club average|^under$|ppta|lpsva|spa/i);
-        expect(reply.content, `the reply says it has the employee:\n${reply.content}`).not.toMatch(/I have the employee/i);
-        if (thread.proposal && !card) expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
-      },
-    }),
+  ).flatMap(([key, text]) =>
+    (
+      [
+        ["", [FLAG]],
+        ["-with-sales", [FLAG, SALES, GLOSSARY]],
+      ] as const
+    ).map(
+      ([suffix, flags]): ReplayCase => ({
+        id: `nov4-qa-form-name-as-person-${key}${suffix}`,
+        title: `QA 4 Nov (CA_SALES off): "${text.slice(0, 60)}…": a Corrective Action, never a Coaching Form; no metric is the employee; a card with no employee asks who`,
+        report: `QA, 4 Nov 2026, production with CA_SALES off: "${text}"`,
+        status: {
+          open:
+            key === "a"
+              ? "a Coaching Form card (with no employee; it asks who)"
+              : "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"",
+        },
+        fixFlags: [...flags],
+        async run(t) {
+          const thread = start(t);
+          const reply = await thread.say(text);
+          const card = thread.proposal?.employeeName ?? "";
+          expect(card, `a metric is the card's employee:\n${reply.content}`).not.toMatch(/club close|club average|^under$|ppta|lpsva|spa|coaching form/i);
+          expect(reply.content, `a metric is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Club Close|Club Average|Under)\*\*/i);
+          expect(reply.content, `the reply says it has the employee:\n${reply.content}`).not.toMatch(/I have the employee/i);
+          if (!thread.proposal) return; // the sales policy off: the metric-only answer
+          expect(thread.proposal.templateKey, `not a Corrective Action (Pau: the corrective action wins):\n${reply.content}`).toBe("dpoa");
+          if (!card) expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
+        },
+      }),
+    ),
   ),
 ];

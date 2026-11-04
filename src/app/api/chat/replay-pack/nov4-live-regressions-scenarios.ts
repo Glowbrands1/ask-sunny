@@ -929,7 +929,9 @@ export const QA_FULL_NAME_SCENARIOS: readonly CriteriaScenario[] = (
  *
  *   no-metric-person  as above;
  *   asks-who          a card with no employee asks "Who is this form for?",
- *                     and no reply says "I have the employee".
+ *                     and no reply says "I have the employee";
+ *   ca-wins           Pau, 4 Nov 2026: any card is a Corrective Action, never
+ *                     the form named where the person goes.
  */
 const ASKS_WHO_CRITERION: LiveCriterion = {
   name: "asks-who",
@@ -940,6 +942,12 @@ const ASKS_WHO_CRITERION: LiveCriterion = {
     ),
 };
 
+/** Pau, 4 Nov 2026: a corrective action asked for, with another form's name after "for", is a Corrective Action. */
+const CA_WINS_CRITERION: LiveCriterion = {
+  name: "ca-wins",
+  check: (run) => (everyCard(run).some((card) => card && card.templateKey !== "dpoa") ? `a ${everyCard(run).find((card) => card && card.templateKey !== "dpoa")?.templateKey} card, not a Corrective Action` : null),
+};
+
 export const QA_FORM_NAME_SCENARIOS: readonly CriteriaScenario[] = (
   [
     ["qa-form-name-a-alone", "Create a Corrective Action for Coaching Form"],
@@ -947,7 +955,7 @@ export const QA_FORM_NAME_SCENARIOS: readonly CriteriaScenario[] = (
     ["qa-form-name-p1", "I need a corrective action verbal for Coaching Form. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."],
   ] as const
 ).map(([id, say]) => {
-  const criteria = [NO_METRIC_PERSON, ASKS_WHO_CRITERION];
+  const criteria = [NO_METRIC_PERSON, ASKS_WHO_CRITERION, CA_WINS_CRITERION];
   return {
     id,
     roster: MANAGER_ROSTER,
@@ -955,7 +963,7 @@ export const QA_FORM_NAME_SCENARIOS: readonly CriteriaScenario[] = (
     steps: [{ say }],
     criteria,
     expect: {
-      says: "no metric shown as a person or on the card; a card with no employee asks who",
+      says: "no metric shown as a person or on the card; a card with no employee asks who; any card is a Corrective Action",
       check: (run: LiveOutcome) => all(...criteria.map((criterion) => criterion.check(run))),
     },
   };
