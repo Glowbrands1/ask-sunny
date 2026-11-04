@@ -383,6 +383,7 @@ const { ensureTemplateLibrary } = await import("@/lib/forms/repository");
 const { stillAsks } = await import("@/lib/forms/reply-guards");
 const { createInlineForm } = await import("@/features/chat/create-inline-form");
 const chatRoute = await import("../route");
+const streamed = await import("@/lib/api/streamed-response");
 const instancesRoute = await import("../../forms/instances/route");
 const draftRoute = await import("../../forms/instances/[id]/draft/route");
 
@@ -461,8 +462,17 @@ class Thread {
         }),
       }),
     );
-    const payload = (await response.json()) as Answer & { error?: string };
-    expect(response.status, JSON.stringify(payload)).toBe(200);
+    /*
+     * A slow turn is streamed (CHAT_RESPONSE_STREAM_ENABLED, on in production): its body is
+     * { status, body }. Unwrap it as the client does, or the record shows an empty reply
+     * (ported from the sibling app, 4 Nov 2026).
+     */
+    const { status, body } =
+      response.headers.get(streamed.STREAM_HEADER) === "1"
+        ? streamed.unwrapStreamed(await response.text())
+        : { status: response.status, body: await response.json() };
+    const payload = body as Answer & { error?: string };
+    expect(status, JSON.stringify(payload)).toBe(200);
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
     if (/^I still need\b/m.test(payload.content ?? "")) {
       expect(stillAsks(payload.content), `"I still need" without a question:\n${payload.content}`).not.toBeNull();
