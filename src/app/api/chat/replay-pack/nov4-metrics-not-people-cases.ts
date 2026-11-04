@@ -233,4 +233,77 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
       expect(thread.proposal, "no CA card for Corin Bellweather").toMatchObject({ templateKey: "dpoa", employeeName: "Corin Bellweather" });
     },
   },
+  /*
+   * QA, 4 NOV 2026, 19:21 UTC: CA_SALES_POLICY_ENABLED rolled back in this
+   * app. Live, a REAL roster employee (QA's "Employee R", never written),
+   * Pau's message 1, CA_SALES on, FORM_NAME off: a card whose Employee was
+   * "Club Close" (conv_mw2i2avm22egfhe). Here, with CA_SALES and the glossary
+   * on and FORM_NAME off, a roster person typed by first name only, or by
+   * first name and last initial, gets a card "for **Club Close**"; typed in
+   * full (any case, hyphen, apostrophe, three words) the card is theirs. With
+   * FORM_NAME on, the first name asks "Is this for Perpetua Thornquist?" and
+   * the first name and initial asks the same (an initial that starts her
+   * surname is her surname, `request-slot.ts` typedWithOtherSurname).
+   */
+  ...(
+    [
+      ["first-name", "Perpetua"],
+      ["first-initial", "Perpetua T"],
+    ] as const
+  ).map(
+    ([shape, typed]): ReplayCase => ({
+      id: `nov4-qa-roster-${shape}-metrics-not-people`,
+      title: `QA 4 Nov: Pau's message 1 for a roster Tanning Consultant typed "${typed}": the card is never "Club Close"; it is for Perpetua Thornquist or asks for her`,
+      report: `QA, 4 Nov 2026 (Sunny CA_SALES rolled back): "I need a corrective action verbal for <Employee R>. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." → card Employee "Club Close"`,
+      status: { open: "production answers the message as metric-only, no card (CA_SALES_POLICY_ENABLED off); with CA_SALES on and FORM_NAME off the card is for \"Club Close\"" },
+      fixFlags: [FLAG, SALES, GLOSSARY],
+      async run(t) {
+        const thread = start(t);
+        const reply = await thread.say(say(typed));
+        const card = thread.proposal?.employeeName ?? "";
+        expect(card, `a metric is the card's employee:\n${reply.content}`).not.toMatch(/club close|club average|^under$|ppta|lpsva|spa/i);
+        expect(reply.content, `a metric is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Club Close|Club Average|Under)\*\*/i);
+        const asked = /Is this for \*\*Perpetua Thornquist\*\*\?/.test(reply.content);
+        // Never the short name alone: "Perpetua T" made a card for "Perpetua" before the initial counted as her surname.
+        expect(card === "Perpetua Thornquist" || asked, `neither a card for Perpetua Thornquist nor "Is this for Perpetua Thornquist?" (card ${JSON.stringify(card)}):\n${reply.content}`).toBe(true);
+      },
+    }),
+  ),
+  /*
+   * QA, 4 NOV 2026, 19:21–19:41 UTC, production with CA_SALES_POLICY_ENABLED
+   * OFF. The tester's "employee" was a form's name pasted where the person's
+   * goes: the stored messages read "… for Coaching Form. …"
+   * (conv_mw2i2avm22egfhe, conv_mw2ibcm02l42nya, conv_mw2idhu42wdjlet,
+   * conv_mw2id8ky2do6is8). The named form wins (a Coaching Form card), so the
+   * Corrective Action's metric-only answer never runs, and the next
+   * capitalised phrase, "Club Close", became the employee: "Here is what I
+   * would put on a **Coaching Form**. … I have the employee and the salon."
+   * With FORM_NAME_FROM_ROSTER_ENABLED (which no longer needs the sales
+   * policy), "Club Close" is a list item or outside the request slot, never a
+   * candidate, and the card with no employee asks who. Exact wording.
+   */
+  ...(
+    [
+      ["b", "I need a corrective action for Coaching Form. This is for Under Performance on Club Close % and Spa %.", { open: "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"" }],
+      ["p1", say("Coaching Form"), { open: "a Coaching Form card for \"Club Close\": \"I have the employee and the salon\"" }],
+      // QA's (A): no metric in the message; production already asks who (the negative control).
+      ["a", "Create a Corrective Action for Coaching Form", "fixed"],
+    ] as const
+  ).map(
+    ([key, text, status]): ReplayCase => ({
+      id: `nov4-qa-form-name-as-person-${key}`,
+      title: `QA 4 Nov (CA_SALES off): "${text.slice(0, 60)}…": no metric is the employee; a card with no employee asks who`,
+      report: `QA, 4 Nov 2026, production with CA_SALES off: "${text}"`,
+      status,
+      fixFlags: [FLAG],
+      async run(t) {
+        const thread = start(t);
+        const reply = await thread.say(text);
+        const card = thread.proposal?.employeeName ?? "";
+        expect(card, `a metric is the card's employee:\n${reply.content}`).not.toMatch(/club close|club average|^under$|ppta|lpsva|spa/i);
+        expect(reply.content, `the reply says it has the employee:\n${reply.content}`).not.toMatch(/I have the employee/i);
+        if (thread.proposal && !card) expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
+      },
+    }),
+  ),
 ];

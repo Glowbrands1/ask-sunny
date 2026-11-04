@@ -73,7 +73,11 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          typed name on no roster, beside a roster person
  *                          who shares its first name (no-metric-person,
  *                          no-wrong-person, slot-card; mgr-1 has
- *                          no-metric-person too).
+ *                          no-metric-person too); then mgr-1-roster-first-name
+ *                          and mgr-1-roster-first-initial: mgr-1's roster
+ *                          person typed by first name, and by first name and
+ *                          last initial (no-metric-person, roster-person: QA,
+ *                          4 Nov, "Club Close" as the card's employee live).
  *                          ca-sales: wrong items expects offense_type
  *                          standards_of_conduct and Policy Violated the
  *                          Standards of Conduct; the two cleaning negatives
@@ -839,7 +843,7 @@ function writeResults(): void {
     const NAMES = [...new Set(graded.flatMap((run) => run.expect!.criteria!.map((entry) => entry.name)))];
     if (graded.length) {
       lines.push(
-        "Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page; #5 with CA_SALES_POLICY_ENABLED on: t1-no-card, t1-offer-once (one \"Do you want a Corrective Action for <Name>?\" with yes and Standards of Conduct), t2-card and t2-cites-soc after \"yes\"; off: off-answer, off-no-offer; mgr-1 and the off-roster case: no-metric-person (no metric shown as a name); the off-roster case: no-wrong-person (never the roster person sharing the typed first name), slot-card (a card for the typed name)):",
+        "Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page; #5 with CA_SALES_POLICY_ENABLED on: t1-no-card, t1-offer-once (one \"Do you want a Corrective Action for <Name>?\" with yes and Standards of Conduct), t2-card and t2-cites-soc after \"yes\"; off: off-answer, off-no-offer; mgr-1 and the off-roster case: no-metric-person (no metric shown as a name); the off-roster case: no-wrong-person (never the roster person sharing the typed first name), slot-card (a card for the typed name); mgr-1-roster-first-name / -first-initial (mgr-1's roster person typed short): roster-person (a card for them or \"Is this for <them>?\", never a metric or the short name alone); qa-full-* (the same person shape typed in full): roster-person; qa-form-name-* (QA's production messages, \"Coaching Form\" where the person goes): asks-who (a card with no employee asks who; never \"I have the employee\")):",
         "",
       );
       lines.push(`| Case | ${NAMES.join(" | ")} | Why (FAIL) |`, `|---|${NAMES.map(() => "---|").join("")}---|`);

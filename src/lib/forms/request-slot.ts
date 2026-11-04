@@ -169,6 +169,12 @@ export function typedWithOtherSurname(first: string, lastName: string, turns: re
   if (typed.length === 0) return false;
   return typed.every((surname) => {
     if (surname === actual) return false;
+    /*
+     * QA, 4 Nov 2026 (live, "Club Close" as the card's employee): a last
+     * initial is the surname, shortened ("Perpetua T" for Perpetua
+     * Thornquist): the person is offered, not ruled out.
+     */
+    if (surname.length === 1 && actual.startsWith(surname)) return false;
     const shorter = Math.min(surname.length, actual.length);
     if (shorter <= 2) return true;
     return editDistance(surname, actual) > (shorter <= 4 ? 1 : 2);
