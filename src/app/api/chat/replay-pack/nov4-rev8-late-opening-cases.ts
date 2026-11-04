@@ -3,7 +3,7 @@ import { expect } from "vitest";
 import { STAFF, KEARNEY, type ReplayCase } from "./cases";
 
 /**
- * Corrective Action revision 8 (4 Nov 2026; Ask Bubbles' revision 7 cases,
+ * Corrective Action revision 8 (4 Nov 2026; the sibling app's revision 7 cases,
  * ported): a Late Opening the manager names — or describes — is cited under
  * the Attendance Policy box, which replaced Tardiness/Leaving Early. Reported
  * from this app's revision 8 port (QA, 4 Nov 2026): a named "Late Opening"

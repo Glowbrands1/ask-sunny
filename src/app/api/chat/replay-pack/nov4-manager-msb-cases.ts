@@ -108,12 +108,12 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     // Holds with production's flags since Corrective Action revision 8 (#512): the draft's Under Performance tick is the Standards of Conduct box, so the draft cites it.
     // Open again with QA's live finding (4 Nov 2026, 13:23 UTC), asserted below: with production's flags the card's Observation is the whole request.
     status: { open: "the card's Observation of Offense is the whole request (\"MSB CA for <name> for underperformance in the month of October\") with production's flags" },
-    // CHAT_GLOSSARY_ENABLED is on in production since 4 Nov 2026 (13:07 UTC); the case holds with both, as in Ask Bubbles.
+    // CHAT_GLOSSARY_ENABLED is on in production since 4 Nov 2026 (13:07 UTC); the case holds with both, as in the sibling app.
     fixFlags: ["CA_SALES_POLICY_ENABLED", "CHAT_GLOSSARY_ENABLED"],
     /*
-     * QA, 4 Nov 2026 (13:23 UTC), live with CHAT_GLOSSARY_ENABLED on: Ask Sunny's
+     * QA, 4 Nov 2026 (13:23 UTC), live with CHAT_GLOSSARY_ENABLED on: this app's
      * Observation was the whole request ("MSB CA for <name> for underperformance
-     * in the month of October"); Ask Bubbles asked about "MSB gaps" / "MSB
+     * in the month of October"); the sibling app asked about "MSB gaps" / "MSB
      * language" as if MSB were unknown. Neither, with the flags on.
      */
     async run(t) {
