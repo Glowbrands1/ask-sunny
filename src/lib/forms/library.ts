@@ -504,20 +504,28 @@ export function correctiveActionDocument(): FormDocument {
 
       { kind: "section", label: "Type of Offense" },
       {
+        /*
+         * REVISION 8 (client request relayed by Pau, 4 Nov 2026; template
+         * approved). Attendance Policy replaces Tardiness/Leaving Early and
+         * Absenteeism; Under Performance and Violation of Company Policies are
+         * removed (the Standards of Conduct is used instead); Other is a box
+         * in the same list, and its write-in line is gone — this document has
+         * no detail field beside a checkbox. Forms filed on revision 6 or 7
+         * keep their version, so they open and print with the old boxes and
+         * values. The removed keys map to their replacement where a version
+         * does not offer them: see `offense-keys.ts`.
+         */
         kind: "checkbox_group",
         key: "offense_type",
         options: [
-          { key: "tardiness", label: "Tardiness/Leaving Early" },
-          { key: "absenteeism", label: "Absenteeism" },
+          { key: "attendance_policy", label: "Attendance Policy" },
           { key: "standards_of_conduct", label: "Standards of Conduct" },
-          { key: "under_performance", label: "Under Performance" },
           { key: "dress_code", label: "Dress Code Violation" },
-          { key: "company_policies", label: "Violation of Company Policies" },
+          { key: "other", label: "Other" },
         ],
         responsibility: "ai",
         columns: 2,
       },
-      { kind: "field", field: field("other_offense", "Other", "ai") },
 
       { kind: "section", label: "Details" },
       {
@@ -624,8 +632,8 @@ export function correctiveActionDocument(): FormDocument {
       {
         /*
          * PAYROLL DEDUCTION AMOUNT — revision 7, the live library's revision.
-         * The figure the manager gives. Blank until then. Not published by
-         * ensureTemplateLibrary; that waits for Pau. See payroll-amount-field.ts.
+         * The figure the manager gives. Blank until then. Published with
+         * revision 8 (Pau approved, 4 Nov 2026). See payroll-amount-field.ts.
          */
         kind: "field",
         field: field(PAYROLL_AMOUNT_KEY, PAYROLL_AMOUNT_LABEL, "manager", "text", {
@@ -1720,9 +1728,9 @@ export const HR_TEMPLATE_SEEDS: TemplateSeed[] = [
     displayOrder: 2,
     document: correctiveActionDocument(),
     variants: [],
-    revision: 7,
+    revision: 8,
     revisionNote:
-      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Revision 7 matches the live library and adds \"Payroll deduction amount\" immediately after the Yes / No. The figure is the manager's and is never taken from the policy. ensureTemplateLibrary does not publish revision 7; the database stays on revision 6 until Pau approves a publish. Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
+      "Renamed to Corrective Action Form, and Observation of Offense drafts as Observed/Expectation/Going Forward with the Action Plan as the plan-of-action paragraph. Revision 3 sets the two policy fields to the business's own reading of them: Policy Violated is the offense category ticked on the form, and Direct policy names the approved manual with its section and page. Revision 4 adds \"Is payroll deduct applicable?\" as a Yes / No the manager answers (one answer, unanswered until they give it). Revision 5 (HR feedback, 3 Oct 2026) replaces \"Previous corrective action for this policy or issue\" and \"Date of previous corrective action\" with one multi-line field, \"List previously received coaching and/or corrective action with date signed\", and ends every Action Plan with \"Future policy violations may be subject to additional corrective action up to and including termination of employment.\" Revision 6 (District Manager feedback, 21 Oct 2026) makes the Action Plan two sentences — \"Management will review the <policy> policy with <employee>.\" and \"Future policy violations may result in additional corrective action up to and including termination of employment.\" — with the payroll deduction between them when payroll deduct is Yes. Revision 7 matches the live library and adds \"Payroll deduction amount\" immediately after the Yes / No. The figure is the manager's and is never taken from the policy. ensureTemplateLibrary does not publish revision 7; the database stays on revision 6 until Pau approves a publish. Revision 8 (client request, 4 Nov 2026; template approved) makes Type of Offense four boxes — Attendance Policy, Standards of Conduct, Dress Code Violation, Other — removing Tardiness/Leaving Early and Absenteeism (now Attendance Policy), Under Performance and Violation of Company Policies (now Standards of Conduct), and the Other write-in line (Other is a box). ensureTemplateLibrary publishes revision 8 with the Payroll deduction amount line from revision 7 (Pau approved both, 4 Nov 2026). Forms filed against earlier versions keep the document they were signed on; the template key and every stored value are unchanged.",
     bundledPdfName: "Corrective Action Form.pdf",
   },
   {

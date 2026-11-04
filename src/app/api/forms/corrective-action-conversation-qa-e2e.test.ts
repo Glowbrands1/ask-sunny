@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatMessage } from "@/types";
 
+/*
+ * CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template
+ * approved 4 Nov 2026): the current form's Type of Offense is Attendance
+ * Policy / Standards of Conduct / Dress Code Violation / Other. Every
+ * Absenteeism and Tardiness expectation below now reads Attendance Policy;
+ * forms filed on revision 6 or 7 keep their own boxes (see
+ * `src/lib/forms/offense-revision-8.test.ts`).
+ */
+
 /**
  * ============================================================================
  * CORRECTIVE ACTION CONVERSATIONS — QA, 22 OCT 2026
@@ -498,8 +507,8 @@ describe("Q1 the original 21 Oct request, as typed", () => {
       warning_type: ["written"],
       payroll_deduct: ["no"],
       prior_actions: BOTH_PRIOR_ACTIONS,
-      offense_type: ["absenteeism"],
-      policy_violated: "Absenteeism",
+      offense_type: ["attendance_policy"],
+      policy_violated: "Attendance Policy",
     });
     expect(form.policy_language).toContain("Synthetic rule: Meetings, Seminars and Training sessions are treated as scheduled shifts.");
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
@@ -525,7 +534,7 @@ describe("Q2 the production failure's shape: the level asked, then one-word answ
       warning_type: ["written"],
       payroll_deduct: ["no"],
       prior_actions: BOTH_PRIOR_ACTIONS,
-      offense_type: ["absenteeism"],
+      offense_type: ["attendance_policy"],
     });
     expect(form.observation).toContain("did not attend the monthly meeting");
   });
@@ -568,7 +577,7 @@ describe("Q3 where the manual does not settle the policy", () => {
     expect(reply).toMatch(/\*\*Policy:\*\* Attendance — missing the monthly meeting is an absence from a scheduled shift\./);
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const form = await saved(await chat.create());
-    expect(form).toMatchObject({ offense_type: ["absenteeism"], policy_violated: "Absenteeism", prior_actions: BOTH_PRIOR_ACTIONS });
+    expect(form).toMatchObject({ offense_type: ["attendance_policy"], policy_violated: "Attendance Policy", prior_actions: BOTH_PRIOR_ACTIONS });
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Attendance, p. 14");
     expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], form_date: "2026-10-20" });
   });
@@ -579,7 +588,7 @@ describe("Q3 where the manual does not settle the policy", () => {
     expect(await chat.say(OCT21)).not.toMatch(/Which policy applies\?/);
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const form = await saved(await chat.create());
-    expect(form.offense_type).toEqual(["absenteeism"]);
+    expect(form.offense_type).toEqual(["attendance_policy"]);
     expect(form.policy_language).toBeUndefined();
   });
 });
@@ -634,7 +643,7 @@ describe("Q4 nothing the manager did not say is put on the form", () => {
     state.draft = MODEL("Tess Varga was a no call/no show to the monthly meeting on October 20, 2026.");
     const form = await saved(await chat.create());
     expect(form.observation).toContain("was a no call/no show to the monthly meeting");
-    expect(form.offense_type).toEqual(["absenteeism"]);
+    expect(form.offense_type).toEqual(["attendance_policy"]);
   });
 });
 
@@ -659,8 +668,8 @@ describe("Q5 which attendance section a missed event rests on", () => {
     expect(reply).not.toMatch(/no call|no show/i);
     state.draft = MODEL("Tess Varga did not log in to the required webinar on October 20, 2026.");
     const form = await saved(await chat.create());
-    expect(form.offense_type).toEqual(["absenteeism"]);
-    expect(form.policy_violated).toBe("Absenteeism — Seminar/Webinar Attendance");
+    expect(form.offense_type).toEqual(["attendance_policy"]);
+    expect(form.policy_violated).toBe("Attendance Policy — Seminar/Webinar Attendance");
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Seminar/Webinar Attendance, p. 37");
   });
 });
@@ -694,7 +703,7 @@ describe("Q6 corrections before the draft is created", () => {
       warning_type: ["verbal"],
       payroll_deduct: ["no"],
       prior_actions: "Coaching — JBA Policy Manual — signed 01/01/2026\nVerbal corrective action — signed 09/02/2026",
-      offense_type: ["absenteeism"],
+      offense_type: ["attendance_policy"],
     });
     expect(store.form_instances).toHaveLength(1);
   });
@@ -717,9 +726,9 @@ describe("Q7 corrections after the draft exists, on the same form", () => {
     expect(form.policy_language).toContain("Source: JBA Policy Manual — Standards of Conduct, p. 12");
     expect(form.action_plan).toMatch(/Standards of Conduct policy/);
 
-    expect(await chat.say("actually it should be attendance")).toMatch(/Type of Offense now reads \*\*Absenteeism\*\*/);
+    expect(await chat.say("actually it should be attendance")).toMatch(/Type of Offense now reads \*\*Attendance Policy\*\*/);
     form = await saved(id);
-    expect(form).toMatchObject({ offense_type: ["absenteeism"], policy_violated: "Absenteeism" });
+    expect(form).toMatchObject({ offense_type: ["attendance_policy"], policy_violated: "Attendance Policy" });
     for (const key of ["employee_name", "form_date", "job_title", "location", "payroll_deduct", "observation", "prior_actions"]) {
       expect(form[key], key).toEqual(before[key]);
     }
@@ -752,9 +761,10 @@ describe("Q7 corrections after the draft exists, on the same form", () => {
     await chat.say(OCT21);
     state.draft = MODEL("Tess Varga did not attend the monthly meeting on October 20, 2026.");
     const id = await chat.create();
-    await managerSaves(id, { checked: { offense_type: ["tardiness"] } });
+    // Revision 8: the draft already ticks Attendance Policy, so the manager's own, different tick is Other (was Tardiness over Absenteeism).
+    await managerSaves(id, { checked: { offense_type: ["other"] } });
     await chat.say("use the standards of conduct policy instead");
-    expect((await saved(id)).offense_type).toEqual(["tardiness"]);
+    expect((await saved(id)).offense_type).toEqual(["other"]);
   });
 
   it('"make sure her attendance improves" is not a policy change', async () => {
@@ -801,7 +811,7 @@ describe("Q8 the draft survives reloads, reopening and repeats", () => {
     });
     const form = await saved(id);
     expect(form.observation).toBe("Observed:\nTess was not at the 10/20 monthly meeting. I typed this.");
-    expect(form).toMatchObject({ warning_type: ["written"], prior_actions: BOTH_PRIOR_ACTIONS, offense_type: ["absenteeism"] });
+    expect(form).toMatchObject({ warning_type: ["written"], prior_actions: BOTH_PRIOR_ACTIONS, offense_type: ["attendance_policy"] });
   });
 });
 
@@ -820,7 +830,7 @@ describe("Q9 the same situation in other words reaches the same saved form", () 
     expect(reply).toMatch(/reads as the policy manual's \*\*Attendance\*\*/);
     state.draft = MODEL("Tess Varga did not attend the meeting on October 20, 2026.");
     const form = await saved(await chat.create());
-    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], offense_type: ["absenteeism"], form_date: "2026-10-20" });
+    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], offense_type: ["attendance_policy"], form_date: "2026-10-20" });
   });
 
   it("the meeting as the setting of something else is not an absence: on her phone during it is the Cell Phone policy", async () => {
@@ -896,7 +906,7 @@ describe("Q10 request wording nobody wrote a rule for reaches the same saved for
     expect(reply).not.toMatch(/Which form|haven't told me what happened/);
     state.draft = MODEL("Tess Varga did not attend the meeting on October 20, 2026.");
     const form = await saved(await chat.create());
-    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], offense_type: ["absenteeism"], form_date: "2026-10-20" });
+    expect(form).toMatchObject({ warning_type: ["written"], payroll_deduct: ["no"], offense_type: ["attendance_policy"], form_date: "2026-10-20" });
     expect(form.observation).toContain("did not attend");
   });
 

@@ -3,7 +3,22 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { CA_CHAIN, DRY_SCRIPTS, GATE_SCENARIOS, LIVE_FAILURE_SCENARIOS, LIVE_ROSTER, NAME_SCENARIOS, type LiveScenario } from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
+import {
+  CA_CHAIN,
+  CA_SALES_SCENARIOS,
+  DRY_SCRIPTS,
+  GATE_SCENARIOS,
+  GLOSSARY_SCENARIOS,
+  LIVE_FAILURE_SCENARIOS,
+  LIVE_ROSTER,
+  MANAGER_SCENARIOS,
+  managerDryScripts,
+  NAME_SCENARIOS,
+  applicableCriteria,
+  type LiveCriterion,
+  type LiveExpect,
+  type LiveScenario,
+} from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
 import { fakeSupabase, type FakeStore } from "@/test/fake-supabase";
 import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
 
@@ -41,9 +56,29 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  * evals/results/live-regressions.dry.{json,md}. LIVE=1 wins if both are set.
  *
  * MODES (env, read only with LIVE=1):
- *   LIVE_SCENARIOS=all|failures|names|gate|none  which scenarios (default all:
- *                          the live failures, the 40 name runs, then the 8
- *                          edit-tool gate wordings on an open Corrective Action).
+ *   LIVE_SCENARIOS=all|failures|names|gate|glossary|ca-sales|none  which
+ *                          scenarios (default all: the live failures, the 40
+ *                          name runs, then the 8 edit-tool gate wordings on an
+ *                          open Corrective Action). The flag sets are never in
+ *                          "all": glossary (CHAT_GLOSSARY_ENABLED: sf-s12's
+ *                          "msb" and two name controls) and ca-sales
+ *                          (CA_SALES_POLICY_ENABLED: the replay pack's
+ *                          nov4-ca-sales-policy-cases.ts, live). Each fits in
+ *                          LIVE_CAP=30. Each of their scenarios has an
+ *                          expected outcome, written PASS or FAIL into the
+ *                          results; a FAIL is recorded, it never fails the run.
+ *                          managers: the five exact manager messages (Pau via
+ *                          QA, 4 Nov), one PASS/FAIL column per criterion.
+ *                          QA runs it twice, flag OFF and ON:
+ *                            LIVE_SCENARIOS=managers                (OFF)
+ *                            LIVE_SCENARIOS=managers LIVE_FLAGS=CHAT_GLOSSARY_ENABLED,CA_SALES_POLICY_ENABLED  (ON)
+ *                          each within LIVE_CAP=30. #5 runs two turns (the
+ *                          message, then "yes") and Create: with
+ *                          CA_SALES_POLICY_ENABLED on, no card and one offer
+ *                          "Do you want a Corrective Action for <Name>?", then
+ *                          a CA card citing the Standards of Conduct; off, a
+ *                          policy answer and no offer. Its columns are per
+ *                          turn and per flag state.
  *   LIVE_CREATE_REPEAT=1   also: the same Corrective Action (T1, then Create)
  *                          5 times with Step B's flags OFF and 5 times ON;
  *                          counts the saved Observations that lose the
@@ -62,10 +97,26 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          comparison, inside the script process only"). Past
  *                          that cap nothing more is sent. Unset: all Haiku.
  *
+ * PAU'S FLAG PROCEDURE (4 Nov 2026): before each Production flip, QA runs this
+ * in QA's own session with the flag on and a small cap:
+ *
+ *   LIVE=1 LIVE_CAP=30 LIVE_SCENARIOS=glossary LIVE_FLAGS=CHAT_GLOSSARY_ENABLED npx vitest run --config vitest.eval.config.mts evals/live-regressions.eval.ts
+ *
+ * LIVE_CAP=<n>            the run's call cap (default 100). A positive integer,
+ *                          at most 100; anything else is refused before any
+ *                          call (the file fails to load).
+ * LIVE_FLAGS=A_ENABLED,B_ENABLED  these flags are "true" in this process, set
+ *                          before the first app import and again on every
+ *                          scenario run, on top of production's flags
+ *                          (production-flags.json on + assumedOn). Only names
+ *                          of the form /^[A-Z0-9_]+$/ ending in _ENABLED; any
+ *                          other name is refused before any call. The results
+ *                          header lists them.
+ *
  * SPEND: every model call — the Anthropic client (`getAnthropicClient`, which
  * `callClaude*`, the drafting and the revision calls use) and the AI SDK
- * (`callFormPatchModel`) — goes through one counter that stops at 100 calls
- * per run, with no retries (`maxRetries: 0`). The app's own client
+ * (`callFormPatchModel`) — goes through one counter that stops at LIVE_CAP
+ * (default 100) calls per run, with no retries (`maxRetries: 0`). The app's own client
  * (`getAnthropicClient`) is replaced, so the key and base URL below are the
  * only ones used. Every call is forced to Haiku
  * (CLAUDE_READER_MODEL): ANTHROPIC_MODEL / ANTHROPIC_HAIKU_MODEL /
@@ -94,9 +145,30 @@ const live = vi.hoisted(() => {
     process.env.ANTHROPIC_HAIKU_MODEL = HAIKU;
     process.env.ANTHROPIC_READER_MODEL = HAIKU;
   }
+  /* LIVE_CAP and LIVE_FLAGS, checked before anything is imported or called. */
+  const active = process.env.LIVE === "1" || process.env.LIVE_DRY === "1";
+  const capText = process.env.LIVE_CAP?.trim() ?? "";
+  if (active && capText !== "" && (!/^[0-9]+$/.test(capText) || Number(capText) < 1 || Number(capText) > 100)) {
+    throw new Error(`live-regressions: LIVE_CAP must be a positive integer of at most 100 (got "${capText}"); nothing was sent`);
+  }
+  const FLAGS = (process.env.LIVE_FLAGS ?? "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  const refused = FLAGS.filter((name) => !/^[A-Z0-9_]+$/.test(name) || !name.endsWith("_ENABLED"));
+  if (active && refused.length) {
+    throw new Error(`live-regressions: LIVE_FLAGS takes only flag names ending in _ENABLED (A-Z, 0-9, _); refused: ${refused.map((name) => JSON.stringify(name)).join(", ")}; nothing was sent`);
+  }
+  if (active) {
+    // This process only, before the first app import: some flags are read once, when a module loads.
+    for (const name of FLAGS) process.env[name] = "true";
+  }
   const meter = {
     HAIKU,
-    CAP: 100,
+    /** LIVE_CAP (default 100, at most 100). */
+    CAP: capText === "" ? 100 : Number(capText),
+    /** LIVE_FLAGS: on in every scenario run, on top of production's flags. */
+    FLAGS: active ? FLAGS : [],
     /** LIVE_MAIN_MODEL: the answering call's model (unset: Haiku), and its own cap. */
     MAIN_MODEL: process.env.LIVE_MAIN_MODEL?.trim() || null,
     MAIN_CAP: 30,
@@ -108,7 +180,7 @@ const live = vi.hoisted(() => {
     /** The calls by kind: draft (write_form_fields), revision (revise_form_fields), answer (text), tool (any other tool), patch (AI SDK). */
     kinds: { draft: 0, revision: 0, answer: 0, tool: 0, patch: 0 } as Record<"draft" | "revision" | "answer" | "tool" | "patch", number>,
     /** LIVE_DRY=1: what the stand-in drafting and revision models write next. */
-    dry: { draft: {} as Record<string, string>, revision: {} as Record<string, string> },
+    dry: { draft: {} as Record<string, string>, checked: {} as Record<string, string[]>, revision: {} as Record<string, string> },
     capped: false,
     inputTokens: 0,
     outputTokens: 0,
@@ -168,7 +240,7 @@ vi.mock("@/lib/ai/anthropic", async () => {
   const standIn = (body: unknown) => {
     const kind = kindOf(body);
     const usage = { input_tokens: 1, output_tokens: 1 };
-    if (kind === "draft") return { role: "assistant", model: live.HAIKU, stop_reason: "tool_use", content: [{ type: "tool_use", id: "dry-draft", name: "write_form_fields", input: { values: live.dry.draft } }], usage };
+    if (kind === "draft") return { role: "assistant", model: live.HAIKU, stop_reason: "tool_use", content: [{ type: "tool_use", id: "dry-draft", name: "write_form_fields", input: { values: live.dry.draft, checked: live.dry.checked } }], usage };
     if (kind === "revision") return { role: "assistant", model: live.HAIKU, stop_reason: "tool_use", content: [{ type: "tool_use", id: "dry-revision", name: "revise_form_fields", input: { values: live.dry.revision } }], usage };
     // The answer, and no tool use for any other tool: its caller's fallback, as when the model declines.
     return { role: "assistant", model: live.HAIKU, stop_reason: "end_turn", content: [{ type: "text", text: kind === "answer" ? "A grounded answer." : "" }], usage };
@@ -405,10 +477,11 @@ const STEP_B_FLAGS = ["FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLE
 const NEW_PATH_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"];
 
 function setFlags(extra: readonly string[]): () => void {
-  const names = [...PRODUCTION, ...(PRODUCTION_FLAGS.off ?? []), ...STEP_B_FLAGS, ...NEW_PATH_FLAGS];
+  const names = [...PRODUCTION, ...(PRODUCTION_FLAGS.off ?? []), ...STEP_B_FLAGS, ...NEW_PATH_FLAGS, ...live.FLAGS];
   const saved = new Map(names.map((name) => [name, process.env[name]]));
   for (const name of names) delete process.env[name];
-  for (const name of [...PRODUCTION, ...extra]) process.env[name] = "true";
+  // LIVE_FLAGS on every scenario run, on top of production's.
+  for (const name of [...PRODUCTION, ...live.FLAGS, ...extra]) process.env[name] = "true";
   return () => {
     for (const [name, value] of saved) {
       if (value === undefined) delete process.env[name];
@@ -491,6 +564,15 @@ function values(instanceId: string | null): Record<string, string> {
   return Object.fromEntries(store.form_instance_values.filter((row) => row.instance_id === instanceId).map((row) => [String(row.field_key), String(row.value ?? "")]));
 }
 
+function checkedValues(instanceId: string | null): Record<string, string[]> {
+  if (!instanceId) return {};
+  return Object.fromEntries(
+    store.form_instance_values
+      .filter((row) => row.instance_id === instanceId && Array.isArray(row.checked) && (row.checked as unknown[]).length > 0)
+      .map((row) => [String(row.field_key), (row.checked as unknown[]).map(String)]),
+  );
+}
+
 function diff(before: Record<string, string>, after: Record<string, string>): Record<string, { before: string; after: string }> {
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   return Object.fromEntries([...keys].filter((key) => (before[key] ?? "") !== (after[key] ?? "")).map((key) => [key, { before: before[key] ?? "", after: after[key] ?? "" }]));
@@ -501,6 +583,8 @@ interface Turn {
   readonly reply: string;
   readonly updated: readonly string[];
   readonly diff: Record<string, { before: string; after: string }>;
+  /** The card this turn proposed (null: none; absent: Create's turn). */
+  readonly card?: { readonly templateKey: string | null; readonly employeeName: string | null } | null;
 }
 
 interface PathRun {
@@ -520,6 +604,8 @@ interface PathRun {
   readonly instanceId: string | null;
   /** Every saved value at the end. */
   readonly saved: Record<string, string>;
+  /** Every saved checkbox at the end (e.g. offense_type). */
+  readonly checked: Record<string, string[]>;
   readonly error: string | null;
 }
 
@@ -541,8 +627,9 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
   const callsBefore = live.calls;
   const offeredBefore = live.offered;
   const kindsBefore = { ...live.kinds };
-  const script = DRY_SCRIPTS[scenario.id];
+  const script = DRY_SCRIPTS[scenario.id] ?? MANAGER_DRY[scenario.id];
   live.dry.draft = script?.draft ?? {};
+  live.dry.checked = script?.checked ?? {};
   live.dry.revision = {};
   let edits = 0;
   const started = performance.now();
@@ -602,7 +689,13 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
         { id, role: "user", content: step.say, createdAt: `${TODAY}T15:30:00Z` } as ChatMessage,
         { id: `a${index}`, role: "assistant", content: payload.content, createdAt: `${TODAY}T15:30:01Z`, ...(payload.formProposal ? { formProposal: payload.formProposal } : {}) } as ChatMessage,
       );
-      turns.push({ said: step.say, reply: payload.content, updated: payload.formUpdate?.updated ?? [], diff: diff(before, values(instanceId)) });
+      turns.push({
+        said: step.say,
+        reply: payload.content,
+        updated: payload.formUpdate?.updated ?? [],
+        diff: diff(before, values(instanceId)),
+        card: payload.formProposal ? { templateKey: payload.formProposal.templateKey ?? null, employeeName: payload.formProposal.employeeName ?? null } : null,
+      });
     }
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);
@@ -611,6 +704,7 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
     vi.useRealTimers();
   }
   const saved = values(instanceId);
+  const checked = checkedValues(instanceId);
   return {
     turns,
     reply: turns.at(-1)?.reply ?? "",
@@ -623,13 +717,48 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
     kinds: Object.fromEntries(Object.entries(live.kinds).map(([kind, count]) => [kind, count - kindsBefore[kind as keyof typeof kindsBefore]])),
     instanceId,
     saved,
+    checked,
     error,
   };
 }
 
+const MANAGER_DRY = managerDryScripts();
+
+/** A scenario's `expect` over its recorded run: PASS, or FAIL with why. Recorded only, never asserted. */
+function judge(expectation: LiveExpect, run: PathRun, criteria: readonly LiveCriterion[] = []): Outcome {
+  const chat = run.turns.filter((turn) => turn.said !== "(Create)");
+  const outcome = {
+    card: run.card,
+    reply: run.reply,
+    replies: chat.map((turn) => turn.reply),
+    turnCards: chat.map((turn) => turn.card ?? null),
+    flagsOn: live.FLAGS,
+    saved: run.saved,
+    checked: run.checked,
+    error: run.error === NO_CARD ? "NO CARD (nothing to create from)" : run.error,
+  };
+  const why = expectation.check(outcome);
+  // A criterion that does not apply to this run's flags (#5's flag-on / flag-off turns) is left out: "n/a".
+  const columns = applicableCriteria(criteria, live.FLAGS).map((criterion) => {
+    const failed = criterion.check(outcome);
+    return { name: criterion.name, result: failed ? ("FAIL" as const) : ("PASS" as const), ...(failed ? { why: failed } : {}) };
+  });
+  return { result: why ? "FAIL" : "PASS", expected: expectation.says, ...(why ? { why } : {}), ...(columns.length ? { criteria: columns } : {}) };
+}
+
 /* ---------------------------------------------------------------- results -- */
 
-const results: { id: string; oldPath: PathRun; newPath: PathRun | null }[] = [];
+interface Outcome {
+  readonly result: "PASS" | "FAIL";
+  /** The scenario's expected outcome, in words. */
+  readonly expected: string;
+  readonly why?: string;
+  /** The managers' set: one result per criterion (card, no-ask, msb-name, cites-soc). */
+  readonly criteria?: readonly { readonly name: string; readonly result: "PASS" | "FAIL"; readonly why?: string }[];
+}
+
+/** `expect`: the flag sets' PASS / FAIL (old path; LIVE_FLAGS are on in it). Null: the scenario has no expected outcome. */
+const results: { id: string; oldPath: PathRun; newPath: PathRun | null; expect: Outcome | null }[] = [];
 /** The calls the create repeat made (counted in the same cap). */
 const repeatCalls = { value: 0 };
 const repeat: { off: { saved: string | null; losesSurname: boolean }[]; on: { saved: string | null; losesSurname: boolean }[] } = { off: [], on: [] };
@@ -647,6 +776,9 @@ function pickScenarios(): readonly LiveScenario[] {
   if (which === "failures") return LIVE_FAILURE_SCENARIOS;
   if (which === "names") return NAME_SCENARIOS;
   if (which === "gate") return GATE_SCENARIOS;
+  if (which === "glossary") return GLOSSARY_SCENARIOS;
+  if (which === "ca-sales") return CA_SALES_SCENARIOS;
+  if (which === "managers") return MANAGER_SCENARIOS;
   return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS, ...GATE_SCENARIOS];
 }
 
@@ -661,6 +793,9 @@ function writeResults(): void {
     mainCalls: live.mainCalls,
     mainCap: live.MAIN_CAP,
     mode: DRY ? "dry (stand-in models, no network)" : "live",
+    /** LIVE_FLAGS: on in every scenario run, on top of production's flags. */
+    liveFlags: live.FLAGS,
+    scenarioSet: process.env.LIVE_SCENARIOS ?? "all",
     calls: live.calls,
     kinds: live.kinds,
     cap: live.CAP,
@@ -672,15 +807,40 @@ function writeResults(): void {
   };
   const lostSurname = { off: repeat.off.filter((run) => run.losesSurname).length, on: repeat.on.filter((run) => run.losesSurname).length };
   const base = DRY ? "evals/results/live-regressions.dry" : "evals/results/live-regressions";
-  writeFileSync(`${base}.json`, `${JSON.stringify({ ranAt: new Date().toISOString(), spend, createRepeat: { ...repeat, lostSurname }, scenarios: results }, null, 2)}\n`);
+  const checks = results.filter((run) => run.expect);
+  const passed = checks.filter((run) => run.expect?.result === "PASS").length;
+  writeFileSync(`${base}.json`, `${JSON.stringify({ ranAt: new Date().toISOString(), liveFlags: live.FLAGS, spend, expectations: { passed, failed: checks.length - passed }, createRepeat: { ...repeat, lostSurname }, scenarios: results }, null, 2)}\n`);
   const lines = [
     `# Live regressions (regression set #1)${DRY ? " — DRY RUN, stand-in models" : ""}`,
+    "",
+    `Flags on top of production's (LIVE_FLAGS): ${live.FLAGS.length ? live.FLAGS.join(", ") : "none"}. Scenarios: ${spend.scenarioSet}.`,
     "",
     `Model ${spend.model}${spend.mainModel ? ` (answering call: ${spend.mainModel}, ${spend.mainCalls}/${spend.mainCap})` : ""}; ${spend.calls}/${spend.cap} calls (draft ${spend.kinds.draft}, revision ${spend.kinds.revision}, answer ${spend.kinds.answer}, other tools ${spend.kinds.tool}, patch ${spend.kinds.patch})${spend.capped ? " (CAP REACHED: later calls were not sent)" : ""}; tokens in ${spend.inputTokens}, out ${spend.outputTokens} (cache read ${spend.cacheReadTokens}, write ${spend.cacheWriteTokens}).`,
     "",
   ];
   if (repeat.off.length || repeat.on.length) {
     lines.push(`Create repeat ("${CA_CHAIN[0]}" → Create): Observation loses "Jane Doe" in ${lostSurname.off}/${repeat.off.length} with Step B OFF, ${lostSurname.on}/${repeat.on.length} with Step B ON.`, "");
+  }
+  if (checks.length) {
+    lines.push(`Expected outcomes: ${passed} PASS, ${checks.length - passed} FAIL of ${checks.length} (${checks.reduce((sum, run) => sum + run.oldPath.calls, 0)} calls).`, "", "| Case | Result | Expected | Why (FAIL) | calls |", "|---|---|---|---|---|");
+    for (const { id, oldPath, expect: outcome } of checks) lines.push(`| ${id} | **${outcome!.result}** | ${cell(outcome!.expected)} | ${cell(outcome!.why ?? "")} | ${oldPath.calls} |`);
+    lines.push("");
+    const graded = checks.filter((run) => run.expect?.criteria);
+    /* Every criterion that ran, in first-seen order: the four of #1–#4, then #5's per-turn columns. */
+    const NAMES = [...new Set(graded.flatMap((run) => run.expect!.criteria!.map((entry) => entry.name)))];
+    if (graded.length) {
+      lines.push(
+        "Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page; #5 with CA_SALES_POLICY_ENABLED on: t1-no-card, t1-offer-once (one \"Do you want a Corrective Action for <Name>?\" with yes and Standards of Conduct), t2-card and t2-cites-soc after \"yes\"; off: off-answer, off-no-offer):",
+        "",
+      );
+      lines.push(`| Case | ${NAMES.join(" | ")} | Why (FAIL) |`, `|---|${NAMES.map(() => "---|").join("")}---|`);
+      for (const { id, expect: outcome } of graded) {
+        const column = (name: string) => outcome!.criteria!.find((entry) => entry.name === name);
+        const whys = outcome!.criteria!.filter((entry) => entry.why).map((entry) => `${entry.name}: ${entry.why}`).join("; ");
+        lines.push(`| ${id} | ${NAMES.map((name) => (column(name) ? `**${column(name)!.result}**` : "n/a")).join(" | ")} | ${cell(whys)} |`);
+      }
+      lines.push("");
+    }
   }
   lines.push("| Case | Draft created | Edit turns that changed the form | Old path reply | Saved diff (last turn) | Card | ms | calls (draft/revision) | New path |", "|---|---|---|---|---|---|---|---|---|");
   for (const { id, oldPath, newPath } of results) {
@@ -703,7 +863,7 @@ function writeResults(): void {
 describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with stand-ins)", () => {
   beforeAll(async () => {
     // Production's flags before the first import: some are read once, when a module loads.
-    for (const flag of PRODUCTION) process.env[flag] = "true";
+    for (const flag of [...PRODUCTION, ...live.FLAGS]) process.env[flag] = "true";
     const models = await import("@/lib/config/models");
     expect([models.CLAUDE_MODEL, models.CLAUDE_HAIKU_MODEL, models.CLAUDE_READER_MODEL], "every model is Haiku in this process").toEqual([live.HAIKU, live.HAIKU, live.HAIKU]);
     routes = {
@@ -723,7 +883,9 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
     writeResults();
   });
 
-  it.runIf(process.env.LIVE_CREATE_REPEAT === "1" || DRY)("the same Corrective Action, created 5 times with Step B off and 5 times on: does the Observation keep \"Jane Doe\"?", async () => {
+  /* A flag set's dry run rehearses QA's LIVE_CAP=30 command: the create repeat (20 stand-in calls) only when asked. */
+  const flagSet = ["glossary", "ca-sales", "managers"].includes(process.env.LIVE_SCENARIOS ?? "");
+  it.runIf(process.env.LIVE_CREATE_REPEAT === "1" || (DRY && !flagSet))("the same Corrective Action, created 5 times with Step B off and 5 times on: does the Observation keep \"Jane Doe\"?", async () => {
     const create: LiveScenario = { id: "create-repeat", roster: LIVE_ROSTER, field: "observation", steps: [{ say: CA_CHAIN[0] }, { create: true }] };
     const before = live.calls;
     for (const group of ["off", "on"] as const) {
@@ -743,7 +905,8 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
       if (live.capped) break;
       const oldPath = await runScenario(scenario, []);
       const newPath = process.env.LIVE_NEW_PATH === "1" && !live.capped ? await runScenario(scenario, NEW_PATH_FLAGS) : null;
-      results.push({ id: scenario.id, oldPath, newPath });
+      const { expect: expectation, criteria } = scenario as { expect?: LiveExpect; criteria?: readonly LiveCriterion[] };
+      results.push({ id: scenario.id, oldPath, newPath, expect: expectation ? judge(expectation, oldPath, criteria) : null });
     }
     if (!DRY) return;
     /*
@@ -751,7 +914,9 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
      * stand-in drafting call, its edit turns reach the revision path and save
      * what the stand-in wrote, and the counter counts the stand-in calls.
      */
-    for (const { id, oldPath } of results) {
+    for (const { id, oldPath, expect: outcome } of results) {
+      // The flag sets: their PASS / FAIL (an error included) is recorded, never asserted; below, the dry run checks each was judged and the set fits LIVE_CAP=30.
+      if (outcome) continue;
       expect(oldPath.error, `${id}: ${oldPath.error}`).toBeNull();
       // A turn the app answers in code (the street address, the Jane Doe card) makes no model call.
       if (!(id in DRY_SCRIPTS)) continue;
@@ -770,15 +935,25 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
       expect(editTurns.some((turn) => Object.keys(turn.diff).length > 0), `${id}: no edit turn changed the saved form`).toBe(true);
     }
     /*
-     * Step 3's gate, on the new path: an edit asked as a question reaches
-     * edit_form (its last turn's main call offered it); a question does not.
-     * The stand-in never calls the tool, so each edit is handed to the old chain.
+     * Step 3's offer, on the new path: an edit asked as a question reaches
+     * edit_form (its last turn's main call offered it). Since Pau's ruling A3
+     * (4 Nov 2026) a question is offered it too; the stand-in never calls the
+     * tool, so nothing is written either way.
      */
     for (const { id, newPath } of results) {
       if (!newPath || !id.startsWith("gate-")) continue;
       expect(newPath.error, `${id}: ${newPath.error}`).toBeNull();
-      if (id.startsWith("gate-edit-")) expect(newPath.offered, `${id}: edit_form was not offered`).toBe(1);
-      else expect(newPath.offered, `${id}: edit_form offered on a question`).toBe(0);
+      // Changed on purpose (Pau's ruling A3): gate-question-* is offered edit_form as well.
+      expect(newPath.offered, `${id}: edit_form was not offered`).toBe(1);
+    }
+    /*
+     * The flag sets: every scenario was judged (PASS or FAIL, either is fine
+     * here), and the whole set fits QA's LIVE_CAP=30.
+     */
+    const set = process.env.LIVE_SCENARIOS;
+    if (set === "glossary" || set === "ca-sales" || set === "managers") {
+      for (const { id, expect: outcome } of results) expect(outcome, `${id}: no expected outcome recorded`).not.toBeNull();
+      expect(results.reduce((sum, run) => sum + run.oldPath.calls, 0), `the ${set} set needs more than 30 calls`).toBeLessThanOrEqual(30);
     }
     expect(live.calls, "the counter is the sum of the scenarios' calls").toBe(
       results.reduce((sum, run) => sum + run.oldPath.calls + (run.newPath?.calls ?? 0), 0) + repeatCalls.value,

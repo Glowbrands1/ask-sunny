@@ -67,7 +67,14 @@ describe("an account that reads two ways is a question", () => {
 
   it("a deadline for a sales number", () => {
     const reading = readCaPolicy("She missed the deadline to hit her sales goal.");
-    expect(reading.ambiguous).toEqual(["standards_of_conduct", "under_performance"]);
+    /*
+     * CHANGED ON PURPOSE, revision 8 (client request, 4 Nov 2026; template
+     * approved): the Corrective Action Form has no Under Performance box —
+     * the Standards of Conduct is used instead — so a sales target is no
+     * second reading. It was ["standards_of_conduct", "under_performance"].
+     */
+    expect(reading.ambiguous).toBeNull();
+    expect(reading.suggestion).toBe("standards_of_conduct");
   });
 
   it("the question says what each would mean, and picks neither", () => {
@@ -236,8 +243,9 @@ describe("the box a named policy ticks", () => {
     expect(caPolicyProposalLine(readCaPolicy("attendance"))).toBe(
       "**Policy:** Attendance, as you said. I'll quote that section from the current policy manual on the draft.",
     );
+    // CHANGED ON PURPOSE, revision 8 (4 Nov 2026): Under Performance is recorded under the Standards of Conduct; the card never offers the removed box.
     expect(caPolicyProposalLine(readCaPolicy("it's under performance"))).toBe(
-      "**Policy:** Under Performance, as you said. The policy manual has no single section to quote for it, so Direct policy is left for you to complete.",
+      "**Policy:** Standards of Conduct — the Corrective Action Form records Under Performance under the Standards of Conduct now. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.",
     );
   });
 });

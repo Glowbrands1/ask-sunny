@@ -27,6 +27,9 @@ import type { InstanceValueRow } from "./instances";
  *      `priorActionLine` writes, keeping the longer line; the "none" line goes
  *      once a real line exists.
  *   7. A set to the same value is not a change.
+ *   8. FORM_EDIT_NOOP_GUARD_ENABLED (Step 4, optional rules): a set to the
+ *      same value is refused (`same_value`), and so is a value that copies
+ *      the manager's whole latest message (`copies_message`).
  *
  * Nothing reads it yet: the wiring is a later step, behind the flag.
  */
@@ -65,7 +68,10 @@ export type RefusalReason =
   | "unknown_field"
   | "not_draft"
   /** CHAT_GLOSSARY_ENABLED: the employee's name would be a glossary term ("msb"). */
-  | "glossary_term";
+  | "glossary_term"
+  /** FORM_EDIT_NOOP_GUARD_ENABLED: the op leaves the field as it is, or copies the latest message. */
+  | "same_value"
+  | "copies_message";
 
 export interface Refusal {
   readonly key: string;
@@ -178,6 +184,26 @@ export interface PatchRules {
    * name, and the app's own date and amount readers. Absent: unchanged.
    */
   readonly protectedValues?: ProtectedValues;
+  /**
+   * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): an op that leaves its field as it
+   * is — a set or append to the value it already has, a clear of an empty
+   * field — is refused as `same_value`, never passed over as no change, so a
+   * turn whose edit does nothing is handed off and never claimed.
+   * "whole_patch" (a correction's preset): only when nothing in the patch
+   * changes — a value the correction's readers restate beside a real change
+   * ("change the payroll deduction to $5.00" restates the Yes) is passed over
+   * as before. Absent: unchanged.
+   */
+  readonly refuseSameValue?: boolean | "whole_patch";
+  /**
+   * FORM_EDIT_NOOP_GUARD_ENABLED (Step 4): the latest message. A text value
+   * that holds all of it, when it is at least MIN_EVIDENCE_WORDS words, is
+   * refused as `copies_message` — the request itself written into a field
+   * ("Can you do the same thing for … but switch it to a written" in the
+   * Observation, the overnight scan's sf-s11). Compared on `fold`, and on its
+   * words in order. Absent: unchanged.
+   */
+  readonly copiesMessage?: string;
 }
 
 export interface ProtectedValues {
@@ -247,6 +273,14 @@ export function wordsOf(text: string): string[] {
     if (end > start) out.push(raw.slice(start, end));
   }
   return out;
+}
+
+/** The value holds the whole message (folded, or as its words in order), and the message is MIN_EVIDENCE_WORDS words or more. */
+export function copiesMessage(value: string, message: string): boolean {
+  const said = wordsOf(message);
+  if (said.length < MIN_EVIDENCE_WORDS) return false;
+  if (contains(value, message)) return true;
+  return ` ${wordsOf(value).join(" ")} `.includes(` ${said.join(" ")} `);
 }
 
 /** Strong enough evidence: MIN_EVIDENCE_WORDS words, or one whole manager turn that is shorter. */
@@ -567,8 +601,17 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
     if (sameValue(current(next, key).value, written.value)) return;
     next[key] = { key, value: written.value, owner: isEmpty(written.value) ? "empty" : written.owner };
   };
-  for (const [key, value] of Object.entries(patch.set)) write(key, setOne(next, key, value, patch, rules));
-  for (const key of patch.clear) write(key, clearOne(next, key, patch, rules));
+  /* FORM_EDIT_NOOP_GUARD_ENABLED: an op that copies the message, or changes nothing, is refused. */
+  const guarded = (key: string, value: FieldValue | null, written: Written): Written => {
+    if (rules.copiesMessage !== undefined && value !== null && copiesMessage(typeof value === "string" ? value : asList(value).join("\n"), rules.copiesMessage)) {
+      return refuse(key, "copies_message");
+    }
+    if (!rules.refuseSameValue || isRefusal(written)) return written;
+    if (written === null || sameValue(current(next, key).value, written.value)) return refuse(key, "same_value");
+    return written;
+  };
+  for (const [key, value] of Object.entries(patch.set)) write(key, guarded(key, value, setOne(next, key, value, patch, rules)));
+  for (const key of patch.clear) write(key, guarded(key, null, clearOne(next, key, patch, rules)));
   /* A write-in holds text only beside its ticked box (FORM_EDIT_SINGLE_WRITER_ENABLED). */
   for (const [key, box] of rules.writeIns ?? []) {
     if (!(key in patch.set) || isEmpty(next[key]?.value) || sameValue(next[key]?.value, draft[key]?.value)) continue;
@@ -578,7 +621,10 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
     else delete next[key];
     refused.push(refuse(key, "writein_without_box"));
   }
-  return { draft: next, diff: { changed: diffDrafts(draft, next), refused } };
+  const changed = diffDrafts(draft, next);
+  // A correction's restated value beside a real change is not refused (`refuseSameValue: "whole_patch"`).
+  const kept = rules.refuseSameValue === "whole_patch" && changed.length > 0 ? refused.filter((refusal) => refusal.reason !== "same_value") : refused;
+  return { draft: next, diff: { changed, refused: kept } };
 }
 
 /** `applyPatch` with the rules bound. */

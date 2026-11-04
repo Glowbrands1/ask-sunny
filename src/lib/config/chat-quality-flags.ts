@@ -2366,7 +2366,8 @@ export function formEditSingleWriterEnabled(): boolean {
 /**
  * The edit tool in the main call (Step 3, 4 Nov 2026; ported from Ask
  * Bubbles, same flag in both apps): with a draft form open and a turn that is
- * not a question, a correction or a policy change, the answering call is
+ * not a correction or a policy change (a question-phrased turn too, Pau's
+ * ruling A3), the answering call is
  * offered one tool, `edit_form`, with the open form as JSON in one extra data
  * block. A tool call is written through `writeFormEdits` (path "tool", all or
  * nothing) and the reply is the saved diff; the model's text is not shown. No
@@ -2439,4 +2440,21 @@ export function caSalesPolicyEnabled(): boolean {
  */
 export function formNameFromRosterEnabled(): boolean {
   return envFlag("FORM_NAME_FROM_ROSTER_ENABLED") && caSalesPolicyEnabled();
+}
+
+/**
+ * No false "Updated" after a form edit (Step 4, 4 Nov 2026). The one writer
+ * refuses, on the tool, patch, revision and correction paths, an op that sets
+ * a field to the value it already has (`same_value`) and an op whose value
+ * holds the manager's whole latest message of 3 words or more
+ * (`copies_message`, the overnight scan's sf-s11); both hand the turn off as
+ * any refusal does. On a turn the edit tool was offered, the reply about the
+ * form comes only from the saved diff ("Updated: <label>: <value>"), and an
+ * empty diff says "I didn't change anything on the form. Tell me which part
+ * to change and what it should say." See `forms/form-noop-reply.ts`. Needs
+ * FORM_EDIT_SINGLE_WRITER_ENABLED: off unless both are on. Off, nothing
+ * changes.
+ */
+export function formEditNoopGuardEnabled(): boolean {
+  return envFlag("FORM_EDIT_NOOP_GUARD_ENABLED") && formEditSingleWriterEnabled();
 }
