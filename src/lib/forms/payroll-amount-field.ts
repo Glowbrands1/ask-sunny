@@ -52,6 +52,14 @@ export const DPOA_UNPUBLISHED_REVISION = 7;
 
 export const DPOA_DATABASE_REVISION = 6;
 
+/**
+ * Revision 8 (Type of Offense, client request; template approved 4 Nov 2026)
+ * is published. It keeps revision 7's Payroll deduction amount line in the
+ * seed, and the line is still not published: a later revision is stored
+ * as its own revision, without the line, until Pau approves it.
+ */
+export const DPOA_OFFENSE_REVISION = 8;
+
 export function withoutPayrollAmountField(document: FormDocument): FormDocument {
   const present = document.blocks.some(
     (block) => block.kind === "field" && block.field.key === PAYROLL_AMOUNT_KEY,
@@ -67,12 +75,17 @@ export function withoutPayrollAmountField(document: FormDocument): FormDocument 
 
 /**
  * What a database write is allowed to store. Revision 7 is in the seed and is
- * not published. Any other revision is stored as given.
+ * not published. A later revision (8, the Type of Offense) is published
+ * without revision 7's amount line. Any other revision is stored as given.
  */
 export function withholdUnpublishedDpoa<T extends { key: string; revision: number; document: FormDocument }>(
   seed: T,
 ): T {
-  if (seed.key !== "dpoa" || seed.revision !== DPOA_UNPUBLISHED_REVISION) return seed;
+  if (seed.key !== "dpoa" || seed.revision < DPOA_UNPUBLISHED_REVISION) return seed;
+  if (seed.revision > DPOA_UNPUBLISHED_REVISION) {
+    const document = withoutPayrollAmountField(seed.document);
+    return document === seed.document ? seed : { ...seed, document };
+  }
   return {
     ...seed,
     revision: DPOA_DATABASE_REVISION,

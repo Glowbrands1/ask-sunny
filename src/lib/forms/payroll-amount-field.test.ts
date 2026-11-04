@@ -15,6 +15,7 @@ import { parseFormDocument } from "./document";
 import { fieldsToRestore, retainFilledFields } from "./draft-merge";
 import {
   DPOA_DATABASE_REVISION,
+  DPOA_OFFENSE_REVISION,
   DPOA_UNPUBLISHED_REVISION,
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_LABEL,
@@ -272,12 +273,22 @@ describe("the amount field is wired, and revision 7 is not published", () => {
 
   it("the seed is revision 7 and the database write stays revision 6 without the line", () => {
     const seed = HR_TEMPLATE_SEEDS.find((entry) => entry.key === "dpoa")!;
-    expect(seed.revision).toBe(DPOA_UNPUBLISHED_REVISION);
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+     * template approved 4 Nov 2026): the seed is now revision 8, which keeps
+     * the line. Revision 7 is still withheld as before (checked on a revision
+     * 7 seed), and revision 8 is written as revision 8, still without the line.
+     */
+    expect(seed.revision).toBe(DPOA_OFFENSE_REVISION);
     const keys = seed.document.blocks.map(blockKey);
     expect(keys[keys.indexOf(PAYROLL_DEDUCT_KEY) + 1]).toBe(PAYROLL_AMOUNT_KEY);
+    const written7 = withholdUnpublishedDpoa({ ...seed, revision: DPOA_UNPUBLISHED_REVISION });
+    expect(written7.revision).toBe(DPOA_DATABASE_REVISION);
+    expect(written7.document.blocks.map(blockKey)).not.toContain(PAYROLL_AMOUNT_KEY);
     const written = withholdUnpublishedDpoa(seed);
-    expect(written.revision).toBe(DPOA_DATABASE_REVISION);
+    expect(written.revision).toBe(DPOA_OFFENSE_REVISION);
     expect(written.document.blocks.map(blockKey)).not.toContain(PAYROLL_AMOUNT_KEY);
+    expect(written.document).toEqual(withoutPayrollAmountField(seed.document));
   });
 
   it("fills a stated amount and does not take $25 from the policy", () => {

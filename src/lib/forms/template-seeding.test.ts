@@ -38,9 +38,11 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { TEMPLATE_SEEDS } = await import("./library");
-const { DPOA_DATABASE_REVISION, PAYROLL_AMOUNT_LABEL, withoutPayrollAmountField } = await import(
+const { DPOA_OFFENSE_REVISION, PAYROLL_AMOUNT_LABEL, withoutPayrollAmountField } = await import(
   "./payroll-amount-field"
 );
+const { default: REVISION_6 } = await import("@/test/fixtures/forms/corrective-action-revision-6.json");
+const { default: REVISION_7 } = await import("@/test/fixtures/forms/corrective-action-revision-7.json");
 
 function reset() {
   store.form_templates = [];
@@ -474,11 +476,14 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
     expect(result.revised).toEqual(["dpoa"]);
     // The seed is revision 7. The database write stays revision 6, without
     // Payroll deduction amount, until Pau approves a publish.
-    expect(caSeed.revision).toBe(7);
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+    // template approved 4 Nov 2026): the seed is revision 8 and is published
+    // as revision 8 — still without Payroll deduction amount.
+    expect(caSeed.revision).toBe(8);
     expect(currentVersionOf("dpoa")).toMatchObject({
       version: 2,
       status: "published",
-      seed_revision: DPOA_DATABASE_REVISION,
+      seed_revision: DPOA_OFFENSE_REVISION,
     });
     expect(currentVersionOf("dpoa")?.document).toEqual(withoutPayrollAmountField(caSeed.document));
     expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(PAYROLL_AMOUNT_LABEL);
@@ -492,14 +497,35 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
     expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
   });
 
-  it("does not publish revision 7 over a library already at 6 or at the live v7", async () => {
+  /*
+   * CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template
+   * approved 4 Nov 2026). Before: revision 7 was never published over a
+   * library at 6 or at the live v7. Now revision 8 (Type of Offense) is
+   * published over either — as a new version, the old one archived for the
+   * forms filed on it — and still without Payroll deduction amount.
+   */
+  it.each([
+    [6, REVISION_6],
+    [7, REVISION_7],
+  ])("publishes revision 8 over a library at revision %i, without the amount line, and keeps the old version", async (revision, document) => {
     await ensureTemplateLibrary("system");
-    for (const row of versionsOf("dpoa")) row.seed_revision = 6;
-    expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
+    for (const row of versionsOf("dpoa")) {
+      row.seed_revision = revision;
+      row.document = JSON.parse(JSON.stringify(document));
+    }
+    const originalId = currentVersionOf("dpoa")!.id;
 
-    for (const row of versionsOf("dpoa")) row.seed_revision = 7;
-    expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
+    expect((await ensureTemplateLibrary("system")).revised).toEqual(["dpoa"]);
+    expect(currentVersionOf("dpoa")).toMatchObject({ status: "published", seed_revision: DPOA_OFFENSE_REVISION });
+    expect(currentVersionOf("dpoa")?.document).toEqual(withoutPayrollAmountField(caSeed.document));
     expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(PAYROLL_AMOUNT_LABEL);
+    expect(JSON.stringify(currentVersionOf("dpoa")?.document)).toContain("Attendance Policy");
+    const archived = versionsOf("dpoa").find((row) => row.id === originalId);
+    expect(archived).toMatchObject({ status: "archived", seed_revision: revision });
+    expect(JSON.stringify(archived?.document)).toContain("Tardiness/Leaving Early");
+
+    // Idempotent: a second run publishes nothing.
+    expect((await ensureTemplateLibrary("system")).revised).toEqual([]);
   });
 });
 

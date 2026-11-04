@@ -63,6 +63,7 @@
 
 import { printedPageCitationEnabled } from "@/lib/config/chat-quality-flags";
 import { describesAttendanceToo, LATE_TO_OPEN, lateOpenOn } from "./late-open";
+import { OFFENSE_KEY_SUCCESSORS, offeredOffenseKey } from "./offense-keys";
 import { headingOf, isPageFooter } from "@/lib/ingestion/extract/pdf-sections";
 
 /* ------------------------------------------------------------- identity --- */
@@ -832,6 +833,13 @@ export const OFFENSE_MANUAL_SECTIONS: Readonly<Record<string, OffenseSections>> 
   tardiness: { headings: ["Attendance"] },
   absenteeism: { headings: ["Attendance"] },
   /*
+   * REVISION 8'S ATTENDANCE POLICY BOX, which replaces the two above on the
+   * current form (`offense-keys.ts`): the same section, and Late Opening and
+   * Seminar/Webinar Attendance follow it below as they followed the boxes it
+   * replaced.
+   */
+  attendance_policy: { headings: ["Attendance"] },
+  /*
    * NAMED AS THE MANUAL NAMES IT. "Standards of Conduct" heads the sheet
    * listing the infractions that may result in disciplinary action, and the
    * offense box carries the same words.
@@ -922,6 +930,13 @@ const DESCRIBED_SECTIONS: readonly {
       /\b(?:open(?:ed|ing)\s+late|late[- ]open(?:ing|ed|er)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
     headings: ["Late Opening"],
   },
+  /* Revision 8: Late Opening follows the Attendance Policy box, as it followed Tardiness (the same words). */
+  {
+    offenseKey: "attendance_policy",
+    describes:
+      /\b(?:open(?:ed|ing)\s+late|late[- ]open(?:ing|ed|er)?|open(?:ed|ing)? (?:the )?(?:salon|store|location|shop)(?:\s+late)?|(?:scheduled|supposed|assigned|due) to open|opener|opening shift|failed to open|did(?:n't| not) open)/i,
+    headings: ["Late Opening"],
+  },
   /*
    * A SEMINAR OR WEBINAR NOT ATTENDED is an absence from a scheduled shift,
    * and the manual's Seminar/Webinar Attendance section is the one that says
@@ -930,6 +945,12 @@ const DESCRIBED_SECTIONS: readonly {
    */
   {
     offenseKey: "absenteeism",
+    describes: /\b(?:seminars?|webinars?)\b/i,
+    headings: ["Seminar/Webinar Attendance"],
+  },
+  /* Revision 8: Seminar/Webinar Attendance follows the Attendance Policy box, as it followed Absenteeism. */
+  {
+    offenseKey: "attendance_policy",
     describes: /\b(?:seminars?|webinars?)\b/i,
     headings: ["Seminar/Webinar Attendance"],
   },
@@ -1014,16 +1035,34 @@ export function offenseKeyForManualHeading(heading: string): string {
  * 21 Oct 2026: a late opener's form cited Late Opening, page 15, but Policy
  * Violated said only "Tardiness/Leaving Early".
  */
-export function boxSectionNames(headings: readonly string[]): Record<string, string> {
+export function boxSectionNames(
+  headings: readonly string[],
+  /** The version's Type of Offense keys; given, a removed box's section is named under the box that replaced it (revision 8). */
+  offered?: readonly string[],
+): Record<string, string> {
   const names: Record<string, string> = {};
   for (const heading of headings) {
     const name = heading.trim();
     if (name === "") continue;
-    const key = offenseKeyForManualHeading(name);
+    const own = offenseKeyForManualHeading(name);
+    const key = offered ? (offeredOffenseKey(own, offered) ?? own) : own;
     if (names[key]) continue;
-    const own = OFFENSE_MANUAL_SECTIONS[key];
-    if (own && [...own.headings, ...(own.managementHeadings ?? [])].some((entry) => headingKey(entry) === headingKey(name))) continue;
+    const box = OFFENSE_MANUAL_SECTIONS[key];
+    if (box && [...box.headings, ...(box.managementHeadings ?? [])].some((entry) => headingKey(entry) === headingKey(name))) continue;
     names[key] = name;
+  }
+  /*
+   * NO VERSION GIVEN (the chat's policy and revision paths): a removed box's
+   * section is also named under the box that replaced it (revision 8), so a
+   * form on either version finds it beside the box it ticked. Where a form
+   * ticks both the old box and its replacement (revision 7 and earlier), Policy Violated
+   * prints it beside the old box only (`offenseCategoryValue`).
+   */
+  if (!offered) {
+    for (const [key, name] of Object.entries({ ...names })) {
+      const successor = OFFENSE_KEY_SUCCESSORS[key];
+      if (successor && !names[successor]) names[successor] = name;
+    }
   }
   return names;
 }

@@ -10,5 +10,7 @@ written to make a parser pass.
 | `coaching-form.docx` | The same form as Word | The `.docx` path, and the check that two formats of one document produce the same native form. |
 | `stc-exit.docx` | The Resignation/Exit Form (`STC Exit.docx`) as Word | The source the `stc-exit` template is transcribed from; `exit-library.test.ts` checks every heading, label, option and sentence in it is on the template. Its one pre-ticked box ("Written notice attached? No") is a saved default, not personal data. |
 | `prescreen-form.doc` | Prescreen / Phone Interview, Word 97-2003 | The legacy binary format, kept so its refusal is tested against a real `.doc` rather than a hand-made header. |
+| `corrective-action-revision-6.json` | The Corrective Action Form document as the database published it (revision 6), taken from `main` before revision 8 | Forms filed on it keep its six Type of Offense boxes and the Other write-in; `offense-revision-8.test.ts` opens, prints and copies them as filed. |
+| `corrective-action-revision-7.json` | The revision 7 seed document (revision 6 plus Payroll deduction amount), taken from `main` before revision 8 | The live library's revision; forms on it have the same six boxes and write-in. |
 
 They contain no personal data: every field is an unfilled Word placeholder.

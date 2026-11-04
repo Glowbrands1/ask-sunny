@@ -12,6 +12,7 @@ import {
   type ManualSection,
 } from "./official-policy-manual";
 import { statesMetricShortfall } from "./metric-shortfall";
+import { CURRENT_CA_OFFENSE_KEYS, offeredOffenseKey, offeredOffenseKeys } from "./offense-keys";
 
 /**
  * ============================================================================
@@ -473,7 +474,8 @@ function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   const alternatives: CaPolicyReading["alternatives"] = [];
   if (topics.length > 0) {
     if (missedEvent || sentences.some((s) => ATTENDANCE.test(s))) alternatives.push("attendance");
-    if (sentences.some((s) => TARGET.test(s))) alternatives.push("under_performance");
+    // Revision 8: the current form has no Under Performance box (it is the Standards of Conduct), so a target is no other reading.
+    if (sentences.some((s) => TARGET.test(s)) && CURRENT_CA_OFFENSE_KEYS.includes("under_performance")) alternatives.push("under_performance");
   }
 
   if (stated) {
@@ -577,7 +579,8 @@ export function withStatedOffense(input: {
   keys: readonly string[];
   offered: readonly string[];
 }): { checked: Record<string, string[]>; values: Record<string, string>; ticked: string[]; replaced: string[] } {
-  const ticked = input.keys.filter((key) => input.offered.includes(key));
+  // Revision 8: a removed box is ticked as the box that replaced it, where this version offers only that (`offense-keys.ts`).
+  const ticked = offeredOffenseKeys(input.keys, input.offered);
   const before = input.checked.offense_type ?? [];
   const replaced: string[] = before.filter((key) => !ticked.includes(key));
   const values = { ...input.values };
@@ -638,12 +641,18 @@ export type NamedPolicyReading =
 
 /** The offense box a named section is cited under, as the form labels it. */
 const OFFENSE_BOX_LABEL: Record<string, string> = {
+  attendance_policy: "Attendance Policy",
   tardiness: "Tardiness/Leaving Early",
   absenteeism: "Absenteeism",
   standards_of_conduct: "Standards of Conduct",
   dress_code: "Dress Code Violation",
   company_policies: "Violation of Company Policies",
 };
+
+/** The box a section is cited under, as the CURRENT form labels it: a removed box is named as the one that replaced it. */
+function currentBoxLabel(key: string): string | undefined {
+  return OFFENSE_BOX_LABEL[offeredOffenseKey(key, CURRENT_CA_OFFENSE_KEYS) ?? key];
+}
 
 function namedPolicyLine(named: NamedPolicyReading): string {
   /*
@@ -660,7 +669,7 @@ function namedPolicyLine(named: NamedPolicyReading): string {
    * Watch Policy. Said as a reading the manager can change, not as theirs.
    */
   if (named.lookup === "described") {
-    const box = OFFENSE_BOX_LABEL[named.offenseKey];
+    const box = currentBoxLabel(named.offenseKey);
     // The manual's sentence closes this one: `… which says "… scheduled shifts." I'll quote it`.
     const end = named.anchor && /[.!?]$/.test(named.anchor) ? "" : ".";
     const says = !named.anchor
@@ -671,7 +680,7 @@ function namedPolicyLine(named: NamedPolicyReading): string {
     return `**Policy:** "${named.phrase}" reads as the policy manual's **${named.heading}** (page ${named.page})${says} I'll quote it on the draft${box ? ` under **${box}**` : ""} — tell me if a different policy applies.`;
   }
   if (named.lookup === "found") {
-    const box = OFFENSE_BOX_LABEL[named.offenseKey];
+    const box = currentBoxLabel(named.offenseKey);
     return `**Policy:** ${named.heading}, as you said — the policy manual's section on page ${named.page}. I'll quote it on the draft${box ? ` under **${box}**` : ""}.`;
   }
   if (named.lookup === "missing") {
@@ -740,6 +749,13 @@ export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolic
   }
   if (reading.stated === "attendance" || reading.stated === "dress_code" || reading.stated === "late_opening") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. I'll quote that section from the current policy manual on the draft.`;
+  }
+  if (
+    (reading.stated === "under_performance" || reading.stated === "company_policies") &&
+    !CURRENT_CA_OFFENSE_KEYS.includes(reading.stated)
+  ) {
+    // Revision 8: the form records it under the Standards of Conduct; the box is never offered by its old name.
+    return `**Policy:** Standards of Conduct — the Corrective Action Form records ${CA_POLICY_LABEL[reading.stated]} under the Standards of Conduct now. I'll quote that section from the current policy manual on the draft; tell me if a different policy applies.`;
   }
   if (reading.stated === "under_performance" || reading.stated === "company_policies") {
     return `**Policy:** ${CA_POLICY_LABEL[reading.stated]}, as you said. The policy manual has no single section to quote for it, so Direct policy is left for you to complete.`;
