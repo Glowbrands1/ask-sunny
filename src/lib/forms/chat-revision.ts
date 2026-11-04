@@ -3,7 +3,7 @@ import "server-only";
 import { getAnthropicClient } from "@/lib/ai/anthropic";
 import type { AskResponse } from "@/lib/ai/types";
 import { ACTIVE_BRAND } from "@/lib/brand";
-import { revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, revisionSameValueEnabled } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, CLAUDE_MODEL } from "@/lib/config/models";
 import type { ChatMessage } from "@/types";
 
@@ -548,12 +548,9 @@ export async function reviseActiveForm(input: {
     return dateChanged ? { ...reply(lines.join("\n")), formUpdate: { instanceId: input.instanceId, updated: [FOLLOW_UP_DATE_KEY] } } : reply(lines.join("\n"));
   }
 
-  const saved = await applyAssistantRevision(
-    input.instanceId,
-    { values: byName.values, checked: sensitive.checked },
-    plan.cleared,
-    actor.id,
-  );
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).writeRevisionEdits(input.instanceId, { values: byName.values, checked: sensitive.checked }, plan.cleared, { actorId: actor.id, latest: input.question, notes })
+    : await applyAssistantRevision(input.instanceId, { values: byName.values, checked: sensitive.checked }, plan.cleared, actor.id);
   const written = [
     ...Object.keys(saved.accepted.values),
     ...Object.keys(saved.accepted.checked),

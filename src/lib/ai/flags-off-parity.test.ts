@@ -503,6 +503,14 @@ const PROTECTED = [
  * `await namesOnRoster(<the same filtered list>, actor.scope)`. Behind
  * FORM_EDIT_NAME_GATE_ROSTER_ENABLED, default off; off, namesOnRoster returns
  * the list unchanged and reads nothing.
+ *
+ * The user (Pau) approved on 4 Nov 2026, via QA ("chat-revision.ts hunk 1,
+ * version 2: YES, same hunk in both apps"), in src/lib/forms/chat-revision.ts:
+ * the import `formEditSingleWriterEnabled` beside `revisionSameValueEnabled`,
+ * and the revision's save as `formEditSingleWriterEnabled() ?
+ * writeRevisionEdits(…, { actorId, latest: input.question, notes }) :
+ * applyAssistantRevision(…)`. Behind FORM_EDIT_SINGLE_WRITER_ENABLED, default
+ * off; off, the same applyAssistantRevision call as before.
  */
 const APPROVED_PROTECTED_EDITS = [
   ":(exclude)src/lib/forms/proposal.ts",
