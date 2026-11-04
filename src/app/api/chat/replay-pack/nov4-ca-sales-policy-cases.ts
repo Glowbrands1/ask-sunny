@@ -128,7 +128,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
      * sale rung up inaccurately is the Standards of Conduct, and an Under
      * Performance tick becomes it. The card is the next case, still open.
      */
-    status: { open: "a register-accuracy corrective action cites no policy" },
+    // Fixed by Corrective Action revision 8 (template approved 4 Nov 2026): the Under Performance tick is the Standards of Conduct box on the current form, flag or not.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);

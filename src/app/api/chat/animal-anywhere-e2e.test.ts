@@ -500,7 +500,13 @@ describe(`${ANY} on`, () => {
   ])("%s: SX5 cites Animals in the Workplace", async (_casing, turns) => {
     const { violated, language, plan } = await cited(turns, OBSERVED);
     expect(`${violated}\n${language}`).toMatch(/Animals in the Workplace/i);
-    expect(`${violated}\n${language}`).not.toMatch(/Standards of Conduct/i);
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
+     * template approved 4 Nov 2026): Policy Violated names the Standards of
+     * Conduct box the section is now cited under ("Standards of Conduct —
+     * Animals in the Workplace"); Direct policy still cites the section alone.
+     */
+    expect(language).not.toMatch(/Standards of Conduct/i);
     expect(plan).toMatch(/Animals in the Workplace/i);
   });
 });

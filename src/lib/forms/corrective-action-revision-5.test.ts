@@ -79,7 +79,9 @@ function revision4(): FormDocument {
 
 describe("the template", () => {
   it("is revision 7 in the seed, and revision 6 is still the published reading", () => {
-    expect(seed.revision).toBe(7);
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (4 Nov 2026, client request, template approved): Type of Offense is four boxes. Revision 7's note is kept.
+    expect(seed.revision).toBe(8);
+    expect(seed.revisionNote).toMatch(/Revision 8 \(client request, 4 Nov 2026; template approved\)/);
     expect(seed.revisionNote).toMatch(/Revision 5/);
     expect(seed.revisionNote).toMatch(/Revision 6 \(District Manager feedback, 21 Oct 2026\)/);
     expect(seed.revisionNote).toMatch(/does not publish revision 7/);

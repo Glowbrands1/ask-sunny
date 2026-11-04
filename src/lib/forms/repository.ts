@@ -280,6 +280,8 @@ export async function ensureTemplateLibrary(
   for (const source of TEMPLATE_SEEDS) {
     // Revision 7 of the Corrective Action Form is the live library. It is in
     // the seed, including Payroll deduction amount, and it is not published.
+    // Revision 8 (Type of Offense, approved 4 Nov 2026) is published WITH
+    // that line (Pau, 4 Nov 2026).
     const seed = withholdUnpublishedDpoa(source);
     try {
       const row = known.get(seed.key);

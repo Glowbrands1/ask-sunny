@@ -34,10 +34,22 @@ import { CA_CHAIN, LIVE_ROSTER, OBSERVATION_AFTER } from "./replay-pack/nov4-liv
  *   (c) production's flags with FORM_EDIT_NOOP_GUARD_ENABLED on alone (it
  *       needs the single writer, so it is off).
  *
- * (a) and (b) equal Ask Sunny's main before this flag (7cd59a77), recorded in
+ * (a) and (b) equal Ask Sunny's main before this flag, recorded in
  * `form-edit-noop-guard-flags-off.main.json` (`RECORD_MAIN_FIXTURE=1` on that
- * commit rewrites it); (c) equals (b). Replies, rows and events; ids numbered
- * in order of first appearance.
+ * commit rewrites it); (c) equals (b).
+ *
+ * Re-recorded on purpose (Port from Ask Bubbles 50eb26da, #429) on 7db7bf66:
+ * Corrective Action revision 8 (#512) before this flag (#511). First recorded
+ * on 7cd59a77 (revision 6 in the database). The ONLY difference, in (a) and in
+ * (b) alike, is the first draft's Type of Offense: the drafting model's
+ * "tardiness" is ticked as the box that replaced it, `attendance_policy`, and
+ * Policy Violated reads "Attendance Policy — Late Opening" (was
+ * "Tardiness/Leaving Early — Late Opening"): revision 8's intended rename of
+ * the box, not the guard (accepted by QA, 4 Nov 2026). Every reply, every other row and
+ * every event is byte-identical, the scripted "tardiness" tick included (it
+ * saved nothing before, on a form that already had it, and saves nothing now,
+ * on a form with no such box). Replies, rows and events; ids numbered in order
+ * of first appearance.
  */
 
 const store = {

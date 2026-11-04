@@ -1,3 +1,4 @@
+import { offeredOffenseKeys } from "./offense-keys";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { JOIN } from "@/lib/forms/bounded-context";
 import { parseFormDocument } from "@/lib/forms/document";
@@ -253,6 +254,24 @@ export function copiedContent(
       values[row.fieldKey] = swapName(row.value, source.instance.employeeName, target.instance.employeeName);
     }
     if (row.checked.length > 0) checked[row.fieldKey] = [...row.checked];
+  }
+  /*
+   * A FORM COPIED FROM AN OLDER REVISION OF THE CORRECTIVE ACTION (revision 8,
+   * 4 Nov 2026): a Type of Offense box the target's version no longer offers
+   * is ticked as the box that replaced it, and an "Other" write-in, which the
+   * target has no line for, ticks its Other box. Nothing on the source changes.
+   * See `offense-keys.ts`.
+   */
+  const offered =
+    draftableCheckboxGroups(parseFormDocument(target.version.document), target.instance.variantKey)
+      .find((group) => group.key === "offense_type")
+      ?.options.map((option) => option.key) ?? [];
+  if (offered.length > 0) {
+    const sourceOffense = source.values.find((row) => row.fieldKey === "offense_type")?.checked ?? [];
+    const sourceOther = source.values.find((row) => row.fieldKey === "other_offense")?.value?.trim() ?? "";
+    const wanted = [...sourceOffense, ...(sourceOther !== "" && !keys.has("other_offense") ? ["other"] : [])];
+    const mapped = offeredOffenseKeys(wanted, offered);
+    if (!managerTyped.has("offense_type") && mapped.length > 0) checked.offense_type = mapped;
   }
   const provenance = Object.fromEntries(
     [...Object.keys(values), ...Object.keys(checked)].map((key) => [
