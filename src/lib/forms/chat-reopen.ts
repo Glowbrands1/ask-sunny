@@ -12,7 +12,7 @@ import { authorizeInstance, instanceListFilterFor, visibleInstances } from "./in
 import { applyAssistantDraft, listInstances, loadInstance, type InstanceRow } from "./instances";
 import { privateAwareLimit } from "./private-creators";
 import { extractEmployeeNames, samePerson } from "./proposal";
-import { draftMergeEnabled, formEditDateRulesEnabled } from "@/lib/config/chat-quality-flags";
+import { draftMergeEnabled, formEditDateRulesEnabled, formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fieldsToRestore, showDraftWithEdits } from "./draft-merge";
 import { readReopenRequest } from "./reopen-request";
@@ -161,6 +161,17 @@ export async function reopenRequestedForm(input: {
       heldRows = null;
     }
   }
+  /*
+   * FORM_EDIT_SINGLE_WRITER_ENABLED (STEP_B_POLICY_REOPEN_DESIGN): the draft as
+   * it opened, so the change's claim is checked against what was saved. The
+   * change itself is written by the one writer, through the correction path
+   * (and the revision, protected, until 2b); the restore below too. See
+   * `lib/forms/form-write.ts`.
+   */
+  const opened =
+    formEditSingleWriterEnabled() && (reading.mode === "edit" || merging) && draft.status === "draft"
+      ? await (await import("./form-write")).editSnapshot(draft.instanceId, "reopen")
+      : null;
   if ((reading.mode === "edit" || merging) && draft.status === "draft") {
     applied =
       (await correctActiveForm({
@@ -194,7 +205,14 @@ export async function reopenRequestedForm(input: {
             })),
           })
         : { values: {}, checked: {} };
-      if (Object.keys(restore.values).length > 0 || Object.keys(restore.checked).length > 0) {
+      /*
+       * FORM_EDIT_SINGLE_WRITER_ENABLED: the restore is code's own decision (what
+       * the merge wiped, put back), so it passes through the one writer as
+       * derived, path "reopen", written as the assistant's draft as before.
+       */
+      if (Object.keys(restore.values).length + Object.keys(restore.checked).length > 0 && formEditSingleWriterEnabled()) {
+        await (await import("./form-write")).draftWrite(draft.instanceId, restore, editorId, {}, { path: "reopen", latest: input.question }, { derived: true, by: "assistant_draft" });
+      } else if (Object.keys(restore.values).length > 0 || Object.keys(restore.checked).length > 0) {
         await applyAssistantDraft(draft.instanceId, restore, editorId);
       }
     } catch {
@@ -202,6 +220,9 @@ export async function reopenRequestedForm(input: {
     }
   }
 
+  if (formEditSingleWriterEnabled() && applied && opened) {
+    applied = await (await import("./form-write")).realizedClaim(applied, draft.instanceId, opened);
+  }
   const closing =
     draft.status === "draft"
       ? "Edit anything that needs changing below, save, and finalize it when it's ready."

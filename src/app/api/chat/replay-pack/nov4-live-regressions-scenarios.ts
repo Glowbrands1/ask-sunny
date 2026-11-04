@@ -128,7 +128,37 @@ export const DRY_SCRIPTS: Readonly<Record<string, DryScript>> = {
     draft: { coaching_details: DETAILS_LANE },
     revisions: DETAILS_AFTER.map((coaching_details) => ({ coaching_details })),
   },
+  // The gate scenarios: Jane's draft as created; the stand-in revision writes nothing.
+  ...Object.fromEntries(
+    ["gate-edit-1", "gate-edit-2", "gate-edit-3", "gate-edit-4", "gate-edit-5", "gate-question-1", "gate-question-2", "gate-question-3"].map((id) => [
+      id,
+      { draft: { observation: OBSERVATION_AFTER[0]! }, revisions: [{}] },
+    ]),
+  ),
 };
+
+/* ------------------------------------------ the edit tool's question gate -- */
+
+/*
+ * QA and Pau, 4 Nov 2026 (Step 3, FORM_EDIT_TOOL_IN_STREAM_ENABLED): with a
+ * draft open, a real edit asked as a question must reach `edit_form`; a
+ * question must not. Their exact wordings (ported from Ask Bubbles c5534279);
+ * each is one scenario on Jane Doe's open Corrective Action at the Kearney
+ * salon (T1, then Create, then the wording).
+ */
+export const GATE_EDIT_WORDINGS = [
+  "can you change her last name to Laine?",
+  "could you add that she was also late on Tuesday?",
+  "would you make it sound more professional?",
+  "is it possible to change the date to 10/20?",
+  "can you set the daily stats to 3 of 4 shifts on time?",
+] as const;
+export const GATE_QUESTION_WORDINGS = ["what policy does that fall under?", "what is the policy on being late?", "can you tell me what the expectation is?"] as const;
+
+export const GATE_SCENARIOS: readonly LiveScenario[] = [
+  ...GATE_EDIT_WORDINGS.map((say, index) => ({ id: `gate-edit-${index + 1}`, say })),
+  ...GATE_QUESTION_WORDINGS.map((say, index) => ({ id: `gate-question-${index + 1}`, say })),
+].map(({ id, say }) => ({ id, roster: LIVE_ROSTER, field: "observation", steps: [{ say: CA_CHAIN[0] }, { create: true }, { say }] }));
 
 export const LIVE_FAILURE_SCENARIOS: readonly LiveScenario[] = [
   { id: "ca-chain", roster: LIVE_ROSTER, field: "observation", steps: [{ say: CA_CHAIN[0] }, { create: true }, ...CA_CHAIN.slice(1).map((say) => ({ say }))] },

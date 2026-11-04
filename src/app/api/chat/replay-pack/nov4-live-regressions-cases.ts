@@ -208,6 +208,40 @@ const STEP_B_CASES: readonly ReplayCase[] = [
     },
   },
   {
+    id: "nov4-live-ca-t2-step-b-replace-single-writer",
+    title: `CA chat T2 "${CA_CHAIN[1]}" with Step B and FORM_EDIT_SINGLE_WRITER_ENABLED ON — the live replace is refused (drops_words), nothing is written by the patch, and the turn goes on`,
+    report: `${REPORT}: the same live patch as nov4-live-ca-t2-step-b-replace, through the one writer (Step 2a, ported from Ask Bubbles 117e33b1)`,
+    /*
+     * Step 2a: the patch turn hands its ops to writeFormEdits; "Doe-Smith was
+     * late …" drops "Jane", which "fix her last name, it is Doe-Smith" does
+     * not name — refused, all or nothing, and the turn reaches the old path
+     * (the scripted revision), whose Observation keeps "Jane Doe-Smith".
+     */
+    status: "fixed",
+    fixFlags: [],
+    async run(t) {
+      const before = process.env.FORM_EDIT_SINGLE_WRITER_ENABLED;
+      process.env.FORM_EDIT_SINGLE_WRITER_ENABLED = "true";
+      try {
+        await withStepB(async () => {
+          t.patchWrites([
+            {
+              turn: "this_form",
+              set: [{ field: "observation", value: "Doe-Smith was late to open on 10-20-26.", how: "replace", evidence: CA_CHAIN[1] }],
+              clear: [],
+            },
+          ]);
+          await caChat(t, 2);
+          const observation = t.values(t.forms()[0]!.id as string).observation ?? "";
+          expect(observation, "the patch's replace reached the form").not.toMatch(/^Doe-Smith was late/);
+        });
+      } finally {
+        if (before === undefined) delete process.env.FORM_EDIT_SINGLE_WRITER_ENABLED;
+        else process.env.FORM_EDIT_SINGLE_WRITER_ENABLED = before;
+      }
+    },
+  },
+  {
     id: "nov4-live-ca-t6-step-b-add",
     title: `CA chat T6 "${CA_CHAIN[5]}" with Step B ON — the "add" reaches the Observation (informational: where and in which case it lands)`,
     report: `${REPORT}: in the sibling app, live, the add landed as the last line in lower case ("must practice …")`,

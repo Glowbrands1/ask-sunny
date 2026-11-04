@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  formEditSingleWriterEnabled,
   actionPlanManagerOnlyEnabled,
   actionPlanSentencesEnabled,
   attendanceActionPlanEnabled,
@@ -93,12 +94,18 @@ export async function syncCorrectiveActionPlan(
     : rebuilt;
   const held = values.find((row) => row.fieldKey === next.key)?.value ?? "";
   if (next.value === held) return [];
-  const written = await applyAssistantDraft(
-    instanceId,
-    { values: { [next.key]: next.value }, checked: {} },
-    actorId,
-    { [next.key]: next.provenance },
-  );
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the rebuilt plan through the one writer (`form-write.ts`, path "plan").
+  const written = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(instanceId, { values: { [next.key]: next.value }, checked: {} }, actorId, { [next.key]: next.provenance }, {
+        path: "plan",
+        ...(options.notes !== undefined ? { notes: options.notes } : {}),
+      })
+    : await applyAssistantDraft(
+        instanceId,
+        { values: { [next.key]: next.value }, checked: {} },
+        actorId,
+        { [next.key]: next.provenance },
+      );
   return next.key in written.accepted.values ? [next.key] : [];
 }
 

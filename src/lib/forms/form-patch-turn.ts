@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
+import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
 import { replyFromDiff } from "./form-diff-reply";
@@ -185,45 +186,81 @@ export async function patchActiveForm(input: {
         accepted: reading.turn === "this_form" && quotesOffer,
       },
     };
-    const { diff } = applyPatch(before, reading.patch, rules);
-
-    const groupKeys = new Set(allGroups.map((group) => group.key));
-    const assistant = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
-    const statement = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
     /*
-     * QA, 3 Nov 2026 (option A): an "add" to a field the manager typed stays
-     * the manager's. The merged text is saved as their own edit
-     * (`saveInstanceValues`, filled by the manager), so a later redraft keeps
-     * it like any typed line. Only a field the saved row already says is the
-     * manager's (`draftFromRows`), nothing wider.
+     * FORM_EDIT_SINGLE_WRITER_ENABLED: the patch is handed to the one writer
+     * (`lib/forms/form-write.ts`, path "patch") with these same rules; the
+     * owner split below moved there. A patch with any refusal writes nothing
+     * and the turn goes on (redraft, revision).
      */
-    const typed = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
-    const cleared: string[] = [];
-    for (const change of diff.changed) {
-      const target = stated.has(change.key) ? statement : before[change.key]?.owner === "manager" ? typed : assistant;
-      const after = change.after;
-      const empty = typeof after === "string" ? after.trim() === "" : after.length === 0;
-      if (empty) {
-        if (!stated.has(change.key)) cleared.push(change.key);
-        continue;
-      }
-      if (groupKeys.has(change.key)) target.checked[change.key] = typeof after === "string" ? [after] : [...after];
-      else target.values[change.key] = typeof after === "string" ? after : after.join("\n");
-    }
+    if (formEditSingleWriterEnabled()) {
+      const ops = [
+        ...Object.entries(reading.patch.set).map(([field, value]) => ({
+          op: reading.patch.how?.[field] === "add" ? ("append" as const) : ("set" as const),
+          field,
+          value,
+          ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
+        })),
+        ...reading.patch.clear.map((field) => ({
+          op: "clear" as const,
+          field,
+          ...(reading.patch.evidence?.[field] !== undefined ? { evidence: reading.patch.evidence[field] } : {}),
+        })),
+      ];
+      const result = await (await import("./form-write")).writeFormEdits(input.instanceId, ops, {
+        path: "patch",
+        actorId: actor.id,
+        latest: input.question,
+        managerTurns: managerTurns(input.history, input.question),
+        ...(offered !== undefined ? { offered } : {}),
+        acceptedOffer: rules.sources?.accepted ?? false,
+        today: input.today,
+        loaded,
+        writable,
+        statedKeys: stated,
+        syncPlan: { after: [...stated], amountSentence: true, notes: input.question },
+      });
+      if (result.handoff === "refused") return null;
+    } else {
+      const { diff } = applyPatch(before, reading.patch, rules);
 
-    if (Object.keys(assistant.values).length + Object.keys(assistant.checked).length + cleared.length > 0) {
-      await applyAssistantRevision(input.instanceId, assistant, cleared, actor.id);
-    }
-    if (Object.keys(typed.values).length + Object.keys(typed.checked).length > 0) {
-      await saveInstanceValues(input.instanceId, typed, actor.id);
-    }
-    const statedWritten =
-      Object.keys(statement.values).length + Object.keys(statement.checked).length > 0
-        ? await applyStatedFacts(input.instanceId, statement, actor.id, stated)
-        : [];
-    /* Payroll changed: the Action Plan Ask Sunny built says so (never a plan a person wrote). */
-    if (statedWritten.length > 0) {
-      await syncCorrectiveActionPlan(input.instanceId, actor.id, { amountSentence: true, notes: input.question });
+      const groupKeys = new Set(allGroups.map((group) => group.key));
+      const assistant = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
+      const statement = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
+      /*
+       * QA, 3 Nov 2026 (option A): an "add" to a field the manager typed stays
+       * the manager's. The merged text is saved as their own edit
+       * (`saveInstanceValues`, filled by the manager), so a later redraft keeps
+       * it like any typed line. Only a field the saved row already says is the
+       * manager's (`draftFromRows`), nothing wider.
+       */
+      const typed = { values: {} as Record<string, string>, checked: {} as Record<string, string[]> };
+      const cleared: string[] = [];
+      for (const change of diff.changed) {
+        const target = stated.has(change.key) ? statement : before[change.key]?.owner === "manager" ? typed : assistant;
+        const after = change.after;
+        const empty = typeof after === "string" ? after.trim() === "" : after.length === 0;
+        if (empty) {
+          if (!stated.has(change.key)) cleared.push(change.key);
+          continue;
+        }
+        if (groupKeys.has(change.key)) target.checked[change.key] = typeof after === "string" ? [after] : [...after];
+        else target.values[change.key] = typeof after === "string" ? after : after.join("\n");
+      }
+
+      if (Object.keys(assistant.values).length + Object.keys(assistant.checked).length + cleared.length > 0) {
+        await applyAssistantRevision(input.instanceId, assistant, cleared, actor.id);
+      }
+      if (Object.keys(typed.values).length + Object.keys(typed.checked).length > 0) {
+        await saveInstanceValues(input.instanceId, typed, actor.id);
+      }
+      const statedWritten =
+        Object.keys(statement.values).length + Object.keys(statement.checked).length > 0
+          ? await applyStatedFacts(input.instanceId, statement, actor.id, stated)
+          : [];
+      /* Payroll changed: the Action Plan Ask Sunny built says so (never a plan a person wrote). */
+      if (statedWritten.length > 0) {
+        await syncCorrectiveActionPlan(input.instanceId, actor.id, { amountSentence: true, notes: input.question });
+      }
     }
 
     const reloaded = await loadInstance(input.instanceId);

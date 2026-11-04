@@ -50,6 +50,26 @@ export interface OpenFormSummary {
   unverifiedPolicy: string[];
 }
 
+/**
+ * FORM_EDIT_TOOL_IN_STREAM_ENABLED: one turn's `edit_form` offer, built by
+ * `lib/forms/form-edit-tool.ts` and read by the answering path.
+ */
+export interface FormEditToolTurn {
+  /** The tool and its DATA block (the open form as JSON, and the scoped staff). Null: not offered this turn. */
+  readonly offer: {
+    readonly tool: { readonly name: string; readonly description: string; readonly input_schema: { readonly type: "object" } & Record<string, unknown> };
+    readonly data: string;
+  } | null;
+  /** `slots.form_edit` on the chat trace: keys and reasons only, never form text. */
+  readonly trace: Record<string, unknown>;
+  /** The main call sent the tool. */
+  readonly sent: () => void;
+  /** The tool's input, applied through the one writer (once, inside the turn's trace). */
+  readonly apply: (input: unknown) => Promise<void>;
+  /** The main call failed: nothing was offered, and the turn goes to the old chain (`handoff: "error"`). */
+  readonly failed: () => void;
+}
+
 export interface AskRequest {
   question: string;
   mode: AnswerMode;
@@ -111,6 +131,15 @@ export interface AskRequest {
    */
   openForm?: OpenFormSummary | null;
   /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): the `edit_form` tool the main
+   * answering call is offered this turn, or only its trace when it is not.
+   *
+   * SET BY THE SERVER ONLY: the chat route builds it from the re-authorized
+   * open draft. `parseAskRequest` never copies it from the body. See
+   * `lib/forms/form-edit-tool.ts`.
+   */
+  formEditTool?: FormEditToolTurn | null;
+  /**
    * The browser's `conv_*` id for the conversation this question belongs to.
    *
    * A CORRELATION KEY, NOT AUTHORITY. It is used for one thing: leaving this
@@ -160,7 +189,7 @@ export interface AskRequest {
  * authority-looking value is an invitation for a future server edit to start
  * trusting it again.
  */
-export type ClientAskRequest = Omit<AskRequest, "scopeId" | "context"> & {
+export type ClientAskRequest = Omit<AskRequest, "scopeId" | "context" | "formEditTool"> & {
   context: ClientAskContext;
 };
 

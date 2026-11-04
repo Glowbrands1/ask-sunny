@@ -1,0 +1,162 @@
+{
+  "src/app/api/chat/action-plan-fits-e2e.test.ts :: PLAN_PAYROLL_SENTENCE_ENABLED off: as main the plan says nothing of the deduction": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "The OR'd reduce gate brings the reducer's settle(), which states in the plan the payroll amount the manager gave (Payroll Yes with an amount)."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov3-stepb-position-not-a-topic: the employee's position and salon (\"Tanning Consultant at Kearney\") is never written into a topic or the Other topic — OPEN in production (the drafting model's \"Tanning Consultant at Kearney\" is saved as the Other topic)": {
+    "category": "INTENDED",
+    "twin": "the same case with production's flags (flag unset)",
+    "reason": "An OPEN case (expected to fail) now holds with the flag on: the one writer fixes it. Move it to fixed when the flag is flipped."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-live-ca-t2-step-b-replace: CA chat T2 \"fix her last name, it is Doe-Smith\" with Step B ON — a patch REPLACING the Observation with \"Doe-Smith was late …\" must not drop \"Jane\" — OPEN in production (with Step B on, the replace is accepted on its evidence and the Observation becomes \"Doe-Smith was late to open on 10-20-26.\": \"Jane\" is dropped (and the Expectation with it); nothing checks what a replace removes)": {
+    "category": "INTENDED",
+    "twin": "the same case with production's flags (flag unset)",
+    "reason": "An OPEN case (expected to fail) now holds with the flag on: the one writer fixes it. Move it to fixed when the flag is flipped."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase with the name Capitalized, …' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase with the name Capitalized, …' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, no call no show' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, no call no show' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, took product' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, took product' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case with the name lowercase…' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case with the name lowercase…' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, no call no show (the t…' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, no call no show (the t…' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, took product' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, took product' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'Sentence case, didn\\'t' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'Sentence case, never (salon)' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'lowercase, did not (no state: \"<store…' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'lowercase, never (salon)' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'lowercase, no call' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: flag off is byte-identical to main empty": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: flag off is byte-identical to main filled": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: flag off is byte-identical to main malformed": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: six Create presses at once (the production burst) flag off: the ones the model left blank are filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/lib/forms/form-patch-flags-off.test.ts :: with both flags unset a chat turn on an open draft, and the draft route's POST, load none of Step B's modules, and no formDiff is returned": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "Asserts no formDiff with the Step B flags unset; the single writer turns the draft route's reduce gate on by design (REDUCER || SINGLE_WRITER)."
+  },
+  "replay: nov3-stepb-invented-sentence-refused [fix:FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "the same case with the flag unset",
+    "reason": "Still holds; the refused patch now hands the turn on (all or nothing) and the old path's honest reply answers instead of the reply-from-diff line."
+  },
+  "replay: nov3-stepb-position-not-a-topic [open]": {
+    "category": "INTENDED",
+    "twin": "the same case with the flag unset",
+    "reason": "An open case now holds with the flag on: the one writer refuses the patch (all or nothing) and the turn goes on."
+  },
+  "replay: nov4-live-ca-t2-step-b-replace [open]": {
+    "category": "INTENDED",
+    "twin": "the same case with the flag unset",
+    "reason": "An open case now holds with the flag on: the one writer refuses the patch (all or nothing; with 2b the correction keeps unnamed words too) and the turn goes on; the old path keeps \"Jane Doe-Smith\"."
+  },
+  "src/lib/ai/flags-off-parity.test.ts :: existing chat and form suites with every new flag off passes the suites whose expectations are already on main: src/app/api/chat, src/app/api/forms": {
+    "category": "INTENDED",
+    "twin": "the same test with the flag unset",
+    "reason": "The parity child runs src/app/api/chat and src/app/api/forms with this flag inherited on (it is not on the parity test's list of flags it forces off), so it fails exactly on the INTENDED changes listed in those folders. With the flag unset (CI) it passes."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: drafting a Demotion Form writes the manager's stated facts before the model runs": {
+    "category": "REGRESSION",
+    "twin": "the employment-change-draft-route.single-writer.test.ts twin, same test (flag pinned on): fails before the 2b fix, passes after",
+    "reason": "With the flag on, statedWrite sent the employment change reader's facts for every form (a Transfer's keys on a Demotion Form); the one writer refused the whole write as unknown_field, so no stated fact was saved (hidden in 2a behind the harness: the mock had no loadInstance). Fixed in 2b: statedWrite keeps only the lines the form has, as selectStatedFacts does."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: drafting a Demotion Form keeps the stated facts when the model fails": {
+    "category": "REGRESSION",
+    "twin": "the employment-change-draft-route.single-writer.test.ts twin, same test (flag pinned on): fails before the 2b fix, passes after",
+    "reason": "Same root cause as 'writes the manager's stated facts before the model runs' (statedWrite and unknown_field). Fixed in 2b."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored resolves yesterday against the business day": {
+    "category": "REGRESSION",
+    "twin": "the exit-draft-route.single-writer.test.ts twin, same test (flag pinned on): fails before the 2b fix, passes after",
+    "reason": "With the flag on, the draft route's reduce gate and the redraft preset read stated dates with datesInText only, so 'her last shift was yesterday' was refused as date_not_stated and Last Day Worked stayed blank. Fixed in 2b: draftDates, the exit reader's own spoken-date reader (exit-facts.ts spokenDates), under the flag."
+  }
+}

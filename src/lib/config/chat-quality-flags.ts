@@ -2348,3 +2348,34 @@ export function formPatchReducerEnabled(): boolean {
 export function formReplyFromDiffEnabled(): boolean {
   return envFlag("FORM_REPLY_FROM_DIFF_ENABLED");
 }
+
+/**
+ * One writer for every form edit (Step 2a, 4 Nov 2026; ported from Ask
+ * Bubbles, same flag in both apps): a chat correction, a redraft, a same-form
+ * copy, a policy change, a reopen, the stated facts and the Action Plan's sync
+ * hand their values to `writeFormEdits` (`forms/form-write.ts`), which runs
+ * them through the form reducer — all or nothing, protected values and dropped
+ * words refused — and saves through the existing writers. Independent of the
+ * Step B flags. Off, every path calls its old writer and `form-write` is never
+ * loaded.
+ */
+export function formEditSingleWriterEnabled(): boolean {
+  return envFlag("FORM_EDIT_SINGLE_WRITER_ENABLED");
+}
+
+/**
+ * The edit tool in the main call (Step 3, 4 Nov 2026; ported from Ask
+ * Bubbles, same flag in both apps): with a draft form open and a turn that is
+ * not a question, a correction or a policy change, the answering call is
+ * offered one tool, `edit_form`, with the open form as JSON in one extra data
+ * block. A tool call is written through `writeFormEdits` (path "tool", all or
+ * nothing) and the reply is the saved diff; the model's text is not shown. No
+ * call, a refusal or nothing changed: the turn goes to the redraft, the copy
+ * and the revision as before. One model call, no tool result round trip. See
+ * `forms/form-edit-tool.ts`. Needs FORM_EDIT_SINGLE_WRITER_ENABLED too: off
+ * unless both are on. Off, the main request is byte for byte as before and the
+ * Step B patch turn runs as it did.
+ */
+export function formEditToolInStreamEnabled(): boolean {
+  return envFlag("FORM_EDIT_TOOL_IN_STREAM_ENABLED") && formEditSingleWriterEnabled();
+}

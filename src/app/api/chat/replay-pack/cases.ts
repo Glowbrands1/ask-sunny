@@ -45,6 +45,14 @@ export interface ReplayContext {
   /** What the answering model says on its next turns (null: the default answer). */
   modelSays(text: string | null): void;
   /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED: on its next turn that is offered
+   * `edit_form`, the answering model calls it with this input (null: it does
+   * not). Its text that turn is `modelSays`'s.
+   */
+  modelCallsEditTool?(input: unknown | null): void;
+  /** FORM_EDIT_TOOL_IN_STREAM_ENABLED: how many answering calls were offered `edit_form`, and its DATA block on the last. */
+  editToolOffers?(): { offered: number; lastData: string | null };
+  /**
    * What the slot model reads on the next turns (record_intent_slots), and the employee the AI reader quotes
    * (checked against the roster, as in production), as a production trace shows them.
    */

@@ -51,6 +51,9 @@ const HEADER: readonly { key: string; label: string; read: (loaded: LoadedInstan
   { key: "follow_up_date", label: "Follow-up date", read: (loaded) => loaded.instance.followUpDate },
 ];
 
+/** The header's keys: the instance's own columns (employee, position, salon, Date, follow-up date). */
+export const HEADER_KEYS: ReadonlySet<string> = new Set(HEADER.map((entry) => entry.key));
+
 /** Labels for every field and checkbox group; an unlabelled group is named by its section heading. */
 export function formLabels(loaded: LoadedInstance): Record<string, string> {
   const document = parseFormDocument(loaded.version.document);

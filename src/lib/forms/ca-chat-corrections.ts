@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AskResponse } from "@/lib/ai/types";
+import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 
 import { caDateQuestion, readCaDateEdit, rewriteDate, type CaDateEdit } from "./ca-chat-dates";
 import { checkboxGroupsForVariant, displayDate, fieldsForVariant, parseFormDocument } from "./document";
@@ -125,10 +126,32 @@ export async function correctCaFromChat(input: {
   const accepted = enforcePersonEdit(document, instance.variantKey, { values, checked: {} });
   const keys = Object.keys(accepted.values);
   if (keys.length === 0) return null;
-  const saved = await saveInstanceValues(input.instanceId, { values: accepted.values, checked: {} }, actor.id);
+  /*
+   * FORM_EDIT_SINGLE_WRITER_ENABLED: through the one writer (`lib/forms/form-write.ts`, #410's wrapper).
+   * The date and added prior lines are what she stated; the account's date and
+   * a prior line whose date moved are this reader's rewrite of what is there,
+   * and pass through as rewritten.
+   */
+  const rewritesPrior = edit.kind === "prior" && edit.changes.some((change) => change.from);
+  const derived = new Set(["observation", ...(rewritesPrior ? ["prior_actions"] : [])]);
+  const pick = (keep: boolean) => Object.fromEntries(Object.entries(accepted.values).filter(([key]) => derived.has(key) === keep));
+  const writer = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).correctionWrite({
+        instanceId: input.instanceId,
+        loaded,
+        stated: { values: pick(false), checked: {} },
+        passThrough: { values: pick(true) },
+        actorId: actor.id,
+        said: question,
+        today: input.today,
+        // The date reader's own reading of her words (QA, #410).
+        readerValues: Object.values(values),
+      })
+    : null;
+  const saved = formEditSingleWriterEnabled() && writer ? writer : await saveInstanceValues(input.instanceId, { values: accepted.values, checked: {} }, actor.id);
   const refused = new Set(saved.rejected.map((entry) => entry.key));
   const written = keys.filter((key) => !refused.has(key));
-  if (written.length === 0) return null;
+  if (written.length === 0) return writer?.nothingChanged ? reply(writer.nothingChanged) : null;
   await recordChatCorrection(input.instanceId, actor.id, changes.filter((change) => written.includes(change.field)));
 
   const label = (key: string) => fields.find((field) => field.key === key)?.label ?? key;

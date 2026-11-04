@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import PRODUCTION_FLAGS from "@/config/production-flags.json";
@@ -152,6 +152,8 @@ vi.mock("@/lib/analytics/record", async (importOriginal) => ({
 const ANSWER = "A grounded answer from the policy manual.";
 /** What the answering model says this turn, when a case sets it. */
 const said = { answer: null as string | null };
+/** FORM_EDIT_TOOL_IN_STREAM_ENABLED: the edit_form call the answering model makes next, and the offers it saw. */
+const editTool = { input: null as unknown, offered: 0, lastData: null as string | null };
 
 vi.mock("@/lib/ai/call-claude", () => ({
   /*
@@ -174,8 +176,36 @@ vi.mock("@/lib/ai/call-claude", () => ({
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     };
   },
-  callClaude: async () => {
+  callClaude: async (input?: { formEditTool?: { data: string; onToolUse: (call: unknown) => void } | null }) => {
     state.chatModelCalls += 1;
+    if (input?.formEditTool) {
+      editTool.offered += 1;
+      editTool.lastData = input.formEditTool.data;
+      if (editTool.input !== null) {
+        const call = editTool.input;
+        editTool.input = null;
+        input.formEditTool.onToolUse(call);
+      } else if (patchScript.calls < patchScript.outputs.length) {
+        /*
+         * FORM_EDIT_TOOL_IN_STREAM_ENABLED skips Step B's patch turn: the main
+         * model reads the turn instead. A case's scripted patch reading is the
+         * same decision made as an edit_form call — "this_form" with its sets
+         * (add → append, replace → set) and clears, anything else no call — so
+         * the Step B cases run on the tool path with the model's same choices.
+         * The ops carry no evidence: the tool's words are the latest message's.
+         */
+        const output = patchScript.outputs[patchScript.calls] as
+          | { turn?: string; set?: { field: string; value?: string; options?: string[]; how?: string }[]; clear?: { field: string }[] }
+          | null
+          | undefined;
+        patchScript.calls += 1;
+        const ops = [
+          ...(output?.set ?? []).map((entry) => ({ op: entry.how === "replace" ? "set" : "append", field: entry.field, value: entry.options ?? entry.value ?? "" })),
+          ...(output?.clear ?? []).map((entry) => ({ op: "clear", field: entry.field })),
+        ];
+        if (output?.turn === "this_form" && ops.length > 0) input.formEditTool.onToolUse({ ops });
+      }
+    }
     return said.answer ?? ANSWER;
   },
   callClaudeTool: async (input: { tool?: { name?: string }; messages?: { content?: unknown }[] }) => {
@@ -449,6 +479,7 @@ class Thread {
     );
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
+    record.turns.push({ question, reply: payload.content ?? "", updated: payload.formUpdate?.updated ?? null });
     return payload;
   }
 
@@ -524,7 +555,33 @@ afterEach(() => {
 
 const KNOWN_OFF = PRODUCTION_FLAGS.off;
 
+/*
+ * `scripts/flag-classify.ts` only (dev, opt-in; nothing changes when unset):
+ * FLAG_CLASSIFY_ON names flags turned on in every case on top of production's,
+ * and REPLAY_RECORD a JSON-lines file each case appends its record to — the
+ * replies, the keys each reply claimed, whether it held, and its ms — so a
+ * behaviour change in a case that still passes is seen.
+ */
+const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
+const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
+async function recorded(id: string, mode: string, run: () => Promise<void>) {
+  record.turns = [];
+  const at = performance.now();
+  let error: string | null = null;
+  try {
+    await run();
+  } catch (thrown) {
+    error = String((thrown as Error)?.message ?? thrown).split("\n")[0]!;
+    throw thrown;
+  } finally {
+    if (process.env.REPLAY_RECORD) {
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns })}\n`);
+    }
+  }
+}
+
 function production(extra: readonly string[] = []) {
+  extra = [...extra, ...CLASSIFY_ON];
   for (const name of [...ALL_FLAGS, ...KNOWN_OFF, ...extra]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
@@ -545,6 +602,9 @@ afterEach(() => {
   setScope(undefined);
   setRole(undefined);
   said.answer = null;
+  editTool.input = null;
+  editTool.offered = 0;
+  editTool.lastData = null;
   draftAsked.length = 0;
 });
 
@@ -571,6 +631,10 @@ function context(): ReplayContext {
       state.slotsRead = slots;
       state.readerEmployee = readerEmployee;
     },
+    modelCallsEditTool: (input) => {
+      editTool.input = input;
+    },
+    editToolOffers: () => ({ offered: editTool.offered, lastData: editTool.lastData }),
     patchWrites: (outputs) => {
       patchScript.outputs = [...outputs];
       patchScript.calls = 0;
@@ -635,19 +699,19 @@ describe("the replay pack", () => {
     if (replay.status === "fixed") {
       it(`${title} — holds with production's flags`, async () => {
         production();
-        await replay.run(context());
+        await recorded(replay.id, "production", () => replay.run(context()));
       });
     } else {
       // Still broken in production: expected to fail. The day it passes, move it to "fixed".
       it.fails(`${title} — OPEN in production (${replay.status.open})`, async () => {
         production();
-        await replay.run(context());
+        await recorded(replay.id, "open", () => replay.run(context()));
       });
     }
     if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
         production(replay.fixFlags);
-        await replay.run(context());
+        await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
       });
     }
   }

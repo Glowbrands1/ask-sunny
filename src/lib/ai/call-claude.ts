@@ -116,6 +116,25 @@ export interface CallClaudeInput {
    * the system prompt is exactly what `cachedSystem` already returns.
    */
   readonly fullManualBlock?: string | null;
+  /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED (Step 3): the one tool this call is
+   * offered while a draft form is open (`tool_choice: auto`), and its DATA
+   * block — the open form as JSON and the scoped staff — sent just before the
+   * question. A tool call is handed to `onToolUse` once; the call is not
+   * continued (no tool result goes back), and its text may then be empty.
+   * Absent, the request is exactly as before.
+   */
+  readonly formEditTool?: {
+    readonly tool: { readonly name: string; readonly description: string; readonly input_schema: { readonly type: "object" } & Record<string, unknown> };
+    readonly data: string;
+    readonly onToolUse: (input: unknown) => void;
+  } | null;
+}
+
+/** A `tool_use` block of the reply: its name, and its input (the block's own, or its streamed input_json_delta). */
+export interface CollectedToolUse {
+  readonly name: string;
+  readonly input: unknown;
 }
 
 export interface CollectedModelResult {
@@ -124,6 +143,11 @@ export interface CollectedModelResult {
   readonly usage: unknown;
   /** Null when the SDK returned a finished message instead of a text stream. */
   readonly firstTokenMs: number | null;
+  /**
+   * FORM_EDIT_TOOL_IN_STREAM_ENABLED: the reply's `tool_use` blocks, in order.
+   * Absent when the reply has none, so a text reply's result is as before.
+   */
+  readonly toolUses?: readonly CollectedToolUse[];
 }
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
@@ -169,14 +193,19 @@ export async function collectModelResult(response: unknown, started: number): Pr
   if (!isAsyncIterable(response) && typeof response === "object" && response !== null && "content" in response) {
     const message = response as {
       stop_reason?: string | null;
-      content?: readonly { type?: string; text?: string }[];
+      content?: readonly { type?: string; text?: string; name?: unknown; input?: unknown }[];
       usage?: unknown;
     };
+    // FORM_EDIT_TOOL_IN_STREAM_ENABLED: a finished message carries a tool call's input whole.
+    const toolUses = (message.content ?? [])
+      .filter((block) => block.type === "tool_use" && typeof block.name === "string")
+      .map((block) => ({ name: block.name as string, input: block.input ?? null }));
     return {
       stopReason: message.stop_reason ?? null,
       text: textFromContent(message.content ?? []),
       usage: message.usage ?? null,
       firstTokenMs: null,
+      ...(toolUses.length > 0 ? { toolUses } : {}),
     };
   }
 
@@ -188,16 +217,25 @@ export async function collectModelResult(response: unknown, started: number): Pr
   let stopReason: string | null = null;
   let usage: unknown = null;
   let firstTokenMs: number | null = null;
+  /* FORM_EDIT_TOOL_IN_STREAM_ENABLED: a tool call's block opens with its name; its input arrives as input_json_delta. */
+  const tools = new Map<number, { name: string; json: string }>();
   for await (const event of response) {
     if (typeof event !== "object" || event === null || !("type" in event)) continue;
     const typed = event as {
       type?: string;
+      index?: number;
       message?: { usage?: unknown };
-      delta?: { type?: string; text?: string; stop_reason?: string | null };
+      content_block?: { type?: string; name?: unknown };
+      delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string | null };
       usage?: unknown;
     };
     if (typed.type === "message_start") {
       usage = mergeUsage(usage, typed.message?.usage);
+    } else if (typed.type === "content_block_start" && typed.content_block?.type === "tool_use" && typeof typed.content_block.name === "string") {
+      tools.set(typed.index ?? tools.size, { name: typed.content_block.name, json: "" });
+    } else if (typed.type === "content_block_delta" && typed.delta?.type === "input_json_delta") {
+      const tool = tools.get(typed.index ?? -1);
+      if (tool) tool.json += typed.delta.partial_json ?? "";
     } else if (typed.type === "content_block_delta" && typed.delta?.type === "text_delta") {
       const delta = typed.delta.text ?? "";
       if (delta.length > 0 && firstTokenMs === null) firstTokenMs = Date.now() - started;
@@ -207,7 +245,20 @@ export async function collectModelResult(response: unknown, started: number): Pr
       usage = mergeUsage(usage, typed.usage);
     }
   }
-  return { stopReason, text: text.trim(), usage, firstTokenMs };
+  const toolUses = [...tools.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, tool]) => ({ name: tool.name, input: parseToolJson(tool.json) }));
+  return { stopReason, text: text.trim(), usage, firstTokenMs, ...(toolUses.length > 0 ? { toolUses } : {}) };
+}
+
+/** A streamed tool input: its concatenated input_json_delta, parsed. Empty is `{}`; unparseable is null. */
+function parseToolJson(json: string): unknown {
+  if (json.trim() === "") return {};
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
 }
 
 export async function callClaude(input: CallClaudeInput): Promise<string> {
@@ -243,6 +294,7 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     ...(input.personMemory ? [input.personMemory] : []),
     ...(input.formsLibrary ? [input.formsLibrary] : []),
     ...(input.formRecords ? [input.formRecords] : []),
+    ...(input.formEditTool ? [input.formEditTool.data] : []),
     `QUESTION\n\n${input.question}`,
   ].join("\n\n");
   const params = {
@@ -264,6 +316,12 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
         content: cachedUserContent(userText, input.manualBlock),
       },
     ],
+    ...(input.formEditTool
+      ? {
+          tools: [{ ...input.formEditTool.tool, input_schema: { ...input.formEditTool.tool.input_schema } }],
+          tool_choice: { type: "auto" as const },
+        }
+      : {}),
   };
   try {
     const options = modelRequestOptions();
@@ -312,6 +370,13 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
       );
     }
 
+    /* FORM_EDIT_TOOL_IN_STREAM_ENABLED: the offered tool's call, if the model made one. Its text may be empty. */
+    const toolCalled = input.formEditTool ? handToolUse(response, input.formEditTool) : false;
+    if (toolCalled) {
+      noteModelCall(noted);
+      return response.text;
+    }
+
     if (!response.text) {
       noteModelCall({ ...noted, subtype: "empty_answer" });
       throw new AiError("model_failed", "Sunny returned an empty answer.", 502);
@@ -338,6 +403,17 @@ export async function callClaude(input: CallClaudeInput): Promise<string> {
     });
     throw modelUnavailable(error);
   }
+}
+
+/**
+ * The offered tool's first `tool_use` block (as `collectModelResult` read it,
+ * finished or streamed), handed to `onToolUse`. True when a call was handed over.
+ */
+function handToolUse(response: CollectedModelResult, offered: NonNullable<CallClaudeInput["formEditTool"]>): boolean {
+  const use = (response.toolUses ?? []).find((block) => block.name === offered.tool.name);
+  if (!use) return false;
+  offered.onToolUse(use.input);
+  return true;
 }
 
 /**
