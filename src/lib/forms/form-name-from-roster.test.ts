@@ -12,7 +12,7 @@ import { couldBeOnRoster, installRosterAnchor, lowercaseNobody, lowercaseRosterF
 /**
  * ============================================================================
  * FORM_NAME_FROM_ROSTER_ENABLED (step 5, first piece) — sf-s19, "metrics read
- * as people". Pau, 4 Nov 2026 (ported from Ask Bubbles)
+ * as people". Pau, 4 Nov 2026 (ported from the sibling app)
  * ============================================================================
  *
  * "I need a corrective action verbal for <name>. This is for Under Performance

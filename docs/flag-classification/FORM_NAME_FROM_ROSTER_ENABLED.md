@@ -2,7 +2,7 @@
 
 **To follow.** The classification run (`node scripts/flag-classify.ts --flag FORM_NAME_FROM_ROSTER_ENABLED --runs 3 src/lib/ai src/lib/forms src/app/api/chat src/app/api/forms`) was not run on this branch: the machine was loaded. It is to be run before the flag goes on, and this file replaced with its table.
 
-What the flag does (ported from Ask Bubbles; step 5's first piece; overnight scan sf-s19, "metrics read as people"; Pau, 4 Nov 2026): when the message names somebody on the actor's roster (exact or close), a name candidate that matches nobody exactly or closely and is shaped like nobody on it (`src/lib/forms/roster-shape.ts`) is not a name. The grounding step does not list it as unmatched, and the name reader drops it when the person guard's roster is read (PERSON_GUARD_ENABLED), so it is never the card's employee. Needs CA_SALES_POLICY_ENABLED: off unless both are on.
+What the flag does (ported from the sibling app; step 5's first piece; overnight scan sf-s19, "metrics read as people"; Pau, 4 Nov 2026): when the message names somebody on the actor's roster (exact or close), a name candidate that matches nobody exactly or closely and is shaped like nobody on it (`src/lib/forms/roster-shape.ts`) is not a name. The grounding step does not list it as unmatched, and the name reader drops it when the person guard's roster is read (PERSON_GUARD_ENABLED), so it is never the card's employee. Needs CA_SALES_POLICY_ENABLED: off unless both are on.
 
 Known, from the replay pack with the flag on:
 

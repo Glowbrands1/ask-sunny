@@ -11,7 +11,7 @@ import { KEARNEY, STAFF, noRepeatedReply, type DirectoryRow, type ReplayAnswer, 
  * "I need a corrective action verbal for <name>. This is for Under Performance
  * on PPTA, LPSVA, Club Average, Club Close %, and Spa %."
  *
- * Ported from Ask Bubbles, where the reply said "I couldn't find **Club
+ * Ported from the sibling app, where the reply said "I couldn't find **Club
  * Close** or **Under** in the Woven roster" and both were stripped from the
  * question, so the card cited no policy. Here, with production's flags, the
  * message is answered as metric-only (no card); with CA_SALES_POLICY_ENABLED
@@ -129,7 +129,7 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     report: `${REPORT}: negative control, a person not on the roster`,
     status: "fixed",
     /*
-     * Unlike Ask Bubbles, this app never says "I couldn't find … in the Woven
+     * Unlike the sibling app, this app never says "I couldn't find … in the Woven
      * roster": with the sales policy on, the flag or not, the reply asks "Who is
      * this form for?". Nobody in this message is on the roster, so under the
      * middle ground (QA, 4 Nov 2026) it is read exactly as before.
