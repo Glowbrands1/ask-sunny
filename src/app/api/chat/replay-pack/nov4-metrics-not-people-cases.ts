@@ -125,7 +125,7 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
   },
   {
     id: "nov4-pau-metrics-not-people-unknown",
-    title: "negative control: a full name nobody on the roster shares, typed alone, is never the card's employee, and no metric is",
+    title: "negative control: a full name nobody on the roster shares, typed alone: no metric is the card's employee or named as a person",
     report: `${REPORT}: negative control, a person not on the roster`,
     status: "fixed",
     /*
@@ -138,11 +138,20 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     async run(t) {
       const thread = start(t);
       const reply = await thread.say(say("Zuleika Brightwell"));
-      expect(thread.proposal?.employeeName ?? "", "an unknown person or a metric is on the card").not.toMatch(/Zuleika|Club Close|^Under$/);
+      /*
+       * CHANGED ON PURPOSE (step 5 part 2, QA for Pau, 5 Nov 2026): with the
+       * request slot, "… for Zuleika Brightwell" is the message's one
+       * candidate, so this app makes the card for the name as typed — QA's
+       * accepted behaviour here. A metric is still never the employee.
+       */
+      expect(thread.proposal?.employeeName ?? "", "a metric is on the card").not.toMatch(/Club Close|^Under$/);
       expect(reply.content, `"Club Close" or "Under" is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Club Close|Under)\*\*/);
-      // Said again, the chat moves on: not the same reply word for word (no loop).
-      const again = await thread.say("Zuleika Brightwell");
-      noRepeatedReply([reply, again]);
+      // Asked who, and the name said again: the chat moves on, not the same reply word for word (no loop).
+      // With the card made (part 2) there is no question to loop on, so the second turn is not sent.
+      if (!thread.proposal?.employeeName) {
+        const again = await thread.say("Zuleika Brightwell");
+        noRepeatedReply([reply, again]);
+      }
     },
   },
   {

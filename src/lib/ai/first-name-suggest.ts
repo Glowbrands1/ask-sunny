@@ -7,6 +7,7 @@ import {
 } from "@/lib/config/chat-quality-flags";
 import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
+import { typedWithOtherSurname } from "@/lib/forms/request-slot";
 
 import type { ChatActor } from "./form-proposal";
 import type { AskRequest, AskResponse } from "./types";
@@ -198,7 +199,8 @@ export function withFirstNameSuggest(
   const own = words(request.context?.userName ?? "")[0] ?? null;
   const first = oneWordCard ? card!.employeeName!.trim().toLowerCase() : (filledFirst ?? statedFirstName(turns, roster, own));
   if (!first || first === own) return response;
-  const people = roster.filter((person) => firstNamesOf(person).includes(first));
+  // FORM_NAME_FROM_ROSTER_ENABLED, part 2: "Remy Fenn" typed in full is never offered as Remy Calder.
+  const people = roster.filter((person) => firstNamesOf(person).includes(first) && !typedWithOtherSurname(first, person.lastName, turns));
   if (people.length === 0) return response;
   // Only the question: the card waits for the answer.
   return { ...response, content: suggestion([...new Set(people.map(displayName))]), formProposal: undefined };

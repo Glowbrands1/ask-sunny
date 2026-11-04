@@ -2436,7 +2436,14 @@ export function caSalesPolicyEnabled(): boolean {
  * Needs CA_SALES_POLICY_ENABLED: off unless both are on. Without the sales
  * policy a message like Pau's is answered as metric-only (no card); the sales
  * policy is what takes a stated shortfall to the form, citing the Standards
- * of Conduct, and only then is the card's employee at stake. Off, as before.
+ * of Conduct, and only then is the card's employee at stake.
+ *
+ * Part 2 (QA for Pau, 5 Nov 2026), roster-free: when the message's first
+ * sentence asks for a form "… for <Name>", that name is its only employee
+ * candidate, and a capitalised item of a list of three or more is never one
+ * (`forms/request-slot.ts`). A first name typed with a surname that is not
+ * close to a roster person's is never offered as them ("Remy Fenn" is not
+ * Remy Calder). Off, as before.
  */
 export function formNameFromRosterEnabled(): boolean {
   return envFlag("FORM_NAME_FROM_ROSTER_ENABLED") && caSalesPolicyEnabled();
