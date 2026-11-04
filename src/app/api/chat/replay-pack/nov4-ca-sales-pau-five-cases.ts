@@ -111,12 +111,8 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
     id: "nov4-pau5-3-under-performance-salon-metrics",
     title: "3. \"CA for … due to under performance in salon metrics\"",
     report: `${REPORT}, #3`,
-    /*
-     * Ask Sunny: holds with the flags on. With production's flags it holds once
-     * the Corrective Action template revision 8 (the Bubbles revision 7 port:
-     * Under Performance is the Standards of Conduct) lands; then "fixed".
-     */
-    status: { open: "with production's flags the template still offers Under Performance, which cites no policy (until the revision 8 port)" },
+    // Holds with production's flags since Corrective Action revision 8 (#512): Under Performance is the Standards of Conduct.
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);
