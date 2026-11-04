@@ -9,6 +9,7 @@ import {
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { notAPerson, personRosterNames } from "./person-guard";
+import { outsideRequestSlot } from "./request-slot";
 import { couldBeOnRoster, lowercaseNobody, rosterAnchored } from "./roster-shape";
 import { isPayrollWords } from "./payroll-words";
 
@@ -63,6 +64,8 @@ export function namesSomebody(name: string): boolean {
   if (isExitTerms(name)) return false;
   // PERSON_GUARD_ENABLED: one answer for every reader — see `person-guard.ts`.
   if (notAPerson(name)) return false;
+  // FORM_NAME_FROM_ROSTER_ENABLED, part 2: outside the request slot, or an item of a list — see `request-slot.ts`.
+  if (outsideRequestSlot(name)) return false;
   if (isShapedLikeNobody(name)) return false;
   if (isLowercaseNobody(name)) return false;
   if (!answerNotANameEnabled()) return true;
