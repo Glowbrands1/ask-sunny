@@ -1,0 +1,13 @@
+# FORM_NAME_FROM_ROSTER_ENABLED: which tests it changes, and why
+
+**To follow.** The classification run (`node scripts/flag-classify.ts --flag FORM_NAME_FROM_ROSTER_ENABLED --runs 3 src/lib/ai src/lib/forms src/app/api/chat src/app/api/forms`) was not run on this branch: the machine was loaded. It is to be run before the flag goes on, and this file replaced with its table.
+
+What the flag does (ported from the sibling app; step 5's first piece; overnight scan sf-s19, "metrics read as people"; Pau, 4 Nov 2026): when the message names somebody on the actor's roster (exact or close), a name candidate that matches nobody exactly or closely and is shaped like nobody on it (`src/lib/forms/roster-shape.ts`) is not a name. The grounding step does not list it as unmatched, and the name reader drops it when the person guard's roster is read (PERSON_GUARD_ENABLED), so it is never the card's employee. Needs CA_SALES_POLICY_ENABLED: off unless both are on.
+
+Known, from the replay pack with the flag on:
+
+- `nov4-pau-metrics-not-people` and its typo control hold with FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED and CHAT_GLOSSARY_ENABLED on (OPEN in production, where the message is answered as metric-only).
+- `nov4-scan-sf-s19-corrective-action-answer`: turn 1 makes the card and cites the Standards of Conduct; the case still fails for its own other reason (turn 2 "Corrective Action" repeats turn 1 word for word). Not in its fixFlags.
+- A message that names nobody on the roster is read as before ("Zuleika Brightwell" typed alone, `nov4-pau-metrics-not-people-unknown`).
+- "CA for under performance on Club Close % and Spa %" with CA_SALES_POLICY_ENABLED on made the card "for **under**". Approved (QA for Pau, 4 Nov 2026): one word typed all in lowercase that is nobody's first, preferred or last name on the roster is never the employee; the reply asks "Who is this form for?" (`nov4-pau-metrics-not-people-metrics-only`, fixFlags CA_SALES_POLICY_ENABLED and FORM_NAME_FROM_ROSTER_ENABLED).
+- Pau's message with the employee's first name typed in lowercase ("… verbal for perpetua. This is for Under Performance on …") made the card "for **Club Close**" with the three flags on. Approved by QA (4 Nov 2026): a single lowercase word that is somebody's first or preferred name on the roster anchors the message, decided once per turn by the chat route (`roster-anchor-store.ts` messageAnchoredOnRoster) because the intent slots read the employee before the card is proposed. Now "Is this for **Perpetua Thornquist**?", then the card for her citing the Standards of Conduct (`nov4-pau-metrics-not-people-lowercase-first-name`).
