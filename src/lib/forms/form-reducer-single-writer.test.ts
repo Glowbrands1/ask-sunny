@@ -69,6 +69,46 @@ describe("keepsUnnamedWords: a replace drops no word the latest message does not
   });
 });
 
+/* ------------------------- droppedWordsReplaced (the correction, step 2b) --- */
+
+describe("droppedWordsReplaced: a correction's dropped word must be replaced, not only named", () => {
+  const LATEST = "fix her last name, it is Jane Doe-Smith";
+  const OBSERVATION = "Jane Doe was late to open on 10-20-26.";
+  const DRAFT: FormDraft = {
+    observation: field("observation", OBSERVATION, "assistant"),
+    new_location: field("new_location", "Salon 23", "manager"),
+    employee_name: field("employee_name", "Jane Doe", "assistant"),
+  };
+  const rules = (strict: boolean, latest = LATEST): PatchRules => ({
+    mode: "edit",
+    writable: new Set(["observation", "new_location", "employee_name"]),
+    sources: { manager: latest, managerTurns: [latest], namingTurn: latest },
+    keepsUnnamedWords: true,
+    ...(strict ? { droppedWordsReplaced: true, wholeValueKeys: new Set(["new_location", "employee_name"]) } : {}),
+  });
+  const replace = (key: string, value: string, latest = LATEST): FormPatch => ({ set: { [key]: value }, clear: [], how: { [key]: "replace" }, evidence: { [key]: latest } });
+
+  it('refuses "Doe-Smith was late …" although the latest message says "Jane" (nothing replaces her)', () => {
+    const patch = replace("observation", OBSERVATION.replace("Jane Doe", "Doe-Smith"));
+    expect(applyPatch(DRAFT, patch, rules(true)).diff.refused).toEqual([{ key: "observation", reason: "drops_words" }]);
+    // keepsUnnamedWords alone lets it through: "Jane" is named.
+    expect(applyPatch(DRAFT, patch, rules(false)).diff.refused).toEqual([]);
+  });
+
+  it('accepts "Jane Doe-Smith was late …": "doe" replaced by "doe-smith"', () => {
+    expect(applyPatch(DRAFT, replace("observation", OBSERVATION.replace("Doe", "Doe-Smith")), rules(true)).diff.refused).toEqual([]);
+  });
+
+  it("a one-fact line is restated whole: Salon 23 → Salon 24 without naming 23", () => {
+    const latest = "actually her new location is salon 24";
+    expect(applyPatch(DRAFT, replace("new_location", "Salon 24", latest), rules(true, latest)).diff.refused).toEqual([]);
+  });
+
+  it('a one-fact line still keeps a word nothing replaces: "Jane Doe" → "Doe-Smith" is refused', () => {
+    expect(applyPatch(DRAFT, replace("employee_name", "Doe-Smith"), rules(true)).diff.refused).toEqual([{ key: "employee_name", reason: "drops_words" }]);
+  });
+});
+
 /* ------------------------------------------------- namingTurn (strict Q2) --- */
 
 describe("namingTurn: every word an op adds is in the naming turn (owner's Q2: no 50% floor)", () => {

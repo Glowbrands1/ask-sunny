@@ -96,7 +96,7 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
       error_class: draft.errorClass,
       error_status: draft.errorStatus,
       form_in_progress: draft.formInProgress,
-      slots: withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit),
+      slots: withDraftCheck(withFormEdit(metered ? { ...(draft.slots ?? {}), ...metered } : (draft.slots ?? {}), draft.formEdit), draft.draftCheck),
       retryable: model?.retryable ?? false,
       retried: false,
       succeeded: draft.succeeded === true,
@@ -108,6 +108,11 @@ async function persistChatTrace(draft: ChatTraceDraft): Promise<void> {
     // migration used to drop the row with no log.
     console.warn(traceInsertWarning(error));
   }
+}
+
+/** FORM_EDIT_SINGLE_WRITER_ENABLED: the post-draft check's keys, when it ran; otherwise the slots as they were. */
+function withDraftCheck(slots: Record<string, unknown>, check: Record<string, unknown> | undefined): Record<string, unknown> {
+  return check ? { ...slots, draft_check: check } : slots;
 }
 
 /** FORM_EDIT_TOOL_IN_STREAM_ENABLED: `form_edit` beside the other slots; absent, the slots as before. */

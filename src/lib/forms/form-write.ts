@@ -21,7 +21,7 @@ import {
   type ProtectedValues,
   type Refusal,
 } from "./form-reducer";
-import { MANAGER_STATED_KEYS, statedDates, templateRules, writeInsOf } from "./form-reducer-draft";
+import { MANAGER_STATED_KEYS, draftDates, statedDates, templateRules, writeInsOf } from "./form-reducer-draft";
 import { HEADER_KEYS, checkedClaim, snapshotDiff, snapshotOf, type FormSnapshot } from "./form-snapshot";
 import {
   applyAssistantDraft,
@@ -65,7 +65,9 @@ import { copiedContent } from "./same-form-copy";
  *               the manager's statement as its evidence; the name on the form
  *               an accepted offer; the correction readers' own values count as
  *               said (#410); every added word named in the latest message
- *               (owner's Q2 ruling); written as the manager's.
+ *               (owner's Q2 ruling); no word of the old text dropped unless
+ *               the latest message names it (`keepsUnnamedWords`, 2b);
+ *               written as the manager's.
  *   patch/tool  the patch turn's rules, plus `keepsUnnamedWords`, the strict
  *               naming turn and the write-in rule; split by who wrote the field.
  *   redraft,    draft mode on the template's writable keys (a typed line kept,
@@ -212,6 +214,12 @@ function keysOf(loaded: LoadedInstance): Set<string> {
   ]);
 }
 
+/** The one-fact lines: the header and the template's short text lines (`input: "text"`). */
+function wholeValueKeysOf(loaded: LoadedInstance): Set<string> {
+  const document = parseFormDocument(loaded.version.document);
+  return new Set([...HEADER_KEYS, ...fieldsForVariant(document, loaded.instance.variantKey).filter((field) => field.input === "text").map((field) => field.key)]);
+}
+
 /** QA condition 2: the form's protected facts, read from the header and the app's own readers. */
 export function protectedValuesFor(loaded: LoadedInstance, latest: string, today: string, named: readonly string[] = []): ProtectedValues {
   const groups = groupsOf(loaded);
@@ -253,6 +261,17 @@ export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], 
           checkboxGroups: groups,
           listKeys: lists,
           listNone: NO_PRIOR_ACTION,
+          /*
+           * Step 2b (QA condition): a correction replaces only the words the
+           * manager named — "fix her last name, it is Doe-Smith" may turn
+           * "Doe" into "Doe-Smith", never drop "Jane" or the rest of the
+           * line, even when her message says "Jane" as part of the new name
+           * (`droppedWordsReplaced`). Refused as `drops_words`, all or
+           * nothing: the turn goes on.
+           */
+          keepsUnnamedWords: true,
+          droppedWordsReplaced: true,
+          wholeValueKeys: wholeValueKeysOf(loaded),
           writeIns,
           protectedValues: guard,
           sources: {
@@ -324,7 +343,7 @@ export function presetRules(loaded: LoadedInstance, ops: readonly FormEditOp[], 
           writable: template.writable,
           typedExempt: rules.typedExempt ?? new Set<string>(),
           dateKeys: template.dateKeys,
-          datesIn: statedDates(today),
+          datesIn: draftDates(today),
           checkboxGroups: template.checkboxGroups,
           listKeys: lists,
           listNone: NO_PRIOR_ACTION,
@@ -694,9 +713,18 @@ export async function statedWrite(
   const filled = new Set(
     loaded.values.filter((row) => (row.value ?? "").trim() !== "" || row.checked.length > 0).map((row) => row.fieldKey),
   );
+  /*
+   * And only the lines this form has, as `selectStatedFacts` keeps them: the
+   * employment change reader states a Demotion's facts and a Transfer's alike
+   * (`transfer_type` on a Demotion Form), and a key the form lacks would refuse
+   * the whole write as `unknown_field` — every stated fact lost (step 2b: found
+   * once the harness tests read the saved form with the flag on).
+   */
+  const has = keysOf(loaded);
+  const keep = (key: string) => !filled.has(key) && has.has(key);
   const empty: DraftValues = {
-    values: Object.fromEntries(Object.entries(stated.values).filter(([key]) => !filled.has(key))),
-    checked: Object.fromEntries(Object.entries(stated.checked).filter(([key]) => !filled.has(key))),
+    values: Object.fromEntries(Object.entries(stated.values).filter(([key]) => keep(key))),
+    checked: Object.fromEntries(Object.entries(stated.checked).filter(([key]) => keep(key))),
   };
   if (Object.keys(empty.values).length + Object.keys(empty.checked).length === 0) return [];
   const result = await writeFormEdits(instanceId, opsFrom(empty, { derived: true, by: "statement" }), {

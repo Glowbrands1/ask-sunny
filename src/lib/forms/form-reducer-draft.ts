@@ -24,6 +24,7 @@ import { PAYROLL_DEDUCT_KEY } from "./payroll-deduct";
 import { PAYROLL_AMOUNT_KEY } from "./payroll-amount-field";
 import { DERIVED_POLICY_FIELD_KEYS } from "./policy-fields";
 import { NO_PRIOR_ACTION, PRIOR_ACTIONS_KEY } from "./prior-actions";
+import { spokenDates } from "./exit-facts";
 import { draftableCheckboxGroups, draftableFields } from "./responsibility";
 import type { DraftValues } from "./responsibility";
 
@@ -81,6 +82,18 @@ export function templateRules(loaded: LoadedInstance): TemplateRules {
 /** The ISO dates a text states, read by the app's one date reader. */
 export function statedDates(today: string): (text: string) => string[] {
   return (text) => datesInText(text, today).map((date) => date.iso);
+}
+
+/**
+ * FORM_EDIT_SINGLE_WRITER_ENABLED (step 2b, ported from Ask Bubbles): the
+ * dates a draft's notes state, calendar AND relative ("her last shift was
+ * yesterday"), read by the app's own spoken-date reader — the one the exit
+ * reader writes a date line from (`exit-facts.ts`). `statedDates` alone
+ * refused it as `date_not_stated`, so with the flag on "yesterday" never
+ * reached Last Day Worked.
+ */
+export function draftDates(today: string): (text: string) => string[] {
+  return (text) => spokenDates(text, today).flatMap((date) => (date.iso ? [date.iso] : []));
 }
 
 function asText(value: FieldValue): string {
@@ -201,7 +214,7 @@ export async function reduceDraftWrite(input: {
     writable: template.writable,
     typedExempt: input.typedExempt,
     dateKeys: template.dateKeys,
-    datesIn: statedDates(businessToday()),
+    datesIn: formEditSingleWriterEnabled() ? draftDates(businessToday()) : statedDates(businessToday()),
     checkboxGroups: template.checkboxGroups,
     listKeys: new Set([PRIOR_ACTIONS_KEY]),
     listNone: NO_PRIOR_ACTION,

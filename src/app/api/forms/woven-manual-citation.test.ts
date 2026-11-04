@@ -79,7 +79,16 @@ vi.mock("@/lib/forms/instance-scope", () => ({
   },
 }));
 
-vi.mock("@/lib/forms/instances", () => ({
+/*
+ * FORM_EDIT_SINGLE_WRITER_ENABLED (step 2b, ported from Ask Bubbles): the one
+ * writer (`form-write.ts`) reads the form before and after it writes, so this
+ * mock also has a `loadInstance` that returns the form as the writers below
+ * saved it (`src/test/forms/saved-form-instances.ts`). Flag off, the writers
+ * behave exactly as before.
+ */
+vi.mock("@/lib/forms/instances", async () =>
+  (await import("@/test/forms/saved-form-instances")).savedFormInstances(
+    {
   applyAssistantDraft: async (
     _id: string,
     draft: { values: Record<string, string>; checked: Record<string, string[]> },
@@ -89,7 +98,12 @@ vi.mock("@/lib/forms/instances", () => ({
     state.persisted.push({ values: draft.values ?? {}, checked: draft.checked ?? {}, provenance });
     return { accepted: { values: draft.values ?? {}, checked: draft.checked ?? {} }, rejected: [], policyRefused: [] };
   },
-}));
+    },
+    async (id) =>
+      (await (await import("@/lib/forms/instance-scope")).authorizeInstance(new Request("http://localhost/api/forms"), id, "view")).loaded,
+  ),
+);
+beforeEach(async () => (await import("@/test/forms/saved-form-instances")).resetSavedForms());
 
 vi.mock("@/lib/ai/anthropic", () => ({
   getAnthropicClient: () => ({

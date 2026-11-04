@@ -140,6 +140,27 @@ export interface PatchRules {
    */
   readonly keepsUnnamedWords?: boolean;
   /**
+   * FORM_EDIT_SINGLE_WRITER_ENABLED (Step 2b, the correction's preset): with
+   * `keepsUnnamedWords`, a dropped word the latest message names must also be
+   * REPLACED — paired, one for one, with a word the new text adds (every added
+   * word is already one the naming turn or the correction's readers said),
+   * a word containing it first ("doe" → "doe-smith").
+   * So "fix her last name, it is Jane Doe-Smith" may turn "Doe" into
+   * "Doe-Smith" but never drop "Jane": the latest message names Jane as
+   * part of the name it gives, and nothing the new text adds takes her place.
+   * Still `drops_words`. Absent: unchanged.
+   */
+  readonly droppedWordsReplaced?: boolean;
+  /**
+   * With `droppedWordsReplaced`: the one-fact lines (the template's short
+   * text lines and the header), whose whole value is the fact a correction
+   * restates — "her new location is salon 24" replaces "Salon 23" without
+   * naming 23. On these a dropped word need not be named, only replaced one
+   * for one by an added word; a word nothing replaces
+   * ("Jane" when "Jane Doe" becomes "Doe-Smith") is still refused.
+   */
+  readonly wholeValueKeys?: ReadonlySet<string>;
+  /**
    * FORM_EDIT_SINGLE_WRITER_ENABLED (Step 2a): write-in fields by key, from the
    * template's layout (`writeInsOf`). A write-in holds text only beside its
    * ticked box; otherwise refused as `writein_without_box`. Absent: unchanged.
@@ -295,18 +316,33 @@ function latestNames(word: string, latestWords: readonly string[]): boolean {
 }
 
 /** A replace drops no word of the old text the latest message does not name (counted per occurrence). */
-function keepsUnnamed(old: string, next: string, rules: PatchRules): boolean {
+function keepsUnnamed(key: string, old: string, next: string, rules: PatchRules): boolean {
   const kept = counts(wordsOf(next));
   const latest = wordsOf(rules.sources?.namingTurn ?? "");
+  const wholeValue = rules.droppedWordsReplaced === true && (rules.wholeValueKeys?.has(key) ?? false);
+  const dropped: string[] = [];
   for (const word of wordsOf(old)) {
     const left = kept.get(word) ?? 0;
     if (left > 0) {
       kept.set(word, left - 1);
       continue;
     }
-    if (!latestNames(word, latest)) return false;
+    if (!wholeValue && !latestNames(word, latest)) return false;
+    dropped.push(word);
   }
-  return true;
+  return !rules.droppedWordsReplaced || everyDropReplaced(dropped, addedWords(next, old));
+}
+
+/** Each dropped word pairs with its own added word: one containing it first, then any left. */
+function everyDropReplaced(dropped: readonly string[], added: readonly string[]): boolean {
+  const free = [...added];
+  const unpaired: string[] = [];
+  for (const word of dropped) {
+    const at = free.findIndex((candidate) => candidate !== word && candidate.includes(word));
+    if (at >= 0) free.splice(at, 1);
+    else unpaired.push(word);
+  }
+  return unpaired.length <= free.length;
 }
 
 /** Every name word, date and amount of the old text is still in the new one, unless the latest message names it. */
@@ -481,7 +517,7 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
   if (how === "add" ? have !== "" && contains(have, text) : sameValue(field.value, text)) return null;
   // The value itself, not only its evidence, must be words the manager said (or an accepted offer).
   if (!valueWasSaid(text, rules, { old: how === "add" ? "" : have, evidence })) return refuse(key, "not_in_manager_words");
-  if (how === "replace" && rules.keepsUnnamedWords && !keepsUnnamed(have, text, rules)) return refuse(key, "drops_words");
+  if (how === "replace" && rules.keepsUnnamedWords && !keepsUnnamed(key, have, text, rules)) return refuse(key, "drops_words");
   if (how === "replace" && !keepsProtected(key, have, text, rules)) return refuse(key, "drops_protected_value");
   if (how === "add") {
     if (have === "") return { value: text, owner };

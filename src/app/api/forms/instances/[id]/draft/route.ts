@@ -229,6 +229,7 @@ import {
 const PREVIOUS_ACTION_DATE_KEY = LEGACY_PREVIOUS_ACTION_DATE_KEY;
 import { exitDetailValues, exitStatedKeys, readExitDetails } from "@/lib/forms/exit-details";
 import { businessToday } from "@/lib/business-date";
+import { updateChatTrace } from "@/lib/ai/chat-trace-store";
 import {
   correctDraftedDates,
   draftBriefDates,
@@ -1232,6 +1233,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      */
     // The Corrective Action Form's Action Plan is built below, never taken from the model.
     if (fixedPlan && drafted.values) delete drafted.values[fixedPlan.key];
+    // FORM_EDIT_SINGLE_WRITER_ENABLED: the header's Employee Name is written only through the one writer, never by the drafting model.
+    if (formEditSingleWriterEnabled() && drafted.values) delete drafted.values.employee_name;
     // ACCOUNT_ONLY_POLICY_QUERY_ENABLED: "scheduled to open" nobody wrote is the manager's words, dated.
     if (drafted.values) {
       drafted.values = withoutInventedDetail(drafted.values, narrativeKeys, {
@@ -1515,6 +1518,25 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
      * words: the draft fails as it always has, and the client says so.
      */
     if (neverBlank && !succeeded && !fallback) throw lastError;
+
+    /*
+     * FORM_EDIT_SINGLE_WRITER_ENABLED (step 2b, ported from Ask Bubbles): THE
+     * DRAFT KEEPS THE FACTS THE MANAGER GAVE. The guarded account is read
+     * against the header's name (as the notes name her) and every date and
+     * amount the notes state — known form facts, no phrases
+     * (`lib/forms/draft-consistency.ts`). On a miss the draft is saved and the
+     * reply says what it left out: no model call, no retry. The trace gets
+     * kinds only, never the values.
+     */
+    let leftOut: string | null = null;
+    if (formEditSingleWriterEnabled() && narrativeTargets.length > 0) {
+      const consistency = await import("@/lib/forms/draft-consistency");
+      const facts = consistency.draftFacts({ employeeName: loaded.instance.employeeName, notes, today: businessToday() });
+      const labels = narrativeTargets.map((key) => promptFields.find((field) => field.key === key)?.label ?? key);
+      const missing = consistency.missingFacts(prose.attributions.values, narrativeTargets, facts);
+      if (missing.length > 0) leftOut = consistency.leftOutLine(missing, labels);
+      updateChatTrace({ draftCheck: { checked: true, missing_keys: [...new Set(missing.map((fact) => fact.kind))] } });
+    }
     const { cleaned, dated, narrated, timeframe, followUp, framing, claims, absence, requirements, attributions } =
       prose;
 
@@ -2442,6 +2464,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         policyLeftForManager && !managerOffense
           ? describedPolicyChoiceNotice(describedChoices!.map((choice) => choice.section))
           : null,
+        // FORM_EDIT_SINGLE_WRITER_ENABLED: what the draft left out of the account (detected, never retried).
+        leftOut,
       ]
         .filter((line): line is string => Boolean(line))
         .join(" ") || null,

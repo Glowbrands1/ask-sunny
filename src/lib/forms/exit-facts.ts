@@ -276,6 +276,15 @@ interface DateToken {
  * Friday", "on Friday" — is kept as a token with no date: it tells us a date
  * was meant and not which, which is exactly what the manager should be asked.
  */
+/**
+ * The same reader, for the one writer's draft paths (FORM_EDIT_SINGLE_WRITER_ENABLED,
+ * step 2b, `draftDates` in `form-reducer-draft.ts`): the dates a draft's notes
+ * state, calendar and relative, as the draft route writes them.
+ */
+export function spokenDates(text: string, today: string): readonly { readonly iso: string | null }[] {
+  return dateTokens(text, today);
+}
+
 function dateTokens(text: string, today: string): DateToken[] {
   const tokens: DateToken[] = datesInText(text, today).map((found) => ({
     iso: found.iso,
