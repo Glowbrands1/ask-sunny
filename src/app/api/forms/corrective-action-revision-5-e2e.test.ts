@@ -670,3 +670,60 @@ describe("a Corrective Action filed on revision 5, edited as a new draft", () =>
     expect(await valueOf(id, "action_plan")).toBe(`Jessica will arrive early. ${CLOSING_5}`);
   });
 });
+
+describe("a Corrective Action filed on revision 6, revised after revision 8 (Type of Offense, 4 Nov 2026)", () => {
+  /*
+   * PATH 1 OF THE TEMPLATE CHANGE. "Edit as new draft" (`reviseInstance`,
+   * src/lib/forms/instances.ts, PROTECTED) opens the revision on the CURRENT
+   * version and copies every row as it was. Revision 8 has no Tardiness box,
+   * so the carried tick names a box the revision does not have.
+   *
+   * The FILED form is never touched (asserted). What the REVISION carries is
+   * OPEN until Pau decides between A (map the tick in `reviseInstance`) and B
+   * (aliases in the document): `it.fails` below passes while the tick is
+   * still dropped, and fails — to be turned into a plain `it` — once fixed.
+   */
+  async function filedOnRevision6() {
+    const { default: REVISION_6 } = await import("@/test/fixtures/forms/corrective-action-revision-6.json");
+    const { result } = await conversation([OPENING]);
+    const id = result.reference.instanceId;
+    const instance = store.form_instances.find((entry) => entry.id === id)!;
+    const current = store.form_template_versions.find((row) => row.id === instance.template_version_id)!;
+    const revision6 = { ...current, id: "dpoa-revision-6", version: 0, status: "archived", seed_revision: 6, document: REVISION_6 };
+    store.form_template_versions.push(revision6);
+    instance.template_version_id = revision6.id;
+    instance.status = "finalized";
+    instance.finalized_at = "2026-10-29T15:00:00Z";
+    const offense = store.form_instance_values.find((entry) => entry.instance_id === id && entry.field_key === "offense_type");
+    if (offense) Object.assign(offense, { checked: ["tardiness"] });
+    else store.form_instance_values.push({ instance_id: id, field_key: "offense_type", value: null, checked: ["tardiness"], filled_by: "assistant", provenance: {} } as never);
+    return id;
+  }
+
+  async function revise(id: string) {
+    joinOverview();
+    const response = await instanceRoute.POST(
+      new Request(`https://app.test/api/forms/instances/${id}`, { method: "POST", body: JSON.stringify({ action: "revise" }) }),
+      { params: Promise.resolve({ id }) },
+    );
+    expect(response.status).toBe(200);
+    joinOverview();
+    return ((await response.json()) as { instance: { id: string } }).instance.id;
+  }
+
+  const ticks = (id: string) => store.form_instance_values.find((entry) => entry.instance_id === id && entry.field_key === "offense_type")?.checked ?? [];
+
+  it("the filed revision 6 form keeps its own version and its Tardiness tick", async () => {
+    const id = await filedOnRevision6();
+    await revise(id);
+    expect(store.form_instances.find((entry) => entry.id === id)!.template_version_id).toBe("dpoa-revision-6");
+    expect(ticks(id)).toEqual(["tardiness"]);
+  });
+
+  // OPEN (path 1, pending Pau's A/B): the revision on revision 8 should tick Attendance Policy.
+  it.fails("the revision on revision 8 ticks Attendance Policy for the old Tardiness tick", async () => {
+    const id = await filedOnRevision6();
+    const revision = await revise(id);
+    expect(ticks(revision)).toEqual(["attendance_policy"]);
+  });
+});
