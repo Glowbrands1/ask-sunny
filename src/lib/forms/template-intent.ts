@@ -1478,7 +1478,7 @@ const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|t
  */
 function withoutLeadingGlossaryTerm(question: string): string {
   if (!caSalesPolicyEnabled()) return question;
-  const match = /^\s*([A-Za-z0-9.&-]+)\s+(?=\S)/.exec(question);
+  const match = /^\s*([a-z0-9.&-]+)\s+(?=\S)/i.exec(question);
   return match && foldsToGlossaryTerm(match[1]!) ? question.slice(match[0].length) : question;
 }
 
