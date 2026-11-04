@@ -42,6 +42,16 @@ describe("the offer", () => {
     expect(offer("what does the standards of conduct policy say about must see behaviors?")).toBeNull();
   });
 
+  it("on: no offer for the general conduct reading of unfinished cleaning (sf-s15; a cleaning CA does not cite the Standards of Conduct by default)", () => {
+    process.env[FLAG] = "true";
+    expect(offer("Write me a CA for Ysolde Marrowick for failing to complete opening duties. Ysolde did not complete daily cleaning duties. on november 2, 2026")).toBeNull();
+  });
+
+  it("on: an MSB account is offered with the Standards of Conduct", () => {
+    process.env[FLAG] = "true";
+    expect(offer("Ysolde Marrowick for msb this week")).toMatch(/Standards of Conduct/);
+  });
+
   it("on: no offer when the words read as no single policy", () => {
     process.env[FLAG] = "true";
     expect(offer("Ysolde Marrowick is working Saturday")).toBeNull();

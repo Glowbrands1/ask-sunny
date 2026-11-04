@@ -118,7 +118,6 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
      */
     status: { open: "with production's flags the template still offers Under Performance, which cites no policy (until the revision 8 port)" },
     fixFlags: FLAGS,
-    fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("CA for Briony Fellwater due to under performance in salon metrics");

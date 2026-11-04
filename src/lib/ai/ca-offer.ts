@@ -1,5 +1,5 @@
 import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
-import { CA_POLICY_LABEL, readCaPolicy } from "@/lib/forms/ca-policy";
+import { CA_POLICY_LABEL, isSalesPolicyReading, readCaPolicy } from "@/lib/forms/ca-policy";
 import { AFFIRMATIVE, type RosterEmployee } from "@/lib/forms/employee-match";
 import { managerContext, resolveEmployee } from "@/lib/forms/proposal";
 
@@ -58,7 +58,13 @@ export function caOfferLine(input: {
   if (!caSalesPolicyEnabled()) return null;
   const context = managerContext(input.history, { id: input.questionMessageId, content: input.question });
   const reading = readCaPolicy(context.text);
-  const policyKey = reading.stated ?? (reading.ambiguous ? null : reading.suggestion);
+  /*
+   * A POLICY THE MANAGER NAMED, or the sales / MSB reading this flag adds —
+   * never the general conduct suggestion ("did not complete daily cleaning
+   * duties" reads as unfinished work, and a cleaning CA does not cite the
+   * Standards of Conduct by default: Pau, 4 Nov 2026; replay sf-s15).
+   */
+  const policyKey = reading.stated ?? (isSalesPolicyReading(reading) ? reading.suggestion : null);
   if (!policyKey) return null;
   const resolution = resolveEmployee(context);
   if (resolution.kind !== "resolved") return null;
