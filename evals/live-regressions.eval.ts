@@ -14,6 +14,7 @@ import {
   MANAGER_SCENARIOS,
   managerDryScripts,
   NAME_SCENARIOS,
+  applicableCriteria,
   type LiveCriterion,
   type LiveExpect,
   type LiveScenario,
@@ -71,7 +72,13 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          QA runs it twice, flag OFF and ON:
  *                            LIVE_SCENARIOS=managers                (OFF)
  *                            LIVE_SCENARIOS=managers LIVE_FLAGS=CHAT_GLOSSARY_ENABLED,CA_SALES_POLICY_ENABLED  (ON)
- *                          each within LIVE_CAP=30.
+ *                          each within LIVE_CAP=30. #5 runs two turns (the
+ *                          message, then "yes") and Create: with
+ *                          CA_SALES_POLICY_ENABLED on, no card and one offer
+ *                          "Do you want a Corrective Action for <Name>?", then
+ *                          a CA card citing the Standards of Conduct; off, a
+ *                          policy answer and no offer. Its columns are per
+ *                          turn and per flag state.
  *   LIVE_CREATE_REPEAT=1   also: the same Corrective Action (T1, then Create)
  *                          5 times with Step B's flags OFF and 5 times ON;
  *                          counts the saved Observations that lose the
@@ -576,6 +583,8 @@ interface Turn {
   readonly reply: string;
   readonly updated: readonly string[];
   readonly diff: Record<string, { before: string; after: string }>;
+  /** The card this turn proposed (null: none; absent: Create's turn). */
+  readonly card?: { readonly templateKey: string | null; readonly employeeName: string | null } | null;
 }
 
 interface PathRun {
@@ -680,7 +689,13 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
         { id, role: "user", content: step.say, createdAt: `${TODAY}T15:30:00Z` } as ChatMessage,
         { id: `a${index}`, role: "assistant", content: payload.content, createdAt: `${TODAY}T15:30:01Z`, ...(payload.formProposal ? { formProposal: payload.formProposal } : {}) } as ChatMessage,
       );
-      turns.push({ said: step.say, reply: payload.content, updated: payload.formUpdate?.updated ?? [], diff: diff(before, values(instanceId)) });
+      turns.push({
+        said: step.say,
+        reply: payload.content,
+        updated: payload.formUpdate?.updated ?? [],
+        diff: diff(before, values(instanceId)),
+        card: payload.formProposal ? { templateKey: payload.formProposal.templateKey ?? null, employeeName: payload.formProposal.employeeName ?? null } : null,
+      });
     }
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);
@@ -711,16 +726,20 @@ const MANAGER_DRY = managerDryScripts();
 
 /** A scenario's `expect` over its recorded run: PASS, or FAIL with why. Recorded only, never asserted. */
 function judge(expectation: LiveExpect, run: PathRun, criteria: readonly LiveCriterion[] = []): Outcome {
+  const chat = run.turns.filter((turn) => turn.said !== "(Create)");
   const outcome = {
     card: run.card,
     reply: run.reply,
-    replies: run.turns.filter((turn) => turn.said !== "(Create)").map((turn) => turn.reply),
+    replies: chat.map((turn) => turn.reply),
+    turnCards: chat.map((turn) => turn.card ?? null),
+    flagsOn: live.FLAGS,
     saved: run.saved,
     checked: run.checked,
     error: run.error === NO_CARD ? "NO CARD (nothing to create from)" : run.error,
   };
   const why = expectation.check(outcome);
-  const columns = criteria.map((criterion) => {
+  // A criterion that does not apply to this run's flags (#5's flag-on / flag-off turns) is left out: "n/a".
+  const columns = applicableCriteria(criteria, live.FLAGS).map((criterion) => {
     const failed = criterion.check(outcome);
     return { name: criterion.name, result: failed ? ("FAIL" as const) : ("PASS" as const), ...(failed ? { why: failed } : {}) };
   });
@@ -806,10 +825,14 @@ function writeResults(): void {
     lines.push(`Expected outcomes: ${passed} PASS, ${checks.length - passed} FAIL of ${checks.length} (${checks.reduce((sum, run) => sum + run.oldPath.calls, 0)} calls).`, "", "| Case | Result | Expected | Why (FAIL) | calls |", "|---|---|---|---|---|");
     for (const { id, oldPath, expect: outcome } of checks) lines.push(`| ${id} | **${outcome!.result}** | ${cell(outcome!.expected)} | ${cell(outcome!.why ?? "")} | ${oldPath.calls} |`);
     lines.push("");
-    const NAMES = ["card", "no-ask", "msb-name", "cites-soc"];
     const graded = checks.filter((run) => run.expect?.criteria);
+    /* Every criterion that ran, in first-seen order: the four of #1–#4, then #5's per-turn columns. */
+    const NAMES = [...new Set(graded.flatMap((run) => run.expect!.criteria!.map((entry) => entry.name)))];
     if (graded.length) {
-      lines.push("Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page):", "");
+      lines.push(
+        "Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page; #5 with CA_SALES_POLICY_ENABLED on: t1-no-card, t1-offer-once (one \"Do you want a Corrective Action for <Name>?\" with yes and Standards of Conduct), t2-card and t2-cites-soc after \"yes\"; off: off-answer, off-no-offer):",
+        "",
+      );
       lines.push(`| Case | ${NAMES.join(" | ")} | Why (FAIL) |`, `|---|${NAMES.map(() => "---|").join("")}---|`);
       for (const { id, expect: outcome } of graded) {
         const column = (name: string) => outcome!.criteria!.find((entry) => entry.name === name);
