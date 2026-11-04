@@ -53,6 +53,15 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          writer it needs. Each run records how many answering
  *                          calls were offered `edit_form`.
  *
+ * LIVE_MAIN_MODEL=<model id>  the ANSWERING call only (the request that carries
+ *                          `thinking`, i.e. the main call that is offered
+ *                          `edit_form`) goes to this model; every other call
+ *                          stays on Haiku. Its own cap: 30 answering calls per
+ *                          run (Pau, 4 Nov: "allowed on a small capped set,
+ *                          about 30 calls per run, only for the step 3
+ *                          comparison, inside the script process only"). Past
+ *                          that cap nothing more is sent. Unset: all Haiku.
+ *
  * SPEND: every model call — the Anthropic client (`getAnthropicClient`, which
  * `callClaude*`, the drafting and the revision calls use) and the AI SDK
  * (`callFormPatchModel`) — goes through one counter that stops at 100 calls
@@ -88,6 +97,10 @@ const live = vi.hoisted(() => {
   const meter = {
     HAIKU,
     CAP: 100,
+    /** LIVE_MAIN_MODEL: the answering call's model (unset: Haiku), and its own cap. */
+    MAIN_MODEL: process.env.LIVE_MAIN_MODEL?.trim() || null,
+    MAIN_CAP: 30,
+    mainCalls: 0,
     BASE_URL: "https://api.anthropic.com",
     calls: 0,
     /** Answering calls whose request offered the `edit_form` tool (step 3). */
@@ -101,6 +114,16 @@ const live = vi.hoisted(() => {
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
+    /** The model for this request: the answering call (it carries `thinking`) on LIVE_MAIN_MODEL, within its cap; all else Haiku. */
+    modelFor(body: unknown): string {
+      if (!meter.MAIN_MODEL || !(body as { thinking?: unknown }).thinking) return meter.HAIKU;
+      if (meter.mainCalls >= meter.MAIN_CAP) {
+        meter.capped = true;
+        throw new Error(`live-regressions: main-model cap reached (${meter.MAIN_CAP} answering calls on ${meter.MAIN_MODEL})`);
+      }
+      meter.mainCalls += 1;
+      return meter.MAIN_MODEL;
+    },
     /** One model call, counted before it is sent; past the cap nothing is sent. */
     take(kind: "draft" | "revision" | "answer" | "tool" | "patch"): void {
       if (process.env.LIVE !== "1" && process.env.LIVE_DRY !== "1") throw new Error("live-regressions: a model call without LIVE=1 or LIVE_DRY=1");
@@ -158,20 +181,22 @@ vi.mock("@/lib/ai/anthropic", async () => {
     create: async (body: Body, options?: Options) => {
       live.take(kindOf(body));
       noteOffer(body);
-      const response = dry() ? standIn(body) : await real().messages.create({ ...body, model: live.HAIKU } as Body, { ...options, maxRetries: 0 });
+      const model = live.modelFor(body);
+      const response = dry() ? standIn(body) : await real().messages.create({ ...body, model } as Body, { ...options, maxRetries: 0 });
       live.add((response as { usage?: Parameters<typeof live.add>[0] }).usage);
       return response;
     },
     stream: (body: Parameters<InstanceType<typeof Anthropic>["messages"]["stream"]>[0], options?: Options) => {
       live.take(kindOf(body));
       noteOffer(body);
+      const model = live.modelFor(body);
       if (dry()) {
         const message = standIn(body);
         live.add(message.usage);
         const fake = { on: () => fake, finalMessage: async () => message };
         return fake;
       }
-      const stream = real().messages.stream({ ...body, model: live.HAIKU }, { ...options, maxRetries: 0 });
+      const stream = real().messages.stream({ ...body, model }, { ...options, maxRetries: 0 });
       stream.finalMessage().then(
         (message) => live.add(message.usage),
         () => {},
@@ -631,6 +656,10 @@ function writeResults(): void {
   mkdirSync("evals/results", { recursive: true });
   const spend = {
     model: live.HAIKU,
+    /** LIVE_MAIN_MODEL: the answering call's model and how many answering calls it took (unset: null, all Haiku). */
+    mainModel: live.MAIN_MODEL,
+    mainCalls: live.mainCalls,
+    mainCap: live.MAIN_CAP,
     mode: DRY ? "dry (stand-in models, no network)" : "live",
     calls: live.calls,
     kinds: live.kinds,
@@ -647,7 +676,7 @@ function writeResults(): void {
   const lines = [
     `# Live regressions (regression set #1)${DRY ? " — DRY RUN, stand-in models" : ""}`,
     "",
-    `Model ${spend.model}; ${spend.calls}/${spend.cap} calls (draft ${spend.kinds.draft}, revision ${spend.kinds.revision}, answer ${spend.kinds.answer}, other tools ${spend.kinds.tool}, patch ${spend.kinds.patch})${spend.capped ? " (CAP REACHED: later calls were not sent)" : ""}; tokens in ${spend.inputTokens}, out ${spend.outputTokens} (cache read ${spend.cacheReadTokens}, write ${spend.cacheWriteTokens}).`,
+    `Model ${spend.model}${spend.mainModel ? ` (answering call: ${spend.mainModel}, ${spend.mainCalls}/${spend.mainCap})` : ""}; ${spend.calls}/${spend.cap} calls (draft ${spend.kinds.draft}, revision ${spend.kinds.revision}, answer ${spend.kinds.answer}, other tools ${spend.kinds.tool}, patch ${spend.kinds.patch})${spend.capped ? " (CAP REACHED: later calls were not sent)" : ""}; tokens in ${spend.inputTokens}, out ${spend.outputTokens} (cache read ${spend.cacheReadTokens}, write ${spend.cacheWriteTokens}).`,
     "",
   ];
   if (repeat.off.length || repeat.on.length) {
