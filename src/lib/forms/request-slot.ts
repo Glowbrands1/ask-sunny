@@ -2,7 +2,7 @@ import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
 
 import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { editDistance, normalizeTypedName } from "./employee-match";
-import { detectTemplateIntent } from "./template-intent";
+import { detectTemplateIntent, namesAForm } from "./template-intent";
 
 /**
  * ============================================================================
@@ -84,11 +84,19 @@ export function requestSlotNames(text: string): string[] | null {
   if (!first || detectTemplateIntent(first).kind === "none") return null;
   const match = SLOT.exec(first);
   if (!match) return null;
-  const names = match[1]!
+  const all = match[1]!
     .split(/\s*(?:,|\band\b|\bor\b|&)\s*/u)
     .map((name) => name.trim())
     .filter((name) => name && !readsAsOffense(name));
-  return names.length > 0 ? names : null;
+  /*
+   * A form's name where the person goes ("a corrective action for Coaching
+   * Form", Pau, 4 Nov 2026) is no person — and the slot is still the request's
+   * slot: it names nobody, so no other phrase in the message is a candidate
+   * ("Club Close" from "… on Club Close % and Spa %"). The reply asks who.
+   */
+  const names = all.filter((name) => !namesAForm(name));
+  if (names.length === 0) return all.length > 0 ? [] : null;
+  return names;
 }
 
 /** The capitalised items of every comma or "and" list of three or more items in the text. */
@@ -135,6 +143,8 @@ function inSlot(candidate: string, slot: readonly string[]): boolean {
  */
 export function outsideRequestSlot(candidate: string, text: string | undefined = readMessage()): boolean {
   if (!formNameFromRosterEnabled() || !text || !candidate.trim()) return false;
+  // A form's name is never a person (Pau, 4 Nov 2026: "a corrective action for Coaching Form").
+  if (namesAForm(candidate)) return true;
   const typed = wordsOf(candidate).join(" ");
   if (capitalisedListItems(text).some((item) => wordsOf(item).join(" ") === typed)) return true;
   // An offense or a policy after "for" ("for Under Performance"): none of its words is a person.
