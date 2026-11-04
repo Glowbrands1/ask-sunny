@@ -89,8 +89,7 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     id: "nov4-pau-metrics-not-people",
     title: "sf-s19: Pau's Under Performance CA on PPTA, LPSVA, Club Average, Club Close %, Spa %: no roster note, the card cites Standards of Conduct",
     report: `${REPORT}: "I need a corrective action verbal for <name>. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."`,
-    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, no card: production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)
-    status: "fixed",
+    status: { open: "no card: production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -114,8 +113,7 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     id: "nov4-pau-metrics-not-people-typo",
     title: "negative control: a typo of a roster person on the same message still gets the close-match question",
     report: `${REPORT}: negative control, a typo of a roster name`,
-    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, no card or question: production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)
-    status: "fixed",
+    status: { open: "no card or question: production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -157,14 +155,10 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
      * without the middle ground. Approved (QA for Pau, 4 Nov 2026): one word
      * typed all in lowercase that is nobody's first, preferred or last name on
      * the roster is never the employee (`forms/roster-shape.ts`
-     * lowercaseNobody).
-     *
-     * With CA_SALES_POLICY_ENABLED on in production (since 4 Nov 2026, 17:08
-     * UTC) and FORM_NAME_FROM_ROSTER_ENABLED still off, production makes the
-     * card "for **under**": OPEN until FORM_NAME_FROM_ROSTER_ENABLED is on.
-     * (Before the sales flip it held: production answered metric-only, no card.)
+     * lowercaseNobody). With production's flags the message is answered as
+     * metric-only (no card), so this holds there too.
      */
-    status: { open: 'with CA_SALES_POLICY_ENABLED on in production, the card is made "for **under**"' },
+    status: "fixed",
     fixFlags: [SALES, FLAG],
     async run(t) {
       const thread = start(t);
@@ -179,8 +173,7 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     id: "nov4-pau-metrics-not-people-lowercase-roster-name",
     title: "negative control: a roster first name typed alone in lowercase (\"perpetua\"), answering who the form is for, is still matched",
     report: `${REPORT}: negative control, a lowercase roster first name`,
-    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, production answers turn 1 as metric-only (CA_SALES_POLICY_ENABLED off), so there is no form for \"perpetua\" to answer
-    status: "fixed",
+    status: { open: "production answers turn 1 as metric-only (CA_SALES_POLICY_ENABLED off), so there is no form for \"perpetua\" to answer" },
     fixFlags: [SALES, FLAG],
     async run(t) {
       const thread = start(t);
