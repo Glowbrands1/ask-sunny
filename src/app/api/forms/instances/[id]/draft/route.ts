@@ -163,7 +163,7 @@ import {
   describedManualSection,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
-import { OTHER_WRITE_IN_INSTRUCTION, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
+import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -1840,6 +1840,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
         offered: offenseOffered,
         notes,
         basis: offenseBasis,
+        specific: specificTopic(notes) !== null,
       }) ?? offenseApplied;
     const policyLeftForManager =
       describedChoices !== null && !(offenseApplied.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key));

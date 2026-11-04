@@ -13,9 +13,10 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext 
  * QA's live run (Haiku), flag on and off: "the tanning beds were left dirty at
  * close" came back with Standards of Conduct ticked and cited on p.12. The
  * stand-in model here ticks it the same way. With the flag on, a Standards of
- * Conduct tick with no reason in the manager's words moves to Other, with their
- * words beside it (`ca-conduct-reason.ts`); a named policy, the MSB reading
- * and attendance keep their box. Every person is invented.
+ * Conduct tick with no reason in the manager's words and the model's own
+ * basis "upkeep_or_task" moves to Other, with their words beside it
+ * (`ca-conduct-reason.ts`); a named policy, the MSB reading, wrong items and
+ * attendance keep their box. Every person is invented.
  */
 
 type T = ReplayContext;
@@ -80,17 +81,16 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     },
   },
   {
-    id: "nov4-cleaning-duties-not-conduct",
-    title: "\"did not complete daily cleaning duties\": the general task reading is no reason; Other, no Standards of Conduct citation",
-    report: `${REPORT}: Pau's wording (sf-s15)`,
-    status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
+    id: "nov4-cleaning-negative-no-basis",
+    title: "negative control: with no offense_basis from the model, its Standards of Conduct tick stands (as before the flag; Woven training past due reads the same as a task)",
+    report: `${REPORT}: no basis, the model's tick stands`,
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
       await thread.say("make a corrective action for Halloran Sweetbriar, he did not complete daily cleaning duties");
-      expect(thread.proposal, "no CA card").toMatchObject({ templateKey: "dpoa", employeeName: "Halloran Sweetbriar" });
-      // No offense_basis: the guard as before the field.
-      citesNoConduct(await draftTickingConduct(t, thread, "Halloran Sweetbriar did not complete the daily cleaning duties."));
+      const saved = await draftTickingConduct(t, thread, "Halloran Sweetbriar did not complete the daily cleaning duties.");
+      expect(saved.checked.offense_type ?? [], "the model's Standards of Conduct was unticked with no basis").toContain("standards_of_conduct");
     },
   },
   {
