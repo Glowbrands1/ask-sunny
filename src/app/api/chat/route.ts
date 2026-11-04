@@ -227,6 +227,16 @@ async function postChat(request: Request) {
           }
         }
         enterPersonRoster(names);
+        /*
+         * FORM_NAME_FROM_ROSTER_ENABLED: does this message name somebody on the
+         * roster (exact or close, or a roster first name typed in lowercase)?
+         * Every name reader of the turn reads the same answer — the intent
+         * slots read the employee before the card is proposed.
+         */
+        if (formNameFromRosterEnabled() && roster.length > 0) {
+          const { enterRosterAnchor, messageAnchoredOnRoster } = await import("@/lib/forms/roster-anchor-store");
+          enterRosterAnchor(messageAnchoredOnRoster(asked.question, roster));
+        }
       }
       /*
        * "DELETE THAT DRAFT", "SAME INCIDENT" (QA F8). Ahead of every open-form

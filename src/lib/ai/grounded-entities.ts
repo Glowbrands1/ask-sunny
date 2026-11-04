@@ -11,7 +11,7 @@ import { isDateAnswerWords } from "@/lib/forms/incident-dates";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
-import { anchorsOnRoster, rosterShaped } from "@/lib/forms/roster-shape";
+import { anchorsOnRoster, lowercaseRosterFirstNameIn, rosterShaped } from "@/lib/forms/roster-shape";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 import type { AskResponse } from "./types";
@@ -227,7 +227,10 @@ function gateMentions(
   let ambiguous: GroundedPerson[] = [];
   let ambiguousTyped: string | null = null;
   // FORM_NAME_FROM_ROSTER_ENABLED: does the message name somebody on the roster? Only then is a nobody-shaped candidate set aside.
-  const anchored = formNameFromRosterEnabled() && mentions.names.some((name) => anchorsOnRoster(name, roster));
+  // A roster first name typed in lowercase ("for perpetua") is not read as a name, and still anchors the message.
+  const anchored =
+    formNameFromRosterEnabled() &&
+    (mentions.names.some((name) => anchorsOnRoster(name, roster)) || lowercaseRosterFirstNameIn(question, roster));
 
   for (const name of mentions.names) {
     if (isDocumentOrPolicyName(name)) continue;

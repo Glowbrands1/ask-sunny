@@ -184,6 +184,35 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
     },
   },
   {
+    id: "nov4-pau-metrics-not-people-lowercase-first-name",
+    title: "Pau's message with the first name typed in lowercase (\"for perpetua\"): Perpetua Thornquist, never a \"Club Close\" card; Standards of Conduct cited",
+    report: `${REPORT}: "I need a corrective action verbal for perpetua. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."`,
+    /*
+     * Approved by QA, 4 Nov 2026: a single lowercase word that is somebody's
+     * first or preferred name on the roster anchors the message
+     * (`forms/roster-shape.ts` lowercaseRosterFirstNameIn), so "Club Close"
+     * and "Under" are set aside. Before, the card was made "for **Club
+     * Close**" with these flags on.
+     */
+    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
+    fixFlags: [FLAG, SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("I need a corrective action verbal for perpetua. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
+      expect(reply.content, `"Club Close" or "Under" is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Club Close|Under)\*\*/i);
+      expect(thread.proposal?.employeeName ?? "", "a metric is on the card").not.toMatch(/club close|^under$/i);
+      const said = `${reply.content}\n${JSON.stringify(thread.proposal)}`;
+      expect(said, `neither a card for Perpetua Thornquist nor "Is this for Perpetua Thornquist?":\n${said}`).toMatch(/Perpetua Thornquist/);
+      if (thread.proposal?.employeeName === "Perpetua Thornquist") {
+        expect(policyLine(reply), `the card does not cite Standards of Conduct:\n${reply.content}`).toMatch(/standards of conduct/i);
+      } else {
+        const confirmed = await thread.say("yes");
+        expect(thread.proposal, `no CA card for Perpetua Thornquist after "yes":\n${confirmed.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Perpetua Thornquist" });
+        expect(policyLine(confirmed), `the card does not cite Standards of Conduct:\n${confirmed.content}`).toMatch(/standards of conduct/i);
+      }
+    },
+  },
+  {
     id: "nov4-pau-metrics-not-people-pau-1-lowercase-full-name",
     title: "negative control: QA's pau-1 wording, a lowercase full name (\"corin bellweather\") on the roster, is still the card's employee",
     report: `${REPORT}: negative control, QA's pau-1 wording`,

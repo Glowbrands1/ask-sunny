@@ -102,3 +102,25 @@ export function lowercaseNobody(name: string, names: readonly string[]): boolean
   if (rows.length === 0) return false;
   return !rosterShaped(typed, rows);
 }
+
+/**
+ * FORM_NAME_FROM_ROSTER_ENABLED (approved by QA, 4 Nov 2026): "I need a
+ * corrective action verbal for perpetua. This is for Under Performance on …"
+ * names Perpetua Thornquist, but the name reader does not take a lowercase
+ * word for a name, so nothing anchored the message and "Club Close" became
+ * the card's employee. A single word typed all in lowercase that is somebody's
+ * first or preferred name on the roster counts as a roster name for the
+ * middle ground. Roster data and how the word was typed only.
+ */
+export function lowercaseRosterFirstNameIn(text: string, roster: readonly RosterEmployee[]): boolean {
+  const firsts = new Set<string>();
+  for (const employee of roster) {
+    for (const first of [employee.firstName, employee.preferredFirstName ?? ""]) {
+      const word = normalizeTypedName(first).split(/[\s-]+/)[0];
+      if (word) firsts.add(word);
+    }
+  }
+  if (firsts.size === 0) return false;
+  const words = text.match(/(?<![\p{L}'’-])\p{Ll}+(?![\p{L}'’-])/gu) ?? [];
+  return words.some((word) => firsts.has(normalizeTypedName(word)));
+}

@@ -6,7 +6,8 @@ import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
 import { namesSomebody } from "./answer-not-a-name";
 import { installPersonRoster } from "./person-guard";
 import { readEmployeeMentions } from "./proposal";
-import { couldBeOnRoster, installRosterAnchor, lowercaseNobody, rosterShaped } from "./roster-shape";
+import { messageAnchoredOnRoster } from "./roster-anchor-store";
+import { couldBeOnRoster, installRosterAnchor, lowercaseNobody, lowercaseRosterFirstNameIn, rosterShaped } from "./roster-shape";
 
 /**
  * ============================================================================
@@ -236,6 +237,50 @@ describe("a lowercase word that is nobody on the roster", () => {
     process.env.PERSON_GUARD_ENABLED = "true";
     on();
     expect(namesSomebody("under")).toBe(true);
+  });
+});
+
+/*
+ * APPROVED by QA (4 Nov 2026): "I need a corrective action verbal for
+ * perpetua. This is for Under Performance on …" made the card "for **Club
+ * Close**" with the three flags on. A single word typed in lowercase that is
+ * somebody's first or preferred name on the roster anchors the message.
+ */
+describe("a roster first name typed in lowercase anchors the message", () => {
+  const LOWER = "I need a corrective action verbal for perpetua. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.";
+  const NOT_ON = "I need a corrective action verbal for zuleika. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.";
+
+  it("lowercaseRosterFirstNameIn: a lowercase first or preferred name; roster data and how it was typed only", () => {
+    expect(lowercaseRosterFirstNameIn(LOWER, PEOPLE)).toBe(true);
+    expect(lowercaseRosterFirstNameIn("a CA for izzy, late again", PEOPLE)).toBe(true);
+    expect(lowercaseRosterFirstNameIn(NOT_ON, PEOPLE)).toBe(false);
+    expect(lowercaseRosterFirstNameIn("a CA for thornquist", PEOPLE)).toBe(false);
+    expect(lowercaseRosterFirstNameIn("a CA for Perpetua", PEOPLE)).toBe(false);
+    expect(lowercaseRosterFirstNameIn(LOWER, [])).toBe(false);
+  });
+
+  it("messageAnchoredOnRoster: \"perpetua\" anchors; \"zuleika\", nobody on the roster, does not", () => {
+    expect(messageAnchoredOnRoster(LOWER, PEOPLE)).toBe(true);
+    expect(messageAnchoredOnRoster(say("Perpetua Thornquist"), PEOPLE)).toBe(true);
+    expect(messageAnchoredOnRoster(NOT_ON, PEOPLE)).toBe(false);
+    expect(messageAnchoredOnRoster(say("Zuleika Brightwell"), PEOPLE)).toBe(false);
+  });
+
+  it("on: the grounding step sets the metrics aside beside \"perpetua\"", () => {
+    expect(prep(LOWER).unmatched).toEqual(expect.arrayContaining(["Club Close", "Under"]));
+    on();
+    const prepared = prep(LOWER);
+    expect(prepared.rosterAnchored).toBe(true);
+    expect(prepared.unmatched).toEqual([]);
+    expect(prepared.question).toBe(LOWER);
+  });
+
+  it("on, negative control: a lowercase word that is nobody on the roster is no anchor — read as before", () => {
+    const off = prep(NOT_ON);
+    on();
+    const prepared = prep(NOT_ON);
+    expect(prepared.rosterAnchored).toBeUndefined();
+    expect(prepared).toEqual(off);
   });
 });
 
