@@ -75,14 +75,6 @@ const ALLOW_LIST: readonly Allowed[] = [
   {
     file: "src/lib/forms/chat-revision.ts",
     fn: "reviseActiveForm",
-    writer: "applyAssistantRevision",
-    count: 1,
-    reason:
-      "PROTECTED until 2b (Pau's typed yes): the revision's write, which also carries openDraftTurn's write. 2b swaps it for writeRevisionEdits.",
-  },
-  {
-    file: "src/lib/forms/chat-revision.ts",
-    fn: "reviseActiveForm",
     writer: "applyAssistantDraft",
     count: 1,
     reason: "PROTECTED: the revision's derived Policy Violated line (the optional second hunk, Q3: not taken).",
