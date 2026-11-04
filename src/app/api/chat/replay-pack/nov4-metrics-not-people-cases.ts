@@ -231,4 +231,32 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
       expect(thread.proposal, "no CA card for Corin Bellweather").toMatchObject({ templateKey: "dpoa", employeeName: "Corin Bellweather" });
     },
   },
+  {
+    /*
+     * QA, 4 NOV 2026: live, Pau's message 1 for the QA test account's own
+     * roster entry. The reply said "I'll draft a Corrective Action Form for
+     * <the entry's name>" and the card's Employee was empty ("Not yet — tell
+     * Sunny who this form is about"). Not the shared-login or self exclusion:
+     * the slot keeper (`ai/keep-filled-slots.ts` keptName) read the name as a
+     * fragment for its word "one" and dropped it, after the reply sentence was
+     * written. KEEP_ROSTER_EXACT_NAME_ENABLED: an exact roster name is kept.
+     * The entry here is invented, with the same shape (two short words, an
+     * all-capitals word, "One").
+     */
+    id: "nov4-qa-roster-name-with-one",
+    title: "QA 4 Nov: Pau's message 1 for a roster person whose name ends in \"One\": the card's employee is the name the reply drafts for",
+    report: `QA, 4 Nov 2026: "I need a corrective action verbal for <QA test account>. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %." → "I'll draft … for <name>", card Employee empty`,
+    status: { open: "the reply drafts for the name and the card's employee is empty (or, with CA_SALES_POLICY_ENABLED off, no card)" },
+    fixFlags: ["KEEP_ROSTER_EXACT_NAME_ENABLED", SALES, GLOSSARY],
+    async run(t) {
+      vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
+      t.directory([...STAFF, person("e-qa-probe-xzt-one", "QA Probe", "XZT One")]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      const reply = await thread.say(say("QA Probe XZT One"));
+      const drafting = /draft a \*\*[^*]+\*\* for \*\*([^*]+)\*\*/i.exec(reply.content)?.[1] ?? null;
+      expect(thread.proposal?.employeeName ?? null, `the card's employee is not QA Probe XZT One:\n${reply.content}`).toBe("QA Probe XZT One");
+      if (drafting) expect(drafting, "the reply drafts for a name the card does not hold").toBe(thread.proposal?.employeeName);
+    },
+  },
 ];

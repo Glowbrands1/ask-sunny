@@ -2458,3 +2458,17 @@ export function formNameFromRosterEnabled(): boolean {
 export function formEditNoopGuardEnabled(): boolean {
   return envFlag("FORM_EDIT_NOOP_GUARD_ENABLED") && formEditSingleWriterEnabled();
 }
+
+/**
+ * KEEP_ROSTER_EXACT_NAME_ENABLED (QA, 4 Nov 2026, default off). Live, Pau's
+ * message 1 for the QA test account's own roster entry, "QA Test ASD One":
+ * the reply said "I'll draft a Corrective Action Form for QA Test ASD One"
+ * and the card's Employee was empty. The slot keeper
+ * (`ai/keep-filled-slots.ts` keptName) reads a name with a not-a-name word in
+ * it ("one") as a fragment and drops it — after the reply sentence was
+ * written from the name. On, a name that is somebody's exact roster name is
+ * never a fragment: the card keeps it. Off, as before.
+ */
+export function keepRosterExactNameEnabled(): boolean {
+  return envFlag("KEEP_ROSTER_EXACT_NAME_ENABLED");
+}
