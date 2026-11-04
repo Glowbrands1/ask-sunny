@@ -77,7 +77,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
     id: "nov4-ca-sales-msb",
     title: "a CA for MSB (Must See Behaviors) cites the Standards of Conduct, heading and page",
     report: `${REPORT}: (a) a CA for MSB`,
-    status: { open: "no policy is cited for an MSB corrective action" },
+    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, no policy is cited for an MSB corrective action
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -104,7 +105,8 @@ export const NOV4_CA_SALES_POLICY_CASES: ReplayCase[] = [
      * stated sales shortfall goes to the form (`correctiveActionBasis`,
      * corrective-action-intake.ts).
      */
-    status: { open: "no card: a low-sales request is answered with the progression (metric only), so no policy is cited" },
+    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, no card: a low-sales request is answered with the progression (metric only), so no policy is cited
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);

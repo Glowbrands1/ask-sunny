@@ -83,7 +83,8 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
      * (metrics read as people), queued for the Success session's names step.
      * The reading itself is right: ca-sales-policy.test.ts, #1's exact words.
      */
-    status: { open: "the metrics \"Club Close\" and \"Under\" are read as names and dropped, so the card cites no policy" },
+    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, the metrics \"Club Close\" and \"Under\" are read as names and dropped, so the card cites no policy
+    status: "fixed",
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("I need a corrective action verbal for Ysolde Marrowick. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
@@ -95,7 +96,8 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
     id: "nov4-pau5-2-ca-for-msb",
     title: "2. \"I need to make a corrective action for msb\": MSB is never the employee; the one question is who it is for",
     report: `${REPORT}, #2`,
-    status: { open: "\"msb\" is looked up as a person with production's flags" },
+    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, \"msb\" is looked up as a person with production's flags
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);
@@ -125,7 +127,8 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
     id: "nov4-pau5-4-msb-ca-underperformance-october",
     title: "4. \"MSB CA for … for underperformance in the month of October\"",
     report: `${REPORT}, #4`,
-    status: { open: "with production's flags the CA is not cited as the Standards of Conduct" },
+    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, with production's flags the CA is not cited as the Standards of Conduct
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);
@@ -145,7 +148,8 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
      * offer to start a Corrective Action for the employee the roster knows,
      * citing the policy; no card until the manager says yes (`ca-offer.ts`).
      */
-    status: { open: "no offer: the policy answer ends without offering a Corrective Action" },
+    // Before CA_SALES_POLICY_ENABLED was on in production (on in this app since 4 Nov 2026, 17:08 UTC): OPEN, no offer: the policy answer ends without offering a Corrective Action
+    status: "fixed",
     fixFlags: FLAGS,
     async run(t) {
       const thread = start(t);
