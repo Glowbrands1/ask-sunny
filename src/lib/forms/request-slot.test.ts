@@ -5,6 +5,7 @@ import { managerContext, readEmployeeMentions, resolveEmployee } from "./proposa
 import {
   capitalisedListItems,
   installRequestMessage,
+  offensePhrases,
   outsideRequestSlot,
   requestSlotNames,
   typedWithOtherSurname,
@@ -111,3 +112,38 @@ describe("the name readers, with the turn's message", () => {
     expect(readEmployeeMentions(TWO).names).toEqual(expect.arrayContaining(["Wilhelmina Corvina", "Peregrine Varnholt"]));
   });
 });
+
+/*
+ * QA review (5 Nov 2026): "for Under Performance" is an offense, not a name —
+ * as the request slot ("I need a CA for Under Performance on …") and in a
+ * later sentence ("I need a corrective action verbal. This is for Under
+ * Performance on …"). The policy reader (`readCaPolicy`) decides; no list.
+ */
+describe("an offense after \"for\" is not a person", () => {
+  const NO_NAME = "I need a corrective action verbal. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.";
+  const SLOT_OFFENSE = "I need a CA for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.";
+
+  it("on: \"Under Performance\" is an offense phrase, no slot, and \"Under\" is no candidate", () => {
+    on();
+    expect(offensePhrases(NO_NAME)).toEqual(["Under Performance"]);
+    expect(requestSlotNames(SLOT_OFFENSE)).toBeNull();
+    expect(outsideRequestSlot("Under", NO_NAME)).toBe(true);
+    expect(outsideRequestSlot("Under", SLOT_OFFENSE)).toBe(true);
+    expect(outsideRequestSlot("Under Performance", SLOT_OFFENSE)).toBe(true);
+    installRequestMessage(() => SLOT_OFFENSE);
+    expect(readEmployeeMentions(SLOT_OFFENSE).names).toEqual([]);
+    installRequestMessage(() => NO_NAME);
+    expect(readEmployeeMentions(NO_NAME).names).toEqual([]);
+  });
+
+  it("off (main): \"Under\" is read as a name", () => {
+    expect(readEmployeeMentions(NO_NAME).names).toContain("Under");
+  });
+
+  it("on, control: a person after \"for\" is still the slot", () => {
+    on();
+    expect(requestSlotNames(PAU)).toEqual(["Remy Fenn"]);
+    expect(outsideRequestSlot("Remy Fenn", PAU)).toBe(false);
+  });
+});
+

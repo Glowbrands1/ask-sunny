@@ -70,6 +70,13 @@ function policyLine(reply: ReplayAnswer): string {
 
 const METRIC_AS_PERSON = /\*\*(?:Club Close|Club Average|Under|PPTA|LPSVA|Spa)\*\*|(?:—|-|,)\s*(?:Club Close|Under)\b(?:,| or|\?)/;
 
+/** Never a card, a question or a note for "Under Performance" or "Under"; with a card or a reply that asks, it asks who. */
+function noUnderAsPerson(thread: { proposal: ReplayAnswer["formProposal"] | null }, reply: ReplayAnswer): void {
+  expect(thread.proposal?.employeeName ?? "", "\"Under\" is the card's employee").not.toMatch(/under/i);
+  expect(reply.content, `"Under Performance" or "Under" is named as a person:\n${reply.content}`).not.toMatch(/\*\*Under(?: Performance)?\*\*|couldn't find[^.]*Under|Is this for \*\*Under/i);
+  expect(reply.content, `it does not ask who the form is for:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?|Employee's full name/);
+}
+
 export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
   {
     id: "nov5-request-slot-off-roster-name",
@@ -151,6 +158,43 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
       expect(reply.content, `does not ask which of the two:\n${reply.content}`).toMatch(/Wilhelmina Corvina/);
       expect(reply.content, `does not ask which of the two:\n${reply.content}`).toMatch(/Peregrine Varnholt/);
       // This app keeps the first name on the card while it asks which (as in production today); the question is the control.
+    },
+  },
+  {
+    id: "nov5-request-slot-no-name-verbal",
+    title: "QA review: \"I need a corrective action verbal. This is for Under Performance on …\" names nobody: it asks who; never \"Under Performance\" or \"Under\"",
+    report: `${REPORT}: QA review of the request slot, edge case 1`,
+    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**" },
+    fixFlags: [FLAG, SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("I need a corrective action verbal. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
+      noUnderAsPerson(thread, reply);
+    },
+  },
+  {
+    id: "nov5-request-slot-ca-for-under-performance",
+    title: "QA review: \"I need a CA for Under Performance on …\": the slot is an offense, not a name; it asks who",
+    report: `${REPORT}: QA review of the request slot, edge case 2`,
+    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**" },
+    fixFlags: [FLAG, SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("I need a CA for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.");
+      noUnderAsPerson(thread, reply);
+    },
+  },
+  {
+    id: "nov5-request-slot-ca-for-salon",
+    title: "QA review: \"I need a CA for Salon 309\": never a card for \"Salon\" or \"Salon 309\"",
+    report: `${REPORT}: QA review of the request slot, edge case 3`,
+    status: "fixed",
+    fixFlags: [FLAG, SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("I need a CA for Salon 309");
+      expect(thread.proposal?.employeeName ?? "", "a location is the card's employee").not.toMatch(/Salon|\b\d+\b/i);
+      expect(reply.content, `a location is named or asked about as a person:\n${reply.content}`).not.toMatch(/\*\*Salon(?: \d+)?\*\*|couldn't find \*\*Salon/i);
     },
   },
 ];

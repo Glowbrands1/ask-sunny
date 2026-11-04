@@ -1,5 +1,6 @@
 import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
 
+import { isSalesPolicyReading, readCaPolicy } from "./ca-policy";
 import { editDistance, normalizeTypedName } from "./employee-match";
 import { detectTemplateIntent } from "./template-intent";
 
@@ -23,6 +24,10 @@ import { detectTemplateIntent } from "./template-intent";
  *   "… for <Name>" (or "<Name> and <Name>"), those names are the message's
  *   only employee candidates: a capitalised phrase anywhere else — "Under"
  *   from "This is for Under Performance" — is not a candidate.
+ *
+ *   AN OFFENSE IS NOT A PERSON. A "for <Phrase>" that reads as an offense or
+ *   a policy ("for Under Performance") is no slot, and none of its words is a
+ *   candidate (QA review, 5 Nov 2026).
  *
  *   A LIST IS NOT A PERSON. A capitalised phrase that is an item of a comma
  *   or "and" list of three or more items ("PPTA, LPSVA, Club Average, Club
@@ -54,6 +59,25 @@ function firstSentence(text: string): string {
   return (match?.[0] ?? text).trim();
 }
 
+/**
+ * QA review (5 Nov 2026): "I need a CA for Under Performance on …" made
+ * "Under Performance" the slot, and "This is for Under Performance" left
+ * "Under" a candidate. A "for <Phrase>" whose words read as an offense or a
+ * policy (`readCaPolicy`, the same reading the card's Policy line uses) names
+ * no person. No phrase list: the policy reader decides.
+ */
+function readsAsOffense(phrase: string): boolean {
+  const reading = readCaPolicy(phrase);
+  // CA_SALES_POLICY_ENABLED reads "Under Performance" as the Standards of Conduct, with no stated offense.
+  return reading.stated !== null || isSalesPolicyReading(reading);
+}
+
+/** Every "for <Capitalised phrase>" in the text that reads as an offense or a policy. */
+export function offensePhrases(text: string): string[] {
+  const all = new RegExp(String.raw`\bfor\s+(${RUN})`, "gu");
+  return [...text.matchAll(all)].map((match) => match[1]!.trim()).filter(readsAsOffense);
+}
+
 /** The names the first sentence asks a form for ("… for Remy Fenn"), or null. */
 export function requestSlotNames(text: string): string[] | null {
   const first = firstSentence(text);
@@ -63,7 +87,7 @@ export function requestSlotNames(text: string): string[] | null {
   const names = match[1]!
     .split(/\s*(?:,|\band\b|\bor\b|&)\s*/u)
     .map((name) => name.trim())
-    .filter(Boolean);
+    .filter((name) => name && !readsAsOffense(name));
   return names.length > 0 ? names : null;
 }
 
@@ -113,6 +137,12 @@ export function outsideRequestSlot(candidate: string, text: string | undefined =
   if (!formNameFromRosterEnabled() || !text || !candidate.trim()) return false;
   const typed = wordsOf(candidate).join(" ");
   if (capitalisedListItems(text).some((item) => wordsOf(item).join(" ") === typed)) return true;
+  // An offense or a policy after "for" ("for Under Performance"): none of its words is a person.
+  const words = wordsOf(candidate);
+  if (offensePhrases(text).some((phrase) => {
+    const named = new Set(wordsOf(phrase));
+    return words.every((word) => named.has(word));
+  })) return true;
   const slot = requestSlotNames(text);
   return slot !== null && !inSlot(candidate, slot);
 }
