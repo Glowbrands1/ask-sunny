@@ -4,6 +4,7 @@ import { addressNotPersonEnabled, personGuardEnabled } from "@/lib/config/chat-q
 import { businessToday } from "@/lib/business-date";
 import { datesInText } from "@/lib/forms/form-date-answer";
 import { isNotAName } from "@/lib/forms/not-a-name";
+import { outsideRequestSlot } from "@/lib/forms/request-slot";
 
 /**
  * ============================================================================
@@ -133,6 +134,8 @@ export function rosterFullName(candidate: string): string | null {
 export function notAPerson(candidate: string | null | undefined): boolean {
   if (!personGuardEnabled() || !candidate?.trim()) return false;
   if (onRoster(candidate)) return false;
+  // FORM_NAME_FROM_ROSTER_ENABLED, part 2: the message's shape rules it out (`request-slot.ts`).
+  if (outsideRequestSlot(candidate)) return true;
   const words = wordsOf(candidate);
   if (words.length === 0) return false;
   if (words.some((word) => THING_WORDS.has(word))) return true;

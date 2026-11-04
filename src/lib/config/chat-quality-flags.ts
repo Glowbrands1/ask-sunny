@@ -2433,13 +2433,24 @@ export function caSalesPolicyEnabled(): boolean {
  * performance on Club Close % and Spa %" made the card "for **under**"); the
  * reply asks who the form is for.
  *
- * Needs CA_SALES_POLICY_ENABLED: off unless both are on. Without the sales
- * policy a message like Pau's is answered as metric-only (no card); the sales
- * policy is what takes a stated shortfall to the form, citing the Standards
- * of Conduct, and only then is the card's employee at stake. Off, as before.
+ * Works with CA_SALES_POLICY_ENABLED off too (QA, 4 Nov 2026). It used to
+ * need the sales policy, on the reading that without it a message like Pau's
+ * is answered as metric-only (no card). Production showed otherwise: with the
+ * sales policy off, "I need a corrective action for Coaching Form. This is
+ * for Under Performance on Club Close % and Spa %." (a form's name pasted
+ * where the person's goes) made a Coaching Form card for "Club Close" — the
+ * named form is not a Corrective Action, so the metric-only answer never
+ * runs. The request slot and the list rule need no sales policy.
+ *
+ * Part 2 (QA for Pau, 5 Nov 2026), roster-free: when the message's first
+ * sentence asks for a form "… for <Name>", that name is its only employee
+ * candidate, and a capitalised item of a list of three or more is never one
+ * (`forms/request-slot.ts`). A first name typed with a surname that is not
+ * close to a roster person's is never offered as them ("Remy Fenn" is not
+ * Remy Calder). Off, as before.
  */
 export function formNameFromRosterEnabled(): boolean {
-  return envFlag("FORM_NAME_FROM_ROSTER_ENABLED") && caSalesPolicyEnabled();
+  return envFlag("FORM_NAME_FROM_ROSTER_ENABLED");
 }
 
 /**
