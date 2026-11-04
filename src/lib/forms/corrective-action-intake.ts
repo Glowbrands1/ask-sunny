@@ -1,7 +1,8 @@
 import { mentionsGlossaryTerm } from "@/lib/ai/chat-glossary";
-import { caShortcutWordsEnabled, nameQuestionOnlyEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, nameQuestionOnlyEnabled } from "@/lib/config/chat-quality-flags";
 
 import { readCaPolicy } from "./ca-policy";
+import { statesMetricShortfall } from "./metric-shortfall";
 import {
   PAYROLL_DEDUCT_LABEL,
   statedPayrollDeduct,
@@ -679,28 +680,6 @@ export function asksToBeGuided(text: string): boolean {
  */
 export type CorrectiveActionBasis = "metric_only" | "conduct" | "unstated";
 
-const METRIC_NAMED: readonly RegExp[] = [
-  /\bclub close\b/,
-  /\b(?:close|closing) rate\b/,
-  /\bconversion(?:s| rate)?\b/,
-  /\bupgrade(?:s| rate|%| percentage)?\b/,
-  /\befts?\b/,
-  /\bmembership (?:%|percentage|rate|sales)\b/,
-  /\bsales per hour\b/,
-  /\b(?:sph|atv|kpis?)\b/,
-  /\baverage ticket\b/,
-  /\bred (?:%|percentage)\b/,
-  /\b(?:her|his|their|the) (?:numbers|stats|metrics|scorecard|percentages)\b/,
-  /\bdaily stats\b/,
-  /\b(?:sales|revenue|units|packages) (?:are|is|have been|has been)\b/,
-];
-
-const METRIC_JUDGED: readonly RegExp[] = [
-  /\b(?:low|lowest|down|below|behind|weak|weakest|poor|under|dropping|declining|slipping|worst|bottom|last)\b/,
-  /\b(?:not hitting|missing|misses|failing to hit|under target|off target|below target|not meeting)\b/,
-  /\bneeds? (?:to )?improve\b/,
-];
-
 /**
  * Anything that is about a PERSON'S CONDUCT rather than about a number.
  *
@@ -721,7 +700,15 @@ const CONDUCT_SIGNAL: readonly RegExp[] = [
 export function correctiveActionBasis(text: string): CorrectiveActionBasis {
   const normalized = normalize(text);
   if (any(normalized, CONDUCT_SIGNAL)) return "conduct";
-  if (any(normalized, METRIC_NAMED) && any(normalized, METRIC_JUDGED)) {
+  if (statesMetricShortfall(text)) {
+    /*
+     * CA_SALES_POLICY_ENABLED (client request; Pau, 4 Nov 2026; ported from
+     * Ask Bubbles #426): a stated sales shortfall — a metric named and judged,
+     * read by the lists in `metric-shortfall.ts` (moved there unchanged), no
+     * new words — goes to the Corrective Action Form, which cites the
+     * Standards of Conduct. Off, the progression answers it as before.
+     */
+    if (caSalesPolicyEnabled()) return "conduct";
     return "metric_only";
   }
   return "unstated";

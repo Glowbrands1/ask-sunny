@@ -11,6 +11,7 @@ import {
   type ManualChunk,
   type ManualSection,
 } from "./official-policy-manual";
+import { statesMetricShortfall } from "./metric-shortfall";
 
 /**
  * ============================================================================
@@ -403,9 +404,10 @@ export function readCaPolicy(rawText: string): CaPolicyReading {
  * cites no section. With the flag on, such an account is read as the Standards
  * of Conduct instead, and the manual's section is cited by heading and page.
  *
- * NO NEW WORDS ARE MATCHED HERE. "Sales performance" is the reading this file
- * already makes for the Under Performance offense type (`TARGET`, or the
- * manager naming Under Performance); "MSB" is a term of the approved chat
+ * NO NEW WORDS ARE MATCHED HERE. "Sales performance" is a shortfall the
+ * manager stated, read by the reader the progression already uses
+ * (`statesMetricShortfall`: a metric named and judged — "the sales floor" is
+ * not one), or the manager naming Under Performance; "MSB" is a term of the approved chat
  * glossary (`ai/chat-glossary.ts`, read through `foldsToGlossaryTerm`), not a
  * list kept here.
  *
@@ -421,7 +423,8 @@ function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyRea
   const msb = sentences.some((sentence) =>
     sentence.split(/[^a-z0-9.]+/).some((word) => foldsToGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
   );
-  const target = reading.stated === "under_performance" || sentences.some((s) => TARGET.test(s));
+  // The stated shortfall reader the progression already uses (`corrective-action-intake.ts`): a metric named and judged.
+  const target = reading.stated === "under_performance" || statesMetricShortfall(rawText);
   if (!msb && !target) return reading;
   if (reading.stated === null && sentences.some((s) => ATTENDANCE.test(s))) return reading;
   return {

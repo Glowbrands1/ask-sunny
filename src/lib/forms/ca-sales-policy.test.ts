@@ -120,3 +120,33 @@ describe("the replay cases' invented people are on no other fixture", () => {
     expect(elsewhere).toEqual([]);
   });
 });
+
+describe("CA_SALES_POLICY_ENABLED: a stated sales shortfall goes to the form (Pau, 4 Nov 2026; Ask Bubbles #426)", () => {
+  it("off: a metric named and judged is the progression, as on main", async () => {
+    off();
+    const { correctiveActionBasis } = await import("./corrective-action-intake");
+    expect(correctiveActionBasis(LOW_SALES)).toBe("metric_only");
+  });
+
+  it("on: the same request is the form", async () => {
+    on();
+    const { correctiveActionBasis } = await import("./corrective-action-intake");
+    expect(correctiveActionBasis(LOW_SALES)).toBe("conduct");
+  });
+
+  it("on: a request with no reason is still unstated (the reason is asked for)", async () => {
+    on();
+    const { correctiveActionBasis } = await import("./corrective-action-intake");
+    expect(correctiveActionBasis("make a CA for Garrick Wendlemoor")).toBe("unstated");
+  });
+});
+
+describe("CA_SALES_POLICY_ENABLED: only a stated shortfall is sales performance", () => {
+  it("\"on the sales floor\" is not a sales shortfall: the reading is as with the flag off (Ask Bubbles' classification run, 4 Nov 2026)", () => {
+    const text = "on 10-20-26 she was scrolling social media on her phone on the sales floor";
+    off();
+    const before = readCaPolicy(text);
+    on();
+    expect(readCaPolicy(text)).toEqual(before);
+  });
+});

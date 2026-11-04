@@ -16,3 +16,13 @@ case and the wrong-items draft hold with the flag on; low sales (metric only,
 answered with the progression) and the wrong-items card stay OPEN for Pau;
 both negative controls (attendance cites Attendance, cleaning does not cite the
 Standards of Conduct) hold. The case wording uses salons and invented names.
+
+Follow-up ported from Ask Bubbles (2fa56207, #426): under the flag a stated
+sales shortfall (a metric named and judged — the progression's existing
+reader, moved unchanged into the leaf module `forms/metric-shortfall.ts`) goes
+to the Corrective Action Form instead of the progression, so the low-sales
+case now holds with the flag on; the flag's reading uses the same reader
+instead of `TARGET`, so "on the sales floor" is not a sales CA (Ask Sunny had
+the same bug); a request with no reason still asks for one (new negative
+control). Ask Bubbles' classification table is not carried: Ask Sunny's
+classification is to follow (`docs/flag-classification/CA_SALES_POLICY_ENABLED.md`).
