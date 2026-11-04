@@ -211,6 +211,7 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
+import { withoutUnreasonedConduct } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
 import {
   MANAGER_FOLLOW_UP_RULES,
@@ -1820,6 +1821,19 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             },
           }
         : offenseStated;
+    /*
+     * CA_SALES_POLICY_ENABLED (Pau, 4 Nov 2026): a Standards of Conduct tick
+     * with no reason in the manager's words (a cleaning CA) moves to Other,
+     * with their words beside it. Off, null. See `ca-conduct-reason.ts`.
+     */
+    const conductReasoned =
+      withoutUnreasonedConduct({
+        draft: offenseApplied,
+        reading: caPolicy,
+        stated: statedKeys !== null,
+        offered: offenseOffered,
+        notes,
+      }) ?? offenseApplied;
     const policyLeftForManager =
       describedChoices !== null && !(offenseApplied.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key));
 
@@ -1837,8 +1851,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const managerKeys = new Set(managerRows.map((row) => row.fieldKey));
     const managerOffense = managerRows.find((row) => row.fieldKey === "offense_type" && row.checked.length > 0);
     const validated = managerOffense
-      ? { ...offenseApplied, checked: { ...offenseApplied.checked, offense_type: [...managerOffense.checked] } }
-      : offenseApplied;
+      ? { ...conductReasoned, checked: { ...conductReasoned.checked, offense_type: [...managerOffense.checked] } }
+      : conductReasoned;
 
     /*
      * ========================================================================
