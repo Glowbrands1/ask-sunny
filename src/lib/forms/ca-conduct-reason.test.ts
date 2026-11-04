@@ -24,9 +24,13 @@ const ticked = (keys: string[]) => ({ values: {} as Record<string, string>, chec
 describe("a Standards of Conduct tick needs a reason in the manager's words (CA_SALES_POLICY_ENABLED)", () => {
   it("QA's live wording: the tick moves to Other, with the manager's account beside it", () => {
     flag(true);
-    const out = withoutUnreasonedConduct({ draft: ticked(["standards_of_conduct"]), reading: readCaPolicy(BATHROOMS), stated: false, offered: OFFERED, notes: BATHROOMS, basis: "upkeep_or_task" });
+    const out = withoutUnreasonedConduct({ draft: ticked(["standards_of_conduct"]), reading: readCaPolicy(BATHROOMS), stated: false, offered: OFFERED, notes: BATHROOMS, basis: "upkeep_or_task", writeInOffered: true });
     expect(out?.checked.offense_type).toEqual(["other"]);
     expect(out?.values.other_offense).toBe("The tanning beds were left dirty at close");
+    // Revision 8: no write-in on the form, so nothing is written for it ("Other prints just Other").
+    const rev7 = withoutUnreasonedConduct({ draft: ticked(["standards_of_conduct"]), reading: readCaPolicy(BATHROOMS), stated: false, offered: OFFERED, notes: BATHROOMS, basis: "upkeep_or_task" });
+    expect(rev7?.checked.offense_type).toEqual(["other"]);
+    expect(rev7?.values).not.toHaveProperty("other_offense");
   });
 
   it("Pau's wording: the general task reading with the model's upkeep basis is no reason; with no basis it stands (Woven training past due reads the same)", () => {

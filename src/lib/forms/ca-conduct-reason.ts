@@ -12,13 +12,14 @@ import { managerIssueWords } from "./other-write-in";
  * "make a corrective action for <name>, the tanning beds were left dirty at
  * close" came back with Standards of Conduct ticked and cited (p.12, "Failing
  * to follow the policies and procedures"): the drafting model reads cleaning
- * as unfinished assigned work, and revision 7 left the Standards of Conduct
+ * as unfinished assigned work, and revision 8 left the Standards of Conduct
  * as the only conduct box. Pau: a cleaning Corrective Action does not cite
  * the Standards of Conduct by default; wrong items rung up does.
  *
  * So, with the flag on, a Standards of Conduct tick moves to Other — with
- * what happened in the manager's own words beside it (`managerIssueWords`),
- * so Policy Violated cites no Standards of Conduct — only when the drafting
+ * what happened in the manager's own words beside it (`managerIssueWords`)
+ * where the version has the write-in, "Other" alone where it does not
+ * (this app's revision 8) — so Policy Violated cites no Standards of Conduct — only when the drafting
  * model's own basis (`offense_basis`, an optional field of the existing draft
  * call) is "upkeep_or_task" AND no reader finds a reason in the manager's
  * words:
@@ -90,6 +91,12 @@ export function withoutUnreasonedConduct<T extends { values: Record<string, stri
   readonly basis?: OffenseBasis | null;
   /** A specific manual topic the manager's words describe (`specificTopic`, e.g. Animals in the Workplace): a reason. */
   readonly specific?: boolean;
+  /**
+   * True when this form version has the Other write-in (`other_offense`).
+   * The current revision does not ("Other prints just Other", Pau): nothing is written
+   * there, so Policy Violated reads "Other".
+   */
+  readonly writeInOffered?: boolean;
 }): T | null {
   if (!caSalesPolicyEnabled() || !input.reading) return null;
   const ticked = input.draft.checked.offense_type ?? [];
@@ -97,7 +104,7 @@ export function withoutUnreasonedConduct<T extends { values: Record<string, stri
   if (input.specific || conductHasReason(input.reading, input.stated, input.basis ?? null)) return null;
   const rest = ticked.filter((key) => key !== STANDARDS_OF_CONDUCT);
   const words = managerIssueWords(input.notes);
-  const written = (input.draft.values[OTHER_WRITE_IN] ?? "").trim() !== "";
+  const written = !input.writeInOffered || (input.draft.values[OTHER_WRITE_IN] ?? "").trim() !== "";
   return {
     ...input.draft,
     checked: { ...input.draft.checked, offense_type: rest.includes(OTHER) ? rest : [...rest, OTHER] },

@@ -69,7 +69,8 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-tanning-beds-not-conduct",
     title: "\"the tanning beds were left dirty at close\": the model's Standards of Conduct tick moves to Other, no Standards of Conduct citation",
     report: `${REPORT}: QA's live wording`,
-    status: { open: "with production's flags the model's Standards of Conduct tick stands and is cited (p.12)" },
+    // CA_SALES_POLICY_ENABLED is on in this app's production (4 Nov 2026): holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
@@ -77,7 +78,9 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
       expect(thread.proposal, "no CA card").toMatchObject({ templateKey: "dpoa", employeeName: "Halloran Sweetbriar" });
       const saved = await draftTickingConduct(t, thread, "The tanning beds were left dirty at close.", "upkeep_or_task");
       citesNoConduct(saved);
-      expect(saved.values.policy_violated ?? "", "Policy Violated is not the manager's account").toMatch(/tanning beds were left dirty at close/i);
+      // Revision 8 has no Other write-in ("Other prints just Other", Pau; QA, 4 Nov 2026): nothing is stored for it, and Policy Violated reads "Other".
+      expect(saved.values.policy_violated ?? "", "Policy Violated on revision 8").toBe("Other");
+      expect(Object.keys(saved.values), "an orphan Other write-in was stored").not.toContain("other_offense");
     },
   },
   {
@@ -156,7 +159,8 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     id: "nov4-cleaning-basis-upkeep-duties",
     title: "\"did not complete daily cleaning duties\" with the model's upkeep basis: Other",
     report: `${REPORT}: Pau's wording, with offense_basis`,
-    status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
+    // CA_SALES_POLICY_ENABLED is on in this app's production (4 Nov 2026): holds with production's flags.
+    status: "fixed",
     fixFlags: [FLAG],
     async run(t) {
       const thread = start(t);
