@@ -522,3 +522,37 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED needs FORM_EDIT_SINGLE_WRITER_ENABLED", (
     expect(reply.content).toMatch(/^Changed Observation of Offense to "/);
   });
 });
+
+/*
+ * Pau's ruling A3 (4 Nov 2026): edit_form is offered on question turns too,
+ * and this guard is what keeps a pure question from writing. A question the
+ * model answers in text keeps that text as its reply — never the guard line;
+ * the guard line is only for a tool call that wrote nothing, or an edit the
+ * old chain tried and that changed nothing.
+ */
+describe("FORM_EDIT_NOOP_GUARD_ENABLED with a pure question (Pau's ruling A3)", () => {
+  for (const said of ["what policy does that fall under?", "what is the policy on being late?", "can you tell me what the expectation is?"]) {
+    it(`"${said}" answered in text: offered, nothing written, the reply is the model's answer`, async () => {
+      const thread = await janeDraft();
+      const before = JSON.stringify(values(thread.id));
+      model.next = { text: "That falls under the attendance section of the policy manual.", tool: null };
+      const reply = await thread.say(said);
+      expect(await lastTrace()).toMatchObject({ offered: true, called: false });
+      expect(JSON.stringify(values(thread.id))).toBe(before);
+      expect(reply.content).toBe("That falls under the attendance section of the policy manual.");
+      expect(reply.formUpdate).toBeUndefined();
+      expect(model.revisionCalls, "a question reached the revision").toBe(0);
+    });
+
+    it(`"${said}" with a no-op tool call: nothing written, the reply is the guard line`, async () => {
+      const thread = await janeDraft();
+      const before = JSON.stringify(values(thread.id));
+      model.next = { text: "That falls under the attendance section.", tool: { ops: [{ op: "append", field: "observation", value: "Jane Doe was late to open on October 20, 2026." }] } };
+      const reply = await thread.say(said);
+      expect(await lastTrace()).toMatchObject({ offered: true, called: true, handoff: "refused", refused: [{ key: "observation", reason: "same_value" }] });
+      expect(JSON.stringify(values(thread.id))).toBe(before);
+      expect(reply.content).toBe(NOTHING);
+    });
+  }
+});
+

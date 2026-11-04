@@ -117,11 +117,16 @@ export const NOV4_EDIT_TOOL_CASES: readonly ReplayCase[] = [
 
 /*
  * THE QUESTION GATE (QA and Pau, 4 Nov 2026): with Jane's draft open, a real
- * edit asked as a question reaches edit_form; a question is not offered it and
- * writes nothing. Decided by code (`readQuestion`), no phrase list. The model
- * does not call the tool here, so an edit is handed to the old chain, whose
+ * edit asked as a question reaches edit_form. Since Pau's ruling A3 (4 Nov
+ * 2026) a question reaches it too — no reading of the words decides the offer
+ * — and the no-op guard (FORM_EDIT_NOOP_GUARD_ENABLED) is what keeps a pure
+ * question from writing: answered in text, the text is the reply; a tool call
+ * that changes nothing writes nothing and says so. The model does not call the
+ * tool on the edits here, so an edit is handed to the old chain, whose
  * revision writes nothing.
  */
+const GUARD_LINE = "I didn't change anything on the form. Tell me which part to change and what it should say.";
+
 export const NOV4_EDIT_TOOL_GATE_CASES: readonly ReplayCase[] = [
   ...GATE_EDIT_WORDINGS.map((said, index): ReplayCase => ({
     id: `nov4-edit-tool-gate-edit-${index + 1}`,
@@ -143,18 +148,34 @@ export const NOV4_EDIT_TOOL_GATE_CASES: readonly ReplayCase[] = [
   })),
   ...GATE_QUESTION_WORDINGS.map((said, index): ReplayCase => ({
     id: `nov4-edit-tool-gate-question-${index + 1}`,
-    title: `with Jane's Corrective Action open, "${said}" is a question: no edit_form, nothing written`,
-    report: "QA and Pau, 4 Nov 2026: negative control for the edit tool's question gate",
+    // Changed on purpose (Pau's ruling A3, 4 Nov 2026): the question is now offered edit_form; it still writes nothing.
+    title: `with Jane's Corrective Action open, "${said}" is a question: offered edit_form (Pau's ruling A3), nothing written; a text answer is the reply, a no-op tool call gets the guard line`,
+    report: "QA and Pau, 4 Nov 2026: negative control for the edit tool's offer; Pau's ruling A3 (4 Nov 2026): offered on questions too, the no-op guard keeps them from writing",
     status: "fixed",
     fixFlags: [],
     async run(t) {
       await withEditTool(async () => {
         const { thread, id } = await janeDraft(t);
         const before = savedForm(t, id);
+        t.modelSays("That is in the attendance section of the policy manual.");
         const reply = await thread.say(said);
-        expect(t.editToolOffers!().offered, `"${said}" was offered edit_form`).toBe(0);
+        expect(t.editToolOffers!().offered, `"${said}" was not offered edit_form (Pau's ruling A3)`).toBe(1);
         expect(savedForm(t, id), `"${said}" wrote to the form`).toBe(before);
         expect(reply.formUpdate).toBeUndefined();
+        expect(reply.content, "a question answered in text is not its answer").toBe("That is in the attendance section of the policy manual.");
+        // The model calls the tool with a no-op: with the no-op guard on, nothing is written and the reply is the guard line.
+        process.env.FORM_EDIT_NOOP_GUARD_ENABLED = "true";
+        try {
+          t.modelSays("That is in the attendance section of the policy manual.");
+          t.modelCallsEditTool!({ ops: [{ op: "set", field: "observation", value: t.values(id).observation! }] });
+          t.revisionWrites({});
+          const noop = await thread.say(said);
+          expect(savedForm(t, id), `"${said}": a no-op tool call wrote to the form`).toBe(before);
+          expect(noop.formUpdate).toBeUndefined();
+          expect(noop.content).toBe(GUARD_LINE);
+        } finally {
+          delete process.env.FORM_EDIT_NOOP_GUARD_ENABLED;
+        }
       });
     },
   })),

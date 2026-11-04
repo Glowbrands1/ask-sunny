@@ -222,7 +222,7 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const TOOL_FLAGS = ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"] as const;
 const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn];
-const TOUCHED = [...new Set([...TOOL_FLAGS, ...PRODUCTION, ...PRODUCTION_FLAGS.off, "FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED"])];
+const TOUCHED = [...new Set([...TOOL_FLAGS, ...PRODUCTION, ...PRODUCTION_FLAGS.off, "FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED", "FORM_EDIT_NOOP_GUARD_ENABLED"])];
 const saved = new Map<string, string | undefined>();
 
 function setFlags(on: readonly string[]) {
@@ -377,16 +377,19 @@ describe("FORM_EDIT_TOOL_IN_STREAM_ENABLED: when the tool is offered", () => {
     }
   });
 
-  it('a question with the draft open — "what policy does that fall under?" — gets no tool, and the trace says why', async () => {
+  it('a question with the draft open — "what policy does that fall under?" — is offered the tool (Pau\'s ruling A3); answered in text, the text is the reply and nothing is written', async () => {
     const thread = await janeDraft();
+    const before = JSON.stringify(values(thread.id));
     model.next = { text: "That falls under the attendance section of the policy manual.", tool: null };
     const reply = await thread.say("what policy does that fall under?");
     expect(model.main.length, "the question was answered by the main call").toBe(1);
-    expect(lastMain().tools).toBeUndefined();
-    expect(lastMain().tool_choice).toBeUndefined();
-    expect(lastUserText(lastMain())).not.toContain("OPEN FORM DATA");
+    // Changed on purpose (Pau's ruling A3, 4 Nov 2026): a question-phrased turn is offered edit_form too; the gate is in the trace only.
+    expect(lastMain().tools?.map((tool) => tool.name)).toEqual(["edit_form"]);
+    expect(lastMain().tool_choice).toEqual({ type: "auto" });
+    expect(reply.content).toBe("That falls under the attendance section of the policy manual.");
     expect(reply.formUpdate).toBeUndefined();
-    expect(await lastTrace()).toMatchObject({ offered: false, offer_reason: "question", called: false });
+    expect(JSON.stringify(values(thread.id))).toBe(before);
+    expect(await lastTrace()).toMatchObject({ offered: true, offer_reason: "draft_open", gate: "ASKS", called: false, handoff: "not_called" });
   });
 
   it("an edit turn with the draft open: one tool, edit_form, tool_choice auto, its description verbatim, the open form as JSON before QUESTION, the system prompt unchanged", async () => {
@@ -558,11 +561,12 @@ describe("FORM_EDIT_TOOL_IN_STREAM_ENABLED needs FORM_EDIT_SINGLE_WRITER_ENABLED
 });
 
 /*
- * QA and Pau, 4 Nov 2026: the non-question gate must not skip a real edit
- * phrased as a question. The gate is code's (`readQuestion`), no phrase list:
- * an ask to act is an edit request. Their wordings, on Jane Doe's open
- * Corrective Action; the model does not call the tool, so nothing is written
- * by it either way.
+ * QA and Pau, 4 Nov 2026: a real edit phrased as a question reaches edit_form.
+ * Since Pau's ruling A3 (4 Nov 2026) no reading of the words decides the
+ * offer: every turn with a draft open is offered the tool, a pure question
+ * too, and the no-op guard (FORM_EDIT_NOOP_GUARD_ENABLED) is what keeps a
+ * question from writing. Their wordings, on Jane Doe's open Corrective
+ * Action.
  */
 export const GATE_EDITS = [
   "can you change her last name to Laine?",
@@ -573,30 +577,48 @@ export const GATE_EDITS = [
 ] as const;
 export const GATE_QUESTIONS = ["what policy does that fall under?", "what is the policy on being late?", "can you tell me what the expectation is?"] as const;
 
-describe("the non-question gate: an edit asked as a question reaches edit_form; a question does not", () => {
+const GUARD_LINE = "I didn't change anything on the form. Tell me which part to change and what it should say.";
+
+describe("the offer (Pau's ruling A3): an edit asked as a question reaches edit_form, and so does a question — which writes nothing", () => {
   for (const said of GATE_EDITS) {
     it(`"${said}" — offered edit_form`, async () => {
       const thread = await janeDraft();
       await thread.say(said);
       const trace = await lastTrace();
-      process.stdout.write(`[gate] ${JSON.stringify(said)} ${JSON.stringify({ offered: trace?.offered, reason: trace?.offer_reason, gate: trace?.gate, main: model.main.length })}\n`);
       expect(model.main.length, "no main call").toBeGreaterThan(0);
       expect(lastMain().tools?.map((tool) => tool.name)).toEqual(["edit_form"]);
       expect(trace).toMatchObject({ offered: true, offer_reason: "draft_open" });
     });
   }
   for (const said of GATE_QUESTIONS) {
-    it(`"${said}" — no tool, nothing written`, async () => {
+    // Changed on purpose (Pau's ruling A3, 4 Nov 2026): the question is now OFFERED edit_form; before, it was not.
+    it(`"${said}" — offered edit_form; answered in text: the text is the reply, nothing written`, async () => {
       const thread = await janeDraft();
       const before = JSON.stringify(values(thread.id));
       model.next = { text: "That is in the attendance section of the policy manual.", tool: null };
       const reply = await thread.say(said);
       const trace = await lastTrace();
-      process.stdout.write(`[gate] ${JSON.stringify(said)} ${JSON.stringify({ offered: trace?.offered, reason: trace?.offer_reason, gate: trace?.gate })}\n`);
-      for (const request of model.main as MainRequest[]) expect(request.tools).toBeUndefined();
+      process.stdout.write(`[A3] ${JSON.stringify(said)} text: ${JSON.stringify({ offered: trace?.offered, written: JSON.stringify(values(thread.id)) !== before, reply: reply.content })}\n`);
+      expect(lastMain().tools?.map((tool) => tool.name)).toEqual(["edit_form"]);
+      expect(trace).toMatchObject({ offered: true, offer_reason: "draft_open", gate: "ASKS", called: false });
       expect(JSON.stringify(values(thread.id))).toBe(before);
       expect(reply.formUpdate).toBeUndefined();
-      expect(trace).toMatchObject({ offered: false, offer_reason: "question" });
+      expect(reply.content).toBe("That is in the attendance section of the policy manual.");
+    });
+
+    // Pau's ruling A3, 4 Nov 2026: what makes the offer safe is the no-op guard — a tool call that changes nothing writes nothing and says so.
+    it(`"${said}" — the model calls the tool with a no-op: nothing written, the reply is the guard line (FORM_EDIT_NOOP_GUARD_ENABLED)`, async () => {
+      setFlags([...TOOL_FLAGS, "FORM_EDIT_NOOP_GUARD_ENABLED"]);
+      const thread = await janeDraft();
+      const before = JSON.stringify(values(thread.id));
+      model.next = { text: "That is in the attendance section of the policy manual.", tool: { ops: [{ op: "set", field: "observation", value: values(thread.id).observation! }] } };
+      const reply = await thread.say(said);
+      const trace = await lastTrace();
+      process.stdout.write(`[A3] ${JSON.stringify(said)} no-op tool: ${JSON.stringify({ offered: trace?.offered, written: JSON.stringify(values(thread.id)) !== before, reply: reply.content })}\n`);
+      expect(trace).toMatchObject({ offered: true, called: true, handoff: "refused", refused: [{ key: "observation", reason: "same_value" }], applied: [] });
+      expect(JSON.stringify(values(thread.id))).toBe(before);
+      expect(reply.formUpdate).toBeUndefined();
+      expect(reply.content).toBe(GUARD_LINE);
     });
   }
 });

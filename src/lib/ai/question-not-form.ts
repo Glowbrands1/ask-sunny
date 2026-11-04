@@ -73,14 +73,6 @@ const SUGGESTS = new RegExp(
 const ANY_CREATE =
   /\b(?:possible|able)\s+to\s+(?:create|make|write|draft|start|do|open|fill)\b|\byou\s+mind\s+(?:creating|making|writing|drafting|starting|filling|adding|changing|updating|editing)\b|\b(?:want|need|like)\s+(?:you|u)\s+to\b/i;
 
-/**
- * FORM_EDIT_TOOL_IN_STREAM_ENABLED (QA and Pau, 4 Nov 2026): "is it possible to
- * change the date to 10/20?" asks for an edit as surely as "can you change …".
- * The same ACTION verbs after "possible / able to" — no new words. Read only
- * when the caller asks for it (`asksToActAnyAction`); absent, unchanged.
- */
-const ABLE_TO_ACT = new RegExp(String.raw`\b(?:possible|able)\s+to\s+${ACTION}\b`, "i");
-
 /** A clause that asks: an interrogative word or an auxiliary at its head. */
 const WH = /^(?:what|what'?s|whats|which|why|how|who|whom|whose)\b/i;
 /** "when / where" open a statement as often as a question ("when she came in …"): they ask only with a question mark. */
@@ -124,15 +116,14 @@ const REQUEST_READINGS = [
   ["ANY_CREATE", ANY_CREATE],
 ] as const;
 
-function requestReading(clause: string, options: QuestionReadingOptions): string | null {
+function requestReading(clause: string): string | null {
   for (const [name, reading] of REQUEST_READINGS) if (reading.test(clause)) return name;
-  if (options.asksToActAnyAction && ABLE_TO_ACT.test(clause)) return "ABLE_TO_ACT";
   return null;
 }
 
 /** A clause that asks for something to be created, changed or filled. */
 function isRequest(clause: string): boolean {
-  return requestReading(clause, {}) !== null;
+  return requestReading(clause) !== null;
 }
 
 function asks(clause: string): boolean {
@@ -186,26 +177,19 @@ export function isQuestionNotForm(question: string, history: readonly Turn[] = [
   return parts.length === 1 && looksUp(parts[0]!) && !answeringAQuestion(history);
 }
 
-export interface QuestionReadingOptions {
-  /** FORM_EDIT_TOOL_IN_STREAM_ENABLED: "is it possible / able to <ACTION>" is a request too (`ABLE_TO_ACT`). */
-  readonly asksToActAnyAction?: boolean;
-}
-
 /**
- * `isQuestionNotForm` with the branch that decided it, for the edit tool's
- * gate and its trace: a request reading (`ASKED_TO_ACT`, `IMPERATIVE`, …), an
- * asking clause (`ASKS`), a short lookup (`LOOKS_UP`), or none (`STATEMENT`).
- * With no options it is `isQuestionNotForm` exactly.
+ * `isQuestionNotForm` with the branch that decided it: a request reading
+ * (`ASKED_TO_ACT`, `IMPERATIVE`, …), an asking clause (`ASKS`), a short lookup
+ * (`LOOKS_UP`), or none (`STATEMENT`). Its `question` is `isQuestionNotForm`
+ * exactly. The edit tool records the branch in its trace for information only:
+ * since Pau's ruling A3 (4 Nov 2026) it no longer decides whether `edit_form`
+ * is offered.
  */
-export function readQuestion(
-  question: string,
-  history: readonly Turn[] = [],
-  options: QuestionReadingOptions = {},
-): { readonly question: boolean; readonly branch: string } {
+export function readQuestion(question: string, history: readonly Turn[] = []): { readonly question: boolean; readonly branch: string } {
   const parts = clauses(question);
   if (parts.length === 0) return { question: false, branch: "EMPTY" };
   for (const part of parts) {
-    const reading = requestReading(part, options);
+    const reading = requestReading(part);
     if (reading) return { question: false, branch: reading };
   }
   if (parts.some(asks)) return { question: true, branch: "ASKS" };

@@ -770,15 +770,16 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
       expect(editTurns.some((turn) => Object.keys(turn.diff).length > 0), `${id}: no edit turn changed the saved form`).toBe(true);
     }
     /*
-     * Step 3's gate, on the new path: an edit asked as a question reaches
-     * edit_form (its last turn's main call offered it); a question does not.
-     * The stand-in never calls the tool, so each edit is handed to the old chain.
+     * Step 3's offer, on the new path: an edit asked as a question reaches
+     * edit_form (its last turn's main call offered it). Since Pau's ruling A3
+     * (4 Nov 2026) a question is offered it too; the stand-in never calls the
+     * tool, so nothing is written either way.
      */
     for (const { id, newPath } of results) {
       if (!newPath || !id.startsWith("gate-")) continue;
       expect(newPath.error, `${id}: ${newPath.error}`).toBeNull();
-      if (id.startsWith("gate-edit-")) expect(newPath.offered, `${id}: edit_form was not offered`).toBe(1);
-      else expect(newPath.offered, `${id}: edit_form offered on a question`).toBe(0);
+      // Changed on purpose (Pau's ruling A3): gate-question-* is offered edit_form as well.
+      expect(newPath.offered, `${id}: edit_form was not offered`).toBe(1);
     }
     expect(live.calls, "the counter is the sum of the scenarios' calls").toBe(
       results.reduce((sum, run) => sum + run.oldPath.calls + (run.newPath?.calls ?? 0), 0) + repeatCalls.value,

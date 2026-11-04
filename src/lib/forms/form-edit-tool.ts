@@ -20,7 +20,7 @@ import { draftableCheckboxGroups, draftableFields } from "./responsibility";
  *
  * Design of 4 Nov 2026; ported from Ask Bubbles (c5534279), the mechanism.
  * With a draft form open and a turn that is not a
- * question, a correction or a policy change, the chat route asks the ordinary
+ * correction or a policy change, the chat route asks the ordinary
  * answering call — the one `server-ask.ts` makes anyway — with one tool
  * offered, `edit_form` (`tool_choice: auto`), and one extra DATA block before
  * the question: the open form as JSON and the caller's scoped staff (name,
@@ -40,9 +40,16 @@ import { draftableCheckboxGroups, draftableFields } from "./responsibility";
  * trace (`slots.form_edit`) holds keys and reasons only, never form text.
  *
  * Loaded only by the chat route's guarded `await import()`; `form-write` only
- * by the guarded import below. No regular expression and no phrase list here:
- * whether the turn is a question is the existing reading (`readQuestion` in
- * `question-not-form.ts`): an ask to act ("can you change …?") is an edit.
+ * by the guarded import below. No regular expression and no phrase list here.
+ *
+ * QUESTIONS TOO (Pau's ruling A3, 4 Nov 2026): the tool is offered on any
+ * turn with a draft open, a question-phrased one included — no reading of
+ * the words decides it. The model answers a pure question in text and that
+ * text is the reply; if it calls the tool and nothing is written, the
+ * FORM_EDIT_NOOP_GUARD_ENABLED reply says so ("I didn't change anything on
+ * the form. Tell me which part to change and what it should say."). The
+ * existing question reading (`readQuestion`) is kept in the trace (`gate`),
+ * for information only.
  */
 
 const DATA_HEADING = "OPEN FORM DATA";
@@ -53,7 +60,6 @@ const STAFF_WAIT_MS = 1_500;
 
 export type FormEditOfferReason =
   | "draft_open"
-  | "question"
   | "not_draft"
   | "not_visible"
   | "blank_corrective_action"
@@ -137,8 +143,8 @@ async function scopedStaff(scope: AccessScope | null): Promise<StaffEntry[]> {
 }
 
 /**
- * The turn's `edit_form` session. Not offered (trace only) for a question, a
- * form that is not a draft or not visible to the caller, a Corrective Action
+ * The turn's `edit_form` session. Not offered (trace only) for a form that
+ * is not a draft or not visible to the caller, a Corrective Action
  * Form the assistant has written nothing on (the cited redraft drafts it
  * whole, as the patch turn leaves it), or a form with no writable field.
  */
@@ -149,11 +155,10 @@ export async function prepareFormEditTool(input: {
   readonly history: Pick<ChatMessage, "id" | "role" | "content" | "error">[];
   /** The business day, YYYY-MM-DD. */
   readonly today: string;
-  /** The existing question reading (`readQuestion`, QUESTION_NOT_FORM's) and the branch that decided it. */
+  /** The existing question reading (`readQuestion`) and its branch: in the trace only (Pau's ruling A3). */
   readonly gate: { readonly question: boolean; readonly branch: string };
   readonly scope: AccessScope | null;
 }): Promise<FormEditToolSession> {
-  if (input.gate.question) return notOffered("question", input.gate.branch);
   try {
     let authorized: Awaited<ReturnType<typeof authorizeInstance>>;
     try {
@@ -298,7 +303,7 @@ export async function prepareFormEditTool(input: {
       calledWithoutEdit: () => calledWithoutEdit,
     };
   } catch {
-    return notOffered("error");
+    return notOffered("error", input.gate.branch);
   }
 }
 
