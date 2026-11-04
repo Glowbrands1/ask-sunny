@@ -1,5 +1,5 @@
 import { salonById } from "@/data/salons";
-import { levelRequestDateEnabled, priorSentenceFixEnabled, requestLeadFillerEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, levelRequestDateEnabled, priorSentenceFixEnabled, requestLeadFillerEnabled } from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
@@ -652,6 +652,18 @@ export function currentRequestTurns(turns: readonly string[], employeeName: stri
  * opening salon late on 9-28-26" is "opening salon late on 9-28-26". Empty
  * when nothing is left.
  */
+/** "<name> for …" / "<name> due to …" after a request: the reason, without the name. */
+function withoutRequestedEmployee(text: string, employeeName: string | null): string {
+  if (!employeeName) return text;
+  const names = [employeeName, employeeName.split(/\s+/)[0] ?? ""].filter((name) => name.length > 1);
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+    const match = new RegExp(`^${escaped}\\s+(?:for|due\\s+to|because(?:\\s+of)?)\\s+`, "i").exec(text);
+    if (match) return text.slice(match[0].length);
+  }
+  return text;
+}
+
 export function managerAccount(sentence: string, employeeName: string | null): string {
   const end = /[.!?]+$/.exec(sentence.trim())?.[0] ?? "";
   const body = sentence.trim().slice(0, sentence.trim().length - end.length);
@@ -679,6 +691,13 @@ export function managerAccount(sentence: string, employeeName: string | null): s
     }
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "CA for <name> due to
+     * under performance in salon metrics" kept "<name> due to …" as the
+     * account. The employee the request named, before the word that joins the
+     * reason, is the request's, not the account. Off, unchanged.
+     */
+    if (requested && caSalesPolicyEnabled()) text = withoutRequestedEmployee(text, employeeName);
     // The "for" the dropped request left: "… for opening salon late".
     if (requested) text = text.replace(/^(?:for|about|regarding)\s+/i, "");
     if (text) kept.push(text);
