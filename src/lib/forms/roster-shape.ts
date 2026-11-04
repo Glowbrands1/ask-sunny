@@ -56,3 +56,31 @@ export function couldBeOnRoster(name: string, names: readonly string[]): boolean
   if (rosterShaped(name, rows)) return true;
   return matchEmployeeName(name, rows).kind !== "none";
 }
+
+/* ------------------------------------------------- the message's anchor -- */
+
+/**
+ * FORM_NAME_FROM_ROSTER_ENABLED, the middle ground (QA, 4 Nov 2026): a
+ * candidate shaped like nobody is set aside only when another candidate in
+ * the same message is somebody on the roster (exact or close). "Zuleika
+ * Brightwell" alone is still a person the manager means, and is read as
+ * today. The grounding step decides it per message; the server installs the
+ * reader (`roster-anchor-store.ts`), so this module stays free of
+ * `node:async_hooks`. Unset — a test, the browser — no anchor.
+ */
+let readAnchor: () => boolean | undefined = () => undefined;
+
+export function installRosterAnchor(read: () => boolean | undefined): void {
+  readAnchor = read;
+}
+
+/** True while the current message names somebody on the roster. */
+export function rosterAnchored(): boolean {
+  return readAnchor() === true;
+}
+
+/** The candidate is somebody on the roster: an exact or a close match. */
+export function anchorsOnRoster(name: string, roster: readonly RosterEmployee[]): boolean {
+  const match = matchEmployeeName(name, roster);
+  return match.kind === "exact" || match.kind === "confirm";
+}

@@ -6,7 +6,7 @@ import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
 import { namesSomebody } from "./answer-not-a-name";
 import { installPersonRoster } from "./person-guard";
 import { readEmployeeMentions } from "./proposal";
-import { couldBeOnRoster, rosterShaped } from "./roster-shape";
+import { couldBeOnRoster, installRosterAnchor, rosterShaped } from "./roster-shape";
 
 /**
  * ============================================================================
@@ -57,6 +57,7 @@ afterEach(() => {
     else process.env[flag] = saved[flag];
   }
   installPersonRoster(() => undefined);
+  installRosterAnchor(() => undefined);
 });
 
 const on = () => {
@@ -127,15 +128,36 @@ describe("the grounding step, Pau's exact message", () => {
   });
 
   /*
-   * Under the flag's rule a full name whose first word is nobody's first name
-   * is shaped like nobody on the roster, the same as "Club Close". This app
-   * shows nothing from the unmatched list (the reply asks "Who is this form
-   * for?" either way), so no manager sees a difference; pinned so a later
-   * reader of the list knows.
+   * THE MIDDLE GROUND (QA, 4 Nov 2026). A nobody-shaped candidate is set aside
+   * only beside somebody on the roster. "Zuleika Brightwell" typed alone names
+   * nobody on the roster, so the message is read as before.
    */
-  it("on: a full name nobody on the roster shares is not unmatched either", () => {
+  it("on: a full name nobody on the roster shares, typed alone, is unmatched as before", () => {
     on();
-    expect(prep(say("Zuleika Brightwell")).unmatched).toEqual([]);
+    const prepared = prep(say("Zuleika Brightwell"));
+    expect(prepared.unmatched).toContain("Zuleika Brightwell");
+    expect(prepared.rosterAnchored).toBeUndefined();
+  });
+
+  it("on: Pau's message names somebody on the roster, so the metrics are set aside", () => {
+    on();
+    expect(prep(say("Perpetua Thornquist")).rosterAnchored).toBe(true);
+  });
+
+  /*
+   * WHAT IS STILL OPEN, PINNED. Metric words with no roster name beside them:
+   * nothing anchors the message, so it is read as before, flag on or off, and
+   * "under" (from "for under performance") is still an unmatched candidate.
+   * This app shows nothing from that list. Put to Pau, 4 Nov 2026.
+   */
+  it("on: metrics with no roster name are read as before", () => {
+    const question = "CA for under performance on Club Close % and Spa %";
+    const off = prep(question);
+    on();
+    const prepared = prep(question);
+    expect(prepared).toEqual(off);
+    expect(prepared.rosterAnchored).toBeUndefined();
+    expect(prepared.unmatched).toEqual(["under"]);
   });
 });
 
@@ -151,8 +173,9 @@ describe("the name reader, with the person guard's roster", () => {
     expect(readEmployeeMentions(say("Perpetua Thornquist")).names).toEqual(expect.arrayContaining(["Club Close", "Under"]));
   });
 
-  it("on: only the employee is read, so a typo is still the one name", () => {
+  it("on, beside a roster name: only the employee is read, so a typo is still the one name", () => {
     on();
+    installRosterAnchor(() => true);
     expect(namesSomebody("Club Close")).toBe(false);
     expect(namesSomebody("Under")).toBe(false);
     expect(namesSomebody("Leocadja Wexcombe")).toBe(true);
@@ -160,8 +183,16 @@ describe("the name reader, with the person guard's roster", () => {
     expect(readEmployeeMentions(say("Perpetua Thornquist")).names).toEqual(["Perpetua Thornquist"]);
   });
 
+  it("on, with no roster name in the message: every candidate is kept", () => {
+    on();
+    installRosterAnchor(() => false);
+    expect(namesSomebody("Club Close")).toBe(true);
+    expect(readEmployeeMentions(say("Zuleika Brightwell")).names).toEqual(expect.arrayContaining(["Zuleika Brightwell", "Club Close", "Under"]));
+  });
+
   it("on, with no roster: every candidate is kept", () => {
     on();
+    installRosterAnchor(() => true);
     installPersonRoster(() => undefined);
     expect(namesSomebody("Club Close")).toBe(true);
   });

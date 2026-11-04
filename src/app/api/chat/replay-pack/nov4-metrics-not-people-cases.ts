@@ -1,6 +1,6 @@
 import { expect, vi } from "vitest";
 
-import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
+import { KEARNEY, STAFF, noRepeatedReply, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext } from "./cases";
 
 /**
  * ============================================================================
@@ -20,16 +20,21 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayAnswer, type ReplayCase, 
  * them as unmatched (`forms/form-name-from-roster.test.ts` proves that part).
  * With the flag on, a candidate shaped like nobody on the scoped roster (no
  * roster first name for a 2+ word candidate, no roster first or last name for
- * one word) is not a name and is not unmatched. See `forms/roster-shape.ts`.
+ * one word) is not a name and is not unmatched, when the same message names
+ * somebody on the roster. See `forms/roster-shape.ts`.
  * The flag needs CA_SALES_POLICY_ENABLED.
  *
  * The overnight scan's sf-s19 (`nov4-overnight-scan-cases.ts`) is the same
  * message; it stays OPEN without this flag in its fixFlags (turn 2, "Corrective
  * Action", is its own fault).
  *
+ * Only beside somebody on the roster (the middle ground, QA 4 Nov 2026): a
+ * message that names nobody on the roster is read as before.
+ *
  * Negative controls: a typo of a roster person still gets the close-match
- * question; a full name nobody on the roster shares is never the card's
- * employee, with the flag or without.
+ * question; a full name nobody on the roster shares, typed alone, is never the
+ * card's employee, with the flag or without; metric words with no roster name
+ * beside them are read as before (the metrics-only case).
  *
  * Every person is invented (the repository is public) and is on this file's
  * own directory fixture only.
@@ -115,13 +120,14 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
   },
   {
     id: "nov4-pau-metrics-not-people-unknown",
-    title: "negative control: a full name nobody on the roster shares is never the card's employee, and no metric is",
+    title: "negative control: a full name nobody on the roster shares, typed alone, is never the card's employee, and no metric is",
     report: `${REPORT}: negative control, a person not on the roster`,
     status: "fixed",
     /*
      * Unlike Ask Bubbles, this app never says "I couldn't find … in the Woven
      * roster": with the sales policy on, the flag or not, the reply asks "Who is
-     * this form for?". The flag changes nothing a manager sees here.
+     * this form for?". Nobody in this message is on the roster, so under the
+     * middle ground (QA, 4 Nov 2026) it is read exactly as before.
      */
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
@@ -129,6 +135,33 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
       const reply = await thread.say(say("Zuleika Brightwell"));
       expect(thread.proposal?.employeeName ?? "", "an unknown person or a metric is on the card").not.toMatch(/Zuleika|Club Close|^Under$/);
       expect(reply.content, `"Club Close" or "Under" is named as a person:\n${reply.content}`).not.toMatch(/\*\*(?:Club Close|Under)\*\*/);
+      // Said again, the chat moves on: not the same reply word for word (no loop).
+      const again = await thread.say("Zuleika Brightwell");
+      noRepeatedReply([reply, again]);
+    },
+  },
+  {
+    id: "nov4-pau-metrics-not-people-metrics-only",
+    title: "metrics with no roster name (\"CA for under performance on Club Close % and Spa %\"): no metric is the employee or said back as a person, flag on or off",
+    report: `${REPORT}: metric words with no roster name beside them`,
+    /*
+     * QA, 4 Nov 2026: report it, don't hide it. Nothing in the message names
+     * somebody on the roster, so the middle ground reads it as before.
+     *
+     * NO fixFlags, ON PURPOSE: it does NOT hold with the sales policy on. With
+     * CA_SALES_POLICY_ENABLED (and CHAT_GLOSSARY_ENABLED), with or without
+     * FORM_NAME_FROM_ROSTER_ENABLED, the card is made "for **under**" — the
+     * "under" of "for under performance" becomes the card's employee. With
+     * production's flags the message is answered as metric-only (no card), so
+     * this holds. Put to Pau, 4 Nov 2026. The grounding step's reading is
+     * pinned in `forms/form-name-from-roster.test.ts`.
+     */
+    status: "fixed",
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("CA for under performance on Club Close % and Spa %");
+      expect(reply.content, `a metric is announced as a missing person:\n${reply.content}`).not.toMatch(/couldn't find/i);
+      expect(thread.proposal?.employeeName ?? "", "a metric is on the card").not.toMatch(/under|club close/i);
     },
   },
 ];

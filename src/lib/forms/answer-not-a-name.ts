@@ -9,7 +9,7 @@ import {
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { notAPerson, personRosterNames } from "./person-guard";
-import { couldBeOnRoster } from "./roster-shape";
+import { couldBeOnRoster, rosterAnchored } from "./roster-shape";
 import { isPayrollWords } from "./payroll-words";
 
 /*
@@ -73,11 +73,14 @@ export function namesSomebody(name: string): boolean {
  * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."): with
  * the actor's roster read this turn (PERSON_GUARD_ENABLED enters it), a
  * candidate that matches nobody on it, closely or exactly, and is shaped like
- * nobody on it ("Club Close", "Under") is not a name. See `roster-shape.ts`.
+ * nobody on it ("Club Close", "Under") is not a name, when the same message
+ * names somebody on the roster (`rosterAnchored`). See `roster-shape.ts`.
  * Off, or with no roster, every candidate is kept as before.
  */
 function isShapedLikeNobody(name: string): boolean {
   if (!formNameFromRosterEnabled()) return false;
+  // Only beside somebody on the roster: a name typed alone is still a person.
+  if (!rosterAnchored()) return false;
   const roster = personRosterNames();
   if (!roster || roster.length === 0) return false;
   return !couldBeOnRoster(name, roster);

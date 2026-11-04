@@ -11,7 +11,7 @@ import { isDateAnswerWords } from "@/lib/forms/incident-dates";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
-import { rosterShaped } from "@/lib/forms/roster-shape";
+import { anchorsOnRoster, rosterShaped } from "@/lib/forms/roster-shape";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 import type { AskResponse } from "./types";
@@ -45,6 +45,8 @@ export interface GroundedPrep {
   readonly ambiguousTyped: string | null;
   readonly keptTypedName: string | null;
   readonly employeeId: string | null;
+  /** FORM_NAME_FROM_ROSTER_ENABLED: the message names somebody on the roster (exact or close). */
+  readonly rosterAnchored?: boolean;
 }
 
 export function prepareGroundedQuestion(input: {
@@ -96,6 +98,7 @@ export function prepareGroundedQuestion(input: {
     ambiguousTyped: gated.ambiguousTyped,
     keptTypedName,
     employeeId: rosterIds && rosterIds.length === 1 ? rosterIds[0]! : null,
+    ...(gated.rosterAnchored ? { rosterAnchored: true } : {}),
   };
 }
 
@@ -212,6 +215,7 @@ function gateMentions(
   unmatched: string[];
   ambiguous: GroundedPerson[];
   ambiguousTyped: string | null;
+  rosterAnchored?: boolean;
 } {
   if (roster.length === 0) {
     return { question, rosterIds: null, unmatched: [], ambiguous: [], ambiguousTyped: null };
@@ -222,6 +226,8 @@ function gateMentions(
   let rosterIds: readonly string[] | null = null;
   let ambiguous: GroundedPerson[] = [];
   let ambiguousTyped: string | null = null;
+  // FORM_NAME_FROM_ROSTER_ENABLED: does the message name somebody on the roster? Only then is a nobody-shaped candidate set aside.
+  const anchored = formNameFromRosterEnabled() && mentions.names.some((name) => anchorsOnRoster(name, roster));
 
   for (const name of mentions.names) {
     if (isDocumentOrPolicyName(name)) continue;
@@ -265,8 +271,8 @@ function gateMentions(
       continue;
     }
     if (isSalonPhrase(name)) continue;
-    // FORM_NAME_FROM_ROSTER_ENABLED: "Club Close", "Under" (Pau, 4 Nov 2026) are shaped like nobody on the roster; not unmatched people.
-    if (formNameFromRosterEnabled() && !rosterShaped(name, roster)) continue;
+    // FORM_NAME_FROM_ROSTER_ENABLED: beside a roster name, "Club Close", "Under" (Pau, 4 Nov 2026) are shaped like nobody on the roster; not unmatched people.
+    if (anchored && !rosterShaped(name, roster)) continue;
     // The typed name stays in the question. The reply says Woven does not have it.
     unmatched.push(name);
   }
@@ -277,6 +283,7 @@ function gateMentions(
     unmatched,
     ambiguous,
     ambiguousTyped,
+    ...(anchored ? { rosterAnchored: true } : {}),
   };
 }
 

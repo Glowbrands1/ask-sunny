@@ -2416,15 +2416,21 @@ export function caSalesPolicyEnabled(): boolean {
  * Step 5, names from the roster: first piece, the overnight scan's sf-s19
  * "metrics read as people". A metric is never read as a person (Pau, 4 Nov
  * 2026: "I need a corrective action verbal for <name>. This is for Under
- * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."). With a
- * roster, a name candidate that matches nobody exactly or closely, and is not
- * shaped like anyone on the roster (`forms/roster-shape.ts`: a 2+ word
- * candidate whose first word is nobody's first name, one word that is nobody's
- * first or last name), is not put in the grounding step's unmatched list; with
- * the person guard's roster read this turn the name reader drops it too, so it
- * is never the card's employee (`forms/answer-not-a-name.ts`). Needs
- * CA_SALES_POLICY_ENABLED: off unless both are on (the sales policy is what
- * takes a stated shortfall like this one to the form). Off, as before.
+ * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.").
+ *
+ * When the message names somebody on the roster (an exact or close match), a
+ * name candidate that matches nobody exactly or closely and is not shaped
+ * like anyone on the roster (`forms/roster-shape.ts`: a 2+ word candidate
+ * whose first word is nobody's first name, one word that is nobody's first or
+ * last name) is not put in the grounding step's unmatched list; with the
+ * person guard's roster read this turn the name reader drops it too, so it is
+ * never the card's employee (`forms/answer-not-a-name.ts`). A message that
+ * names nobody on the roster is read as before.
+ *
+ * Needs CA_SALES_POLICY_ENABLED: off unless both are on. Without the sales
+ * policy a message like Pau's is answered as metric-only (no card); the sales
+ * policy is what takes a stated shortfall to the form, citing the Standards
+ * of Conduct, and only then is the card's employee at stake. Off, as before.
  */
 export function formNameFromRosterEnabled(): boolean {
   return envFlag("FORM_NAME_FROM_ROSTER_ENABLED") && caSalesPolicyEnabled();
