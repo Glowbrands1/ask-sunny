@@ -91,6 +91,11 @@ export function installPersonRoster(read: RosterRead): void {
   readRoster = read;
 }
 
+/** The actor's roster names for this turn, as the route entered them; undefined with none (a test, the browser, the guard off). */
+export function personRosterNames(): readonly string[] | undefined {
+  return readRoster();
+}
+
 /** On the roster: the full name, or a one-word candidate that is someone's first or last name. */
 function onRoster(candidate: string): boolean {
   const roster = readRoster();

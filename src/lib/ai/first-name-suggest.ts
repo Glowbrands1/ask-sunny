@@ -1,4 +1,10 @@
-import { firstNameSuggestEnabled, firstNameYesKeepsRequestEnabled, partialSurnameAskEnabled, suggestAnswerReplacesTypedEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  firstNameSuggestEnabled,
+  firstNameYesKeepsRequestEnabled,
+  formNameFromRosterEnabled,
+  partialSurnameAskEnabled,
+  suggestAnswerReplacesTypedEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { displayName, type RosterEmployee } from "@/lib/forms/employee-match";
 import { looseFits } from "@/lib/forms/loose-fit";
 
@@ -45,6 +51,19 @@ const ORDINARY = new Set([
 
 const ASKS_WHO =
   /\bWho is this (?:\*\*[^*]+\*\* |form )?for\?|\bIs this for [^?]+\? Tell me (?:her|his|their) full name\.|\bI still need [^.]+ full name\b/;
+
+/*
+ * FORM_NAME_FROM_ROSTER_ENABLED (QA, 4 Nov 2026): "I need a corrective action
+ * verbal for perpetua. This is for Under Performance on …" is answered with the
+ * intake list, whose first item asks for the employee ("1. Employee's full
+ * name"). That asks who the form is for as plainly as "Who is this form for?",
+ * so a first name the manager typed is offered the same way. Off, as before.
+ */
+const ASKS_WHO_IN_LIST = /^\s*1\. Employee's full name\b/m;
+
+function asksWho(content: string): boolean {
+  return ASKS_WHO.test(content) || (formNameFromRosterEnabled() && ASKS_WHO_IN_LIST.test(content));
+}
 
 function words(text: string): string[] {
   return text.toLowerCase().match(/[a-z][a-z'’-]*/g) ?? [];
@@ -172,7 +191,7 @@ export function withFirstNameSuggest(
   }
   // The card's full name was filled from a first name the manager typed alone ("katherine was late …").
   const filledFirst = oneWordCard ? null : filledFromFirstName(card?.employeeName, request, roster);
-  if (!oneWordCard && !filledFirst && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  if (!oneWordCard && !filledFirst && !(asksWho(response.content) && !card?.employeeName)) return response;
 
   const turns = managerTurns(request);
   if (!filledFirst && namesSomebodyInFull(turns, roster)) return response;
@@ -395,7 +414,7 @@ export async function withFirstNameSuggestFor(
   const maybeFilled = cardNameNotTypedInFull(card?.employeeName, request);
   // PARTIAL_SURNAME_ASK_ENABLED: "marisol co" as typed may be the start of a roster name.
   const maybePartial = partialSurnameAskEnabled() && words(card?.employeeName ?? "").length > 1 && !maybeFilled;
-  if (!oneWordCard && !maybeFilled && !maybePartial && !(ASKS_WHO.test(response.content) && !card?.employeeName)) return response;
+  if (!oneWordCard && !maybeFilled && !maybePartial && !(asksWho(response.content) && !card?.employeeName)) return response;
   const { loadScopedRoster } = await import("@/lib/forms/employee-roster");
   return withFirstNameSuggest(response, request, await loadScopedRoster(actor.scope));
 }
