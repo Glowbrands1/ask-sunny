@@ -34,3 +34,51 @@ export function replyFromDiff(diff: Pick<FormDiff, "changed">, labels: Readonly<
     })
     .join("\n");
 }
+
+/*
+ * ============================================================================
+ * THE REPLY FROM THE SAVED DIFF (FORM_EDIT_NOOP_GUARD_ENABLED, STEP 4)
+ * ============================================================================
+ *
+ * One line per field whose saved value really changed:
+ *
+ *   Updated: <label>: <value>
+ *
+ * the value on one line, at most UPDATED_VALUE_MAX characters, cut at a word;
+ * a checkbox group shows its ticked options' labels; a field emptied shows
+ * "(cleared)". Nothing changed: UNCHANGED_FORM_REPLY, exactly. Never `shown()`.
+ */
+
+export const UNCHANGED_FORM_REPLY = "I didn't change anything on the form. Tell me which part to change and what it should say.";
+
+/** Longest value in an "Updated:" line, the cut mark included. */
+export const UPDATED_VALUE_MAX = 80;
+
+const CUT_MARK = "…";
+
+/** The value on one line, cut at a word to at most UPDATED_VALUE_MAX characters. */
+export function updatedValue(text: string): string {
+  const one = text.split(/\s+/).filter((word) => word !== "").join(" ");
+  if (one.length <= UPDATED_VALUE_MAX) return one;
+  const room = one.slice(0, UPDATED_VALUE_MAX - CUT_MARK.length);
+  const space = room.lastIndexOf(" ");
+  return `${(space > 0 ? room.slice(0, space) : room).trimEnd()}${CUT_MARK}`;
+}
+
+/** The "Updated:" lines for what changed, or UNCHANGED_FORM_REPLY. `options`: each checkbox group's option labels by key. */
+export function updatedLines(
+  changed: readonly { key: string; after: FieldValue }[],
+  labels: Readonly<Record<string, string>>,
+  options: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
+): string {
+  if (changed.length === 0) return UNCHANGED_FORM_REPLY;
+  return changed
+    .map((change) => {
+      const label = labels[change.key] ?? change.key;
+      const ticked = (typeof change.after === "string" ? [change.after] : [...change.after]).map((item) => item.trim()).filter((item) => item !== "");
+      const group = options[change.key];
+      const text = group ? ticked.map((option) => group[option] ?? option).join(", ") : ticked.join("\n");
+      return `Updated: ${label}: ${text === "" ? "(cleared)" : updatedValue(text)}`;
+    })
+    .join("\n");
+}
