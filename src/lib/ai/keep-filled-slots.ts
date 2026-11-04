@@ -41,8 +41,10 @@ import {
   cardObservationOwnRequestEnabled,
   observationNotPolicyNameEnabled,
   keepRosterExactNameEnabled,
+  caSalesPolicyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
+import { foldsToGlossaryTerm } from "./chat-glossary";
 import { statedFormDate } from "@/lib/forms/incident-dates";
 import { explicitIncidentIso } from "@/lib/forms/explicit-incident-date";
 import { cleanPersonName, employeeNamedOnPurpose } from "@/lib/forms/roster-validated-name";
@@ -690,6 +692,16 @@ function withGrammarAnswered(content: string, turns: readonly string[]): string 
   return asked && !content.includes(GRAMMAR_ANSWER) ? `${content}\n\n${GRAMMAR_ANSWER}` : content;
 }
 
+/**
+ * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026; conv_mw2ds90h2wk2bgz): "I
+ * need to make a corrective action for msb" put "msb" on the card as the
+ * Observation of Offense. A sentence that is only a glossary term names the
+ * reason (MSB), not what happened. Off, false.
+ */
+function onlyAGlossaryTerm(sentence: string): boolean {
+  return caSalesPolicyEnabled() && foldsToGlossaryTerm(sentence.replace(/[.!?]+$/, ""));
+}
+
 /** The account already given, copied onto the card so the offense is not asked again. */
 function withObservation(content: string, turns: readonly string[], employeeName: string | null, today?: string): string {
   const ignore = employeeName ? [employeeName] : [];
@@ -715,6 +727,8 @@ function withObservation(content: string, turns: readonly string[], employeeName
       // form, name the employee or give their place (QA, 25 Oct 2026).
       const sentence = managerOnly ? managerAccount(said, employeeName) : said;
       if (!sentence) continue;
+      // CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "a corrective action for msb" left "msb"; a glossary term is the reason, not an account.
+      if (onlyAGlossaryTerm(sentence)) continue;
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       if (observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)) continue;
       if (content.toLowerCase().includes(sentence.toLowerCase())) continue;
@@ -786,6 +800,7 @@ function stateCodeTitle(text: string, role: string): boolean {
 function withAccount(content: string, turns: readonly string[], employeeName: string | null): string {
   const sentences = accountSentences(turns, employeeName, { managerOnly: managerWordsOnlyEnabled() }).filter(
     (sentence) =>
+      !onlyAGlossaryTerm(sentence) &&
       !content.toLowerCase().includes(sentence.toLowerCase()) &&
       // OBSERVATION_NOT_POLICY_NAME_ENABLED: "must see behaviors" names the policy, not what happened.
       !(observationNotPolicyNameEnabled() && namesOnlyAPolicy(sentence)),

@@ -103,6 +103,8 @@ export const NOV4_PAU_FIVE_CASES: ReplayCase[] = [
       expect(reply.content, `MSB is read as a name:\n${reply.content}`).not.toMatch(/couldn'?t find \*\*msb\*\*|\*\*Msb\*\*/i);
       expect(thread.proposal?.employeeName ?? "", "MSB was saved as the employee").not.toMatch(/msb/i);
       expect(reply.content, `asks what happened although the reason (MSB) was given:\n${reply.content}`).not.toMatch(ASKS_WHAT_HAPPENED);
+      // QA, live, 4 Nov 2026 (conv_mw2ds90h2wk2bgz): the nameless card's Observation of Offense was "msb".
+      expect(reply.content, `MSB is the Observation of Offense:\n${reply.content}`).not.toMatch(/\*\*Observation of Offense:\*\*\s*msb\b/i);
       const named = await thread.say("Thaddeus Quillane");
       citesConduct(thread, named, "Thaddeus Quillane");
     },
