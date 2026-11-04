@@ -44,7 +44,8 @@ import { CA_CHAIN, LIVE_ROSTER, OBSERVATION_AFTER } from "./replay-pack/nov4-liv
  * (b) alike, is the first draft's Type of Offense: the drafting model's
  * "tardiness" is ticked as the box that replaced it, `attendance_policy`, and
  * Policy Violated reads "Attendance Policy — Late Opening" (was
- * "Tardiness/Leaving Early — Late Opening"). Every reply, every other row and
+ * "Tardiness/Leaving Early — Late Opening"): revision 8's intended rename of
+ * the box, not the guard (accepted by QA, 4 Nov 2026). Every reply, every other row and
  * every event is byte-identical, the scripted "tardiness" tick included (it
  * saved nothing before, on a form that already had it, and saves nothing now,
  * on a form with no such box). Replies, rows and events; ids numbered in order
