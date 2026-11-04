@@ -273,5 +273,10 @@
   "category": "INTENDED",
   "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts (flag off: as on main)",
   "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With the flag on, a named Under Performance, a stated shortfall (corrective-action-intake.ts) or MSB reads as the Standards of Conduct; the card and the draft cite that section, heading and page, instead of the progression's metric-only answer (framework §7) or no policy."
+ },
+ "src/lib/ai/chat-trace.migration.test.ts :: chat_traces migration rejects a view that inserts the cache columns before error_subtype": {
+  "category": "FLAKY",
+  "twin": "itself, off and on",
+  "reason": "Failed in 1 of 3 runs with the flag on and passed in all 3 off; a migration-file check that reads no chat or form code this flag gates (run under machine load)."
  }
 }
