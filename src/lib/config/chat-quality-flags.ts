@@ -2379,3 +2379,17 @@ export function formEditSingleWriterEnabled(): boolean {
 export function formEditToolInStreamEnabled(): boolean {
   return envFlag("FORM_EDIT_TOOL_IN_STREAM_ENABLED") && formEditSingleWriterEnabled();
 }
+
+/**
+ * The abbreviation glossary (QA's overnight scan, 4 Nov 2026, sf-s12: "I need
+ * to make a corrective action for msb"; ported from Ask Bubbles, 40146f84,
+ * #419). The approved table, `CHAT_GLOSSARY` in `ai/chat-glossary.ts`, is sent
+ * as one extra context block in the main answering call and in the
+ * form-intake calls that read the employee from the manager's words, and a
+ * name candidate that is a term in it ("msb") is never the employee: the
+ * manager is asked who the form is for instead. Off, every request and every
+ * reader is byte for byte as before.
+ */
+export function chatGlossaryEnabled(): boolean {
+  return envFlag("CHAT_GLOSSARY_ENABLED");
+}

@@ -10,6 +10,7 @@ import { findManualSection, manualSectionHeadings } from "@/lib/forms/official-p
 import { SupabaseKnowledgeProvider } from "@/lib/knowledge/providers/supabase";
 
 import { callClaudeTool } from "./call-claude";
+import { glossaryBlock } from "./chat-glossary";
 import type { ChatActor } from "./form-proposal";
 import { loadFormState, saveFormState } from "./form-state-store";
 import { updateChatTrace } from "./chat-trace-store";
@@ -197,7 +198,9 @@ function userBlock(request: AskRequest, saved: string, headings: readonly string
     .map((turn) => `${turn.role === "assistant" ? "Assistant" : "Manager"}: ${turn.content.trim().slice(0, 1500)}`);
   const state = saved ? `Stored form state:\n${saved}\n\n` : "";
   const manual = headings.length > 0 ? `Manual headings:\n${headings.map((heading) => `- ${heading}`).join("\n")}\n\n` : "";
-  return `${state}${manual}Today is ${request.context.todayIso}.\n\n${turns.join("\n\n")}`;
+  // CHAT_GLOSSARY_ENABLED: the abbreviation table first, as one more context block. Off, nothing is added.
+  const glossary = glossaryBlock();
+  return `${glossary ? `${glossary}\n\n` : ""}${state}${manual}Today is ${request.context.todayIso}.\n\n${turns.join("\n\n")}`;
 }
 
 async function readSaved(userId: string | undefined, conversationId: string | undefined) {

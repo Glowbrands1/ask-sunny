@@ -63,7 +63,9 @@ export type RefusalReason =
   | "writein_without_box"
   | "drops_protected_value"
   | "unknown_field"
-  | "not_draft";
+  | "not_draft"
+  /** CHAT_GLOSSARY_ENABLED: the employee's name would be a glossary term ("msb"). */
+  | "glossary_term";
 
 export interface Refusal {
   readonly key: string;
