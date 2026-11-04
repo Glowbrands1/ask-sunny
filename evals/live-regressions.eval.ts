@@ -485,25 +485,16 @@ interface PathRun {
   /** Every saved value at the end. */
   readonly saved: Record<string, string>;
   readonly error: string | null;
-  /** T1 gave no card on the first try and the scenario was run once more (inside the same cap). */
-  readonly noCardRetried?: boolean;
 }
 
 /** One scenario, every step through the real routes, with `flags` on top of production's. */
 const NO_CARD = "no card to create from";
 
-/**
- * QA, 3 Nov: T1 sometimes gives no card (the model's choice, run to run). Run the
- * scenario once more, inside the same cap, and report it as "no card" — never as
- * an edit that did not stick — so chain results stay comparable.
+/*
+ * T1 sometimes gives no card (the model's choice, run to run). It is reported as
+ * "NO CARD at T1", never as an edit that did not stick. It is NOT retried: the
+ * live key's rule is no retries (maxRetries 0, no loops).
  */
-async function runScenarioOnce(scenario: LiveScenario, extraFlags: readonly string[]): Promise<PathRun> {
-  const first = await runScenario(scenario, extraFlags);
-  if (first.error !== NO_CARD || live.capped) return first;
-  const second = await runScenario(scenario, extraFlags);
-  return { ...second, calls: first.calls + second.calls, noCardRetried: true };
-}
-
 async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]): Promise<PathRun> {
   for (const key of Object.keys(store) as (keyof FakeStore)[]) store[key] = [];
   store.form_instances = new JoiningRows() as never;
@@ -658,7 +649,7 @@ function writeResults(): void {
     const editTurns = oldPath.turns.filter((turn) => turn.said !== "(Create)").slice(1);
     const edited = oldPath.instanceId ? `${editTurns.filter((turn) => Object.keys(turn.diff).length > 0).length}/${editTurns.length}` : "—";
     lines.push(
-      `| ${id} | ${created} | ${edited} | ${cell(oldPath.error === NO_CARD ? `NO CARD at T1${oldPath.noCardRetried ? " (after one retry)" : ""}` : oldPath.error ? `ERROR ${oldPath.error}` : `${oldPath.noCardRetried ? "(T1 retried once: no card the first time) " : ""}${oldPath.reply}`)} | ${cell(changed || "—")} | ${cell(card)} | ${oldPath.ms} | ${oldPath.calls} (${oldPath.kinds.draft}/${oldPath.kinds.revision}) | ${fresh} |`,
+      `| ${id} | ${created} | ${edited} | ${cell(oldPath.error === NO_CARD ? "NO CARD at T1" : oldPath.error ? `ERROR ${oldPath.error}` : oldPath.reply)} | ${cell(changed || "—")} | ${cell(card)} | ${oldPath.ms} | ${oldPath.calls} (${oldPath.kinds.draft}/${oldPath.kinds.revision}) | ${fresh} |`,
     );
   }
   writeFileSync(`${base}.md`, `${lines.join("\n")}\n`);
@@ -707,8 +698,8 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
   it("every scenario through the real chat route, old path (and the new path with LIVE_NEW_PATH=1)", async () => {
     for (const scenario of scenarios()) {
       if (live.capped) break;
-      const oldPath = await runScenarioOnce(scenario, []);
-      const newPath = process.env.LIVE_NEW_PATH === "1" && !live.capped ? await runScenarioOnce(scenario, NEW_PATH_FLAGS) : null;
+      const oldPath = await runScenario(scenario, []);
+      const newPath = process.env.LIVE_NEW_PATH === "1" && !live.capped ? await runScenario(scenario, NEW_PATH_FLAGS) : null;
       results.push({ id: scenario.id, oldPath, newPath });
     }
     if (!DRY) return;
