@@ -1,5 +1,5 @@
 import { PRODUCTION_SALONS } from "@/data/salons";
-import { typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, typedNameProceedsEnabled } from "@/lib/config/chat-quality-flags";
 import { readCaPolicy } from "@/lib/forms/ca-policy";
 import {
   displayName,
@@ -11,6 +11,7 @@ import { isDateAnswerWords } from "@/lib/forms/incident-dates";
 import { withKeptTypedNames } from "@/lib/forms/kept-typed-names";
 import { supportsInlineDraft } from "@/lib/forms/inline-draft";
 import { readEmployeeMentions } from "@/lib/forms/proposal";
+import { rosterShaped } from "@/lib/forms/roster-shape";
 import { readSalonMentions, rosterSalonName } from "@/lib/forms/salon-mention";
 import type { ChatFormProposal } from "@/types";
 import type { AskResponse } from "./types";
@@ -264,6 +265,8 @@ function gateMentions(
       continue;
     }
     if (isSalonPhrase(name)) continue;
+    // FORM_NAME_FROM_ROSTER_ENABLED: "Club Close", "Under" (Pau, 4 Nov 2026) are shaped like nobody on the roster; not unmatched people.
+    if (formNameFromRosterEnabled() && !rosterShaped(name, roster)) continue;
     // The typed name stays in the question. The reply says Woven does not have it.
     unmatched.push(name);
   }

@@ -2411,3 +2411,21 @@ export function chatGlossaryEnabled(): boolean {
 export function caSalesPolicyEnabled(): boolean {
   return envFlag("CA_SALES_POLICY_ENABLED");
 }
+
+/**
+ * Step 5, names from the roster: first piece, the overnight scan's sf-s19
+ * "metrics read as people". A metric is never read as a person (Pau, 4 Nov
+ * 2026: "I need a corrective action verbal for <name>. This is for Under
+ * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."). With a
+ * roster, a name candidate that matches nobody exactly or closely, and is not
+ * shaped like anyone on the roster (`forms/roster-shape.ts`: a 2+ word
+ * candidate whose first word is nobody's first name, one word that is nobody's
+ * first or last name), is not put in the grounding step's unmatched list; with
+ * the person guard's roster read this turn the name reader drops it too, so it
+ * is never the card's employee (`forms/answer-not-a-name.ts`). Needs
+ * CA_SALES_POLICY_ENABLED: off unless both are on (the sales policy is what
+ * takes a stated shortfall like this one to the form). Off, as before.
+ */
+export function formNameFromRosterEnabled(): boolean {
+  return envFlag("FORM_NAME_FROM_ROSTER_ENABLED") && caSalesPolicyEnabled();
+}

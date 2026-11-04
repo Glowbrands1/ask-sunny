@@ -1,8 +1,15 @@
-import { answerNotANameEnabled, dateAnswerAppliedEnabled, exitTermsNotNamesEnabled, streetAddressNotANameEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  answerNotANameEnabled,
+  dateAnswerAppliedEnabled,
+  exitTermsNotNamesEnabled,
+  formNameFromRosterEnabled,
+  streetAddressNotANameEnabled,
+} from "@/lib/config/chat-quality-flags";
 
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
-import { notAPerson } from "./person-guard";
+import { notAPerson, personRosterNames } from "./person-guard";
+import { couldBeOnRoster } from "./roster-shape";
 import { isPayrollWords } from "./payroll-words";
 
 /*
@@ -56,8 +63,24 @@ export function namesSomebody(name: string): boolean {
   if (isExitTerms(name)) return false;
   // PERSON_GUARD_ENABLED: one answer for every reader — see `person-guard.ts`.
   if (notAPerson(name)) return false;
+  if (isShapedLikeNobody(name)) return false;
   if (!answerNotANameEnabled()) return true;
   return !isPayrollWords(name) && !isDateAnswer(name);
+}
+
+/**
+ * FORM_NAME_FROM_ROSTER_ENABLED (Pau, 4 Nov 2026; sf-s19: "… for Under
+ * Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %."): with
+ * the actor's roster read this turn (PERSON_GUARD_ENABLED enters it), a
+ * candidate that matches nobody on it, closely or exactly, and is shaped like
+ * nobody on it ("Club Close", "Under") is not a name. See `roster-shape.ts`.
+ * Off, or with no roster, every candidate is kept as before.
+ */
+function isShapedLikeNobody(name: string): boolean {
+  if (!formNameFromRosterEnabled()) return false;
+  const roster = personRosterNames();
+  if (!roster || roster.length === 0) return false;
+  return !couldBeOnRoster(name, roster);
 }
 
 /**
