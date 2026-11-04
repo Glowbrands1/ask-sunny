@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const { readCaPolicy } = await import("./ca-policy");
-const { conductHasReason, withoutUnreasonedConduct } = await import("./ca-conduct-reason");
+const { conductHasReason, readOffenseBasis, withoutUnreasonedConduct } = await import("./ca-conduct-reason");
 
 /*
  * Pau, 4 Nov 2026 (16:50 UTC): a cleaning Corrective Action does not cite the
@@ -55,5 +55,24 @@ describe("a Standards of Conduct tick needs a reason in the manager's words (CA_
   it("off: nothing changes", () => {
     flag(false);
     expect(withoutUnreasonedConduct({ draft: ticked(["standards_of_conduct"]), reading: readCaPolicy(BATHROOMS), stated: false, offered: OFFERED, notes: BATHROOMS })).toBeNull();
+  });
+
+  it("the drafting model's offense_basis: sales, MSB or conduct keep it; upkeep, other or none move it (Pau: wrong items keeps the Standards of Conduct)", () => {
+    flag(true);
+    const WRONG_ITEMS = "create a corrective action for Halloran Sweetbriar for ringing up the wrong items on a guest's order";
+    const reading = readCaPolicy(WRONG_ITEMS);
+    for (const basis of ["sales", "msb", "conduct"] as const) {
+      expect(withoutUnreasonedConduct({ draft: ticked(["standards_of_conduct"]), reading, stated: false, offered: OFFERED, notes: WRONG_ITEMS, basis }), basis).toBeNull();
+    }
+    for (const basis of ["upkeep_or_task", "other", null] as const) {
+      expect(withoutUnreasonedConduct({ draft: ticked(["standards_of_conduct"]), reading: readCaPolicy(BATHROOMS), stated: false, offered: OFFERED, notes: BATHROOMS, basis })?.checked.offense_type, String(basis)).toEqual(["other"]);
+    }
+  });
+
+  it("readOffenseBasis: only the listed values, else null", () => {
+    expect(readOffenseBasis({ offense_basis: "sales" })).toBe("sales");
+    expect(readOffenseBasis({ offense_basis: "cleaning" })).toBeNull();
+    expect(readOffenseBasis({})).toBeNull();
+    expect(readOffenseBasis(null)).toBeNull();
   });
 });

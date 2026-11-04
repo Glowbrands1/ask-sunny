@@ -1,5 +1,7 @@
 import { expect, vi } from "vitest";
 
+import { caSalesPolicyEnabled } from "@/lib/config/chat-quality-flags";
+
 import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext } from "./cases";
 
 /**
@@ -47,9 +49,9 @@ function start(t: T) {
   return t.thread();
 }
 
-/** The model ticks the Standards of Conduct, as Haiku did live. */
-async function draftTickingConduct(t: T, thread: ReturnType<T["thread"]>, observation: string) {
-  t.draftWrites({ observation: `Observed:\n${observation}` }, { offense_type: ["standards_of_conduct"] });
+/** The model ticks the Standards of Conduct, as Haiku did live, and says what the account is about (`offense_basis`; none: as before the field). */
+async function draftTickingConduct(t: T, thread: ReturnType<T["thread"]>, observation: string, basis?: string) {
+  t.draftWrites({ observation: `Observed:\n${observation}` }, { offense_type: ["standards_of_conduct"] }, basis ? { offense_basis: basis } : undefined);
   const id = await thread.create();
   return { values: t.values(id), checked: t.checked(id) };
 }
@@ -72,7 +74,7 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
       const thread = start(t);
       await thread.say("make a corrective action for Halloran Sweetbriar, the tanning beds were left dirty at close");
       expect(thread.proposal, "no CA card").toMatchObject({ templateKey: "dpoa", employeeName: "Halloran Sweetbriar" });
-      const saved = await draftTickingConduct(t, thread, "The tanning beds were left dirty at close.");
+      const saved = await draftTickingConduct(t, thread, "The tanning beds were left dirty at close.", "upkeep_or_task");
       citesNoConduct(saved);
       expect(saved.values.policy_violated ?? "", "Policy Violated is not the manager's account").toMatch(/tanning beds were left dirty at close/i);
     },
@@ -87,6 +89,7 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
       const thread = start(t);
       await thread.say("make a corrective action for Halloran Sweetbriar, he did not complete daily cleaning duties");
       expect(thread.proposal, "no CA card").toMatchObject({ templateKey: "dpoa", employeeName: "Halloran Sweetbriar" });
+      // No offense_basis: the guard as before the field.
       citesNoConduct(await draftTickingConduct(t, thread, "Halloran Sweetbriar did not complete the daily cleaning duties."));
     },
   },
@@ -114,7 +117,7 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
     async run(t) {
       const thread = start(t);
       await thread.say("MSB CA for Mireille Duskwater for underperformance in the month of October");
-      const saved = await draftTickingConduct(t, thread, "Mireille Duskwater did not perform the Must See Behaviors in October.");
+      const saved = await draftTickingConduct(t, thread, "Mireille Duskwater did not perform the Must See Behaviors in October.", "msb");
       expect(saved.checked.offense_type ?? [], "the MSB Standards of Conduct was unticked").toContain("standards_of_conduct");
       expect(saved.values.policy_violated ?? "", "Policy Violated").toMatch(/standards of conduct/i);
     },
@@ -133,6 +136,50 @@ export const NOV4_CA_CLEANING_CASES: ReplayCase[] = [
       expect(t.checked(id).offense_type ?? [], "Attendance Policy is not ticked").toContain("attendance_policy");
       expect(t.checked(id).offense_type ?? [], "Other was ticked").not.toContain("other");
       expect(t.values(id).policy_violated ?? "", "Policy Violated").toMatch(/^Attendance Policy/);
+    },
+  },
+  {
+    id: "nov4-cleaning-wrong-items-keeps-conduct",
+    title: "\"rang up the wrong items\": the model's sales basis keeps the Standards of Conduct (Pau, 4 Nov 2026)",
+    report: `${REPORT}: wrong items keeps the Standards of Conduct`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      const thread = start(t);
+      await thread.say("create a corrective action for Halloran Sweetbriar for ringing up the wrong items on a guest's order");
+      const saved = await draftTickingConduct(t, thread, "Halloran Sweetbriar rang up the wrong items on a guest's order.", "sales");
+      expect(saved.checked.offense_type ?? [], "the Standards of Conduct was unticked").toContain("standards_of_conduct");
+      expect(saved.values.policy_violated ?? "", "Policy Violated").toMatch(/standards of conduct/i);
+    },
+  },
+  {
+    id: "nov4-cleaning-basis-upkeep-duties",
+    title: "\"did not complete daily cleaning duties\" with the model's upkeep basis: Other",
+    report: `${REPORT}: Pau's wording, with offense_basis`,
+    status: { open: "with production's flags the task reading ticks and cites the Standards of Conduct" },
+    fixFlags: [FLAG],
+    async run(t) {
+      const thread = start(t);
+      await thread.say("make a corrective action for Halloran Sweetbriar, he did not complete daily cleaning duties");
+      citesNoConduct(await draftTickingConduct(t, thread, "Halloran Sweetbriar did not complete the daily cleaning duties.", "upkeep_or_task"));
+    },
+  },
+  {
+    id: "nov4-cleaning-offense-basis-only-with-flag",
+    title: "the draft tool carries the optional offense_basis only with CA_SALES_POLICY_ENABLED on; off, the tool is as before",
+    report: `${REPORT}: QA's condition, flag off byte-identical`,
+    status: "fixed",
+    fixFlags: [FLAG],
+    async run(t) {
+      const thread = start(t);
+      await thread.say("make a corrective action for Halloran Sweetbriar, the tanning beds were left dirty at close");
+      await draftTickingConduct(t, thread, "The tanning beds were left dirty at close.");
+      const tools = t.draftTools();
+      expect(tools.length, "no draft call").toBeGreaterThan(0);
+      for (const sent of tools) {
+        if (caSalesPolicyEnabled()) expect(sent, "the tool has no offense_basis").toContain("\"offense_basis\"");
+        else expect(sent, "the tool carries offense_basis with the flag off").not.toContain("offense_basis");
+      }
     },
   },
 ];
