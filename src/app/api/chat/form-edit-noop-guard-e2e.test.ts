@@ -403,12 +403,18 @@ describe(`FORM_EDIT_NOOP_GUARD_ENABLED: the overnight scan's sf-s11, "${SF_S11_R
     expect(reply.content).toBe(NOTHING);
   });
 
-  it("the request set into an empty line (Other) is refused the same way", async () => {
+  /*
+   * Moved on purpose (Port from Ask Bubbles 50eb26da, #429): Corrective Action revision 8
+   * (#512) removed the Other write-in (`other_offense`). The same proof on an empty line
+   * revision 8 still has and the tool may write: Prior Actions, empty after the draft.
+   */
+  it("the request set into an empty line (Prior Actions) is refused the same way", async () => {
     const thread = await janeDraft();
-    model.next = { text: "Updated the form.", tool: { ops: [{ op: "set", field: "other_offense", value: `${SF_S11_REQUEST}.` }] } };
+    expect(values(thread.id).prior_actions ?? "", "Prior Actions is empty after the draft").toBe("");
+    model.next = { text: "Updated the form.", tool: { ops: [{ op: "set", field: "prior_actions", value: `${SF_S11_REQUEST}.` }] } };
     await thread.say(SF_S11_REQUEST);
-    expect(values(thread.id).other_offense ?? "").toBe("");
-    expect(await lastTrace()).toMatchObject({ handoff: "refused", refused: [{ key: "other_offense", reason: "copies_message" }] });
+    expect(values(thread.id).prior_actions ?? "").toBe("");
+    expect(await lastTrace()).toMatchObject({ handoff: "refused", refused: [{ key: "prior_actions", reason: "copies_message" }] });
   });
 });
 
@@ -424,16 +430,25 @@ describe("FORM_EDIT_NOOP_GUARD_ENABLED: the reply after an edit is the saved dif
     expect(model.revisionCalls).toBe(0);
   });
 
+  /*
+   * Moved on purpose (Port from Ask Bubbles 50eb26da, #429): revision 8 (#512) has no
+   * Tardiness or Absenteeism box and no Other write-in. The same proof on revision 8's
+   * fields: a tick (Other) shows its option's label, and two changes (an append and a tick)
+   * are two lines. The wording names no policy and no warning level, so the turn stays on
+   * the edit tool.
+   */
   it("a tick shows the option's label; two changes are two lines", async () => {
     const thread = await janeDraft();
     model.next = {
       text: "Done.",
-      tool: { ops: [{ op: "set", field: "offense_type", value: ["tardiness", "absenteeism"] }, { op: "set", field: "other_offense", value: "Late to open" }] },
+      tool: { ops: [{ op: "set", field: "offense_type", value: ["attendance_policy", "other"] }, { op: "append", field: "observation", value: "She was also late on Tuesday." }] },
     };
-    // This app's draft already ticks Tardiness/Leaving Early (its Late Opening reading): the tick added is Absenteeism.
-    const reply = await thread.say("mark the offense type as tardiness and absenteeism and put Late to open under other");
+    // This app's draft already ticks Attendance Policy (its Late Opening reading): the tick added is Other.
+    const reply = await thread.say("tick Other for the offense and add that she was also late on Tuesday");
     // In the form's order (the saved rows, then new keys).
-    expect(reply.content).toBe("Updated: Type of Offense: Tardiness/Leaving Early, Absenteeism\nUpdated: Other: Late to open");
+    expect(reply.content).toBe(
+      "Updated: Observation of Offense: Observed: Jane Doe was late to open on October 20, 2026. Expectation: Jane is…\nUpdated: Type of Offense: Attendance Policy, Other",
+    );
   });
 
   it('a clear shows "(cleared)"', async () => {
