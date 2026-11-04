@@ -259,4 +259,26 @@ export const NOV4_METRICS_NOT_PEOPLE_CASES: ReplayCase[] = [
       if (drafting) expect(drafting, "the reply drafts for a name the card does not hold").toBe(thread.proposal?.employeeName);
     },
   },
+  {
+    /*
+     * Negative control: the same message for a name with "One" in it that is
+     * NOT on the roster. The grounding step already leaves it off the card and
+     * the reply asks who (it never drafts "for **<name>**" over an empty
+     * Employee) — with production's flags and with the keeper flag on.
+     */
+    id: "nov4-qa-off-roster-name-with-one",
+    title: "QA 4 Nov: the same message for a name ending in \"One\" that is on no roster: a card with no employee never says it drafts for that name; it asks who",
+    report: `QA, 4 Nov 2026: "I need a corrective action verbal for <QA test account>. …" → "I'll draft … for <name>", card Employee empty`,
+    status: "fixed",
+    fixFlags: ["KEEP_ROSTER_EXACT_NAME_ENABLED", SALES, GLOSSARY],
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say(say("QA Probe XZT One"));
+      if (!thread.proposal) return; // CA_SALES_POLICY_ENABLED off: the metric-only answer, no card.
+      expect(thread.proposal, `no card:\n${reply.content}`).toBeTruthy();
+      if (thread.proposal?.employeeName) return;
+      expect(reply.content, `the reply drafts for a name the card does not hold:\n${reply.content}`).not.toMatch(/\*\*QA Probe XZT One\*\*/);
+      expect(reply.content, `a card with no employee does not ask who:\n${reply.content}`).toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
+    },
+  },
 ];
