@@ -2393,3 +2393,21 @@ export function formEditToolInStreamEnabled(): boolean {
 export function chatGlossaryEnabled(): boolean {
   return envFlag("CHAT_GLOSSARY_ENABLED");
 }
+
+/**
+ * Sales and MSB corrective actions cite the Standards of Conduct (client
+ * request relayed by Pau, 4 Nov 2026; ported from Ask Bubbles #422, same flag
+ * in both apps). A Corrective Action whose account reads as the Under
+ * Performance offense type (results against a sales or performance target, the
+ * reading `ca-policy.ts` already makes) or uses a term from the approved chat
+ * glossary (MSB, Must See Behaviors) is read as the Standards of Conduct: the
+ * card says so, the draft ticks that box and Direct policy cites the manual's
+ * section by heading and page. The drafting model is also told so, in one
+ * added line. The glossary is `ai/chat-glossary.ts`, read through
+ * `foldsToGlossaryTerm` (which ignores CHAT_GLOSSARY_ENABLED, as in Ask
+ * Bubbles). Off, every reading, card line, prompt and draft is byte for byte as before.
+ * See `forms/ca-sales-policy.ts`.
+ */
+export function caSalesPolicyEnabled(): boolean {
+  return envFlag("CA_SALES_POLICY_ENABLED");
+}
