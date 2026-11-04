@@ -2425,7 +2425,11 @@ export function caSalesPolicyEnabled(): boolean {
  * last name) is not put in the grounding step's unmatched list; with the
  * person guard's roster read this turn the name reader drops it too, so it is
  * never the card's employee (`forms/answer-not-a-name.ts`). A message that
- * names nobody on the roster is read as before.
+ * names nobody on the roster is read as before, with one exception (QA for
+ * Pau, 4 Nov 2026): one word typed all in lowercase that is nobody's first,
+ * preferred or last name on the roster is never the employee ("CA for under
+ * performance on Club Close % and Spa %" made the card "for **under**"); the
+ * reply asks who the form is for.
  *
  * Needs CA_SALES_POLICY_ENABLED: off unless both are on. Without the sales
  * policy a message like Pau's is answered as metric-only (no card); the sales

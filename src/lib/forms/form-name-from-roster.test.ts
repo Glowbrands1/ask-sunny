@@ -6,7 +6,7 @@ import { formNameFromRosterEnabled } from "@/lib/config/chat-quality-flags";
 import { namesSomebody } from "./answer-not-a-name";
 import { installPersonRoster } from "./person-guard";
 import { readEmployeeMentions } from "./proposal";
-import { couldBeOnRoster, installRosterAnchor, rosterShaped } from "./roster-shape";
+import { couldBeOnRoster, installRosterAnchor, lowercaseNobody, rosterShaped } from "./roster-shape";
 
 /**
  * ============================================================================
@@ -197,3 +197,45 @@ describe("the name reader, with the person guard's roster", () => {
     expect(namesSomebody("Club Close")).toBe(true);
   });
 });
+
+/*
+ * APPROVED (QA for Pau, 4 Nov 2026): "CA for under performance on Club Close %
+ * and Spa %" with CA_SALES_POLICY_ENABLED on made the card "for **under**".
+ * One word typed all in lowercase that is nobody's first, preferred or last
+ * name on the roster is never the employee, beside a roster name or not.
+ */
+describe("a lowercase word that is nobody on the roster", () => {
+  it("lowercaseNobody: how it was typed and the roster only", () => {
+    expect(lowercaseNobody("under", NAMES)).toBe(true);
+    expect(lowercaseNobody("perpetua", NAMES)).toBe(false);
+    expect(lowercaseNobody("thornquist", NAMES)).toBe(false);
+    expect(lowercaseNobody("izzy", NAMES)).toBe(false);
+    expect(lowercaseNobody("Under", NAMES)).toBe(false);
+    expect(lowercaseNobody("corin bellweather", NAMES)).toBe(false);
+    expect(lowercaseNobody("under", [])).toBe(false);
+  });
+
+  it("off (main): \"under\" is the one name the reader takes", () => {
+    process.env.PERSON_GUARD_ENABLED = "true";
+    installPersonRoster(() => NAMES);
+    expect(namesSomebody("under")).toBe(true);
+    expect(readEmployeeMentions("CA for under performance on Club Close % and Spa %").names).toContain("under");
+  });
+
+  it("on: \"under\" is not a name, with no roster name in the message; a lowercase roster first name still is", () => {
+    process.env.PERSON_GUARD_ENABLED = "true";
+    installPersonRoster(() => NAMES);
+    on();
+    installRosterAnchor(() => false);
+    expect(namesSomebody("under")).toBe(false);
+    expect(readEmployeeMentions("CA for under performance on Club Close % and Spa %").names).not.toContain("under");
+    expect(namesSomebody("perpetua")).toBe(true);
+  });
+
+  it("on, with no roster: kept as before", () => {
+    process.env.PERSON_GUARD_ENABLED = "true";
+    on();
+    expect(namesSomebody("under")).toBe(true);
+  });
+});
+

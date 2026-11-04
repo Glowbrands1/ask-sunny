@@ -9,7 +9,7 @@ import {
 import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { notAPerson, personRosterNames } from "./person-guard";
-import { couldBeOnRoster, rosterAnchored } from "./roster-shape";
+import { couldBeOnRoster, lowercaseNobody, rosterAnchored } from "./roster-shape";
 import { isPayrollWords } from "./payroll-words";
 
 /*
@@ -64,6 +64,7 @@ export function namesSomebody(name: string): boolean {
   // PERSON_GUARD_ENABLED: one answer for every reader — see `person-guard.ts`.
   if (notAPerson(name)) return false;
   if (isShapedLikeNobody(name)) return false;
+  if (isLowercaseNobody(name)) return false;
   if (!answerNotANameEnabled()) return true;
   return !isPayrollWords(name) && !isDateAnswer(name);
 }
@@ -84,6 +85,21 @@ function isShapedLikeNobody(name: string): boolean {
   const roster = personRosterNames();
   if (!roster || roster.length === 0) return false;
   return !couldBeOnRoster(name, roster);
+}
+
+/**
+ * FORM_NAME_FROM_ROSTER_ENABLED (QA for Pau, 4 Nov 2026): "CA for under
+ * performance on Club Close % and Spa %" made the card "for **under**". With
+ * the actor's roster read this turn, one word typed all in lowercase that is
+ * nobody's first, preferred or last name on it is not a name, beside a roster
+ * name or not; the reply then asks who the form is for. See
+ * `roster-shape.ts` `lowercaseNobody`. Off, or with no roster, as before.
+ */
+function isLowercaseNobody(name: string): boolean {
+  if (!formNameFromRosterEnabled()) return false;
+  const roster = personRosterNames();
+  if (!roster || roster.length === 0) return false;
+  return lowercaseNobody(name, roster);
 }
 
 /**

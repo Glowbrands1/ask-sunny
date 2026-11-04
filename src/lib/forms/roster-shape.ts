@@ -84,3 +84,21 @@ export function anchorsOnRoster(name: string, roster: readonly RosterEmployee[])
   const match = matchEmployeeName(name, roster);
   return match.kind === "exact" || match.kind === "confirm";
 }
+
+/* --------------------------------------------- a lowercase word, nobody -- */
+
+/**
+ * FORM_NAME_FROM_ROSTER_ENABLED (QA for Pau, 4 Nov 2026): "CA for under
+ * performance on Club Close % and Spa %" made the card "for **under**". One
+ * word, typed all in lowercase, that is nobody's first, preferred or last
+ * name on the roster is never the employee. How it was typed and the roster
+ * only: "perpetua" for Perpetua Thornquist is still somebody; "Under" with a
+ * capital is left to the rules above.
+ */
+export function lowercaseNobody(name: string, names: readonly string[]): boolean {
+  const typed = name.trim();
+  if (!typed || /\s/.test(typed) || !/\p{L}/u.test(typed) || typed !== typed.toLowerCase()) return false;
+  const rows = rowsFromNames(names);
+  if (rows.length === 0) return false;
+  return !rosterShaped(typed, rows);
+}
