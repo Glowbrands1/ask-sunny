@@ -87,6 +87,14 @@ describe("the message's shape, roster-free", () => {
     // A capital after the sentence ends is not a surname.
     expect(typedWithOtherSurname("perpetua", "Thornquist", [say("perpetua")])).toBe(false);
   });
+
+  it("typedWithOtherSurname: a last initial that starts the surname is the surname (QA, 4 Nov 2026, \"Club Close\" live)", () => {
+    on();
+    expect(typedWithOtherSurname("perpetua", "Thornquist", [say("Perpetua T")])).toBe(false);
+    expect(typedWithOtherSurname("perpetua", "Thornquist", [say("Perpetua T.")])).toBe(false);
+    // Another initial is still another surname.
+    expect(typedWithOtherSurname("perpetua", "Thornquist", [say("Perpetua K")])).toBe(true);
+  });
 });
 
 describe("the name readers, with the turn's message", () => {

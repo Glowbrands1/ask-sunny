@@ -820,6 +820,63 @@ export const OFF_ROSTER_SCENARIO: CriteriaScenario = {
   },
 };
 
+/* ------------------------- a roster person typed short, beside the metrics -- */
+
+/*
+ * QA, 4 NOV 2026, 19:21 UTC (CA_SALES_POLICY_ENABLED rolled back in this app):
+ * live, a REAL roster employee, Pau's message 1, CA_SALES on and FORM_NAME
+ * off, made a card whose Employee was "Club Close" (conv_mw2i2avm22egfhe). In
+ * the replay harness the same happens when a roster person is typed by first
+ * name only or by first name and last initial; a full name gets the person's
+ * card. So the live script runs Pau's message 1 with mgr-1's roster person
+ * typed both short ways.
+ *
+ *   no-metric-person  as above;
+ *   roster-person     the card's employee is the roster person, or the reply
+ *                     asks "Is this for <them>?" — never a metric, never the
+ *                     short name alone (FAIL records the card and any
+ *                     close-match note).
+ *
+ * The person is mgr-1's invented roster person; nobody else on MANAGER_ROSTER
+ * shares the first name.
+ */
+
+export function rosterPersonCriterion(person: DirectoryRow): LiveCriterion {
+  const name = fullName(person);
+  return {
+    name: "roster-person",
+    check: (run) => {
+      if (sameName(run.card?.employeeName, name)) return null;
+      if (run.replies.some((reply) => [...reply.matchAll(/is this for ([^?\n]*)\?/gi)].some((match) => sameName(match[1], name)))) return null;
+      const note = (run.card as { wovenCloseMatch?: string } | null)?.wovenCloseMatch;
+      return `no card for ${name} and no "Is this for ${name}?" (card: ${run.card ? `${run.card.templateKey ?? "?"} / ${run.card.employeeName ?? "—"}${note ? `, note "${note}"` : ""}` : "none"})`;
+    },
+  };
+}
+
+/** How the roster person is typed: first name only, first name and last initial. */
+export const ROSTER_SHORT_SHAPES: readonly { readonly id: string; readonly typed: (person: DirectoryRow) => string }[] = [
+  { id: "first-name", typed: (person) => person.firstName },
+  { id: "first-initial", typed: (person) => `${person.firstName} ${person.lastName.charAt(0)}` },
+];
+
+/** LIVE_SCENARIOS=managers, after the off-roster case: mgr-1's roster person typed short. */
+export const ROSTER_SHORT_SCENARIOS: readonly CriteriaScenario[] = ROSTER_SHORT_SHAPES.map(({ id, typed }) => {
+  const person = MANAGER_CA_VERBAL;
+  const criteria = [NO_METRIC_PERSON, rosterPersonCriterion(person)];
+  return {
+    id: `mgr-1-roster-${id}`,
+    roster: MANAGER_ROSTER,
+    field: null,
+    steps: [{ say: `I need a corrective action verbal for ${typed(person)}. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.` }],
+    criteria,
+    expect: {
+      says: `typed "${typed(person)}": no metric shown as a person; a card for ${fullName(person)} or "Is this for ${fullName(person)}?"`,
+      check: (run) => all(...criteria.map((criterion) => criterion.check(run))),
+    },
+  };
+});
+
 const MANAGER_MESSAGE_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.map((message): CriteriaScenario => {
   if (message.id === "mgr-5-msb-soc" && message.person) {
     const criteria = msb5LiveCriteria(message.person);
@@ -850,7 +907,7 @@ const MANAGER_MESSAGE_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.
   };
 });
 
-export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = [...MANAGER_MESSAGE_SCENARIOS, OFF_ROSTER_SCENARIO];
+export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = [...MANAGER_MESSAGE_SCENARIOS, OFF_ROSTER_SCENARIO, ...ROSTER_SHORT_SCENARIOS];
 
 /** The stand-in draft for a manager message's Create (LIVE_DRY=1), with the Under Performance tick the flag turns into the Standards of Conduct. */
 export function managerDryScripts(): Record<string, DryScript> {
