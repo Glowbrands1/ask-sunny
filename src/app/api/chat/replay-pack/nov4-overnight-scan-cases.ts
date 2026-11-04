@@ -128,10 +128,9 @@ export const NOV4_OVERNIGHT_SCAN_CASES: readonly ReplayCase[] = [
     id: "nov4-scan-sf-s12-msb-not-a-person",
     title: "\"I need to make a corrective action for msb\" — MSB is Must See Behaviors (the reason), not a person: ask which employee, never save \"Msb\" as the name",
     report: `${REPORT}, sf-s12: "I need to make a corrective action for msb"`,
-    // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "\"msb\" is taken as the employee: the card is for \"Msb\" (\"I can create a Corrective Action Form for **msb**\"), awaiting the incident, and never asks which employee" },
-    // CHAT_GLOSSARY_ENABLED (default off; ported from Ask Bubbles, 40146f84): the approved abbreviation table; "msb" is never the employee, and the reply is the one existing question "Who is this form for? …".
-    fixFlags: ["CHAT_GLOSSARY_ENABLED"],
+    // Run 4 Nov 2026 (production flags): "msb" was taken as the employee ("I can create a Corrective Action Form for **msb**").
+    // Fixed by CHAT_GLOSSARY_ENABLED (the approved abbreviation table), on in production from 4 Nov 2026 (QA's flip; MSB meaning confirmed by Pau).
+    status: "fixed",
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("I need to make a corrective action for msb");
