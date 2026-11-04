@@ -649,9 +649,20 @@ const OFFENSE_BOX_LABEL: Record<string, string> = {
   company_policies: "Violation of Company Policies",
 };
 
-/** The box a section is cited under, as the CURRENT form labels it: a removed box is named as the one that replaced it. */
+/**
+ * The box a section is cited under, as the CURRENT form labels it: a removed
+ * box is named as the one that replaced it — except the Standards of
+ * Conduct. A specific section (Cell Phone, Visitors, Animals) once cited
+ * under Violation of Company Policies is ticked under the Standards of
+ * Conduct on revision 8, and Policy Violated says so (Pau, 4 Nov 2026); the
+ * chat names the section alone, never "under Standards of Conduct", which
+ * reads as citing the catch-all instead of it (District Manager feedback,
+ * 21 Oct 2026; eval b6).
+ */
 function currentBoxLabel(key: string): string | undefined {
-  return OFFENSE_BOX_LABEL[offeredOffenseKey(key, CURRENT_CA_OFFENSE_KEYS) ?? key];
+  const current = offeredOffenseKey(key, CURRENT_CA_OFFENSE_KEYS) ?? key;
+  if (current !== key && current === STANDARDS_OF_CONDUCT) return undefined;
+  return OFFENSE_BOX_LABEL[current];
 }
 
 function namedPolicyLine(named: NamedPolicyReading): string {

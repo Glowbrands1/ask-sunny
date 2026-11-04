@@ -255,6 +255,54 @@ describe("3. the assistant never offers a removed box", () => {
   });
 });
 
+describe("the chat card never cites the Standards of Conduct for a specific section (eval b6, revision 8)", () => {
+  const B6 = "create a verbal corrective action form for juniper halvorsrud. on 10-20-26 juniper was talking on her cell phone for over 30 minutes";
+
+  it("a described Cell Phone section is named alone, never \"under Standards of Conduct\"", () => {
+    const line = caPolicyProposalLine(readCaPolicy(B6), {
+      phrase: "cell phone",
+      lookup: "described",
+      heading: "Cell Phone/Smart Watch Policy",
+      page: 19,
+      offenseKey: "company_policies",
+    })!;
+    expect(line).toMatch(/Cell Phone\/Smart Watch Policy/);
+    expect(line).toMatch(/page 19/);
+    expect(line).not.toMatch(/Standards of Conduct/i);
+  });
+
+  it("a named Visitors section likewise; Late Opening still names its Attendance Policy box", () => {
+    const visitors = caPolicyProposalLine(readCaPolicy("violating visitors at work policy"), {
+      phrase: "visitors at work",
+      lookup: "found",
+      heading: "Visitors in the Workplace",
+      page: 30,
+      offenseKey: "company_policies",
+    })!;
+    expect(visitors).not.toMatch(/Standards of Conduct/i);
+    const late = caPolicyProposalLine(readCaPolicy("she opened the salon late"), {
+      phrase: "late opening",
+      lookup: "found",
+      heading: "Late Opening",
+      page: 15,
+      offenseKey: "tardiness",
+    })!;
+    expect(late).toMatch(/under \*\*Attendance Policy\*\*/);
+  });
+
+  it("the form itself still reads \"Standards of Conduct — Cell Phone/Smart Watch Policy\" (Pau, 4 Nov 2026)", () => {
+    expect(
+      offenseCategoryValue({
+        document: NEW,
+        variantKey: null,
+        checked: { offense_type: ["standards_of_conduct"] },
+        values: {},
+        sectionNames: boxSectionNames(["Cell Phone/Smart Watch Policy"], NEW_OFFERED),
+      }),
+    ).toBe("Standards of Conduct — Cell Phone/Smart Watch Policy");
+  });
+});
+
 describe("Ask Sunny: the Attendance Policy box is cited by section and page like the Tardiness box it replaced", () => {
   const LATE_OPENING = { heading: "Late Opening", page: 15 } as ManualSection;
   const ATTENDANCE = { heading: "Attendance", page: 14 } as ManualSection;
