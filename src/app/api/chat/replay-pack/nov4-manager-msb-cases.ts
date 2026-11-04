@@ -72,9 +72,10 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
     id: "nov4-mgr-2-msb-no-name",
     title: `"${byId("mgr-2-msb-no-name").text}" — asks once which employee; MSB is never a name`,
     report: `${REPORT}, #2`,
-    // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "\"msb\" is the employee: \"I can create a **Corrective Action Form** for **msb**\" (the card names \"Msb\"), and it says \"You haven't told me what happened yet\" instead of asking once which employee" },
-    fixFlags: ["CHAT_GLOSSARY_ENABLED"],
+    // Run 4 Nov 2026 (production flags): failed as below.
+    // Before CHAT_GLOSSARY_ENABLED was on in production (4 Nov 2026): OPEN, "msb" is the employee: "I can create a **Corrective Action Form** for **msb**" (the card names "Msb"), and it says "You haven't told me what happened yet" instead of asking once which employee
+    // Fixed by CHAT_GLOSSARY_ENABLED, on in production from 4 Nov 2026 (QA's flip; MSB meaning confirmed by Pau).
+    status: "fixed",
     run: (t) => runMessage(t, byId("mgr-2-msb-no-name")),
   },
   {
