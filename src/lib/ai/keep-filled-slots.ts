@@ -2,7 +2,7 @@ import { PRODUCTION_SALONS, salonById } from "@/data/salons";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { listIncidentDates, withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { lateOpenOn, withYearlessDatesWritten } from "@/lib/forms/late-open";
-import { matchEmployeeName } from "@/lib/forms/employee-match";
+import { matchEmployeeName, normalizeTypedName } from "@/lib/forms/employee-match";
 import { extractEmployeeNames, extractJobTitle } from "@/lib/forms/proposal";
 import { exitDateInWords, exitReady } from "@/lib/forms/exit-intake";
 import { readExitDetails } from "@/lib/forms/exit-details";
@@ -40,6 +40,7 @@ import {
   priorSentenceFixEnabled,
   cardObservationOwnRequestEnabled,
   observationNotPolicyNameEnabled,
+  keepRosterExactNameEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { namesOnlyAPolicy } from "@/lib/forms/person-guard";
 import { statedFormDate } from "@/lib/forms/incident-dates";
@@ -278,11 +279,32 @@ export function holdFilledSlots(input: {
       if (!content.includes(line)) content = content ? `${content}\n\n${line}` : line;
     }
   }
+  // KEEP_ROSTER_EXACT_NAME_ENABLED: a name the keeper took off the card is not drafted for in the reply; it asks who.
+  if (keepRosterExactNameEnabled() && proposal.employeeName && !next.employeeName) {
+    content = withDroppedNameAsked(content, proposal.employeeName);
+  }
   const same =
     content === input.response.content &&
     next === proposal &&
     citations.length === (input.response.citations ?? []).length;
   return same ? input.response : { ...input.response, content, formProposal: next, citations };
+}
+
+const ASK_WHO = "Who is this form for? Tell me the employee's full name.";
+
+/**
+ * KEEP_ROSTER_EXACT_NAME_ENABLED (QA, 4 Nov 2026): the reply was written from
+ * the name the keeper then took off the card ("I'll draft a Corrective Action
+ * Form for **<name>**" over an empty Employee). The reply no longer says it
+ * drafts for that name, and asks who the form is for, once.
+ */
+function withDroppedNameAsked(content: string, name: string): string {
+  const bold = `**${name.trim()}**`;
+  if (!content.includes(bold)) return content;
+  const escaped = bold.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let out = content.replace(new RegExp(String.raw`\s+for ${escaped}`, "g"), "").split(bold).join("the employee");
+  if (!/Who is this (?:\*\*[^*]+\*\* |form )?for\?/i.test(out)) out = `${out.trim()}\n\n${ASK_WHO}`;
+  return out;
 }
 
 function emptySlotQuestions(proposal: ChatFormProposal): string[] {
@@ -320,6 +342,9 @@ function keptName(
   people: readonly GroundedPerson[],
   replies: readonly string[] = [],
 ): string | null {
+  // KEEP_ROSTER_EXACT_NAME_ENABLED: an exact roster name is never a fragment (a roster name ending in "One").
+  const exact = (name: string | null | undefined): string | null => (keepRosterExactNameEnabled() ? rosterSpelling(name, people) : null);
+  const fragment = (name: string | null | undefined): boolean => isFragment(name) && exact(name) === null;
   const question = turns[turns.length - 1] ?? "";
   // NOT_A_NAME_GUARD_ENABLED: the previous card's name does not carry forward
   // when it came from a reply — a reply in the window says it other than as
@@ -330,17 +355,17 @@ function keptName(
   }
   const stated = newestName(turns);
   let picked: string | null = null;
-  if (previous && !isFragment(previous)) {
+  if (previous && !fragment(previous)) {
     const longer = longerName(question, previous);
     picked = longer ?? (renamesEmployee(question, previous) ? stated ?? current : previous);
-  } else if (!isFragment(current)) {
+  } else if (!fragment(current)) {
     const longer = stated && extendsName(stated, current!) ? stated : null;
     picked = longer ?? current;
   } else {
     picked = stated;
   }
-  if (!picked || isFragment(picked)) return !isFragment(current) ? spell(current, people) : null;
-  return spell(picked, people);
+  if (!picked || fragment(picked)) return !fragment(current) ? (exact(current) ?? spell(current, people)) : null;
+  return exact(picked) ?? spell(picked, people);
 }
 
 /** The name is in the manager's words, outside a bulleted or priced offer list. */
@@ -405,6 +430,23 @@ function newestName(turns: readonly string[]): string | null {
     // Two people in one turn is a choice. Picking the longer name filed the form for the wrong person.
     if (found.length > 1) return null;
     if (found.length === 1) return found[0]!;
+  }
+  return null;
+}
+
+/**
+ * KEEP_ROSTER_EXACT_NAME_ENABLED: the roster's spelling when the name is
+ * somebody's whole roster name (first or preferred, then last), else null.
+ * Whole names, not word by word: a first name of two words ("QA Probe") is one
+ * roster first name, which `matchEmployeeName` does not read as exact.
+ */
+function rosterSpelling(name: string | null | undefined, people: readonly GroundedPerson[]): string | null {
+  const typed = normalizeTypedName(name ?? "");
+  if (!typed) return null;
+  for (const person of people) {
+    for (const first of [person.firstName, person.preferredFirstName]) {
+      if (first?.trim() && normalizeTypedName(`${first} ${person.lastName}`) === typed) return `${first.trim()} ${person.lastName.trim()}`;
+    }
   }
   return null;
 }
