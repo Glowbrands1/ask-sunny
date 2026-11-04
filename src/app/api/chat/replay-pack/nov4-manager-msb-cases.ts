@@ -1,7 +1,7 @@
 import { expect, vi } from "vitest";
 
 import { KEARNEY, type ReplayCase, type ReplayContext } from "./cases";
-import { MANAGER_MESSAGES, MANAGER_ROSTER, managerCriteria, type LiveOutcome, type ManagerMessage } from "./nov4-live-regressions-scenarios";
+import { correctiveActionOffers, MANAGER_MESSAGES, MANAGER_ROSTER, managerCriteria, policyLine, type LiveOutcome, type ManagerMessage } from "./nov4-live-regressions-scenarios";
 
 /**
  * ============================================================================
@@ -56,6 +56,37 @@ async function runMessage(t: T, message: ManagerMessage): Promise<void> {
   expect(failed, `"${message.text}" fails ${failed.map((entry) => `${entry.name} (${entry.why})`).join("; ")}\n${reply.content}`).toEqual([]);
 }
 
+/*
+ * #5, PAU'S "ASKS ONCE, CARD AFTER YES" (4 Nov 2026, with the session that
+ * owns the Corrective Action work): the statement names no form, so turn 1
+ * makes no card and asks exactly once "Do you want a Corrective Action for
+ * <Name>?", mentioning the Standards of Conduct; turn 2, "yes", makes the
+ * Corrective Action card, and the card or its draft cites the Standards of
+ * Conduct with heading and page. MSB is never a name.
+ */
+async function runAsksOnceThenYes(t: T, message: ManagerMessage): Promise<void> {
+  const person = message.person!;
+  const name = `${person.firstName} ${person.lastName}`;
+  vi.setSystemTime(new Date("2026-11-04T15:30:00Z"));
+  t.directory(MANAGER_ROSTER);
+  t.as("salon_director", KEARNEY);
+  const thread = t.thread();
+  const first = await thread.say(message.text);
+  expect(thread.proposal ?? null, `turn 1 made a card:\n${first.content}`).toBeNull();
+  const offers = correctiveActionOffers(first.content, person);
+  expect(offers.length, `not exactly one "Do you want a Corrective Action for ${name}?":\n${first.content}`).toBe(1);
+  expect(offers[0], "the offer does not mention the Standards of Conduct").toMatch(/standards of conduct/i);
+  const second = await thread.say("yes");
+  expect(thread.proposal, `"yes" made no Corrective Action card for ${name}:\n${second.content}`).toMatchObject({ templateKey: "dpoa", employeeName: name });
+  expect(thread.proposal?.employeeName ?? "", "MSB is the name").not.toMatch(/msb|must see/i);
+  const onCard = /standards of conduct/i.test(policyLine(second.content)) && /\bp(?:age|\.)\s*\d+/i.test(policyLine(second.content));
+  t.draftWrites({ observation: `Observed:\n${name} did not follow the Must See Behaviors.` }, { offense_type: ["under_performance"] });
+  const values = t.values(await thread.create());
+  const onDraft = /standards of conduct/i.test(values.policy_language ?? "") && /\bp(?:age|\.)\s*\d+/i.test(values.policy_language ?? "");
+  expect(onCard || onDraft, `no Standards of Conduct with heading and page (card: "${policyLine(second.content)}", draft: "${values.policy_language ?? ""}")`).toBe(true);
+  expect(values.employee_name ?? "", "MSB is saved as the name").not.toMatch(/msb|must see/i);
+}
+
 const byId = (id: string): ManagerMessage => MANAGER_MESSAGES.find((message) => message.id === id)!;
 
 export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
@@ -97,11 +128,11 @@ export const NOV4_MANAGER_MSB_CASES: ReplayCase[] = [
   },
   {
     id: "nov4-mgr-5-msb-soc",
-    title: `"${byId("mgr-5-msb-soc").text}" — a card, MSB never a name, cites the Standards of Conduct`,
-    report: `${REPORT}, #5`,
+    title: `"${byId("mgr-5-msb-soc").text}" — asks once "Do you want a Corrective Action for …?" (Standards of Conduct); "yes" makes the card, citing the Standards of Conduct`,
+    report: `${REPORT}, #5 (Pau: asks once, card after yes)`,
     // Run 4 Nov 2026 (production flags): fails as below.
-    status: { open: "no card at all: the statement with no form named is answered as a policy question (the pack's stand-in answer), with production's flags and with CHAT_GLOSSARY_ENABLED and CA_SALES_POLICY_ENABLED on; neither flag makes it hold, so no fixFlags" },
-    // No fixFlags: with either flag or both on it still gets no card.
-    run: (t) => runMessage(t, byId("mgr-5-msb-soc")),
+    status: { open: "turn 1 is answered as a policy question (the pack's stand-in answer): no offer \"Do you want a Corrective Action for …?\", so \"yes\" makes no card" },
+    // No fixFlags yet: the CA session's pull request (claude/ca-sales-msb-cases) adds the offer behind CA_SALES_POLICY_ENABLED and adds the fixFlags when it merges.
+    run: (t) => runAsksOnceThenYes(t, byId("mgr-5-msb-soc")),
   },
 ];

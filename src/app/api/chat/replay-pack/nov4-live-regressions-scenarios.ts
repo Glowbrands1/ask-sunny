@@ -293,6 +293,10 @@ export interface LiveOutcome {
   /** Every saved checkbox value after Create, e.g. offense_type. */
   readonly checked: Readonly<Record<string, readonly string[]>>;
   readonly error: string | null;
+  /** The live script only: the card each chat turn proposed (null: none that turn), Create's turn excluded. */
+  readonly turnCards?: readonly ({ readonly templateKey: string | null; readonly employeeName: string | null } | null)[];
+  /** The live script only: LIVE_FLAGS, the flags on top of production's in this run. */
+  readonly flagsOn?: readonly string[];
 }
 
 /** A scenario's expected outcome: `check` returns null (PASS) or why it failed (FAIL). */
@@ -513,9 +517,12 @@ const MSB_AS_NAME = /msb|must see/i;
 const MSB_AS_PERSON = /\bfor \**msb\b|\bmsb\** (?:is not|isn'?t|was not|wasn'?t) (?:on|in)|find[^.\n]*\bmsb\b|\*\*msb\*\*/i;
 
 export interface LiveCriterion {
-  readonly name: "card" | "no-ask" | "msb-name" | "cites-soc";
+  /** The result column: card, no-ask, msb-name, cites-soc; #5's live turns add their own (see MSB5_LIVE_CRITERIA). */
+  readonly name: string;
   /** null: PASS; a string: FAIL, why; "n/a" is never returned (a criterion that does not apply is left out). */
   readonly check: (run: LiveOutcome) => string | null;
+  /** The live script only: whether the criterion applies to this run's flags (absent: always). */
+  readonly applies?: (flagsOn: readonly string[]) => boolean;
 }
 
 export interface ManagerMessage {
@@ -591,7 +598,105 @@ export interface CriteriaScenario extends CheckedScenario {
 }
 
 /** LIVE_SCENARIOS=managers: the five messages; a card message, then Create (the citation may only be on the draft). */
-export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.map((message) => {
+/*
+ * #5 IN THE LIVE SCRIPT (the session that owns the Corrective Action work, 4
+ * Nov 2026, behind CA_SALES_POLICY_ENABLED). The replay case for #5
+ * (`nov4-manager-msb-cases.ts`) keeps `managerCriteria`; only the live run
+ * has two turns, the message and then "yes", and then Create:
+ *
+ *   flag ON   t1-no-card     turn 1 makes no card;
+ *             t1-offer-once  turn 1 has exactly ONE offer that opens "Do you
+ *                            want a Corrective Action for <Name>?" and, in
+ *                            the same paragraph, mentions "yes" and the
+ *                            Standards of Conduct (matched by parts);
+ *             t2-card        after "yes", a Corrective Action card for <Name>;
+ *             t2-cites-soc   that card or its draft cites the Standards of
+ *                            Conduct with heading and page;
+ *   flag OFF  off-answer     turn 1 is a policy answer: no card, a reply;
+ *             off-no-offer   turn 1 makes no offer;
+ *   both      msb-name       MSB is never a name.
+ */
+export const MSB5_FLAG = "CA_SALES_POLICY_ENABLED";
+const msb5On = (flags: readonly string[]) => flags.includes(MSB5_FLAG);
+const msb5Off = (flags: readonly string[]) => !msb5On(flags);
+
+/** The offers in a reply: each paragraph holding "Do you want a Corrective Action for <Name>?" (full or first name, bold or not). */
+export function correctiveActionOffers(reply: string, person: DirectoryRow): string[] {
+  const name = `(?:${person.firstName} ${person.lastName}|${person.firstName})`;
+  const opener = new RegExp(`do you want a corrective action for \\**${name}\\**\\s*\\?`, "gi");
+  return reply.split(/\n\s*\n/).flatMap((paragraph) => (paragraph.match(opener) ?? []).map(() => paragraph));
+}
+
+export function msb5LiveCriteria(person: DirectoryRow): readonly LiveCriterion[] {
+  const name = fullName(person);
+  const turn = (run: LiveOutcome, index: number) => run.turnCards?.[index] ?? null;
+  return [
+    { name: "t1-no-card", applies: msb5On, check: (run) => (turn(run, 0) ? `turn 1 made a card (${turn(run, 0)!.templateKey ?? "?"} / ${turn(run, 0)!.employeeName ?? "—"})` : null) },
+    {
+      name: "t1-offer-once",
+      applies: msb5On,
+      check: (run) => {
+        const offers = correctiveActionOffers(run.replies[0] ?? "", person);
+        if (offers.length !== 1) return `${offers.length} offers "Do you want a Corrective Action for ${person.firstName}…?" (one expected)`;
+        return all(!/\byes\b/i.test(offers[0]!) && "the offer does not mention \"yes\"", !SOC.test(offers[0]!) && "the offer does not mention the Standards of Conduct");
+      },
+    },
+    {
+      name: "t2-card",
+      applies: msb5On,
+      check: (run) => {
+        const card = turn(run, 1);
+        return card?.templateKey === "dpoa" && card.employeeName === name ? null : `"yes" made no Corrective Action card for ${name} (card: ${card ? `${card.templateKey ?? "?"} / ${card.employeeName ?? "—"}` : "none"})`;
+      },
+    },
+    {
+      name: "t2-cites-soc",
+      applies: msb5On,
+      check: (run) => {
+        const line = policyLine(run.replies[1] ?? "");
+        const onCard = SOC.test(line) && PAGE.test(line);
+        const onDraft = SOC.test(run.saved.policy_language ?? "") && PAGE.test(run.saved.policy_language ?? "");
+        return onCard || onDraft ? null : `no Standards of Conduct with a page (card: "${line.slice(0, 80)}", draft: "${(run.saved.policy_language ?? "").slice(0, 80)}")`;
+      },
+    },
+    {
+      name: "off-answer",
+      applies: msb5Off,
+      check: (run) => all(turn(run, 0) !== null && "turn 1 made a card", !(run.replies[0] ?? "").trim() && `no answer${run.error ? ` (${run.error})` : ""}`),
+    },
+    { name: "off-no-offer", applies: msb5Off, check: (run) => (correctiveActionOffers(run.replies[0] ?? "", person).length ? "turn 1 offers a Corrective Action with the flag off" : null) },
+    {
+      name: "msb-name",
+      check: (run) =>
+        all(
+          (run.turnCards ?? [run.card]).some((card) => MSB_AS_NAME.test(card?.employeeName ?? "")) && "a card names MSB",
+          MSB_AS_NAME.test(run.saved.employee_name ?? "") && `"${run.saved.employee_name}" is saved as the employee`,
+          run.replies.some((reply) => MSB_AS_PERSON.test(reply)) && "a reply shows MSB as a person",
+        ),
+    },
+  ];
+}
+
+/** The criteria that apply to a run with these flags on top of production's. */
+export function applicableCriteria(criteria: readonly LiveCriterion[], flagsOn: readonly string[]): readonly LiveCriterion[] {
+  return criteria.filter((criterion) => !criterion.applies || criterion.applies(flagsOn));
+}
+
+export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.map((message): CriteriaScenario => {
+  if (message.id === "mgr-5-msb-soc" && message.person) {
+    const criteria = msb5LiveCriteria(message.person);
+    return {
+      id: message.id,
+      roster: MANAGER_ROSTER,
+      field: "policy_language",
+      steps: [{ say: message.text }, { say: "yes" }, { create: true }],
+      criteria,
+      expect: {
+        says: `${MSB5_FLAG} on: no card, one offer "Do you want a Corrective Action for ${message.person.firstName}…?" (yes, Standards of Conduct); "yes" → a CA card citing the Standards of Conduct with a page. Off: a policy answer, no offer. MSB never a name`,
+        check: (run) => all(...applicableCriteria(criteria, run.flagsOn ?? []).map((criterion) => criterion.check(run))),
+      },
+    };
+  }
   const criteria = managerCriteria(message);
   return {
     id: message.id,
