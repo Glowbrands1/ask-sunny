@@ -68,7 +68,16 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          expected outcome, written PASS or FAIL into the
  *                          results; a FAIL is recorded, it never fails the run.
  *                          managers: the five exact manager messages (Pau via
- *                          QA, 4 Nov), one PASS/FAIL column per criterion.
+ *                          QA, 4 Nov), one PASS/FAIL column per criterion,
+ *                          then mgr-1-off-roster-name: Pau's message 1 for a
+ *                          typed name on no roster, beside a roster person
+ *                          who shares its first name (no-metric-person,
+ *                          no-wrong-person, slot-card; mgr-1 has
+ *                          no-metric-person too).
+ *                          ca-sales: wrong items expects offense_type
+ *                          standards_of_conduct and Policy Violated the
+ *                          Standards of Conduct; the two cleaning negatives
+ *                          expect Other ticked and no Standards of Conduct.
  *                          QA runs it twice, flag OFF and ON:
  *                            LIVE_SCENARIOS=managers                (OFF)
  *                            LIVE_SCENARIOS=managers LIVE_FLAGS=CHAT_GLOSSARY_ENABLED,CA_SALES_POLICY_ENABLED  (ON)
@@ -753,7 +762,7 @@ interface Outcome {
   /** The scenario's expected outcome, in words. */
   readonly expected: string;
   readonly why?: string;
-  /** The managers' set: one result per criterion (card, no-ask, msb-name, cites-soc). */
+  /** The managers' set: one result per criterion (card, no-ask, msb-name, cites-soc, no-metric-person; the off-roster case's own). */
   readonly criteria?: readonly { readonly name: string; readonly result: "PASS" | "FAIL"; readonly why?: string }[];
 }
 
@@ -830,7 +839,7 @@ function writeResults(): void {
     const NAMES = [...new Set(graded.flatMap((run) => run.expect!.criteria!.map((entry) => entry.name)))];
     if (graded.length) {
       lines.push(
-        "Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page; #5 with CA_SALES_POLICY_ENABLED on: t1-no-card, t1-offer-once (one \"Do you want a Corrective Action for <Name>?\" with yes and Standards of Conduct), t2-card and t2-cites-soc after \"yes\"; off: off-answer, off-no-offer):",
+        "Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page; #5 with CA_SALES_POLICY_ENABLED on: t1-no-card, t1-offer-once (one \"Do you want a Corrective Action for <Name>?\" with yes and Standards of Conduct), t2-card and t2-cites-soc after \"yes\"; off: off-answer, off-no-offer; mgr-1 and the off-roster case: no-metric-person (no metric shown as a name); the off-roster case: no-wrong-person (never the roster person sharing the typed first name), slot-card (a card for the typed name)):",
         "",
       );
       lines.push(`| Case | ${NAMES.join(" | ")} | Why (FAIL) |`, `|---|${NAMES.map(() => "---|").join("")}---|`);
