@@ -12,5 +12,6 @@ written to make a parser pass.
 | `prescreen-form.doc` | Prescreen / Phone Interview, Word 97-2003 | The legacy binary format, kept so its refusal is tested against a real `.doc` rather than a hand-made header. |
 | `corrective-action-revision-6.json` | The Corrective Action Form document as the database published it (revision 6), taken from `main` before revision 8 | Forms filed on it keep its six Type of Offense boxes and the Other write-in; `offense-revision-8.test.ts` opens, prints and copies them as filed. |
 | `corrective-action-revision-7.json` | The revision 7 seed document (revision 6 plus Payroll deduction amount), taken from `main` before revision 8 | The live library's revision; forms on it have the same six boxes and write-in. |
+| `corrective-action-old-forms-main.json` | What a revision 6 and a revision 7 Corrective Action showed when opened and downloaded (fields, values, PDF text), PAYROLL_AMOUNT_FIELD_ENABLED off and on, recorded from `main` at 7cd59a77 before revision 8 | `corrective-action-revision-5-e2e.test.ts` checks old forms still open and print exactly as filed. Invented names only. Re-record only from that commit (CA_OLD_FORMS_SNAPSHOT_OUT). |
 
 They contain no personal data: every field is an unfilled Word placeholder.
