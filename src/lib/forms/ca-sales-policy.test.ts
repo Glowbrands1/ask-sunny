@@ -150,3 +150,44 @@ describe("CA_SALES_POLICY_ENABLED: only a stated shortfall is sales performance"
     expect(readCaPolicy(text)).toEqual(before);
   });
 });
+
+describe("Pau's five messages (4 Nov 2026), exact wording, names invented", () => {
+  const P1 = "I need a corrective action verbal for Ysolde Marrowick. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.";
+  const P2 = "I need to make a corrective action for msb";
+  const P3 = "CA for Briony Fellwater due to under performance in salon metrics";
+  const P4 = "MSB CA for Osric Vantablade for underperformance in the month of October";
+  const P5 = "Ysolde Marrowick did not follow must see behaviors which violates standards of conduct policy";
+
+  it("#1 reads as a stated shortfall (the card loses it only because the name reader drops \"Club Close\" and \"Under\")", () => {
+    on();
+    expect(readCaPolicy(P1)).toMatchObject({ suggestion: "standards_of_conduct", source: "sales_performance" });
+  });
+
+  it("#2: MSB is the reason given, so \"what happened\" is not asked (flag on); off, as on main", async () => {
+    const { describesIncident } = await import("./corrective-action-intake");
+    off();
+    expect(describesIncident(P2)).toBe(false);
+    on();
+    expect(describesIncident(P2)).toBe(true);
+    expect(readCaPolicy(P2)).toMatchObject({ suggestion: "standards_of_conduct", source: "msb" });
+  });
+
+  it("#3 and #4 read as the Standards of Conduct", () => {
+    on();
+    expect(readCaPolicy(P3).suggestion).toBe("standards_of_conduct");
+    expect(readCaPolicy(P4)).toMatchObject({ suggestion: "standards_of_conduct", source: "msb" });
+  });
+
+  it("#4: \"MSB CA for …\" is a request for the Corrective Action Form (flag on); off, as on main", async () => {
+    const { detectTemplateIntent } = await import("./template-intent");
+    off();
+    expect(detectTemplateIntent(P4)).toEqual({ kind: "corrective_action", requestedCreation: false });
+    on();
+    expect(detectTemplateIntent(P4)).toEqual({ kind: "explicit", templateKey: "dpoa" });
+  });
+
+  it("#5 names the Standards of Conduct", () => {
+    on();
+    expect(readCaPolicy(P5)).toMatchObject({ stated: "standards_of_conduct", suggestion: "standards_of_conduct" });
+  });
+});
