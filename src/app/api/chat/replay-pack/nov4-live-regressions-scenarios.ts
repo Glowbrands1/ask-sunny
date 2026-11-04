@@ -473,3 +473,145 @@ export const CA_SALES_SCENARIOS: readonly CheckedScenario[] = [
     },
   },
 ];
+
+/* ------------------------------------- the managers' five MSB / sales messages -- */
+
+/*
+ * PAU, VIA QA (4 Nov 2026, 11:30 UTC): five EXACT real manager messages, the
+ * name swapped for an invented one on the scenario roster (not on the
+ * directory). Quoted manager text is kept word for word, metric names and all.
+ * Each runs flag OFF and flag ON; in the live script that is two runs of
+ * LIVE_SCENARIOS=managers, without and with
+ * LIVE_FLAGS=CHAT_GLOSSARY_ENABLED,CA_SALES_POLICY_ENABLED (each within 30
+ * calls). The replay pack runs the same five with production's flags and with
+ * their fixFlags (`nov4-manager-msb-cases.ts`).
+ *
+ * Four criteria, one result column each:
+ *   card       a card is made for the person (#2: it asks ONCE which employee);
+ *   no-ask     it never asks what happened when the metrics or reason are given;
+ *   msb-name   MSB is never saved or shown as a name;
+ *   cites-soc  the card or the draft cites the Standards of Conduct with the
+ *              manual heading and page (each card message has a Create step).
+ */
+
+export const MANAGER_CA_VERBAL = at("lf-eustace-merriweld", "Eustace", "Merriweld");
+export const MANAGER_CA_METRICS = at("lf-tobiah-ellerslie", "Tobiah", "Ellerslie");
+export const MANAGER_MSB_OCTOBER = at("lf-galen-thackeray", "Galen", "Thackeray");
+export const MANAGER_MSB_SOC = at("lf-quintessa-harrowmere", "Quintessa", "Harrowmere");
+
+/** The managers' five people (a function: not read as cases). */
+export function managerMessagePeople(): readonly DirectoryRow[] {
+  return [MANAGER_CA_VERBAL, MANAGER_CA_METRICS, MANAGER_MSB_OCTOBER, MANAGER_MSB_SOC];
+}
+
+export const MANAGER_ROSTER: readonly DirectoryRow[] = [...STAFF, ...managerMessagePeople()];
+
+/** A question for what happened (the reason was given, so never asked). Test code: a text check. */
+const ASKS_WHAT_HAPPENED = /what happened|what (?:did|has) [a-z]+ (?:do|done)\b|describe (?:what|the (?:incident|issue|behaviou?r))|what (?:was|is) the (?:issue|reason|incident|behaviou?r)|tell me (?:more )?(?:about )?what/i;
+/** MSB (or Must See Behaviors) read as a person. */
+const MSB_AS_NAME = /msb|must see/i;
+const MSB_AS_PERSON = /\bfor \**msb\b|\bmsb\** (?:is not|isn'?t|was not|wasn'?t) (?:on|in)|find[^.\n]*\bmsb\b|\*\*msb\*\*/i;
+
+export interface LiveCriterion {
+  readonly name: "card" | "no-ask" | "msb-name" | "cites-soc";
+  /** null: PASS; a string: FAIL, why; "n/a" is never returned (a criterion that does not apply is left out). */
+  readonly check: (run: LiveOutcome) => string | null;
+}
+
+export interface ManagerMessage {
+  readonly id: string;
+  /** The manager's words, exact, with the invented name in place of theirs. */
+  readonly text: string;
+  /** null: #2, no name given (it asks which employee). */
+  readonly person: DirectoryRow | null;
+}
+
+const fullName = (row: DirectoryRow) => `${row.firstName} ${row.lastName}`;
+
+export const MANAGER_MESSAGES: readonly ManagerMessage[] = [
+  {
+    id: "mgr-1-verbal-metrics",
+    text: `I need a corrective action verbal for ${fullName(MANAGER_CA_VERBAL)}. This is for Under Performance on PPTA, LPSVA, Club Average, Club Close %, and Spa %.`,
+    person: MANAGER_CA_VERBAL,
+  },
+  { id: "mgr-2-msb-no-name", text: "I need to make a corrective action for msb", person: null },
+  { id: "mgr-3-salon-metrics", text: `CA for ${fullName(MANAGER_CA_METRICS)} due to under performance in salon metrics`, person: MANAGER_CA_METRICS },
+  { id: "mgr-4-msb-october", text: `MSB CA for ${fullName(MANAGER_MSB_OCTOBER)} for underperformance in the month of October`, person: MANAGER_MSB_OCTOBER },
+  { id: "mgr-5-msb-soc", text: `${fullName(MANAGER_MSB_SOC)} did not follow must see behaviors which violates standards of conduct policy`, person: MANAGER_MSB_SOC },
+];
+
+/** The four criteria for one message (cites-soc left out for #2, which has no person to make a form for). */
+export function managerCriteria(message: ManagerMessage): readonly LiveCriterion[] {
+  const person = message.person;
+  const criteria: LiveCriterion[] = [
+    {
+      name: "card",
+      check: (run) => {
+        if (run.error && !/NO CARD/.test(run.error)) return `error: ${run.error}`;
+        if (!person) {
+          const asked = (run.replies[0] ?? "").split(/(?<=[?.!])\s+/).filter((sentence) => WHO.test(sentence)).length;
+          return asked === 1 ? null : `asks which employee ${asked} times (once expected)`;
+        }
+        return run.card?.employeeName === fullName(person) ? null : `no card for ${fullName(person)} (card: ${run.card ? `${run.card.templateKey ?? "?"} / ${run.card.employeeName ?? "—"}` : "none"})`;
+      },
+    },
+    {
+      name: "no-ask",
+      check: (run) => {
+        const asked = run.replies.find((reply) => ASKS_WHAT_HAPPENED.test(reply));
+        return asked ? `asks what happened: "${(ASKS_WHAT_HAPPENED.exec(asked)?.[0] ?? "").slice(0, 60)}"` : null;
+      },
+    },
+    {
+      name: "msb-name",
+      check: (run) =>
+        all(
+          MSB_AS_NAME.test(run.card?.employeeName ?? "") && `the card names "${run.card?.employeeName}"`,
+          MSB_AS_NAME.test(run.saved.employee_name ?? "") && `"${run.saved.employee_name}" is saved as the employee`,
+          run.replies.some((reply) => MSB_AS_PERSON.test(reply)) && "a reply shows MSB as a person",
+        ),
+    },
+  ];
+  if (person) {
+    criteria.push({
+      name: "cites-soc",
+      check: (run) => {
+        const line = policyLine(run.replies[0] ?? "");
+        const onCard = SOC.test(line) && PAGE.test(line);
+        const onDraft = SOC.test(run.saved.policy_language ?? "") && PAGE.test(run.saved.policy_language ?? "");
+        return onCard || onDraft ? null : `no Standards of Conduct with a page (card: "${line.slice(0, 80)}", draft: "${(run.saved.policy_language ?? "").slice(0, 80)}")`;
+      },
+    });
+  }
+  return criteria;
+}
+
+export interface CriteriaScenario extends CheckedScenario {
+  readonly criteria: readonly LiveCriterion[];
+}
+
+/** LIVE_SCENARIOS=managers: the five messages; a card message, then Create (the citation may only be on the draft). */
+export const MANAGER_SCENARIOS: readonly CriteriaScenario[] = MANAGER_MESSAGES.map((message) => {
+  const criteria = managerCriteria(message);
+  return {
+    id: message.id,
+    roster: MANAGER_ROSTER,
+    field: message.person ? "policy_language" : null,
+    steps: message.person ? [{ say: message.text }, { create: true }] : [{ say: message.text }],
+    criteria,
+    expect: {
+      says: message.person ? `a card for ${fullName(message.person)}; no "what happened"; MSB never a name; cites the Standards of Conduct with a page` : "asks once which employee; no \"what happened\"; MSB never a name",
+      check: (run) => all(...criteria.map((criterion) => criterion.check(run))),
+    },
+  };
+});
+
+/** The stand-in draft for a manager message's Create (LIVE_DRY=1), with the Under Performance tick the flag turns into the Standards of Conduct. */
+export function managerDryScripts(): Record<string, DryScript> {
+  return Object.fromEntries(
+    MANAGER_MESSAGES.filter((message) => message.person).map((message) => [
+      message.id,
+      { draft: { observation: `Observed:\n${fullName(message.person!)} did not meet the expected performance standards.` }, checked: { offense_type: ["under_performance"] }, revisions: [] },
+    ]),
+  );
+}

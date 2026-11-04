@@ -11,7 +11,10 @@ import {
   GLOSSARY_SCENARIOS,
   LIVE_FAILURE_SCENARIOS,
   LIVE_ROSTER,
+  MANAGER_SCENARIOS,
+  managerDryScripts,
   NAME_SCENARIOS,
+  type LiveCriterion,
   type LiveExpect,
   type LiveScenario,
 } from "@/app/api/chat/replay-pack/nov4-live-regressions-scenarios";
@@ -63,6 +66,12 @@ import type { AccessScope, ChatFormProposal, ChatMessage } from "@/types";
  *                          LIVE_CAP=30. Each of their scenarios has an
  *                          expected outcome, written PASS or FAIL into the
  *                          results; a FAIL is recorded, it never fails the run.
+ *                          managers: the five exact manager messages (Pau via
+ *                          QA, 4 Nov), one PASS/FAIL column per criterion.
+ *                          QA runs it twice, flag OFF and ON:
+ *                            LIVE_SCENARIOS=managers                (OFF)
+ *                            LIVE_SCENARIOS=managers LIVE_FLAGS=CHAT_GLOSSARY_ENABLED,CA_SALES_POLICY_ENABLED  (ON)
+ *                          each within LIVE_CAP=30.
  *   LIVE_CREATE_REPEAT=1   also: the same Corrective Action (T1, then Create)
  *                          5 times with Step B's flags OFF and 5 times ON;
  *                          counts the saved Observations that lose the
@@ -609,7 +618,7 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
   const callsBefore = live.calls;
   const offeredBefore = live.offered;
   const kindsBefore = { ...live.kinds };
-  const script = DRY_SCRIPTS[scenario.id];
+  const script = DRY_SCRIPTS[scenario.id] ?? MANAGER_DRY[scenario.id];
   live.dry.draft = script?.draft ?? {};
   live.dry.checked = script?.checked ?? {};
   live.dry.revision = {};
@@ -698,17 +707,24 @@ async function runScenario(scenario: LiveScenario, extraFlags: readonly string[]
   };
 }
 
+const MANAGER_DRY = managerDryScripts();
+
 /** A scenario's `expect` over its recorded run: PASS, or FAIL with why. Recorded only, never asserted. */
-function judge(expectation: LiveExpect, run: PathRun): Outcome {
-  const why = expectation.check({
+function judge(expectation: LiveExpect, run: PathRun, criteria: readonly LiveCriterion[] = []): Outcome {
+  const outcome = {
     card: run.card,
     reply: run.reply,
     replies: run.turns.filter((turn) => turn.said !== "(Create)").map((turn) => turn.reply),
     saved: run.saved,
     checked: run.checked,
     error: run.error === NO_CARD ? "NO CARD (nothing to create from)" : run.error,
+  };
+  const why = expectation.check(outcome);
+  const columns = criteria.map((criterion) => {
+    const failed = criterion.check(outcome);
+    return { name: criterion.name, result: failed ? ("FAIL" as const) : ("PASS" as const), ...(failed ? { why: failed } : {}) };
   });
-  return { result: why ? "FAIL" : "PASS", expected: expectation.says, ...(why ? { why } : {}) };
+  return { result: why ? "FAIL" : "PASS", expected: expectation.says, ...(why ? { why } : {}), ...(columns.length ? { criteria: columns } : {}) };
 }
 
 /* ---------------------------------------------------------------- results -- */
@@ -718,6 +734,8 @@ interface Outcome {
   /** The scenario's expected outcome, in words. */
   readonly expected: string;
   readonly why?: string;
+  /** The managers' set: one result per criterion (card, no-ask, msb-name, cites-soc). */
+  readonly criteria?: readonly { readonly name: string; readonly result: "PASS" | "FAIL"; readonly why?: string }[];
 }
 
 /** `expect`: the flag sets' PASS / FAIL (old path; LIVE_FLAGS are on in it). Null: the scenario has no expected outcome. */
@@ -741,6 +759,7 @@ function pickScenarios(): readonly LiveScenario[] {
   if (which === "gate") return GATE_SCENARIOS;
   if (which === "glossary") return GLOSSARY_SCENARIOS;
   if (which === "ca-sales") return CA_SALES_SCENARIOS;
+  if (which === "managers") return MANAGER_SCENARIOS;
   return [...LIVE_FAILURE_SCENARIOS, ...NAME_SCENARIOS, ...GATE_SCENARIOS];
 }
 
@@ -787,6 +806,18 @@ function writeResults(): void {
     lines.push(`Expected outcomes: ${passed} PASS, ${checks.length - passed} FAIL of ${checks.length} (${checks.reduce((sum, run) => sum + run.oldPath.calls, 0)} calls).`, "", "| Case | Result | Expected | Why (FAIL) | calls |", "|---|---|---|---|---|");
     for (const { id, oldPath, expect: outcome } of checks) lines.push(`| ${id} | **${outcome!.result}** | ${cell(outcome!.expected)} | ${cell(outcome!.why ?? "")} | ${oldPath.calls} |`);
     lines.push("");
+    const NAMES = ["card", "no-ask", "msb-name", "cites-soc"];
+    const graded = checks.filter((run) => run.expect?.criteria);
+    if (graded.length) {
+      lines.push("Per criterion (card: a card is made, #2 asks once which employee; no-ask: never asks what happened; msb-name: MSB never a name; cites-soc: Standards of Conduct with heading and page):", "");
+      lines.push(`| Case | ${NAMES.join(" | ")} | Why (FAIL) |`, `|---|${NAMES.map(() => "---|").join("")}---|`);
+      for (const { id, expect: outcome } of graded) {
+        const column = (name: string) => outcome!.criteria!.find((entry) => entry.name === name);
+        const whys = outcome!.criteria!.filter((entry) => entry.why).map((entry) => `${entry.name}: ${entry.why}`).join("; ");
+        lines.push(`| ${id} | ${NAMES.map((name) => (column(name) ? `**${column(name)!.result}**` : "n/a")).join(" | ")} | ${cell(whys)} |`);
+      }
+      lines.push("");
+    }
   }
   lines.push("| Case | Draft created | Edit turns that changed the form | Old path reply | Saved diff (last turn) | Card | ms | calls (draft/revision) | New path |", "|---|---|---|---|---|---|---|---|---|");
   for (const { id, oldPath, newPath } of results) {
@@ -830,7 +861,7 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
   });
 
   /* A flag set's dry run rehearses QA's LIVE_CAP=30 command: the create repeat (20 stand-in calls) only when asked. */
-  const flagSet = process.env.LIVE_SCENARIOS === "glossary" || process.env.LIVE_SCENARIOS === "ca-sales";
+  const flagSet = ["glossary", "ca-sales", "managers"].includes(process.env.LIVE_SCENARIOS ?? "");
   it.runIf(process.env.LIVE_CREATE_REPEAT === "1" || (DRY && !flagSet))("the same Corrective Action, created 5 times with Step B off and 5 times on: does the Observation keep \"Jane Doe\"?", async () => {
     const create: LiveScenario = { id: "create-repeat", roster: LIVE_ROSTER, field: "observation", steps: [{ say: CA_CHAIN[0] }, { create: true }] };
     const before = live.calls;
@@ -851,8 +882,8 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
       if (live.capped) break;
       const oldPath = await runScenario(scenario, []);
       const newPath = process.env.LIVE_NEW_PATH === "1" && !live.capped ? await runScenario(scenario, NEW_PATH_FLAGS) : null;
-      const expectation = (scenario as { expect?: LiveExpect }).expect;
-      results.push({ id: scenario.id, oldPath, newPath, expect: expectation ? judge(expectation, oldPath) : null });
+      const { expect: expectation, criteria } = scenario as { expect?: LiveExpect; criteria?: readonly LiveCriterion[] };
+      results.push({ id: scenario.id, oldPath, newPath, expect: expectation ? judge(expectation, oldPath, criteria) : null });
     }
     if (!DRY) return;
     /*
@@ -896,7 +927,7 @@ describe.skipIf(!LIVE && !DRY)("live regressions (LIVE=1, or LIVE_DRY=1 with sta
      * here), and the whole set fits QA's LIVE_CAP=30.
      */
     const set = process.env.LIVE_SCENARIOS;
-    if (set === "glossary" || set === "ca-sales") {
+    if (set === "glossary" || set === "ca-sales" || set === "managers") {
       for (const { id, expect: outcome } of results) expect(outcome, `${id}: no expected outcome recorded`).not.toBeNull();
       expect(results.reduce((sum, run) => sum + run.oldPath.calls, 0), `the ${set} set needs more than 30 calls`).toBeLessThanOrEqual(30);
     }
