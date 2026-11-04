@@ -116,6 +116,29 @@ describe("writeFormEdits: all or nothing", () => {
     expect(rows.calls).toEqual([]);
   });
 
+  it("CHAT_GLOSSARY_ENABLED: \"Msb\" is never saved as the employee (sf-s12, \"I need to make a corrective action for msb\"); off, written as before", async () => {
+    const saved = process.env.CHAT_GLOSSARY_ENABLED;
+    const { writeFormEdits } = await import("./form-write");
+    // A blank name line, so the flag-off write drops no words (step 2b's correction rule refuses a replaced name it was not told).
+    put("employee_name", "", "system");
+    try {
+      process.env.CHAT_GLOSSARY_ENABLED = "true";
+      const refused = await writeFormEdits("inst-1", [{ op: "set", field: "employee_name", value: "Msb" }], { path: "correction", actorId: "qa", latest: "I need to make a corrective action for msb" });
+      expect(refused).toMatchObject({ handoff: "refused", refused: [{ key: "employee_name", reason: "glossary_term" }] });
+      expect(rows.calls).toEqual([]);
+      const column = await writeFormEdits("inst-1", [{ op: "set", field: "employee_name", value: "Msb" }], { path: "correction", actorId: "qa", employeeColumn: "MSB" });
+      expect(column.handoff).toBe("refused");
+      expect(rows.calls).toEqual([]);
+      delete process.env.CHAT_GLOSSARY_ENABLED;
+      const written = await writeFormEdits("inst-1", [{ op: "set", field: "employee_name", value: "Msb" }], { path: "correction", actorId: "qa", latest: "I need to make a corrective action for msb" });
+      expect(written.handoff).not.toBe("refused");
+      expect(rows.calls).toEqual(["saveInstanceValues:employee_name"]);
+    } finally {
+      if (saved === undefined) delete process.env.CHAT_GLOSSARY_ENABLED;
+      else process.env.CHAT_GLOSSARY_ENABLED = saved;
+    }
+  });
+
   it("a finalized form is never written", async () => {
     rows.status = "final";
     const { writeFormEdits } = await import("./form-write");

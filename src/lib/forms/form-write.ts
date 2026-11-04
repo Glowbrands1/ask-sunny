@@ -4,6 +4,7 @@ import type { AskResponse } from "@/lib/ai/types";
 import { payrollAmounts } from "@/lib/ai/intent-slots";
 import { businessToday } from "@/lib/business-date";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { isGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
 import { checkboxGroupsForVariant, fieldsForVariant, parseFormDocument } from "./document";
@@ -402,6 +403,11 @@ export async function writeFormEdits(instanceId: string, ops: readonly FormEditO
   const known = keysOf(loaded);
   const refused: Refusal[] = [];
   for (const op of ops) if (!known.has(op.field)) refused.push({ key: op.field, reason: "unknown_field" });
+  // CHAT_GLOSSARY_ENABLED: a glossary term ("msb") is never saved as the employee. Off, nothing is refused here.
+  for (const op of ops) {
+    if (op.field === "employee_name" && op.op !== "clear" && typeof op.value === "string" && isGlossaryTerm(op.value)) refused.push({ key: op.field, reason: "glossary_term" });
+  }
+  if (isGlossaryTerm(rules.employeeColumn)) refused.push({ key: "employee_name", reason: "glossary_term" });
   if (refused.length > 0) return refusedAll(refused);
 
   const { patchRules, writable } = presetRules(loaded, ops, rules);

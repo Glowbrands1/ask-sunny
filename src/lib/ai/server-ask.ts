@@ -147,6 +147,7 @@ import { applyQuietQuality } from "./quiet-quality";
 import { noteTraceOutcome } from "./trace-outcome";
 import { chatTraceDraft, updateChatTrace } from "./chat-trace-store";
 import { expandGlossaryQuery } from "./glossary";
+import { glossaryBlock } from "./chat-glossary";
 import { followUpOwnQuery } from "./query-rewrite";
 import { augmentIntakeQuestion } from "./intake-augment";
 import { factsVisibleInConversation, formatRecalledMemory, memoryCue } from "./chat-memory";
@@ -1786,6 +1787,8 @@ async function answerQuestionUntraced(
       maxTokens: CLAUDE_MAX_TOKENS[request.mode],
       manualBlock,
       fullManualBlock,
+      // CHAT_GLOSSARY_ENABLED: the abbreviation table as one more context block. Off, no key at all.
+      ...(glossaryBlock() ? { glossary: glossaryBlock() } : {}),
       ...(formEdit && formEdit.offer
         ? {
             formEditTool: {

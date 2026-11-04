@@ -1,4 +1,4 @@
 {
-  "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here. Step 3's flag needs the single writer (Step 2a), so both are on.",
-  "on": ["FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED"]
+  "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here. The glossary step's flag is CHAT_GLOSSARY_ENABLED alone.",
+  "on": ["CHAT_GLOSSARY_ENABLED"]
 }

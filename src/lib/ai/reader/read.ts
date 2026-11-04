@@ -4,6 +4,7 @@ import { withoutAppLines } from "@/lib/ai/app-sentences";
 import { CLAUDE_READER_MODEL } from "@/lib/config/models";
 
 import { callClaudeToolTimed } from "../call-claude";
+import { glossaryBlock } from "../chat-glossary";
 import { checkReading, type CheckContext, type CheckedReading } from "./check";
 import { parseFormReading, READER_TOOL_DESCRIPTION, READER_TOOL_INPUT_SCHEMA, READER_TOOL_NAME } from "./schema";
 
@@ -89,5 +90,7 @@ function userBlock(turns: readonly ReaderTurn[], context: CheckContext): string 
     .slice(-12)
     .map((content) => `Manager: ${content.slice(0, 1500)}`);
   const manual = context.headings.length > 0 ? `Manual headings:\n${context.headings.map((heading) => `- ${heading}`).join("\n")}\n\n` : "";
-  return `${manual}Today is ${context.today}.\n\n${lines.join("\n\n")}`;
+  // CHAT_GLOSSARY_ENABLED: the abbreviation table first, as one more context block. Off, nothing is added.
+  const glossary = glossaryBlock();
+  return `${glossary ? `${glossary}\n\n` : ""}${manual}Today is ${context.today}.\n\n${lines.join("\n\n")}`;
 }

@@ -3,6 +3,7 @@ import { displayName, editDistance } from "@/lib/forms/employee-match";
 import { extractJobTitle } from "@/lib/forms/proposal";
 
 import type { GroundedPerson } from "../grounded-entities";
+import { isGlossaryTerm } from "../chat-glossary";
 import { titleInWords } from "../title-in-words";
 import type { FormReading, ReadField } from "./schema";
 
@@ -177,6 +178,8 @@ function checkEmployee(
   evidence: string,
   people: readonly GroundedPerson[],
 ): { name: string; person: GroundedPerson | null } | null {
+  // CHAT_GLOSSARY_ENABLED: "msb" read as the employee is Must See Behaviors, never a person. Off, unchanged.
+  if (isGlossaryTerm(value)) return null;
   // The name as the manager typed it, inside the quote it came from.
   const typed = plainWords(value);
   const words = typed.split(" ").filter((word) => /^[a-z]+$/.test(word));
