@@ -27,6 +27,7 @@ import {
   formEditSingleWriterEnabled,
   teamCardWordingEnabled,
   cardPolicyLabelEnabled,
+  caSalesPolicyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { withoutAsksToTheApp } from "@/lib/ai/asks-to-the-app";
 import { AiError } from "@/lib/ai/errors";
@@ -150,6 +151,7 @@ import {
   withConductOffense,
   withStatedOffense,
 } from "@/lib/forms/ca-policy";
+import { CA_SALES_POLICY_RULE, withSalesOffense } from "@/lib/forms/ca-sales-policy";
 import { datesInText, priorStepDate } from "@/lib/forms/form-date-answer";
 import {
   SPECIFIC_SECTION_BOXES,
@@ -1134,6 +1136,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       offersConductPolicy
         ? `Type of Offense: assigned work, a required deadline, or required Woven items or training not completed, and a manager's direction not followed, are ${STANDARDS_OF_CONDUCT}. under_performance is for results against a sales or performance target.`
         : "",
+      // CA_SALES_POLICY_ENABLED: one added line after the one above, which stays as it is. Off, nothing is added.
+      offersConductPolicy && caSalesPolicyEnabled() ? CA_SALES_POLICY_RULE : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -1737,7 +1741,20 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const conductOffense = conduct?.ok
       ? withConductOffense({ checked: enforced.checked, values: enforced.values })
       : null;
-    const offenseChange = statedOffense ?? conductOffense;
+    /*
+     * CA_SALES_POLICY_ENABLED: an Under Performance tick is the Standards of
+     * Conduct (client request, 4 Nov 2026), where nothing above settled the
+     * box. Off, null. See `ca-sales-policy.ts`.
+     */
+    const salesOffense =
+      caPolicy && !statedOffense && !conductOffense && caSalesPolicyEnabled()
+        ? withSalesOffense({
+            checked: enforced.checked,
+            values: enforced.values,
+            offered: groups.find((group) => group.key === "offense_type")?.options.map((option) => option.key) ?? [],
+          })
+        : null;
+    const offenseChange = statedOffense ?? conductOffense ?? salesOffense;
     const offenseChosen = offenseChange
       ? { ...enforced, values: offenseChange.values, checked: offenseChange.checked }
       : enforced;

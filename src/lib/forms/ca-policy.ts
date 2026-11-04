@@ -1,6 +1,7 @@
-import { formEditDateRulesEnabled, policyCleaningIncidentEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, formEditDateRulesEnabled, policyCleaningIncidentEnabled } from "@/lib/config/chat-quality-flags";
 
 import { JOIN } from "./bounded-context";
+import { foldsToChatGlossaryTerm } from "./ca-sales-glossary";
 import { LATE_TO_OPEN, lateOpenOn } from "./late-open";
 import {
   findManualSection,
@@ -90,8 +91,12 @@ export interface CaPolicyReading {
   alternatives: Exclude<CaPolicyName, "standards_of_conduct">[];
   /** Standards of Conduct, when the manager named it or the account clearly points at it. */
   suggestion: typeof STANDARDS_OF_CONDUCT | null;
-  /** Where the suggestion came from. */
-  source: "stated" | "incident" | null;
+  /**
+   * Where the suggestion came from. `sales_performance` and `msb` only with
+   * CA_SALES_POLICY_ENABLED on: the account reads as the Under Performance
+   * offense type, or uses a glossary term (MSB). See `withSalesPolicy`.
+   */
+  source: "stated" | "incident" | "sales_performance" | "msb" | null;
   /** Policies to ask between, when the account reads more than one way and none was named. */
   ambiguous: CaPolicyName[] | null;
   /** A scheduled meeting, seminar or training session the account says was not attended: "the monthly meeting". */
@@ -383,6 +388,58 @@ function statedIn(turn: string): CaPolicyName | null {
  * the drafting notes carry them.
  */
 export function readCaPolicy(rawText: string): CaPolicyReading {
+  return withSalesPolicy(readCaPolicyFromWords(rawText), rawText);
+}
+
+/**
+ * ============================================================================
+ * SALES AND MSB CORRECTIVE ACTIONS CITE THE STANDARDS OF CONDUCT
+ * (CA_SALES_POLICY_ENABLED, default off; client request relayed by Pau,
+ * 4 Nov 2026; ported from Ask Bubbles #422)
+ * ============================================================================
+ *
+ * A Corrective Action for sales underperformance or for MSB was created with
+ * no policy: the account read as the Under Performance offense type, which
+ * cites no section. With the flag on, such an account is read as the Standards
+ * of Conduct instead, and the manual's section is cited by heading and page.
+ *
+ * NO NEW WORDS ARE MATCHED HERE. "Sales performance" is the reading this file
+ * already makes for the Under Performance offense type (`TARGET`, or the
+ * manager naming Under Performance); "MSB" is a term of the approved chat
+ * glossary, read through `foldsToChatGlossaryTerm` — a no-op until Ask Sunny's
+ * chat glossary (PR #506) is on main, see `ca-sales-glossary.ts`.
+ *
+ * WHAT IT LEAVES ALONE. A policy the manager named other than Under
+ * Performance; an account that reads as attendance or a missed meeting. Off,
+ * the reading is returned untouched.
+ */
+function withSalesPolicy(reading: CaPolicyReading, rawText: string): CaPolicyReading {
+  if (!caSalesPolicyEnabled()) return reading;
+  if (reading.stated !== null && reading.stated !== "under_performance") return reading;
+  if (reading.missedEvent !== null) return reading;
+  const sentences = statements(normalize(rawText));
+  const msb = sentences.some((sentence) =>
+    sentence.split(/[^a-z0-9.]+/).some((word) => foldsToChatGlossaryTerm(word.replace(/^\.+|\.+$/g, ""))),
+  );
+  const target = reading.stated === "under_performance" || sentences.some((s) => TARGET.test(s));
+  if (!msb && !target) return reading;
+  if (reading.stated === null && sentences.some((s) => ATTENDANCE.test(s))) return reading;
+  return {
+    ...reading,
+    stated: null,
+    alternatives: reading.alternatives.filter((name) => name !== "under_performance"),
+    suggestion: STANDARDS_OF_CONDUCT,
+    source: msb ? "msb" : "sales_performance",
+    ambiguous: null,
+  };
+}
+
+/** Whether the reading is CA_SALES_POLICY_ENABLED's: a sales or MSB account read as the Standards of Conduct. */
+export function isSalesPolicyReading(reading: CaPolicyReading): boolean {
+  return reading.source === "sales_performance" || reading.source === "msb";
+}
+
+function readCaPolicyFromWords(rawText: string): CaPolicyReading {
   const text = normalize(rawText);
   const turns = text.split(JOIN).map((turn) => turn.trim()).filter(Boolean);
 
@@ -476,7 +533,8 @@ const LATENESS = /\b(?:late|lateness|tardy|tardiness|left early|leaving early|cl
 export function statedOffenseKeys(reading: CaPolicyReading, rawText: string): string[] | null {
   switch (reading.stated) {
     case null:
-      return null;
+      // CA_SALES_POLICY_ENABLED: a sales or MSB account ticks the Standards of Conduct. Off, never set.
+      return isSalesPolicyReading(reading) ? [STANDARDS_OF_CONDUCT] : null;
     case "attendance": {
       const text = normalize(rawText);
       const absent = ABSENCE.test(text) || missedEventIn(statements(text)) !== null;
@@ -649,6 +707,11 @@ export function unconfirmedManualLine(named: NamedPolicyReading | null): string 
 }
 
 export function caPolicyProposalLine(reading: CaPolicyReading, named: NamedPolicyReading | null = null): string | null {
+  // CA_SALES_POLICY_ENABLED: a sales or MSB account. Off, the source is never set and this line is never said.
+  if (isSalesPolicyReading(reading)) {
+    const what = reading.source === "msb" ? "Must See Behaviors (MSB)" : "sales performance against goals";
+    return `**Policy:** Standards of Conduct — ${what}. I'll cite that section of the current policy manual, with its page, on the draft; tell me if a different policy applies.`;
+  }
   /*
    * A POLICY THE MANAGER NAMED, which the manual answers, is the policy — the
    * draft ticks its box and quotes its section (District Manager feedback,
