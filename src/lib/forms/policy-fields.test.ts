@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { fieldsForVariant, parseFormDocument } from "./document";
+import REVISION_6 from "@/test/fixtures/forms/corrective-action-revision-6.json";
+
 import { correctiveActionDocument } from "./library";
 import {
   FORM_DERIVED_POLICY_KEYS,
@@ -22,7 +24,14 @@ import { refuseUnverifiedPolicyValues, type PolicyGrounding } from "./policy-gro
  * no wording to get wrong and no retrieval to paraphrase.
  */
 
-const DOCUMENT = parseFormDocument(correctiveActionDocument());
+/*
+ * THE REVISION 6 DOCUMENT, as forms filed on it are stored (fixture taken from
+ * main before revision 8). Revision 8 (4 Nov 2026) removed the boxes these
+ * tests tick; the forms filed on revision 6 or 7 still carry them and still print
+ * their labels, which is what these tests pin. Revision 8 is tested below.
+ */
+const DOCUMENT = parseFormDocument(REVISION_6);
+const REVISION_8 = parseFormDocument(correctiveActionDocument());
 const FIELD_KEYS = new Set(["policy_violated", "policy_language", "other_offense"]);
 
 function grounding(overrides: Partial<PolicyGrounding> = {}): PolicyGrounding {
@@ -37,6 +46,38 @@ function source(locator: string, score: number, title = "Driven to Shine Policy 
 function grounded(sources: ReturnType<typeof source>[]): PolicyGrounding {
   return grounding({ unverified: false, sources, passages: sources.map((s) => ({ text: `Wording at ${s.locator}.`, source: s })) });
 }
+
+describe("revision 8 (4 Nov 2026): Policy Violated reads the four boxes", () => {
+  it.each([
+    ["attendance_policy", "Attendance Policy"],
+    ["standards_of_conduct", "Standards of Conduct"],
+    ["dress_code", "Dress Code Violation"],
+    ["other", "Other"],
+  ] as const)("%s prints %s", (key, label) => {
+    expect(offenseCategoryValue({ document: REVISION_8, variantKey: null, checked: { offense_type: [key] }, values: {} })).toBe(label);
+  });
+
+  it("Late Opening is named beside Attendance Policy; Visitors in the Workplace beside the Standards of Conduct", () => {
+    expect(
+      offenseCategoryValue({
+        document: REVISION_8,
+        variantKey: null,
+        checked: { offense_type: ["attendance_policy"] },
+        values: {},
+        sectionNames: { attendance_policy: "Late Opening" },
+      }),
+    ).toBe("Attendance Policy — Late Opening");
+    expect(
+      offenseCategoryValue({
+        document: REVISION_8,
+        variantKey: null,
+        checked: { offense_type: ["standards_of_conduct"] },
+        values: {},
+        sectionNames: { standards_of_conduct: "Visitors in the Workplace" },
+      }),
+    ).toBe("Standards of Conduct — Visitors in the Workplace");
+  });
+});
 
 describe("1. Policy Violated is the ticked offense category", () => {
   it("copies the label off the box the manager ticked", () => {

@@ -3,6 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseFormDocument } from "@/lib/forms/document";
 import { TEMPLATE_SEEDS } from "@/lib/forms/library";
 
+/*
+ * CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template
+ * approved 4 Nov 2026): expectations on the current form read its four boxes.
+ * Tardiness/Leaving Early and Absenteeism are Attendance Policy; Under
+ * Performance and Violation of Company Policies are Standards of Conduct.
+ * Forms filed on revision 6 or 7 keep their boxes: see
+ * `src/lib/forms/offense-revision-8.test.ts`.
+ */
+
 /**
  * ============================================================================
  * THE DRAFT ROUTE, EXERCISED RATHER THAN READ
@@ -625,7 +634,7 @@ describe("the Corrective Action Form's generation behaviour", () => {
        * the manager's account ticked; Direct policy names the manual that
        * answered, with its section and page.
        */
-      expect(state.persisted[0]!.values.policy_violated).toBe("Tardiness/Leaving Early");
+      expect(state.persisted[0]!.values.policy_violated).toBe("Attendance Policy");
       expect(state.persisted[0]!.values.policy_language).toBe(
         "Employees are expected to be clocked in and ready to work at their scheduled start time.\n\n" +
           "Source: JBA Policy Manual — Attendance & Punctuality, page 12",
@@ -634,7 +643,7 @@ describe("the Corrective Action Form's generation behaviour", () => {
       expect(payload.withheld).toEqual([]);
 
       // Classified as tardiness, from the manager's own account.
-      expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
+      expect(state.persisted[0]!.checked.offense_type).toEqual(["attendance_policy"]);
     });
 
     it("keeps the observation to what was seen", async () => {
@@ -1369,8 +1378,9 @@ describe("the official policy manual, pinned", () => {
 
     const payload = await post("Her Club Close has been low.");
 
-    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
-    expect(payload.withheld).toContain("policy_language");
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Under Performance is the Standards of Conduct box now, and its section is cited (heading and page from the manual).
+    expect(state.persisted[0]!.values.policy_language).toMatch(/Standards of Conduct/);
+    expect(payload.withheld ?? []).not.toContain("policy_language");
   });
 
   /*
@@ -1713,7 +1723,8 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
       section: "Standards of Conduct",
       page: 12,
       anchor: "o Failing to follow the policies and procedures of The Company",
-      replaced: ["under_performance", "other_offense"],
+      // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): the model's Under Performance tick is already the Standards of Conduct, and the form has no Other write-in, so nothing is replaced.
+      replaced: [],
     });
     expect(payload.withheld ?? []).not.toContain("policy_language");
     expect(prompt()).toMatch(/required Woven items or training not completed, and a manager.s direction not followed, are standards_of_conduct/);
@@ -1761,16 +1772,22 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
   it("does not tick it when the manual's section lists no such infraction", async () => {
     state.policyManual = SECTION_WITHOUT_INFRACTIONS;
     const payload = await post("Create a corrective action for Delphine for missing the Woven deadline.");
-    expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
-    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
-    expect(payload.withheld).toContain("policy_language");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
+    /*
+     * CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): the reading
+     * still does not apply (below), but the model's Under Performance tick IS
+     * the Standards of Conduct box now, so Direct policy cites that section
+     * from the manual — what the client asked for. (It was left blank.)
+     */
+    expect(state.persisted[0]!.values.policy_language).toMatch(/Source: JBA Policy Manual — Standards of Conduct/);
+    expect(payload.withheld ?? []).not.toContain("policy_language");
     expect(payload.caPolicy).toEqual({ applied: false, reason: "not_supported", ambiguous: null });
   });
 
   it("does not tick it when there is no manual to check", async () => {
     state.policyManual = { ok: false, reason: "not indexed" };
     const payload = await post("Create a corrective action for Delphine for missing the Woven deadline.");
-    expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]); // CHANGED ON PURPOSE, Corrective Action revision 8 (template approved 4 Nov 2026): Under Performance is the Standards of Conduct box.
     expect(state.persisted[0]!.values.policy_language).toBeUndefined();
     expect(payload.caPolicy).toMatchObject({ applied: false, reason: "no_manual" });
   });
@@ -1830,8 +1847,8 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
     const payload = await post(
       "Create a corrective action for Delphine because she came in late and didn't finish her opening tasks.\n\nstandards of conduct\n\nactually use attendance",
     );
-    expect(state.persisted[0]!.checked.offense_type).toEqual(["tardiness"]);
-    expect(state.persisted[0]!.values.policy_violated).toBe("Tardiness/Leaving Early");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["attendance_policy"]);
+    expect(state.persisted[0]!.values.policy_violated).toBe("Attendance Policy");
     expect(state.persisted[0]!.values.policy_language).toBe(
       "It is the responsibility of each employee to know his or her work schedule\n\nSource: JBA Policy Manual — Attendance, p. 14",
     );
@@ -1843,9 +1860,10 @@ describe("HR feedback 30 Sep — the Corrective Action's policy, from the manage
     const payload = await post(
       "Create a corrective action for Delphine for missing the Woven deadline.\n\nit's under performance",
     );
-    expect(state.persisted[0]!.checked.offense_type).toEqual(["under_performance"]);
-    expect(state.persisted[0]!.values.policy_language).toBeUndefined();
-    expect(payload.withheld).toContain("policy_language");
+    expect(state.persisted[0]!.checked.offense_type).toEqual(["standards_of_conduct"]);
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): Under Performance is the Standards of Conduct box, whose section is cited (it was left blank).
+    expect(state.persisted[0]!.values.policy_language).toMatch(/Source: JBA Policy Manual — Standards of Conduct/);
+    expect(payload.withheld ?? []).not.toContain("policy_language");
     expect(payload.caPolicy).toMatchObject({ applied: true, source: "stated", stated: "under_performance" });
   });
 

@@ -122,11 +122,13 @@ describe("the section Policy Violated names beside a box", () => {
       source: "official_policy_manual",
       sections: [{ locator: "Attendance" }, { locator: "Visitors in the Workplace" }],
     };
-    expect(citedBoxSections(provenance)).toEqual({ company_policies: "Visitors in the Workplace" });
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (4 Nov 2026): also named under the box that replaced the old one.
+    expect(citedBoxSections(provenance)).toEqual({ company_policies: "Visitors in the Workplace", standards_of_conduct: "Visitors in the Workplace" });
     expect(citedBoxSections({ ...provenance, sections: [{ locator: "Attendance" }] })).toEqual({});
     /* A late opening is named beside Tardiness; Attendance, its own section, is not. */
     expect(citedBoxSections({ ...provenance, sections: [{ locator: "Late Opening" }, { locator: "Attendance" }] })).toEqual({
       tardiness: "Late Opening",
+      attendance_policy: "Late Opening",
     });
     expect(citedBoxSections({ ...provenance, verified: false })).toEqual({});
     expect(citedBoxSections(undefined)).toEqual({});

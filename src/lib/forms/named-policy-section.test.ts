@@ -213,7 +213,8 @@ describe("describedManualSection — a policy the account describes", () => {
   });
 
   it("leaves the boxes with their own specific section to the draft", () => {
-    expect([...SPECIFIC_SECTION_BOXES].sort()).toEqual(["absenteeism", "dress_code", "tardiness"]);
+    // CHANGED ON PURPOSE, Corrective Action revision 8 (client request, template approved 4 Nov 2026): the Attendance Policy box cites Attendance, a section of its own, like the two boxes it replaced.
+    expect([...SPECIFIC_SECTION_BOXES].sort()).toEqual(["absenteeism", "attendance_policy", "dress_code", "tardiness"]);
   });
 });
 
