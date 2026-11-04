@@ -312,7 +312,7 @@ export function nameConfirmationQuestion(typed: string, candidates: readonly str
 
 const ASKED = /^Did you mean ((?:\*\*[^*]+\*\*(?:, | or )?)+)\?/;
 
-const AFFIRMATIVE =
+export const AFFIRMATIVE =
   /^\s*(?:yes|yeah|yep|yup|correct|right|that'?s (?:right|correct|her|him|them|the one)|exactly|y|sure|please do|use (?:that|it))\b[\s.!,]*(?:please|thanks?|thank you)?[\s.!]*$/i;
 const NEGATIVE =
   /^\s*(?:no|nope|nah|n|keep (?:it|that|the name)?(?: as (?:i )?typed| as is)?|keep\s+.+|leave it|as typed|that'?s (?:wrong|not (?:her|him|them|it|right)))\b/i;

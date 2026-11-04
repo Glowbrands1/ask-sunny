@@ -12,6 +12,7 @@ import {
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
+import { withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -659,6 +660,16 @@ export function managerAccount(sentence: string, employeeName: string | null): s
   for (const clause of body.split(",")) {
     let text = clause.trim();
     if (!text) continue;
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): "MSB CA for <name> for
+     * underperformance in the month of October" was the card's whole
+     * Observation: the glossary term in front hid the request. A leading
+     * glossary term followed by a request is the reason, read from the
+     * manager's words by the policy reader; the account is what follows the
+     * request. The same reader `detectTemplateIntent` uses; off, unchanged.
+     */
+    const afterTerm = withoutLeadingGlossaryTerm(text);
+    if (afterTerm !== text && requestLead().test(afterTerm)) text = afterTerm;
     if (requestLead().test(text) || levelRequest().test(text)) {
       requested = true;
       text = text.replace(requestLead(), " ").replace(levelRequest(), " ").replace(/\s+/g, " ").trim();

@@ -37,6 +37,7 @@ import {
   questionNotFormEnabled,
   googleReviewsInChatEnabled,
   typoReadingCopyEnabled,
+  caSalesPolicyEnabled,
 } from "@/lib/config/chat-quality-flags";
 import { CLAUDE_MAX_TOKENS, RETRIEVAL } from "@/lib/config/models";
 import { approvedManualConfirmed, manualDisplayTitle } from "@/lib/forms/official-policy-manual";
@@ -44,6 +45,7 @@ import { MissingConfigurationError, liveReadiness } from "@/lib/config/server-en
 import { ACTIVE_BRAND } from "@/lib/brand";
 import { DEFAULT_PERMISSION_MATRIX, hasPermission } from "@/lib/permissions";
 import { proposeFormForTurn, suggestFormsForTurn, type ChatActor } from "./form-proposal";
+import { acceptedCaOffer, caOfferLine } from "./ca-offer";
 import { remapFormTurn, remapShouldRun, type FormRemapSlots } from "./form-full-remap";
 import { priorShorthand, requestScopedHistory } from "./remap-incident";
 import { historyForRemap } from "./form-remap-scope";
@@ -285,7 +287,9 @@ export async function answerQuestion(
   memory: { memoryOwnerId?: string } = {},
 ): Promise<AskResponse> {
   // REPORT_NAME_NOT_A_PERSON_ENABLED: a form is never built from a question about a report. See `report-turns.ts`.
-  const request = withoutReportTurnsForForm(asked);
+  // CA_SALES_POLICY_ENABLED: "yes" to the Corrective Action offer is the request it offered (`ca-offer.ts`). Off, unchanged.
+  const accepted = acceptedCaOffer({ question: asked.question, history: asked.history });
+  const request = withoutReportTurnsForForm(accepted ? { ...asked, question: accepted } : asked);
   /*
    * APP_PASSWORD_HELP_ENABLED: "I forgot my password" is answered about this
    * app's own sign-in, the "Forgot your password?" link (QA and Pau, 25 Oct
@@ -1879,8 +1883,30 @@ async function answerQuestionUntraced(
     attachedDocumentIds: request.attachedDocumentIds,
   }).content;
 
+  let content = suggested ? `${prose}\n\n${suggested.lead}` : prose;
+  /*
+   * CA_SALES_POLICY_ENABLED: an answer about a policy and an employee the
+   * roster recognises ends with ONE offer to start a Corrective Action citing
+   * that policy; nothing is made until the manager says yes (Pau, 4 Nov 2026).
+   * Not beside a form suggestion. Off, nothing is read or added.
+   */
+  if (caSalesPolicyEnabled() && !suggested) {
+    let roster: Awaited<ReturnType<typeof loadScopedRoster>> = [];
+    try {
+      roster = await loadScopedRoster(actor.scope);
+    } catch {
+      roster = [];
+    }
+    const offer = caOfferLine({
+      history: request.history,
+      question: request.question,
+      questionMessageId: request.questionMessageId,
+      roster,
+    });
+    if (offer) content = `${content}\n\n${offer}`;
+  }
   return {
-    content: suggested ? `${prose}\n\n${suggested.lead}` : prose,
+    content,
     formSelection: suggested?.selection,
     citations: checked ? [...checked.citations] : retrievedCitations,
     /*

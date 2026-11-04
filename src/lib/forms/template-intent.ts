@@ -23,7 +23,8 @@
  * Here, that sentence is AMBIGUOUS and the answer is a question.
  */
 
-import { caShortcutWordsEnabled, formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+import { caSalesPolicyEnabled, caShortcutWordsEnabled, formChoiceStatedEnabled } from "@/lib/config/chat-quality-flags";
+import { foldsToGlossaryTerm } from "@/lib/ai/chat-glossary";
 
 import { NOT_A_NAME, NOT_A_TYPED_NAME, TYPED_NAME_WORD } from "./name-words";
 import { asksForTeamCoaching } from "./team-subject";
@@ -1467,8 +1468,22 @@ const LEVEL_AS_DOCUMENT = new RegExp(
 
 const EXISTENCE_QUESTION = /^(?:so\s+|and\s+)?(?:(?:do|does|did)\s+(?:we|you|i|they|ask sunny)\s+(?:have|offer|keep|use)|(?:is|are)\s+there|have\s+(?:we|you)\s+got|(?:can|could)\s+(?:i|we)\s+(?:find|get))\b/;
 
+/**
+ * A LEADING GLOSSARY TERM IS THE REASON, NOT PART OF THE REQUEST
+ * (CA_SALES_POLICY_ENABLED; Pau, 4 Nov 2026): "MSB CA for <name> for …" is the
+ * request "CA for <name> for …" whose reason is MSB (Must See Behaviors). The
+ * term is read from the approved glossary (`ai/chat-glossary.ts`), never a list
+ * here; the policy reading still sees it in the manager's own words. Off,
+ * the question is unchanged.
+ */
+export function withoutLeadingGlossaryTerm(question: string): string {
+  if (!caSalesPolicyEnabled()) return question;
+  const match = /^\s*([a-z0-9.&-]+)\s+(?=\S)/i.exec(question);
+  return match && foldsToGlossaryTerm(match[1]!) ? question.slice(match[0].length) : question;
+}
+
 export function detectTemplateIntent(rawQuestion: string): TemplateIntent {
-  const question = formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion;
+  const question = withoutLeadingGlossaryTerm(formChoiceStatedEnabled() ? withoutPolicyReference(rawQuestion) : rawQuestion);
   const q = canonicalFormWording(normalize(question));
   /* A question about forms — compared, explained, or when to use one — is answered, never opened. */
   /*
