@@ -565,7 +565,7 @@ describe("the rest of the library is where it was", () => {
       coaching: 2,
       // Revision 7 matches the live library and adds Payroll deduction amount.
       // ensureTemplateLibrary does not publish it.
-      dpoa: 8, // Revision 8 (4 Nov 2026, client request, template approved): Type of Offense is four boxes; still without the amount line.
+      dpoa: 8, // Revision 8 (4 Nov 2026, client request, template approved): Type of Offense is four boxes, published with the amount line (Pau, 4 Nov 2026).
       "policy-review": 2,
       "follow-up-coaching": 2,
       "sdit-epp": 3,

@@ -277,7 +277,9 @@ describe("the amount field is wired, and revision 7 is not published", () => {
      * CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
      * template approved 4 Nov 2026): the seed is now revision 8, which keeps
      * the line. Revision 7 is still withheld as before (checked on a revision
-     * 7 seed), and revision 8 is written as revision 8, still without the line.
+     * 7 seed). Revision 8 is written as revision 8 WITH the line: Pau, 4 Nov
+     * 2026, "Publish Sunny revision 8 WITH the 'Payroll deduction amount'
+     * line from unreleased revision 7."
      */
     expect(seed.revision).toBe(DPOA_OFFENSE_REVISION);
     const keys = seed.document.blocks.map(blockKey);
@@ -286,9 +288,19 @@ describe("the amount field is wired, and revision 7 is not published", () => {
     expect(written7.revision).toBe(DPOA_DATABASE_REVISION);
     expect(written7.document.blocks.map(blockKey)).not.toContain(PAYROLL_AMOUNT_KEY);
     const written = withholdUnpublishedDpoa(seed);
+    expect(written).toBe(seed);
     expect(written.revision).toBe(DPOA_OFFENSE_REVISION);
-    expect(written.document.blocks.map(blockKey)).not.toContain(PAYROLL_AMOUNT_KEY);
-    expect(written.document).toEqual(withoutPayrollAmountField(seed.document));
+    expect(written.document.blocks.map(blockKey).filter((key) => key === PAYROLL_AMOUNT_KEY)).toHaveLength(1);
+  });
+
+  it("revision 8 has the line once: reading it with the flag on or off never adds a second (Pau, 4 Nov 2026)", () => {
+    const seed = HR_TEMPLATE_SEEDS.find((entry) => entry.key === "dpoa")!;
+    for (const flag of ["1", ""]) {
+      process.env[FLAG] = flag;
+      const keys = parseFormDocument(withholdUnpublishedDpoa(seed).document).blocks.map(blockKey);
+      expect(keys.filter((key) => key === PAYROLL_AMOUNT_KEY), `flag "${flag}"`).toHaveLength(1);
+      expect(keys[keys.indexOf(PAYROLL_DEDUCT_KEY) + 1]).toBe(PAYROLL_AMOUNT_KEY);
+    }
   });
 
   it("fills a stated amount and does not take $25 from the policy", () => {

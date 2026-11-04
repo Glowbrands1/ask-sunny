@@ -9,10 +9,18 @@ in both apps.
 What differs in Ask Sunny, and why:
 
 - **Revision 8, not 7.** Ask Sunny's seed was already revision 7 (Payroll
-  deduction amount, not published: the database stays on revision 6 until Pau
-  approves the line). Revision 8 keeps that line in the seed;
-  `withholdUnpublishedDpoa` now publishes revision 8 without it, so the line
-  still waits for Pau and the approved offense change reaches new forms.
+  deduction amount, not published: the database stayed on revision 6). Pau,
+  4 Nov 2026: "Publish Sunny revision 8 WITH the 'Payroll deduction amount'
+  line from unreleased revision 7. 'Template approved' covers the new offense
+  list plus that line." So `ensureTemplateLibrary` publishes revision 8 with
+  the line, once, right after "Is payroll deduct applicable?", as a new
+  version over a library on 6 or 7; `withholdUnpublishedDpoa` holds back only
+  a revision 7 seed. Old versions and the forms filed on them are untouched:
+  `corrective-action-revision-5-e2e.test.ts` opens and prints a revision 6 and
+  a revision 7 form, flag on and off, against a snapshot recorded from `main`
+  before this change (`corrective-action-old-forms-main.json`). With
+  PAYROLL_AMOUNT_FIELD_ENABLED on (production), `main` already shows a blank
+  amount line on a revision 6 form when it is read; that is unchanged.
 - **Old forms are on revision 6 or 7.** Both documents are fixtures
   (`src/test/fixtures/forms/corrective-action-revision-6.json`, `-7.json`),
   and the old-form, copy and revise tests run on both.

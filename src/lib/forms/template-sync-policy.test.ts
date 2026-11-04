@@ -188,11 +188,12 @@ describe("ensureTemplateLibrary on Production", () => {
     // Revision 7 is in the seed and is not written. A library still on
     // revision 4 receives revision 6, without Payroll deduction amount.
     // CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
-    // template approved 4 Nov 2026): it now receives revision 8, still
-    // without Payroll deduction amount.
+    // template approved 4 Nov 2026): it now receives revision 8, WITH
+    // Payroll deduction amount (Pau, 4 Nov 2026: "Publish Sunny revision 8
+    // WITH the 'Payroll deduction amount' line").
     expect(caSeed.revision).toBe(8);
     expect(current?.seedRevision).toBe(8);
-    expect(JSON.stringify(current?.document)).not.toContain("Payroll deduction amount");
+    expect(JSON.stringify(current?.document).split("Payroll deduction amount")).toHaveLength(2);
     expect(current?.id).not.toBe(versionId);
     // The old version is archived, not replaced.
     expect(store.form_template_versions.find((row) => row.id === versionId)?.status).toBe("archived");

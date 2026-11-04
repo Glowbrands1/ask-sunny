@@ -38,7 +38,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 const { ensureTemplateLibrary } = await import("./repository");
 const { TEMPLATE_SEEDS } = await import("./library");
-const { DPOA_OFFENSE_REVISION, PAYROLL_AMOUNT_LABEL, withoutPayrollAmountField } = await import(
+const { DPOA_OFFENSE_REVISION, PAYROLL_AMOUNT_LABEL } = await import(
   "./payroll-amount-field"
 );
 const { default: REVISION_6 } = await import("@/test/fixtures/forms/corrective-action-revision-6.json");
@@ -478,15 +478,15 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
     // Payroll deduction amount, until Pau approves a publish.
     // CHANGED ON PURPOSE, Corrective Action revision 8 (client request,
     // template approved 4 Nov 2026): the seed is revision 8 and is published
-    // as revision 8 — still without Payroll deduction amount.
+    // as revision 8 — WITH Payroll deduction amount (Pau, 4 Nov 2026).
     expect(caSeed.revision).toBe(8);
     expect(currentVersionOf("dpoa")).toMatchObject({
       version: 2,
       status: "published",
       seed_revision: DPOA_OFFENSE_REVISION,
     });
-    expect(currentVersionOf("dpoa")?.document).toEqual(withoutPayrollAmountField(caSeed.document));
-    expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(PAYROLL_AMOUNT_LABEL);
+    expect(currentVersionOf("dpoa")?.document).toEqual(caSeed.document);
+    expect(JSON.stringify(currentVersionOf("dpoa")?.document).split(PAYROLL_AMOUNT_LABEL)).toHaveLength(2);
     expect(JSON.stringify(currentVersionOf("dpoa")?.document)).toContain("may result in additional corrective action");
     expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(OLD_CLOSING);
     const archived = versionsOf("dpoa").find((row) => row.id === originalId);
@@ -502,12 +502,14 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
    * approved 4 Nov 2026). Before: revision 7 was never published over a
    * library at 6 or at the live v7. Now revision 8 (Type of Offense) is
    * published over either — as a new version, the old one archived for the
-   * forms filed on it — and still without Payroll deduction amount.
+   * forms filed on it — WITH Payroll deduction amount (Pau, 4 Nov 2026:
+   * "Publish Sunny revision 8 WITH the 'Payroll deduction amount' line from
+   * unreleased revision 7"). The archived version is kept exactly as it was.
    */
   it.each([
     [6, REVISION_6],
     [7, REVISION_7],
-  ])("publishes revision 8 over a library at revision %i, without the amount line, and keeps the old version", async (revision, document) => {
+  ])("publishes revision 8 over a library at revision %i, with the amount line once, and keeps the old version as it was", async (revision, document) => {
     await ensureTemplateLibrary("system");
     for (const row of versionsOf("dpoa")) {
       row.seed_revision = revision;
@@ -517,12 +519,16 @@ describe("the Corrective Action Form's revision 6 (District Manager feedback, 21
 
     expect((await ensureTemplateLibrary("system")).revised).toEqual(["dpoa"]);
     expect(currentVersionOf("dpoa")).toMatchObject({ status: "published", seed_revision: DPOA_OFFENSE_REVISION });
-    expect(currentVersionOf("dpoa")?.document).toEqual(withoutPayrollAmountField(caSeed.document));
-    expect(JSON.stringify(currentVersionOf("dpoa")?.document)).not.toContain(PAYROLL_AMOUNT_LABEL);
-    expect(JSON.stringify(currentVersionOf("dpoa")?.document)).toContain("Attendance Policy");
+    const published = currentVersionOf("dpoa")!.document as { blocks: { kind: string; key?: string; field?: { key: string } }[] };
+    expect(published).toEqual(caSeed.document);
+    const keys = published.blocks.map((block) => block.field?.key ?? block.key ?? block.kind);
+    expect(keys.filter((key) => key === "payroll_deduct_amount")).toHaveLength(1);
+    expect(keys[keys.indexOf("payroll_deduct") + 1]).toBe("payroll_deduct_amount");
+    expect(JSON.stringify(published)).toContain("Attendance Policy");
     const archived = versionsOf("dpoa").find((row) => row.id === originalId);
     expect(archived).toMatchObject({ status: "archived", seed_revision: revision });
-    expect(JSON.stringify(archived?.document)).toContain("Tardiness/Leaving Early");
+    // The old version's document is exactly the one its forms were filed on.
+    expect(archived?.document).toEqual(document);
 
     // Idempotent: a second run publishes nothing.
     expect((await ensureTemplateLibrary("system")).revised).toEqual([]);

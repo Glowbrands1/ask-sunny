@@ -53,10 +53,10 @@ export const DPOA_UNPUBLISHED_REVISION = 7;
 export const DPOA_DATABASE_REVISION = 6;
 
 /**
- * Revision 8 (Type of Offense, client request; template approved 4 Nov 2026)
- * is published. It keeps revision 7's Payroll deduction amount line in the
- * seed, and the line is still not published: a later revision is stored
- * as its own revision, without the line, until Pau approves it.
+ * Revision 8 (Type of Offense, client request) is published WITH revision 7's
+ * Payroll deduction amount line. Pau, 4 Nov 2026: "Publish Sunny revision 8
+ * WITH the 'Payroll deduction amount' line from unreleased revision 7.
+ * 'Template approved' covers the new offense list plus that line."
  */
 export const DPOA_OFFENSE_REVISION = 8;
 
@@ -74,18 +74,18 @@ export function withoutPayrollAmountField(document: FormDocument): FormDocument 
 }
 
 /**
- * What a database write is allowed to store. Revision 7 is in the seed and is
- * not published. A later revision (8, the Type of Offense) is published
- * without revision 7's amount line. Any other revision is stored as given.
+ * What a database write is allowed to store. Only a revision 7 seed is held
+ * back (written as revision 6, without the amount line), as it was before Pau
+ * approved the line; the seed is revision 8 now, so this no longer happens.
+ * Revision 8 and later are stored as given, WITH the line (Pau, 4 Nov 2026).
+ * Nothing here touches a version already in the database: a library on 6 or
+ * 7 gets revision 8 as a new version, and the forms filed on 6 or 7 keep
+ * pointing at their own.
  */
 export function withholdUnpublishedDpoa<T extends { key: string; revision: number; document: FormDocument }>(
   seed: T,
 ): T {
-  if (seed.key !== "dpoa" || seed.revision < DPOA_UNPUBLISHED_REVISION) return seed;
-  if (seed.revision > DPOA_UNPUBLISHED_REVISION) {
-    const document = withoutPayrollAmountField(seed.document);
-    return document === seed.document ? seed : { ...seed, document };
-  }
+  if (seed.key !== "dpoa" || seed.revision !== DPOA_UNPUBLISHED_REVISION) return seed;
   return {
     ...seed,
     revision: DPOA_DATABASE_REVISION,
@@ -111,6 +111,8 @@ export function payrollAmountPrompt(input: {
 export function withPayrollAmountField(document: FormDocument): FormDocument {
   // Off, a document is read as stored. The seed already has the line; a
   // database still on revision 6 does not, and this does not add it.
+  // On, a document that already has it (revision 7, revision 8) is returned
+  // as it is: never a second amount line.
   if (!payrollAmountFieldEnabled()) return document;
   const present = document.blocks.some(
     (block) => block.kind === "field" && block.field.key === PAYROLL_AMOUNT_KEY,
