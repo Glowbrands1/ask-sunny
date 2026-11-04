@@ -2366,7 +2366,8 @@ export function formEditSingleWriterEnabled(): boolean {
 /**
  * The edit tool in the main call (Step 3, 4 Nov 2026; ported from Ask
  * Bubbles, same flag in both apps): with a draft form open and a turn that is
- * not a question, a correction or a policy change, the answering call is
+ * not a correction or a policy change (a question-phrased turn too, Pau's
+ * ruling A3), the answering call is
  * offered one tool, `edit_form`, with the open form as JSON in one extra data
  * block. A tool call is written through `writeFormEdits` (path "tool", all or
  * nothing) and the reply is the saved diff; the model's text is not shown. No
@@ -2392,4 +2393,39 @@ export function formEditToolInStreamEnabled(): boolean {
  */
 export function chatGlossaryEnabled(): boolean {
   return envFlag("CHAT_GLOSSARY_ENABLED");
+}
+
+/**
+ * Sales and MSB corrective actions cite the Standards of Conduct (client
+ * request relayed by Pau, 4 Nov 2026; ported from Ask Bubbles #422, same flag
+ * in both apps). A Corrective Action whose account reads as the Under
+ * Performance offense type (results against a sales or performance target, the
+ * reading `ca-policy.ts` already makes) or uses a term from the approved chat
+ * glossary (MSB, Must See Behaviors) is read as the Standards of Conduct: the
+ * card says so, the draft ticks that box and Direct policy cites the manual's
+ * section by heading and page. The drafting model is also told so, in one
+ * added line. The glossary is `ai/chat-glossary.ts`, read through
+ * `foldsToGlossaryTerm` (which ignores CHAT_GLOSSARY_ENABLED, as in Ask
+ * Bubbles). Off, every reading, card line, prompt and draft is byte for byte as before.
+ * See `forms/ca-sales-policy.ts`.
+ */
+export function caSalesPolicyEnabled(): boolean {
+  return envFlag("CA_SALES_POLICY_ENABLED");
+}
+
+/**
+ * No false "Updated" after a form edit (Step 4, 4 Nov 2026). The one writer
+ * refuses, on the tool, patch, revision and correction paths, an op that sets
+ * a field to the value it already has (`same_value`) and an op whose value
+ * holds the manager's whole latest message of 3 words or more
+ * (`copies_message`, the overnight scan's sf-s11); both hand the turn off as
+ * any refusal does. On a turn the edit tool was offered, the reply about the
+ * form comes only from the saved diff ("Updated: <label>: <value>"), and an
+ * empty diff says "I didn't change anything on the form. Tell me which part
+ * to change and what it should say." See `forms/form-noop-reply.ts`. Needs
+ * FORM_EDIT_SINGLE_WRITER_ENABLED: off unless both are on. Off, nothing
+ * changes.
+ */
+export function formEditNoopGuardEnabled(): boolean {
+  return envFlag("FORM_EDIT_NOOP_GUARD_ENABLED") && formEditSingleWriterEnabled();
 }
