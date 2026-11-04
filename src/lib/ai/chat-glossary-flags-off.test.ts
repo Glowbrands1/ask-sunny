@@ -200,7 +200,12 @@ vi.mock("@/lib/forms/prior-forms", async (importOriginal) => ({
 }));
 
 const FLAG = "CHAT_GLOSSARY_ENABLED";
-const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn];
+/*
+ * Production's flags WITHOUT this one: the test is "this flag off", and from
+ * 4 Nov 2026 production-flags.json lists CHAT_GLOSSARY_ENABLED on (QA's flip).
+ * The recorded fixture is main before the glossary, so the base must leave it off.
+ */
+const PRODUCTION = [...PRODUCTION_FLAGS.on, ...PRODUCTION_FLAGS.assumedOn].filter((name) => name !== FLAG);
 const TOUCHED = [...new Set([FLAG, "FORM_EDIT_SINGLE_WRITER_ENABLED", "FORM_EDIT_TOOL_IN_STREAM_ENABLED", ...PRODUCTION, ...PRODUCTION_FLAGS.off])];
 const saved = new Map<string, string | undefined>();
 
