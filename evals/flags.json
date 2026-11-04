@@ -1,4 +1,4 @@
 {
   "_comment": "on: the step's own flag(s), on only in the flags-on column. Today's production flags come from src/config/production-flags.json (on + assumedOn); a step flag already in production is not listed here.",
-  "on": ["FORM_PATCH_REDUCER_ENABLED", "FORM_REPLY_FROM_DIFF_ENABLED"]
+  "on": ["FORM_EDIT_SINGLE_WRITER_ENABLED"]
 }

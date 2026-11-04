@@ -10,6 +10,7 @@ import {
 import type { FormsActor } from "@/lib/forms/access";
 import { actorMaySeeInstance, authorizeInstance } from "@/lib/forms/instance-scope";
 import type { AskResponse } from "@/lib/ai/types";
+import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 import {
   draftableCheckboxGroups,
   draftableFields,
@@ -209,8 +210,34 @@ export async function copyFormContent(input: {
   source: LoadedInstance;
   target: LoadedInstance;
   actorId: string;
+  /** The manager's turns, one per line (FORM_EDIT_SINGLE_WRITER_ENABLED: a date only one they said). */
+  notes?: string;
 }): Promise<{ values: Record<string, string>; checked: Record<string, string[]> }> {
-  const { source, target } = input;
+  const { values, checked, provenance } = copiedContent(input.source, input.target);
+  if (Object.keys(values).length === 0 && Object.keys(checked).length === 0) return { values, checked };
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: through the one writer (`lib/forms/form-write.ts`), path "copy".
+  const written = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(input.target.instance.id, { values, checked }, input.actorId, provenance, {
+        path: "copy",
+        notes: input.notes ?? "",
+      })
+    : await applyAssistantDraft(input.target.instance.id, { values, checked }, input.actorId, provenance);
+  return written.accepted;
+}
+
+/**
+ * What a copy would write onto the target: the source's content, its name
+ * swapped, minus what the manager typed on the target; and each key's
+ * provenance. Nothing is written here.
+ */
+export function copiedContent(
+  source: LoadedInstance,
+  target: LoadedInstance,
+): {
+  values: Record<string, string>;
+  checked: Record<string, string[]>;
+  provenance: Record<string, Record<string, unknown>>;
+} {
   const keys = contentKeys(target);
   const sourceKeys = contentKeys(source);
   const managerTyped = new Set(
@@ -227,15 +254,13 @@ export async function copyFormContent(input: {
     }
     if (row.checked.length > 0) checked[row.fieldKey] = [...row.checked];
   }
-  if (Object.keys(values).length === 0 && Object.keys(checked).length === 0) return { values, checked };
   const provenance = Object.fromEntries(
     [...Object.keys(values), ...Object.keys(checked)].map((key) => [
       key,
       { source: "copied_form", fromInstanceId: source.instance.id },
     ]),
   );
-  const written = await applyAssistantDraft(target.instance.id, { values, checked }, input.actorId, provenance);
-  return written.accepted;
+  return { values, checked, provenance };
 }
 
 /** The labels of content fields the target already fills that the source would replace. */
@@ -363,9 +388,25 @@ export async function copyIntoOpenForm(input: {
       };
     }
   }
-  const copied = await copyFormContent({ source, target: loaded, actorId: actor.id });
+  /*
+   * FORM_EDIT_SINGLE_WRITER_ENABLED: the copy through the one writer, and the
+   * claim is what really changed. See `lib/forms/form-write.ts`.
+   */
+  const throughWriter = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).copyThroughWriter({
+        source,
+        target: loaded,
+        actorId: actor.id,
+        notes: [...(input.history ?? []).filter((turn) => turn.role === "user").map((turn) => turn.content ?? ""), input.question].join("\n"),
+      })
+    : null;
+  const copied = throughWriter ?? (await copyFormContent({ source, target: loaded, actorId: actor.id }));
   const updated = [...new Set([...Object.keys(copied.values), ...Object.keys(copied.checked)])];
-  if (updated.length === 0) return null;
+  if (updated.length === 0) {
+    return throughWriter?.nothingChanged
+      ? { content: throughWriter.nothingChanged, citations: [], coverage: "not_applicable", recommendedVideoIds: [] }
+      : null;
+  }
   return {
     content: `Copied ${source.instance.employeeName}'s ${source.instance.templateName} content onto ${loaded.instance.employeeName}'s draft, with the name changed. Who, where and when are this draft's own. Check the card reads right for ${loaded.instance.employeeName} (pronouns are not changed), then save or finalize.`,
     citations: [],

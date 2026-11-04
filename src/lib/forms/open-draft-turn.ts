@@ -1,6 +1,6 @@
 import type { AskResponse } from "@/lib/ai/types";
 import { isQuestionNotForm } from "@/lib/ai/question-not-form";
-import { openDraftKeepsTurnsEnabled } from "@/lib/config/chat-quality-flags";
+import { formEditSingleWriterEnabled, openDraftKeepsTurnsEnabled } from "@/lib/config/chat-quality-flags";
 import { extractEmployeeNames, samePerson } from "@/lib/forms/proposal";
 import { detectTemplateIntent } from "@/lib/forms/template-intent";
 import type { ChatMessage } from "@/types";
@@ -39,6 +39,15 @@ export async function openDraftTurn(input: {
   const open = await (await import("@/lib/forms/open-form-summary")).describeOpenForm(input.request, input.instanceId);
   if (!open || open.status !== "draft") return null;
   if (extractEmployeeNames(question).some((name) => !samePerson(name, open.employeeName))) return null;
+  /*
+   * FORM_EDIT_SINGLE_WRITER_ENABLED: the draft before the turn, and the
+   * revision's claim checked against what was saved (`lib/forms/form-write.ts`).
+   * The write itself is the revision's (`chat-revision.ts`, protected) until
+   * 2b routes it through `writeRevisionEdits`.
+   */
+  const before = formEditSingleWriterEnabled()
+    ? await (await import("@/lib/forms/form-write")).editSnapshot(input.instanceId, "open_draft")
+    : null;
   const revised = await (await import("@/lib/forms/chat-revision")).reviseActiveForm({
     request: input.request,
     instanceId: input.instanceId,
@@ -46,6 +55,9 @@ export async function openDraftTurn(input: {
     history: [...input.history],
     today: input.today,
   });
+  if (revised && formEditSingleWriterEnabled() && before) {
+    return (await import("@/lib/forms/form-write")).realizedClaim(revised, input.instanceId, before);
+  }
   if (revised) return revised;
   return {
     content: [

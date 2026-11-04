@@ -1,6 +1,7 @@
 import "server-only";
 
 import { businessToday } from "@/lib/business-date";
+import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 
 import { fixedActionPlanKey } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -225,7 +226,12 @@ export async function reduceDraftWrite(input: {
       const written = await loadInstance(input.id);
       if (!written) return diff;
       if (payrollYesWithAmount(draftFromRows(written.values))) {
-        await syncCorrectiveActionPlan(input.id, input.actorId, { amountSentence: true, notes: input.notes });
+        // FORM_EDIT_SINGLE_WRITER_ENABLED: the plan's sync from the one writer (`form-write.ts`).
+        if (formEditSingleWriterEnabled()) {
+          await (await import("./form-write")).syncPlan(input.id, input.actorId, { amountSentence: true, notes: input.notes });
+        } else {
+          await syncCorrectiveActionPlan(input.id, input.actorId, { amountSentence: true, notes: input.notes });
+        }
       }
       const after = await loadInstance(input.id);
       return { changed: diffDrafts(before, draftFromRows((after ?? written).values)), refused: diff.refused };

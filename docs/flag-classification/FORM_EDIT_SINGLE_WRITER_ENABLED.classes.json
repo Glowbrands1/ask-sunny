@@ -1,0 +1,982 @@
+{
+  "src/app/api/chat/action-plan-fits-e2e.test.ts :: PLAN_PAYROLL_SENTENCE_ENABLED off: as main the plan says nothing of the deduction": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "The OR'd reduce gate brings the reducer's settle(), which states in the plan the payroll amount the manager gave (Payroll Yes with an amount)."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov3-stepb-position-not-a-topic: the employee's position and salon (\"Tanning Consultant at Kearney\") is never written into a topic or the Other topic — OPEN in production (the drafting model's \"Tanning Consultant at Kearney\" is saved as the Other topic)": {
+    "category": "INTENDED",
+    "twin": "the same case with production's flags (flag unset)",
+    "reason": "An OPEN case (expected to fail) now holds with the flag on: the one writer fixes it. Move it to fixed when the flag is flipped."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-live-ca-t2-step-b-replace: CA chat T2 \"fix her last name, it is Doe-Smith\" with Step B ON — a patch REPLACING the Observation with \"Doe-Smith was late …\" must not drop \"Jane\" — OPEN in production (with Step B on, the replace is accepted on its evidence and the Observation becomes \"Doe-Smith was late to open on 10-20-26.\": \"Jane\" is dropped (and the Expectation with it); nothing checks what a replace removes)": {
+    "category": "INTENDED",
+    "twin": "the same case with production's flags (flag unset)",
+    "reason": "An OPEN case (expected to fail) now holds with the flag on: the one writer fixes it. Move it to fixed when the flag is flipped."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase with the name Capitalized, …' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase with the name Capitalized, …' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, no call no show' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, no call no show' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, took product' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'lowercase, took product' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case with the name lowercase…' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case with the name lowercase…' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, no call no show (the t…' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, no call no show (the t…' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, took product' flag off: today's behaviour, pinned a JSON-encoded `values` is dropped without a word: blank": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: 'sentence case, took product' flag off: today's behaviour, pinned an empty tool call is filed blank, recorded as drafted with no fields and nothing rejected": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'Sentence case, didn\\'t' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'Sentence case, never (salon)' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'lowercase, did not (no state: \"<store…' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'lowercase, never (salon)' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: an account told as what did not happen 'lowercase, no call' flag off: filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: flag off is byte-identical to main empty": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: flag off is byte-identical to main filled": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: flag off is byte-identical to main malformed": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/draft-never-blank-oct26-e2e.test.ts :: six Create presses at once (the production burst) flag off: the ones the model left blank are filed blank, as on main": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "A 'flag off, as on main' pin. Flag on: the draft route reduces its write (the reduce gate is REDUCER || SINGLE_WRITER, per the design), and a write that changes nothing writes nothing, so no empty 'drafted' event; DRAFT_NEVER_BLANK still records its own reasons."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: drafting a Demotion Form keeps nothing the model writes into a fact": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: drafting a Demotion Form keeps the stated facts when the model fails": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: drafting a Demotion Form offers the model the reason paragraph and nothing else": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: drafting a Demotion Form writes the manager's stated facts before the model runs": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: found in production QA: the Demotion Form's Location writes Salon 12 onto the Location line from the manager's own words": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/employment-change-draft-route.test.ts :: other forms are untouched never reads stated facts onto a Coaching Form": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: HR feedback 30 Sep — the Delphine exit form asks the model for the name, not a pronoun, and for no header restatement — on the exit form": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: HR feedback 30 Sep — the Delphine exit form keeps a Details paragraph the model wrote the way HR asked": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: HR feedback 30 Sep — the Delphine exit form stores the notice date and tick from her words, and Details without the header sentence": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored EXIT_INTAKE_FIX_ENABLED: the Permanent Address the manager typed is filled; one the model wrote never is": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored fills HR's Details lines from the manager's words, under the exit allow-list": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored fills nothing the manager did not say": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored keeps a fact the manager did state; its box is filled from their words, never the model's": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored leaves Details empty rather than keeping nothing but a decision": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored never ticks it from intent, even when the model does: Termination form for Dan Smith. We may fire him. Last day 9/20.": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored never ticks it from intent, even when the model does: Termination paperwork for Dan Smith. Should we terminate him? His last day was 9/20.": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored removes a Details sentence carrying a date the manager never gave": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored removes a Details sentence that answers a question nobody answered": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored replaces whatever the model wrote for a derived key, and drops what it may not write": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored resolves yesterday against the business day": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored the dates and ticks from the manager's words, and Details": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what is stored ticks the involuntary box from the manager's completed statement, not the model": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/exit-draft-route.test.ts :: what the model is shown only Details — never the derived facts, the yes/no questions or a signature": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words POLICY_SPECIFIC_TOPICS_ENABLED on: rests a direction not followed on the manual's insubordination line, quoting the bullet": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words chooses nothing when the account also reads as attendance, and says so": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words cites the Standards of Conduct from the current manual for: Create a corrective action for Delphine for missing the Woven deadline.": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words cites the Standards of Conduct from the current manual for: write a corrective action for delphine ashworth, tanning consultant at manhattan, for not meeting the woven 9-30-26 deadline. this is a verbal warning.": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words does not tick it when the manual's section lists no such infraction": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words does not tick it when the section is not in the manual at all": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words does not tick it when there is no manual to check": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words keeps every other box the model ticked": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words leaves a case it does not recognise to the model, as before": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words rests a direction not followed on the manual's insubordination line": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words ticks a different policy the manager named over the model's choice": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words ticks a named policy with no section, and leaves Direct policy blank rather than inventing one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: HR feedback 30 Sep — the Corrective Action's policy, from the manager's words ticks it when the manager named it, quoting the section": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: a governed draft is blocked when the framework is unavailable still drafts the Coaching Form when the framework is down": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: a sensitive final action never reaches the persistence call leaves a legitimate written warning alone": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: a sensitive final action never reaches the persistence call stores no selection at all when the sensitive action was the only one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: a sensitive final action never reaches the persistence call strips a model-selected termination before anything is stored": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: an instance pinned to the older published version fills Policy Violated from the tick — older pinned version: false": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: an instance pinned to the older published version fills Policy Violated from the tick — older pinned version: true": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: an instance pinned to the older published version names the manual on the older version too, with the retrieval's provenance": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: an instance pinned to the older published version sends the tick's own provenance to the write, not a retrieval's": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: an instance pinned to the older published version still fails closed on the field that names a manual": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: an unverified policy value never reaches the persistence call never persists a policy title or quotation the model composed": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour B. attendance — an employee was late today keeps the observation to what was seen": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour B. attendance — an employee was late today retrieves the framework and the approved attendance policy, separately": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour C. dress code — the QA case, verbatim does not invent a uniform requirement when the manual has none": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour C. dress code — the QA case, verbatim populates the policy fields once the manual actually answers": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour C. dress code — the QA case, verbatim tells the manager the exact policy still has to be verified": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour D. no approved policy is found says so through the separation rules in the prompt as well": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour D. no approved policy is found sends no separation rules to a form with no policy fields": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour D. no approved policy is found still structures the form from the framework, and invents nothing": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the Corrective Action Form's generation behaviour overrides whatever the model composed in either policy field": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the approved-policy search looks where the business actually files its policy manual": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the approved-policy search never lets the Performance Management Framework answer a policy question": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the approved-policy search populates both fields once the manual is reachable": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the approved-policy search searches on the manager's own words, never on the model's output": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the follow-up timeframe field is emptied when the manager gave nothing to base one on": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the follow-up timeframe field is permitted, and kept when the manager gave a timeframe": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the follow-up timeframe field keeps the blanket rule on a form with no timeframe field": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end HIDE_NO_POLICY_MATCH_NOTICE_ENABLED (Pau, 26 Oct 2026): the \"Woven does not see a matching policy\" note is not shown, the other notes still are": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end classifies the offense and the warning level from the manager's own answers": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end fills Policy Violated from the tick and leaves the manual unnamed": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end keeps the finding and the policy once the manual answers": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end keeps the observation factual, dated from the form rather than the model": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end never lets the invented clothing rule reach the Action Plan, which is built from the form": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end still retrieves the framework deterministically, by its role": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the mini-skirt case, end to end tells the manager everything it removed and why": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned carries provenance naming the document rather than a score": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites each ticked section, and only what was ticked": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites nothing for an offense the manual states no section for": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites nothing from the contents page when the sheet is missing": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites nothing when no box is ticked": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites nothing when the manual is not in the knowledge base": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites nothing when two documents claim to be the manual": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites the attendance section for lateness, at the printed page": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites the company-wide dress code for a manager too": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites the manual, the section and the page the manual prints": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned cites the same section for absence, and only once when both are ticked": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned does it with NOTHING retrieved, which is the whole point": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned does not let the citation license a breach conclusion in the observation": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the official policy manual, pinned drafts the rest of the form when the manual cannot be read at all": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the progression framework reaches a governed draft carries the reasoning order in the system prompt": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the progression framework reaches a governed draft does NOT send it, or the rules, for the plain Coaching Form": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the progression framework reaches a governed draft sends it for the DPOA too": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/pm-draft-route.test.ts :: the progression framework reaches a governed draft sends the framework's own text, with its provenance, for Follow-Up Coaching": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: an opinion never becomes a company policy keeps an attribution the retrieved section really does state": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: an opinion never becomes a company policy never mentions the legacy manual, in the prompt or on the record": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: an opinion never becomes a company policy removes a breach finding even when policy WAS retrieved": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: an opinion never becomes a company policy removes a rule attributed to a manual that does not state it": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against does not run the corrective forms' similarity search at all": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against drafts as ordinary coaching when the observation raises no policy at all": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against puts the Attendance section, with its printed page, in front of the model": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against retrieves only what the manager reported, never the whole manual": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against sends Standards of Conduct for a general performance concern": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against sends the culture section too when the manager praised client service": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the JB & Associates manual is what the plan is reasoned against sends the schedule sections when the manager raised scheduling": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the appendix reference is derived, never written by the model carries provenance that points at the manual and the sections": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the appendix reference is derived, never written by the model leaves the line blank when the manual is not in the knowledge base": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the appendix reference is derived, never written by the model leaves the line blank, and says so, when nothing resolved": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the appendix reference is derived, never written by the model names the sections that actually resolved, with their pages": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: the appendix reference is derived, never written by the model overrides a reference the model invented": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft does not block on missing productivity": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft leaves every expectation unmarked when the model marked none": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft leaves the re-evaluation for the manager, because it has not happened": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft never marks the employee's own column, which is theirs to complete": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft refuses an expectation key the form does not offer": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft stores the two mark columns separately when the model does mark them": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/sdit-epp-draft-route.test.ts :: what the form itself refuses to accept from a draft writes nothing into a signature, because a signature has no key": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: the JB & Associates manual is what this plan is reasoned against puts the Attendance section, with its printed page, in front of the model": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: the JB & Associates manual is what this plan is reasoned against refuses to attribute a TSD expectation to JBA policy": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: the JB & Associates manual is what this plan is reasoned against retrieves only what the manager reported, never the whole manual": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: the JB & Associates manual is what this plan is reasoned against says nothing about the manual Ask Sunny cannot read": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what reaches the record drops anything written into the manager's own self-assessment": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what reaches the record drops anything written into the re-evaluation": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what reaches the record leaves a metric the manager never supplied empty": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what reaches the record refuses a management expectation the form does not offer": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what reaches the record writes nothing into a signature, because a signature has no key": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what reaches the record writes only the plan rows the model supported, and leaves the rest blank": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what the model is allowed to write, and what it never sees names the subject as the TSD the manager stated": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what the model is allowed to write, and what it never sees never offers the manager's own self-assessment": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what the model is allowed to write, and what it never sees never offers the re-evaluation, because it has not happened yet": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what the model is allowed to write, and what it never sees offers each plan row with the objective the business printed beside it": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what the model is allowed to write, and what it never sees offers the ten productivity lines this plan actually has": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/tsd-epp-draft-route.test.ts :: what the model is allowed to write, and what it never sees tells the model to leave the categories nothing supports alone": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: Direct policy from official manual, on the live corpus shape dpoa: a SUPERSEDED copy is out of the running — the same-kind tie resolves to the current copy, and nothing is drawn from the old one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: Direct policy from official manual, on the live corpus shape dpoa: the dress-code wording and its source — the Woven copy of the manual, section and printed page": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: Direct policy from official manual, on the live corpus shape policy-review: a SUPERSEDED copy is out of the running — the same-kind tie resolves to the current copy, and nothing is drawn from the old one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: Direct policy from official manual, on the live corpus shape policy-review: the dress-code wording and its source — the Woven copy of the manual, section and printed page": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: Direct policy from official manual, on the live corpus shape the attendance section cites its own printed page, and nothing about dress code": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: Direct policy from official manual, on the live corpus shape two copies of the SAME kind stay ambiguous: the line is left for the manager, never filled from an unrelated hit": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: a redraft keeps what the manager typed keeps a policy line they typed when the redraft cannot cite one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: a redraft keeps what the manager typed keeps an Action Plan the manager typed, as it does every line of theirs": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: a redraft keeps what the manager typed keeps their lines and their tick, and replaces only the uncited policy line with a cited one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-manual-citation.test.ts :: a redraft keeps what the manager typed leaves a first draft as it was: without the flag, every line is written": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-policy-draft.test.ts :: policy-dependent forms use the current synced Woven policy after Woven unpublishes the policy, a draft no longer quotes it": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-policy-draft.test.ts :: policy-dependent forms use the current synced Woven policy after Woven updates the policy, the next draft uses the new text and not the old": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-policy-draft.test.ts :: policy-dependent forms use the current synced Woven policy dpoa: the Woven Attendance Policy reaches the draft as approved policy, with its source": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/app/api/forms/woven-policy-draft.test.ts :: policy-dependent forms use the current synced Woven policy policy-review: the Woven Attendance Policy reaches the draft as approved policy, with its source": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: correcting the open form from chat corrects a finalized form on a new draft of it, never on the finalized one": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: correcting the open form from chat corrects a name or a date without starting again": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: correcting the open form from chat points at the reason paragraph when one was already drafted": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: correcting the open form from chat saves the new location and says so in the form's own words": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: correcting the open form from chat writes only keys the form has": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in QA: corrections to several lines, and a reason the manager wrote never rewrites a reason the manager wrote, and names what to check": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in QA: corrections to several lines, and a reason the manager wrote swaps both locations and the paragraph together, without cross-rewriting": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in hands-on QA: a new request is not a correction still corrects when the manager names this form's employee": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in hands-on QA: the correction summary names a ticked box by its group's label, without an empty label": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in live QA: a correction never makes the paragraph contradict itself leaves the reason alone when the new value is already there for another purpose": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in production QA: a correction never leaves the reason stale says which value it could not safely change, rather than guessing": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in production QA: a correction never leaves the reason stale updates New Location and the reason together, in one save: 'Actually her new location is salon 24.'": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in review: PR #48's payroll correction never touches the reason saves only the payroll answer on a Corrective Action Form that has a reason paragraph": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: found in review: the correction and the paragraph are one save never rewrites 'manager' in ordinary prose when a title named Manager is corrected": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: the Corrective Action Form's payroll-deduct answer asks for the amount once when payroll is Yes and no figure was given": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: the Corrective Action Form's payroll-deduct answer changes a finalized form's answer on a new draft of it": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: the Corrective Action Form's payroll-deduct answer corrects the form's date when the manager names it": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: the Corrective Action Form's payroll-deduct answer fills a stated amount and does not ask, and does not take a policy $25": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: the Corrective Action Form's payroll-deduct answer reads a plain statement too": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-correction.test.ts :: the Corrective Action Form's payroll-deduct answer saves a stated change as the manager's own edit, in the form's words": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation asking from the original's own card lands on its open draft too": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation asking twice lands on the draft the first request opened": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation chooses the named employee's newest form, not somebody else's": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation follows a revised form in the conversation to its newer version": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation makes the change the same sentence asked for, on the new draft": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation opens a draft as it is, without revising anything": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/chat-reopen.test.ts :: bringing a form on file back into the conversation opens a finalized exit form as a new draft, in the thread": {
+    "category": "INTENDED-HARNESS",
+    "twin": "the same test with the flag unset",
+    "reason": "The test mocks the protected instances.ts module without loadInstance (or reads only what its stub writers return); the one writer loads the form and its writers' saved rows. Not a behaviour change: the harness spied on the old writer. To be rewritten to assert the saved state before the flip."
+  },
+  "src/lib/forms/form-patch-flags-off.test.ts :: with both flags unset a chat turn on an open draft, and the draft route's POST, load none of Step B's modules, and no formDiff is returned": {
+    "category": "INTENDED",
+    "twin": "itself, flag unset (CI default) — pins today's behaviour",
+    "reason": "Asserts no formDiff with the Step B flags unset; the single writer turns the draft route's reduce gate on by design (REDUCER || SINGLE_WRITER)."
+  },
+  "replay: nov3-stepb-invented-sentence-refused [fix:FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "the same case with the flag unset",
+    "reason": "Still holds; the refused patch now hands the turn on (all or nothing) and the old path's honest reply answers instead of the reply-from-diff line."
+  },
+  "replay: nov3-stepb-position-not-a-topic [open]": {
+    "category": "INTENDED",
+    "twin": "the same case with the flag unset",
+    "reason": "An open case now holds with the flag on: the one writer refuses the patch (all or nothing) and the turn goes on."
+  },
+  "replay: nov4-live-ca-t2-step-b-replace [open]": {
+    "category": "INTENDED",
+    "twin": "the same case with the flag unset",
+    "reason": "An open case now holds with the flag on: the one writer refuses the patch (all or nothing) and the turn goes on; the old path keeps \"Jane Doe-Smith\"."
+  }
+}

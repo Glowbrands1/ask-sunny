@@ -7,6 +7,7 @@ import {
   type OfficialPolicyManualResult,
 } from "@/lib/knowledge/providers/supabase";
 import type { ChatMessage } from "@/types";
+import { formEditSingleWriterEnabled } from "@/lib/config/chat-quality-flags";
 
 import { policyPhrase } from "./ca-action-plan";
 import { syncCorrectiveActionPlan } from "./ca-action-plan-sync";
@@ -170,10 +171,21 @@ export async function changeActiveFormPolicy(input: {
       return reply(`${names(wanted)} isn't cited on the ${who}, so I haven't changed anything.`);
     }
     if (next.length === 0) {
-      await applyAssistantRevision(input.instanceId, {}, [POLICY_KEY], actor.id);
+      /*
+       * FORM_EDIT_SINGLE_WRITER_ENABLED: every write of a policy change goes
+       * through the one writer (`lib/forms/form-write.ts`, path "policy"): the
+       * remove-all a clear, refused on a line the manager typed.
+       */
+      if (formEditSingleWriterEnabled()) {
+        await (await import("./form-write")).clearWrite(input.instanceId, [POLICY_KEY], actor.id, { path: "policy", latest: input.question });
+      } else {
+        await applyAssistantRevision(input.instanceId, {}, [POLICY_KEY], actor.id);
+      }
       const violated = await followOffense(input.instanceId, actor.id, loaded, document, []);
       /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
-      const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
+      const plan = formEditSingleWriterEnabled()
+        ? await (await import("./form-write")).syncPlan(input.instanceId, actor.id)
+        : await syncCorrectiveActionPlan(input.instanceId, actor.id);
       return {
         ...reply(
           `Removed ${names(wanted)} from ${field.label} on the ${who}. That line is now blank — tell me which policy applies and I'll add it from the manual.${plan.length > 0 ? " The Action Plan has been updated to match." : ""} Everything else on the form is as it was.`,
@@ -191,24 +203,32 @@ export async function changeActiveFormPolicy(input: {
   const value = policyFieldValue(policies);
   if (!value) return null;
 
-  const saved = await applyAssistantDraft(
-    input.instanceId,
-    { values: { [POLICY_KEY]: value }, checked: {} },
-    actor.id,
-    {
-      [POLICY_KEY]: {
-        ...officialManualProvenance({
-          documentId: manual.documentId,
-          documentTitle: manual.documentTitle,
-          matchedBy: manual.matchedBy,
-          ownerConfirmed: approvedManualConfirmed(manual),
-          sections: next,
-        }),
-        citation: policies,
-        via: "chat_policy_change",
-      },
+  const policyProvenance = {
+    [POLICY_KEY]: {
+      ...officialManualProvenance({
+        documentId: manual.documentId,
+        documentTitle: manual.documentTitle,
+        matchedBy: manual.matchedBy,
+        ownerConfirmed: approvedManualConfirmed(manual),
+        sections: next,
+      }),
+      citation: policies,
+      via: "chat_policy_change",
     },
-  );
+  };
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the manual's line through the one writer; it may replace a typed line (typedExempt).
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(input.instanceId, { values: { [POLICY_KEY]: value }, checked: {} }, actor.id, policyProvenance, {
+        path: "policy",
+        latest: input.question,
+        typedExempt: new Set([POLICY_KEY]),
+      })
+    : await applyAssistantDraft(
+        input.instanceId,
+        { values: { [POLICY_KEY]: value }, checked: {} },
+        actor.id,
+        policyProvenance,
+      );
   if (!(POLICY_KEY in saved.accepted.values)) {
     return reply(`I couldn't save ${field.label} on the ${who}, so it is as it was. Type the policy into that line on the form instead.`);
   }
@@ -219,7 +239,9 @@ export async function changeActiveFormPolicy(input: {
   /* Policy Violated names the section now cited beside its box, as a first draft does. */
   const violated = await followOffense(input.instanceId, actor.id, loaded, document, next, moved);
   /* The Action Plan names the policy Direct policy cites — so it follows the line. See `ca-action-plan.ts`. */
-  const plan = await syncCorrectiveActionPlan(input.instanceId, actor.id);
+  const plan = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).syncPlan(input.instanceId, actor.id)
+    : await syncCorrectiveActionPlan(input.instanceId, actor.id);
 
   const added = mode === "remove" ? [] : wanted;
   const lines: string[] = [];
@@ -316,12 +338,17 @@ async function followOffense(
     sectionNames,
   });
   if (!derived || derived === (violated?.value ?? "").trim()) return [];
-  const saved = await applyAssistantDraft(
-    instanceId,
-    { values: { [VIOLATED_KEY]: derived }, checked: {} },
-    actorId,
-    formDerivedProvenance([VIOLATED_KEY]),
-  );
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the derived line through the one writer (path "policy").
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(instanceId, { values: { [VIOLATED_KEY]: derived }, checked: {} }, actorId, formDerivedProvenance([VIOLATED_KEY]), {
+        path: "policy",
+      })
+    : await applyAssistantDraft(
+        instanceId,
+        { values: { [VIOLATED_KEY]: derived }, checked: {} },
+        actorId,
+        formDerivedProvenance([VIOLATED_KEY]),
+      );
   return VIOLATED_KEY in saved.accepted.values ? [VIOLATED_KEY] : [];
 }
 
@@ -391,7 +418,10 @@ async function followReplacedBox(
   );
   if (keys.length === 0 || (keys.length === current.length && keys.every((key) => current.includes(key)))) return null;
 
-  const saved = await applyAssistantDraft(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId);
+  // FORM_EDIT_SINGLE_WRITER_ENABLED: the box through the one writer (path "policy").
+  const saved = formEditSingleWriterEnabled()
+    ? await (await import("./form-write")).draftWrite(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId, {}, { path: "policy", latest: question })
+    : await applyAssistantDraft(instanceId, { values: {}, checked: { [OFFENSE_KEY]: keys } }, actorId);
   if (!(OFFENSE_KEY in saved.accepted.checked)) return null;
   return {
     keys,

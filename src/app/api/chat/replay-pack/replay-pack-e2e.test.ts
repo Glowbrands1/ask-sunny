@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import PRODUCTION_FLAGS from "@/config/production-flags.json";
@@ -449,6 +449,7 @@ class Thread {
     );
     if (payload.formProposal) this.proposal = payload.formProposal;
     if (payload.formOpened) this.instanceId = toUuid(payload.formOpened.instanceId);
+    record.turns.push({ question, reply: payload.content ?? "", updated: payload.formUpdate?.updated ?? null });
     return payload;
   }
 
@@ -524,7 +525,33 @@ afterEach(() => {
 
 const KNOWN_OFF = PRODUCTION_FLAGS.off;
 
+/*
+ * `scripts/flag-classify.ts` only (dev, opt-in; nothing changes when unset):
+ * FLAG_CLASSIFY_ON names flags turned on in every case on top of production's,
+ * and REPLAY_RECORD a JSON-lines file each case appends its record to — the
+ * replies, the keys each reply claimed, whether it held, and its ms — so a
+ * behaviour change in a case that still passes is seen.
+ */
+const CLASSIFY_ON = (process.env.FLAG_CLASSIFY_ON ?? "").split(",").map((name) => name.trim()).filter((name) => name !== "");
+const record: { turns: { question: string; reply: string; updated: string[] | null }[] } = { turns: [] };
+async function recorded(id: string, mode: string, run: () => Promise<void>) {
+  record.turns = [];
+  const at = performance.now();
+  let error: string | null = null;
+  try {
+    await run();
+  } catch (thrown) {
+    error = String((thrown as Error)?.message ?? thrown).split("\n")[0]!;
+    throw thrown;
+  } finally {
+    if (process.env.REPLAY_RECORD) {
+      appendFileSync(process.env.REPLAY_RECORD, `${JSON.stringify({ id, mode, ok: error === null, error, ms: Math.round(performance.now() - at), turns: record.turns })}\n`);
+    }
+  }
+}
+
 function production(extra: readonly string[] = []) {
+  extra = [...extra, ...CLASSIFY_ON];
   for (const name of [...ALL_FLAGS, ...KNOWN_OFF, ...extra]) {
     if (!saved.has(name)) saved.set(name, process.env[name]);
     delete process.env[name];
@@ -635,19 +662,19 @@ describe("the replay pack", () => {
     if (replay.status === "fixed") {
       it(`${title} — holds with production's flags`, async () => {
         production();
-        await replay.run(context());
+        await recorded(replay.id, "production", () => replay.run(context()));
       });
     } else {
       // Still broken in production: expected to fail. The day it passes, move it to "fixed".
       it.fails(`${title} — OPEN in production (${replay.status.open})`, async () => {
         production();
-        await replay.run(context());
+        await recorded(replay.id, "open", () => replay.run(context()));
       });
     }
     if (replay.fixFlags?.length) {
       it(`${title} — holds with ${replay.fixFlags.join(", ")} on`, async () => {
         production(replay.fixFlags);
-        await replay.run(context());
+        await recorded(replay.id, `fix:${replay.fixFlags!.join(",")}`, () => replay.run(context()));
       });
     }
   }

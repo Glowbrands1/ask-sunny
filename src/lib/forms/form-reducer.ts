@@ -58,7 +58,12 @@ export type RefusalReason =
   | "date_not_stated"
   | "not_in_manager_words"
   | "unknown_option"
-  | "already_answered";
+  | "already_answered"
+  | "drops_words"
+  | "writein_without_box"
+  | "drops_protected_value"
+  | "unknown_field"
+  | "not_draft";
 
 export interface Refusal {
   readonly key: string;
@@ -110,7 +115,66 @@ export interface PatchRules {
     readonly accepted?: boolean;
     /** The manager's turns one by one: a turn shorter than MIN_EVIDENCE_WORDS is evidence on its own when quoted whole. */
     readonly managerTurns?: readonly string[];
+    /**
+     * Values the app's own deterministic correction readers (no model) produced
+     * from the manager's words: "$15" → "$15.00", "SD" → "Salon Director"
+     * (QA, 4 Nov 2026, #410). They count as said for a value's words, and for
+     * nothing else: never as evidence. Passed only by a correction's save
+     * (`form-write.ts`), never for a model's patch.
+     */
+    readonly readerValues?: readonly string[];
+    /**
+     * FORM_EDIT_SINGLE_WRITER_ENABLED (Step 2a; owner's ruling Q2, 4 Nov 2026):
+     * the latest message. When set, `valueWasSaid` counts only this turn and
+     * the turns the op's evidence quotes (a manager turn, or the accepted
+     * offer), plus `readerValues` — and EVERY word an op adds must be among
+     * them; there is no half-the-words floor. Absent: unchanged.
+     */
+    readonly namingTurn?: string;
   };
+  /**
+   * FORM_EDIT_SINGLE_WRITER_ENABLED (Step 2a): a "replace" may drop a word of
+   * the old text (counted per occurrence) only if the latest message names it,
+   * as a word or inside one ("doe" in "Doe-Smith"). Refused as
+   * `drops_words`. Needs `sources.namingTurn`. Absent: unchanged.
+   */
+  readonly keepsUnnamedWords?: boolean;
+  /**
+   * FORM_EDIT_SINGLE_WRITER_ENABLED (Step 2a): write-in fields by key, from the
+   * template's layout (`writeInsOf`). A write-in holds text only beside its
+   * ticked box; otherwise refused as `writein_without_box`. Absent: unchanged.
+   */
+  readonly writeIns?: ReadonlyMap<string, { readonly group: string; readonly option: string }>;
+  /**
+   * FORM_EDIT_SINGLE_WRITER_ENABLED (Step 2a, QA condition 2): on a whole-text
+   * rewrite — a "replace", or a draft-mode set, on a text field that already
+   * holds text — every employee-name word from the form's header, every date
+   * and every amount in the old text must still be in the new text (case
+   * folded), unless the latest message names it. Otherwise refused as
+   * `drops_protected_value`. Only known form facts are read: the header's
+   * name, and the app's own date and amount readers. Absent: unchanged.
+   */
+  readonly protectedValues?: ProtectedValues;
+}
+
+export interface ProtectedValues {
+  /** The employee's name on the form's header (the `employee_name` column and line). */
+  readonly employeeName: string;
+  /** The ISO dates a text states (the app's date reader, `datesInText`). */
+  readonly datesIn: (text: string) => readonly string[];
+  /** The amounts a text states (the app's payroll amount reader), as numbers. */
+  readonly amountsIn: (text: string) => readonly number[];
+  /** The latest message: what it names may change. */
+  readonly latest: string;
+  /** Other words the latest message names (an employee the turn names, read by the caller). */
+  readonly named?: readonly string[];
+  /** Keys whose whole value is one such fact being corrected (a date line, the name line, an amount line): not checked. */
+  readonly skip?: ReadonlySet<string>;
+  /**
+   * The form's own Date line as it stands (ISO). A text rewritten to this date
+   * may drop another one: the form's date moved, and the text follows it.
+   */
+  readonly formDate?: string | null;
 }
 
 /* ------------------------------------------------------------- text ---- */
@@ -170,15 +234,104 @@ function strongEvidence(evidence: string, rules: PatchRules): boolean {
 }
 
 /** At least MIN_SAID_SHARE of the value's words appear among the words said (manager, or the accepted offer). */
-function valueWasSaid(value: string, rules: PatchRules): boolean {
+function valueWasSaid(value: string, rules: PatchRules, context: { old: string; evidence?: string } = { old: "" }): boolean {
   const words = wordsOf(value);
   if (words.length === 0) return false;
   const sources = rules.sources;
   if (!sources) return false;
+  if (sources.namingTurn !== undefined) return addedWordsNamed(value, context.old, context.evidence, rules);
   const said = new Set(wordsOf(sources.manager));
   if (sources.accepted && sources.offered) for (const word of wordsOf(sources.offered)) said.add(word);
+  for (const read of sources.readerValues ?? []) for (const word of wordsOf(read)) said.add(word);
   const hits = words.filter((word) => said.has(word)).length;
   return hits / words.length >= MIN_SAID_SHARE;
+}
+
+/** Each word's count. */
+function counts(words: readonly string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const word of words) out.set(word, (out.get(word) ?? 0) + 1);
+  return out;
+}
+
+/** The words of `next` beyond those of `old`, counted per occurrence. */
+function addedWords(next: string, old: string): string[] {
+  const have = counts(wordsOf(old));
+  const added: string[] = [];
+  for (const word of wordsOf(next)) {
+    const left = have.get(word) ?? 0;
+    if (left > 0) have.set(word, left - 1);
+    else added.push(word);
+  }
+  return added;
+}
+
+/**
+ * The naming turn's words (owner's ruling Q2): the latest message, every turn
+ * the op's evidence quotes (a manager turn, or the offer accepted), and the
+ * correction readers' own values.
+ */
+function namingWords(evidence: string | undefined, rules: PatchRules): Set<string> {
+  const sources = rules.sources!;
+  const said = new Set(wordsOf(sources.namingTurn ?? ""));
+  const want = evidence === undefined ? "" : fold(evidence);
+  if (want !== "") {
+    const turns = [...(sources.managerTurns ?? []), ...(sources.accepted && sources.offered ? [sources.offered] : [])];
+    for (const turn of turns) if (fold(turn).includes(want)) for (const word of wordsOf(turn)) said.add(word);
+  }
+  for (const read of sources.readerValues ?? []) for (const word of wordsOf(read)) said.add(word);
+  return said;
+}
+
+/** Every word the op adds is in the naming turn. */
+function addedWordsNamed(value: string, old: string, evidence: string | undefined, rules: PatchRules): boolean {
+  const said = namingWords(evidence, rules);
+  return addedWords(value, old).every((word) => said.has(word));
+}
+
+/** The latest message names the word: as one of its words, or inside one ("doe" in "doe-smith"). */
+function latestNames(word: string, latestWords: readonly string[]): boolean {
+  return latestWords.some((said) => said === word || said.includes(word));
+}
+
+/** A replace drops no word of the old text the latest message does not name (counted per occurrence). */
+function keepsUnnamed(old: string, next: string, rules: PatchRules): boolean {
+  const kept = counts(wordsOf(next));
+  const latest = wordsOf(rules.sources?.namingTurn ?? "");
+  for (const word of wordsOf(old)) {
+    const left = kept.get(word) ?? 0;
+    if (left > 0) {
+      kept.set(word, left - 1);
+      continue;
+    }
+    if (!latestNames(word, latest)) return false;
+  }
+  return true;
+}
+
+/** Every name word, date and amount of the old text is still in the new one, unless the latest message names it. */
+function keepsProtected(key: string, old: string, next: string, rules: PatchRules): boolean {
+  const guard = rules.protectedValues;
+  if (!guard || guard.skip?.has(key) || old.trim() === "") return true;
+  const latestWords = [...wordsOf(guard.latest), ...(guard.named ?? []).flatMap((name) => wordsOf(name))];
+  const nextText = fold(next);
+  for (const word of wordsOf(guard.employeeName)) {
+    if (!fold(old).includes(word)) continue;
+    if (!nextText.includes(word) && !latestNames(word, latestWords)) return false;
+  }
+  const nextDates = new Set(guard.datesIn(next));
+  const latestDates = new Set(guard.datesIn(guard.latest));
+  const followsFormDate = Boolean(guard.formDate) && nextDates.has(guard.formDate!);
+  for (const date of guard.datesIn(old)) {
+    if (nextDates.has(date) || latestDates.has(date)) continue;
+    // The text moved to the form's current Date line (the form's date changed): the old day may go.
+    if (followsFormDate && date !== guard.formDate) continue;
+    return false;
+  }
+  const nextAmounts = new Set(guard.amountsIn(next));
+  const latestAmounts = new Set(guard.amountsIn(guard.latest));
+  for (const amount of guard.amountsIn(old)) if (!nextAmounts.has(amount) && !latestAmounts.has(amount)) return false;
+  return true;
 }
 
 /* ------------------------------------------------------------ values ---- */
@@ -291,7 +444,10 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
     if (rules.managerStated?.has(key) && !group && !contains(rules.sources?.manager ?? "", said)) return refuse(key, "not_in_manager_words");
     if (group) return checkboxValue(key, field, value, "replace", group);
     if (isList) return { value: uniteLines(field.value, value, rules.listNone), owner: field.owner === "empty" ? "assistant" : field.owner };
-    return { value: typeof value === "string" ? value.trim() : asList(value).join("\n"), owner: "assistant" };
+    const drafted = typeof value === "string" ? value.trim() : asList(value).join("\n");
+    // A whole-text rewrite keeps the form's protected facts (FORM_EDIT_SINGLE_WRITER_ENABLED).
+    if (typeof field.value === "string" && !keepsProtected(key, field.value, drafted, rules)) return refuse(key, "drops_protected_value");
+    return { value: drafted, owner: "assistant" };
   }
 
   // Edit: every value comes with the words it came from.
@@ -324,7 +480,9 @@ function setOne(draft: FormDraft, key: string, value: FieldValue, patch: FormPat
   const have = typeof field.value === "string" ? field.value.trim() : asList(field.value).join("\n");
   if (how === "add" ? have !== "" && contains(have, text) : sameValue(field.value, text)) return null;
   // The value itself, not only its evidence, must be words the manager said (or an accepted offer).
-  if (!valueWasSaid(text, rules)) return refuse(key, "not_in_manager_words");
+  if (!valueWasSaid(text, rules, { old: how === "add" ? "" : have, evidence })) return refuse(key, "not_in_manager_words");
+  if (how === "replace" && rules.keepsUnnamedWords && !keepsUnnamed(have, text, rules)) return refuse(key, "drops_words");
+  if (how === "replace" && !keepsProtected(key, have, text, rules)) return refuse(key, "drops_protected_value");
   if (how === "add") {
     if (have === "") return { value: text, owner };
     return { value: `${have}\n${text}`, owner: typed ? "manager" : owner };
@@ -373,6 +531,15 @@ export function applyPatch(draft: FormDraft, patch: FormPatch, rules: PatchRules
   };
   for (const [key, value] of Object.entries(patch.set)) write(key, setOne(next, key, value, patch, rules));
   for (const key of patch.clear) write(key, clearOne(next, key, patch, rules));
+  /* A write-in holds text only beside its ticked box (FORM_EDIT_SINGLE_WRITER_ENABLED). */
+  for (const [key, box] of rules.writeIns ?? []) {
+    if (!(key in patch.set) || isEmpty(next[key]?.value) || sameValue(next[key]?.value, draft[key]?.value)) continue;
+    const ticked = next[box.group]?.value;
+    if (ticked !== undefined && asList(ticked).includes(box.option)) continue;
+    if (draft[key]) next[key] = draft[key]!;
+    else delete next[key];
+    refused.push(refuse(key, "writein_without_box"));
+  }
   return { draft: next, diff: { changed: diffDrafts(draft, next), refused } };
 }
 

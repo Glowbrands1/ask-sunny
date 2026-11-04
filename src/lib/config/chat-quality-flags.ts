@@ -2348,3 +2348,17 @@ export function formPatchReducerEnabled(): boolean {
 export function formReplyFromDiffEnabled(): boolean {
   return envFlag("FORM_REPLY_FROM_DIFF_ENABLED");
 }
+
+/**
+ * One writer for every form edit (Step 2a, 4 Nov 2026; ported from Ask
+ * Bubbles, same flag in both apps): a chat correction, a redraft, a same-form
+ * copy, a policy change, a reopen, the stated facts and the Action Plan's sync
+ * hand their values to `writeFormEdits` (`forms/form-write.ts`), which runs
+ * them through the form reducer — all or nothing, protected values and dropped
+ * words refused — and saves through the existing writers. Independent of the
+ * Step B flags. Off, every path calls its old writer and `form-write` is never
+ * loaded.
+ */
+export function formEditSingleWriterEnabled(): boolean {
+  return envFlag("FORM_EDIT_SINGLE_WRITER_ENABLED");
+}
