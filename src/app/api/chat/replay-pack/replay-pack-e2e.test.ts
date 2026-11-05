@@ -1,3 +1,4 @@
+import { STREAM_HEADER, unwrapStreamed } from "@/lib/api/streamed-response";
 import { randomUUID } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -474,8 +475,15 @@ class Thread {
         }),
       }),
     );
-    const payload = (await response.json()) as Answer & { error?: string };
-    expect(response.status, JSON.stringify(payload)).toBe(200);
+    /*
+     * CHAT_RESPONSE_STREAM_ENABLED: an answer slower than START_AFTER_MS comes as one streamed envelope
+     * {"status", "body"}; the browser (`ai/claude-provider.ts`) unwraps it, and so does the pack (ported from
+     * the sibling app, 5 Nov 2026: a slow redraft was recorded there as an empty reply because the envelope
+     * was read as the answer).
+     */
+    const streamed = response.headers.get(STREAM_HEADER) === "1" ? unwrapStreamed(await response.text()) : null;
+    const payload = (streamed ? streamed.body : await response.json()) as Answer & { error?: string };
+    expect(streamed?.status ?? response.status, JSON.stringify(payload)).toBe(200);
     // EVERY REPLY (QA, 3 Nov 2026): "I still need …" is never said unless the reply asks who, which location or which date.
     if (/^I still need\b/m.test(payload.content ?? "")) {
       expect(stillAsks(payload.content), `"I still need" without a question:\n${payload.content}`).not.toBeNull();

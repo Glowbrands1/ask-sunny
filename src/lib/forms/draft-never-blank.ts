@@ -284,6 +284,10 @@ const NOT_THE_INCIDENT =
 /* A negation that denies a fault: what follows it within a few words is the fault denied. */
 const EXONERATING =
   /\b(?:never|did\s+not|didn['’]?t|was\s+not|wasn['’]?t|has\s+not|hasn['’]?t|no)\b(?:\s+[\w']+){0,4}?\s+(?:late|tardy|problems?|issues?|wrong|trouble|complaints?|mistakes?|absent|concerns?)\b/i;
+/** A negation that denies a fault ("she was never late", "didn't do anything wrong"), not one that names a failure ("not completing her Woven courses"). */
+export function deniesAFault(sentence: string): boolean {
+  return EXONERATING.test(sentence);
+}
 /* Talk about the conversation, not about the employee. */
 const CONVERSATIONAL =
   /\bnever\s*mind\b|\b(?:i|we)\s+(?:never|did\s+not|didn['’]?t)\s+(?:said|say|told|tell|meant|mean|asked|ask|thought|think|knew|know)\b/i;
