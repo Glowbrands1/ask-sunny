@@ -665,14 +665,14 @@
     "reason": "Turn 1 \"coaching form for 123 Main Street\": off, the address guard's own question (\"Main Street reads as a street address\"); on, the roster-only step answers first: no employee, the Coaching Form preview and \"Who is this form for?\". Both ask who; neither puts the address on the card."
   },
   "replay: nov3-street-then-placeholder [fix:ADDRESS_NOT_PERSON_ENABLED]": {
-    "category": "REGRESSION",
+    "category": "INTENDED",
     "twin": "nov3-street-address-coaching (turn 1, ask-who only)",
-    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the roster-only step takes the off-roster name off the card and asks who, but the coaching preview still says \"Everything I need is here … I have the employee and the salon\" and puts \"<name>, she was late today\" as the Observation. The reply contradicts itself. Fix: roster-only-names.ts drops the coaching \"I have the employee\" claim when it takes the employee off (or COACHING_ASKS_WHAT_HAPPENED's SAYS_READY strip applies). The case still holds (it checks the card), so CI does not catch it."
+    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the preview (Attendance Policy, date, Observation \"she was late today\") is shown with \"Who is this form for?\". Fixed by ask-sunny#548 (roster-only-names.ts, 5fc6ec30): when the step takes the off-roster employee off, the reply no longer says it has the employee (\"Everything I need is here\", \"I have the employee and the salon\", \"Create the draft here when you're ready\" go) and the placeholder is out of the Observation. Was REGRESSION on 86e3aec2 (ask-sunny#530); re-gate on 5fc6ec30: on 3/3 the same reply."
   },
   "replay: nov3-street-then-placeholder [production]": {
-    "category": "REGRESSION",
+    "category": "INTENDED",
     "twin": "nov3-street-address-coaching (turn 1, ask-who only)",
-    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the roster-only step takes the off-roster name off the card and asks who, but the coaching preview still says \"Everything I need is here … I have the employee and the salon\" and puts \"<name>, she was late today\" as the Observation. The reply contradicts itself. Fix: roster-only-names.ts drops the coaching \"I have the employee\" claim when it takes the employee off (or COACHING_ASKS_WHAT_HAPPENED's SAYS_READY strip applies). The case still holds (it checks the card), so CI does not catch it."
+    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the preview (Attendance Policy, date, Observation \"she was late today\") is shown with \"Who is this form for?\". Fixed by ask-sunny#548 (roster-only-names.ts, 5fc6ec30): when the step takes the off-roster employee off, the reply no longer says it has the employee (\"Everything I need is here\", \"I have the employee and the salon\", \"Create the draft here when you're ready\" go) and the placeholder is out of the Observation. Was REGRESSION on 86e3aec2 (ask-sunny#530); re-gate on 5fc6ec30: on 3/3 the same reply."
   },
   "replay: nov4-ca-sales-wrong-items [production]": {
     "category": "INTENDED",
@@ -920,9 +920,9 @@
     "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
   },
   "replay: nov5-roster-only-ima-off-roster [open]": {
-    "category": "REGRESSION",
+    "category": "INTENDED",
     "twin": "nov5-roster-only-ima-on-roster",
-    "reason": "Card text: the case holds (no card name, asks who), but the Observation becomes \"ima employee, opening salon late on 9-28-26\" (off: \"opening salon late on 9-28-26\"): with the employee taken off the card, managerAccount no longer knows the typed name is the request's, so it stays in the Observation. Minor; fix: roster-only-names.ts strips the removed name from the Observation line."
+    "reason": "Card text: the case holds with the flags on (no card name, asks who); the Observation is \"opening salon late on 9-28-26\", the same as off. Fixed by ask-sunny#548 (withoutSlotNameInObservation: \"ima employee, \" no longer opens it). Was REGRESSION on 86e3aec2 (ask-sunny#530)."
   },
   "replay: nov5-roster-only-ima-on-roster [open]": {
     "category": "INTENDED",
@@ -948,5 +948,20 @@
     "category": "INTENDED",
     "twin": "itself with the flags off (CI default)",
     "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-gate-ima-off-roster-observation: gate regression 2: \"create a CA form for ima employee, for opening salon late on 9-28-26\" asks who; the Observation is \"opening salon late on 9-28-26\", never \"ima employee, …\" — OPEN in production (the card is for \"ima\", a name on no roster (FORM_NAME_FROM_ROSTER_ENABLED off))": {
+    "category": "INTENDED",
+    "twin": "nov5-roster-only-ima-off-roster (the same request, OPEN, INTENDED)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks. Added by ask-sunny#548 for the gate's regression 2 (ask-sunny#530)."
+  },
+  "replay: nov5-gate-ima-off-roster-observation [open]": {
+    "category": "INTENDED",
+    "twin": "nov5-roster-only-ima-off-roster [open]",
+    "reason": "Added by ask-sunny#548 for the gate's regression 2: with the flags on the case holds (asks who; the Observation is \"opening salon late on 9-28-26\", never \"ima employee, …\"); off (production) the card is for \"ima\", so it is OPEN there."
+  },
+  "replay: nov5-gate-street-placeholder-no-ready-claim [production]": {
+    "category": "INTENDED",
+    "twin": "nov3-street-then-placeholder (the same turn)",
+    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the preview (Attendance Policy, date, Observation \"she was late today\") is shown with \"Who is this form for?\". Fixed by ask-sunny#548 (roster-only-names.ts, 5fc6ec30): when the step takes the off-roster employee off, the reply no longer says it has the employee (\"Everything I need is here\", \"I have the employee and the salon\", \"Create the draft here when you're ready\" go) and the placeholder is out of the Observation. Added by ask-sunny#548 for the gate's regression 1; re-gate on 5fc6ec30: on 3/3 the same reply."
   }
 }
