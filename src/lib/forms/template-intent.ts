@@ -658,8 +658,18 @@ function leadsWithTheForm(q: string, original: string): boolean {
 const WRITES_THE_FORM =
   /\bwrite\s+(?:up\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:(?:new|formal|first|second|third|final|verbal|written|official)\s+){0,2}(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
 
+/*
+ * CA_SALES_POLICY_ENABLED (QA, 4 Nov 2026: "Can you write me a performace ca
+ * for an employee who … <name> - verbal" made no card): "write me a …" and
+ * one or two plain words before the form ("a performance CA", "a quick CA")
+ * still write the form. The object must still BE the form: "write a summary
+ * of the CA policy" does not match. Off, as before.
+ */
+const WRITES_THE_FORM_LOOSE =
+  /\bwrite\s+(?:up\s+)?(?:me\s+|us\s+)?(?:a|an|the|another|one|her|his|their)\s+(?:[a-z'’-]+\s+){0,2}?(?:c\.?\s?a\.?|c\/a|corrective[\s-]+actions?|warning|write[\s-]?up|dpoa|disciplinary(?:\s+action)?)\b/;
+
 function writesTheForm(q: string): boolean {
-  return WRITES_THE_FORM.test(q);
+  return WRITES_THE_FORM.test(q) || (caSalesPolicyEnabled() && WRITES_THE_FORM_LOOSE.test(q));
 }
 
 /**
