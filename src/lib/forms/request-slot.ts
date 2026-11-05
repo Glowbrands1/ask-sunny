@@ -169,6 +169,32 @@ function inSlot(candidate: string, slot: readonly string[]): boolean {
  * candidate out — outside its request slot, or an item of a list of three or
  * more. No message read this turn, or the flag off: false.
  */
+/**
+ * FORM_NAME_FROM_ROSTER_ENABLED (the flip's eval check, 5 Nov 2026): the words
+ * typed straight after "for", in a sentence that asks for a form, are the
+ * person asked for — in any case. "create a CA form for ima employee, …"
+ * lost "Ima" to the lowercase rule (`roster-shape.ts` lowercaseNobody), and
+ * "make me a CA for Odalys merriwether for being late" kept only "Odalys"
+ * (the slot reads capitalised words). Only the sentence's first "for": a
+ * later one gives the reason. Words that read as an offense or a policy
+ * ("for under performance") are not a person.
+ */
+export function typedAfterFor(candidate: string, text: string | undefined = readMessage()): boolean {
+  if (!formNameFromRosterEnabled() || !text || !candidate.trim()) return false;
+  const want = wordsOf(candidate);
+  if (want.length === 0 || readsAsOffense(candidate)) return false;
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (detectTemplateIntent(sentence).kind === "none") continue;
+    const tokens = sentence.split(/[^\p{L}'’-]+/u).filter(Boolean).map((token) => normalizeTypedName(token));
+    // The sentence's first "for" names who it is for; a later one gives the reason ("… for Odalys merriwether for being late").
+    const at = tokens.indexOf("for");
+    if (at < 0 || !want.every((word, index) => tokens[at + 1 + index] === word)) continue;
+    if (readsAsOffense(tokens.slice(at + 1, at + 4 + want.length).join(" "))) continue;
+    return true;
+  }
+  return false;
+}
+
 export function outsideRequestSlot(candidate: string, text: string | undefined = readMessage()): boolean {
   if (!formNameFromRosterEnabled() || !text || !candidate.trim()) return false;
   /*
@@ -182,6 +208,8 @@ export function outsideRequestSlot(candidate: string, text: string | undefined =
   if (!containsWords(text, candidate)) return false;
   // A form's name is never a person (Pau, 4 Nov 2026: "a corrective action for Coaching Form").
   if (namesAForm(candidate)) return true;
+  // Typed straight after "for" in a request: the person asked for, whatever the case ("for Odalys merriwether").
+  if (typedAfterFor(candidate, text)) return false;
   const typed = wordsOf(candidate).join(" ");
   if (capitalisedListItems(text).some((item) => wordsOf(item).join(" ") === typed)) return true;
   // An offense or a policy after "for" ("for Under Performance"): none of its words is a person.
