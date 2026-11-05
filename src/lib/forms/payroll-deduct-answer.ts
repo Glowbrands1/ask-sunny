@@ -243,7 +243,8 @@ function payrollSpellingOn(): boolean {
 }
 
 function withPayrollSpelling(text: string): string {
-  return text.replace(/\bpay ?roll\b/g, "payroll").replace(/\bdeduct[ai]ble\b/g, "deduct");
+  // "non-deductible" stays the word the patterns already read as No.
+  return text.replace(/\bpay ?roll\b/g, "payroll").replace(/\b(non-?deductible)\b|\bdeduct[ai]ble\b/g, (word, non: string | undefined) => non ?? "deduct");
 }
 
 /** Lower case, curly quotes straightened, "payroll-deduct" spaced — the text the patterns read. */
