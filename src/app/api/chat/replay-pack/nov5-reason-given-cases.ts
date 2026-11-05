@@ -56,6 +56,14 @@ const MESSAGES: readonly { readonly n: number; readonly say: string; readonly na
   { n: 9, say: "can you write me a Ca for Talise Vorn for performance for october", name: "Talise Vorn" },
 ];
 
+/*
+ * QA's 2-week audit wording #9, "can you write me a Ca for <name> for performance for october": with
+ * production's flags AND with this branch's fix flags, the card says "You haven't told me what happened
+ * yet". "for performance" alone is not read as an account (no negation, two words). Not fixed by this
+ * branch; recorded OPEN for QA's call (5 Nov 2026).
+ */
+const NOT_FIXED_9 = "\"for performance for october\" is not read as an account: the card says \"You haven't told me what happened yet\", with production's flags and with CA_SALES + FORM_NAME + CA_ASKS on";
+
 function start(t: T) {
   vi.setSystemTime(new Date("2026-11-04T23:30:00Z"));
   t.directory([...STAFF, ...PEOPLE]);
@@ -78,8 +86,11 @@ export const NOV5_REASON_GIVEN_CASES: ReplayCase[] = [
     status:
       n === 3 || n === 8
         ? ({ open: "with production's flags as this file reads them (CA_SALES off) a metric-only request gets the progression's refusal, no card" } as const)
-        : ("fixed" as const),
-    fixFlags: FLAGS,
+        : n === 9
+          ? ({ open: NOT_FIXED_9 } as const)
+          : ("fixed" as const),
+    // #9 has no fix yet: its fix-flag run fails too, so it has none until one exists.
+    ...(n === 9 ? {} : { fixFlags: FLAGS }),
     async run(t: T) {
       const thread = start(t);
       const reply = await thread.say(say);
@@ -87,6 +98,25 @@ export const NOV5_REASON_GIVEN_CASES: ReplayCase[] = [
       expect(reply.content, `asks what happened although the reason was given:\n${reply.content}`).not.toMatch(ASKS_WHAT_HAPPENED);
     },
   })),
+  {
+    id: "nov5-reason-given-live-models",
+    title: "the live path (the reading models quote the name): \"I need a verbal corrective action made for <name>. Not meeting sales requirements for the month of October\": the card, and never \"what happened\"",
+    report: `${REPORT}; QA's 2-week audit (5 Nov 2026), Maddie's complaint in production's wording, through the models-reading path as nov4-name-*-models`,
+    /*
+     * A GUARD, not the proof (5 Nov 2026): through this path the note does not appear on main
+     * without this branch either, so it holds both ways; the code-only path (#6, the same wording
+     * shape) is the one that fails on main and holds with the fix. QA's live run (the real model)
+     * is the proof for the live path.
+     */
+    status: "fixed",
+    fixFlags: FLAGS,
+    async run(t) {
+      const thread = start(t);
+      const reply = await thread.say("I need a verbal corrective action made for Talise Vorn. Not meeting sales requirements for the month of October", { employeeName: "Talise Vorn" });
+      expect(thread.proposal, `no Corrective Action card for Talise Vorn:\n${reply.content}`).toMatchObject({ templateKey: "dpoa" });
+      expect(reply.content, `asks what happened although the reason was given:\n${reply.content}`).not.toMatch(ASKS_WHAT_HAPPENED);
+    },
+  },
   {
     id: "nov5-reason-given-negative-name-only",
     title: "negative control: \"create a corrective action for <name>\" with no reason still asks what happened",
