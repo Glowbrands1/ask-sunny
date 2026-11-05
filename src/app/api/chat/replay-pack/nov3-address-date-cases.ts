@@ -98,7 +98,7 @@ export const NOV3_ADDRESS_DATE_CASES: readonly ReplayCase[] = [
     // Open until SLOT_NAME_ON_FORM_REQUEST is on. The slot reading held the name (production trace), but with
     // FORM_STATE off in production it was not put in front of the question, and the proposal reads capitalised
     // names only.
-    status: { open: "SLOT_NAME_ON_FORM_REQUEST is off: a lower-case name the slot reading holds does not reach the card" },
+    status: "fixed",
     fixFlags: ["SLOT_NAME_ON_FORM_REQUEST_ENABLED"],
     async run(t) {
       t.directory(STAFF);

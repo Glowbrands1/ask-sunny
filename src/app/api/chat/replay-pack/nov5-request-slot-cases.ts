@@ -235,7 +235,7 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "ima-on-roster",
         text: "create a CA form for ima employee, for opening salon late on 9-28-26",
         roster: [...ROSTER, person("e-ima-employee", "Ima", "Employee")],
-        status: { open: "the reply drafts \"for **ima**\", not the roster's spelling" },
+        status: "fixed",
         check: (card: string | null, reply: string) => {
           expect(card, "not the roster's spelling").toBe("Ima Employee");
           expect(reply, "the reply drafts for the typed name").not.toContain("**ima**");
@@ -245,7 +245,7 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "ima-off-roster",
         text: "create a CA form for ima employee, for opening salon late on 9-28-26",
         roster: ROSTER,
-        status: { open: "the card is for \"Ima\", a name on no roster" },
+        status: "fixed",
         check: (card: string | null, reply: string) => {
           expect(card, "a name on no roster is the employee").toBeNull();
           expect(reply, "it does not ask who").toMatch(/Who is this (?:\*\*[^*]+\*\* |form )?for\?/);
@@ -275,7 +275,7 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
         key: "coaching-form",
         text: "CA for Coaching Form",
         roster: ROSTER,
-        status: { open: "a Coaching Form card" },
+        status: "fixed",
         check: (card: string | null, reply: string, templateKey?: string | null) => {
           expect(templateKey, "not a Corrective Action").toBe("dpoa");
           expect(card, "a form's name is the employee").toBeNull();

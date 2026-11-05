@@ -2,24 +2,30 @@
   "cases": [
     {
       "id": "s4",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Test Testy",
+        "employee": null,
         "salon": "loc-0462",
         "date": "2026-09-20",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "s9",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Ima",
+        "employee": null,
         "salon": "loc-0462",
         "date": "2026-09-28",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -37,13 +43,14 @@
       "id": "s5",
       "pass": false,
       "misses": [
-        "employee"
+        "employee",
+        "blocking question"
       ],
       "card": {
-        "employee": "Nadia",
+        "employee": null,
         "salon": "loc-0468",
         "date": "2026-10-23",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -88,13 +95,16 @@
     },
     {
       "id": "s17",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Dora Lee",
+        "employee": null,
         "salon": null,
         "date": "2026-10-23",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -123,10 +133,12 @@
     },
     {
       "id": "s25",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee"
+      ],
       "card": {
-        "employee": "Dasiley Veklo",
+        "employee": "Daisley Veklo",
         "salon": "loc-0313",
         "date": null,
         "status": "ready"
@@ -134,13 +146,16 @@
     },
     {
       "id": "s8",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Evangeline Pembury",
+        "employee": null,
         "salon": "loc-0463",
         "date": "2026-09-20",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -167,35 +182,44 @@
     },
     {
       "id": "b9",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Test Employee",
+        "employee": null,
         "salon": null,
         "date": "2026-10-15",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "b10",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Testy Testerson",
+        "employee": null,
         "salon": null,
         "date": "2026-10-16",
-        "status": "needs_location"
+        "status": "needs_employee"
       }
     },
     {
       "id": "b11",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Testy Testerson",
+        "employee": null,
         "salon": null,
         "date": "2026-10-20",
-        "status": "needs_location"
+        "status": "needs_employee"
       }
     },
     {
@@ -211,13 +235,16 @@
     },
     {
       "id": "n1",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Test Employee",
+        "employee": null,
         "salon": "loc-0462",
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -238,92 +265,114 @@
     },
     {
       "id": "n3",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Tt",
+        "employee": null,
         "salon": null,
         "date": "2026-10-23",
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g1",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": null,
         "salon": "loc-0462",
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g2",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": null,
         "salon": "loc-0462",
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g3",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": null,
         "salon": null,
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g4",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": null,
         "salon": "loc-0462",
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g5",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": null,
         "salon": null,
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g6",
-      "pass": true,
-      "misses": [],
+      "pass": false,
+      "misses": [
+        "employee",
+        "blocking question"
+      ],
       "card": {
-        "employee": "Sarah Test",
+        "employee": null,
         "salon": null,
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
       "id": "g7",
       "pass": false,
       "misses": [
-        "employee"
+        "employee",
+        "blocking question"
       ],
       "card": {
-        "employee": "Dodge",
+        "employee": null,
         "salon": null,
         "date": null,
-        "status": "ready"
+        "status": "needs_employee"
       }
     },
     {
@@ -509,7 +558,7 @@
       "pass": true,
       "misses": [],
       "card": {
-        "employee": "Odalys Merriwether",
+        "employee": "Odalys",
         "salon": null,
         "date": null,
         "status": "ready"
