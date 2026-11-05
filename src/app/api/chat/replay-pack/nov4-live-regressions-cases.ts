@@ -409,7 +409,13 @@ type Mode = "code" | "models";
  */
 const BY_MISS = "the non-person \"BY CORIN BELLWEATHER\" is taken as the name (\"I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**\"), and the card has no employee";
 const NAME_OPEN: Readonly<Record<string, string>> = Object.fromEntries(
-  (["on", "off"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
+  /*
+   * OFF roster: before FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED
+   * were on together in production (5 Nov 2026) these were OPEN too, for the
+   * same miss; with them the request slot leaves "BY CORIN BELLWEATHER" out and
+   * the off-roster cases hold. The on-roster ones still miss.
+   */
+  (["on"] as const).flatMap((roster) => (["code", "models"] as const).map((mode) => [`last-date-caps-${roster}-${mode}`, BY_MISS])),
 );
 
 const ASKED_WHO = /who is this\b[^?\n]*\bfor\?/i;

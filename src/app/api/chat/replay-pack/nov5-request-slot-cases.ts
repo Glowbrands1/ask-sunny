@@ -82,7 +82,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-off-roster-name",
     title: "Pau's message 1 for \"Remy Fenn\", not on the roster (Remy Calder is): no metric named as a person, no \"Which of them\", never Remy Calder",
     report: `${REPORT}: "Which of them is this Corrective Action Form for — Remy Fenn, Club Close or Under?"`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the sales policy on, \"Remy Fenn\" was offered as \"Is this for **Remy Calder**?\"" },
+    // Before FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED were on together in production (5 Nov 2026): OPEN, production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the sales policy on, "Remy Fenn" was offered as "Is this for **Remy Calder**?"
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -101,7 +102,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-off-roster-name-models",
     title: "the same, with the reading models reading \"Remy Fenn\" as typed (the live path): no metric offered, no \"Which of them\", never Remy Calder",
     report: `${REPORT}: the AI reader's path`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
+    // Before FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED were on together in production (5 Nov 2026): OPEN, production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -120,7 +122,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-on-roster-name",
     title: "the same message for Remy Fenn ON the roster: the card is for Remy Fenn and cites the Standards of Conduct",
     report: `${REPORT}: control, the person on the roster`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)" },
+    // Before FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED were on together in production (5 Nov 2026): OPEN, production answers the message as metric-only (CA_SALES_POLICY_ENABLED off)
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t, [...ROSTER, REMY_FENN]);
@@ -164,7 +167,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-no-name-verbal",
     title: "QA review: \"I need a corrective action verbal. This is for Under Performance on …\" names nobody: it asks who; never \"Under Performance\" or \"Under\"",
     report: `${REPORT}: QA review of the request slot, edge case 1`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**" },
+    // Before FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED were on together in production (5 Nov 2026): OPEN, production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
@@ -176,7 +180,8 @@ export const NOV5_REQUEST_SLOT_CASES: ReplayCase[] = [
     id: "nov5-request-slot-ca-for-under-performance",
     title: "QA review: \"I need a CA for Under Performance on …\": the slot is an offense, not a name; it asks who",
     report: `${REPORT}: QA review of the request slot, edge case 2`,
-    status: { open: "production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**" },
+    // Before FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED were on together in production (5 Nov 2026): OPEN, production answers the message as metric-only (CA_SALES_POLICY_ENABLED off); with the three flags on (before the QA review fix), the card was made for **Under**
+    status: "fixed",
     fixFlags: [FLAG, SALES, GLOSSARY],
     async run(t) {
       const thread = start(t);
