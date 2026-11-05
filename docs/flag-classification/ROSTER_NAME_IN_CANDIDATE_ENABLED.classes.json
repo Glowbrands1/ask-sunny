@@ -1,0 +1,57 @@
+{
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-r2-dm-in-passing-account-with-the-flip: R2 (2) with FORM_NAME_FROM_ROSTER_ENABLED + CA_SALES_POLICY_ENABLED on: the card is the employee's and the Observation carries the complaint — OPEN in production (with the flip's flags the card is for the district manager)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-r2-dm-in-passing-account: R2 (2): the same story: the Observation carries the complaint (rude to a guest), not just the first fragment — holds with production's flags": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-r2-dm-in-passing-employee-with-the-flip: R2 with FORM_NAME_FROM_ROSTER_ENABLED + CA_SALES_POLICY_ENABLED on: the card is for the employee, never the district manager named in passing — OPEN in production (with the flip's flags the card is for the district manager (\"When Odalys\" is set aside as shaped like nobody))": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-r2-dm-in-passing-position: R2 (1): one employee's story naming their district manager in passing: the card's Job title is never \"District Manager\" — holds with TITLE_OF_THE_EMPLOYEE_ENABLED on": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "src/lib/forms/roster-name-in-candidate.test.ts :: ROSTER_NAME_IN_CANDIDATE_ENABLED: a candidate ending in a roster person's name could be them off: \"When Odalys\" is shaped like nobody (as before)": {
+    "category": "INTENDED-HARNESS",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "The flag's own off-pin: it checks the behavior with ROSTER_NAME_IN_CANDIDATE_ENABLED off, so it fails when the gate forces the flag on in every child test. It passes with the flag off, the state it pins."
+  },
+  "replay: nov5-r2-dm-in-passing-account [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "replay: nov5-r2-dm-in-passing-account-with-the-flip [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "replay: nov5-r2-dm-in-passing-employee-with-the-flip [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "replay: nov5-r2-dm-in-passing-position [fix:TITLE_OF_THE_EMPLOYEE_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (flags off: the card is Odalys's)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks."
+  },
+  "replay: nov5-r2-dm-in-passing-position [open]": {
+    "category": "INTENDED",
+    "twin": "nov5-r2-dm-in-passing-position [fix:TITLE_OF_THE_EMPLOYEE_ENABLED] (holds)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks. The case stays OPEN here for its other defect: the card's Job title is still \"District Manager\" (TITLE_OF_THE_EMPLOYEE_ENABLED, off in this gate); the reply now drafts for Odalys, not the district manager."
+  },
+  "replay: nov5-r2-dm-in-passing-position-with-the-flip [open]": {
+    "category": "INTENDED",
+    "twin": "nov5-r2-dm-in-passing-position [fix:TITLE_OF_THE_EMPLOYEE_ENABLED] (holds)",
+    "reason": "The R2 story (QA, 5 Nov 2026; invented people): the gate's base has the flip's flags on (FORM_NAME_FROM_ROSTER_ENABLED, CA_SALES_POLICY_ENABLED, CHAT_GLOSSARY_ENABLED), where \"When Odalys\" is set aside as shaped like nobody and the card goes to the district manager named in passing. With the flag on, the candidate could be Odalys and the card is hers. This is the fix the case tracks. The case stays OPEN here for its other defect: the card's Job title is still \"District Manager\" (TITLE_OF_THE_EMPLOYEE_ENABLED, off in this gate); the reply now drafts for Odalys, not the district manager."
+  }
+}
