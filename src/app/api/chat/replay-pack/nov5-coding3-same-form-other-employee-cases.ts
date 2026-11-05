@@ -20,14 +20,13 @@ import { KEARNEY, STAFF, noClaimWithoutUpdate, type DirectoryRow, type ReplayAns
  *       `same-form-copy-e2e.test.ts` cover it with the NEW person's draft open
  *       (the copy target). Here: <C>'s own draft is the one open, the new
  *       person not named yet, as the words say ("changing the name").
- *   (c) Ask Bubbles: with <A>'s Corrective Action card open, "also make a
- *       coaching form for <B>" gave a Coaching card for <A>. This app's
- *       production gives <B>'s card: "fixed" here, a guard. It holds only
- *       while FORM_TYPE_SWITCH_ENABLED and FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED
- *       are off here — both are on in Ask Bubbles' production, and with them on
- *       these cases fail here too (`lib/ai/form-type-switch.ts` reads the short
- *       "make … coaching" turn as "change this to a coaching form" and drops
- *       the name).
+ *   (c) The sibling app (the same code): with <A>'s Corrective Action card
+ *       open, "also make a coaching form for <B>" gave a Coaching card for
+ *       <A>. Since production-flags.json was matched to Vercel (#555),
+ *       FORM_TYPE_SWITCH_ENABLED and FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED
+ *       are on here too, so these cases are OPEN here as well
+ *       (`lib/ai/form-type-switch.ts` reads the short "make … coaching" turn
+ *       as "change this to a coaching form" and drops the name).
  */
 
 type T = ReplayContext;
@@ -83,8 +82,8 @@ async function lioraDraft(t: T, thread: ReturnType<T["thread"]>): Promise<string
 }
 
 const REPORT_A = "QA's overnight scan of production chats, 4 Nov 2026, sf-s11: \"Can you do the same thing for <B> but switch it to a written\"";
-const REPORT_B = "Location manager via QA (Ask Bubbles replay set b13; the same code here): \"can you create the same draft that we did with <C> by changing the name and position?\"";
-const REPORT_C = "QA, 5 Nov 2026 (Ask Bubbles production): with <A>'s Corrective Action card open, \"also make a coaching form for <B>\" gave a Coaching card for <A>";
+const REPORT_B = "Location manager via QA (the sibling app's replay set b13; the same code here): \"can you create the same draft that we did with <C> by changing the name and position?\"";
+const REPORT_C = "QA, 5 Nov 2026 (the sibling app's production; the same code here): with <A>'s Corrective Action card open, \"also make a coaching form for <B>\" gave a Coaching card for <A>";
 
 export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] = [
   {
@@ -149,7 +148,7 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     id: "nov5-coding3-sfo-c-also-coaching-card-open",
     title: "(c) with Mireya's CA card on screen (not created), \"also make a coaching form for Caspian Drummet\" — a Coaching card for Caspian, never for Mireya",
     report: `${REPORT_C}; the card not created yet`,
-    // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_ENABLED is on in production since #555's reading (as in Ask Bubbles), so it is OPEN here too.
+    // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_ENABLED is on in production since #555's reading (as in the sibling app), so it is OPEN here too.
     status: { open: "the Coaching card is Mireya Vantrell's: the form-type switch reads the turn as \"change this to coaching\" and drops Caspian Drummet" },
     async run(t) {
       const thread = start(t);
@@ -168,7 +167,7 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     id: "nov5-coding3-sfo-c-also-coaching-after-create",
     title: "(c) with Mireya's CA created and open, \"also make a coaching form for Caspian Drummet\" — a Coaching card for Caspian; Mireya's CA untouched",
     report: `${REPORT_C}; after Create`,
-    // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED is on in production since #555's reading (as in Ask Bubbles), so it is OPEN here too.
+    // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED is on in production since #555's reading (as in the sibling app), so it is OPEN here too.
     status: { open: "the Coaching card is Mireya Vantrell's: the switch-after-create note swaps in her opening request and drops Caspian Drummet" },
     async run(t) {
       const thread = start(t);
