@@ -149,8 +149,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     id: "nov5-coding3-sfo-c-also-coaching-card-open",
     title: "(c) with Mireya's CA card on screen (not created), \"also make a coaching form for Caspian Drummet\" — a Coaching card for Caspian, never for Mireya",
     report: `${REPORT_C}; the card not created yet`,
-    // Run 5 Nov 2026 (production flags): Caspian's Coaching card. Fails with FORM_TYPE_SWITCH_ENABLED on (Ask Bubbles' production).
-    status: "fixed",
+    // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_ENABLED is on in production since #555's reading (as in Ask Bubbles), so it is OPEN here too.
+    status: { open: "the Coaching card is Mireya Vantrell's: the form-type switch reads the turn as \"change this to coaching\" and drops Caspian Drummet" },
     async run(t) {
       const thread = start(t);
       await thread.say(MIREYA_CA);
@@ -168,8 +168,8 @@ export const NOV5_CODING3_SAME_FORM_OTHER_EMPLOYEE_CASES: readonly ReplayCase[] 
     id: "nov5-coding3-sfo-c-also-coaching-after-create",
     title: "(c) with Mireya's CA created and open, \"also make a coaching form for Caspian Drummet\" — a Coaching card for Caspian; Mireya's CA untouched",
     report: `${REPORT_C}; after Create`,
-    // Run 5 Nov 2026 (production flags): Caspian's Coaching card. Fails with FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED on (Ask Bubbles' production).
-    status: "fixed",
+    // Was "fixed" on 5 Nov 2026 with the old flag file; FORM_TYPE_SWITCH_AFTER_CREATE_NOTE_ENABLED is on in production since #555's reading (as in Ask Bubbles), so it is OPEN here too.
+    status: { open: "the Coaching card is Mireya Vantrell's: the switch-after-create note swaps in her opening request and drops Caspian Drummet" },
     async run(t) {
       const thread = start(t);
       await thread.say(MIREYA_CA);
