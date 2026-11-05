@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { acceptedCaOffer, caOfferLine } from "./ca-offer";
+import { acceptedCaOffer, caOfferLine, withCaOffer } from "./ca-offer";
 
 /**
  * CA_SALES_POLICY_ENABLED, Pau's message #5 (4 Nov 2026): a policy answer
@@ -80,5 +80,68 @@ describe("the yes", () => {
     process.env[FLAG] = "true";
     expect(acceptedCaOffer({ question: "what does it say?", history: offered })).toBeNull();
     expect(acceptedCaOffer({ question: "yes", history: [...offered, { role: "assistant", content: "Something else." }] })).toBeNull();
+  });
+});
+
+describe("withCaOffer: the offer at the turn's one exit (QA's live traces, 4 Nov 2026)", () => {
+  const OFFER = "**Do you want a Corrective Action for Ysolde Marrowick?** Say **yes** and I'll start it, citing the **Standards of Conduct**.";
+  const choice = (templateKey: string) => ({ templateKey, templateName: templateKey, description: "" });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("a reply on any path ends with the offer", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    expect(withCaOffer({ content: "The Standards of Conduct says…", citations: [] }, OFFER).content).toBe(`The Standards of Conduct says…\n\n${OFFER}`);
+  });
+
+  it("a Coaching / Corrective Action menu is replaced by the one offer", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    const out = withCaOffer({ content: "Which form?", citations: [], formSelection: { primary: choice("coaching"), additional: [choice("dpoa")] } }, OFFER);
+    expect(out.formSelection).toBeUndefined();
+    expect(out.content.match(/Do you want a Corrective Action for/g)).toHaveLength(1);
+  });
+
+  it("a menu without the Corrective Action Form, a card, or a reply already offering is left as it is", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    const menu = { content: "Which form?", citations: [], formSelection: { primary: choice("coaching"), additional: [] } };
+    expect(withCaOffer(menu, OFFER)).toBe(menu);
+    const card = { content: "Here is the card.", citations: [], formProposal: { templateKey: "dpoa" } };
+    expect(withCaOffer(card, OFFER)).toBe(card);
+    const offered = { content: `Answer.\n\n${OFFER}`, citations: [] };
+    expect(withCaOffer(offered, OFFER)).toBe(offered);
+  });
+
+  it("off, or no offer line: unchanged", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "false");
+    const reply = { content: "Answer.", citations: [] };
+    expect(withCaOffer(reply, OFFER)).toBe(reply);
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    expect(withCaOffer(reply, null)).toBe(reply);
+  });
+});
+
+describe("the offer names the employee of THIS message, and a menu's question goes with the menu", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("an earlier request in the chat for another employee does not name the offer", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    const roster = [
+      { id: "e1", firstName: "Ysolde", lastName: "Marrowick", preferredFirstName: null },
+      { id: "e2", firstName: "Thaddeus", lastName: "Quillane", preferredFirstName: null },
+    ] as never;
+    const line = caOfferLine({
+      history: [{ id: "u1", role: "user", content: "create a corrective action for Thaddeus Quillane for being late to his shift on 11/2" }] as never,
+      question: "Ysolde Marrowick did not follow must see behaviors which violates standards of conduct policy",
+      roster,
+    });
+    expect(line).toMatch(/Corrective Action for Ysolde Marrowick\?/);
+  });
+
+  it("the suggestion's lead is dropped with its menu", () => {
+    vi.stubEnv("CA_SALES_POLICY_ENABLED", "true");
+    const out = withCaOffer(
+      { content: "A grounded answer.\n\nBased on what you've described, I can prepare:", citations: [], formSelection: { primary: { templateKey: "dpoa", templateName: "", description: "" }, additional: [] } },
+      "**Do you want a Corrective Action for Ysolde Marrowick?** Say **yes** and I'll start it, citing the **Standards of Conduct**.",
+    );
+    expect(out.content).toBe("A grounded answer.\n\n**Do you want a Corrective Action for Ysolde Marrowick?** Say **yes** and I'll start it, citing the **Standards of Conduct**.");
   });
 });

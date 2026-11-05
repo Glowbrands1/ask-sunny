@@ -39,7 +39,8 @@ export interface ReplayContext {
   as(role: string, scope: unknown): void;
   directory(rows: readonly DirectoryRow[]): void;
   /** What the drafting model writes at Create. */
-  draftWrites(values: Record<string, string>, checked?: Record<string, string[]>): void;
+  /** `extra`: other fields of the draft tool's input, e.g. `{ offense_basis: "sales" }` (CA_SALES_POLICY_ENABLED). */
+  draftWrites(values: Record<string, string>, checked?: Record<string, string[]>, extra?: Record<string, unknown>): void;
   /** What the revision model writes on the next revision. */
   revisionWrites(values: Record<string, string>): void;
   /** What the answering model says on its next turns (null: the default answer). */
@@ -66,6 +67,8 @@ export interface ReplayContext {
   checked(instanceId: string): Record<string, string[]>;
   /** What the drafting model was given, one entry per draft written. */
   draftPrompts(): string[];
+  /** The draft call's tools as sent, one JSON string per call. */
+  draftTools(): string[];
   /** The draft route's POST for this form, as a redraft sends it (`keepManagerValues`); the route's response. */
   redraft(instanceId: string, notes: string): Promise<Record<string, unknown>>;
   /** The manager types on the form and saves (filled by the manager). */
