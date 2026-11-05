@@ -29,7 +29,8 @@ const SALES = "CA_SALES_POLICY_ENABLED";
 const GLOSSARY = "CHAT_GLOSSARY_ENABLED";
 
 const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
-const CLAIMS_READY = /Everything I need is here|I have the employee/i;
+// QA, 5 Nov 2026: "Create the draft here when you're ready" beside the asks-who contradicts it too.
+const CLAIMS_READY = /Everything I need is here|I have the employee|Create the draft here when you're ready/i;
 
 /** The card's Observation of Offense line, or "". */
 function observationLine(reply: ReplayAnswer): string {

@@ -41,6 +41,8 @@ import { requestMessage } from "./request-slot";
  */
 
 export const ASK_WHO = "Who is this form for? Tell me the employee's full name.";
+/** The card's own invitation to create the draft (`ai/form-proposal.ts`), said only when the card has its employee. */
+const CREATE_WHEN_READY = /Create the draft here when you're ready,? and edit it below — nothing is saved to anyone's file until you do\.[ \t]*/g;
 const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
 
 function rowsFrom(names: readonly string[]): RosterEmployee[] {
@@ -122,7 +124,11 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
     }
   }
   const onCard = proposal?.employeeName ?? null;
-  if (proposal && !onCard && proposal.subject !== "team") content = withoutSlotNameInObservation(content, message, names);
+  if (proposal && !onCard && proposal.subject !== "team") {
+    content = withoutSlotNameInObservation(content, message, names);
+    // QA, 5 Nov 2026: "Create the draft here when you're ready" beside "Who is this form for?" contradicts it.
+    content = content.replace(CREATE_WHEN_READY, "");
+  }
 
   // "I'll draft a **Corrective Action Form** for **ima**": the person drafted for is the card's, in the roster's spelling.
   if (onCard && proposal?.subject !== "team") {

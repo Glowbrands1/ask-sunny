@@ -115,6 +115,7 @@ describe("the gate's regressions: nothing in the reply speaks for a removed empl
     const out = rosterOnlyNames(coaching, ["Dana Lane"], "make a coaching form for <name>, she was late today");
     expect(out.formProposal?.employeeName).toBeNull();
     expect(out.content).not.toMatch(/Everything I need is here|I have the employee/);
+    expect(out.content).not.toMatch(/Create the draft here when you're ready/);
     expect(out.content).toContain(ASK_WHO);
     expect(out.content).toContain("**Observation of Offense:** she was late today");
   });
