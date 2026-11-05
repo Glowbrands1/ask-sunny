@@ -1,6 +1,5 @@
 import { priorCoachingDenialEnabled } from "@/lib/config/chat-quality-flags";
 import { statesFirstOccurrence } from "@/lib/forms/corrective-action-intake";
-import { notesCarryATimeframe } from "@/lib/forms/follow-up-timeframe";
 import { firstAndLastNamedStep, statedPriorActions } from "@/lib/forms/prior-actions";
 
 /**
@@ -22,11 +21,13 @@ import { firstAndLastNamedStep, statedPriorActions } from "@/lib/forms/prior-act
  *   A DATED STEP      a sentence in which `statedPriorActions` finds a dated
  *                     step is kept as written — the note keeps the step and
  *                     its date, as before.
- *   AN UNDATED STEP   "no prior coaching except a verbal in July": a step
- *                     after the one the denial names (`firstAndLastNamedStep`)
- *                     that the manager gave a time of its own
- *                     (`notesCarryATimeframe`) is history, not a denial. The
- *                     sentence is read as the labelled list managers already
+ *   AN UNDATED STEP   "no prior coaching except a verbal in July", "no prior
+ *                     coaching except a verbal warning": a step after the one
+ *                     the denial names (`firstAndLastNamedStep`) is kept,
+ *                     with or without a time — a visible note beats a step
+ *                     dropped in silence (QA, 5 Nov 2026). "no prior coaching
+ *                     or warnings in the last 6 months" is kept the same way,
+ *                     knowingly. The sentence is read as the labelled list managers already
  *                     type ("previous coaching: verbal ca 9-1-26") — the
  *                     denial's own words up to its step, a colon, then the
  *                     manager's words from the later step on — so the note
@@ -36,8 +37,8 @@ import { firstAndLastNamedStep, statedPriorActions } from "@/lib/forms/prior-act
  *   A PURE DENIAL     anything else is left out, so the reader finds no note
  *                     and the line stays blank.
  *
- * No new words are read or written: the denial, step, date and time readers
- * are the intake's and the Prior actions line's own. Off, the turns are
+ * No new words are read or written: the denial, step and date readers are
+ * the intake's and the Prior actions line's own. Off, the turns are
  * returned as they were.
  */
 
@@ -49,9 +50,7 @@ function deniedSentence(sentence: string, today: string): string | null {
   if (statedPriorActions(sentence, today).length > 0) return sentence;
   const steps = firstAndLastNamedStep(sentence);
   if (!steps || steps.last.start < steps.first.end) return null;
-  const later = sentence.slice(steps.last.start);
-  if (!notesCarryATimeframe(later)) return null;
-  return `${sentence.slice(0, steps.first.end)}: ${later}`;
+  return `${sentence.slice(0, steps.first.end)}: ${sentence.slice(steps.last.start)}`;
 }
 
 /** The manager's text with each denial of prior coaching handled; unchanged when nothing denies it. */

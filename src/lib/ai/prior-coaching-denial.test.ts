@@ -42,7 +42,7 @@ describe("PRIOR_COACHING_DENIAL_ENABLED", () => {
     it("'no prior coaching except a verbal warning on 7/14' keeps the dated step", () => {
       vi.stubEnv("PRIOR_COACHING_DENIAL_ENABLED", "true");
       const text = note(["CA for Odessa Quarrington, front desk unattended. no prior coaching except a verbal warning on 7/14"]);
-      expect(text).toMatch(/Prior coaching note: .*verbal warning on 7\/14/);
+      expect(text).toContain("Prior coaching note: prior coaching except a verbal warning on 7/14. No finalized record was required.");
     });
 
     it("'no prior coaching except a verbal in July' names the July verbal and gives it no day", () => {
@@ -51,6 +51,19 @@ describe("PRIOR_COACHING_DENIAL_ENABLED", () => {
       expect(text).toContain("Prior coaching note: prior coaching: verbal in July. No finalized record was required.");
       expect(text).not.toMatch(/\b0?7\/\d{1,2}\b/);
       expect(text).not.toMatch(/\bno note was given\b/);
+    });
+
+    it("'no prior coaching except a verbal warning' (no time) keeps the verbal warning: visible, never dropped (QA, 5 Nov 2026)", () => {
+      vi.stubEnv("PRIOR_COACHING_DENIAL_ENABLED", "true");
+      const text = note(["CA for Odessa Quarrington, front desk unattended. no prior coaching except a verbal warning"]);
+      expect(text).toContain("Prior coaching note: prior coaching: verbal warning. No finalized record was required.");
+      expect(text).not.toMatch(/\bno note was given\b/);
+    });
+
+    it("'no prior coaching or warnings in the last 6 months' is kept as a visible note (accepted by QA, 5 Nov 2026)", () => {
+      vi.stubEnv("PRIOR_COACHING_DENIAL_ENABLED", "true");
+      const text = note(["CA for Odessa Quarrington, front desk unattended. no prior coaching or warnings in the last 6 months"]);
+      expect(text).toContain("Prior coaching note: prior coaching: warnings in the last 6 months. No finalized record was required.");
     });
 
     it("'coached verbally in July' is unchanged", () => {
