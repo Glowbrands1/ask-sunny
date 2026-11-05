@@ -27,6 +27,9 @@ import { managerContext, resolveEmployee } from "@/lib/forms/proposal";
 /** The offer's opening, which also marks it for the next turn. */
 export const CA_OFFER_LEAD = "**Do you want a Corrective Action for";
 
+/** The Corrective Action Form's template key. */
+const CORRECTIVE_ACTION_KEY = "dpoa";
+
 const OFFER = /\*\*Do you want a Corrective Action for ([^*?]+)\?\*\* Say \*\*yes\*\* and I'll start it, citing the \*\*([^*]+)\*\*\./;
 
 function fold(text: string): string {
@@ -66,7 +69,11 @@ export function caOfferLine(input: {
    */
   const policyKey = reading.stated ?? (isSalesPolicyReading(reading) ? reading.suggestion : null);
   if (!policyKey) return null;
-  const resolution = resolveEmployee(context);
+  /*
+   * THE EMPLOYEE THIS MESSAGE NAMES, never one an earlier request in the chat
+   * named (with a draft open for another employee, the offer named that one).
+   */
+  const resolution = resolveEmployee(managerContext([], { id: input.questionMessageId, content: input.question }));
   if (resolution.kind !== "resolved") return null;
   const employee = onRoster(resolution.employeeName, input.roster);
   if (!employee) return null;
@@ -89,4 +96,34 @@ export function acceptedCaOffer(input: {
   const match = typeof last?.content === "string" ? OFFER.exec(last.content) : null;
   if (!match) return null;
   return `Create a Corrective Action Form for ${match[1]}. The policy is ${match[2]}.`;
+}
+
+/**
+ * THE OFFER AT THE TURN'S ONE EXIT (Pau, 4 Nov 2026; QA, live: production
+ * answered "<name> did not follow must see behaviors which violates standards
+ * of conduct policy" without the offer, once with a Coaching / Corrective
+ * Action menu, on paths that return before the policy answer's end). Every
+ * reply that ends without a card, an edit or a form opened gets the one
+ * offer; a form menu that offers the Corrective Action Form is replaced by it
+ * (ask once, card after yes). A menu without that form, a reply that already
+ * carries the offer, or no offer line, is left as it is. Off, unchanged.
+ */
+export function withCaOffer<R extends {
+  readonly content: string;
+  readonly formProposal?: unknown;
+  readonly formProposals?: readonly unknown[];
+  readonly formUpdate?: unknown;
+  readonly formOpened?: unknown;
+  readonly formSelection?: { readonly primary: { readonly templateKey: string }; readonly additional: readonly { readonly templateKey: string }[] };
+}>(response: R, offer: string | null): R {
+  if (!caSalesPolicyEnabled() || !offer) return response;
+  if (response.formProposal || (response.formProposals?.length ?? 0) > 0 || response.formUpdate || response.formOpened) return response;
+  if (response.content.includes(CA_OFFER_LEAD)) return response;
+  const selection = response.formSelection;
+  if (selection && ![selection.primary, ...selection.additional].some((choice) => choice.templateKey === CORRECTIVE_ACTION_KEY)) return response;
+  if (!selection) return { ...response, content: `${response.content.trim()}\n\n${offer}`.trim() };
+  // The menu's own question is the reply's last paragraph ("Which form do you need?", or the suggestion's lead): it goes with the menu.
+  const paragraphs = response.content.trim().split(/\n{2,}/);
+  const kept = paragraphs.slice(0, -1).join("\n\n").trim();
+  return { ...response, content: kept ? `${kept}\n\n${offer}` : offer, formSelection: undefined };
 }
