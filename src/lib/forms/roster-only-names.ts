@@ -43,8 +43,8 @@ import { namesAForm } from "./template-intent";
 
 export const ASK_WHO = "Who is this form for? Tell me the employee's full name.";
 /** The card's own invitation to create the draft (`ai/form-proposal.ts`), said only when the card has its employee. */
-const CREATE_WHEN_READY = /Create the draft here when you're ready,? and edit it below — nothing is saved to anyone's file until you do\.[ \t]*/g;
-const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
+export const CREATE_WHEN_READY = /Create the draft here when you're ready,? and edit it below — nothing is saved to anyone's file until you do\.[ \t]*/g;
+export const ASKS_WHO = /Who is this (?:\*\*[^*]+\*\* |form )?for\?/i;
 
 function rowsFrom(names: readonly string[]): RosterEmployee[] {
   return names.flatMap((name, index) => {
@@ -148,6 +148,7 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
         draftedFor(content),
       );
       if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
+      content = withNotFoundNote(content, slotName(message, names), names);
     }
   }
 
@@ -219,10 +220,11 @@ function withoutSlotNameInObservation(content: string, message: string | undefin
  */
 /** A reply line that asks the manager to choose or confirm a person: its names are the choices. */
 /** The reply's own list of details asks who already: "1. Employee's full name", "1. The employee's full name — or tell me it's for the whole team." */
-export const ASKS_FOR_THE_NAME = /\bemployee['’]s full name\b/i;
-const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for \*\*/;
+// FIRST_NAME_ASK's "Is this for ivy? Tell me her full name." asks too (the sibling app's final gate, 5 Nov 2026).
+export const ASKS_FOR_THE_NAME = /\b(?:employee['’]s|her|his|their) full name\b/i;
+export const ASKS_A_CHOICE = /Did you mean|Which of them|Is this for (?:\*\*|[^?\n*]{1,60}\?)/;
 
-function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
+export function withoutUnseatedName(content: string, typed: readonly (string | null)[], names: readonly string[], drafted: readonly string[] = []): string {
   const unseated = (list: readonly (string | null)[]) => [...new Set(list.map((name) => name?.trim() ?? "").filter((name) => name && !rosterSpelling(name, names)))];
   const people = unseated(typed);
   // The name the reply drafted for ("… for **zebulon marchbanks**") is a person's however it was typed: its words in any case.
@@ -253,13 +255,27 @@ function withoutUnseatedName(content: string, typed: readonly (string | null)[],
     .join("\n");
 }
 
+/**
+ * ROSTER_NEAR_MISS_ENABLED (port from the sibling app; QA's live run there, 5 Nov 2026, mgr-1-off-roster-name):
+ * "I need a corrective action verbal for <name>. This is for Under Performance …" with the name on no roster got
+ * an empty card and "Who is this form for? Tell me the employee's full name." — never that the typed name was not
+ * found, so the manager retypes it. Checked here with the flip's flags: the same. When the request's "for <Name>"
+ * is nobody's roster spelling and close to nobody, the empty card's reply opens with "I couldn't find **<name>**
+ * in the Woven roster, so that name is not on the form." (the scrub keeps that line); the name is said nowhere
+ * else. A metric or a form's name is never the request's name (`slotName`).
+ */
+function withNotFoundNote(content: string, typed: string | null, names: readonly string[]): string {
+  if (!typed || /I couldn['’]t find \*\*/.test(content) || oneCloseRosterPerson(typed, names)) return content;
+  return `I couldn't find **${typed}** in the Woven roster, so that name is not on the form.\n\n${content.trim()}`;
+}
+
 /** The person the reply says it drafts for: "I'll draft a **Corrective Action Form** for **<name>**". */
-function draftedFor(content: string): string[] {
+export function draftedFor(content: string): string[] {
   return [...content.matchAll(/\b(?:draft|create|put)\b[^\n.]*?\*\*[^*]+\*\* for \*\*([^*]+)\*\*/gi)].map((match) => match[1]!.trim());
 }
 
 /** The name the request put straight after "for" ("create a CA for <Name>, …"), when it is nobody's roster spelling; or null. */
-function slotName(message: string | undefined, names: readonly string[]): string | null {
+export function slotName(message: string | undefined, names: readonly string[]): string | null {
   const named = message ? /\bfor\s+(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){0,2})\s*[,.]/u.exec(message)?.[1] : undefined;
   // A form's name is never the person: "a corrective action for Coaching Form." (the sibling app's pre-check, 5 Nov 2026).
   return named && !rosterSpelling(named, names) && !namesAForm(named) ? named : null;

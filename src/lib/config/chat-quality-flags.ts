@@ -2559,3 +2559,31 @@ export function titleOfTheEmployeeEnabled(): boolean {
 export function rosterNearMissEnabled(): boolean {
   return envFlag("ROSTER_NEAR_MISS_ENABLED");
 }
+
+/**
+ * REPLY_MATCHES_CARD_ENABLED (port from the sibling app; QA for Pau, 5 Nov
+ * 2026; default off). The last step of every chat turn compares the finished
+ * reply with the finished card and makes the reply agree with it: no employee
+ * on the card, no person named and "Who is this form for?"; an employee on the
+ * card, never asked who; one policy, the card's; no removed Type of Offense
+ * label; never "You haven't told me what happened yet" beside an account
+ * (`ai/reply-matches-card.ts`). Off, as before.
+ */
+export function replyMatchesCardEnabled(): boolean {
+  return envFlag("REPLY_MATCHES_CARD_ENABLED");
+}
+
+/**
+ * CITATION_LINE_KEPT_ON_REVISION_ENABLED (QA's production-flags read and
+ * bisect, 5 Nov 2026; default off): with POLICY_CITATION_ENABLED on in
+ * production, the app appends "Policy reference: …, JBA Policy Manual p.N" to
+ * a Coaching draft's Details. A chat edit ("fix her last name, it is Laine")
+ * whose revision did not repeat that line was refused: keepsSubstance found
+ * the line's page numbers missing, so nothing was written and the reply said
+ * "I haven't changed the Coaching Form". With the flag on, a wording or
+ * additive revision keeps the app's own trailing line (`forms/app-citation-line.ts`),
+ * so the edit lands and the citation stays. Off, as before.
+ */
+export function citationLineKeptOnRevisionEnabled(): boolean {
+  return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
+}

@@ -698,6 +698,13 @@ const OFFENSE_BOX_LABEL: Record<string, string> = {
  * reads as citing the catch-all instead of it (District Manager feedback,
  * 21 Oct 2026; eval b6).
  */
+/** REPLY_MATCHES_CARD_ENABLED: the Type of Offense labels a box can be cited under that are no longer on the current form. */
+export function removedOffenseLabels(): string[] {
+  return Object.entries(OFFENSE_BOX_LABEL)
+    .filter(([key]) => !CURRENT_CA_OFFENSE_KEYS.includes(key))
+    .map(([, label]) => label);
+}
+
 function currentBoxLabel(key: string): string | undefined {
   const current = offeredOffenseKey(key, CURRENT_CA_OFFENSE_KEYS) ?? key;
   if (current !== key && current === STANDARDS_OF_CONDUCT) return undefined;

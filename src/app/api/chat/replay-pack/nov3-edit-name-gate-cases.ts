@@ -16,8 +16,8 @@ export const NOV3_EDIT_NAME_GATE_CASES: readonly ReplayCase[] = [
     // Fixed in production: FORM_EDIT_NAME_GATE_ROSTER_ENABLED on (QA, 3 Nov 2026).
     // fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — the edit to her open Coaching draft is dropped.
     status: { open: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — the edit to her open Coaching draft is dropped" },
-    fixStatus: { open: "fails with production's real flags (QA Vercel read 5 Nov); tracked: POLICY_CITATION_ENABLED (on in production) — the edit to her open Coaching draft is dropped" },
-    fixFlags: ["FORM_EDIT_NAME_GATE_ROSTER_ENABLED"],
+    // CITATION_LINE_KEPT_ON_REVISION_ENABLED keeps the app's own citation line, so this edit lands with production's real flags.
+    fixFlags: ["FORM_EDIT_NAME_GATE_ROSTER_ENABLED", "CITATION_LINE_KEPT_ON_REVISION_ENABLED"],
     async run(t) {
       t.directory(STAFF);
       t.as("salon_director", KEARNEY);

@@ -214,6 +214,7 @@ import {
 } from "@/lib/forms/coaching-framing";
 import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
+import { withoutRequestInObservation } from "@/lib/forms/request-observation";
 import {
   MANAGER_FOLLOW_UP_RULES,
   guardManagerFollowUp,
@@ -1708,9 +1709,18 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       return base;
     })();
 
+    /*
+     * CA_SALES_POLICY_ENABLED (QA, live, 4 Nov 2026): an Observation the
+     * model began with the manager's request ("CA for <name> due to …") begins
+     * with the request's reason instead. Off, null. See `request-observation.ts`.
+     */
+    const observationNotRequest =
+      (loaded.instance.layoutFamily === "corrective"
+        ? withoutRequestInObservation(draftedValues, narrativeTargets[0], loaded.instance.employeeName ?? null)
+        : null) ?? draftedValues;
     const enforced = enforceResponsibilities(document, variantKey, {
       values: withoutPrimedTopic(
-        priorDate ? { ...draftedValues, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : draftedValues,
+        priorDate ? { ...observationNotRequest, [PREVIOUS_ACTION_DATE_KEY]: priorDate } : observationNotRequest,
         `${body.topic ?? ""} ${notes}`,
       ),
       /*
