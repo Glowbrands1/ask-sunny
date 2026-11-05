@@ -2518,6 +2518,33 @@ export function coachingAsksWhatHappenedEnabled(): boolean {
 }
 
 /**
+ * ROSTER_NAME_IN_CANDIDATE_ENABLED (QA, 5 Nov 2026, R2 checked in this app;
+ * default off). One employee's story that names their district manager in
+ * passing ("When <employee> spoke with District manager <name> …"): with
+ * FORM_NAME_FROM_ROSTER_ENABLED on, the candidate "When <employee>" is set
+ * aside as shaped like nobody on the roster (its first word is nobody's first
+ * name), and the card went to the district manager, the only other roster
+ * person the turn names. On: a candidate whose last words are a roster
+ * person's first name, or a roster-shaped name, could be that person
+ * (`forms/roster-shape.ts` couldBeOnRoster). Off, as before.
+ */
+export function rosterNameInCandidateEnabled(): boolean {
+  return envFlag("ROSTER_NAME_IN_CANDIDATE_ENABLED");
+}
+
+/**
+ * TITLE_OF_THE_EMPLOYEE_ENABLED (port from the sibling app; QA, 5 Nov 2026,
+ * R2; default off). One employee's story named their district manager in
+ * passing, and the card's Job title was "District Manager", the other
+ * person's. On: a title the manager's turns only ever attach to another named
+ * person is not the employee's; the card has none
+ * (`ai/title-of-the-employee.ts`). Off, as before.
+ */
+export function titleOfTheEmployeeEnabled(): boolean {
+  return envFlag("TITLE_OF_THE_EMPLOYEE_ENABLED");
+}
+
+/**
  * ROSTER_NEAR_MISS_ENABLED (port from the sibling app; QA's testers, 5 Nov
  * 2026, R3/R5/R7; default off, on with FORM_NAME_FROM_ROSTER_ENABLED). A real,
  * active roster person's surname typed with one letter wrong: with FORM_NAME
