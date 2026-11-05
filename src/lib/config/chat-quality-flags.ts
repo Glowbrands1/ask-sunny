@@ -2503,3 +2503,16 @@ export function formEditNoopGuardEnabled(): boolean {
 export function keepRosterExactNameEnabled(): boolean {
   return envFlag("KEEP_ROSTER_EXACT_NAME_ENABLED");
 }
+
+/**
+ * COACHING_ASKS_WHAT_HAPPENED_ENABLED (Pau, 5 Nov 2026, sf-s27; default off).
+ * "Create a coaching form." → "<name>" answered "Everything I need is here …
+ * I have the employee and the salon." with no incident and no draft. On: a
+ * Coaching Form card for a person with no account in the manager's turns for
+ * it does not say it has everything; it asks what happened, once per card
+ * (`ai/ca-what-happened.ts`, the Corrective Action's same test). Off, as
+ * before.
+ */
+export function coachingAsksWhatHappenedEnabled(): boolean {
+  return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
+}
