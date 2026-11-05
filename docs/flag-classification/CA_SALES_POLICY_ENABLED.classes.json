@@ -583,5 +583,10 @@
   "category": "INTENDED",
   "twin": "itself with the flag off (CI default); ca-sales-policy.test.ts",
   "reason": "Client request (4 Nov 2026), Pau: with the flag on a stated metric shortfall goes to the Corrective Action Form citing the Standards of Conduct instead of the progression's metric-only answer; the names reader (FORM_NAME_FROM_ROSTER_ENABLED) keeps metric and form words from being people. The reply differs in that; the case's own expectation is unchanged."
+ },
+ "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-request-not-observation-due-to: \"CA for <name> due to under performance in salon metrics\": the Observation is the reason, not the request — OPEN in production (with production's flags the Observation is the request as the model copied it)": {
+  "category": "INTENDED",
+  "twin": "itself with the flag off (CI default); nov4-request-not-observation-negative-account; src/lib/forms/request-observation.test.ts (off: unchanged)",
+  "reason": "QA, live, 4 Nov 2026: \"CA for <name> due to under performance in salon metrics\" came back with the request as the Observation. With the flag on, an Observation whose first sentence asks for the form begins with the request's reason instead (request-observation.ts), and \"due to\" / \"because (of)\" join the reason in the request reader. Off, unchanged."
  }
 }
