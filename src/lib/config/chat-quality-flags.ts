@@ -2559,3 +2559,14 @@ export function titleOfTheEmployeeEnabled(): boolean {
 export function rosterNearMissEnabled(): boolean {
   return envFlag("ROSTER_NEAR_MISS_ENABLED");
 }
+
+/**
+ * ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED (QA-A/QA-B, the re-flip's live testers, 5 Nov 2026; default off). With
+ * FORM_NAME + ROSTER_NEAR_MISS on, an off-roster full name got no "I couldn't find **<name>** in the Woven roster"
+ * note when the request did not put it straight after "for" with a comma or period ("i have an employee, <name>
+ * that needs …", or "… for <name>" at the end). On: the note also reads "employee, <Name>" and "for <Name>" at the
+ * end of the message, Title Case names only (`forms/roster-only-names.ts` notFoundName). Off, as before.
+ */
+export function rosterNotFoundAnyPhrasingEnabled(): boolean {
+  return envFlag("ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED");
+}

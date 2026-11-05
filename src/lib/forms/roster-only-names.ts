@@ -1,4 +1,4 @@
-import { formNameFromRosterEnabled, rosterNearMissEnabled } from "@/lib/config/chat-quality-flags";
+import { formNameFromRosterEnabled, rosterNearMissEnabled, rosterNotFoundAnyPhrasingEnabled } from "@/lib/config/chat-quality-flags";
 import type { AskResponse } from "@/lib/ai/types";
 
 import { HAS_EMPLOYEE_AND_PLACE, SAYS_READY } from "@/lib/ai/ca-what-happened";
@@ -148,7 +148,7 @@ export function rosterOnlyNames(response: AskResponse, names: readonly string[],
         draftedFor(content),
       );
       if (!ask && !ASKS_WHO.test(content) && !ASKS_A_CHOICE.test(content) && !ASKS_FOR_THE_NAME.test(content)) ask = ASK_WHO;
-      content = withNotFoundNote(content, slotName(message, names), names);
+      content = withNotFoundNote(content, notFoundName(message, names), names);
     }
   }
 
@@ -266,6 +266,25 @@ function withoutUnseatedName(content: string, typed: readonly (string | null)[],
 function withNotFoundNote(content: string, typed: string | null, names: readonly string[]): string {
   if (!typed || /I couldn['’]t find \*\*/.test(content) || oneCloseRosterPerson(typed, names)) return content;
   return `I couldn't find **${typed}** in the Woven roster, so that name is not on the form.\n\n${content.trim()}`;
+}
+
+/**
+ * The name the not-found note is about. ROSTER_NOT_FOUND_ANY_PHRASING_ENABLED (QA-A/QA-B, the re-flip's live
+ * testers, 5 Nov 2026): also "employee, <Name>" ("i have an employee, <Name> that needs …") and "for <Name>"
+ * ending the message, each name word Title Case, never a roster spelling or a form's name. Off: the
+ * "for <Name>," / "for <Name>." slot only.
+ */
+function notFoundName(message: string | undefined, names: readonly string[]): string | null {
+  const slot = slotName(message, names);
+  if (slot || !rosterNotFoundAnyPhrasingEnabled() || !message) return slot;
+  // QA-A ("i have an employee, <Name> that needs…") and QA-B ("… for <Name>" ending the message) only;
+  // each word Title Case, so all-caps runs ("BY CORIN BELLWEATHER") and lowercase words ("ima employee") never qualify.
+  const word = String.raw`\p{Lu}\p{Ll}[\p{Ll}'’-]*`;
+  const name = String.raw`(${word}(?:\s+${word}){1,2})`;
+  const found =
+    new RegExp(String.raw`\bemployee,?\s+${name}(?=[\s,.!?]|$)`, "u").exec(message)?.[1] ??
+    new RegExp(String.raw`\bfor\s+${name}\s*[.!]?\s*$`, "u").exec(message.trim())?.[1];
+  return found && !rosterSpelling(found, names) && !namesAForm(found) ? found : null;
 }
 
 /** The person the reply says it drafts for: "I'll draft a **Corrective Action Form** for **<name>**". */
