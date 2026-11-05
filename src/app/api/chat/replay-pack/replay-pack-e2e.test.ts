@@ -444,6 +444,7 @@ type Answer = {
   formSelection?: unknown;
   formOpened?: { instanceId: string; revisesInstanceId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
+  formReply?: { instanceId: string; unwritten?: string };
 };
 
 /** The thread as the browser holds it: a card the answer carried stays open. */
@@ -457,7 +458,14 @@ class Thread {
 
   async say(question: string, reading: Record<string, unknown> = {}): Promise<Answer> {
     state.reading = reading;
-    const history = this.messages.map(({ id, role, content, formProposal }) => ({ id, role, content, ...(formProposal ? { formProposal } : {}) }));
+    // As the browser sends it: the card a message carried, and FORM_EDIT_SOURCE_TURN_ENABLED's `formReply` (`chat-screen.tsx`).
+    const history = this.messages.map(({ id, role, content, formProposal, formReply }) => ({
+      id,
+      role,
+      content,
+      ...(formProposal ? { formProposal } : {}),
+      ...(formReply ? { formReply } : {}),
+    }));
     const id = `m${(this.sequence += 1)}`;
     const response = await chatRoute.POST(
       new Request("https://app.test/api/chat", {
@@ -496,6 +504,7 @@ class Thread {
         content: payload.content,
         createdAt: `${TODAY}T12:28:01Z`,
         ...(payload.formProposal ? { formProposal: payload.formProposal } : {}),
+        ...(payload.formReply ? { formReply: payload.formReply } : {}),
       } as ChatMessage,
     );
     if (payload.formProposal) this.proposal = payload.formProposal;
@@ -627,6 +636,7 @@ afterEach(() => {
   editTool.offered = 0;
   editTool.lastData = null;
   draftAsked.length = 0;
+  revisionAsked.length = 0;
   draftSystemAsked.length = 0;
   draftToolsAsked.length = 0;
 });
@@ -665,6 +675,10 @@ function context(): ReplayContext {
     calls: () => ({ chat: state.chatModelCalls, draft: state.draftCalls, revision: state.revisionCalls, tool: state.toolCalls, patch: patchScript.calls }),
     forms: () => store.form_instances as never,
     draftPrompts: () => [...draftAsked],
+    revisionPrompts: () =>
+      revisionAsked.map((asked) =>
+        (JSON.parse(asked) as { content?: unknown }[]).map((message) => (typeof message.content === "string" ? message.content : JSON.stringify(message.content))).join("\n"),
+      ),
     draftSystems: () => [...draftSystemAsked],
     draftTools: () => [...draftToolsAsked],
     redraft: (instanceId, notes) =>

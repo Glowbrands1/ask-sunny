@@ -263,6 +263,12 @@ export interface AskResponse {
    */
   formUpdate?: { instanceId: string; updated: string[] };
   /**
+   * FORM_EDIT_SOURCE_TURN_ENABLED: this reply was about the open form; the
+   * browser keeps it on the message and sends it back with the history. See
+   * `ChatFormReply`.
+   */
+  formReply?: { instanceId: string; unwritten?: string };
+  /**
    * A form this turn put in front of the manager — an existing one they asked
    * to edit or see, or the new draft opened from a finalized one so it can be
    * changed. The chat attaches it to this answer as a form card. An id, never

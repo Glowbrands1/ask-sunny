@@ -2587,3 +2587,16 @@ export function replyMatchesCardEnabled(): boolean {
 export function citationLineKeptOnRevisionEnabled(): boolean {
   return envFlag("CITATION_LINE_KEPT_ON_REVISION_ENABLED");
 }
+
+/**
+ * EDITS SAID IN CHAT REACH THE CARD (coding 3, item 1; same flag in both apps).
+ * "can you upate the draft with these details of coaching?" → "it didnt edit in
+ * the card" → "the details we just discussed!!!", and "Do i need to copy and
+ * paste it?": the turn a refers-back edit means is chosen by the thread's
+ * structure — the browser's markers for the card and for replies about the open
+ * form (`formReply`), and the manager's turn a reply did not write — never "the
+ * last reply". Off, as before. See `forms/form-content-turn.ts` (`sourceTurn`).
+ */
+export function formEditSourceTurnEnabled(): boolean {
+  return envFlag("FORM_EDIT_SOURCE_TURN_ENABLED");
+}

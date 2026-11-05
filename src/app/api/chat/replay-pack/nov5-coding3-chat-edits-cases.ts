@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 
-import { KEARNEY, STAFF, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type ReplayAnswer, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
+import { KEARNEY, STAFF, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type DirectoryRow, type ReplayAnswer, type ReplayCase, type ReplayContext, type ReplayThread } from "./cases";
 
 /**
  * ============================================================================
@@ -42,8 +42,17 @@ import { KEARNEY, STAFF, noClaimWithoutUpdate, replyMatchesDiff, savedForm, type
  *
  * The drafting and revision models are the pack's stand-ins (they write
  * nothing) unless a case says otherwise, as in production's reports.
- * Invariants only: what is SAVED, what is CLAIMED, and what the drafting
- * model is HANDED.
+ * Invariants only: what is SAVED, what is CLAIMED, and what the drafting and
+ * revision models are HANDED.
+ *
+ * WHAT THE REVISION IS HANDED IS THE CHECK (5 Nov 2026). The revision stand-in
+ * writes whatever `revisionWrites` scripts, whatever it was handed, so a case
+ * that scripts it and asserts only the saved form passes with any source. The
+ * two item-1 cases assert on `revisionPrompts()`: the live model can write the
+ * details only when it is handed them. Fixed behind
+ * FORM_EDIT_SOURCE_TURN_ENABLED (`form-content-turn.ts` `sourceTurn`; the route
+ * stamps `formReply` on replies about the open form, and the manager's turn
+ * a reply did not write as `unwritten`).
  */
 
 type T = ReplayContext;
@@ -61,6 +70,23 @@ const SAID = /rowan marked a session as complete but the guest hadn't been spray
 
 /** The bot's own lines — the card, a no-change reply, an honest reply — are never the form's content. */
 const BOTS_OWN_WORDS = /Here is what I would put|I haven't changed|Nothing on the form has changed|Tell me which part to change|Create the draft here/i;
+
+/**
+ * What a revision call was handed for THIS turn: the change it was asked for,
+ * and the manager message just before it (the one "the details in my last
+ * message" points to). Not the whole conversation, which the revision always
+ * reads: her account, said earlier, is in every later prompt.
+ */
+function handedNow(prompt: string): string {
+  const [said = "", change = ""] = prompt.split("THE CHANGE THE MANAGER IS ASKING FOR NOW:");
+  const turns = (said.split("WHAT THE MANAGER HAS SAID IN THIS CONVERSATION:")[1] ?? "").trim().split("\n\n");
+  return [turns.at(-2) ?? "", change.trim()].join("\n");
+}
+
+/** The MSB case's employee (invented). */
+const SELA: DirectoryRow = { id: "e-sela", firstName: "Sela", lastName: "Brannock", preferredFirstName: null, employmentStatus: "active", salonIds: ["loc-0309"], positionName: "Tanning Consultant" };
+/** The shortfall she described first, in the managers' MSB wording (`nov4-manager-msb-cases.ts`). */
+const SHORTFALL = "Sela Brannock is not following her MSB. She was under in PPTA, LPSVA and Spa% for october.";
 
 function start(t: T) {
   t.directory(STAFF);
@@ -87,6 +113,7 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     status: {
       open: "the Details stay empty: \"these details\" / \"the details we just discussed\" are read from the last reply (the card, then the bot's own no-change reply), never the earlier answer that held them",
     },
+    fixFlags: ["FORM_EDIT_SOURCE_TURN_ENABLED"],
     async run(t: T) {
       start(t);
       const thread = t.thread();
@@ -96,12 +123,23 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
       await thread.say("Create a coaching form for Rowan Kestrel");
       expect(thread.proposal, "no Coaching Form card for Rowan Kestrel").toMatchObject({ templateKey: "coaching", employeeName: "Rowan Kestrel" });
       const id = await thread.create();
+      /*
+       * The stand-in writes nothing on any turn — the worst case, as in her
+       * report — so "the details we just discussed!!!" must still be handed the
+       * answer, never "it didnt edit in the card". This replaces the case's
+       * first check (the saved Details hold the answer), which a scripted
+       * stand-in passes whatever it is handed (5 Nov 2026).
+       */
       for (const turn of ["can you upate the draft with these details of coaching?", "it didnt edit in the card", "the details we just discussed!!!"]) {
+        const calls = t.revisionPrompts().length;
         await onDraft(t, thread, id, turn);
-      }
-      const details = t.values(id).coaching_details ?? "";
-      for (const step of IN_THE_ANSWER) {
-        expect(details, `after "the details we just discussed!!!" the Details do not hold the coaching details discussed before the card (${step})`).toMatch(step);
+        if (turn === "it didnt edit in the card") continue;
+        const handed = t.revisionPrompts().slice(calls).join("\n");
+        for (const step of IN_THE_ANSWER) {
+          expect(handed, `"${turn}": the revision was not handed the coaching details discussed before the card (${step})`).toMatch(step);
+        }
+        // Verbatim: the answer's "Start Session" is not rewritten to "begin Session".
+        expect(handed, `"${turn}": the answer was not handed verbatim`).toMatch(/Press \*\*Start Session\*\*/);
       }
     },
   },
@@ -146,6 +184,7 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
     status: {
       open: "the live answer \"It should update automatically — no copy-and-paste needed\" is sent unchanged with nothing written (the claim guard's phrase list misses it); past that, the \"make that update\" the honest reply invites writes nothing",
     },
+    fixFlags: ["FORM_EDIT_SOURCE_TURN_ENABLED"],
     async run(t: T) {
       start(t);
       const thread = t.thread();
@@ -168,8 +207,48 @@ export const NOV5_CODING3_CHAT_EDITS_CASES: ReplayCase[] = [
         /no copy[- ]?(?:and[- ])?paste needed|updates? automatically|details are on the draft/i,
       );
       // Her next turn in the report: what the reply invites.
+      const calls = t.revisionPrompts().length;
+      // The live model writes what it is handed; the stand-in writes her account. The check is what it was handed.
+      t.revisionWrites({ coaching_details: ROWAN_DID });
       await onDraft(t, thread, id, "make that update");
+      const handed = t.revisionPrompts().slice(calls).map(handedNow).join("\n");
+      expect(handed, '"make that update" did not hand the revision her account').toMatch(SAID);
       expect(t.values(id).coaching_details ?? "", 'after "make that update" the draft does not say what Rowan did').toMatch(SAID);
+    },
+  },
+  {
+    id: "nov5-coding3-msb-yes-card-what-happened",
+    title:
+      "a CA after an MSB shortfall: she described the shortfall, the card was offered, she said \"yes\" — the card's What happened / Observation is the shortfall she described, never \"The policy is Standards of Conduct\"",
+    report:
+      'QA, relaying a tester\'s live chat (5 Nov 2026, both apps): the manager described an MSB / sales shortfall, the Corrective Action was offered, she said "yes", and the card read "What happened: The policy is Standards of Conduct" instead of the shortfall',
+    /*
+     * NOT ITEM 1'S ROOT CAUSE (replayed 5 Nov 2026). Before any form is open,
+     * nothing reads a "previous answer". With production's flags the offer
+     * does not exist (CA_SALES_POLICY_ENABLED is off), so "yes" makes no card.
+     * The tester's card ("What happened:" is the full remap's card) replays with
+     * CA_SALES_POLICY_ENABLED and FORM_FULL_REMAP_ENABLED on: "yes" is turned
+     * into the request the offer accepts ("Create a Corrective Action Form for
+     * <name>. The policy is Standards of Conduct.", `acceptedCaOffer` in
+     * `lib/ai/ca-offer.ts`) and the remap reads that request as the account:
+     * "What happened: Create a Corrective Action Form for policy is Standards
+     * of Conduct". With CA_SALES_POLICY_ENABLED alone the Observation holds
+     * her shortfall. No fixFlags: FORM_EDIT_SOURCE_TURN_ENABLED does not touch it.
+     */
+    status: {
+      open: "with production's flags \"yes\" makes no card (no Corrective Action is offered: CA_SALES_POLICY_ENABLED is off); with the offer and the full remap on (the tester's card), What happened is the offer's own request, \"Create a Corrective Action Form for policy is Standards of Conduct\"",
+    },
+    async run(t: T) {
+      t.directory([...STAFF, SELA]);
+      t.as("salon_director", KEARNEY);
+      const thread = t.thread();
+      await thread.say(SHORTFALL);
+      const card = await thread.say("yes");
+      expect(thread.proposal, `"yes" made no Corrective Action card for Sela Brannock:\n${card.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Sela Brannock" });
+      const happened = card.content.split("\n").find((line) => /\*\*(?:What happened|Observation of Offense):?\*\*/i.test(line)) ?? "";
+      expect(happened, `the card has no What happened / Observation line:\n${card.content}`).not.toBe("");
+      expect(happened, `What happened is the offer's request, not her shortfall:\n${happened}`).not.toMatch(/\bpolicy is Standards of Conduct\b|Create a Corrective Action Form/i);
+      expect(happened, `What happened does not hold the shortfall she described:\n${happened}`).toMatch(/PPTA|LPSVA|Spa%|\bMSB\b/i);
     },
   },
 ];

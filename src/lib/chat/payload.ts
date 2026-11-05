@@ -122,6 +122,8 @@ export const METADATA_KEYS = [
   "formProposal",
   "formSelection",
   "formInstanceRef",
+  // FORM_EDIT_SOURCE_TURN_ENABLED: a reply about the open form, and the turn it did not write.
+  "formReply",
   "formHandoff",
   "error",
   "feedback",
