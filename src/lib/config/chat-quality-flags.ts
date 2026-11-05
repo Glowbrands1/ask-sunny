@@ -2559,3 +2559,16 @@ export function titleOfTheEmployeeEnabled(): boolean {
 export function rosterNearMissEnabled(): boolean {
   return envFlag("ROSTER_NEAR_MISS_ENABLED");
 }
+
+/**
+ * A reply ends as a sentence (the sibling app's sf-b6, QA, 5 Nov 2026): a
+ * reply ended "Based on what you've described, I can prepare:" — the trace
+ * says the model finished (`end_turn`); the line was the form picker's
+ * heading, offered while a form was already in progress on a proposal card.
+ * With the flag, while a form is in progress the reply carries no picker and
+ * no picker heading, and a reply never ends on a heading with nothing under it
+ * (`lib/chat/reply-ends.ts`). Same name in both apps. Default off.
+ */
+export function replyCutCheckEnabled(): boolean {
+  return envFlag("REPLY_CUT_CHECK_ENABLED");
+}

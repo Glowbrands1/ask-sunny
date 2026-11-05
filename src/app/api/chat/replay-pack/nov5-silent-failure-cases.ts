@@ -1,4 +1,5 @@
 import { expect, vi } from "vitest";
+import { formOpportunityLead } from "@/lib/forms/form-opportunity";
 
 import {
   endsAsSentence,
@@ -83,6 +84,9 @@ const PASTED_CA = [
   "Direct policy from official manual: Failing to follow the policies and procedures of The Company",
   "Action Plan: Rhea will review the Must See Behaviors with her Salon Director weekly. She will meet each goal by the end of October.",
 ].join("\n");
+
+/** How the production replies ended, word for word. */
+const LIVE_ENDING = "Based on what you've described, I can prepare:";
 
 export const NOV5_SILENT_FAILURE_CASES: readonly ReplayCase[] = [
   {
@@ -266,6 +270,7 @@ export const NOV5_SILENT_FAILURE_CASES: readonly ReplayCase[] = [
     report:
       "QA, 5 Nov 2026 (the sibling app): \"Reply ended mid-sentence: 'Based on what you've described, I can prepare:'\". The trace says the model finished (end_turn); the heading was the form picker's, offered while a CA was in progress.",
     status: { open: "REPLY_CUT_CHECK_ENABLED (Step 1): no picker or heading while a form is in progress" },
+    fixFlags: ["REPLY_CUT_CHECK_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say("I need a corrective action form for Talia Brennick for closing the salon early and turning away a guest");
@@ -276,6 +281,30 @@ export const NOV5_SILENT_FAILURE_CASES: readonly ReplayCase[] = [
         "I can add that detail as the factual account on the form, but none of the sources available to me state a policy for this, so I'd leave the policy for you to complete.\n\nLet me know the warning level and payroll deduct, and I'll fold it all together.",
       );
       const reply = await thread.say(detail);
+      endsAsSentence(reply, detail, true);
+      expect(reply.content).toContain("I'll fold it all together.");
+    },
+  },
+  {
+    // The live wording (QA for Pau, 5 Nov 2026: 4 replies in 2 chats, 2 and 4 Nov, ended exactly so).
+    id: "sf-b6-reply-live-ending",
+    title: "the live shape of sf-b6: the reply never ends exactly \"Based on what you've described, I can prepare:\"",
+    report:
+      "QA, 5 Nov 2026 (the sibling app): \"Reply ended mid-sentence: 'Based on what you've described, I can prepare:'\". The trace says the model finished (end_turn); the heading was the form picker's, offered while a CA was in progress.",
+    status: { open: "REPLY_CUT_CHECK_ENABLED (Step 1): no picker or heading while a form is in progress" },
+    fixFlags: ["REPLY_CUT_CHECK_ENABLED"],
+    async run(t) {
+      const thread = start(t);
+      const first = await thread.say("I need a corrective action form for Talia Brennick for closing the salon early and turning away a guest");
+      expect(first.formProposal, "the first turn shows the Corrective Action card").toBeTruthy();
+      const detail =
+        "can you have it include that we recieved a guest complaint from Sunday 11-1, she started closing at 8:56pm and we cant close until the salon is closed at 9pm, we had a guest come in at 8:59 and was told them that we were closed";
+      t.modelSays(
+        "I can add that detail as the factual account on the form, but none of the sources available to me state a policy for this, so I'd leave the policy for you to complete.\n\nLet me know the warning level and payroll deduct, and I'll fold it all together.",
+      );
+      const reply = await thread.say(detail);
+      expect(formOpportunityLead(), "the live line is the picker's own heading").toBe(LIVE_ENDING);
+      expect(reply.content.trimEnd().endsWith(LIVE_ENDING) ? reply.content : null, "the reply ends exactly on the picker's heading").toBeNull();
       endsAsSentence(reply, detail, true);
       expect(reply.content).toContain("I'll fold it all together.");
     },

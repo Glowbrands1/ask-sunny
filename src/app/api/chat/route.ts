@@ -16,6 +16,7 @@ import {
   nameCorrectionWordsEnabled,
   policyChangeRestOfTurnEnabled,
   openFormNoSelectionEnabled,
+  replyCutCheckEnabled,
   personGuardEnabled,
   formNameFromRosterEnabled,
   refusalNoRepeatEnabled,
@@ -773,6 +774,21 @@ async function postChat(request: Request) {
         const { formSelection: _dropped, ...rest } = answer;
         void _dropped;
         answer = { ...rest, content: rest.content.replace(/\n*Based on what you've described, I can prepare:\s*$/, "").trimEnd() };
+      }
+      /*
+       * REPLY_CUT_CHECK_ENABLED (the sibling app's sf-b6): after every rewrite above. While a
+       * form is in progress — a proposal card being filled in, or a form
+       * open — no form picker and no picker heading; and never a last line
+       * that is a heading with nothing under it. See `lib/chat/reply-ends.ts`.
+       */
+      if (replyCutCheckEnabled()) {
+        const checked = (await import("@/lib/chat/reply-ends")).checkedReplyEnd(answer, {
+          formInProgress: Boolean(parsed.continueProposalTemplateKey || openForm || parsed.activeFormInstanceId),
+        });
+        if (checked.removed.length > 0) {
+          console.warn(`[chat] reply end: removed ${checked.removed.length} line(s) ending the reply`);
+          answer = checked.answer;
+        }
       }
     } catch (error) {
       /*
