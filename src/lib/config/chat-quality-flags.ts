@@ -2516,3 +2516,19 @@ export function keepRosterExactNameEnabled(): boolean {
 export function coachingAsksWhatHappenedEnabled(): boolean {
   return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
 }
+
+/**
+ * ROSTER_NEAR_MISS_ENABLED (port from the sibling app; QA's testers, 5 Nov
+ * 2026, R3/R5/R7; default off, on with FORM_NAME_FROM_ROSTER_ENABLED). A real,
+ * active roster person's surname typed with one letter wrong: with FORM_NAME
+ * on there, the card's Employee was "Not yet", the Action Plan still named the
+ * person, and the reply asked "Who is this form for?"; here, with the flip's
+ * flags, the empty card's reply names the person. On: (a) a near-miss of
+ * exactly one roster name is asked "Is this for <roster full name>?" as a first
+ * name typed alone is, and the card waits (`forms/roster-only-names.ts`); (b)
+ * with no employee on the card, no reply text names the person who is not on
+ * it. Off, as before.
+ */
+export function rosterNearMissEnabled(): boolean {
+  return envFlag("ROSTER_NEAR_MISS_ENABLED");
+}
