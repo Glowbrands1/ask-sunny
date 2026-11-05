@@ -473,5 +473,480 @@
     "category": "INTENDED",
     "twin": "the same case's test row above",
     "reason": "The OPEN case's record: fails with the flags off (the bug as reported), holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov3-lowercase-name-off-roster: a lower-case name that is not on the roster, after a role and a date, goes on the card — OPEN in production (SLOT_NAME_ON_FORM_REQUEST is off: a lower-case name the slot reading holds does not reach the card)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-cleaning-basis-upkeep-duties: \"did not complete daily cleaning duties\" with the model's upkeep basis: Other — OPEN in production (with production's flags the task reading ticks and cites the Standards of Conduct)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-cleaning-tanning-beds-not-conduct: \"the tanning beds were left dirty at close\": the model's Standards of Conduct tick moves to Other, no Standards of Conduct citation — OPEN in production (with production's flags the model's Standards of Conduct tick stands and is cited (p.12))": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-name-last-date-caps-off-code: \"CORRECTIVE ACTION: A GUEST WAS TREATED RUDELY AT THE FRONT DESK ON MONDAY 10/05/2026 BY CORIN BELLWEATHER\" — off roster: asks who, invents no one (code only) — OPEN in production (the non-person \"BY CORIN BELLWEATHER\" is taken as the name (\"I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**\"), and the card has no employee)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-name-last-date-caps-off-models: \"CORRECTIVE ACTION: A GUEST WAS TREATED RUDELY AT THE FRONT DESK ON MONDAY 10/05/2026 BY CORIN BELLWEATHER\" — off roster: asks who, invents no one (models read the name) — OPEN in production (the non-person \"BY CORIN BELLWEATHER\" is taken as the name (\"I'll draft a Corrective Action Form for **BY CORIN BELLWEATHER**\"), and the card has no employee)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov4-offer-exit-replaces-menu: a Coaching / Corrective Action menu for the employee is replaced by the one offer; \"yes\" makes the card — OPEN in production (with production's flags the reply is a Coaching / Corrective Action menu, with no offer)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-roster-only-coaching-form: Pau 5 Nov, only roster people: \"CA for Coaching Form\" — OPEN in production (a Coaching Form card)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-roster-only-ima-off-roster: Pau 5 Nov, only roster people: \"create a CA form for ima employee, for opening salon late on 9-28-26\" — OPEN in production (the card is for \"Ima\", a name on no roster)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/app/api/chat/replay-pack/replay-pack-e2e.test.ts :: the replay pack nov5-roster-only-ima-on-roster: Pau 5 Nov, only roster people: \"create a CA form for ima employee, for opening salon late on 9-28-26\" — OPEN in production (the reply drafts \"for **ima**\", not the roster's spelling)": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "src/lib/ai/keep-roster-exact-name.test.ts :: a roster name with a not-a-name word in it off: the keeper takes it off the card, and the reply still drafts for it (the live report)": {
+    "category": "INTENDED",
+    "twin": "itself with FORM_NAME off (CI default); #532 pins FORM_NAME off in it (ea1f28f3)",
+    "reason": "The test recreates the pre-flip reply that drafts for a name on no roster (\"for **QA Probe XZT One**\" / \"for **One Tanner**\") with the flags it sets; with FORM_NAME forced on that reply is fixed by design: Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\"."
+  },
+  "src/lib/ai/not-a-name-oct24.test.ts :: QA L23: the exit form is for the person the manager typed a saved name the manager never typed gives way to the one they type": {
+    "category": "INTENDED",
+    "twin": "itself with FORM_NAME off (CI default); #532 pins FORM_NAME off in it (ea1f28f3)",
+    "reason": "The test recreates the pre-flip reply that drafts for a name on no roster (\"for **QA Probe XZT One**\" / \"for **One Tanner**\") with the flags it sets; with FORM_NAME forced on that reply is fixed by design: Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\"."
+  },
+  "replay: nov2-p2-new-request-old-incident [fix:NEW_REQUEST_OWN_TURNS_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov2-p2-new-request-old-incident [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov2-p5-name-claims [fix:CLAIM_GUARD_ENABLED,OPEN_FORM_NO_SELECTION_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "With FORM_NAME on, the claimed person is put on the roster by the case itself (nov2-claim-cases.ts claimRoster, changed on purpose in #534), so the card also reads the roster's \"Job title: Tanning Consultant\". Holds in both modes."
+  },
+  "replay: nov2-p5-name-claims [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "With FORM_NAME on, the claimed person is put on the roster by the case itself (nov2-claim-cases.ts claimRoster, changed on purpose in #534), so the card also reads the roster's \"Job title: Tanning Consultant\". Holds in both modes."
+  },
+  "replay: nov2-p5-name-corrections [fix:NAME_CORRECTION_WORDS_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "With FORM_NAME on, the claimed person is put on the roster by the case itself (nov2-claim-cases.ts claimRoster, changed on purpose in #534), so the card also reads the roster's \"Job title: Tanning Consultant\". Holds in both modes."
+  },
+  "replay: nov2-p5-name-corrections [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flag off (CI default)",
+    "reason": "With FORM_NAME on, the claimed person is put on the roster by the case itself (nov2-claim-cases.ts claimRoster, changed on purpose in #534), so the card also reads the roster's \"Job title: Tanning Consultant\". Holds in both modes."
+  },
+  "replay: nov3-ca-name-from-chat [fix:CA_NAME_FROM_CHAT_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-ca-name-from-chat [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-ca-name-not-on-roster [fix:CA_NAME_FROM_CHAT_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-ca-name-not-on-roster [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-card-observation-own-request [fix:CARD_OBSERVATION_OWN_REQUEST_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-card-observation-own-request [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-card-policy-label [fix:NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED,CARD_POLICY_LABEL_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-card-policy-label [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-draft-cites-card-policy [fix:NEXT_PUBLIC_CARD_POLICY_TO_DRAFT_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-draft-cites-card-policy [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-lowercase-name-off-roster [fix:SLOT_NAME_ON_FORM_REQUEST_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov3-lowercase-name-off-roster [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov3-lowercase-name-slot-model-silent [fix:SLOT_NAME_ON_FORM_REQUEST_ENABLED,AI_READS_CODE_CHECKS_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov3-open-draft-new-request [fix:NEW_REQUEST_OPEN_DRAFT_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-open-draft-new-request [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-stepb-payroll-as-given [fix:FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-stepb-payroll-as-given [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-stepb-true-claim-keeps-guidance [fix:FORM_PATCH_REDUCER_ENABLED,FORM_REPLY_FROM_DIFF_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-stepb-true-claim-keeps-guidance [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov3-street-address-coaching [fix:ADDRESS_NOT_PERSON_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "nov3-street-then-placeholder",
+    "reason": "Turn 1 \"coaching form for 123 Main Street\": off, the address guard's own question (\"Main Street reads as a street address\"); on, the roster-only step answers first: no employee, the Coaching Form preview and \"Who is this form for?\". Both ask who; neither puts the address on the card."
+  },
+  "replay: nov3-street-address-coaching [production]": {
+    "category": "INTENDED",
+    "twin": "nov3-street-then-placeholder",
+    "reason": "Turn 1 \"coaching form for 123 Main Street\": off, the address guard's own question (\"Main Street reads as a street address\"); on, the roster-only step answers first: no employee, the Coaching Form preview and \"Who is this form for?\". Both ask who; neither puts the address on the card."
+  },
+  "replay: nov3-street-then-placeholder [fix:ADDRESS_NOT_PERSON_ENABLED]": {
+    "category": "REGRESSION",
+    "twin": "nov3-street-address-coaching (turn 1, ask-who only)",
+    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the roster-only step takes the off-roster name off the card and asks who, but the coaching preview still says \"Everything I need is here … I have the employee and the salon\" and puts \"<name>, she was late today\" as the Observation. The reply contradicts itself. Fix: roster-only-names.ts drops the coaching \"I have the employee\" claim when it takes the employee off (or COACHING_ASKS_WHAT_HAPPENED's SAYS_READY strip applies). The case still holds (it checks the card), so CI does not catch it."
+  },
+  "replay: nov3-street-then-placeholder [production]": {
+    "category": "REGRESSION",
+    "twin": "nov3-street-address-coaching (turn 1, ask-who only)",
+    "reason": "Reply text, turn 2 \"make a coaching form for <name>, she was late today\": off asks only \"Who is this Coaching Form for?\"; on, the roster-only step takes the off-roster name off the card and asks who, but the coaching preview still says \"Everything I need is here … I have the employee and the salon\" and puts \"<name>, she was late today\" as the Observation. The reply contradicts itself. Fix: roster-only-names.ts drops the coaching \"I have the employee\" claim when it takes the employee off (or COACHING_ASKS_WHAT_HAPPENED's SAYS_READY strip applies). The case still holds (it checks the card), so CI does not catch it."
+  },
+  "replay: nov4-ca-sales-wrong-items [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-ca-sales-wrong-items-card [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-cleaning-basis-upkeep-duties [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "replay: nov4-cleaning-negative-msb [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default); src/lib/ai/msb-request-account.test.ts",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. \"MSB CA for <name> …\": the card cites Standards of Conduct — Must See Behaviors (MSB), p.12; the Observation is \"underperformance in the month of October\"."
+  },
+  "replay: nov4-cleaning-negative-named-conduct [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-cleaning-tanning-beds-not-conduct [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "replay: nov4-cleaning-wrong-items-keeps-conduct [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-name-first-date-caps-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-date-lower-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-date-sentence-off-code [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-date-sentence-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-nodate-caps-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-nodate-lower-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-nodate-sentence-off-code [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-first-nodate-sentence-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-caps-off-code [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-caps-off-models [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-caps-on-code [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-caps-on-models [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-lower-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-sentence-off-code [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-date-sentence-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-nodate-caps-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-nodate-lower-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-nodate-sentence-off-code [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-last-nodate-sentence-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-date-caps-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-date-lower-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-date-sentence-off-code [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-date-sentence-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-nodate-caps-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-nodate-lower-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-nodate-sentence-off-code [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-middle-nodate-sentence-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-pau-1-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-name-pau-2-off-models [production]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case."
+  },
+  "replay: nov4-offer-exit-replaces-menu [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default); nov4-pau5-5b",
+    "reason": "Pau, 4 Nov 2026, #5: the Coaching/Corrective Action menu is replaced by the one offer \"Do you want a Corrective Action for <name>?\" citing the Standards of Conduct; \"yes\" makes the card (ca-offer.ts). An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "replay: nov4-offer-exit-tool-path [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-qa-off-roster-name-with-one [fix:KEEP_ROSTER_EXACT_NAME_ENABLED,CA_SALES_POLICY_ENABLED,CHAT_GLOSSARY_ENABLED]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Note (follow-up, not a regression vs off, which had no card): the Observation is \"verbal for QA Probe XZT One. This is for Under Performance …\", the request with the name in it."
+  },
+  "replay: nov4-qa-off-roster-name-with-one [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Note (follow-up, not a regression vs off, which had no card): the Observation is \"verbal for QA Probe XZT One. This is for Under Performance …\", the request with the name in it."
+  },
+  "replay: nov4-qa-off-roster-name-with-one-form-name [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Note (follow-up, not a regression vs off, which had no card): the Observation is \"verbal for QA Probe XZT One. This is for Under Performance …\", the request with the name in it."
+  },
+  "replay: nov4-qa-roster-name-with-one [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Note (follow-up, not a regression vs off, which had no card): the Observation is \"verbal for QA Probe XZT One. This is for Under Performance …\", the request with the name in it."
+  },
+  "replay: nov4-rev8-described-late-opening-keeps-attendance [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-rev8-named-late-opening-keeps-attendance [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-scan-sf-b5-typo-name-rude-to-customer [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case. Note (follow-up, not a regression vs off): the typo \"Delphine Marlwoe Ostrander\" of the roster's Delphine Marlowe Ostrander gets the generic question, not \"Is this for **Delphine Marlowe Ostrander**?\": oneCloseRosterPerson finds no single close match for a three-word name with a typo in the middle word."
+  },
+  "replay: nov4-scan-sf-s13-team-coaching-blank-employee [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run; roster-only-names.test.ts (flag off: as built)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". Corin Bellweather / the typed name is on no roster in this case. Off, the card was for \"Spray Tan Kits\" (the product); on, no employee and it asks who, at both turns, although turn 2 says \"The employee needs to be left blank for now\" (the team card is not read as subject team here). Better than a product as the employee; the case stays OPEN."
+  },
+  "replay: nov4-scan-sf-s15-opening-duties-cleaning [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov4-scan-sf-s17-woven-courses-written [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov5-roster-only-coaching-form [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "replay: nov5-roster-only-ima-off-roster [open]": {
+    "category": "REGRESSION",
+    "twin": "nov5-roster-only-ima-on-roster",
+    "reason": "Card text: the case holds (no card name, asks who), but the Observation becomes \"ima employee, opening salon late on 9-28-26\" (off: \"opening salon late on 9-28-26\"): with the employee taken off the card, managerAccount no longer knows the typed name is the request's, so it stays in the Observation. Minor; fix: roster-only-names.ts strips the removed name from the Observation line."
+  },
+  "replay: nov5-roster-only-ima-on-roster [open]": {
+    "category": "INTENDED",
+    "twin": "the case's production run (OPEN, flags off)",
+    "reason": "Pau, 5 Nov 2026 (#534, forms/roster-only-names.ts): only roster people are the card's employee. A name on no roster is not drafted for; the card has no employee and the reply asks once \"Who is this form for?\". An OPEN replay case (expected to fail in production) that holds with FORM_NAME_FROM_ROSTER_ENABLED and CA_SALES_POLICY_ENABLED on; #532 moves it to fixed. This is the fix the case tracks."
+  },
+  "replay: nov5-roster-only-lowercase-surname [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
+  },
+  "replay: nov5-roster-only-message-8-metrics [production]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default); roster-only-names.test.ts message 8",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. Message 8 (MUST-PASS): the card is for Dana Lane, Verbal Warning as said, Standards of Conduct p.12; no metric is a choice or a name. Note (follow-up, not a regression vs off, which had no card): the Observation is the whole message (\"Can you write me a performace ca … - verbal 146 tans Below in PPTA, …\"); OBSERVATION_WITHOUT_ASK (#540, off) is the candidate fix."
+  },
+  "replay: nov5-sf-s24-must-see-behaviors-and-coaching-on-file [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default); roster-only-names.test.ts message 8",
+    "reason": "Client request (4 Nov 2026), Pau: a CA for sales, Under Performance or MSB cites the Standards of Conduct. With CA_SALES on, the metrics message is a Corrective Action card citing Standards of Conduct p.12 instead of the progression's metric-only answer. Message 8 (MUST-PASS): the card is for Dana Lane, Verbal Warning as said, Standards of Conduct p.12; no metric is a choice or a name. Note (follow-up, not a regression vs off, which had no card): the Observation is the whole message (\"Can you write me a performace ca … - verbal 146 tans Below in PPTA, …\"); OBSERVATION_WITHOUT_ASK (#540, off) is the candidate fix."
+  },
+  "replay: nov5-twin-sf-b6-full-sentence-and-added-detail [open]": {
+    "category": "INTENDED",
+    "twin": "itself with the flags off (CI default)",
+    "reason": "The card's Observation of Offense no longer starts with the employee's name (\"<name> for being late …\" → \"being late …\"): with FORM_NAME on, the request slot (#531/#533) reads the person as the request's, so managerAccount drops it. Nothing else in the reply changes."
   }
 }
