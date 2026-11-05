@@ -22,6 +22,8 @@ export interface ReplayAnswer {
   formProposal?: { templateKey?: string; employeeName?: string | null; employeeRole?: string | null; status?: string; subject?: string; locationId?: string | null };
   formUpdate?: { instanceId: string; updated: string[] };
   formOpened?: { instanceId: string };
+  /** A form picker's cards, shown under the reply (`formOpportunityLead` introduces them). */
+  formSelection?: unknown;
 }
 
 export interface ReplayThread {
@@ -77,6 +79,14 @@ export interface ReplayContext {
   typeOnForm(instanceId: string, values: Record<string, string>): void;
   /** Production's race: the next message arrives before the drafting model's values are saved. */
   draftNotYetSaved(instanceId: string): void;
+  /**
+   * A form filed on an EARLIER published version of its template (the CA
+   * revision, #424 / #512): the form is moved onto a new version row holding
+   * `document` as `version`, as if it had been created before the template
+   * changed. `checked`: ticks the form was filed with on that version (its
+   * own option keys). Nothing else about the form changes.
+   */
+  pinVersion?(instanceId: string, document: unknown, version: number, checked?: Record<string, string[]>): void;
 }
 
 export interface DirectoryRow {
@@ -129,6 +139,42 @@ export function savedForm(t: Pick<ReplayContext, "values" | "checked">, instance
 export function replyMatchesDiff(t: Pick<ReplayContext, "values" | "checked">, instanceId: string, before: string, reply: ReplayAnswer, said: string): void {
   if (!claimsFormChange(reply)) return;
   expect(savedForm(t, instanceId), `"${said}": the reply says the form changed, and the saved form did not`).not.toBe(before);
+}
+
+/**
+ * A reply ends as a sentence (sf-b6, 4 Nov 2026): it never ends on a heading
+ * that introduces something — a line ending in ":" — unless the cards it
+ * introduces come with it, and it never introduces a form picker while a form
+ * is already in progress in this chat.
+ */
+export function endsAsSentence(reply: ReplayAnswer, said: string, formInProgress = false): void {
+  const last = reply.content.trimEnd().split("\n").pop() ?? "";
+  const dangling = /:\s*$/.test(last) && !reply.formSelection && !reply.formProposal;
+  expect(dangling ? last : null, `"${said}": the reply ends on a heading with nothing under it`).toBeNull();
+  if (formInProgress) {
+    expect(reply.formSelection ?? null, `"${said}": a form picker while a form is already in progress`).toBeNull();
+    expect(/:\s*$/.test(last) ? last : null, `"${said}": a heading ending the reply while a form is in progress`).toBeNull();
+  }
+}
+
+/**
+ * "as you said" (sf-s21, sf-s24, sf-s25): a value the reply attributes to the
+ * manager is one the manager wrote. Structural, no list of phrases: the value
+ * before ", as you said" on a labelled line must share a word of four or more
+ * letters with the manager's own turns — the app's own rule for the card
+ * (`saidInWords`), so "Verbal Warning" after "…, verbal" holds and "Standards
+ * of Conduct" after "it should be must see behaviors" does not.
+ */
+export function noAsYouSaidUnlessSaid(reply: ReplayAnswer, managerTurns: readonly string[]): void {
+  const said = managerTurns.join("\n").toLowerCase();
+  for (const line of reply.content.split("\n")) {
+    const match = /(?:\*\*)?([^*:·\n]+?)(?:\*\*)?:(?:\*\*)?\s*([^·\n]+?),\s*as you said/i.exec(line);
+    if (!match) continue;
+    const value = match[2]!.replace(/\*\*/g, "").trim();
+    const words = value.toLowerCase().split(/[^a-z']+/).filter((word) => word.length >= 4);
+    const shared = words.some((word) => new RegExp(`\\b${word}\\b`).test(said));
+    expect(shared ? null : `${match[1]!.trim()}: ${value}`, `"as you said" for words the manager did not write`).toBeNull();
+  }
 }
 
 /** The same reply, word for word, twice in a row. */
