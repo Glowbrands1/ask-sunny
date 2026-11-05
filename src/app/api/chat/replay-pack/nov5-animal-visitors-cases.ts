@@ -62,6 +62,7 @@ export const NOV5_ANIMAL_VISITORS_CASES: ReplayCase[] = [
     title: "(a) \"he brought his new kitten to the salon\": Animals in the Workplace only — no Visitors in the Workplace on the card, in Direct policy or in the Action Plan",
     report: `${REPORT}, (a)`,
     status: { open: "with production's flags the draft quotes Visitors in the Workplace in Direct policy and its Action Plan reviews \"the Animals in the Workplace and Visitors in the Workplace policies\"" },
+    fixFlags: ["ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED"],
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("create a ca for corwin hale at kearney. he brought his new kitten to the salon on 11-4-26. verbal. no payroll deduct");
@@ -75,6 +76,7 @@ export const NOV5_ANIMAL_VISITORS_CASES: ReplayCase[] = [
     title: "(b) a customer brought a dog in and the employee let them stay: Animals in the Workplace and Visitors in the Workplace",
     report: `${REPORT}, (b)`,
     status: "fixed",
+    fixFlags: ["ANIMAL_VISITORS_ONLY_WHEN_VISITOR_ENABLED"],
     async run(t) {
       const thread = start(t);
       const reply = await thread.say("create a ca for corwin hale at kearney. a customer brought her dog into the salon on 11-4-26 and corwin let them stay. verbal. no payroll deduct");
