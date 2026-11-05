@@ -13,6 +13,7 @@ const { askCaWhatHappened } = await import("./ca-what-happened");
 const card = (employeeName: string) => ({
   content: `I'll draft a **Corrective Action Form** for **${employeeName}** from what you've described.`,
   citations: [],
+  recommendedVideoIds: [],
   formProposal: { templateKey: "dpoa", templateName: "Corrective Action Form", employeeName } as never,
 });
 const NOTE = /You haven't told me what happened yet/;
