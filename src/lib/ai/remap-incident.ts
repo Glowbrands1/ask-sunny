@@ -1,5 +1,11 @@
 import { salonById } from "@/data/salons";
-import { caSalesPolicyEnabled, levelRequestDateEnabled, priorSentenceFixEnabled, requestLeadFillerEnabled } from "@/lib/config/chat-quality-flags";
+import {
+  caSalesPolicyEnabled,
+  levelRequestDateEnabled,
+  observationWithoutAskEnabled,
+  priorSentenceFixEnabled,
+  requestLeadFillerEnabled,
+} from "@/lib/config/chat-quality-flags";
 import { withoutPriorStepClauses } from "@/lib/forms/form-date-answer";
 import { CA_POLICY_LABEL, readCaPolicy, STANDARDS_OF_CONDUCT, type CaPolicyName } from "@/lib/forms/ca-policy";
 import {
@@ -12,7 +18,7 @@ import {
 import { extractJobTitle, titleAfterJobTitleLabel } from "@/lib/forms/proposal";
 import { readSalonMentions } from "@/lib/forms/salon-mention";
 import { US_STATE_CODE } from "@/lib/forms/state-code-place";
-import { withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
+import { detectTemplateIntent, withoutLeadingGlossaryTerm } from "@/lib/forms/template-intent";
 import type { KnowledgeCategory, SourceCitation } from "@/types";
 
 import { accountManualSections } from "./account-manual-sections";
@@ -688,6 +694,22 @@ export function managerAccount(sentence: string, employeeName: string | null): s
       // "create a CA form so I can document": the rest of a request is not the account.
       if (!text || /^(?:so|to|with|from|because|now)\b/i.test(text)) continue;
       if (onlyNamesThem(text, employeeName) || /^[A-Z][\w'-]*(?:\s+[A-Z][\w'-]*){0,2}$/.test(text)) continue;
+    }
+    /*
+     * OBSERVATION_WITHOUT_ASK_ENABLED (Pau, sf-s28, 5 Nov 2026): "can i give a
+     * ca for not signing off on the cleaning check list" was the card's whole
+     * Observation; the request lead above reads only "can you …". A clause
+     * the intent reader takes as a Corrective Action asked for or asked about
+     * is the ask up to its "for"; what follows is the account. Off, unchanged.
+     */
+    if (!requested && observationWithoutAskEnabled()) {
+      const read = detectTemplateIntent(text);
+      const forAt = text.search(/\bfor\s/i);
+      if ((read.kind === "corrective_action" || (read.kind === "explicit" && read.templateKey === "dpoa")) && forAt > 0) {
+        requested = true;
+        text = text.slice(forAt).trim();
+        if (onlyNamesThem(text.replace(/^for\s+/i, ""), employeeName)) continue;
+      }
     }
     if (onlyWhoOrWhere(text, employeeName)) continue;
     text = withoutPlace(text);

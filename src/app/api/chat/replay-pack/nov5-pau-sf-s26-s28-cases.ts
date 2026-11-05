@@ -109,7 +109,7 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
     report:
       "Pau via QA, 5 Nov 2026, sf-s28: \"can i give a ca for not signing off on the cleaning check list\" → \"can you write me a ca for Employee R from o street\" → \"You haven't told me what happened yet\", the Observation was the question",
     status: { open: "\"You haven't told me what happened yet\"; the earlier turn's incident is not used" },
-    fixFlags: ["OMISSION_IS_ACCOUNT_ENABLED"],
+    fixFlags: ["OMISSION_IS_ACCOUNT_ENABLED", "OBSERVATION_WITHOUT_ASK_ENABLED"],
     async run(t: T) {
       /*
        * CA_ASKS_WHAT_HAPPENED_ENABLED is on in production (QA, 5 Nov 2026; in
@@ -125,6 +125,8 @@ export const NOV5_PAU_SF_S26_S28_CASES: ReplayCase[] = [
         const reply = await thread.say("can you write me a ca for Thessaly Brandt from o street");
         expect(reply.content, `the earlier turn's incident is not used:\n${reply.content}`).not.toMatch(NO_ACCOUNT);
         expect(reply.content, `the question is the Observation:\n${reply.content}`).not.toMatch(/Observation[^\n]*can you write me/i);
+        // Pau's "the Observation was the question": the earlier question is no Observation either; its incident is.
+        expect(reply.content, `the earlier question is the Observation:\n${reply.content}`).not.toMatch(/Observation[^\n]*can i give/i);
         expect(thread.proposal, `no Corrective Action card for Thessaly Brandt:\n${reply.content}`).toMatchObject({ templateKey: "dpoa", employeeName: "Thessaly Brandt" });
       } finally {
         vi.unstubAllEnvs();
