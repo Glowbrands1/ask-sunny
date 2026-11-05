@@ -60,7 +60,8 @@ const MESSAGES: readonly { readonly n: number; readonly say: string; readonly na
  * QA's 2-week audit wording #9, "can you write me a Ca for <name> for performance for october": with
  * production's flags AND with this branch's fix flags, the card says "You haven't told me what happened
  * yet". "for performance" alone is not read as an account (no negation, two words). Not fixed by this
- * branch; recorded OPEN for QA's call (5 Nov 2026).
+ * branch; recorded OPEN for QA's call (5 Nov 2026). Its fix is CA_PERFORMANCE_REASON_ENABLED (coding-3
+ * item 5): with it on as well, the fix-flag run holds; production lacks the flag, so it stays OPEN.
  */
 const NOT_FIXED_9 = "\"for performance for october\" is not read as an account: the card says \"You haven't told me what happened yet\", with production's flags and with CA_SALES + FORM_NAME + CA_ASKS on";
 
@@ -96,8 +97,8 @@ export const NOV5_REASON_GIVEN_CASES: ReplayCase[] = [
         : n === 9
           ? ({ open: NOT_FIXED_9 } as const)
           : ({ open: CA_SALES_OFF } as const),
-    // #9 has no fix yet: its fix-flag run fails too, so it has none until one exists.
-    ...(n === 9 ? {} : { fixFlags: FLAGS }),
+    // #9 is fixed by CA_PERFORMANCE_REASON_ENABLED (default off, not in production): "for performance" in the request is the sales reading (`withSalesPolicy`, forms/ca-policy.ts).
+    fixFlags: n === 9 ? [...FLAGS, "CA_PERFORMANCE_REASON_ENABLED"] : FLAGS,
     async run(t: T) {
       const thread = start(t);
       const reply = await thread.say(say);
