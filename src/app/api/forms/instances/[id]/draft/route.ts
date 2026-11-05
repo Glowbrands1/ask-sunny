@@ -163,7 +163,7 @@ import {
   describedManualSection,
   namedManualSection,
 } from "@/lib/forms/named-policy-section";
-import { OTHER_WRITE_IN_INSTRUCTION, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
+import { OTHER_WRITE_IN_INSTRUCTION, specificTopic, withConductLinePage, withConductLineWording, withoutPrimedTopic } from "@/lib/forms/specific-policy-topics";
 import {
   PAYROLL_AMOUNT_KEY,
   PAYROLL_AMOUNT_STATED_KEYS,
@@ -211,6 +211,7 @@ import {
   LANGUAGE_CLEANUP_RULES,
   guardCoachingFraming,
 } from "@/lib/forms/coaching-framing";
+import { OFFENSE_BASIS_PROPERTY, readOffenseBasis, withoutUnreasonedConduct, type OffenseBasis } from "@/lib/forms/ca-conduct-reason";
 import { guardOtherWriteIn } from "@/lib/forms/other-write-in";
 import {
   MANAGER_FOLLOW_UP_RULES,
@@ -1153,6 +1154,9 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       .join("\n");
 
     const client = getAnthropicClient();
+    /* CA_SALES_POLICY_ENABLED: the tool's optional offense_basis, and what the last call said (`ca-conduct-reason.ts`). */
+    const basisAsked = caSalesPolicyEnabled() && offersConductPolicy && offenseOffered.includes("other");
+    let offenseBasis: OffenseBasis | null = null;
     const draftCall = () => client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: CLAUDE_MAX_TOKENS.detailed,
@@ -1175,6 +1179,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
                 additionalProperties: { type: "array", items: { type: "string" } },
                 description: "Checkbox group key to the option keys that apply.",
               },
+              // CA_SALES_POLICY_ENABLED only, on a form offering Other: added, optional (`ca-conduct-reason.ts`). Off, absent.
+              ...(basisAsked ? { offense_basis: OFFENSE_BASIS_PROPERTY } : {}),
             },
             required: ["values"],
           },
@@ -1215,6 +1221,7 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       }
       const call = toolCall(reply);
       const read = readCall(call?.input);
+      if (basisAsked) offenseBasis = readOffenseBasis(call?.input);
       if (neverBlank) {
         const empty = emptyCallReason(call?.input, read, reply.stop_reason ?? null);
         if (empty) reasons.push(empty);
@@ -1820,6 +1827,22 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             },
           }
         : offenseStated;
+    /*
+     * CA_SALES_POLICY_ENABLED (Pau, 4 Nov 2026): a Standards of Conduct tick
+     * with no reason in the manager's words (a cleaning CA) moves to Other,
+     * with their words beside it. Off, null. See `ca-conduct-reason.ts`.
+     */
+    const conductReasoned =
+      withoutUnreasonedConduct({
+        draft: offenseApplied,
+        reading: caPolicy,
+        stated: statedKeys !== null,
+        offered: offenseOffered,
+        notes,
+        basis: offenseBasis,
+        specific: specificTopic(notes) !== null,
+        writeInOffered: fields.some((field) => field.key === "other_offense"),
+      }) ?? offenseApplied;
     const policyLeftForManager =
       describedChoices !== null && !(offenseApplied.checked.offense_type ?? []).some((key) => SPECIFIC_SECTION_BOXES.has(key));
 
@@ -1837,8 +1860,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
     const managerKeys = new Set(managerRows.map((row) => row.fieldKey));
     const managerOffense = managerRows.find((row) => row.fieldKey === "offense_type" && row.checked.length > 0);
     const validated = managerOffense
-      ? { ...offenseApplied, checked: { ...offenseApplied.checked, offense_type: [...managerOffense.checked] } }
-      : offenseApplied;
+      ? { ...conductReasoned, checked: { ...conductReasoned.checked, offense_type: [...managerOffense.checked] } }
+      : conductReasoned;
 
     /*
      * ========================================================================

@@ -49,6 +49,19 @@ export function installRequestMessage(read: () => string | undefined): void {
   readMessage = read;
 }
 
+let readRosterNames: () => readonly string[] | undefined = () => undefined;
+
+/** `person-guard.ts` installs the turn's roster names (it reads this module, so this module does not read it). */
+export function installSlotRosterNames(read: () => readonly string[] | undefined): void {
+  readRosterNames = read;
+}
+
+/** Somebody's whole roster name, in any case ("Odalys merriwether"). */
+function isRosterName(candidate: string): boolean {
+  const typed = normalizeTypedName(candidate);
+  return Boolean(typed) && (readRosterNames() ?? []).some((name) => normalizeTypedName(name) === typed);
+}
+
 function wordsOf(text: string): string[] {
   return normalizeTypedName(text).split(/[\s-]+/).filter(Boolean);
 }
@@ -82,19 +95,40 @@ export function offensePhrases(text: string): string[] {
 export function requestSlotNames(text: string): string[] | null {
   const first = firstSentence(text);
   if (!first || detectTemplateIntent(first).kind === "none") return null;
-  const match = SLOT.exec(first);
-  if (!match) return null;
-  const all = match[1]!
-    .split(/\s*(?:,|\band\b|\bor\b|&)\s*/u)
-    .map((name) => name.trim())
-    .filter((name) => name && !readsAsOffense(name));
+  /*
+   * EVERY FORM ASKED FOR HAS ITS SLOT (the flip check, 5 Nov 2026): "coaching
+   * form for Avery Testperson and a CA for Jordan Testperson", "Coaching form
+   * for Avery Testperson. Also a CA for Jordan Testperson." — only the first
+   * "for <Name>" was the slot, so Jordan Testperson was ruled out and the CA
+   * card had no employee. Each "for <Name>" whose own clause (the words since
+   * the previous "for <Name>") asks for a form is a slot. Off the first
+   * sentence, a clause that asks for no form ("This is for Under
+   * Performance …") is no slot.
+   */
+  const all: string[] = [];
+  const every = new RegExp(SLOT.source, "gu");
+  let from = 0;
+  for (const match of text.matchAll(every)) {
+    const at = match.index ?? 0;
+    const clause = text.slice(from, at);
+    from = at + match[0].length;
+    if (at >= first.length && detectTemplateIntent(clause).kind === "none") continue;
+    // "… Avery Testperson, CA for Jordan Testperson": an item straight before another "for <Name>" is what is asked for, not a person.
+    const followedByFor = /^\s*for\s+\p{Lu}/u.test(text.slice(at + match[0].length));
+    const items = match[1]!
+      .split(/\s*(?:,|\band\b|\bor\b|&)\s*/u)
+      .map((name) => name.trim())
+      .filter((name) => name && !readsAsOffense(name));
+    if (followedByFor) items.pop();
+    all.push(...items);
+  }
   /*
    * A form's name where the person goes ("a corrective action for Coaching
    * Form", Pau, 4 Nov 2026) is no person — and the slot is still the request's
    * slot: it names nobody, so no other phrase in the message is a candidate
    * ("Club Close" from "… on Club Close % and Spa %"). The reply asks who.
    */
-  const names = all.filter((name) => !namesAForm(name));
+  const names = [...new Set(all.filter((name) => !namesAForm(name)))];
   if (names.length === 0) return all.length > 0 ? [] : null;
   return names;
 }
@@ -126,6 +160,13 @@ export function capitalisedListItems(text: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+/** Every word of the candidate is a word of the text, in any case. */
+function containsWords(text: string, candidate: string): boolean {
+  const words = new Set(wordsOf(text.replace(/[^\p{L}'’\s-]+/gu, " ")));
+  const typed = wordsOf(candidate);
+  return typed.length > 0 && typed.every((word) => words.has(word));
+}
+
 /** The candidate is somebody the slot names, by every word ("Remy" or "Remy Fenn" for "Remy Fenn"). */
 function inSlot(candidate: string, slot: readonly string[]): boolean {
   const typed = wordsOf(candidate);
@@ -143,6 +184,22 @@ function inSlot(candidate: string, slot: readonly string[]): boolean {
  */
 export function outsideRequestSlot(candidate: string, text: string | undefined = readMessage()): boolean {
   if (!formNameFromRosterEnabled() || !text || !candidate.trim()) return false;
+  /*
+   * Pau, 5 Nov 2026: the text after "for" is matched against the roster
+   * ignoring capitals — somebody's whole roster name is never ruled out by the
+   * message's shape ("make me a CA for Odalys merriwether …": the slot reads
+   * capitalised words, so it held "Odalys" and the full name was outside it).
+   */
+  if (isRosterName(candidate)) return false;
+  /*
+   * The message rules out only candidates it contains (the flip check, 5 Nov
+   * 2026, in the sibling app): a name read from another turn of the
+   * conversation — "remy calder" from "Do the same coaching form for remy
+   * calder", checked while the stored message was an earlier request for
+   * another person — is not this message's to judge. It made the card's
+   * employee "out of date" for the earlier person.
+   */
+  if (!containsWords(text, candidate)) return false;
   // A form's name is never a person (Pau, 4 Nov 2026: "a corrective action for Coaching Form").
   if (namesAForm(candidate)) return true;
   const typed = wordsOf(candidate).join(" ");
