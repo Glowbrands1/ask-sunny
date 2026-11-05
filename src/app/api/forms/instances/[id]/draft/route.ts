@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { salesResultsOffenseLine, withCaChosenRule } from "@/lib/ai/ca-sales-prompt-lines";
 import { noteSpendUser } from "@/lib/ai/spend-meter";
 import { withSpendMeter } from "@/lib/ai/spend-meter-run";
 
@@ -1057,7 +1058,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
             "Each plan you do write is one or two sentences, tied to what the manager described and to the objective printed beside the category. No dates, no disciplinary step, no quoted policy wording.",
           ]
         : []),
-      ...(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): one added rule after the lowest-rung rule. Off, the rules are as before.
+      ...withCaChosenRule(governance.governed ? PERFORMANCE_MANAGEMENT_DRAFT_RULES : []),
       /*
        * THE EPP'S OWN RULES, on the versions that have the appendix field.
        * They say what a performance plan IS — coaching, not a warning — and
@@ -1150,6 +1152,8 @@ async function postFormsDraft(request: Request, context: { params: Promise<{ id:
       offersConductPolicy && offenseOffered.includes(ATTENDANCE_POLICY) && !offenseOffered.includes("under_performance")
         ? CA_REVISION_8_OFFENSE_RULE
         : "",
+      // CA_SALES_POLICY_ENABLED (Pau, 5 Nov 2026): a form with no under_performance box reads sales results as standards_of_conduct. Off, nothing is added.
+      offersConductPolicy ? salesResultsOffenseLine(offenseOffered) : "",
     ]
       .filter(Boolean)
       .join("\n");
