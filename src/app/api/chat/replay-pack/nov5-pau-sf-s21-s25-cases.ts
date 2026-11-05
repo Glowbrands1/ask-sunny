@@ -106,6 +106,7 @@ export const NOV5_PAU_SF_S21_S25_CASES: ReplayCase[] = [
     title: "sf-s22: \"It needs to be a CA, not a coaching form\" and \"Its a CA\" keep the Corrective Action; another employee's reviewer notes never go into the Observation",
     report: `${REPORT}, sf-s22`,
     status: { open: "after \"It needs to be a CA\" the card goes back to \"Here is what I would put on a Coaching Form\", and the Observation carries Corwen's reviewer notes" },
+    fixFlags: ["OBSERVATION_OTHER_PERSON_TURN_ENABLED", "PASTED_BLOCK_FORM_ENABLED"],
     async run(t) {
       const thread = start(t);
       const first = await thread.say(

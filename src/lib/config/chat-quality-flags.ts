@@ -2534,3 +2534,28 @@ export function payrollAnswerSpellingEnabled(): boolean {
 export function observationNotEarlierQuestionEnabled(): boolean {
   return envFlag("OBSERVATION_NOT_EARLIER_QUESTION_ENABLED");
 }
+
+/**
+ * OBSERVATION_OTHER_PERSON_TURN_ENABLED (Pau via QA, 5 Nov 2026, sf-s22;
+ * default off; same flag in both apps). A reviewer's notes about another
+ * employee, pasted as a model, went into this employee's Observation of
+ * Offense. On, the account is read without a turn that names somebody else on
+ * the manager's roster and not this employee (`forms/other-person-turns.ts`;
+ * the roster is PERSON_GUARD_ENABLED's). Off, as before.
+ */
+export function observationOtherPersonTurnEnabled(): boolean {
+  return envFlag("OBSERVATION_OTHER_PERSON_TURN_ENABLED");
+}
+
+/**
+ * PASTED_BLOCK_FORM_ENABLED (Pau via QA, 5 Nov 2026, sf-s22; default off;
+ * same flag in both apps). "Make this:<a reviewer's notes>" read as a
+ * Coaching Form request because the pasted notes named a coaching document,
+ * after the manager had said "It needs to be a CA". On, a turn that is a short
+ * lead ending in a colon and a block of several lines is read for its form
+ * from the lead alone (`forms/template-intent.ts` pastedBlockLead). Off, as
+ * before.
+ */
+export function pastedBlockFormEnabled(): boolean {
+  return envFlag("PASTED_BLOCK_FORM_ENABLED");
+}
