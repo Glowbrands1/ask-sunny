@@ -2585,3 +2585,16 @@ export function cardPolicyDescribedEnabled(): boolean {
 export function newPersonOwnWordsEnabled(): boolean {
   return envFlag("NEW_PERSON_OWN_WORDS_ENABLED");
 }
+
+/**
+ * CA_PROCEDURE_BASIS_ENABLED (Pau via QA, 5 Nov 2026, sf-b6 in the sibling app; default
+ * off; same flag in both apps). A Corrective Action for closing a register
+ * early and turning away a customer came back with Standards of Conduct
+ * ticked and quoted, after the chat said no source states a policy for it.
+ * On, the drafting call may name the basis store_procedure, which moves an
+ * unreasoned Standards of Conduct tick to Other like upkeep does
+ * (`forms/ca-conduct-reason.ts`). Off, the tool and the tick are as before.
+ */
+export function caProcedureBasisEnabled(): boolean {
+  return envFlag("CA_PROCEDURE_BASIS_ENABLED");
+}
