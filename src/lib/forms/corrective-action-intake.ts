@@ -513,7 +513,7 @@ export function describesIncident(text: string): boolean {
   if (policy.topics.length > 0 || policy.missedEvent !== null || isSalesPolicyReading(policy)) return true;
   /*
    * DESCRIBED_TOPIC_IS_ACCOUNT_ENABLED (coordinator via QA, production, 5 Nov
-   * 2026): "he brought his new kitten to the store on 10-22-26" (Ask Bubbles) was cited as
+   * 2026): "he brought his new kitten to the store on 10-22-26" (the sibling app) was cited as
    * Animals in the Workplace "from what you described" in the same reply that
    * said "You haven't told me what happened yet". The incident the policy
    * reading's specific topics find in the manager's words (`specificTopic`,

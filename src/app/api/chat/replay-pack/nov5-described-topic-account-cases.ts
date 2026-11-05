@@ -4,8 +4,8 @@ import { KEARNEY, STAFF, type DirectoryRow, type ReplayCase, type ReplayContext 
 
 /**
  * ============================================================================
- * A SECTION THE MANAGER'S WORDS DESCRIBE IS AN ACCOUNT (port from Ask
- * Bubbles: coordinator via QA, Bubbles production, 5 Nov 2026)
+ * A SECTION THE MANAGER'S WORDS DESCRIBE IS AN ACCOUNT (ported from the
+ * sibling app: coordinator via QA, its production, 5 Nov 2026)
  * ============================================================================
  *
  * "create a ca for <name> at <store>. he brought his new kitten to the store on
@@ -31,7 +31,7 @@ const CORWIN: DirectoryRow = {
   positionName: "Tanning Consultant",
 };
 
-const REPORT = "Coordinator via QA, 5 Nov 2026 (Ask Bubbles production; the same reader here)";
+const REPORT = "Coordinator via QA, 5 Nov 2026 (the sibling app's production; the same reader here)";
 const TURN = "create a ca for corwin hale at kearney. he brought his new kitten to the salon on 10-22-26. verbal. no payroll deduct";
 
 function start(t: T) {

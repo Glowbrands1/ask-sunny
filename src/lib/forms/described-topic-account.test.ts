@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 const { describesIncident } = await import("./corrective-action-intake");
 
 /*
- * Port from Ask Bubbles. Coordinator via QA, Bubbles production, 5 Nov 2026,
+ * Ported from the sibling app. Coordinator via QA, its production, 5 Nov 2026,
  * the manager's words (store -> salon), the person invented: the card cited Animals
  * in the Workplace "from what you described" and also said "You haven't told
  * me what happened yet".
