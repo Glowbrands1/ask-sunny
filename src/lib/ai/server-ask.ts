@@ -193,6 +193,7 @@ import type { AskRequest, AskResponse } from "./types";
 import { keepManagerActionPlan } from "./manager-action-plan-reply";
 import { withManagerNameGuard, withManagerNameRule } from "./manager-name-guard";
 import { withoutReportTurnsForForm } from "./report-turns";
+import { withTitleOfTheEmployee } from "./title-of-the-employee";
 
 /**
  * THE GROUNDED ANSWER PATH — server-side, and only server-side.
@@ -302,7 +303,8 @@ export async function answerQuestion(
   if (passwordHelp) {
     return { content: passwordHelp, citations: [], coverage: "grounded", recommendedVideoIds: [] };
   }
-  const answered = withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question);
+  // TITLE_OF_THE_EMPLOYEE_ENABLED: a title the manager attached to another named person is never the card's (`ai/title-of-the-employee.ts`).
+  const answered = withTitleOfTheEmployee(withoutSensitiveDefaults(await answerQuestionChecked(request, actor, memory), request.question), request);
   /*
    * CA_SALES_POLICY_ENABLED: a reply about a policy and an employee the roster
    * recognises ends with ONE offer to start a Corrective Action citing that

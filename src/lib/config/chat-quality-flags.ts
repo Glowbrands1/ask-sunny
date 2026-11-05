@@ -2516,3 +2516,15 @@ export function keepRosterExactNameEnabled(): boolean {
 export function coachingAsksWhatHappenedEnabled(): boolean {
   return envFlag("COACHING_ASKS_WHAT_HAPPENED_ENABLED");
 }
+
+/**
+ * TITLE_OF_THE_EMPLOYEE_ENABLED (port from the sibling app; QA, 5 Nov 2026,
+ * R2; default off). One employee's story named their district manager in
+ * passing, and the card's Job title was "District Manager", the other
+ * person's. On: a title the manager's turns only ever attach to another named
+ * person is not the employee's; the card has none
+ * (`ai/title-of-the-employee.ts`). Off, as before.
+ */
+export function titleOfTheEmployeeEnabled(): boolean {
+  return envFlag("TITLE_OF_THE_EMPLOYEE_ENABLED");
+}
